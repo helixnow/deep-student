@@ -580,17 +580,17 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         {stats.warnings > 0 && <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚠ {stats.warnings}</span>}
         {stats.anomalies > 0 && <span style={{ color: '#f97316', fontWeight: 600 }}>🔀 {stats.anomalies} 异常</span>}
         <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
-        <button onClick={handleCopy} title="复制日志" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copyFeedback ? '#10b981' : '#6b7280' }}>
+        <button onClick={handleCopy} title="复制日志" className="[@media(pointer:coarse)]:min-h-11" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copyFeedback ? '#10b981' : '#6b7280' }}>
           <Copy size={14} />
         </button>
-        <button onClick={handleDownload} title="下载日志" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
+        <button onClick={handleDownload} title="下载日志" className="[@media(pointer:coarse)]:min-h-11" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
           <Download size={14} />
         </button>
-        <button onClick={handleClear} title="清空" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
+        <button onClick={handleClear} title="清空" className="[@media(pointer:coarse)]:min-h-11" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
           <Trash size={14} />
         </button>
       </div>
@@ -603,9 +603,10 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="搜索会话ID/内容..."
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{ flex: 1, minWidth: 120, background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', fontSize: 11, outline: 'none' }}
         />
-        <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value as any)} style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>
+        <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value as any)} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>
           <option value="all">全部级别</option>
           <option value="error">❌ Error</option>
           <option value="warn">⚠️ Warn</option>
@@ -613,7 +614,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <option value="info">ℹ️ Info</option>
           <option value="debug">🔍 Debug</option>
         </select>
-        <select value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)} style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>
+        <select value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>
           <option value="all">全部阶段</option>
           <option value="backend:preprocessing">预处理</option>
           <option value="backend:ocr">VLM/OCR</option>
@@ -658,6 +659,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
               >
                 {/* 主行 */}
                 <div
+                  className="[@media(pointer:coarse)]:min-h-11"
                   style={{ display: 'flex', alignItems: 'flex-start', gap: 4, cursor: hasDetail ? 'pointer' : 'default' }}
                   onClick={() => hasDetail && toggleExpand(entry.id)}
                 >

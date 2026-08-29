@@ -340,6 +340,7 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Button 
             size="sm" 
             variant={enabled ? 'outline' : 'default'}
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={handleToggleEnabled}
           >
             {enabled ? '停止监控' : '开始监控'}
@@ -347,16 +348,17 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Button 
             size="sm" 
             variant="outline" 
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={() => setShowStats(!showStats)}
           >
             <TrendUp size={16} className="mr-1" />
             {showStats ? '隐藏统计' : '显示统计'}
           </Button>
-          <Button size="sm" variant="outline" onClick={handleCopyReport}>
+          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyReport}>
             <Copy size={16} className="mr-1" />
             复制报告
           </Button>
-          <Button size="sm" variant="destructive" onClick={handleClear}>
+          <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClear}>
             <Trash size={16} className="mr-1" />
             清空
           </Button>

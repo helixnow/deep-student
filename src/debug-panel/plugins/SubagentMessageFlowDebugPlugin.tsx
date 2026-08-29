@@ -374,6 +374,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
             <Button
               size="sm"
               variant={isMonitoring ? 'destructive' : 'default'}
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={isMonitoring ? stopMonitoring : startMonitoring}
             >
               {isMonitoring ? (
@@ -388,15 +389,15 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
                 </>
               )}
             </Button>
-            <Button size="sm" variant="outline" onClick={refreshAdapterStates}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={refreshAdapterStates}>
               <ArrowClockwise size={12} className="mr-1" />
               刷新状态
             </Button>
-            <Button size="sm" variant="outline" onClick={copyLogs}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={copyLogs}>
               <Copy size={12} className="mr-1" />
               复制日志
             </Button>
-            <Button size="sm" variant="outline" onClick={clearLogs}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={clearLogs}>
               <Trash size={12} className="mr-1" />
               清空
             </Button>
@@ -406,7 +407,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
           <div className="flex gap-2 items-center">
             <span className="text-xs text-muted-foreground">子代理会话:</span>
             <select
-              className="text-xs bg-background border rounded px-2 py-1"
+              className="text-xs bg-background border rounded px-2 py-1 [@media(pointer:coarse)]:min-h-11"
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
             >
@@ -418,6 +419,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
             <Button
               size="sm"
               variant="outline"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={!selectedSessionId}
               onClick={() => runDiagnostic(selectedSessionId)}
             >

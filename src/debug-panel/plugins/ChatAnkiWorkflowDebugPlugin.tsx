@@ -538,7 +538,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
               <button
                 key={id}
                 type="button"
-                className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded font-mono hover:bg-slate-700 truncate max-w-[100px]"
+                className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded font-mono hover:bg-slate-700 truncate max-w-[100px] [@media(pointer:coarse)]:min-h-11"
                 title={id}
                 onClick={() => setKeyword(id.slice(0, 12))}
               >
@@ -549,13 +549,13 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          <label className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+          <label className="inline-flex items-center gap-1 text-[10px] text-slate-400 [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
 
           <select
-            className="bg-slate-900 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded"
+            className="bg-slate-900 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded [@media(pointer:coarse)]:min-h-11"
             value={levelFilter}
             onChange={e => setLevelFilter(e.target.value as LogLevel | 'all')}
           >
@@ -567,7 +567,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </select>
 
           <select
-            className="bg-slate-900 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded"
+            className="bg-slate-900 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded [@media(pointer:coarse)]:min-h-11"
             value={phaseFilter}
             onChange={e => setPhaseFilter(e.target.value as LogPhase | 'all')}
           >
@@ -593,7 +593,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="relative">
             <MagnifyingGlass className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-600" />
             <input
-              className="bg-slate-900 border border-slate-700 text-[10px] pl-5 pr-5 py-0.5 rounded w-[120px]"
+              className="bg-slate-900 border border-slate-700 text-[10px] pl-5 pr-5 py-0.5 rounded w-[120px] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               placeholder="搜索..."
               value={keyword}
               onChange={e => setKeyword(e.target.value)}
@@ -601,7 +601,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             {keyword && (
               <button
                 type="button"
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 [@media(pointer:coarse)]:min-h-11"
                 onClick={() => setKeyword('')}
               >
                 <X size={12} />
@@ -611,7 +611,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
           <button
             type="button"
-            className="text-[10px] bg-sky-800 hover:bg-sky-700 border border-sky-600 rounded px-2 py-0.5 flex items-center gap-1"
+            className="text-[10px] bg-sky-800 hover:bg-sky-700 border border-sky-600 rounded px-2 py-0.5 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             onClick={handleCopy}
             title="复制全部日志到剪贴板"
           >
@@ -620,7 +620,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </button>
           <button
             type="button"
-            className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded px-2 py-0.5 flex items-center gap-1"
+            className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded px-2 py-0.5 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             onClick={handleDownload}
             title="下载日志文件"
           >
@@ -628,7 +628,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </button>
           <button
             type="button"
-            className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded px-2 py-0.5 flex items-center gap-1"
+            className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded px-2 py-0.5 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             onClick={() => { clearLogs(); setLogs([]); }}
           >
             <Trash size={12} />
@@ -700,7 +700,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   </pre>
                   <button
                     type="button"
-                    className="absolute top-0 right-0 text-[9px] bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-700"
+                    className="absolute top-0 right-0 text-[9px] bg-slate-800 hover:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-700 [@media(pointer:coarse)]:min-h-11"
                     onClick={async () => {
                       try {
                         await copyTextToClipboard(stringify(entry.detail));

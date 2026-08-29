@@ -601,7 +601,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
         <div className="flex items-center gap-2">
           <button
             onClick={() => setThrottleEnabled(!throttleEnabled)}
-            className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${throttleEnabled ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 text-sm rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 ${throttleEnabled ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title={throttleEnabled ? '节流已启用（防日志风暴）' : '节流已禁用'}
           >
             <Clock size={16} />
@@ -609,21 +609,21 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`px-3 py-1 text-sm rounded ${autoScroll ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 ${autoScroll ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="自动滚动到底部"
           >
             自动滚动
           </button>
           <button
             onClick={() => setErrorsOnly(!errorsOnly)}
-            className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 text-sm rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
             <Funnel size={16} />
           </button>
           <button
             onClick={copyAllLogs}
-            className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600"
+            className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
@@ -631,7 +631,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           </button>
           <button
             onClick={exportLogs}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
@@ -639,7 +639,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           </button>
           <button
             onClick={clearLogs}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 [@media(pointer:coarse)]:min-h-11"
             title="清空日志"
           >
             清空
@@ -680,7 +680,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索消息、服务器ID..."
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[16px] border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11"
           />
         </div>
         
@@ -689,7 +689,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           <select
             value={selectedServer}
             onChange={(e) => setSelectedServer(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11"
           >
             <option value="all">全部服务器 ({allServers.length})</option>
             {allServers.map(serverId => (
@@ -705,7 +705,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11"
           >
             <option value="all">全部类型</option>
             {Object.entries(EVENT_TYPE_LABELS).map(([type, label]) => (
@@ -721,7 +721,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
           <select
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [@media(pointer:coarse)]:min-h-11"
           >
             <option value="all">全部级别</option>
             <option value="debug">调试</option>
@@ -801,7 +801,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
                         
                         {log.details && Object.keys(log.details).length > 0 && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
                               查看详细信息
                             </summary>
                             <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs">
@@ -813,7 +813,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
                       
                       <button
                         onClick={() => copyLog(log)}
-                        className="p-1 text-gray-400 hover:text-gray-600"
+                        className="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         title="复制日志"
                       >
                         <Copy size={16} />

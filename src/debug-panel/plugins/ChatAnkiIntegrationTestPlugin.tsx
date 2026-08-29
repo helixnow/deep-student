@@ -186,7 +186,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <div className="space-y-1.5">
               {GROUP_LABELS.map(({ label, scenarios }) => (
                 <div key={label}>
-                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                     onClick={(e) => { e.preventDefault(); toggleGroup(scenarios); }}>
                     <Checkbox
                       checked={scenarios.every(s => skipScenarios.has(s)) ? false : scenarios.every(s => !skipScenarios.has(s)) ? true : 'indeterminate'}
@@ -196,7 +196,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   </label>
                   <div className="grid grid-cols-1 gap-0.5 ml-5">
                     {scenarios.map(s => (
-                      <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                      <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                         title={SCENARIO_DESCRIPTIONS[s]}>
                         <Checkbox checked={!skipScenarios.has(s)}
                           onCheckedChange={() => toggleScenario(s)} disabled={status === 'running'} />
@@ -212,7 +212,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           {/* 高级配置 */}
           <div>
-            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
               onClick={() => setShowAdvanced(!showAdvanced)}>
               {showAdvanced ? <CaretDown size={12} /> : <CaretRight size={12} />}
               高级配置
@@ -221,21 +221,21 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">制卡 Prompt</label>
-                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none"
+                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                     value={prompt} onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">超时 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={timeoutMs} min={30000} max={300000} step={10000}
                       onChange={e => { const v = Number(e.target.value); setTimeoutMs(v); saveConfig({ timeoutMs: v }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">稳定等待 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={settleMs} min={500} max={10000} step={500}
                       onChange={e => { const v = Number(e.target.value); setSettleMs(v); saveConfig({ settleMs: v }); }}
                       disabled={status === 'running'} />
@@ -248,17 +248,17 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
           {/* 控制按钮 */}
           <div className="flex items-center justify-end gap-2">
             {status === 'running' ? (
-              <Button size="sm" variant="destructive" onClick={handleAbort}>
+              <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleAbort}>
                 <Square size={16} className="mr-1" /> 中止
               </Button>
             ) : (
-              <Button size="sm" onClick={handleStart} disabled={!canStart}>
+              <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleStart} disabled={!canStart}>
                 <Play size={16} className="mr-1" /> 开始测试 ({activeScenarios.length} 场景)
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0} title="下载报告"><Download size={16} /></Button>
-            <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0} title="复制日志"><Copy size={16} /></Button>
-            <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaning || status === 'running'} title="清理测试会话">
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleDownload} disabled={results.length === 0} title="下载报告"><Download size={16} /></Button>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs} disabled={liveLogs.length === 0} title="复制日志"><Copy size={16} /></Button>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCleanup} disabled={isCleaning || status === 'running'} title="清理测试会话">
               {isCleaning ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
             </Button>
           </div>
@@ -413,7 +413,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="h-32 flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
+            <Button size="sm" variant="ghost" className="h-5 px-1 [@media(pointer:coarse)]:min-h-11" onClick={() => setLiveLogs([])}>
               <Trash size={12} />
             </Button>
           </div>

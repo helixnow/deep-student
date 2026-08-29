@@ -387,6 +387,18 @@
   background: hsl(var(--primary));
 }
 
+/* 触屏（粗指针）设备保证 44px 触控目标，不影响桌面视觉 */
+@media (pointer: coarse) {
+  .btn-inspect,
+  .btn-simulate,
+  .btn-copy-logs,
+  .btn-clear-logs,
+  .auto-refresh-toggle,
+  .capture-toggle {
+    min-height: 44px;
+  }
+}
+
 /* 暗色模式适配 */
 :root.dark .duplicate-warning {
   background: hsl(var(--destructive) / 0.15);

@@ -892,7 +892,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
                   variant={isHome ? 'primary' : 'ghost'}
                   size="sm"
-                  className="text-[10px] h-6 px-2"
+                  className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11"
                 >
                   {t('debug_panel.home')}
                 </DsButton>
@@ -902,7 +902,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   }}
                   variant="ghost"
                   size="sm"
-                  className="text-[10px] h-6 px-2"
+                  className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11"
                   title="LLM 输出模拟游乐场"
                 >
                   LLM Playground
@@ -916,7 +916,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   }}
                   variant="ghost"
                   size="sm"
-                  className="text-[10px] h-6 px-2"
+                  className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11"
                   title="打开/关闭 WebView DevTools (F12)"
                 >
                   DevTools
@@ -931,7 +931,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 onClick={handleToggleMasterSwitch}
                 variant={masterSwitchEnabled ? 'success' : 'ghost'}
                 size="sm"
-                className="text-[10px] h-6 px-2"
+                className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11"
                 title={masterSwitchEnabled 
                   ? t('debug_panel.master_switch_on', '日志输出已开启，点击关闭') 
                   : t('debug_panel.master_switch_off', '日志输出已关闭，点击开启')
@@ -946,7 +946,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 onClick={toggleUILab}
                 variant={uiLabEnabled ? 'warning' : 'ghost'}
                 size="sm"
-                className="text-[10px] h-6 px-2"
+                className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11"
                 title={uiLabEnabled
                   ? '样式调试已开启，点击关闭'
                   : '样式调试已关闭，点击开启'
@@ -961,7 +961,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 onClick={() => setCollapsed(false)}
                 variant="ghost"
                 size="sm"
-                className="text-[10px] h-6 px-2"
+                className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 title={t('debug_panel.expand')}
               >
                 <ArrowsOut size={12} />
@@ -971,7 +971,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 onClick={() => setCollapsed(true)}
                 variant="ghost"
                 size="sm"
-                className="text-[10px] h-6 px-2"
+                className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 title={t('debug_panel.minimize', '最小化')}
               >
                 <Minus size={12} />
@@ -982,7 +982,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
               onClick={onClose}
               variant="ghost"
               size="sm"
-              className="text-[10px] h-6 px-2"
+              className="text-[10px] h-6 px-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
               title={t('debug_panel.close', '关闭')}
               aria-label={t('debug_panel.close', '关闭')}
             >
@@ -1006,13 +1006,13 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                     value={searchQuery}
                     onChange={ev => setSearchQuery(ev.target.value)}
                     placeholder={t('debug_panel.search_placeholder', '搜索插件或描述...')}
-                    className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] text-[hsl(var(--foreground))] text-sm px-3 py-2 pr-9 placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.4)] focus:border-[hsl(var(--primary)/0.4)] transition-shadow"
+                    className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] text-[hsl(var(--foreground))] text-sm [@media(pointer:coarse)]:text-[16px] px-3 py-2 pr-9 [@media(pointer:coarse)]:min-h-11 placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.4)] focus:border-[hsl(var(--primary)/0.4)] transition-shadow"
                   />
                   {searchQuery ? (
                     <button
                       type="button"
                       aria-label={t('debug_panel.search_clear', '清空搜索')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2 py-1"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2 py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                       onClick={() => setSearchQuery('')}
                     >
                       ✕
@@ -1073,7 +1073,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               ev.stopPropagation();
                               toggleFavorite(plugin.id);
                             }}
-                            className={`absolute right-2.5 top-2.5 text-[13px] transition-colors ${
+                            className={`absolute right-2.5 top-2.5 text-[13px] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${
                               favoriteIds.has(plugin.id)
                                 ? 'text-warning drop-shadow-sm'
                                 : 'text-[hsl(var(--muted-foreground)/0.5)] hover:text-[hsl(var(--muted-foreground))]'
@@ -1105,7 +1105,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               }}
                               variant={favoriteIds.has(plugin.id) ? 'warning' : 'ghost'}
                               size="sm"
-                              className="text-[10px] h-7 min-w-[64px]"
+                              className="text-[10px] h-7 min-w-[64px] [@media(pointer:coarse)]:min-h-11"
                             >
                               {favoriteIds.has(plugin.id)
                                 ? t('debug_panel.favorite_short', '已收藏')
@@ -1119,7 +1119,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               }}
                               variant="primary"
                               size="sm"
-                              className="flex-1 text-[10px] h-7"
+                              className="flex-1 text-[10px] h-7 [@media(pointer:coarse)]:min-h-11"
                             >
                               {t('debug_panel.open_plugin', '打开')}
                             </DsButton>
@@ -1160,9 +1160,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
             })
           )}
         </div>
-        {/* 缩放把手：外层为放大的命中区（28px，coarse 指针 40px），内层保留 12px 视觉角标 */}
+        {/* 缩放把手：外层为放大的命中区（28px，coarse 指针 44px），内层保留 12px 视觉角标 */}
         <div
-          className="dbg-resize absolute right-0 bottom-0 flex h-7 w-7 cursor-nwse-resize items-end justify-end p-1.5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+          className="dbg-resize absolute right-0 bottom-0 flex h-7 w-7 cursor-nwse-resize items-end justify-end p-1.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
           style={{ touchAction: 'none' }}
           onPointerDown={ev => {
             if (ev.pointerType === 'mouse' && ev.button !== 0) return;

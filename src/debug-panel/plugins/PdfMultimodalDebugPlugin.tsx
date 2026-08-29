@@ -253,7 +253,7 @@ const LogEntry: React.FC<{
       }`}
     >
       <div
-        className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50"
+        className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 [@media(pointer:coarse)]:min-h-11"
         onClick={onToggle}
       >
         {levelIcon}
@@ -423,23 +423,23 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant={isCapturing ? 'destructive' : 'default'} size="sm" onClick={toggleCapture}>
+          <Button variant={isCapturing ? 'destructive' : 'default'} size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={toggleCapture}>
             {isCapturing ? <EyeSlash size={16} className="mr-1" /> : <Eye size={16} className="mr-1" />}
             {isCapturing ? '停止' : '开始'}
           </Button>
-          <Button variant="outline" size="sm" onClick={loadLogs}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={loadLogs}>
             <ArrowClockwise size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={expandAll}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={expandAll}>
             展开
           </Button>
-          <Button variant="outline" size="sm" onClick={collapseAll}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={collapseAll}>
             折叠
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCopy} disabled={logs.length === 0}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopy} disabled={logs.length === 0}>
             <Copy size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleClear} disabled={logs.length === 0}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClear} disabled={logs.length === 0}>
             <Trash size={16} />
           </Button>
         </div>

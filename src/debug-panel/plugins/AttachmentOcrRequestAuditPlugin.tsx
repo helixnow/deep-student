@@ -185,13 +185,13 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
           <Badge variant="outline">F:{frontendAudits.length} / B:{backendAudits.length}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadLogs}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={loadLogs}>
             <ArrowClockwise size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={onCopy}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onCopy}>
             <Copy size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={onClear}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClear}>
             <Trash size={16} />
           </Button>
         </div>
@@ -249,13 +249,13 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
       <ScrollArea className="flex-1 p-3">
         {latestFrontend && (
           <details className="mb-3 border rounded p-2" open>
-            <summary className="cursor-pointer text-sm font-medium">前端请求体摘要（latest）</summary>
+            <summary className="cursor-pointer text-sm font-medium [@media(pointer:coarse)]:min-h-11">前端请求体摘要（latest）</summary>
             <pre className="mt-2 text-xs overflow-auto bg-muted p-2 rounded">{JSON.stringify(latestFrontend, null, 2)}</pre>
           </details>
         )}
         {latestBackend && (
           <details className="mb-3 border rounded p-2" open>
-            <summary className="cursor-pointer text-sm font-medium">后端接收摘要（latest）</summary>
+            <summary className="cursor-pointer text-sm font-medium [@media(pointer:coarse)]:min-h-11">后端接收摘要（latest）</summary>
             <pre className="mt-2 text-xs overflow-auto bg-muted p-2 rounded">{JSON.stringify(latestBackend, null, 2)}</pre>
           </details>
         )}
