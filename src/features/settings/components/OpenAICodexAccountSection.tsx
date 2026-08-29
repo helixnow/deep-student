@@ -446,6 +446,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
               size="sm"
               variant="ghost"
               iconOnly
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={() => void refreshUsage()}
               disabled={disabled || usageLoading}
               aria-label={translate(t, 'refresh_usage', 'Refresh usage')}
@@ -456,6 +457,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
             <DsButton
               size="sm"
               variant="ghost"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => void handleLogout()}
               disabled={disabled}
             >
@@ -476,6 +478,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
           <DsButton
             size="sm"
             variant="primary"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => void handleLogin('browser')}
             disabled={disabled}
           >
@@ -487,6 +490,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
           <DsButton
             size="sm"
             variant="ghost"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => void handleLogin('device_code')}
             disabled={disabled}
           >
@@ -494,13 +498,13 @@ export const OpenAICodexAccountSection: React.FC = () => {
             {translate(t, 'sign_in_device', 'Use device code')}
           </DsButton>
           {state === 'reauth_required' && (
-            <DsButton size="sm" variant="ghost" onClick={() => void handleLogout()} disabled={disabled}>
+            <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void handleLogout()} disabled={disabled}>
               {busyAction === 'logout' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <SignOut className="h-3.5 w-3.5" />}
               {translate(t, 'remove_account', 'Remove account')}
             </DsButton>
           )}
           {!status && (
-            <DsButton size="sm" variant="ghost" onClick={() => void refreshStatus(true)} disabled={disabled}>
+            <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void refreshStatus(true)} disabled={disabled}>
               <ArrowClockwise className="h-3.5 w-3.5" />
               {translate(t, 'retry', 'Retry')}
             </DsButton>
@@ -520,6 +524,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
                 size="sm"
                 variant="ghost"
                 iconOnly
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={() => void handleCopyCode()}
                 aria-label={codeCopied
                   ? translate(t, 'code_copied', 'Code copied')
@@ -532,13 +537,13 @@ export const OpenAICodexAccountSection: React.FC = () => {
           )}
           <div className="flex flex-wrap items-center gap-2">
             {login?.authUrl && (
-              <DsButton size="sm" variant="ghost" onClick={() => void openUrl(login.authUrl!)}>
+              <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void openUrl(login.authUrl!)}>
                 <ArrowSquareOut className="h-3.5 w-3.5" />
                 {translate(t, 'reopen_sign_in', 'Reopen sign-in page')}
               </DsButton>
             )}
             {login?.verificationUrl && (
-              <DsButton size="sm" variant="ghost" onClick={() => void openUrl(login.verificationUrl!)}>
+              <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void openUrl(login.verificationUrl!)}>
                 <ArrowSquareOut className="h-3.5 w-3.5" />
                 {translate(t, 'open_verification', 'Open verification page')}
               </DsButton>
@@ -546,6 +551,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
             <DsButton
               size="sm"
               variant="ghost"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => void handleCancel()}
               disabled={disabled || !pendingAttemptId}
             >

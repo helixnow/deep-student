@@ -526,10 +526,11 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className={cn('max-sm:!h-11 max-sm:!w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
+                  className={cn('max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
                   onClick={() => handleToggleFavorite(profile)}
                   disabled={vendorBusy}
                   title={t('settings:api_config.toggle_favorite')}
+                  aria-label={t('settings:api_config.toggle_favorite')}
                 >
                   <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
                 </DsButton>
@@ -537,10 +538,11 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className="max-md:hidden"
+                  className="max-md:hidden [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   onClick={() => void testApiConnection(api)}
                   disabled={testingApi === api.id || vendorBusy}
                   title={t('settings:api_config.test_button')}
+                  aria-label={t('settings:api_config.test_button')}
                 >
                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                 </DsButton>
@@ -552,7 +554,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       size="sm"
                       variant="danger"
                       disabled={vendorBusy}
-                      className="min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
+                      className="min-h-11 shrink-0 whitespace-nowrap sm:min-h-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       onClick={() => {
                         resetConfirmingDelete();
                         handleDeleteModelProfile(profile, { skipConfirm: true });
@@ -569,7 +571,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       disabled={vendorBusy}
                       title={t('common:actions.delete')}
                       aria-label={t('common:actions.delete')}
-                      className="text-muted-foreground hover:text-destructive max-sm:!h-11 max-sm:!w-11"
+                      className="text-muted-foreground hover:text-destructive max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       onClick={() => {
                         if (isSmallScreen) {
                           armConfirmingDelete({ type: 'model', profileId: profile.id });
@@ -596,7 +598,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 onClick={handleEditClick}
                 disabled={vendorBusy}
                 title={isEditing ? t('common:actions.close') : t('common:actions.edit')}
-                className="max-sm:!h-11 max-sm:!w-11"
+                className="max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 {isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
               </DsButton>
@@ -776,7 +778,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     size="sm"
                     variant="ghost"
                     iconOnly
-                    className="opacity-60 hover:opacity-100 max-sm:!h-11 max-sm:!w-11"
+                    className="opacity-60 hover:opacity-100 max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => void openUrl(websiteUrl)}
                     title={t('settings:vendor_panel.open_website')}
                   >
@@ -788,18 +790,18 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             {!isCodexOAuthVendor && <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               {isEditingVendor ? (
                 <>
-                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
-                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
+                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
                 </>
               ) : (
                 <>
-                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
                   {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
                     // 桌面：确认对话框；移动端：行内二次确认（P0-5），删除后回到供应商列表屏
                     <DsButton
                       size="sm"
                       variant="danger"
-                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
+                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
                       onClick={() => {
                         if (!isSmallScreen) {
                           handleDeleteVendor(selectedVendor);
@@ -976,7 +978,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             <div
               data-wb-blur-surface
               className={cn(
-                'sticky top-0 md:top-4 z-10 -mx-1 px-1 py-3',
+                // 小屏（移动 Sheet）不粘性，避免滑入 Sheet header；md+ 保持 sticky
+                'static md:sticky md:top-4 z-10 -mx-1 px-1 py-3',
                 'bg-[color:var(--shell-workspace-panel)]/85',
                 'supports-[backdrop-filter]:bg-[color:var(--shell-workspace-panel)]/65 supports-[backdrop-filter]:backdrop-blur-md',
                 'border-b border-border/40',
@@ -992,7 +995,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   <DsButton
                     size="sm"
                     variant="ghost"
-                    className="min-h-11 flex-1 sm:min-h-0 sm:flex-none"
+                    className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => {
                       if (isSmallScreen) {
                         setIsMobileFetcherOpen(v => !v);
@@ -1005,7 +1008,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     {t('settings:vendor_panel.fetch_models_button')}
                   </DsButton>
                 )}
-                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => {
+                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={() => {
                   if (usePanelModelEditor) {
                     if (isAddingNewModel) handleCancelAddModel();
                     setInlineEditState(null);

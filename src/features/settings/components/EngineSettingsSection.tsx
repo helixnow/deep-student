@@ -191,7 +191,7 @@ export const EngineSettingsSection: React.FC<{
             min={1000}
             value={s.timeout_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'timeout_ms')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -201,7 +201,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.max_retries ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_retries')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -211,7 +211,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.initial_retry_delay_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'initial_retry_delay_ms')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -221,7 +221,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.max_concurrent_requests ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_concurrent_requests')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -231,7 +231,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.rate_limit_per_minute ?? ''}
             onChange={handleStrategyFieldChange(id, 'rate_limit_per_minute')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -241,7 +241,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.cache_ttl_seconds ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_ttl_seconds')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
         <div className="space-y-1.5">
@@ -251,7 +251,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.cache_max_entries ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_max_entries')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
           />
         </div>
       </div>
@@ -275,10 +275,10 @@ export const EngineSettingsSection: React.FC<{
                 {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
               </span>
             )}
-            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
+            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30 [@media(pointer:coarse)]:!h-11">
               {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
             </DsButton>
-            <DsButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
+            <DsButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies} className="[@media(pointer:coarse)]:!h-11">
               {providerSaving ? t('common:actions.saving') : t('settings:advanced_search.providers.save_button')}
             </DsButton>
           </div>
@@ -332,7 +332,7 @@ export const EngineSettingsSection: React.FC<{
                     variant="ghost"
                     onClick={() => setActiveEngine(id)}
                     className={cn(
-                      '!px-3 !py-2 text-sm text-left w-full !justify-start group relative',
+                      '!px-3 !py-2 text-sm text-left w-full !justify-start group relative [@media(pointer:coarse)]:!min-h-11',
                       isActive
                         ? settingsQuietButtonSelectedRowClassName
                         : settingsQuietButtonIdleRowClassName
@@ -374,7 +374,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Google CSE</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -396,7 +396,7 @@ export const EngineSettingsSection: React.FC<{
                     value={config.webSearchGoogleCx}
                     onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleCx: e.target.value }))}
                     placeholder="GOOGLE_CSE_CX"
-                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors [@media(pointer:coarse)]:!min-h-11"
                   />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
                 </div>
@@ -411,7 +411,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SerpAPI</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -437,7 +437,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Tavily</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -463,7 +463,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Brave</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -489,7 +489,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SearXNG</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -506,7 +506,7 @@ export const EngineSettingsSection: React.FC<{
                     value={config.webSearchSearxngEndpoint}
                     onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngEndpoint: e.target.value }))}
                     placeholder="https://searx.example.com"
-                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors [@media(pointer:coarse)]:!min-h-11"
                   />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
                 </div>
@@ -526,7 +526,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name')}</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -552,7 +552,7 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name')}</h3>
-                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
                   </div>
@@ -608,7 +608,7 @@ export const EngineSettingsSection: React.FC<{
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={140}
               />
             );
@@ -629,7 +629,7 @@ export const EngineSettingsSection: React.FC<{
                 const v = parseInt(e.target.value || '0', 10) || 15000;
                 setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTimeoutMs: Math.min(60000, Math.max(1000, v)) }));
               }}
-              className="!w-24 h-8 text-xs bg-transparent"
+              className="!w-24 h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent"
             />
             <span className="text-xs text-muted-foreground/70">ms</span>
           </div>

@@ -78,11 +78,13 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(safeFtpCase).toContain("username: config.ftp.username");
     expect(safeFtpCase).not.toContain("password:");
     expect(cloudStorageSection).toContain(
-      "localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config))",
+      "localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config))",
     );
   });
 
-  it("publishes the safe config only after credential storage succeeds", () => {
+  // [R2 配置事务边界] 保存/发布是后端 cloud_config_publish 的单逻辑提交：
+  // 失败保持旧 generation，前端只在发布成功后写 UI 缓存与迁移标记。
+  it("publishes credentials and config as one logical commit, caching only after success", () => {
     const saveStart = cloudStorageSection.indexOf(
       "const doSaveConfig = useCallback",
     );
@@ -92,12 +94,42 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     );
     const saveBlock = cloudStorageSection.slice(saveStart, saveEnd);
 
-    expect(saveBlock.indexOf("await cloudApi.saveCredentials")).toBeGreaterThan(-1);
+    expect(saveBlock.indexOf("await cloudApi.publishCloudConfig")).toBeGreaterThan(-1);
+    // 旧的两段非事务写（安全存储→设置库）不得回归到保存路径
+    expect(saveBlock).not.toContain("cloudApi.saveCredentials");
+    expect(saveBlock).not.toContain("cloudApi.saveCloudConfigSsot");
     expect(saveBlock.indexOf("localStorage.setItem(CONFIG_STORAGE_KEY")).toBeGreaterThan(
-      saveBlock.indexOf("await cloudApi.saveCredentials"),
+      saveBlock.indexOf("await cloudApi.publishCloudConfig"),
     );
-    expect(saveBlock).toContain("showGlobalNotification('error'");
+    expect(saveBlock).toMatch(/showGlobalNotification\(\s*'error'/);
     expect(saveBlock).toContain("return;");
+    expect(cloudStorageApi).toContain("'cloud_config_publish'");
+  });
+
+  // [R2 配置事务边界] 测试按钮走一次性草稿命令：成功/失败都不持久化。
+  // 测试失败的配置只存在于表单草稿，绝不能成为已发布 SSOT 或本地缓存。
+  it("tests connections against the draft command without persisting anything", () => {
+    const testStart = cloudStorageSection.indexOf(
+      "const doTestConnection = useCallback",
+    );
+    const testEnd = cloudStorageSection.indexOf(
+      "const handleConfirmInsecureFtpSave = useCallback",
+      testStart,
+    );
+    expect(testStart).toBeGreaterThan(-1);
+    expect(testEnd).toBeGreaterThan(testStart);
+    const testBlock = cloudStorageSection.slice(testStart, testEnd);
+
+    expect(testBlock).toContain("cloudApi.testConnectionDraft");
+    // 测试路径不得触碰任何持久化：不写安全存储、不写后端 SSOT、
+    // 不写 localStorage 缓存/迁移标记，也不得改走发布命令。
+    expect(testBlock).not.toContain("cloudApi.saveCredentials");
+    expect(testBlock).not.toContain("cloudApi.saveCloudConfigSsot");
+    expect(testBlock).not.toContain("cloudApi.publishCloudConfig");
+    expect(testBlock).not.toContain("localStorage.setItem");
+    // checkConnection 会让后端 hydrate 已发布凭据，测不了草稿，禁止回归
+    expect(testBlock).not.toContain("cloudApi.checkConnection");
+    expect(cloudStorageApi).toContain("'cloud_config_test_connection_draft'");
   });
 
   // [P0-3A] 2026-06-12 更新：前端不再回填明文凭据，敏感字段一律传空占位，

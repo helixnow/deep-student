@@ -1088,6 +1088,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           <DsButton
             variant="primary"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => {
               void handleSaveApiKey();
             }}
@@ -1099,12 +1100,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           </DsButton>
         </div>
         {/* 简洁风格按钮 - 一键分配 */}
-        <DsButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
+        <DsButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="[@media(pointer:coarse)]:!min-h-11 text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </DsButton>
         {/* 简洁风格按钮 - 清除 (右对齐) */}
-        <DsButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        <DsButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? '[@media(pointer:coarse)]:!min-h-11' : '[@media(pointer:coarse)]:!min-h-11 text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')
@@ -1204,6 +1205,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         <div className="flex items-center gap-2">
           <DsButton
             variant="default"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => fetchSiliconFlowModels(true)}
             disabled={loading || !apiKey.trim()}
           >
@@ -1246,7 +1248,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         ) : (
           <div />
         )}
-        <DsButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="shrink-0 whitespace-nowrap">
+        <DsButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="[@media(pointer:coarse)]:!min-h-11 shrink-0 whitespace-nowrap">
           <Plus className="h-3.5 w-3.5" />
           {t('common:siliconflow.create_api_config')}
         </DsButton>

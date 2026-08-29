@@ -92,7 +92,7 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
               void persistValue(inputValue);
             }
           }}
-          className="!w-24 h-8 text-xs bg-transparent"
+          className="!w-24 h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent"
         />
         <span className="text-xs text-muted-foreground/70">
           {t('settings:notes_editor.initial_line_window.unit', 'lines')}
@@ -104,7 +104,7 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
           onClick={() => {
             void persistValue(DEFAULT_INITIAL_LINE_WINDOW);
           }}
-          className="gap-1"
+          className="gap-1 [@media(pointer:coarse)]:!min-h-11"
         >
           {saving ? <CircleNotch size={12} className="animate-spin" /> : null}
           {t('settings:notes_editor.initial_line_window.reset', 'Reset initial line window')}

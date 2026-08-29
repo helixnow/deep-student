@@ -114,7 +114,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           onClick={() => setShowInfo(!showInfo)}
-          className="h-8"
+          className="h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Question size={14} />
         </DsButton>
@@ -172,7 +172,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
         >
           {optimizing.chat ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -186,7 +186,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
         >
           {optimizing.vfs ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -202,7 +202,7 @@ export const LanceOptimizationPanel: React.FC = () => {
         variant="default"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
-        className="w-full"
+        className="w-full [@media(pointer:coarse)]:!min-h-11"
       >
         {Object.values(optimizing).some(v => v) ? (
           <>

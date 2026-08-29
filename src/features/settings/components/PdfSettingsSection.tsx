@@ -71,7 +71,7 @@ const SwitchRow = ({
 }) => (
   // 整行可点切换，开关本体 stopPropagation 避免双重切换
   <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded [@media(pointer:coarse)]:min-h-11"
     onClick={() => {
       if (!disabled) onCheckedChange(!checked);
     }}
@@ -138,7 +138,7 @@ export const PdfSettingsSection: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={handleReset}
-            className="gap-1"
+            className="gap-1 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
@@ -309,7 +309,7 @@ export const PdfSettingsSection: React.FC = () => {
             ]}
             size="sm"
             variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={80}
           />
         </SettingRow>

@@ -96,14 +96,14 @@ describe('OpenAICodexAccountSection', () => {
 
     const { container } = render(<OpenAICodexAccountSection />);
 
-    const signIn = await screen.findByRole('button', { name: 'Sign in with browser' });
+    const signIn = await screen.findByRole('button', { name: '使用浏览器登录' });
     fireEvent.click(signIn);
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('openai_codex_login_start', { flow: 'browser' });
       expect(openUrlMock).toHaveBeenCalledWith('https://auth.openai.com/authorize?state=safe-state');
     });
-    expect(await screen.findByText('Waiting for browser')).toBeInTheDocument();
+    expect(await screen.findByText('等待浏览器登录')).toBeInTheDocument();
     expect(container.textContent).not.toContain('status-secret-token');
     expect(container.textContent).not.toContain('login-secret-token');
 
@@ -154,11 +154,11 @@ describe('OpenAICodexAccountSection', () => {
     expect(container.textContent).not.toContain('signed-in-secret-token');
     expect(container.textContent).not.toContain('usage-secret-token');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('openai_codex_logout', undefined);
-      expect(screen.getByText('Signed out')).toBeInTheDocument();
+      expect(screen.getByText('未登录')).toBeInTheDocument();
     });
   });
 
@@ -184,16 +184,16 @@ describe('OpenAICodexAccountSection', () => {
 
     render(<OpenAICodexAccountSection />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Use device code' }));
+    fireEvent.click(await screen.findByRole('button', { name: '使用设备码登录' }));
 
     expect(await screen.findByText('ABCD-EFGH')).toBeInTheDocument();
     expect(openUrlMock).toHaveBeenCalledWith('https://auth.openai.com/codex/device');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel sign-in' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消登录' }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('openai_codex_login_cancel', { attemptId: 'device-login' });
-      expect(screen.getByText('Signed out')).toBeInTheDocument();
+      expect(screen.getByText('未登录')).toBeInTheDocument();
     });
   });
 
@@ -220,7 +220,7 @@ describe('OpenAICodexAccountSection', () => {
     render(<OpenAICodexAccountSection />);
     expect(await screen.findByText('OLD-CODE')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel sign-in' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消登录' }));
     currentAttempt = 'attempt-new';
     act(() => {
       window.dispatchEvent(new CustomEvent<OpenAICodexAuthChangedDetail>(OPENAI_CODEX_AUTH_CHANGED_EVENT, {
@@ -263,8 +263,8 @@ describe('OpenAICodexAccountSection', () => {
 
     const { container } = render(<OpenAICodexAccountSection />);
 
-    expect(await screen.findByText('Waiting for code')).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not reach OpenAI. Check your network and try again.');
+    expect(await screen.findByText('等待设备码确认')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('无法连接 OpenAI，请检查网络后重试。');
     expect(container.textContent).not.toContain('backend-secret-token');
     expect(container.textContent).not.toContain('Bearer');
   });
@@ -459,7 +459,7 @@ describe('OpenAICodexAccountSection', () => {
 
     try {
       const view = render(<Harness showAccount />);
-      const signIn = await screen.findByRole('button', { name: 'Sign in with browser' });
+      const signIn = await screen.findByRole('button', { name: '使用浏览器登录' });
       await waitFor(() => {
         expect(screen.getByTestId('codex-model-availability')).toHaveTextContent('disabled');
       });

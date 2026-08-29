@@ -56,7 +56,7 @@ const SwitchRow = ({
 }) => (
   // 整行可点切换，开关本体 stopPropagation 避免双重切换
   <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded [@media(pointer:coarse)]:min-h-11"
     onClick={() => {
       if (!loading) onCheckedChange(!checked);
     }}
@@ -134,7 +134,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 onChange={e => setExtra((prev: any) => ({ ...prev, chatStreamTimeoutSeconds: e.target.value }))}
                 onBlur={() => { void handleSaveChatStreamTimeout(); }}
                 placeholder={t('common:settings.chat_stream.timeout_placeholder') ?? ''}
-                className="h-11 !w-32 bg-transparent text-xs md:h-8 md:!w-28"
+                className="h-11 !w-32 bg-transparent text-xs md:h-8 md:!w-28 [@media(pointer:coarse)]:min-h-11"
               />
             </SettingRow>
 

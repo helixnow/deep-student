@@ -220,6 +220,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <DsButton
               variant="default"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={!quickAssistantConfig?.enabled}
               onClick={() => void openQuickAssistantWindow()}
             >
@@ -246,6 +247,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   void i18n.changeLanguage(nextValue);
                 }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 stretch
                 options={languageOptions.map((option) => ({
                   value: option.value,
@@ -264,6 +266,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 value={mode}
                 onValueChange={(nextMode) => { void setMode(nextMode); }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 className={queueModeLoading ? 'invisible' : undefined}
                 options={[
                   { value: 'queue', label: t('chatV2:queue.settings.modeQueue') },
@@ -301,6 +304,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 options={[
                   { value: 'background', label: t('settings:system_notification.background') },
                   { value: 'always', label: t('settings:system_notification.always') },
@@ -316,6 +320,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="default"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowAgreementPreview(true)}
               >
                 {t('settings:developer.preview_agreement.button')}
@@ -362,6 +367,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="primary"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={diagnosticsExporting}
                 onClick={async () => {
                   setDiagnosticsExporting(true);
@@ -448,7 +454,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 placeholder={isAndroid() ? '30' : '0'}
-                className="!w-20 h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
+                className="!w-20 h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
                 min="0"
               />
               <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
@@ -475,6 +481,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <DsButton
               variant="default"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 try {
                   const win: any = window;
@@ -509,12 +516,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                className="h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
               <DsButton
                 variant="primary"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={async () => {
                   try {
                     await tauriInvoke('open_logs_folder', { logType: logTypeForOpen });
@@ -582,7 +590,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -599,7 +607,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -615,7 +623,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -633,7 +641,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             const v = parseInt(e.target.value, 10);
                             if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
                           }}
-                          className="h-7 [@media(pointer:coarse)]:h-10 w-20 text-xs"
+                          className="h-7 [@media(pointer:coarse)]:h-11 w-20 text-xs"
                         />
                         <span className="text-2xs text-muted-foreground/60">{t('common:unit.chars')}</span>
                       </div>
@@ -650,7 +658,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -687,6 +695,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="default"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={async () => {
                     try {
                       const debugLogsDir = await tauriInvoke('ensure_debug_log_dir') as string;
@@ -702,6 +711,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   disabled={debugLogsClearing}
                   onClick={async () => {
                     setDebugLogsClearing(true);
@@ -792,6 +802,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 <DsButton
                   variant="default"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；
                     // pending 值兜底 Settings 尚未挂载的竞态（与 openArchivedSessionsSettings 同模式）

@@ -15,7 +15,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
-import type { RecordConflictRow } from '@/api/dataGovernance';
+import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
+import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -62,8 +63,31 @@ function tryFormatJson(s: string): string {
   }
 }
 
+/**
+ * 本地化展示冲突检出时间。
+ *
+ * `detected_at` 来自 SQLite `datetime('now')`，格式为不带时区标记的 UTC
+ * （"YYYY-MM-DD HH:MM:SS"）。直接 `new Date()` 会被按本地时区解析，
+ * 因此先补上 UTC 标记再转为用户本地时间。无法解析时原样返回。
+ */
+export function formatDetectedAt(detectedAt: string): string {
+  const trimmed = detectedAt.trim();
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  const normalized = hasTimezone ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return detectedAt;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
 export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }> = ({ refreshSignal }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(['data', 'common', 'sync']);
   const [rows, setRows] = useState<RecordConflictRow[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -71,6 +95,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const [mergeEditing, setMergeEditing] = useState<string | null>(null);
   const [mergeText, setMergeText] = useState('');
   const [purging, setPurging] = useState(false);
+  // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
+  const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
+  const [rollingBackBatch, setRollingBackBatch] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const pairs = useMemo(() => groupConflicts(rows), [rows]);
@@ -85,7 +112,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       ]);
       if (requestGeneration.current === generation) {
         setRows(list);
-        setTotalGroups(Object.values(counts).reduce((sum, count) => sum + count, 0));
+        // count API 的 total_groups 与本面板的 (table, record) 分组分页口径一致
+        setTotalGroups(counts.total_groups);
       }
     } catch (e: unknown) {
       showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: getErrorMessage(e) }));
@@ -130,6 +158,19 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const handleResolve = useCallback(
     async (p: ConflictPair, resolution: 'keep_local' | 'keep_cloud' | 'merged', merged?: string) => {
       const key = pairKey(p);
+      // cloud-only 组（无 local 快照，典型为 LWW 门败方 DELETE/覆盖）的「保留本地」
+      // 语义 = 驳回云端败方变更、保留本地当前业务表行（后端缺 local 侧时自动回退）。
+      // 危险语义不静默执行，走两击确认。
+      if (resolution === 'keep_local' && p.locals.length === 0) {
+        const confirmed = unifiedConfirm(
+          t('data:governance.conflict_keep_local_cloud_only_confirm', {
+            table: p.tableName,
+            record: p.recordId,
+          }),
+          { key: `record-conflict-keep-local-cloud-only-${key}` },
+        );
+        if (!confirmed) return;
+      }
       setResolvingKey(key);
       try {
         const expectedConflictIds = [
@@ -170,9 +211,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const handleBulkResolve = useCallback(async (
     resolution: 'keep_local' | 'keep_cloud',
   ) => {
-    const targets = pairs.filter((pair) =>
-      resolution === 'keep_local' ? pair.locals.length > 0 : pair.clouds.length > 0
-    );
+    // keep_local 对 cloud-only 组同样有效：后端缺 local 快照时回退保留当前业务表行，
+    // 语义 = 驳回云端败方 DELETE/覆盖。keep_cloud 仍需有 cloud 候选才有可采用的值。
+    const targets = resolution === 'keep_local'
+      ? pairs
+      : pairs.filter((pair) => pair.clouds.length > 0);
     if (targets.length === 0) return;
     // Tauri WebView（尤其 Android）不保证实现阻塞式 window.confirm（可能直接返回 false
     // 静默失效），统一走两击确认通知。
@@ -230,6 +273,59 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     }
   }, [pairs, refresh, t]);
 
+  // [R11-history] 撤销入口：加载最近的自动快照批次（只读）
+  const refreshSnapshots = useCallback(async () => {
+    try {
+      const batches = await DataGovernanceApi.listSyncSnapshotBatches(20);
+      setSnapshotBatches(batches);
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('data:governance.snapshot_load_failed', { error: getErrorMessage(e) }));
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void refreshSnapshots();
+  }, [refreshSnapshots, refreshSignal]);
+
+  // [R11-history] 单批回退：两击确认后按批次恢复记录到快照时的状态
+  const handleRollbackBatch = useCallback(async (batch: SyncSnapshotBatchRow) => {
+    const confirmed = unifiedConfirm(
+      t('data:governance.snapshot_rollback_confirm', { count: batch.record_count }),
+      { key: `snapshot-rollback-${batch.database_name}-${batch.batch_id}` },
+    );
+    if (!confirmed) return;
+    setRollingBackBatch(batch.batch_id);
+    try {
+      const outcome = await DataGovernanceApi.rollbackSyncSnapshotBatch(
+        batch.database_name,
+        batch.batch_id,
+      );
+      showGlobalNotification('success', t('data:governance.snapshot_rollback_success', {
+        restored: outcome.restored,
+        deleted: outcome.deleted,
+        skipped: outcome.skipped,
+      }));
+      await Promise.all([refresh(), refreshSnapshots()]);
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('data:governance.snapshot_rollback_failed', { error: getErrorMessage(e) }));
+    } finally {
+      setRollingBackBatch(null);
+    }
+  }, [refresh, refreshSnapshots, t]);
+
+  const snapshotReasonLabel = useCallback((reason: string): string => {
+    switch (reason) {
+      case 'conflict_resolve':
+        return t('data:governance.snapshot_reason_conflict_resolve');
+      case 'policy_override':
+        return t('data:governance.snapshot_reason_policy_override');
+      case 'rollback_undo':
+        return t('data:governance.snapshot_reason_rollback_undo');
+      default:
+        return reason;
+    }
+  }, [t]);
+
   const handlePurgeResolved = useCallback(async () => {
     setPurging(true);
     try {
@@ -250,14 +346,17 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         <div>
           <CardTitle className="flex items-center gap-2">
             <Warning size={16} className="text-amber-500" />
-            {t('data:governance.conflict_panel_title', {
-              pairs: pairs.length,
-              rows: rows.length,
-              total: totalGroups,
+            {/* 标题只报未解决冲突总数；「已加载 X/Y」的分页细节留给下方加载更多按钮 */}
+            {t('sync:record_conflict_panel.title', {
+              count: Math.max(totalGroups, pairs.length),
             })}
           </CardTitle>
           <CardDescription>
             {t('data:governance.conflict_panel_desc')}
+          </CardDescription>
+          {/* [R11-history] 「可撤销」人话：批量/库级覆盖前自动快照，误操作可回退 */}
+          <CardDescription>
+            {t('sync:record_conflict_panel.undoable_hint')}
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -266,7 +365,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void handleBulkResolve('keep_local')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {t('data:governance.conflict_bulk_keep_local')}
           </DsButton>
@@ -275,7 +374,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void handleBulkResolve('keep_cloud')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {t('data:governance.conflict_bulk_use_cloud')}
           </DsButton>
@@ -284,7 +383,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={refresh}
             disabled={loading}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {loading ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -298,7 +397,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={handlePurgeResolved}
             disabled={purging}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             title={t('data:governance.conflict_purge_title')}
           >
             <Trash size={14} className="mr-1.5" />
@@ -319,7 +418,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void loadMore()}
             disabled={loading}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:!min-h-11"
           >
             {loading && <CircleNotch size={14} className="mr-1.5 animate-spin" />}
             {t('data:governance.conflict_load_more', {
@@ -342,7 +441,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               {/* 窄屏：标识行 + 三个操作按钮允许换行，避免 400px 横向溢出 */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-mono break-all">
-                  <span className="text-muted-foreground">{p.databaseName}</span>
+                  <span className="text-muted-foreground" title={p.databaseName}>
+                    {getDatabaseDisplayName(p.databaseName, t)}
+                  </span>
                   <span className="mx-1 text-muted-foreground">·</span>
                   <span>{p.tableName}</span>
                   <span className="mx-1 text-muted-foreground">·</span>
@@ -353,8 +454,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
-                    disabled={isResolving || isEditing || !latestLocal}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    disabled={isResolving || isEditing}
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    title={!latestLocal ? t('data:governance.conflict_cloud_only_hint') : undefined}
                   >
                     {t('data:governance.keep_local')}
                   </DsButton>
@@ -363,7 +465,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     title={p.clouds.length > 1 ? t('data:governance.use_cloud_latest', { suffix: '（最新候选）' }) : undefined}
                   >
                     {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
@@ -373,7 +475,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     size="sm"
                     onClick={() => handleStartMerge(p)}
                     disabled={isResolving || isEditing}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                   >
                      <PencilSimple size={12} className="mr-1" />
                     {t('data:governance.manual_merge')}
@@ -385,13 +487,18 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                 <div className="rounded border border-border/30 bg-muted/20 p-2">
                   <div className="text-muted-foreground mb-1">
                     {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
-                    {latestLocal?.detected_at && <span className="ml-1">{latestLocal.detected_at.slice(0, 19)}</span>}
+                    {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
                   </div>
                   <CustomScrollArea className="h-40">
                     <pre className="whitespace-pre-wrap break-words">
                       {latestLocal ? tryFormatJson(latestLocal.data_json) : t('data:governance.none')}
                     </pre>
                   </CustomScrollArea>
+                  {!latestLocal && (
+                    <div className="mt-1 text-muted-foreground">
+                      {t('data:governance.conflict_cloud_only_hint')}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   {p.clouds.length === 0 && (
@@ -405,7 +512,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       <div className="text-muted-foreground mb-1">
                         {t('data:governance.cloud')}{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
                         {cloud.winning_device_id && <span>（{cloud.winning_device_id.slice(0, 8)}...）</span>}
-                        {cloud.detected_at && <span className="ml-1">{cloud.detected_at.slice(0, 19)}</span>}
+                        {cloud.detected_at && <span className="ml-1">{formatDetectedAt(cloud.detected_at)}</span>}
                         {cloud.id === latestCloud?.id && p.clouds.length > 1 && (
                           <span className="ml-1">{t('data:governance.latest')}</span>
                         )}
@@ -438,7 +545,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         setMergeEditing(null);
                         setMergeText('');
                       }}
-                      className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                      className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('common:actions.cancel')}
                     </DsButton>
@@ -455,7 +562,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         void handleResolve(p, 'merged', mergeText);
                       }}
                       disabled={isResolving}
-                      className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                      className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('data:governance.write_back')}
                     </DsButton>
@@ -465,6 +572,68 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             </div>
           );
         })}
+
+        {/* [R11-history] 撤销入口：自动快照批次列表 + 单批回退 */}
+        <div className="pt-3 border-t border-border/30 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-medium">
+              {t('data:governance.snapshot_section_title')}
+            </div>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshSnapshots()}
+              disabled={rollingBackBatch !== null}
+              className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+            >
+              <ArrowClockwise size={12} className="mr-1" />
+              {t('common:actions.refresh')}
+            </DsButton>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t('data:governance.snapshot_section_desc')}
+          </div>
+          {snapshotBatches.length === 0 && (
+            <div className="text-xs text-muted-foreground py-1">
+              {t('data:governance.snapshot_empty')}
+            </div>
+          )}
+          {snapshotBatches.map((batch) => {
+            const isRollingBack = rollingBackBatch === batch.batch_id;
+            const rolledBack = Boolean(batch.rolled_back_at);
+            return (
+              <div
+                key={`${batch.database_name}|${batch.batch_id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/30 bg-muted/20 p-2 text-xs"
+              >
+                <div className="space-x-2 break-all">
+                  <span className="font-medium">{snapshotReasonLabel(batch.reason)}</span>
+                  <span className="text-muted-foreground">{getDatabaseDisplayName(batch.database_name, t)}</span>
+                  <span className="text-muted-foreground">{formatDetectedAt(batch.created_at)}</span>
+                  <span className="text-muted-foreground">
+                    {t('data:governance.snapshot_records_count', { count: batch.record_count })}
+                  </span>
+                  {rolledBack && (
+                    <span className="text-muted-foreground">
+                      {t('data:governance.snapshot_rolled_back_label')}
+                    </span>
+                  )}
+                </div>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleRollbackBatch(batch)}
+                  disabled={rolledBack || rollingBackBatch !== null || loading}
+                  className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                  title={t('data:governance.snapshot_rollback_confirm', { count: batch.record_count })}
+                >
+                  {isRollingBack && <CircleNotch size={12} className="mr-1 animate-spin" />}
+                  {t('data:governance.snapshot_rollback_button')}
+                </DsButton>
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

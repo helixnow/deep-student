@@ -52,7 +52,7 @@ export const SwitchRow = ({
   return (
     // 整行可点切换（iOS/Android 设置页惯例），开关本体 stopPropagation 避免双重切换
     <div
-      className={cn('group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1', settingsQuietInteractiveRowClassName)}
+      className={cn('group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 [@media(pointer:coarse)]:min-h-11', settingsQuietInteractiveRowClassName)}
       onClick={() => {
         if (!disabled && !loading) onCheckedChange(!checked);
       }}

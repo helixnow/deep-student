@@ -26,7 +26,7 @@ import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
@@ -160,13 +160,16 @@ const ShortcutSettings = React.lazy(() => import('@/command-palette/components/S
 const DataImportExport = React.lazy(() => import('@/components/DataImportExport').then((module) => ({ default: module.DataImportExport })));
 const AboutTab = React.lazy(() => import('./AboutTab').then((module) => ({ default: module.AboutTab })));
 
-const SettingsTabFallback = () => (
-  <div
-    className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
-    role="status"
-    aria-label="Loading settings"
-  />
-);
+const SettingsTabFallback = () => {
+  const { t } = useTranslation(['settings']);
+  return (
+    <div
+      className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
+      role="status"
+      aria-label={t('settings:loading', { defaultValue: 'Loading settings' })}
+    />
+  );
+};
 
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
@@ -197,7 +200,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   // P1-6 移动端 API 配置页两级导航：供应商列表 → 供应商详情
   const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
 
-  // 移动端统一顶栏配置 - 带面包屑导航
+  // 移动端 Sheet header 标题（面包屑）所需状态
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
   const activeTab = useSettingsShellStore((state) => state.activeTab);
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
@@ -205,7 +208,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   const [settingsScrollElement, setSettingsScrollElement] = useState<HTMLDivElement | null>(null);
   
-  // 顶栏标题在 vendorState / mcpSection 就绪后统一计算（见下方 SettingsBreadcrumb）
+  // Sheet header 标题在 vendorState / mcpSection 就绪后统一计算（见下方 settingsBreadcrumbText）
 
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
@@ -565,23 +568,25 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     dismissRightPanel,
   ]);
 
-  const handleMobileHeaderBack = useCallback(() => {
-    if (screenPosition === 'center' && mobileNavView === 'sections') {
-      onBack();
-      return;
-    }
-    handleMobileSettingsBack();
-  }, [screenPosition, mobileNavView, onBack, handleMobileSettingsBack]);
-
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
-  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
-  // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
-  // 分区列表态返回 false，交给应用级视图历史 fallback。
+  //
+  // 必须注册在 overlay 档而非 view 档：移动端 Settings 整页是 Radix Sheet
+  // （role="dialog" data-state="open"），协调器的 Radix Escape 兜底探测跑在
+  // view 档之前且常驻命中本 Sheet——view 档 handler 永远轮不到，逐级回退失效。
+  // overlay 档显式 handler 先于兜底探测执行（见 androidBackCoordinator 文件头），
+  // 且同优先级后注册先执行：打开更晚的 DsDialog / 浮动编辑器等仍最先消费；
+  // MobileSlidingLayout 的抽屉/右滑面板 handler 靠本 handler 在非中屏时返回
+  // false 让行。上方叠着未显式注册的 Radix 浮层（shad/Select 下拉等）时同样
+  // 让行，交给兜底探测先关浮层。分区列表态返回 false → 兜底探测派发 Escape
+  // → Sheet onOpenChange → handleSheetBack 关闭整个 Sheet（回退链的最后一级）。
+  // Settings 是 LRU 保活视图：必须 gate isActive，非活跃时注销 handler，否则会吞掉其他页面的返回键。
+  const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
   settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
   useEffect(() => {
-    if (!isSmallScreen) return;
+    if (!isSmallScreen || !isActive) return;
     return registerBackHandler(() => {
+      if (hasOpenRadixOverlayBesides(sheetContentRef.current)) return false;
       const s = settingsBackStateRef.current;
       if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
       if (s.activeTab === 'apis' && s.mobileVendorDetailOpen) {
@@ -590,8 +595,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         setMobileNavView('sections');
       }
       return true;
-    }, BACK_PRIORITY.view);
-  }, [isSmallScreen]);
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, isActive]);
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
   useEffect(() => {
@@ -611,7 +616,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     [sidebarNavItems, activeTab]
   );
 
-  // 顶栏标题：分区列表态显示「系统设置」；分区内容态显示分区名；
+  // 移动端 Sheet header 标题：分区列表态显示「系统设置」；分区内容态显示分区名；
   // API 详情态显示供应商名；右滑面板显示编辑/预览标题
   const settingsBreadcrumbText = useMemo(() => {
     let text = t('settings:title');
@@ -662,17 +667,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     t,
   ]);
 
-  const SettingsBreadcrumb = useMemo(() => (
-    <h1 className="truncate text-lg font-semibold">
-      {settingsBreadcrumbText}
-    </h1>
-  ), [settingsBreadcrumbText]);
-
   const settingsHeaderRightActions = useMemo(() => {
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="!h-11 !w-11 text-primary">
+        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
           <Check size={20} />
         </DsButton>
       );
@@ -689,7 +688,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           }}
           title={t('common:actions.save')}
           aria-label={t('settings:a11y.save')}
-          className="!h-11 !w-11 text-primary"
+          className="text-primary"
         >
           <Check size={20} />
         </DsButton>
@@ -698,16 +697,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     return undefined;
   }, [screenPosition, rightPanelType, t]);
 
-  // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
-  const showSettingsBackArrow = true;
-
+  // 小屏 Settings 由全屏 Sheet 自绘 header（settings-mobile-sheet-header）承载标题/返回/右侧动作；
+  // 这里仅登记 hidden，让应用壳层隐藏统一顶栏并移除其预留高度。
+  // titleNode 等字段在 hidden 时永不渲染（UnifiedMobileHeader 仅在小屏存在），故不传入。
   useMobileHeader('settings', {
     hidden: isSmallScreen || !isActive,
-    titleNode: SettingsBreadcrumb,
-    onMenuClick: handleMobileHeaderBack,
-    showBackArrow: showSettingsBackArrow,
-    rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack]);
+  }, [isSmallScreen, isActive]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -862,6 +857,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     if (event.pointerType === 'mouse' && event.button !== 0) return;
 
     clearSheetDragTimer();
+    // 此处只记录起点，不能立即 setPointerCapture：header 内含返回/关闭/保存按钮，
+    // 捕获会把 pointerup 重定向到 header，干净点按将收不到合成 click。
+    // 与 TodoItemRow 同款：轴锁定确认是下拉手势后（见 handleSheetPointerMove）再捕获。
     sheetDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -870,11 +868,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       isDragging: false,
       suppressNextClick: false,
     };
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort in older WebViews.
-    }
   }, [clearSheetDragTimer, isActive, isSmallScreen]);
 
   const handleSheetPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
@@ -885,18 +878,19 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     const deltaY = event.clientY - drag.startY;
     if (!drag.isDragging) {
       // 横向移动不启动下拉关闭，保留顶部栏的点按行为。
+      // 此时尚未捕获指针，直接放弃手势即可。
       if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
         drag.pointerId = null;
-        try {
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is best-effort in older WebViews.
-        }
         return;
       }
       if (deltaY < 8) return;
       drag.isDragging = true;
       drag.suppressNextClick = true;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is best-effort in older WebViews.
+      }
     }
 
     if (deltaY <= 0) return;
@@ -1243,7 +1237,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1301,7 +1295,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <nav aria-label={t('settings:title')} className="space-y-5">
             {sidebarNavGroups.map((group, groupIndex) => (
               <section key={`mobile-settings-group-${groupIndex}`}>
-                <h2 className="mb-2 px-2 text-[15px] font-semibold leading-6 text-muted-foreground">
+                <h2 className="mb-2 px-2 text-md font-semibold leading-6 text-muted-foreground">
                   {t(`settings:mobile_groups.${groupIndex}`)}
                 </h2>
                 <div className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
@@ -1324,10 +1318,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                           <Icon className="h-6 w-6" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[16px] font-medium leading-6 text-foreground">
+                          <span className="block truncate text-lg font-medium leading-6 text-foreground">
                             {item.label}
                           </span>
-                          <span className="mt-0.5 block truncate text-[13px] leading-5 text-muted-foreground">
+                          <span className="mt-0.5 block truncate text-ui leading-5 text-muted-foreground">
                             {item.mobileDescription}
                           </span>
                         </span>
@@ -1476,9 +1470,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <div
             className={cn(
               mobilePageMode
-                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
+                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
                 : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
-              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
+              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
             )}
           >
           {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
@@ -1551,7 +1545,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
+              <DsButton variant="default" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:!min-h-11">{t('common:close')}</DsButton>
             </DsDialogFooter>
           </DsDialog>
         )}
@@ -1702,7 +1696,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -1716,7 +1710,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 trackOffsetBottom={4}
               >
                 <div style={{ display: 'grid', gap: 12 }}>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+                <label className="inline-flex items-center gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
                     onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: !!checked }))}
@@ -1805,8 +1799,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 </div>
               </CustomScrollArea>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
@@ -1917,7 +1912,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           >
             <CustomScrollArea
               className="flex-1 min-h-0 w-full"
-              viewportClassName="px-4 py-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+              // 外层容器（--android-safe-area-bottom）已消费底部安全区；
+              // Sheet 根现在重建了 --mobile-safe-area-bottom，这里再叠加会双倍留白。
+              viewportClassName="px-4 py-4"
               trackOffsetTop={12}
               trackOffsetBottom={12}
             >
@@ -1965,6 +1962,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           onOpenChange={(nextOpen) => { if (!nextOpen) handleSheetBack(); }}
         >
           <SheetContent
+            ref={sheetContentRef}
             side="bottom"
             hideCloseButton
             overlayClassName="settings-mobile-sheet-overlay"
@@ -1992,7 +1990,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {loading || isSectionsLevel ? (
                 <>
                   <div className="settings-mobile-sheet-header-action" />
-                  <div className="min-w-0 flex-1" />
+                  <h1 className="truncate text-base font-semibold">{sheetTitle}</h1>
                   <DsButton
                     variant="ghost"
                     size="icon"
@@ -2016,7 +2014,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   >
                     <CaretLeft size={26} weight="regular" />
                   </DsButton>
-                  <div className="min-w-0 flex-1" />
+                  <h1 className="truncate text-base font-semibold">{sheetTitle}</h1>
                   <div className="settings-mobile-sheet-header-action flex items-center justify-center">
                     {settingsHeaderRightActions}
                   </div>
@@ -2030,7 +2028,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
                   viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
                 >
-                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
+                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
                     <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
                     {sidebarNavGroups.map((group, groupIdx) => (
                       <div key={groupIdx} className="space-y-2">
