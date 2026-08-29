@@ -77,6 +77,20 @@ describe('P9 projection manager', () => {
     expect(win!.frame.h).toBe(300);
   });
 
+  it('投射开窗走后台：不夺取当前焦点窗的栈顶地位', () => {
+    const userWinId = useWindowStore.getState().openWindow({ typeId: 'user-app', title: '用户窗' });
+    const { source, emit } = makeSource();
+    registerProjectionSource('proj-bg', source);
+
+    emit([{ instanceKey: 'task_1', title: '投射窗' }]);
+
+    const projected = findWindow('proj-bg', 'task_1');
+    expect(projected).toBeDefined();
+    const { focusStack, windows } = useWindowStore.getState();
+    expect(focusStack[focusStack.length - 1]).toBe(userWinId);
+    expect(windows[userWinId!].zIndex).toBeGreaterThan(projected!.zIndex);
+  });
+
   it('同一实例重复出现幂等，不产生第二个窗口', () => {
     const { source, emit } = makeSource();
     registerProjectionSource('proj-b', source);

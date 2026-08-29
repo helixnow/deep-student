@@ -34,8 +34,15 @@ vi.mock('react-i18next', () => ({
         'blocks.ankiCards.progress.ankiConnect.refresh': 'Refresh AnkiConnect status',
         'blocks.ankiCards.progress.ankiConnect.checking': 'checking',
         'blocks.ankiCards.progress.ankiConnect.notConnected': 'not connected',
+        'blocks.ankiCards.progress.metrics.cardsValue': 'Cards: {{count}}',
+        'blocks.ankiCards.progress.metrics.segmentsValue': 'Segments: {{completed}}/{{total}}',
       };
-      if (dict[key]) return dict[key];
+      if (dict[key]) {
+        // 简易 {{var}} 插值，贴近真实 i18n 行为
+        return dict[key].replace(/\{\{(\w+)\}\}/g, (_match, name: string) =>
+          String((options as Record<string, unknown> | undefined)?.[name] ?? ''),
+        );
+      }
       if (options?.defaultValue) return options.defaultValue;
       return key;
     },

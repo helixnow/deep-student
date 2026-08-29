@@ -454,8 +454,11 @@ describe('预定义类型 formatToBlocks', () => {
       });
 
       const blocks = fileDefinition.formatToBlocks(resource);
-      expect(blocks.length).toBe(2); // 内容 + 截断提示
-      expect((blocks[1] as { type: 'text'; text: string }).text).toContain('truncated');
+      // 前置截断提示 + 内容 + 尾部 Note（截断提示前置让模型第一时间知道内容不完整）
+      expect(blocks.length).toBe(3);
+      expect((blocks[0] as { type: 'text'; text: string }).text).toContain('truncation_notice');
+      expect((blocks[0] as { type: 'text'; text: string }).text).toContain('truncated');
+      expect((blocks[2] as { type: 'text'; text: string }).text).toContain('truncated');
     });
   });
 

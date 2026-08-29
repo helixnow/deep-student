@@ -1,0 +1,4 @@
+{"front": "什么是索引下推（ICP）？", "back": "MySQL 在存储引擎层利用索引中的列先行过滤，减少回表次数。"}
+<<< ANKI_CARD_JSON_END>>>
+{"front": "什么是覆盖索引？", "back": "查询所需的所有列都包含在索引中，无需回表读取整行。"}
+<<< ANKI_CARD_JSON_END>>>

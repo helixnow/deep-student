@@ -74,6 +74,47 @@ describe('WindowBody 生命周期壳', () => {
     expect(screen.getByTestId('app-content')).toHaveAttribute('data-visible', 'false');
   });
 
+  it('background：停绘收在内容壳上 + Exposé 停绘占位卡随行渲染（CSS 点亮）', async () => {
+    const id = openTestWindow({ title: '后台会话' });
+    const { container } = render(<WindowBody windowId={id} />);
+    await screen.findByTestId('app-content');
+
+    // focused 时无占位卡、内容壳不停绘
+    expect(container.querySelector('[data-wb-expose-doze]')).toBeNull();
+    const contentBefore = container.querySelector('[data-wb-window-content]') as HTMLElement;
+    expect(contentBefore.style.visibility).toBe('');
+
+    act(() => {
+      useWindowStore.getState().setLifecycles({ [id]: 'background' });
+    });
+
+    // 停绘语义收在内容壳：visibility + content-visibility 双隐藏
+    const content = container.querySelector('[data-wb-window-content]') as HTMLElement;
+    expect(content.style.visibility).toBe('hidden');
+    // 应用子树收到 isSuspended（重应用可据此暂停纯视觉提交）
+    expect(screen.getByTestId('app-content')).toBeInTheDocument();
+
+    // 占位卡与内容壳为兄弟节点：始终在 DOM（display 由 WindowLifecycle.css
+    // 按壳上 data-expose-transform 点亮），带标题 + 停绘提示，且对 a11y 隐藏
+    const doze = container.querySelector('[data-wb-expose-doze]') as HTMLElement;
+    expect(doze).toBeInTheDocument();
+    expect(doze.getAttribute('aria-hidden')).toBe('true');
+    expect(doze.textContent).toContain('后台会话');
+    expect(doze.textContent).toContain('内容已停止绘制');
+    expect(doze.querySelector('.wb-body-frozen-card.wb-glass')).toBeTruthy();
+    // 占位卡不在内容壳内（否则会被 content-visibility 一起跳过）
+    expect(content.contains(doze)).toBe(false);
+
+    // 回到可见档 → 占位卡卸载、内容壳恢复
+    act(() => {
+      useWindowStore.getState().setLifecycles({ [id]: 'visible' });
+    });
+    expect(container.querySelector('[data-wb-expose-doze]')).toBeNull();
+    expect(
+      (container.querySelector('[data-wb-window-content]') as HTMLElement).style.visibility,
+    ).toBe('');
+  });
+
   it('frozen：卸载子树显示休眠占位，点击唤醒后重建（frozen→唤醒 DoD）', async () => {
     const id = openTestWindow({ title: '被冻结的窗口' });
     render(<WindowBody windowId={id} />);
@@ -269,6 +310,54 @@ describe('WindowBody 生命周期壳', () => {
     });
     expect(useWindowStore.getState().transientPhases?.[id]).toBeUndefined();
     expect(shell.getAttribute(LIFEC_ATTR)).toBeNull();
+  });
+
+  it('minimizing：残留旧相位时先清相位再量测源点（脏 transform 不污染收敛点）', async () => {
+    const id = openTestWindow({ typeId: 'test-app' });
+    // 壳模拟「上一段 restoring 动画被打断」：data-wb-lifec 仍挂着时
+    // getBoundingClientRect 返回含动画 transform 的中间帧（整体偏移 +60,+40）；
+    // 相位清除后返回干净矩形。锚定 useWindowLifecycleAnim 先清相位
+    // + 强制回流、后 injectMinimizeOrigin 的顺序。
+    const clean = { left: 0, top: 0, width: 200, height: 100 };
+    const el = document.createElement('section');
+    el.setAttribute('data-wb-window-id', id);
+    el.setAttribute(LIFEC_ATTR, 'restoring');
+    el.getBoundingClientRect = () => {
+      const polluted = el.hasAttribute(LIFEC_ATTR);
+      const left = clean.left + (polluted ? 60 : 0);
+      const top = clean.top + (polluted ? 40 : 0);
+      return {
+        x: left,
+        y: top,
+        left,
+        top,
+        right: left + clean.width,
+        bottom: top + clean.height,
+        width: clean.width,
+        height: clean.height,
+        toJSON() {
+          return {};
+        },
+      } as DOMRect;
+    };
+    document.body.appendChild(el);
+
+    publishDockIconRects({
+      'test-app': { x: 100, y: 900, w: 48, h: 48 },
+    });
+
+    render(<WindowBody windowId={id} />);
+    await screen.findByTestId('app-content');
+
+    act(() => {
+      requestMinimizeAnimated(id);
+    });
+
+    expect(el.getAttribute(LIFEC_ATTR)).toBe('minimizing');
+    // 干净矩形 (0,0,200×100) + 图标中心 (124,924) → 62% / 924%；
+    // 若在清相位前量测（脏矩形 60,40 偏移）会得到 32% / 884%。
+    expect(el.style.getPropertyValue('--wb-minimize-origin-x')).toBe('62%');
+    expect(el.style.getPropertyValue('--wb-minimize-origin-y')).toBe('924%');
   });
 
   it('injectMinimizeOrigin：无 Dock 坐标时回退 50%/130%', () => {

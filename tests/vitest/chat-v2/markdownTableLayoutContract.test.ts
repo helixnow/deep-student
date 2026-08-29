@@ -29,7 +29,9 @@ describe('chat v2 markdown table layout contract', () => {
     expect(tableWrapperRuleStart).toBeGreaterThan(-1);
     expect(tableWrapperRuleEnd).toBeGreaterThan(tableWrapperRuleStart);
     expect(tableWrapperRule).toContain('width: 100%;');
-    expect(tableWrapperRule).toContain('overflow-x: auto;');
+    // 当前实现改为 overflow: visible（不再用 overflow-x: auto 的滚动容器包裹表格）
+    expect(tableWrapperRule).toContain('overflow: visible;');
+    expect(tableWrapperRule).not.toContain('overflow-x: auto;');
   });
 
   it('uses a lightweight document-style table surface instead of a chat card shell', () => {

@@ -14,34 +14,47 @@ const mocks = vi.hoisted(() => ({
   undoLastReview: vi.fn(),
   unsuspendCard: vi.fn(),
   updateLibraryCard: vi.fn(),
+  invoke: vi.fn(),
+  pickSingleFile: vi.fn(),
+  showGlobalNotification: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: unknown) => ({
-      'library.title': '卡片库',
-      'library.loading': '加载中…',
-      'library.total': '卡片总数',
-      'library.refresh': '刷新',
-      'library.searchLabel': '搜索卡片',
-      'library.searchPlaceholder': '搜索正面 / 背面 / 标签',
-      'library.search': '搜索',
-      'library.dismiss': '关闭',
-      'library.retry': '重试',
-      'library.empty': '库中暂无卡片',
-      'library.state.notEnqueued': '未入队',
-      'library.state.new': '新卡',
-      'library.state.review': '复习中',
-      'library.startReview': '复习',
-      'library.enqueue': '入队',
-      'library.resume': '恢复',
-      'library.suspend': '暂停',
-      'library.delete': '删除',
-      'library.previous': '上一页',
-      'library.next': '下一页',
-      'library.confirmDelete': '确定删除这张卡片吗？',
-      'common:cancel': '取消',
-    }[key] ?? (typeof fallback === 'string' ? fallback : key)),
+    t: (key: string, fallback?: unknown) => {
+      if (
+        key === 'library.import.success'
+        && typeof fallback === 'object'
+        && fallback !== null
+        && 'count' in fallback
+      ) {
+        return `成功导入 ${String(fallback.count)} 张卡片`;
+      }
+      return {
+        'library.title': '卡片库',
+        'library.loading': '加载中…',
+        'library.total': '卡片总数',
+        'library.refresh': '刷新',
+        'library.searchLabel': '搜索卡片',
+        'library.searchPlaceholder': '搜索正面 / 背面 / 标签',
+        'library.search': '搜索',
+        'library.dismiss': '关闭',
+        'library.retry': '重试',
+        'library.empty': '库中暂无卡片',
+        'library.state.notEnqueued': '未入队',
+        'library.state.new': '新卡',
+        'library.state.review': '复习中',
+        'library.startReview': '复习',
+        'library.enqueue': '入队',
+        'library.resume': '恢复',
+        'library.suspend': '暂停',
+        'library.delete': '删除',
+        'library.previous': '上一页',
+        'library.next': '下一页',
+        'library.confirmDelete': '确定删除这张卡片吗？',
+        'common:cancel': '取消',
+      }[key] ?? (typeof fallback === 'string' ? fallback : key);
+    },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
@@ -66,6 +79,20 @@ vi.mock('@/features/flashcards/store/fsrsReviewStore', () => ({
 vi.mock('@/features/flashcards/events', () => ({
   FSRS_LIBRARY_REFRESH_EVENT: 'fsrs:library-refresh',
   requestFlashcardsDueRefresh: mocks.requestDueRefresh,
+}));
+
+vi.mock('@/utils/fileManager', () => ({
+  fileManager: {
+    pickSingleFile: mocks.pickSingleFile,
+  },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mocks.invoke,
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: mocks.showGlobalNotification,
 }));
 
 import { LibraryScreen } from '@/features/flashcards/screens/LibraryScreen';
@@ -117,6 +144,8 @@ describe('LibraryScreen', () => {
     mocks.startBatchSession.mockResolvedValue(true);
     mocks.suspendCard.mockResolvedValue({ state: {}, changed: true });
     mocks.unsuspendCard.mockResolvedValue({ state: {}, changed: true });
+    mocks.pickSingleFile.mockResolvedValue('/tmp/deck.apkg');
+    mocks.invoke.mockResolvedValue({ importedCards: 12 });
   });
 
   afterEach(() => {
@@ -257,5 +286,30 @@ describe('LibraryScreen', () => {
     expect(mocks.deleteCard).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(mocks.deleteCard).toHaveBeenCalledWith('active'));
+  });
+
+  it('imports an .apkg from the empty-library entry and refreshes the due queue', async () => {
+    mocks.listCards.mockResolvedValue(response([]));
+
+    render(<LibraryScreen />);
+    expect(await screen.findByText('库中暂无卡片')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'library.import.apkg' })[0]);
+
+    await waitFor(() => {
+      expect(mocks.pickSingleFile).toHaveBeenCalledWith({
+        title: expect.stringContaining('.apkg'),
+        filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
+      });
+      expect(mocks.invoke).toHaveBeenCalledWith('import_apkg_to_library', {
+        path: '/tmp/deck.apkg',
+      });
+    });
+    expect(mocks.requestDueRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.listCards).toHaveBeenCalledTimes(2);
+    expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
+      'success',
+      '成功导入 12 张卡片',
+    );
   });
 });

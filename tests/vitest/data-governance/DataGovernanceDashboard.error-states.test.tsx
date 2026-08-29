@@ -81,7 +81,7 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
     // 刷新按钮应存在且可操作
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
     // Tab 导航应存在
-    expect(screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 
   it('does not crash when migration status returns null', async () => {
@@ -101,7 +101,7 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
     expect(container.firstChild).not.toBeNull();
     // 即使数据为 null，核心导航仍应可用
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /备份|data:governance\.tab_backup/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i })).toBeInTheDocument();
   });
 
   it('does not crash when APIs return partial/empty data shapes', async () => {
@@ -135,7 +135,7 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
     // 断言组件成功渲染，核心 UI 元素存在
     expect(container.firstChild).not.toBeNull();
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 
   it('crashes with ErrorBoundary when APIs return completely invalid types (documents defensive gap)', async () => {
@@ -233,7 +233,7 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
     });
 
     // 切换到备份标签
-    const backupTab = screen.getByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -241,7 +241,7 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
     });
 
     // 切换回概览标签
-    const overviewTab = screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i });
+    const overviewTab = screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i });
     fireEvent.click(overviewTab);
 
     // 再切换回备份标签 - 不应该重新加载（或至少不应该崩溃）
@@ -260,8 +260,8 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
       expect(mockDataGovernanceApi.runHealthCheck).toHaveBeenCalled();
     });
 
-    const backupTab = screen.getByRole('button', { name: /备份|data:governance\.tab_backup/i });
-    const overviewTab = screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i });
+    const backupTab = screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const overviewTab = screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i });
 
     // 快速切换 5 次
     for (let i = 0; i < 5; i++) {
@@ -326,6 +326,6 @@ describe('DataGovernanceDashboard standalone mode (Issue #15)', () => {
     expect(container.firstChild).not.toBeNull();
     // 非嵌入模式也应渲染刷新按钮和 Tab 导航
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 });

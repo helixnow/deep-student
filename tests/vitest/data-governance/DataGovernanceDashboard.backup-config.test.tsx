@@ -6,7 +6,7 @@
  * 2. 自动备份开关切换
  * 3. 备份间隔选择
  * 4. 最大备份数设置
- * 5. 精简备份模式切换
+ * 5. 精简备份模式已移除的守护（自动备份始终全量）
  * 6. 配置保存失败处理
  * 7. 配置加载失败处理
  * 8. 加载状态显示
@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, act } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within, act } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -66,9 +66,11 @@ vi.mock('react-i18next', async (importOriginal) => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
 
-vi.mock('@/utils/cloudStorageApi', () => ({
+vi.mock('@/utils/cloudStorageApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/cloudStorageApi')>()),
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -146,7 +148,7 @@ const enabledAutoBackupConfig = {
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
   const backupTab = await screen.findByRole('button', {
-    name: /备份|data:governance\.tab_backup/i,
+    name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);
   await waitFor(() => {
@@ -164,6 +166,19 @@ async function expandSettingsPanel() {
       fireEvent.click(settingsBtn);
     });
   }
+}
+
+/** 配置加载完成的哨兵：自动备份标签仅在 backupConfig 就绪后渲染 */
+const autoBackupLabel = /^(?:自动备份|data:governance\.auto_backup)$/i;
+
+/**
+ * 定位自动备份开关：按标签所在行作用域查找，
+ * 避免依赖全局 switch 顺序（导出区还有 includeAssets 开关）。
+ */
+function getAutoBackupSwitch() {
+  const row = screen.getByText(autoBackupLabel).closest('div.justify-between');
+  if (!row) throw new Error('auto backup row not found');
+  return within(row as HTMLElement).getByRole('switch');
 }
 
 // ============================================================================
@@ -217,11 +232,9 @@ describe('DataGovernanceDashboard backup settings panel rendering', () => {
       expect(mockGetBackupConfig).toHaveBeenCalledTimes(1);
     });
 
-    // 配置加载后，精简备份模式开关应可见（唯一文本，无歧义）
+    // 配置加载后，自动备份开关标签应可见
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
   });
 
@@ -253,9 +266,7 @@ describe('DataGovernanceDashboard backup settings panel rendering', () => {
 
     // 加载完成后，配置项应可见
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
   });
 });
@@ -290,17 +301,13 @@ describe('DataGovernanceDashboard auto backup toggle', () => {
     await navigateToBackupTab();
     await expandSettingsPanel();
 
-    // 等待配置加载（通过精简备份模式文本确认）
+    // 等待配置加载
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
 
-    // 找到自动备份开关（Switch 组件的 role 是 switch）
-    const switches = screen.getAllByRole('switch');
-    // 第一个 switch 是自动备份开关
-    const autoBackupSwitch = switches[0];
+    // 按标签行定位自动备份开关（导出区还有 includeAssets 开关，不能按顺序取）
+    const autoBackupSwitch = getAutoBackupSwitch();
     expect(autoBackupSwitch).not.toBeChecked();
 
     // 切换开关
@@ -341,11 +348,9 @@ describe('DataGovernanceDashboard auto backup toggle', () => {
     await navigateToBackupTab();
     await expandSettingsPanel();
 
-    // 等待配置加载（通过精简备份模式文本确认）
+    // 等待配置加载
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
 
     // 自动备份关闭时，间隔选择器不应该显示
@@ -502,7 +507,7 @@ describe('DataGovernanceDashboard slim backup mode', () => {
     });
   });
 
-  it('toggles slim backup mode and saves config', async () => {
+  it('no longer renders a slim backup toggle (auto backups are always full snapshots)', async () => {
     mockGetBackupConfig.mockResolvedValue(defaultBackupConfig);
     mockSetBackupConfig.mockResolvedValue(undefined);
 
@@ -510,33 +515,16 @@ describe('DataGovernanceDashboard slim backup mode', () => {
     await navigateToBackupTab();
     await expandSettingsPanel();
 
-    // 等待配置加载（通过精简备份模式文本确认）
+    // 等待配置加载
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
 
-    // 在设置面板中找到 switch 元素
-    // 当 autoBackupEnabled 为 false 时，有 auto_backup 和 slim_backup 两个 switch
-    // 还可能有分层备份区域的 includeAssets switch，所以使用最后一个 in settings panel
-    const switches = screen.getAllByRole('switch');
-    // slim_backup 是设置面板中最后一个 switch（第二个）
-    const slimSwitch = switches[1];
-    expect(slimSwitch).not.toBeChecked();
-
-    await act(async () => {
-      fireEvent.click(slimSwitch);
-    });
-
-    // setBackupConfig 应被调用，且 slimBackup 为 true
-    await waitFor(() => {
-      expect(mockSetBackupConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          slimBackup: true,
-        }),
-      );
-    });
+    // 精简备份开关已从产品中移除（自动备份始终创建完整快照），
+    // 设置面板不应再出现 slim_backup 相关文案或第二个设置开关。
+    expect(
+      screen.queryByText(/精简备份模式|data:governance\.slim_backup/i),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -585,9 +573,7 @@ describe('DataGovernanceDashboard backup config error handling', () => {
 
     await waitFor(() => {
       expect(mockGetBackupConfig).toHaveBeenCalledTimes(2);
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
   });
 
@@ -599,19 +585,14 @@ describe('DataGovernanceDashboard backup config error handling', () => {
     await navigateToBackupTab();
     await expandSettingsPanel();
 
-    // 等待配置加载（通过精简备份模式文本确认）
+    // 等待配置加载
     await waitFor(() => {
-      expect(
-        screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
     });
 
     // 切换自动备份开关触发保存
-    const switches = screen.getAllByRole('switch');
-    const autoBackupSwitch = switches[0];
-
     await act(async () => {
-      fireEvent.click(autoBackupSwitch);
+      fireEvent.click(getAutoBackupSwitch());
     });
 
     // setBackupConfig 应被调用
@@ -620,9 +601,7 @@ describe('DataGovernanceDashboard backup config error handling', () => {
     });
 
     // 组件不应崩溃，面板应保持显示
-    expect(
-      screen.getByText(/精简备份模式|data:governance\.slim_backup$/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(autoBackupLabel)).toBeInTheDocument();
   });
 
   it('does not call getBackupConfig again if already loaded', async () => {

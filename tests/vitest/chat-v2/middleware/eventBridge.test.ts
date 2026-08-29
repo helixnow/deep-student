@@ -260,6 +260,40 @@ describe('eventBridge', () => {
       vi.runAllTimers();
       expect(mockStore.updateBlockContent).toHaveBeenCalledWith('explicit-block-id', 'data');
     });
+
+    it('should batch generative_ui chunks through chunkBuffer like content', () => {
+      const onStart = vi.fn(() => 'gen-ui-block');
+      const onChunk = vi.fn();
+      eventRegistry.register('generative_ui', { onStart, onChunk });
+
+      handleBackendEvent(mockStore, {
+        type: 'generative_ui',
+        phase: 'start',
+        messageId: 'msg-1',
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'generative_ui',
+        phase: 'chunk',
+        blockId: 'gen-ui-block',
+        chunk: '{"version":"1","blocks":[',
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'generative_ui',
+        phase: 'chunk',
+        blockId: 'gen-ui-block',
+        chunk: '{"type":"text","props":{"body":"hi"}}]}',
+      });
+
+      vi.runAllTimers();
+      expect(onChunk).not.toHaveBeenCalled();
+      expect(mockStore.updateBlockContent).toHaveBeenCalledTimes(1);
+      expect(mockStore.updateBlockContent).toHaveBeenCalledWith(
+        'gen-ui-block',
+        '{"version":"1","blocks":[{"type":"text","props":{"body":"hi"}}]}',
+      );
+    });
   });
 
   describe('call onEnd for end phase', () => {

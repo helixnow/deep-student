@@ -1,0 +1,2 @@
+{"front": "Windows 用户目录的默认路径是什么？", "back": "C:\Users\<用户名>，由环境变量 USERPROFILE 指向。"}
+<<<ANKI_CARD_JSON_END>>>

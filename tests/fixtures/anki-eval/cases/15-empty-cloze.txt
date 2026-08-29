@@ -1,0 +1,2 @@
+{"text": "细胞的能量工厂是 {{c1::}}，负责有氧呼吸产生 ATP。", "template_id": "cloze", "tags": ["生物"]}
+<<<ANKI_CARD_JSON_END>>>

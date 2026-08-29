@@ -15,6 +15,10 @@ describe('chat v2 composer panel semantic token contract', () => {
     resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
+  const attachmentPanelSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/AttachmentPanelBody.tsx'),
+    'utf-8'
+  );
   const composerPanelSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
     'utf-8'
@@ -48,15 +52,18 @@ describe('chat v2 composer panel semantic token contract', () => {
   });
 
   it('keeps composer panel body controls on composer semantic tokens', () => {
-    expect(inputBarSource).toContain('var(--composer-panel-muted-surface)');
-    expect(inputBarSource).toContain('var(--composer-panel-control-surface)');
-    expect(inputBarSource).toContain('var(--composer-panel-control-border)');
-    expect(inputBarSource).toContain('var(--composer-panel-control-hover)');
-    expect(inputBarSource).toContain('var(--composer-panel-focus-border)');
+    expect(attachmentPanelSource).toContain('var(--composer-panel-muted-surface)');
+    expect(attachmentPanelSource).toContain('var(--composer-panel-control-surface)');
+    expect(attachmentPanelSource).toContain('var(--composer-panel-control-border)');
+    expect(attachmentPanelSource).toContain('var(--composer-panel-control-hover)');
+    expect(attachmentPanelSource).toContain('var(--composer-panel-focus-border)');
     expect(composerPanelSource).toContain('var(--composer-panel-placeholder)');
     expect(composerPanelSource).toContain('var(--composer-panel-focus-border)');
     expect(inputBarSource).not.toContain('border-[hsl(var(--border))]');
     expect(inputBarSource).not.toContain('var(--input-surface)');
     expect(inputBarSource).not.toContain('var(--text-tertiary)');
+    expect(attachmentPanelSource).not.toContain('border-[hsl(var(--border))]');
+    expect(attachmentPanelSource).not.toContain('var(--input-surface)');
+    expect(attachmentPanelSource).not.toContain('var(--text-tertiary)');
   });
 });

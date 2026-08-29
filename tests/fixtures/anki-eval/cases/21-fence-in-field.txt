@@ -1,0 +1,2 @@
+{"front": "如何在 Rust 中定义泛型函数？", "back": "示例：\n```rust\nfn largest<T: PartialOrd>(list: &[T]) -> &T { ... }\n```", "tags": ["Rust"]}
+<<<ANKI_CARD_JSON_END>>>
