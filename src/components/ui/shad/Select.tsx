@@ -35,7 +35,8 @@ const SelectTrigger = React.forwardRef<
     className={cn(
       inputShellClass,
       // Select 触发器独有：inline-flex + 触达高度 + chevron 间距
-      'inline-flex w-full min-h-[var(--touch-target-size)] lg:min-h-[var(--button-height)]',
+      // 触屏（pointer:coarse，如 iPad 横屏命中 lg）始终保持 44px 触达高度
+      'inline-flex w-full min-h-[var(--touch-target-size)] lg:min-h-[var(--button-height)] [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]',
       'items-center justify-between gap-2',
       '[&>span]:line-clamp-1 [&>span]:text-left',
       // Radix 开启时提示（可选视觉）
@@ -58,7 +59,8 @@ const SelectScrollUpButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.ScrollUpButton
     ref={ref}
-    className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70', className)}
+    // 可点按滚动钮：触屏下保持 ≥44px 命中高度（fine 指针维持紧凑 py-1）
+    className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70 [@media(pointer:coarse)]:min-h-11', className)}
     {...props}
   >
     <CaretUp size={16} aria-hidden />
@@ -72,7 +74,8 @@ const SelectScrollDownButton = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.ScrollDownButton
     ref={ref}
-    className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70', className)}
+    // 可点按滚动钮：触屏下保持 ≥44px 命中高度（fine 指针维持紧凑 py-1）
+    className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70 [@media(pointer:coarse)]:min-h-11', className)}
     {...props}
   >
     <CaretDown size={16} aria-hidden />
@@ -138,7 +141,8 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-default select-none items-center gap-2 rounded-[var(--radius-shell-row)] py-1.5 pl-2 pr-8 text-sm outline-none',
+      // 触屏（pointer:coarse）下拉项保持 ≥44px 命中高度；桌面 fine 指针维持紧凑 py-1.5
+      'relative flex w-full cursor-default select-none items-center gap-2 rounded-[var(--radius-shell-row)] py-1.5 pl-2 pr-8 text-sm outline-none [@media(pointer:coarse)]:!min-h-11',
       'focus:bg-[color:var(--interactive-hover)] focus:text-foreground',
       'data-[state=checked]:bg-[color:var(--interactive-hover)]',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',

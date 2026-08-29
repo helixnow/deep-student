@@ -128,7 +128,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-muted/10 group/target">
             {/* 桌面工具栏 */}
-            <div data-wb-blur-surface className="hidden sm:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
                 <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
                     <Translate size={14} className="shrink-0 text-muted-foreground" />
                     {t('translation:target_section.title')}
@@ -164,7 +164,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             onCheckedChange={setIsSyncScroll}
                             className="data-[state=checked]:bg-primary"
                         />
-                        <Label htmlFor="target-sync-scroll" className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap">
+                        <Label htmlFor="target-sync-scroll" className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11">
                             {t('translation:sync_scroll')}
                         </Label>
                     </div>
@@ -231,7 +231,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
             {/* 移动端操作栏 */}
             {translatedText && !isEditingTranslation && (
-                <div className="sm:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
                     <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                         <Translate size={13} className="shrink-0" />
                         {t('translation:target_section.title')}
@@ -308,10 +308,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 {editedTranslation.length.toLocaleString()} {t('translation:stats.characters')}
                             </span>
                             <div className="flex gap-2">
-                                <DsButton variant="outline" size="sm" onClick={onCancelEdit}>
+                                <DsButton variant="outline" size="sm" onClick={onCancelEdit} className="[@media(pointer:coarse)]:!min-h-11">
                                     {t('common:cancel')}
                                 </DsButton>
-                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation}>
+                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation} className="[@media(pointer:coarse)]:!min-h-11">
                                     <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
                                 </DsButton>
@@ -350,7 +350,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="icon"
                                             onClick={() => onRateTranslation(rating)}
                                             aria-label={t('translation:panel_ux.rate_star', { count: rating })}
-                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                         >
                                             <Star
                                                 weight={translationQuality && rating <= translationQuality ? 'fill' : 'regular'}

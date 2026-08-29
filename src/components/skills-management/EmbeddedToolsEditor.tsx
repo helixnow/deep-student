@@ -198,7 +198,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
           size="sm"
           onClick={addTool}
           disabled={disabled}
-          className="max-lg:!h-11 h-7 text-xs"
+          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs"
         >
           <Plus size={14} className="mr-1" />
           {t('skills:editor.add_tool')}
@@ -237,7 +237,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                   )}
                 >
                   <CollapsibleTrigger
-                    className="flex items-center gap-2 min-w-0 flex-1"
+                    className="flex items-center gap-2 min-w-0 flex-1 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isExpanded ? (
                       <CaretDown size={14} className="text-muted-foreground flex-shrink-0" />
@@ -264,7 +264,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         removeTool(toolIndex);
                       }}
                       disabled={disabled}
- className="w-6 h-6 max-lg:!h-10 max-lg:!w-10 max-lg:-my-2 text-muted-foreground hover:text-destructive"
+ className="w-6 h-6 max-lg:!h-11 max-lg:!w-11 max-lg:-my-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-destructive"
                     >
                       <Trash size={12} />
                     </DsButton>
@@ -283,7 +283,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         placeholder="builtin-example_tool"
                         disabled={disabled}
                         className={cn(
-                          'h-8 text-sm font-mono bg-muted/30 border-transparent',
+                          'h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 text-sm font-mono bg-muted/30 border-transparent',
                           !tool.name && 'border-amber-500/50'
                         )}
 />
@@ -317,7 +317,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           size="sm"
                           onClick={() => addProperty(toolIndex)}
                           disabled={disabled}
-                          className="max-lg:!h-9 h-6 text-xs"
+                          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-6 text-xs"
                         >
                           <Plus size={12} className="mr-1" />
                           {t('skills:editor.add_param')}
@@ -343,14 +343,14 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                     onChange={(e) => updateProperty(toolIndex, propName, (e.target as HTMLInputElement).value, {})}
                                     placeholder={t('skills:editor.param_name')}
                                     disabled={disabled}
-                                    className="h-7 text-xs font-mono bg-background/50"
+                                    className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-xs font-mono bg-background/50"
 />
                                   <Input
                                     value={prop.description || ''}
                                     onChange={(e) => updateProperty(toolIndex, propName, propName, { description: (e.target as HTMLInputElement).value })}
                                     placeholder={t('skills:editor.param_description')}
                                     disabled={disabled}
-                                    className="h-7 text-xs bg-background/50"
+                                    className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-xs bg-background/50"
 />
                                 </div>
                                 <Select
@@ -358,7 +358,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   onValueChange={(value) => updateProperty(toolIndex, propName, propName, { type: value as JsonSchemaProperty['type'] })}
                                   disabled={disabled}
                                 >
-                                  <SelectTrigger className="h-7 text-xs bg-background/50 border border-border/40 rounded-md px-2">
+                                  <SelectTrigger className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-xs bg-background/50 border border-border/40 rounded-md px-2">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -376,7 +376,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="sm"
                                   onClick={() => toggleRequired(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="max-lg:!h-9 h-7 text-[10px] px-2"
+                                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-[10px] px-2"
                                   title={isRequired ? t('skills:editor.required') : t('skills:editor.optional')}
                                 >
                                   {isRequired ? '*' : '?'}
@@ -387,7 +387,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="icon"
                                   onClick={() => removeProperty(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="h-7 w-7 max-lg:!h-9 max-lg:!w-9 text-muted-foreground hover:text-destructive"
+                                  className="h-7 w-7 max-lg:!h-11 max-lg:!w-11 max-lg:-mx-1 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-destructive"
                                 >
                                   <Trash size={12} />
                                 </DsButton>

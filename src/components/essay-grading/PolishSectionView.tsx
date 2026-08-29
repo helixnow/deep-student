@@ -166,7 +166,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
           aria-pressed={showDiff}
           onClick={() => setShowDiff((v) => !v)}
           className={cn(
-            'h-6 px-1.5 gap-1 text-xs shrink-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5 transition-colors duration-150 motion-reduce:transition-none',
+            'h-6 px-1.5 gap-1 text-xs shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5 transition-colors duration-150 motion-reduce:transition-none',
             showDiff ? 'text-primary hover:text-primary' : 'text-muted-foreground/50 hover:text-foreground'
           )}
         >
@@ -203,7 +203,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                   aria-label={copied ? t('essay_grading:sections.copied') : t('common:copy')}
                   onClick={() => handleCopy(item.polished, index)}
                   className={cn(
-                    'h-6 px-1.5 gap-1 text-xs [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5 transition-colors duration-200 motion-reduce:transition-none',
+                    'h-6 px-1.5 gap-1 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5 transition-colors duration-200 motion-reduce:transition-none',
                     copied
                       ? 'text-success hover:text-success'
                       : 'text-muted-foreground/50 hover:text-foreground'

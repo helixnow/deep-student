@@ -165,7 +165,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 variant="ghost" size="sm"
                 onClick={() => setLocationFilter(tab.id)}
                 className={cn(
-                  '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
+                  '!px-2.5 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-11 text-[11px] font-medium whitespace-nowrap',
                   isActiveTab
                     ? 'bg-secondary text-secondary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'

@@ -194,7 +194,7 @@ interface TooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
 // 基础样式 - 最小化，让用户传递的类可以完全覆盖
 // ui-tooltip-in：ui-motion 入场（fade + scale 0.97 + 朝最终位置 2px 漂移，方向随 data-side）
 const getBaseClasses = () => {
-  return 'rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-[var(--tooltip-surface)] text-[var(--tooltip-foreground)] font-medium leading-none ui-tooltip-in';
+  return 'rounded-md px-2 py-1.5 text-ui shadow-none border border-border/40 bg-[var(--tooltip-surface)] text-[var(--tooltip-foreground)] font-medium leading-none ui-tooltip-in';
 };
 
 export const TooltipContent: React.FC<TooltipContentProps>

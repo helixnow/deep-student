@@ -81,7 +81,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
       onClick={() => updateBlank(index, { [field]: !active } as Partial<FillBlankSpec>)}
       className={cn(
         'rounded px-1.5 py-0.5 text-[10px] transition-colors',
-        '[@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:py-1.5',
+        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:py-1.5',
         active
           ? 'bg-primary/10 text-primary'
           : 'bg-muted/40 text-muted-foreground hover:bg-[var(--interactive-hover)]'
@@ -102,7 +102,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
           size="sm"
           onClick={addBlank}
           disabled={blanks.length >= MAX_BLANKS}
-          className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
+          className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
         >
           <Plus size={10} className="mr-0.5" />
           {t('editor.structEdit.addBlank')}
@@ -133,7 +133,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                     iconOnly
                     onClick={() => removeBlank(index)}
                     aria-label={t('editor.structEdit.removeBlank')}
-                    className="!h-5 !w-5 !p-0 text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                    className="!h-5 !w-5 !p-0 text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   >
                     <Trash size={11} />
                   </DsButton>
@@ -148,7 +148,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                   <Badge
                     key={answer}
                     variant="secondary"
-                    className="h-5 cursor-pointer text-xs hover:bg-destructive/20 [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:px-2"
+                    className="h-5 cursor-pointer text-xs hover:bg-destructive/20 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                     onClick={() => removeAnswer(index, answer)}
                   >
                     {answer}
@@ -169,7 +169,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                   }
                 }}
                 placeholder={t('editor.structEdit.answerDraftPlaceholder')}
-                className="h-7 flex-1 text-xs [@media(pointer:coarse)]:text-[16px]"
+                className="h-7 flex-1 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
               />
               <DsButton
                 variant="ghost"
@@ -178,7 +178,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                 onClick={() => addAnswer(index)}
                 disabled={!(drafts[index] ?? '').trim()}
                 aria-label={t('editor.structEdit.addAnswer')}
-                className="ui-press !h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                className="ui-press !h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <Plus size={12} />
               </DsButton>

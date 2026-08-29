@@ -319,6 +319,10 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   const handleCancelRef = useRef(handleCancel);
   handleCancelRef.current = handleCancel;
 
+  // 保活可见性守卫锚点：skills-management 保活隐藏后编辑器可能带着 open=true
+  // 滞留在隐藏层里，返回键 handler 须先确认嵌入根节点可见才消费事件
+  const embeddedRootRef = useRef<HTMLDivElement>(null);
+
   // 嵌入模式（移动端子屏）：
   // 1. Android 返回键 = 带脏检查的取消。注册在 MobileSlidingLayout 的
   //    overlay handler 之后（同优先级后注册者先执行），否则滑动布局会先
@@ -327,6 +331,11 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   useEffect(() => {
     if (!embeddedMode || !open) return;
     const unregister = registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中滞留的编辑器不吞返回键，也不为不可见编辑器
+      // 弹未保存更改确认（对照 EnhancedPdfViewer 的同款守卫）
+      const el = embeddedRootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       handleCancelRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -383,7 +392,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleCancel}
- className="w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+ className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
           </DsButton>
@@ -400,21 +409,21 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           <TabsList className="bg-muted/20 border border-border/30 rounded-xl px-1.5 py-1 h-auto gap-2 shadow-sm">
             <TabsTrigger
               value="basic"
-              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Gear size={14} className="mr-1.5" />
               {t('skills:editor.tab_basic')}
             </TabsTrigger>
             <TabsTrigger
               value="content"
-              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <FileText size={14} className="mr-1.5" />
               {t('skills:editor.tab_content')}
             </TabsTrigger>
             <TabsTrigger
               value="tools"
-              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Wrench size={14} className="mr-1.5" />
               {t('skills:editor.tab_tools')}
@@ -569,7 +578,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'standalone')}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('skills:editor.skill_type_standalone')}
                     </DsButton>
@@ -577,7 +586,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'composite')}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('skills:editor.skill_type_composite')}
                     </DsButton>
@@ -618,7 +627,11 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {/* 禁用自动激活 */}
               <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-colors">
                 <div className="space-y-1">
-                  <Label className="text-sm font-medium cursor-pointer">
+                  {/* htmlFor 关联 Switch：点标签即切换；触屏标签自身抬到 44px 命中高度 */}
+                  <Label
+                    htmlFor="skill-editor-disable-auto-invoke"
+                    className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11"
+                  >
                     {t('skills:editor.disable_auto_invoke')}
                   </Label>
                   <p className="text-xs text-muted-foreground/70">
@@ -626,6 +639,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   </p>
                 </div>
                 <Switch
+                  id="skill-editor-disable-auto-invoke"
                   checked={formData.disableAutoInvoke}
                   onCheckedChange={(checked) => updateField('disableAutoInvoke', checked)}
 />
@@ -683,14 +697,14 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           variant="ghost"
           onClick={handleCancel}
           disabled={isSaving}
-          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
+          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
         >
           {t('common:actions.cancel')}
         </DsButton>
         <DsButton
           type="submit"
           disabled={isSaving}
-          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors"
+          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
         >
           {isSaving
             ? t('common:actions.saving')
@@ -703,7 +717,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   // 嵌入模式：直接返回表单内容
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div ref={embeddedRootRef} className="h-full flex flex-col bg-background">
         {formContent}
       </div>
     );

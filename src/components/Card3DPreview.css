@@ -275,7 +275,7 @@
   overflow-x: auto;
 }
 
-/* 圆点视觉由 ::after 绘制，按钮本体承担命中区（触屏下扩到 40px，视觉不变） */
+/* 圆点视觉由 ::after 绘制，按钮本体承担命中区（触屏下扩到 44px，视觉不变） */
 .nav-dot {
   position: relative;
   width: 8px;
@@ -319,12 +319,12 @@
 
 @media (pointer: coarse) {
   .nav-dot {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .nav-dot.active {
-    width: 40px;
+    width: 44px;
   }
 }
 
@@ -696,5 +696,22 @@
 
   .chat-card3d-compact .nav-dots {
     max-width: 80px;
+  }
+}
+
+/* 触屏：聊天内紧凑变体保证 ≥44px 触控目标。
+   .chat-card3d-compact 双类选择器特异性 (0,2,0) 高于上方通用 coarse 规则 (0,1,0)，
+   40px 覆盖会赢，故需同特异性且置于文件末尾的 coarse 覆盖 */
+@media (pointer: coarse) {
+  .chat-card3d-compact .control-btn,
+  .chat-card3d-compact .nav-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-card3d-compact .nav-dot {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
   }
 }

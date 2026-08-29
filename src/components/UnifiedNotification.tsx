@@ -262,7 +262,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           </span>
         )}
         {notification.action && (
-          <DsButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
+          <DsButton variant="ghost" size="sm" className="unified-notification-action [@media(pointer:coarse)]:!min-h-11" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
           </DsButton>
         )}

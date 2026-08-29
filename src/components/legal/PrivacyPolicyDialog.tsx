@@ -126,7 +126,7 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
           <DsButton
             variant="default"
             size="sm"
-            className="w-full justify-center"
+            className="w-full justify-center [@media(pointer:coarse)]:!min-h-11"
             onClick={() => onOpenChange(false)}
           >
             {t('actions.close')}

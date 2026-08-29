@@ -175,7 +175,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="sm"
                 onClick={confirmClear}
-                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3"
             >
                 {t('translation:actions.clear')}
             </DsButton>
@@ -183,7 +183,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="icon"
                 onClick={dismissClearConfirm}
-                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('common:cancel')}
             >
                 <X size={12} />
@@ -196,7 +196,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 size="icon"
                 onClick={requestClear}
                 disabled={!sourceText}
-                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9")}
+                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9")}
                 aria-label={t('translation:actions.clear')}
             >
                 <Trash size={14} />
@@ -207,7 +207,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 border-b lg:border-b-0 lg:border-r relative group/source">
             {/* 桌面工具栏：标题 + 常驻字数 + 清空 */}
-            <div data-wb-blur-surface className="hidden sm:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
                 <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
                     <TextAa size={14} className="shrink-0 text-muted-foreground" />
                     {t('translation:source_section.title')}
@@ -219,7 +219,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             </div>
 
             {/* 移动端工具栏：字数 + 清空 + 翻译/取消 */}
-            <div className="sm:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+            <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
                 <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                     <TextAa size={13} className="shrink-0" />
                     {charCounter}
@@ -231,7 +231,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             variant="ghost"
                             size="sm"
                             onClick={onCancelTranslation}
-                            className="h-8 px-2 text-muted-foreground"
+                            className={cn(COARSE_HIT, "h-8 px-2 text-muted-foreground")}
                         >
                             <X size={14} className="mr-1" />
                             {t('common:cancel')}
@@ -242,7 +242,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             size="sm"
                             onClick={onTranslate}
                             disabled={!sourceText.trim()}
-                            className="h-8 px-2 text-primary font-medium"
+                            className={cn(COARSE_HIT, "h-8 px-2 text-primary font-medium")}
                         >
                             {t('translation:actions.translate')}
                         </DsButton>
@@ -286,7 +286,8 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                     key={sample}
                                     type="button"
                                     onClick={() => handleSampleClick(sample)}
-                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none"
+                                    // truncate 的 overflow-hidden 会裁掉 ::after 外扩，coarse 直接抬 min-h 到 44px
+                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                                 >
                                     {sample}
                                 </button>
@@ -308,7 +309,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             </div>
 
             {/* 桌面主操作栏 */}
-            <div data-wb-blur-surface className="hidden sm:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
                 {isTranslating ? (
                     <DsButton
                         variant="default"

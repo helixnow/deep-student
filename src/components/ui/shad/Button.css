@@ -16,6 +16,13 @@
   }
 }
 
+@media (pointer: coarse) {
+  [data-shad-button][data-size="icon"] {
+    min-width: var(--touch-target-size) !important;
+    min-height: var(--touch-target-size) !important;
+  }
+}
+
 [data-shad-button] svg {
   min-width: 14px !important;
   min-height: 14px !important;

@@ -108,6 +108,13 @@
   cursor: pointer;
 }
 
+/* 触屏下扩大整行 label 命中区到 44px；开关/勾选框视觉尺寸保持不变 */
+@media (pointer: coarse) {
+  .section-header {
+    min-height: 44px;
+  }
+}
+
 .section-content {
   margin-left: 32px;
   display: flex;

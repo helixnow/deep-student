@@ -388,6 +388,12 @@
   .action-btn {
     min-height: 44px;
   }
+
+  /* 搜索框：44px 触控高度 + 16px 字号（避免 iOS 聚焦自动放大页面） */
+  .search-input {
+    min-height: 44px;
+    font-size: 16px;
+  }
 }
 
 /* 加载状态 */

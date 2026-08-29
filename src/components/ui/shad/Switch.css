@@ -84,7 +84,7 @@
    轨道本身仅 24px 高（sm 档 16×28），低于 44×44 触控基线。
    触屏下用透明伪元素以轨道中心为锚扩出至少 44×44 的命中区，
    视觉尺寸不变、不占布局（与 TouchTarget extend 模式同款做法）。 */
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
   [data-slot="switch"] {
     position: relative;
   }

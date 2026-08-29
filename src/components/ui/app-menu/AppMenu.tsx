@@ -21,6 +21,8 @@ import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { addVisualViewportChangeListener, getVisualViewportSize } from '../visualViewport';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -34,9 +36,33 @@ interface AppMenuContextValue {
   mode: 'dropdown' | 'context';
   position: { x: number; y: number };
   setPosition: (pos: { x: number; y: number }) => void;
+  /** 浮层归属 ownerId：非 null 时菜单打开会向 OverlayCoordinator 登记归属。 */
+  overlayOwnerId: string | null;
 }
 
 const AppMenuContext = React.createContext<AppMenuContextValue | null>(null);
+
+// ============ Overlay Owner Context ============
+// 面板级 overlayOwnerId 供给：面板（owner）用 Provider 包住内容后，其中所有
+// AppMenu 打开时自动向 OverlayCoordinator 登记浮层归属，无需逐个调用点传 prop。
+// 默认 null（不登记），既有调用点行为不变；AppMenu 的 overlayOwnerId prop
+// 优先于该 context（就近覆盖）。
+
+const AppMenuOverlayOwnerContext = React.createContext<string | null>(null);
+
+export interface AppMenuOverlayOwnerProviderProps {
+  /** 面板自定的稳定 ownerId（如 'input-bar-composer'）；null 表示不登记。 */
+  ownerId: string | null;
+  children: React.ReactNode;
+}
+
+export function AppMenuOverlayOwnerProvider({ ownerId, children }: AppMenuOverlayOwnerProviderProps) {
+  return (
+    <AppMenuOverlayOwnerContext.Provider value={ownerId}>
+      {children}
+    </AppMenuOverlayOwnerContext.Provider>
+  );
+}
 
 // 键盘导航的起始锚点：识别"当前选中"的菜单项（勾选态 / aria-checked）
 function isCheckedMenuItem(item: HTMLElement): boolean {
@@ -55,18 +81,27 @@ export interface AppMenuProps {
   onOpenChange?: (open: boolean) => void;
   /** 菜单模式：dropdown (下拉) 或 context (右键) */
   mode?: 'dropdown' | 'context';
+  /**
+   * 浮层归属 ownerId（可选）。提供后（或由 AppMenuOverlayOwnerProvider 供给），
+   * 菜单打开时会 registerOwnedOverlay({ ownerId, element: contentRef })，让 owner
+   * 面板的外点关闭 / back 处理把"点在菜单里"识别为面板内。默认不登记。
+   */
+  overlayOwnerId?: string;
   /** 根容器类名 */
   className?: string;
   children: React.ReactNode;
 }
 
-export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, children }: AppMenuProps) {
+export function AppMenu({ open, onOpenChange, mode = 'dropdown', overlayOwnerId, className, children }: AppMenuProps) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const actualOpen = isControlled ? !!open : internalOpen;
   const menuId = React.useId();
   const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
+  // prop 优先于 context；两者都缺省时为 null（不登记，60 消费点零破坏）。
+  const contextOverlayOwnerId = React.useContext(AppMenuOverlayOwnerContext);
+  const resolvedOverlayOwnerId = overlayOwnerId ?? contextOverlayOwnerId;
 
   const setOpen = React.useCallback(
     (next: boolean) => {
@@ -102,6 +137,11 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   React.useEffect(() => {
     if (!actualOpen) return;
     return registerBackHandler(() => {
+      // 触发器所在视图离屏时（保活视图被 inert / display:none 隐藏）让行给当前
+      // 活跃层：不吞返回键、也不关用户看不见的菜单。判定挂在触发器容器上——
+      // 内容层 portal 到 body / overlay 容器，反映不了宿主视图的隐藏态。
+      const el = containerRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
       setOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -126,7 +166,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   }, [actualOpen, handleKeyDown, setOpen]);
 
   return (
-    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition }}>
+    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition, overlayOwnerId: resolvedOverlayOwnerId }}>
       <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
@@ -250,10 +290,16 @@ export function AppMenuContent({
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
   const { t } = useTranslation('app_menu');
+  const { registerOwnedOverlay } = useOverlayCoordinator();
   // 嵌套层级感知：从最近的 <OverlayLayerProvider> 读取基准 z-index 并抬升一档；
   // 没有 Provider 时退化为默认 popover 档（行为与未引入 Provider 前一致）。
   const nestedZ = useNestedOverlayZ();
-  const [position, setPosition] = React.useState<{ top: number; left: number; origin: 'top' | 'bottom' }>({ top: 0, left: 0, origin: 'top' });
+  const [position, setPosition] = React.useState<{
+    top: number;
+    left: number;
+    origin: 'top' | 'bottom';
+    availableHeight: number;
+  }>({ top: 0, left: 0, origin: 'top', availableHeight: 0 });
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = ctx?.contentRef ?? fallbackContentRef;
@@ -311,6 +357,26 @@ export function AppMenuContent({
     };
   }, [isOpen, shouldRender]);
 
+  // 浮层归属登记：ownerId 存在且菜单可见（含关闭动画期）时登记 contentRef。
+  // effect 挂在 shouldRender 上而非 isOpen：portal 内容在 shouldRender 置 true
+  // 的那次 commit 才挂载，effect 于 commit 后执行，此时 contentRef.current 必已
+  // 就绪（挂在 isOpen/根组件上首开时 ref 还是 null，会被登记表判为无效登记）。
+  // 附带 selector 兜底：子菜单 SubContent 各自 portal 到 body、不在 contentRef
+  // 之内，但同样带 data-app-menu-id，selector 让点在飞出层里也判为归属内。
+  // 无 Provider 时 registerOwnedOverlay 为 noop，cleanup 幂等。
+  const overlayOwnerId = ctx?.overlayOwnerId ?? null;
+  const menuId = ctx?.menuId;
+  React.useEffect(() => {
+    if (!shouldRender || !overlayOwnerId || !menuId) return;
+    const element = contentRef.current;
+    if (!element) return;
+    return registerOwnedOverlay({
+      ownerId: overlayOwnerId,
+      element,
+      selector: `[data-app-menu-id="${menuId}"]`,
+    });
+  }, [contentRef, menuId, overlayOwnerId, registerOwnedOverlay, shouldRender]);
+
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
     const triggerEl = triggerRef?.current;
@@ -326,6 +392,9 @@ export function AppMenuContent({
         width: contentEl.offsetWidth,
         height: contentEl.offsetHeight,
       };
+      // 软键盘感知：用 visualViewport 尺寸做边界（键盘弹出时 innerHeight 不变，
+      // 只有 visualViewport.height 缩小），桌面端两者相等、行为不变。
+      const viewport = getVisualViewportSize();
       const gap = 6;
       let top: number;
       let left: number;
@@ -334,7 +403,7 @@ export function AppMenuContent({
       if (menuMode === 'context') {
         // 默认以点击点为左上角向下展开；下方空间不足时，改用同一点击点
         // 作为左下角向上展开。最后仍走统一边界钳位，处理菜单高于视口等极端情况。
-        const fitsBelow = contextPositionY + contentRect.height <= window.innerHeight - 8;
+        const fitsBelow = contextPositionY + contentRect.height <= viewport.height - 8;
         top = fitsBelow ? contextPositionY : contextPositionY - contentRect.height;
         left = contextPositionX;
         if (!fitsBelow) origin = 'bottom';
@@ -345,14 +414,14 @@ export function AppMenuContent({
         const triggerRect = triggerEl.getBoundingClientRect();
 
         top = triggerRect.bottom + gap;
-        if (top + contentRect.height > window.innerHeight - 8) {
+        if (top + contentRect.height > viewport.height - 8) {
           top = triggerRect.top - gap - contentRect.height;
           origin = 'bottom';
           if (top < 8) {
-            top = Math.max(8, window.innerHeight - contentRect.height - 8);
+            top = Math.max(8, viewport.height - contentRect.height - 8);
           }
         } else {
-          top = Math.min(top, window.innerHeight - contentRect.height - 8);
+          top = Math.min(top, viewport.height - contentRect.height - 8);
         }
 
         if (align === 'start') {
@@ -365,27 +434,35 @@ export function AppMenuContent({
       }
 
       // 边界检测
-      const maxLeft = window.innerWidth - contentRect.width - 8;
+      const maxLeft = viewport.width - contentRect.width - 8;
       left = Math.min(Math.max(8, left), maxLeft < 8 ? 8 : maxLeft);
       
-      const maxTop = window.innerHeight - contentRect.height - 8;
+      const maxTop = viewport.height - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
+      const availableHeight = Math.max(0, viewport.height - 16);
 
       setPosition((prev) => (
-        prev.top === top && prev.left === left && prev.origin === origin
+        prev.top === top
+        && prev.left === left
+        && prev.origin === origin
+        && prev.availableHeight === availableHeight
           ? prev
-          : { top, left, origin }
+          : { top, left, origin, availableHeight }
       ));
     };
 
     updatePosition();
     const rafId = requestAnimationFrame(updatePosition);
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition, { passive: true });
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    // 软键盘弹出/收起只反映在 visualViewport 上（对照 ComposerPanelOverlay）；
+    // window 监听保留作兜底，桌面无 visualViewport 变化时行为等价。
+    const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      removeVisualViewportListener();
     };
   }, [align, contentRef, contextPositionX, contextPositionY, menuMode, shouldRender, triggerRef]);
 
@@ -506,8 +583,11 @@ export function AppMenuContent({
         // 调用方传入的 style.zIndex 优先级最高（兼容显式覆盖）。
         ...(nestedZ !== null ? { zIndex: nestedZ } : {}),
         ...(maxHeight ? { maxHeight, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' } : {}),
+        '--app-menu-available-height': position.availableHeight
+          ? `${position.availableHeight}px`
+          : undefined,
         ...style,
-      }}
+      } as React.CSSProperties}
       onKeyDown={handleContentKeyDown}
       {...rest}
     >
@@ -656,6 +736,8 @@ interface AppMenuSubContextValue {
 const AppMenuSubContext = React.createContext<AppMenuSubContextValue | null>(null);
 
 export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const shouldOpenOnClick = openOnClick || isCoarsePointer;
   const [open, setOpen] = React.useState(false);
   const [keyboardFocusRequest, setKeyboardFocusRequest] = React.useState(0);
   const triggerRef = React.useRef<HTMLDivElement>(null);
@@ -710,14 +792,14 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   }, [claimActive, clearCloseTimer, open, releaseActive]);
 
   const scheduleClose = React.useCallback(() => {
-    if (openOnClick) return;
+    if (shouldOpenOnClick) return;
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
       releaseActive();
       setOpen(false);
       closeTimerRef.current = null;
     }, 120);
-  }, [clearCloseTimer, openOnClick, releaseActive]);
+  }, [clearCloseTimer, releaseActive, shouldOpenOnClick]);
 
   // 同级互斥：另一个同级子菜单成为激活项时，本子菜单立即收合
   const levelActiveSubId = levelCtx?.activeSubId;
@@ -741,7 +823,7 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
       setOpen,
       triggerRef,
       contentRef,
-      openOnClick,
+      openOnClick: shouldOpenOnClick,
       keyboardFocusRequest,
       openSub,
       openSubWithKeyboard,
@@ -751,9 +833,9 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
     }}>
       <div 
         className="app-menu-sub"
-        onMouseEnter={openOnClick ? undefined : openSub}
-        onMouseLeave={openOnClick ? undefined : scheduleClose}
-        onBlur={openOnClick ? undefined : scheduleClose}
+        onMouseEnter={shouldOpenOnClick ? undefined : openSub}
+        onMouseLeave={shouldOpenOnClick ? undefined : scheduleClose}
+        onBlur={shouldOpenOnClick ? undefined : scheduleClose}
       >
         {children}
       </div>
@@ -831,7 +913,11 @@ export function AppMenuSubContent({
 }: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
   const rootMenuCtx = React.useContext(AppMenuContext);
-  const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+  const [position, setPosition] = React.useState<{
+    left: number;
+    top: number;
+    availableHeight: number;
+  } | null>(null);
 
   const getEnabledItems = React.useCallback((): HTMLElement[] => {
     const root = subCtx?.contentRef.current;
@@ -878,36 +964,44 @@ export function AppMenuSubContent({
         width: contentEl.offsetWidth,
         height: contentEl.offsetHeight,
       };
+      // 与主菜单一致：边界用 visualViewport 尺寸，感知软键盘
+      const viewport = getVisualViewportSize();
       const viewportPadding = 8;
       const gap = 6;
 
-      const fitsRight = triggerRect.right + gap + contentRect.width <= window.innerWidth - viewportPadding;
+      const fitsRight = triggerRect.right + gap + contentRect.width <= viewport.width - viewportPadding;
       const preferredLeft = fitsRight
         ? triggerRect.right + gap
         : triggerRect.left - gap - contentRect.width;
-      const maxLeft = Math.max(viewportPadding, window.innerWidth - contentRect.width - viewportPadding);
+      const maxLeft = Math.max(viewportPadding, viewport.width - contentRect.width - viewportPadding);
       const left = Math.min(Math.max(viewportPadding, preferredLeft), maxLeft);
 
       const preferredTop = triggerRect.top - 4;
-      const maxTop = Math.max(viewportPadding, window.innerHeight - contentRect.height - viewportPadding);
+      const maxTop = Math.max(viewportPadding, viewport.height - contentRect.height - viewportPadding);
       const top = Math.min(Math.max(viewportPadding, preferredTop), maxTop);
+      const availableHeight = Math.max(0, viewport.height - viewportPadding * 2);
 
       setPosition((prev) => (
-        prev && prev.left === left && prev.top === top
+        prev
+        && prev.left === left
+        && prev.top === top
+        && prev.availableHeight === availableHeight
           ? prev
-          : { left, top }
+          : { left, top, availableHeight }
       ));
     };
 
     updatePosition();
     const frame = window.requestAnimationFrame(updatePosition);
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition, { passive: true });
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      removeVisualViewportListener();
     };
   }, [subCtx]);
 
@@ -988,7 +1082,10 @@ export function AppMenuSubContent({
         left: position?.left ?? 8,
         top: position?.top ?? 8,
         visibility: position ? 'visible' : 'hidden',
-      }}
+        '--app-menu-available-height': position?.availableHeight
+          ? `${position.availableHeight}px`
+          : undefined,
+      } as React.CSSProperties}
       {...rest}
     >
       <AppMenuSubLevelProvider>
@@ -1242,6 +1339,7 @@ export function AppMenuShortcut({ className, ...rest }: AppMenuShortcutProps) {
 
 export {
   AppMenu as Root,
+  AppMenuOverlayOwnerProvider as OverlayOwnerProvider,
   AppMenuTrigger as Trigger,
   AppMenuContent as Content,
   AppMenuGroup as Group,

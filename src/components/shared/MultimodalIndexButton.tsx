@@ -219,7 +219,8 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
           disabled={disabled || status === 'indexing'}
           className={cn(
             status === 'success' && 'border-green-500/50',
-            status === 'error' && 'border-red-500/50'
+            status === 'error' && 'border-red-500/50',
+            '[@media(pointer:coarse)]:!min-h-11'
           )}
         >
           {getIcon()}
@@ -235,7 +236,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             size="icon"
             onClick={handleRebuild}
             aria-label={t('common:chat.multimodal.rebuild')}
-            className="w-8 h-8"
+            className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <ArrowClockwise size={14} />
           </DsButton>

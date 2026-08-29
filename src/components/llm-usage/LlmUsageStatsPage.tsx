@@ -188,7 +188,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <XCircle size={48} className="text-destructive" />
         <p className="text-destructive">{error}</p>
-        <DsButton onClick={() => loadData()}>
+        <DsButton onClick={() => loadData()} className="[@media(pointer:coarse)]:!min-h-11">
           <ArrowsClockwise size={16} className="mr-2" />
           {t('actions.refresh')}
         </DsButton>
@@ -218,7 +218,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           {onBack && (
-            <DsButton variant="ghost" size="sm" onClick={onBack}>
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">
               ←
             </DsButton>
           )}
@@ -235,7 +235,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                 variant={timeRange === range ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setTimeRange(range)}
-                className="rounded-none first:rounded-l-md last:rounded-r-md"
+                className="rounded-none first:rounded-l-md last:rounded-r-md [@media(pointer:coarse)]:!min-h-11"
               >
                 {range}d
               </DsButton>
@@ -246,6 +246,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
             size="sm"
             onClick={() => loadData(true)}
             disabled={refreshing}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowsClockwise size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {t('actions.refresh')}

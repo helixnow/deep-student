@@ -188,6 +188,8 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           aria-disabled={disabled}
           className={cn(
             'absolute block h-3 w-3 rounded-full bg-primary shadow-none transition-colors',
+            // 粗指针（触屏）下通过透明伪元素将命中区扩展到 44x44，视觉尺寸保持 12px
+            "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:content-[''] [@media(pointer:coarse)]:after:-inset-[16px]",
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20',
             'hover:scale-110',
             disabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'

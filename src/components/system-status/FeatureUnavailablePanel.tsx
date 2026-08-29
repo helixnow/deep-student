@@ -56,7 +56,7 @@ export const FeatureUnavailablePanel: React.FC<FeatureUnavailablePanelProps> = (
               </p>
             )}
             <div className="mt-5 flex flex-wrap items-center gap-2">
-              <DsButton onClick={openRecovery}>
+              <DsButton onClick={openRecovery} className="[@media(pointer:coarse)]:!min-h-11">
                 <ShieldCheck size={16} className="mr-1.5" />
                 {t('common:maintenance.go_to_data_governance')}
               </DsButton>

@@ -163,8 +163,26 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             )}
             style={{ willChange: isEditing ? 'transform' : 'auto' }}
             onClick={() => onSelectSkill?.(skill)}
+            onKeyDown={(e) => {
+              // 只消费卡片本体上的按键，不劫持卡片内部按钮/菜单的键盘事件
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectSkill?.(skill);
+              } else if (e.key === 'e' || e.key === 'E') {
+                // 启用/停用快捷键：与卡片右下角开关同一存储写入（即时生效）
+                e.preventDefault();
+                setSkillDisabled(skill.id, !isDisabledSkill);
+              } else if ((e.key === 'Delete' || e.key === 'Backspace') && !isBuiltin && !disabled) {
+                // 删除仍走列表顶部行内确认横幅（风险操作二次确认）
+                e.preventDefault();
+                onDelete(skill);
+              }
+            }}
             role="button"
             tabIndex={0}
+            aria-label={getLocalizedSkillName(skill.id, skill.name, t)}
+            aria-keyshortcuts="Enter E Delete"
             layout
             transition={{
               layout: { type: 'spring', stiffness: 350, damping: 28 }
@@ -180,8 +198,9 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
                   <DsButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
-                    aria-label="favorite"
+                    className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
+                    title={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
+                    aria-label={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
                   </DsButton>
@@ -212,6 +231,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
                       // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
                       "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
+                      // 触屏（含 ≥lg 触屏平板）补足 44px 触控目标；!important 压过 max-lg:min-h-9
+                      "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5",
                       isDefaultEnabled 
                         ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
@@ -260,26 +281,30 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
                   title={
                     isDisabledSkill
                       ? t('skills:package.enable')
                       : t('skills:package.disable')
                   }
-                  aria-label={isDisabledSkill ? 'enable-skill' : 'disable-skill'}
+                  aria-label={
+                    isDisabledSkill
+                      ? t('skills:package.enable')
+                      : t('skills:package.disable')
+                  }
                 >
                   {isDisabledSkill
                     ? t('skills:package.enable')
                     : t('skills:package.disable')}
                 </DsButton>
-                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
+                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label={t('common:actions.edit')}>
                   <Pencil size={14} />
                 </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" aria-label={t('common:more')}>
                       <DotsThree size={14} />
                     </DsButton>
                   </AppMenuTrigger>

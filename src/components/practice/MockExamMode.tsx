@@ -63,6 +63,8 @@ interface MockExamModeProps {
   currentQuestionId?: string | null;
   /** 收藏标记题目 ID 集（宿主传入时优先；未传回退全局 store.questions，该 map 在此流程通常未加载） */
   markedQuestionIds?: ReadonlySet<string>;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
   className?: string;
 }
 
@@ -89,6 +91,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   onSubmit,
   currentQuestionId,
   markedQuestionIds,
+  isActive,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -127,13 +130,15 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // UI 状态（交卷确认为内联面板，非模态弹窗）
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
+  // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
+  // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
   useEffect(() => {
-    if (!showSubmitConfirm) return;
+    if (!showSubmitConfirm || isActive === false) return;
     return registerBackHandler(() => {
       setShowSubmitConfirm(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showSubmitConfirm]);
+  }, [showSubmitConfirm, isActive]);
   const [showScoreCard, setShowScoreCard] = useState(false);
   
   // 考试计时器 — 基于绝对时间戳
@@ -377,7 +382,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 setMockExamSession(null);
                 setTargetEndTime(null);
               }}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('mockExam.back')}
             </DsButton>
@@ -389,7 +394,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 autoSubmitTriggeredRef.current = false;
                 handleStart();
               }}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('mockExam.newExam')}
             </DsButton>
@@ -511,7 +516,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingPractice ? (
               <>
@@ -569,6 +574,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <DsButton
             variant="default"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setShowSubmitConfirm(true)}
             disabled={showSubmitConfirm}
           >
@@ -588,6 +594,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   useQuestionBankStore.getState().setCurrentQuestion(firstUnansweredId);
                   window.dispatchEvent(
@@ -631,7 +638,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="flex-1"
+                className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowSubmitConfirm(false)}
               >
                 {t('mockExam.cancel')}
@@ -639,7 +646,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="default"
                 size="sm"
-                className="flex-1"
+                className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void handleSubmit()}
               >
                 <CheckCircle size={14} className="mr-1" />

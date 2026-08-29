@@ -44,7 +44,7 @@ const ModernSelect: React.FC<ModernSelectProps> = ({
     >
       <DsButton
         variant="ghost"
-        className="select-trigger"
+        className="select-trigger [@media(pointer:coarse)]:!min-h-11"
         onClick={() => !disabled && setOpen((prev) => !prev)}
         disabled={disabled}
       >

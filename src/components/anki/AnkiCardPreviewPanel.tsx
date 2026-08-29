@@ -59,7 +59,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={showFront}
           onClick={() => setShowFront(true)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:!min-h-11"
         >
           <Eye size={14} />
           {t('anki:card_front')}
@@ -71,7 +71,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={!showFront}
           onClick={() => setShowFront(false)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:!min-h-11"
         >
           <Eye size={14} />
           {t('anki:card_back')}
@@ -117,7 +117,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
 
         {card.fields && Object.keys(card.fields).length > 0 ? (
           <details>
-            <summary className="cursor-pointer select-none py-1 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3 text-xs text-muted-foreground">
               {t('anki:extra_fields')} ({Object.keys(card.fields).length})
             </summary>
             <div className="mt-1 space-y-1">

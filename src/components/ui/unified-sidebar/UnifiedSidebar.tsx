@@ -46,15 +46,34 @@ import type {
  * 根据显示模式（桌面端/移动端/移动滑动模式）提供不同的样式值
  */
 const SIDEBAR_STYLES = {
-  /** 桌面端样式 */
+  /**
+   * 桌面端样式。
+   * 2026-08 移动端审计：≥768 的触屏平板（iPad 竖/横屏）也走本档——
+   * coarse 指针下列表项补 min-h-11（否则 py-2 行仅 ~29–36px），搜索框
+   * 字号抬到 16px 防 iOS 聚焦自动放大（高度由 Input 基类 coarse !min-h 44 保证）。
+   * 细指针桌面维持原紧凑密度。
+   */
   desktop: {
     header: { height: '40px', padding: 'px-2', gap: 'gap-0.5' },
-    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
+    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[max(16px,var(--font-size-lg))]' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
+    item: { padding: 'gap-2.5 px-2 py-2 mx-1 [@media(pointer:coarse)]:min-h-11', iconSize: 'w-4 h-4', textSize: 'text-ui', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
-    actions: { gap: 'gap-0.5', opacity: 'opacity-0 group-hover:opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
+    /**
+     * 行内编辑/删除操作。
+     * 2026-08 移动端审计：≥768 的触屏平板走本 desktop 档，hover-only + 约 20px
+     * 视觉按钮在无 hover 设备上不可达。coarse 指针下改为常显，并用
+     * --touch-target-size（44px）补足触控目标（基类在 lg 以上收缩为 32px）；
+     * gap 同步加大避免误触删除。细指针桌面维持原 hover 渐显 + 紧凑尺寸，
+     * 另补 focus-within 常显保证键盘可达。
+     */
+    actions: {
+      gap: 'gap-0.5 [@media(pointer:coarse)]:gap-1',
+      opacity: 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100',
+      btnPadding: 'p-1 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-w-[var(--touch-target-size)]',
+      iconSize: 'w-3 h-3 [@media(pointer:coarse)]:w-4 [@media(pointer:coarse)]:h-4',
+    },
   },
   /** 移动端样式（drawer/sheet 模式） */
   mobile: {
@@ -80,7 +99,7 @@ const SIDEBAR_STYLES = {
     header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
     search: { iconSize: 'w-4 h-4', inputPadding: 'pl-9 pr-3 py-2 text-base' },
     button: { padding: 'p-2', iconSize: 'w-5 h-5' },
-    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-[15px]', indicator: 'w-[3px] h-5' },
+    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-md', indicator: 'w-[3px] h-5' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
     actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
@@ -318,8 +337,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
   if (collapsed && !isMobileMode) {
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
-        <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
+        {/* coarse 指针下 min-h 压过 40px 固定高度，容纳 44px 触控按钮 */}
+        <div className="flex items-center justify-center px-1 [@media(pointer:coarse)]:min-h-11" style={{ height: '40px' }}>
+          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
           </DsButton>
         </div>
@@ -347,7 +367,8 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 搜索框和操作按钮行 - 只在有内容时显示 */}
       {(showSearch || showRefresh || showCreate || (showCollapse && !isMobileMode) || extraActions || rightActions || (!isMobileMode && title)) && (
         <div
-          className={cn('flex items-center gap-1.5', styles.header.padding)}
+          // coarse 指针下 min-h 压过桌面档 40px 固定高度，容纳 44px 搜索框/按钮
+          className={cn('flex items-center gap-1.5 [@media(pointer:coarse)]:min-h-11', styles.header.padding)}
           style={{ height: styles.header.height }}
         >
           {/* 搜索框或标题 */}
@@ -383,13 +404,13 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
               <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
             </DsButton>
           )}
 
           {showCreate && (
-            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
               <Plus className={styles.button.iconSize} weight="regular" />
             </DsButton>
           )}
@@ -398,7 +419,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
+            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
               <CaretLeft size={16} weight="regular" />
             </DsButton>
           )}
@@ -459,7 +480,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
       )}>
         <p>{error}</p>
         {onRetry && (
-          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
+          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2 [@media(pointer:coarse)]:!min-h-11">
             {t('retry')}
           </DsButton>
         )}
@@ -490,7 +511,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
+          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline [@media(pointer:coarse)]:!min-h-11', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
           </DsButton>
         )}
@@ -626,7 +647,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               {badge && (
                 <span className={cn(
                   'px-1.5 py-0.5 rounded bg-accent text-accent-foreground font-medium flex-shrink-0',
-                  isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-[10px]'
+                  isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-2xs'
                 )}>
                   {badge}
                 </span>
@@ -650,10 +671,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               </p>
             )}
             {stats && (
-              <div className={cn(
-                'flex items-center gap-2 mt-0.5 text-muted-foreground',
-                isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-[11px]'
-              )}>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                 {stats}
               </div>
             )}

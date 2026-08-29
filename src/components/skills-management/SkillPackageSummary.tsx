@@ -199,7 +199,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_trusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-primary hover:underline"
+            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-[10px] text-primary hover:underline"
           >
             {t('skills:package.trust_enable')}
           </DsButton>
@@ -210,7 +210,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_untrusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-muted-foreground hover:underline"
+            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-[10px] text-muted-foreground hover:underline"
           >
             {t('skills:package.trust_revoke')}
           </DsButton>

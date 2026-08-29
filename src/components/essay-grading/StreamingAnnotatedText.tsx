@@ -16,8 +16,13 @@ import {
   type StreamingMarker,
   type StreamingParseResult,
 } from '@/essay-grading/streamingMarkerParser';
+import {
+  buildSuggestionChange,
+  type SuggestionChange,
+} from '@/essay-grading/suggestionAnchors';
 import { ScoreCard } from './ScoreCard';
 import {
+  ArrowCounterClockwise,
   ArrowRight,
   CaretLeft,
   CaretRight,
@@ -47,8 +52,12 @@ interface StreamingAnnotatedTextProps {
   activeMarkerIndex?: number | null;
   /** 批注选中回调；点击已选中批注传 null（收起） */
   onMarkerSelect?: (index: number | null) => void;
-  /** 应用批注中的修改建议到输入区（replace/del 可用） */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 应用批注中的修改建议到输入区（replace/del 可用，前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议（反向锚定替换） */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合（据此渲染已采纳态） */
+  appliedSuggestionKeys?: ReadonlySet<string>;
 }
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -387,8 +396,13 @@ const MarkerDetailCard: React.FC<{
   marker: StreamingMarker;
   t: TFn;
   nav?: MarkerCardNav;
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
-}> = ({ marker, t, nav, onApplySuggestion }) => {
+  /** 可直接落回原文的修改（含前后文锚点与稳定 key），由父组件从未过滤 markers 构造 */
+  applyChange?: SuggestionChange | null;
+  /** 该修改是否已被采纳（据 key 判定） */
+  isApplied?: boolean;
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+}> = ({ marker, t, nav, applyChange, isApplied = false, onApplySuggestion, onUndoSuggestion }) => {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
@@ -398,13 +412,6 @@ const MarkerDetailCard: React.FC<{
   const suggestionText = marker.type === 'replace' ? marker.newText : marker.type === 'ins' ? marker.content : undefined;
   const originalText = marker.type === 'replace' ? marker.oldText : marker.type === 'ins' ? undefined : marker.content;
   const explanation = marker.explanation || marker.reason || marker.comment;
-
-  // 可直接落到原文的修改：替换（old→new）与删除（content→空）
-  const applyChange = marker.type === 'replace' && marker.oldText && marker.newText
-    ? { original: marker.oldText, replacement: marker.newText }
-    : marker.type === 'del' && marker.content
-      ? { original: marker.content, replacement: '' }
-      : null;
 
   const handleCopy = () => {
     if (!suggestionText) return;
@@ -446,7 +453,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_prev')}
                 onClick={nav.onPrev}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretLeft size={11} />
               </DsButton>
@@ -457,7 +464,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_next')}
                 onClick={nav.onNext}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretRight size={11} />
               </DsButton>
@@ -467,7 +474,7 @@ const MarkerDetailCard: React.FC<{
                 iconOnly
                 aria-label={t('essay_grading:result_ui.annotation_close')}
                 onClick={nav.onClose}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <X size={11} />
               </DsButton>
@@ -520,26 +527,46 @@ const MarkerDetailCard: React.FC<{
         </div>
       )}
 
-      {/* 应用修改 / 复制建议 */}
+      {/* 应用修改（含已采纳态与撤销）/ 复制建议 */}
       {(suggestionText || (applyChange && onApplySuggestion)) && (
         <div className="mt-2 flex items-center justify-end gap-1">
           {applyChange && onApplySuggestion && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => onApplySuggestion(applyChange)}
-              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
-            >
-              <Check size={12} />
-              {t('essay_grading:markers.apply')}
-            </DsButton>
+            isApplied ? (
+              <>
+                <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
+                  <Check size={12} weight="bold" />
+                  {t('essay_grading:markers.applied')}
+                </span>
+                {onUndoSuggestion && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onUndoSuggestion(applyChange)}
+                    className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                  >
+                    <ArrowCounterClockwise size={12} />
+                    {t('essay_grading:markers.undo')}
+                  </DsButton>
+                )}
+              </>
+            ) : (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => onApplySuggestion(applyChange)}
+                className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
+              >
+                <Check size={12} />
+                {t('essay_grading:markers.apply')}
+              </DsButton>
+            )
           )}
           {suggestionText && (
             <DsButton
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
               {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
@@ -607,6 +634,8 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   activeMarkerIndex,
   onMarkerSelect,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
 }) => {
   const { t } = useTranslation(['essay_grading']);
 
@@ -675,6 +704,16 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
     : null;
   const isCardOpen = activeIndex != null && activeIndex === cardIndex && !!cardMarker;
 
+  // ★ 可采纳修改从「未过滤的」markers 构造：前后文锚点按原文贡献重建，
+  // 筛选视图把 ins 内容降级为 text，混入锚点会破坏定位
+  const cardApplyChange = useMemo(
+    () => (cardIndex != null ? buildSuggestionChange(markers, cardIndex) : null),
+    [markers, cardIndex]
+  );
+  const cardIsApplied = Boolean(
+    cardApplyChange?.key && appliedSuggestionKeys?.has(cardApplyChange.key)
+  );
+
   const cardNav = useMemo<MarkerCardNav | undefined>(() => {
     if (cardIndex == null) return undefined;
     const pos = annotatedIndices.indexOf(cardIndex);
@@ -739,7 +778,15 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
                   )}
                 >
                   <div className="min-h-0 overflow-hidden">
-                    <MarkerDetailCard marker={cardMarker!} t={t} nav={cardNav} onApplySuggestion={onApplySuggestion} />
+                    <MarkerDetailCard
+                      marker={cardMarker!}
+                      t={t}
+                      nav={cardNav}
+                      applyChange={cardApplyChange}
+                      isApplied={cardIsApplied}
+                      onApplySuggestion={onApplySuggestion}
+                      onUndoSuggestion={onUndoSuggestion}
+                    />
                   </div>
                 </div>
               )}

@@ -161,17 +161,17 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!p-2.5 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
             <X size={14} />
           </DsButton>
         </div>
 
-        {/* 操作区（窄屏/英文长文案允许换行；触屏放大到 ≥36px 命中区） */}
+        {/* 操作区（窄屏/英文长文案允许换行；触屏放大到 ≥44px 命中区） */}
         <div className="mt-2.5 flex flex-wrap gap-2 pl-10">
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
+            className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11"
             onClick={openDataGovernance}
           >
             {t('data:governance.toast_view_details')}
@@ -182,7 +182,7 @@ export const MigrationStatusBanner: React.FC = () => {
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:h-9"
+            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:!h-11"
             onClick={dismiss}
           >
             {t('common:actions.later')}
@@ -217,7 +217,7 @@ const CopyDiagnosticButton: React.FC = () => {
     <DsButton
       variant="ghost"
       size="sm"
-      className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-9"
+      className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11"
       onClick={handleCopy}
     >
       <Copy size={12} className="mr-1" />

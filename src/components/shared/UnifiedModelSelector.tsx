@@ -222,7 +222,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (!allowEmpty) return null;
 
     return (
-      <DsButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
         <div className="flex items-center gap-2">
            <div className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
              <Prohibit size={14} />
@@ -246,7 +246,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
       : 'text-destructive/80';
 
     return (
-      <DsButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* 供应商图标 */}
           <div className="flex-shrink-0">
@@ -343,7 +343,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (variant === 'full') {
       // 全宽选择器样式（类似 SelectTrigger）
       return (
-        <DsButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
+        <DsButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 [@media(pointer:coarse)]:!min-h-11 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
           <span className="flex-1 min-w-0 pr-2 text-left text-sm truncate">
             {isEmptySelected && !allowEmpty ? (
               <span className="text-muted-foreground">{triggerDisplayText}</span>
@@ -363,7 +363,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         size="sm"
         disabled={disabled}
         className={cn(
-          'h-8 px-2 gap-1.5 font-medium text-muted-foreground justify-start',
+          'h-8 [@media(pointer:coarse)]:!min-h-11 px-2 gap-1.5 font-medium text-muted-foreground justify-start',
           className
         )}
       >
@@ -399,7 +399,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('chat_host:model_panel.search_placeholder')}
-              className="h-7 text-xs pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
+              className="h-7 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-[16px] pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
 />
           </div>

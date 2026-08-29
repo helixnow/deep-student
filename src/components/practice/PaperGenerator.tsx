@@ -51,6 +51,8 @@ interface PaperGeneratorProps {
   examId: string;
   availableTags?: string[];
   onGenerate?: (paper: GeneratedPaper) => void;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
   className?: string;
 }
 
@@ -64,17 +66,20 @@ const DIFFICULTY_KEYS = [
   { key: 'very_hard', color: 'bg-destructive/10 text-destructive' },
 ];
 
-const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode }> = [
-  { key: 'preview', icon: <Eye size={16} /> },
-  { key: 'pdf', icon: <DownloadSimple size={16} /> },
-  { key: 'word', icon: <FileText size={16} /> },
-  { key: 'markdown', icon: <FileText size={16} /> },
+// PDF / Word 导出尚未实现：入口保留但置灰 + 徽标，避免用户选中后
+// 到导出一步才发现"即将推出"（此前四格平权展示形成误导）。
+const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode; available: boolean }> = [
+  { key: 'preview', icon: <Eye size={16} />, available: true },
+  { key: 'pdf', icon: <DownloadSimple size={16} />, available: false },
+  { key: 'word', icon: <FileText size={16} />, available: false },
+  { key: 'markdown', icon: <FileText size={16} />, available: true },
 ];
 
 export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   examId,
   availableTags = [],
   onGenerate,
+  isActive,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -101,13 +106,15 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
 
+  // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
+  // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
   useEffect(() => {
-    if (!showPreview) return;
+    if (!showPreview || isActive === false) return;
     return registerBackHandler(() => {
       setShowPreview(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showPreview]);
+  }, [showPreview, isActive]);
   const [generationError, setGenerationError] = useState<string | null>(null);
   
   // 计算总题数
@@ -247,12 +254,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 <DsButton
                   variant="outline"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setShowPreview(false)}
                 >
                   {t('paper.back')}
                 </DsButton>
                 {exportFormat !== 'preview' && (
-                  <DsButton size="sm" onClick={handleExport}>
+                  <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleExport}>
                     <Download size={16} className="mr-1" />
                     {t('paper.export')}
                   </DsButton>
@@ -262,8 +270,8 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           </CardHeader>
         </Card>
         
-        {/* 试卷内容 */}
-        <CustomScrollArea className="max-h-[min(60vh,520px)]" fullHeight={false}>
+        {/* 试卷内容：上限随视口走，大窗口不再浪费一半空间（原 min(60vh,520px)） */}
+        <CustomScrollArea className="max-h-[min(74vh,960px)]" fullHeight={false}>
           <div className="space-y-4 pr-0 sm:pr-4">
             {generatedPaper.questions.map((question, idx) => (
               <Card key={question.id} className="overflow-hidden [content-visibility:auto] [contain-intrinsic-size:auto_72px]">
@@ -443,20 +451,28 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <div className="space-y-2">
           <Label>{t('paper.exportFormat')}</Label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {EXPORT_FORMAT_KEYS.map(({ key, icon }) => (
+            {EXPORT_FORMAT_KEYS.map(({ key, icon, available }) => (
               <DsButton
                 key={key}
                 variant="ghost" size="sm"
+                disabled={!available}
+                title={available ? undefined : t('paper.exportComingSoon')}
                 onClick={() => setExportFormat(key)}
                 className={cn(
-                  '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
+                  '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg [@media(pointer:coarse)]:!min-h-11 border',
                   exportFormat === key
                     ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:bg-[var(--interactive-hover)]'
+                    : 'border-border hover:bg-[var(--interactive-hover)]',
+                  !available && 'opacity-55',
                 )}
               >
                 {icon}
                 <span className="text-xs">{t(`paper.format.${key}`)}</span>
+                {!available && (
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] leading-4">
+                    {t('paper.comingSoonBadge')}
+                  </Badge>
+                )}
               </DsButton>
             ))}
           </div>
@@ -474,7 +490,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <DsButton
           onClick={handleGenerate}
           disabled={isLoadingPractice || totalQuestions === 0}
-          className="h-9 w-full text-sm"
+          className="h-9 w-full text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           {isLoadingPractice ? (
             <>

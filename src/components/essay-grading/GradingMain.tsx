@@ -5,10 +5,12 @@ import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
 import { InlineSettingsPanel } from './InlineSettingsPanel';
 import { useWbSysSize } from '@/features/workbench/apps/system/useWbSysSize';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import type { EssayTextStats } from '@/essay-grading/textStats';
+import type { SuggestionChange } from '@/essay-grading/suggestionAnchors';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 
@@ -68,8 +70,17 @@ interface GradingMainProps {
   /** 重试回调 */
   onRetry?: () => void;
   isPartialResult?: boolean;
-  /** 采纳批改建议：应用一处修改到原文 */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 采纳批改建议：应用一处修改到原文（前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议（反向锚定替换） */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合（详情卡据此渲染已采纳态） */
+  appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 把当前轮批改结果存为笔记 */
+  onSaveAsNote?: () => void;
+  /** 把批改结果送进制卡链路 */
+  onGenerateCards?: () => void;
+  isGeneratingCards?: boolean;
 
   // Round Props
   currentRound: number;
@@ -78,6 +89,8 @@ interface GradingMainProps {
   onModesChange?: () => void;
   /** OS 宿主提供外部设置标签时，设置在所有窗口宽度下都替换完整主区 */
   settingsAsPage?: boolean;
+  /** ★ 标签页保活：当前是否为活跃标签页；非活跃（display:none 驻留）实例不注册返回键。未传视为活跃 */
+  isActive?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -145,17 +158,28 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onRetry,
   isPartialResult,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
+  onSaveAsNote,
+  onGenerateCards,
+  isGeneratingCards,
   currentRound,
   onModesChange,
   settingsAsPage = false,
+  isActive,
   roundNavigation,
 }) => {
   // 容器级断点：工作台可能运行在 workbench 窗口里（窗口远窄于视口），
   // viewport media query 在那里恒等于"桌面大屏"会把三栏挤成一条（O18 同款问题），
   // 故以工作台自身宽度分级：compact(<640) 走移动布局。
+  // 同时兼顾视口断点（与 TranslationMain 同口径）：移动壳视口 <768，
+  // 而 compact 阈值是 640——640~767 的视口若只看容器分级会误走桌面
+  // 分栏 + 设置整页替换且不注册返回键，故两者取并集。
+  // 桌面视口（≥768）下 viewport 分支恒为 false，行为不变。
   const { t } = useTranslation(['essay_grading']);
   const { ref: layoutRef, sizeClass } = useWbSysSize();
-  const isSmallScreen = sizeClass === 'compact';
+  const { isSmallScreen: viewportIsSmallScreen } = useBreakpoint();
+  const isSmallScreen = sizeClass === 'compact' || viewportIsSmallScreen;
   const useSettingsPage = settingsAsPage || !isSmallScreen;
 
   // 左右 / 上下分栏：与翻译工作台同一口径——非小屏默认左右，仅当主区
@@ -192,13 +216,15 @@ export const GradingMain: React.FC<GradingMainProps> = ({
 
   // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
   // 桌面端设置是独立整页视图（标签页语义），不属于 overlay，不劫持返回键。
+  // ★ 标签页保活：TabPanelContainer 用 display:none 驻留非活跃实例，
+  //   其设置区若曾展开会持续注册返回键并吞掉活跃标签页的返回操作，故 isActive gate。
   useEffect(() => {
-    if (useSettingsPage || !showPromptEditor) return;
+    if (isActive === false || useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
+  }, [isActive, useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 共享面板（各断点复用同一份 props，状态源唯一：showPromptEditor） ==========
   const inputPanel = (
@@ -233,7 +259,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       textStats={inputTextStats}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
-      onOpenSettings={settingsAsPage ? undefined : () => setShowPromptEditor(!showPromptEditor)}
+      // 📱 移动壳视口（<768）不给页内设置入口：宿主移动顶栏（learning-hub
+      // rightActions 更多菜单 → 设置，经 essay:openSettings 事件）已提供，页内
+      // 保留会形成重复次级入口。仅看视口不看容器 compact——桌面窄容器
+      // （分屏/浮窗）没有移动顶栏，页内按钮仍是唯一入口
+      onOpenSettings={settingsAsPage || viewportIsSmallScreen ? undefined : () => setShowPromptEditor(!showPromptEditor)}
       uploadedImages={uploadedImages}
       onRemoveImage={onRemoveImage}
       onRetryImageOcr={onRetryImageOcr}
@@ -258,6 +288,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onRetry={onRetry}
       isPartialResult={isPartialResult}
       onApplySuggestion={onApplySuggestion}
+      onUndoSuggestion={onUndoSuggestion}
+      appliedSuggestionKeys={appliedSuggestionKeys}
+      onSaveAsNote={onSaveAsNote}
+      onGenerateCards={onGenerateCards}
+      isGeneratingCards={isGeneratingCards}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
     />
@@ -267,6 +302,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     <InlineSettingsPanel
       isOpen={showPromptEditor}
       onClose={() => setShowPromptEditor(false)}
+      // 📱 仅移动壳视口隐藏自绘标题行（宿主顶栏提供 chrome 与设置开关）；
+      // 桌面窄容器（分屏/浮窗）没有移动顶栏，标题行 X 仍是可见退出路径
+      mobileFullscreen={!useSettingsPage && viewportIsSmallScreen}
       modeId={modeId}
       setModeId={setModeId}
       modes={modes}
@@ -351,7 +389,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
               </div>
             </div>
           ) : (
+            /* 小屏固定 40/60 上下堆叠不可拖（fixed 模式无手柄）；桌面窄容器仍可拖 */
             <VerticalResizable
+              fixed={isSmallScreen}
               initial={isSmallScreen ? 0.4 : 0.45}
               minTop={isSmallScreen ? 0.2 : 0.25}
               minBottom={isSmallScreen ? 0.3 : 0.35}

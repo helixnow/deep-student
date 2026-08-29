@@ -22,7 +22,7 @@
  * 📌 推荐接入点（2026-07 移动端审计 H-4：本基元此前全仓库零消费）：
  * - 聊天会话列表（SessionSidebarContent / SessionBrowser 的移动路径）
  * - 学习资源 Finder 文件列表（FinderFileList 移动壳）
- * - 笔记列表（NotesSidebarV2 移动抽屉内容）
+ * - 笔记列表（workbench 笔记侧栏树的移动路径）
  * - 复习队列 / 错题列表等任何"下拉重新拉取"语义的移动长列表
  * 接入时本组件自身就是滚动容器，外层给高度（h-full），不要再嵌 overflow 容器。
  */

@@ -3,7 +3,8 @@
  *
  * 模拟考试题型/难度配比、组卷器题型配置共用。
  * 步进器保证移动端可以精确 ±1 调整（滑杆在窄屏上很难精确拖动），
- * 触控目标 ≥44px（DsButton 移动端已保证 44px 触控区域）。
+ * 触控目标 ≥44px。注意：DsButton 在 lg 断点（如 iPad 横屏）会压缩到 ~30px，
+ * 因此这里通过 [@media(pointer:coarse)] 显式保证触控设备上 ≥44px。
  */
 
 import React, { useCallback } from 'react';
@@ -62,6 +63,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           aria-label={t('stepper.decrease', { label })}
           disabled={value <= min}
           onClick={() => onChange(clamp(value - 1))}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Minus size={14} />
         </DsButton>
@@ -80,6 +82,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           aria-label={t('stepper.increase', { label })}
           disabled={value >= max}
           onClick={() => onChange(clamp(value + 1))}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Plus size={14} />
         </DsButton>

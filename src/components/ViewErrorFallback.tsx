@@ -35,7 +35,7 @@ export const ViewErrorFallback: React.FC<ViewErrorFallbackProps> = ({ error, onR
         </pre>
       )}
       {onRetry && (
-        <DsButton variant="primary" size="sm" onClick={onRetry} className="text-xs">
+        <DsButton variant="primary" size="sm" onClick={onRetry} className="text-xs [@media(pointer:coarse)]:!min-h-11">
           {i18n.t('common:errorBoundary.retry', '重试')}
         </DsButton>
       )}

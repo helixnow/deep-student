@@ -7,6 +7,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
+// 分段/对齐规则与只读查看器（TranslationViewerWrapper）共享，保持两处一致
+import { alignTexts } from '@/translation/segmentation';
 
 interface ComparisonViewProps {
   sourceText: string;
@@ -19,81 +21,10 @@ interface ComparisonViewProps {
 /** 容器窄于该宽度时改为"原文块+译文块"纵向交错布局（双列各 <180px 时可读性崩坏） */
 const NARROW_STACK_THRESHOLD = 480;
 
-/** 触屏命中区扩展：小图标钮扩到 ≥44px，视觉不变（与 TranslationMain.COARSE_HIT 同款范式） */
+/** 触屏命中区扩展：24px（w-6 h-6）图标钮扩到 ≥44px（24 + 2×10），视觉不变
+ *  （与 TranslationMain.COARSE_HIT 同款范式；此处按钮更小，inset 相应加大） */
 const COARSE_HIT =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
-
-/** 按段落切分；段落数不一致时降级为句子级启发式对齐 */
-const splitParagraphs = (text: string): string[] =>
-  text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-
-/**
- * 句子级切分：兼顾 CJK（。！？；）与西文（. ! ? ;）终止符，
- * 保留终止符本身，忽略纯空白片段。
- */
-const splitSentences = (text: string): string[] => {
-  const matches = text.match(/[^。！？；.!?;\n]+[。！？；.!?;]*/g);
-  return (matches ?? []).map((s) => s.trim()).filter(Boolean);
-};
-
-interface AlignedPair {
-  src: string;
-  tgt: string;
-}
-
-interface AlignmentResult {
-  pairs: AlignedPair[];
-  /** 段落数不一致、退化到句子对齐 */
-  usedSentenceFallback: boolean;
-}
-
-/**
- * 对齐策略：
- * 1. 段落数一致 → 直接按段配对（最稳）。
- * 2. 段落数不一致 → 双方按句子重切；句子数接近时按比例分桶对齐，
- *    否则仍按索引硬配对但明确提示「按句对齐」而非静默错位。
- */
-const alignTexts = (sourceText: string, translatedText: string): AlignmentResult => {
-  const srcParas = splitParagraphs(sourceText);
-  const tgtParas = splitParagraphs(translatedText);
-
-  if (srcParas.length === tgtParas.length || tgtParas.length === 0) {
-    const maxLen = Math.max(srcParas.length, tgtParas.length);
-    const pairs: AlignedPair[] = [];
-    for (let i = 0; i < maxLen; i++) {
-      pairs.push({ src: srcParas[i] || '', tgt: tgtParas[i] || '' });
-    }
-    return { pairs, usedSentenceFallback: false };
-  }
-
-  // 段落数不一致：句子级启发式
-  const srcSents = splitSentences(sourceText);
-  const tgtSents = splitSentences(translatedText);
-  if (srcSents.length === 0 || tgtSents.length === 0) {
-    const maxLen = Math.max(srcParas.length, tgtParas.length);
-    const pairs: AlignedPair[] = [];
-    for (let i = 0; i < maxLen; i++) {
-      pairs.push({ src: srcParas[i] || '', tgt: tgtParas[i] || '' });
-    }
-    return { pairs, usedSentenceFallback: false };
-  }
-
-  // 以较少的一侧为行数，按比例把较多一侧的句子分桶合并
-  const rows = Math.min(srcSents.length, tgtSents.length);
-  const bucket = (sents: string[], rowCount: number): string[] => {
-    const out: string[] = [];
-    for (let i = 0; i < rowCount; i++) {
-      const start = Math.round((i * sents.length) / rowCount);
-      const end = Math.round(((i + 1) * sents.length) / rowCount);
-      out.push(sents.slice(start, end).join(' '));
-    }
-    return out;
-  };
-  const srcRows = bucket(srcSents, rows);
-  const tgtRows = bucket(tgtSents, rows);
-  const pairs: AlignedPair[] = srcRows.map((src, i) => ({ src, tgt: tgtRows[i] || '' }));
-  return { pairs, usedSentenceFallback: true };
-};
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
 
 /**
  * 双语对照视图

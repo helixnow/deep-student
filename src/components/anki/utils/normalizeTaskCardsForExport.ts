@@ -35,10 +35,11 @@ const resolveFields = (card: AnkiCard): Record<string, string> => {
 /**
  * 比较导出相关内容是否一致，用于识别“确有编辑”的卡。
  *
- * 注意：块快照卡经后端 `chat_v2_anki_cards_result` 落库时只保留
- * id/front/back/text/tags 等核心键，fields/extra_fields/template_id 会
- * 丢失（serde 默认空值）。因此当某一侧的字段/模板为空时视为“未知”而
- * 非“不同”，只比较双方都有值的维度，避免信息缺失的快照误判为编辑版。
+ * 注意：历史块快照可能只保留 id/front/back/text/tags 等核心键，
+ * fields/extra_fields/template_id 为空。因此当某一侧的字段/模板为空时
+ * 视为“未知”而非“不同”，只比较双方都有值的维度，避免信息缺失的快照
+ * 误判为编辑版。当前 ChatAnki 生产路径直接维护卡片块；旧 CardAgent
+ * 结果回调命令已经注销。
  */
 const cardContentEquals = (a: AnkiCard, b: AnkiCard): boolean => {
   const core = (card: AnkiCard) =>
