@@ -21,14 +21,19 @@ use tokio::time::timeout;
 
 use super::super::error::{ChatV2Error, ChatV2Result};
 use super::super::events::{event_types, ChatV2EventEmitter};
+#[cfg(feature = "mcp")]
 use super::super::runtime_roots::artifact_root;
+#[cfg(feature = "mcp")]
 use super::super::tools::mcp_content_materializer::{
     materialize_mcp_tool_output, McpOutputProvenance,
 };
 use super::super::types::{MessageBlock, SourceInfo};
+#[cfg(feature = "mcp")]
 use crate::mcp::client::{Content, ToolResult};
+#[cfg(feature = "mcp")]
 use crate::mcp::global::get_global_mcp_client;
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
+#[cfg(feature = "mcp")]
 use tauri::Manager;
 
 // ============================================================================
@@ -111,6 +116,7 @@ impl ChatV2ToolAdapter {
     /// - `chunk`: 流式输出（如果工具支持）
     /// - `end`: 工具调用完成，result 包含输出
     /// - `error`: 工具调用失败或超时
+    #[cfg(feature = "mcp")]
     pub async fn call_mcp_tool(
         &self,
         message_id: &str,
@@ -233,7 +239,45 @@ impl ChatV2ToolAdapter {
         }
     }
 
+    /// MCP 未编译时的兜底实现：发射 error 事件并返回错误（mobile-slim 等裁剪构建）
+    #[cfg(not(feature = "mcp"))]
+    pub async fn call_mcp_tool(
+        &self,
+        message_id: &str,
+        tool_name: &str,
+        tool_input: Value,
+    ) -> ChatV2Result<(String, Value)> {
+        let block_id = MessageBlock::generate_id();
+        let start_payload = json!({
+            "toolName": tool_name,
+            "toolInput": tool_input
+        });
+        self.emitter.emit_start(
+            event_types::TOOL_CALL,
+            message_id,
+            Some(&block_id),
+            Some(start_payload),
+            None,
+        );
+
+        let error_msg = "MCP 功能未启用（当前构建未包含 mcp feature）";
+        self.emitter.emit_error_with_meta(
+            event_types::TOOL_CALL,
+            &block_id,
+            error_msg,
+            None,
+            None,
+            None,
+        );
+        log::warn!(
+            "[ChatV2::tool_adapter] MCP tool call rejected (mcp feature disabled): tool={}",
+            tool_name
+        );
+        Err(ChatV2Error::Tool(error_msg.to_string()))
+    }
+
     /// 转换 MCP 工具结果为 JSON Value
+    #[cfg(feature = "mcp")]
     async fn convert_mcp_tool_result(
         &self,
         tool_name: &str,

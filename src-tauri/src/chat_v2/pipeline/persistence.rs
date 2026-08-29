@@ -182,6 +182,134 @@ mod tests {
 }
 
 impl ChatV2Pipeline {
+    /// V20260806 B 层：把本轮 live 发送的重放旁路数据写入三列（targeted UPDATE）
+    ///
+    /// - 用户 CONTENT 块 `llm_content` = live 实际发送的完整包装
+    ///   （`<user_query>` + `<injected_context>`/`<runtime_facts>`）；
+    /// - 工具块 `tool_call_id` = provider 原始 id、`round_text` =
+    ///   text-before-tool-use（live 时活在 `round_text_by_tool_call_id`）。
+    ///
+    /// 必须在对应块 INSERT 之后调用（UPDATE 需要行已存在）。列不存在
+    /// （V20260806 未迁移）时 repo 层静默跳过，读侧回退旧重建。
+    /// V20260806 P0：skip_user_message_save 路径下解析既有用户消息的 CONTENT 块
+    ///
+    /// 编辑重发（`chat_v2_edit_and_resend`）传入的 `user_message_id` 是已存在
+    /// 的原消息：编辑事务已将其 `llm_content` 失效，这里找回该 content 块 id
+    /// 交给 `persist_replay_sidecar` 用本轮 live 编译的新包装补写，避免下一轮
+    /// history 只能回退裸文本造成跨轮字节漂移。wake / retry 路径的
+    /// `user_message_id` 是新生成 id（DB 无行），查不到块，自然跳过。
+    fn existing_user_content_block_id(
+        conn: &rusqlite::Connection,
+        user_message_id: &str,
+    ) -> Option<String> {
+        ChatV2Repo::get_message_blocks_with_conn(conn, user_message_id)
+            .ok()?
+            .into_iter()
+            .find(|block| block.block_type == block_types::CONTENT)
+            .map(|block| block.id)
+    }
+
+    fn persist_replay_sidecar(
+        &self,
+        conn: &rusqlite::Connection,
+        ctx: &PipelineContext,
+        user_block_id: Option<&str>,
+    ) -> ChatV2Result<()> {
+        use crate::chat_v2::repo::BlockReplayData;
+
+        if let (Some(block_id), Some(llm_content)) = (user_block_id, ctx.live_user_llm_content()) {
+            ChatV2Repo::update_block_replay_with_conn(
+                conn,
+                block_id,
+                &BlockReplayData {
+                    llm_content: Some(llm_content),
+                    ..Default::default()
+                },
+            )?;
+        }
+
+        for result in &ctx.tool_results {
+            let Some(block_id) = result.block_id.as_deref() else {
+                continue;
+            };
+            let Some(tool_call_id) = result.tool_call_id.clone().filter(|id| !id.is_empty()) else {
+                continue;
+            };
+            let round_text = ctx.round_text_by_tool_call_id.get(&tool_call_id).cloned();
+            ChatV2Repo::update_block_replay_with_conn(
+                conn,
+                block_id,
+                &BlockReplayData {
+                    llm_content: None,
+                    tool_call_id: Some(tool_call_id),
+                    round_text,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// R3-#1 llm_content 前移：编译完成后、首个 provider 网络请求前，
+    /// 轻量补写当前 user CONTENT 块的 `llm_content` sidecar。
+    ///
+    /// ## 崩溃窗口
+    /// `persist_replay_sidecar` 原本只在 save_results / save_intermediate_results
+    /// （流程末 / 工具轮间）执行。若请求已发给 provider 但进程在首个保存点前
+    /// 崩溃，DB 里只有 `save_user_message_immediately` 落的裸 user 行，
+    /// `llm_content` 为空 —— 下一轮 history 只能回退旧重建，跨轮字节漂移。
+    ///
+    /// ## 调用时机（唯一调用点：pipeline.rs execute_internal 阶段 4.5 与 5 之间）
+    /// - `compile_frozen_context` 已完成 → `live_user_llm_content()` 为 Some；
+    /// - `save_user_message_immediately` 已执行 → 用户块行已 INSERT
+    ///   （编辑重发路径行由编辑事务保证存在）；
+    /// - `execute_with_tools`（tool_loop `call_unified_model_2_stream`）尚未
+    ///   发起 → 首个 provider 网络请求之前。
+    ///
+    /// ## 范围与失败语义
+    /// - 只写 user 块 `llm_content` 一列（单条 targeted UPDATE，SQLite 隐式
+    ///   单语句事务），不前移整份 save_results；工具块 `tool_call_id` /
+    ///   `round_text` 仍由原 `persist_replay_sidecar` 在既有保存点落库；
+    /// - 查不到用户 CONTENT 块（即时保存失败、wake/retry 新 id 无行）时跳过，
+    ///   后续 save_results 会兜底补写；
+    /// - 返回 Err 时调用方只 warn，不阻断发送。
+    pub(crate) async fn persist_user_llm_content_early(
+        &self,
+        ctx: &PipelineContext,
+    ) -> ChatV2Result<()> {
+        let Some(llm_content) = ctx.live_user_llm_content() else {
+            log::debug!(
+                "[ChatV2::pipeline] persist_user_llm_content_early: no compiled user message yet, skip (session={})",
+                ctx.session_id
+            );
+            return Ok(());
+        };
+
+        let conn = self.db.get_conn_safe()?;
+        let Some(block_id) = Self::existing_user_content_block_id(&conn, &ctx.user_message_id)
+        else {
+            log::debug!(
+                "[ChatV2::pipeline] persist_user_llm_content_early: user content block not found (message={}), skip — target row missing; later save points may retry if the block exists",
+                ctx.user_message_id
+            );
+            return Ok(());
+        };
+
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            &block_id,
+            &crate::chat_v2::repo::BlockReplayData {
+                llm_content: Some(llm_content),
+                ..Default::default()
+            },
+        )?;
+        log::debug!(
+            "[ChatV2::pipeline] persist_user_llm_content_early: llm_content persisted before first provider request (message={}, block={})",
+            ctx.user_message_id,
+            block_id
+        );
+        Ok(())
+    }
+
     /// 🆕 P0防闪退：用户消息即时保存
     ///
     /// 在 Pipeline 执行前立即保存用户消息，确保用户输入不会因闪退丢失。
@@ -347,6 +475,7 @@ impl ChatV2Pipeline {
         // 否则刷新后子代理会话只有助手消息，没有用户消息（任务内容）
         // 检查是否跳过用户消息保存（编辑重发场景）
         let skip_user_message = ctx.options.skip_user_message_save.unwrap_or(false);
+        let mut user_block_id: Option<String> = None;
         if !skip_user_message {
             let user_msg_params =
                 UserMessageParams::new(ctx.session_id.clone(), ctx.user_content.clone())
@@ -362,6 +491,10 @@ impl ChatV2Pipeline {
             // 使用 INSERT OR REPLACE 保存用户消息（与 save_results 兼容）
             ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
             ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
+            user_block_id = Some(user_msg_result.block.id.clone());
+        } else {
+            // V20260806 P0：编辑重发时补写既有 content 块的新 live 包装
+            user_block_id = Self::existing_user_content_block_id(conn, &ctx.user_message_id);
         }
 
         // 1. 保存助手消息（如果不存在则创建）
@@ -477,6 +610,9 @@ impl ChatV2Pipeline {
             }
         }
 
+        // 4. V20260806 B 层：块行就位后补写重放旁路三列
+        self.persist_replay_sidecar(conn, ctx, user_block_id.as_deref())?;
+
         log::debug!(
             "[ChatV2::pipeline] Intermediate save: message_id={}, blocks={}, user_saved={}",
             ctx.assistant_message_id,
@@ -567,6 +703,7 @@ impl ChatV2Pipeline {
 
         // === 1. 创建并保存用户消息（除非 skip_user_message_save 为 true）===
         // 🆕 使用统一的用户消息构建器，确保所有路径的一致性
+        let mut user_block_id: Option<String> = None;
         if !skip_user_message {
             let user_now_ms = chrono::Utc::now().timestamp_millis();
             let user_msg_params =
@@ -583,6 +720,7 @@ impl ChatV2Pipeline {
             // 保存用户消息和块
             ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
             ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
+            user_block_id = Some(user_msg_result.block.id.clone());
 
             log::debug!(
                 "[ChatV2::pipeline] Saved user message: id={}, content_len={}",
@@ -590,9 +728,12 @@ impl ChatV2Pipeline {
                 ctx.user_content.len()
             );
         } else {
+            // V20260806 P0：编辑重发时补写既有 content 块的新 live 包装
+            user_block_id = Self::existing_user_content_block_id(conn, &ctx.user_message_id);
             log::debug!(
-                "[ChatV2::pipeline] Skipped user message save (skip_user_message_save=true): id={}",
-                ctx.user_message_id
+                "[ChatV2::pipeline] Skipped user message save (skip_user_message_save=true): id={}, existing_content_block={:?}",
+                ctx.user_message_id,
+                user_block_id
             );
         }
 
@@ -1044,6 +1185,21 @@ impl ChatV2Pipeline {
             skill_runtime_before: build_replay_skill_payload_snapshot(&ctx.options),
             skill_runtime_after: build_replay_skill_payload_snapshot(&ctx.options),
             replay_source: None,
+            // V20260806 B 层：Responses reasoning item 随消息 meta 持久化，
+            // history 重放按 tool_call_id 回填，跨轮不丢 encrypted reasoning
+            response_reasoning_items: (!ctx.response_reasoning_by_tool_call_id.is_empty())
+                .then(|| ctx.response_reasoning_by_tool_call_id.clone()),
+            // P1-8 技能锚定：本轮瞬态技能注入的可回放锚点（只存 id，不存正文），
+            // history 重放据此在冻结位置重建 live 字节
+            skill_injection_anchors: ctx
+                .options
+                .skill_injection_anchors
+                .clone()
+                .filter(|anchors| !anchors.is_empty()),
+            // P2-13 收尾：服务端 web_search_call 完整 item 随消息 meta 持久化
+            // （键 openai_responses_web_search_items），history 重放原样回传 input
+            response_web_search_items: (!ctx.response_web_search_items.is_empty())
+                .then(|| ctx.response_web_search_items.clone()),
         };
 
         let assistant_message = ChatMessage {
@@ -1114,6 +1270,9 @@ impl ChatV2Pipeline {
                 }
             }
         }
+
+        // V20260806 B 层：块行就位后补写重放旁路三列
+        self.persist_replay_sidecar(conn, ctx, user_block_id.as_deref())?;
 
         log::info!(
             "[ChatV2::pipeline] Results saved: session={}, user_msg={}, assistant_msg={}, blocks={}, content_len={}",

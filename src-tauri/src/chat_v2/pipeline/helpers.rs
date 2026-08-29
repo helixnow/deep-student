@@ -3,7 +3,56 @@ use crate::canonical_tools::{
     encode_tool_name_for_api, prepare_external_tool, ApiNameSource, CanonicalExternalToolConfig,
 };
 use crate::chat_v2::tools::types::EXTERNAL_MCP_TOOL_PREFIX;
+use crate::chat_v2::types::ToolFacePrefixSnapshot;
 use std::collections::{HashMap, HashSet};
+
+/// 🆕 P1 tools 前缀代际（方案 A）：pipeline 进程内存中每个会话的权威
+/// 工具面基线 `(g, B_g, digest)`。
+///
+/// 是 `frozen_tool_schema_orders` 共享 map 的值型（单锁不变、不新增
+/// Mutex），与持久化形态 `types::ToolFacePrefixSnapshot` 字段一一对应：
+/// - `generation`：当前代号 `g`，仅 fan-out 收敛点检出真分叉时 +1
+///   （见 `converge_session_tool_face_prefix`）；load 回填与单变体纯
+///   扩展写回**永不** bump；
+/// - `order`：append-only 首见序基线（持久化仍落 `frozenToolSchemaOrder`
+///   键）；
+/// - `schema_digest`：可选 tools schema 冻结字节摘要（`toolSchemaDigest`
+///   键）。load 回填只填空位；唯一推进点是 converge 收敛点的共识采纳
+///   （见 `converge_session_tool_face_prefix` 的 digest 收敛规则），
+///   绝不被 None 抹掉。
+///
+/// 冻结矩阵定位（冻什么 / 不冻什么 / 何时切代）：`order` 会话级冻、
+/// schema 字节窗口级冻（本结构只存 digest 摘要）、`generation` 仅
+/// converge 真分叉时 +1。速查见 `tool_loop.rs` 文件头，完整矩阵见
+/// `docs/dev/wave2-A/r2-freeze-matrix.md`。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ToolFaceBaseline {
+    pub generation: u64,
+    pub order: Vec<String>,
+    pub schema_digest: Option<String>,
+}
+
+impl ToolFaceBaseline {
+    /// 转持久化 / 重放形态（repo advance 与 `VariantMeta.tool_face_prefix`
+    /// 共用 `types::ToolFacePrefixSnapshot`）。
+    pub(crate) fn to_snapshot(&self) -> ToolFacePrefixSnapshot {
+        ToolFacePrefixSnapshot {
+            generation: self.generation,
+            order: self.order.clone(),
+            schema_digest: self.schema_digest.clone(),
+        }
+    }
+}
+
+impl From<ToolFacePrefixSnapshot> for ToolFaceBaseline {
+    fn from(snapshot: ToolFacePrefixSnapshot) -> Self {
+        ToolFaceBaseline {
+            generation: snapshot.generation,
+            order: snapshot.order,
+            schema_digest: snapshot.schema_digest,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct HistoryUnit {
@@ -672,9 +721,11 @@ fn push_skill_with_dependencies(
 fn ordered_skill_ids_for_injection(
     skill_state: &super::super::types::SessionSkillState,
     dependencies: Option<&HashMap<String, Vec<String>>>,
+    already_injected: &HashSet<String>,
 ) -> Vec<(String, u8)> {
     let mut ordered = Vec::new();
-    let mut seen = HashSet::new();
+    // P1-8：已锚定在历史中的技能 id 预置进 seen —— 不重复注入（含其依赖）。
+    let mut seen: HashSet<String> = already_injected.clone();
     let mut visiting = HashSet::new();
 
     let mut push_group = |ids: &[String], tier: u8| {
@@ -701,7 +752,7 @@ fn ordered_skill_ids_for_injection(
     ordered
 }
 
-fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMessage {
+pub(crate) fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMessage {
     let mut msg = make_empty_message(
         "user",
         format!(
@@ -770,6 +821,25 @@ pub(crate) fn build_transient_skill_messages_with_audit(
     skill_dependencies: Option<&HashMap<String, Vec<String>>>,
     token_budget: Option<usize>,
 ) -> TransientSkillMessages {
+    build_transient_skill_messages_with_audit_excluding(
+        skill_state,
+        skill_contents,
+        skill_dependencies,
+        token_budget,
+        &HashSet::new(),
+    )
+}
+
+/// P1-8：与 `build_transient_skill_messages_with_audit` 相同，但跳过
+/// `already_injected` 中的技能（已锚定在可回放历史/本轮先前注入中的技能
+/// 不重复注入，注入点因此在首次注入后冻结）。
+pub(crate) fn build_transient_skill_messages_with_audit_excluding(
+    skill_state: &super::super::types::SessionSkillState,
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+    already_injected: &HashSet<String>,
+) -> TransientSkillMessages {
     let mut result = TransientSkillMessages {
         audit: SkillInjectionAudit {
             skill_state_version: skill_state.version,
@@ -778,7 +848,8 @@ pub(crate) fn build_transient_skill_messages_with_audit(
         ..Default::default()
     };
 
-    let ordered_skill_ids = ordered_skill_ids_for_injection(skill_state, skill_dependencies);
+    let ordered_skill_ids =
+        ordered_skill_ids_for_injection(skill_state, skill_dependencies, already_injected);
     if ordered_skill_ids.is_empty() {
         return result;
     }
@@ -810,6 +881,76 @@ pub(crate) fn build_transient_skill_messages_with_audit(
     result
 }
 
+/// P1-8：从瞬态技能消息 metadata 中提取 skillId
+pub(crate) fn transient_skill_message_skill_id(msg: &LegacyChatMessage) -> Option<String> {
+    if !is_transient_skill_message(msg) {
+        return None;
+    }
+    msg.metadata
+        .as_ref()?
+        .get("skillId")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// P1-8：收集历史中已锚定（重放还原）的技能 id 集合。
+/// 本轮注入只注入差集，保证首次注入位置冻结、跨轮字节稳定。
+pub(crate) fn anchored_skill_ids_in_history(history: &[LegacyChatMessage]) -> HashSet<String> {
+    history
+        .iter()
+        .filter_map(transient_skill_message_skill_id)
+        .collect()
+}
+
+/// P1-8：环内 load_skills 加载的一批技能消息，构建时排除已注入技能。
+/// 复用与轮首注入相同的依赖排序/预算/渲染逻辑，保证字节形态一致。
+pub(crate) fn build_in_loop_skill_messages(
+    loaded_skill_ids: &[String],
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+    already_injected: &HashSet<String>,
+    skill_state_version: u64,
+) -> TransientSkillMessages {
+    let batch_state = super::super::types::SessionSkillState {
+        agentic_session_skill_ids: loaded_skill_ids.to_vec(),
+        version: skill_state_version,
+        ..Default::default()
+    };
+    build_transient_skill_messages_with_audit_excluding(
+        &batch_state,
+        skill_contents,
+        skill_dependencies,
+        token_budget,
+        already_injected,
+    )
+}
+
+/// P1-8：把环内新加载的技能消息插到对应 load_skills tool result 之后。
+///
+/// 禁止把技能整包重插到当前 user 之前 —— 那会改写同轮内存前缀。
+/// 找不到匹配 tool result（异常/老数据）时退化为追加到末尾，
+/// 仍然不触碰当前 user 之前的任何字节。
+pub(crate) fn insert_skill_messages_after_tool_result(
+    messages: &mut Vec<LegacyChatMessage>,
+    tool_call_id: &str,
+    skill_messages: Vec<LegacyChatMessage>,
+) {
+    if skill_messages.is_empty() {
+        return;
+    }
+    let insert_at = messages
+        .iter()
+        .rposition(|msg| {
+            msg.tool_result
+                .as_ref()
+                .is_some_and(|tr| tr.call_id == tool_call_id)
+        })
+        .map(|pos| pos + 1)
+        .unwrap_or(messages.len());
+    messages.splice(insert_at..insert_at, skill_messages);
+}
+
 impl ChatV2Pipeline {
     /// 🆕 发射 `context_trimmed` 事件（消费 ctx 上挂起的截断报告）。
     ///
@@ -831,6 +972,376 @@ impl ChatV2Pipeline {
             report.dropped_messages,
             (report.dropped_tokens > 0).then_some(report.dropped_tokens),
         );
+    }
+
+    /// 🆕 解析本次历史加载应生效的 microcompact 可占位符化轮数。
+    ///
+    /// 锚点存于 Pipeline 共享的会话级状态（所有 clone 共享），以活跃
+    /// compaction 记录 id 为世代（lineage）标识：lineage 未变 → 沿用冻结的
+    /// 锚点（连续多轮不 compaction 时历史头部字节逐字稳定）；lineage 变化
+    /// （compaction 事件）或首次观察到该会话 → 批量推进到当前 `U - K`。
+    ///
+    /// 内存 miss（典型场景：桌面 App 重启后该会话首轮）时先从
+    /// session.metadata（`microcompactAnchor`）恢复持久化锚点再决策 ——
+    /// provider 侧 prompt cache 跨进程存活，重启后若按当前历史重新基线，
+    /// `eligible_user_turns` 会跳到当前 `U - K`，中间轮次的工具输出突然
+    /// 占位符化，历史头部字节变、缓存前缀失效。读取失败降级为首次观察
+    /// 语义（只打日志、不阻断发送）。
+    ///
+    /// 锚点变化（首次建锚 / compaction 事件批量推进）时同步持久化回
+    /// metadata；持久化失败只降级打日志（下一进程退回冷基线），绝不让
+    /// 本次发送失败。锚点仍只随 compaction 事件推进 —— 持久化不改变
+    /// 推进语义，写库频率天然很低。
+    pub(crate) fn resolve_microcompact_eligible_turns(
+        &self,
+        session_id: &str,
+        active_compaction_id: Option<&str>,
+        history: &[LegacyChatMessage],
+    ) -> usize {
+        let batch_eligible = microcompact_batch_eligible_turns(history);
+        let memory_miss = {
+            let anchors = self
+                .microcompact_anchors
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            !anchors.contains_key(session_id)
+        };
+        // 不持锁读库：恢复期间并行变体可能已建锚，entry 只填空位、不覆盖。
+        if memory_miss {
+            match ChatV2Repo::get_session_microcompact_anchor(&self.db, session_id) {
+                Ok(Some(persisted)) => {
+                    let mut anchors = self
+                        .microcompact_anchors
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    anchors.entry(session_id.to_string()).or_insert(persisted);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to load persisted microcompact anchor (fallback to fresh anchor): session_id={}, error={}",
+                        session_id,
+                        err
+                    );
+                }
+            }
+        }
+        let (anchor, eligible, anchor_changed) = {
+            let mut anchors = self
+                .microcompact_anchors
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let previous = anchors.get(session_id).cloned();
+            let (anchor, eligible) = advance_microcompact_anchor(
+                previous.as_ref(),
+                active_compaction_id,
+                batch_eligible,
+            );
+            let anchor_changed = previous.as_ref() != Some(&anchor);
+            anchors.insert(session_id.to_string(), anchor.clone());
+            (anchor, eligible, anchor_changed)
+        };
+        if anchor_changed {
+            if let Err(err) =
+                ChatV2Repo::set_session_microcompact_anchor(&self.db, session_id, &anchor)
+            {
+                log::warn!(
+                    "[ChatV2::pipeline] Failed to persist microcompact anchor (in-memory anchor still active): session_id={}, error={}",
+                    session_id,
+                    err
+                );
+            }
+        }
+        eligible
+    }
+
+    /// 🆕 P1 tools 前缀代际：读取该会话的权威工具面基线 `(g, B_g, digest)`
+    /// （跨 execute_with_tools / fan-out 调用共享，方案 A 唯一权威对象）。
+    ///
+    /// 内存 miss（典型场景：桌面 App 重启后该会话首轮）时从 session.metadata
+    /// 恢复持久化快照并填回内存 —— provider 侧 prompt cache 跨进程存活，
+    /// 必须复用上一进程已发出的 tools 前缀字节序与代号，禁止按字母序重新
+    /// 基线、禁止 generation 归零回退。三键全缺 / 读取失败降级为
+    /// `generation=0 + 空 order`（等同会话首轮，由首次 freeze 建立基线），
+    /// 只打日志、不阻断发送。
+    ///
+    /// 锁序（与 microcompact 恢复段同构，防 TOCTOU 双建）：先加锁查内存
+    /// 命中；miss 则**放锁**读库；再加锁 `entry().or_default()` 合并回填。
+    /// 放锁读库期间并行调用可能已建基线，回填只做 append-only merge
+    /// （只补缺失名、绝不覆盖或重排既有内存前缀序），generation 只单调
+    /// 采纳 `max`（并发首建双方都带 0，合并后仍是 0）、digest 只填空位
+    /// —— miss 回填**永不** bump generation。
+    ///
+    /// 冻结矩阵定位：load 是「恢复」不是「推进」—— 三键全部原样采纳，
+    /// 任何 load 路径都不切代、不重排已发出前缀。完整矩阵见
+    /// `docs/dev/wave2-A/r2-freeze-matrix.md`。
+    pub(crate) fn load_session_tool_face_prefix(&self, session_id: &str) -> ToolFaceBaseline {
+        if let Some(existing) = self
+            .frozen_tool_schema_orders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(session_id)
+        {
+            return existing.clone();
+        }
+        let persisted: ToolFaceBaseline = match ChatV2Repo::get_session_tool_face_prefix(
+            &self.db, session_id,
+        ) {
+            Ok(Some(snapshot)) => snapshot.into(),
+            Ok(None) => ToolFaceBaseline::default(),
+            Err(err) => {
+                log::warn!(
+                        "[ChatV2::pipeline] Failed to load persisted tool face prefix (fallback to fresh generation-0 baseline): session_id={}, error={}",
+                        session_id,
+                        err
+                    );
+                ToolFaceBaseline::default()
+            }
+        };
+        let mut orders = self
+            .frozen_tool_schema_orders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = orders.entry(session_id.to_string()).or_default();
+        // 释放锁读库期间并行调用可能已写入内存基线：append-only 合并持久化
+        // 基线（只补缺失名），generation 取 max（不 bump），digest 只填空位。
+        super::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut entry.order,
+            &persisted.order,
+        );
+        entry.generation = entry.generation.max(persisted.generation);
+        if entry.schema_digest.is_none() {
+            entry.schema_digest = persisted.schema_digest;
+        }
+        entry.clone()
+    }
+
+    /// 🆕 P1 tools 前缀代际：fan-out join 收敛点 —— 把各变体的本地工具面
+    /// 快照（`VariantMeta.tool_face_prefix`）按**变体索引序**（不是完成
+    /// 竞态序）确定性合并回会话基线，并判定是否切代。
+    ///
+    /// 合并语义（与 prefix_generation_fork_tests.rs 契约一致）：
+    /// - 各变体本地 order 都是「fan-out 入口快照基线 + 本地 append-only
+    ///   尾部」的完整序列。按 `variant_index` 升序逐个 append-only 合并
+    ///   （`merge_frozen_tool_schema_order_baseline`：缺失名按来源顺序
+    ///   追加末尾，绝不删除/重排）——收敛序由索引序唯一确定，与任务
+    ///   完成竞态无关；
+    /// - **真分叉判定**：若存在变体本地 order 不是收敛结果的前缀（≥2
+    ///   变体产生互异、不可 append-only 对齐的尾部，例如 `B̂+[X]` vs
+    ///   `B̂+[Y]`）→ `generation += 1`；所有变体都是同一前缀扩展或完全
+    ///   相等 → 不 bump。单变体输入时收敛结果恒等于其本地 order，前缀
+    ///   检查恒真 → 永不切代（单变体重试 = 纯扩展）。
+    ///
+    /// **digest 收敛（r6 #1 接线修复）**：这里是会话级
+    /// `schema_digest`（持久化键 `toolSchemaDigest`）的唯一推进点 ——
+    /// tool_loop 单变体路径按矩阵纪律只打日志不持久化，变体窗口 digest
+    /// 随快照交本收敛点评估。采纳规则（保守、确定性、绝不造假）：
+    /// 仅当存在「本地 order 恰等于收敛结果」的变体（= 该变体本窗口发出
+    /// 的正是收敛后的完整工具面）且这些变体报告的 digest 全部一致时，
+    /// 才把该 digest 写入基线；真分叉 / digest 互异 / 全体空窗口（None）
+    /// 时保持既有值 —— None 永不抹掉已有 digest（与 repo advance 的
+    /// 「快照无 digest 不抹掉持久化值」契约一致）。入参快照的
+    /// `generation` 字段忽略（变体只回带入口代号，权威代号在会话 entry）。
+    ///
+    /// 锁序（不倒置）：收敛计算在锁外完成，锁内只做 append-only 合并 +
+    /// 条件 bump + digest 采纳 + 克隆快照；**放锁后**才调
+    /// `advance_session_tool_face_prefix` 写库（IMMEDIATE 事务内不回调
+    /// 内存锁）。持久化失败只降级打 warn（内存基线仍权威），不阻断发送。
+    ///
+    /// 冻结矩阵定位：这里是**唯一切代点**。真分叉 → `generation += 1`；
+    /// 纯前缀扩展 / 仅 schema digest 变化 → 不切（digest 只按上述规则
+    /// 采纳，绝不触发 bump）。完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`。
+    pub(crate) fn converge_session_tool_face_prefix(
+        &self,
+        session_id: &str,
+        variant_local_prefixes: &[(usize, ToolFacePrefixSnapshot)],
+    ) -> ToolFaceBaseline {
+        // 按变体索引升序确定性排序（调用方通常已按索引序收集，这里再
+        // 排一次保证与完成竞态序彻底解耦）。
+        let mut ordered: Vec<&(usize, ToolFacePrefixSnapshot)> =
+            variant_local_prefixes.iter().collect();
+        ordered.sort_by_key(|(variant_index, _)| *variant_index);
+
+        // 锁外收敛计算：从空表出发按索引序合并（每个本地 order 自带入口
+        // 快照基线前缀，合并结果 = 基线 + 各变体新尾部按索引序拼接）。
+        let mut converged: Vec<String> = Vec::new();
+        for (_, snapshot) in &ordered {
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(
+                &mut converged,
+                &snapshot.order,
+            );
+        }
+        let true_fork = ordered
+            .iter()
+            .any(|(_, snapshot)| !converged.starts_with(snapshot.order.as_slice()));
+
+        // 锁外 digest 采纳判定：候选 = 「本地 order == 收敛结果」且带
+        // digest 的变体；全体候选一致才采纳（同名同序但字节互异 —— 如
+        // MCP 扇出中途刷新 —— 视为无共识，保持既有值）。
+        let converged_digest: Option<String> = {
+            let mut candidates = ordered
+                .iter()
+                .filter(|(_, snapshot)| snapshot.order == converged)
+                .filter_map(|(_, snapshot)| snapshot.schema_digest.as_ref());
+            match candidates.next() {
+                Some(first) if candidates.all(|digest| digest == first) => Some(first.clone()),
+                _ => None,
+            }
+        };
+
+        // 锁内合并 + 条件切代 + digest 采纳 + 克隆；放锁后再写库。
+        let baseline = {
+            let mut orders = self
+                .frozen_tool_schema_orders
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = orders.entry(session_id.to_string()).or_default();
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(&mut entry.order, &converged);
+            if true_fork {
+                entry.generation += 1;
+                log::info!(
+                    "[ChatV2::pipeline] Tool face prefix fork detected at fan-out convergence: session_id={}, new_generation={}, variants={}",
+                    session_id,
+                    entry.generation,
+                    ordered.len()
+                );
+            }
+            if let Some(digest) = converged_digest {
+                entry.schema_digest = Some(digest);
+            }
+            entry.clone()
+        };
+        if let Err(err) = ChatV2Repo::advance_session_tool_face_prefix(
+            &self.db,
+            session_id,
+            &baseline.to_snapshot(),
+        ) {
+            log::warn!(
+                "[ChatV2::pipeline] Failed to persist converged tool face prefix (in-memory baseline still active): session_id={}, error={}",
+                session_id,
+                err
+            );
+        }
+        baseline
+    }
+
+    /// Wave2-A r5 #8：技能正文 digest mismatch 的「需开新 prefix generation」
+    /// 信号记录点（唯一写点；调用方为 `history::load_chat_history_pass`
+    /// 趟末聚合，`mismatched_skill_ids` 已按 skill_id 去重）。
+    ///
+    /// mismatch 语义：锚点带 digest、当轮正文存在但字节已漂移——门禁已
+    /// skip 重建（绝不伪造历史），历史前缀在这些技能位置**本轮起必然
+    /// 漂移且不可用旧字节修复**（旧正文不存在了）。这正是与 compaction
+    /// R4-#6 同构的低成本换代时机：与其永远背着描述过期技能的冻结目录，
+    /// 不如趁前缀已断声明换代。
+    ///
+    /// 接线选择（为何**不是** `converge_session_tool_face_prefix`）：
+    /// converge 是工具面（tools 槽）代际的唯一切代点，语义是「fan-out
+    /// 变体对 append-only 工具序产生不可对齐的真分叉」；技能 digest
+    /// mismatch 是 history 段漂移，与工具序无关——伪造分叉 order 逼
+    /// converge +1 会破坏冻结矩阵（r2-freeze-matrix）的切代不变量。
+    /// 正确的代际是 **available_skills 目录代**：复用 compaction 已落地的
+    /// `mark_session_available_skills_snapshot_stale_with_conn` 声明
+    /// `availableSkillsSnapshotPendingGeneration`（= 当前代 + 1），由前端
+    /// TauriAdapter（r5 #9）下轮构建 system 时按 live registry 重新生成
+    /// 快照并经 freeze 原语作为新代 first write 兑现换代。
+    ///
+    /// 纪律（与该原语既有语义逐条一致）：
+    /// - 幂等折叠：已有有效 pending 时返回既有值，不重复 +1（外层 while
+    ///   重跑 load pass / 多轮连续 mismatch 在前端消费前折叠为一次换代）；
+    /// - first-write-wins 不回退：freeze 只在见到有效标记时才允许覆盖；
+    /// - 会话从未冻结过快照 → no-op（None）——缺键语义本就是「下次按
+    ///   live 建立」，无需换代，信号降级为结构化日志；
+    /// - 写库失败仅 warn 降级（结构化计数日志仍在），**绝不阻断发送**；
+    /// - 不推进 updated_at（内部缓存状态，同 freeze/mark 原语）。
+    pub(crate) fn record_skill_digest_prefix_generation_signal(
+        &self,
+        session_id: &str,
+        mismatched_skill_ids: &[String],
+    ) {
+        if mismatched_skill_ids.is_empty() {
+            return;
+        }
+        // 结构化计数日志（固定前缀 skill_digest_generation_signal，供日志
+        // 侧按 session / count 聚合统计），无论接线是否成功都先落一条。
+        log::warn!(
+            "[ChatV2::pipeline] skill_digest_generation_signal: session_id={}, mismatch_count={}, skill_ids={:?} — history replay prefix drifted at these skill positions; requesting new available_skills prefix generation",
+            session_id,
+            mismatched_skill_ids.len(),
+            mismatched_skill_ids
+        );
+        let marked = (|| -> ChatV2Result<Option<u64>> {
+            let mut conn = self.db.get_conn_safe()?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let pending = ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &tx, session_id,
+            )?;
+            tx.commit()?;
+            Ok(pending)
+        })();
+        match marked {
+            Ok(Some(pending)) => log::info!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: available_skills catalog pending generation declared: session_id={}, pending_generation={}",
+                session_id,
+                pending
+            ),
+            Ok(None) => log::debug!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: session never froze an available_skills snapshot; nothing to regenerate (signal logged only): session_id={}",
+                session_id
+            ),
+            Err(err) => log::warn!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: failed to persist pending generation marker (signal degraded to log only, send not blocked): session_id={}, error={}",
+                session_id,
+                err
+            ),
+        }
+    }
+
+    /// 🆕 P0 tools 会话冻结（薄封装）：读取该会话已发出 tools 的
+    /// append-only 首见序基线（单变体路径 tool_loop 仍按名字序消费）。
+    ///
+    /// 内部走 `load_session_tool_face_prefix`（含跨进程恢复 + 加锁回填），
+    /// 只取 `.order` —— 语义与旧实现逐条一致，调用方零改动。
+    pub(crate) fn load_session_frozen_tool_schema_order(&self, session_id: &str) -> Vec<String> {
+        self.load_session_tool_face_prefix(session_id).order
+    }
+
+    /// 🆕 P0 tools 会话冻结（薄封装）：单写者路径把环内推进后的基线写回
+    /// 会话级状态并持久化。**纯前缀扩展、不切代**：只 append-only 合并
+    /// order（只补缺失名、绝不删除或重排已有基线），generation 沿用当前
+    /// 值、绝不 bump —— 单写者的新序列必是旧序列的扩展，旧缓存仍是新请求
+    /// 前缀，切代反而有害。
+    ///
+    /// 持久化改走 `advance_session_tool_face_prefix`（IMMEDIATE 事务内
+    /// `toolFacePrefixGeneration` + `frozenToolSchemaOrder` 双键同步落库、
+    /// 无变更跳过写库、不推 updated_at），保持双键一致，避免「序新、代旧」
+    /// 漂移。锁序不变：锁内合并克隆、放锁写库。持久化失败只降级打日志
+    /// （下一进程退回持久化基线），绝不让本次发送失败。
+    pub(crate) fn store_session_frozen_tool_schema_order(
+        &self,
+        session_id: &str,
+        baseline: &[String],
+    ) {
+        let merged = {
+            let mut orders = self
+                .frozen_tool_schema_orders
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = orders.entry(session_id.to_string()).or_default();
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(&mut entry.order, baseline);
+            entry.clone()
+        };
+        if let Err(err) = ChatV2Repo::advance_session_tool_face_prefix(
+            &self.db,
+            session_id,
+            &merged.to_snapshot(),
+        ) {
+            log::warn!(
+                "[ChatV2::pipeline] Failed to persist frozen tool schema order (in-memory baseline still active): session_id={}, error={}",
+                session_id,
+                err
+            );
+        }
     }
 
     pub(crate) fn load_effective_session_skill_state(
@@ -950,6 +1461,42 @@ pub(crate) fn trim_history_by_token_budget(
     }
 }
 
+/// 🆕 历史超预算时的处理决策（DESIGN：FIFO 头删触发前强制 compaction）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryOverflowAction {
+    /// 预算内（或没有可移除单元），FIFO 不会丢消息，无需处理
+    WithinBudget,
+    /// 超预算且本轮尚未强制过 compaction：先跑 compaction 回收预算
+    CompactionFirst,
+    /// 超预算且 compaction 已尝试过（失败/跳过/回收不足）：允许 FIFO 头删兜底
+    FifoTrim,
+}
+
+/// 决策纯函数：`trim_history_by_token_budget` 是否会真的头删；会的话，
+/// compaction 是否必须先行。
+///
+/// 「会头删」的判定与 trim 的循环条件严格一致：
+/// `总 token > 预算` 且 `非 pinned 可移除单元 > 2`。
+/// 头删会改写历史前缀（打破 prompt cache 前缀，且抢在正确的 tail 锚定压缩
+/// 之前把任务锚点清零），因此只允许在 compaction 无法回收足够预算时兜底。
+pub(crate) fn plan_history_overflow_action(
+    history: &[LegacyChatMessage],
+    max_tokens: usize,
+    compaction_already_attempted: bool,
+) -> HistoryOverflowAction {
+    let units = group_history_units(history);
+    let total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
+    let removable_units = units.iter().filter(|u| !u.is_pinned).count();
+    if total_tokens <= max_tokens || removable_units <= 2 {
+        return HistoryOverflowAction::WithinBudget;
+    }
+    if compaction_already_attempted {
+        HistoryOverflowAction::FifoTrim
+    } else {
+        HistoryOverflowAction::CompactionFirst
+    }
+}
+
 // ============================================================
 // 🆕 零成本前置层：microcompact 式旧工具输出占位符化
 // ============================================================
@@ -959,31 +1506,99 @@ pub(crate) const MICROCOMPACT_KEEP_RECENT_USER_TURNS: usize = 3;
 /// 小于该 token 量的工具输出不值得占位符化（占位符本身也占空间）
 const MICROCOMPACT_MIN_TOKENS: usize = 256;
 
-/// 无损瘦身：把「最近 K 个 user 轮之外」的旧工具调用输出替换为占位符。
+/// 🆕 microcompact 锚点（会话级状态）。
 ///
+/// 修复「每轮滑动」缓存破坏：旧实现每轮按「最近 K 个 user 轮」重算占位符边界，
+/// 每新增一个 user 轮，第 K+1 轮的工具输出就变成占位符 —— 历史头部字节逐轮变，
+/// provider prompt cache 前缀每轮失效。
+///
+/// 新语义：锚点（`eligible_user_turns` = 允许占位符化的头部 user 轮数）冻结在
+/// 会话级状态里，只在 **compaction 事件**（活跃 compaction 记录 id 即 `lineage`
+/// 发生变化）时批量推进到当时的 `U - K`。两次 compaction 之间历史头部逐字稳定。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct MicrocompactAnchor {
+    /// 活跃 compaction 记录 id（无压缩历史时为 None）。变化 = compaction 事件。
+    pub(crate) lineage: Option<String>,
+    /// 允许占位符化的头部 user 轮数（从最旧 user 轮起数）。
+    pub(crate) eligible_user_turns: usize,
+}
+
+/// 当前历史下「批量推进」应得的可占位符化 user 轮数：`U - K`。
+pub(crate) fn microcompact_batch_eligible_turns(history: &[LegacyChatMessage]) -> usize {
+    history
+        .iter()
+        .filter(|m| m.role == "user" && !is_pinned_history_message(m))
+        .count()
+        .saturating_sub(MICROCOMPACT_KEEP_RECENT_USER_TURNS)
+}
+
+/// 锚点推进决策（纯函数，便于回归测试）。
+///
+/// - lineage 未变（没有新 compaction 事件）→ 锚点冻结，沿用已存的
+///   `eligible_user_turns`（与当前批量值取 min 做防御性钳制，编辑/换分支
+///   导致历史变短时不越界）；
+/// - lineage 变化（compaction 事件）或首次观察到该会话 → 批量推进到当前
+///   `U - K` 并落新锚点。
+///
+/// 返回（应存储的锚点, 本次生效的 eligible_user_turns）。
+pub(crate) fn advance_microcompact_anchor(
+    previous: Option<&MicrocompactAnchor>,
+    active_compaction_id: Option<&str>,
+    batch_eligible_user_turns: usize,
+) -> (MicrocompactAnchor, usize) {
+    match previous {
+        Some(anchor) if anchor.lineage.as_deref() == active_compaction_id => {
+            let effective = anchor.eligible_user_turns.min(batch_eligible_user_turns);
+            (anchor.clone(), effective)
+        }
+        _ => {
+            let anchor = MicrocompactAnchor {
+                lineage: active_compaction_id.map(str::to_string),
+                eligible_user_turns: batch_eligible_user_turns,
+            };
+            (anchor.clone(), batch_eligible_user_turns)
+        }
+    }
+}
+
+/// 无损瘦身：把「最旧 `eligible_user_turns` 个 user 轮」内的旧工具调用输出
+/// 替换为占位符。
+///
+/// - `eligible_user_turns` 由会话级锚点给出（见 `MicrocompactAnchor`），
+///   只随 compaction 事件批量推进，**不随轮次滑动**；
+/// - 无论锚点如何，最近 `MICROCOMPACT_KEEP_RECENT_USER_TURNS` 轮永远保留原文
+///   （函数内钳制，防御异常锚点）；
 /// - 仅影响发给模型的内存视图，不动数据库（原文仍在会话记录中）；
 /// - 不破坏 tool call/result 配对：tool_result 结构保留（call_id 不变），
 ///   只替换 content 与 data_json 的内容，`validate_tool_chain` 不受影响；
 /// - pinned 消息（瞬态技能注入 / compaction summary 伪消息）不受影响；
-/// - 占位符对相同输入是确定性的（token 估算确定），跨轮次重建视图时
-///   前缀稳定，不会反复打破 provider prompt cache。
+/// - 占位符对相同输入是确定性的（token 估算确定），锚点冻结期间跨轮次
+///   重建视图字节逐字稳定，不会反复打破 provider prompt cache。
 ///
 /// 返回被占位符化的工具输出条数。
 pub(crate) fn microcompact_old_tool_outputs(
     history: &mut [LegacyChatMessage],
-    keep_recent_user_turns: usize,
+    eligible_user_turns: usize,
 ) -> usize {
-    // 以真实 user 消息（非 pinned）为轮次边界，找到「最近 K 轮」的起点。
+    if eligible_user_turns == 0 {
+        return 0;
+    }
+    // 以真实 user 消息（非 pinned）为轮次边界。
     let user_indices: Vec<usize> = history
         .iter()
         .enumerate()
         .filter(|(_, m)| m.role == "user" && !is_pinned_history_message(m))
         .map(|(i, _)| i)
         .collect();
-    if user_indices.len() <= keep_recent_user_turns {
+    // 不变式：最近 K 轮永远保原文 —— eligible 被钳制到 U - K。
+    let max_eligible = user_indices
+        .len()
+        .saturating_sub(MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+    let eligible = eligible_user_turns.min(max_eligible);
+    if eligible == 0 {
         return 0;
     }
-    let protect_from = user_indices[user_indices.len() - keep_recent_user_turns];
+    let protect_from = user_indices[eligible];
 
     // call_id -> tool_name 映射（占位符里带上工具名，帮助模型理解被省略的内容）
     let tool_names: HashMap<String, String> = history
@@ -1260,7 +1875,7 @@ mod tests {
             ]
         };
 
-        // 5 个 user 轮，前 2 轮的工具输出应被占位符化（K=3）
+        // 5 个 user 轮，锚点允许头部 2 轮占位符化（= 批量推进值 5 - K）
         let mut history: Vec<LegacyChatMessage> = Vec::new();
         for i in 0..5 {
             history.extend(make_tool_round(
@@ -1269,8 +1884,12 @@ mod tests {
             ));
         }
 
-        let replaced =
-            microcompact_old_tool_outputs(&mut history, MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+        assert_eq!(
+            microcompact_batch_eligible_turns(&history),
+            2,
+            "批量推进值 = user 轮数 - K"
+        );
+        let replaced = microcompact_old_tool_outputs(&mut history, 2);
         assert_eq!(replaced, 2, "只有最近 3 轮之外的 2 个工具输出被替换");
 
         // 被替换的是前两轮的 tool 消息
@@ -1288,6 +1907,20 @@ mod tests {
         }
         // call_id 配对完整（占位符化不破坏工具链协议）
         assert!(validate_tool_chain(&history));
+
+        // 防御性钳制：异常超大的锚点也永远保住最近 K 轮原文
+        let mut history_clamp: Vec<LegacyChatMessage> = Vec::new();
+        for i in 0..5 {
+            history_clamp.extend(make_tool_round(
+                &format!("clamp-{}", i),
+                &format!("turn {}", i),
+            ));
+        }
+        assert_eq!(
+            microcompact_old_tool_outputs(&mut history_clamp, usize::MAX),
+            2,
+            "锚点越界时钳制到 U - K，最近 K 轮仍保原文"
+        );
     }
 
     /// 🆕 microcompact：pinned 消息（技能注入/压缩摘要伪消息）与短输出不受影响
@@ -1315,20 +1948,191 @@ mod tests {
             make_empty_message("user", "turn 3".to_string()),
         ];
 
-        let replaced =
-            microcompact_old_tool_outputs(&mut history, MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+        // 4 个非 pinned user 轮 → 批量推进值 = 1（pinned 摘要伪消息不计轮次）
+        assert_eq!(microcompact_batch_eligible_turns(&history), 1);
+        let replaced = microcompact_old_tool_outputs(&mut history, 1);
         assert_eq!(replaced, 0, "小输出不值得占位符化");
         assert_eq!(history[0].content, "compacted summary");
         assert_eq!(history[2].content, "tiny");
 
-        // user 轮数不足 K 时完全不动
+        // user 轮数不足 K 时完全不动（批量推进值为 0）
         let mut short_history = vec![
             make_empty_message("user", "only turn".to_string()),
             make_empty_message("assistant", "reply".to_string()),
         ];
+        assert_eq!(microcompact_batch_eligible_turns(&short_history), 0);
         assert_eq!(
-            microcompact_old_tool_outputs(&mut short_history, MICROCOMPACT_KEEP_RECENT_USER_TURNS),
+            microcompact_old_tool_outputs(&mut short_history, usize::MAX),
             0
+        );
+    }
+
+    /// 测试工具轮构造（user + tool_call + tool_result(大输出) + assistant）
+    fn make_big_tool_round(call_id: &str, user_text: &str) -> Vec<LegacyChatMessage> {
+        let big_output = "tool output data ".repeat(200);
+        let mut call = make_empty_message("assistant", String::new());
+        call.tool_call = Some(crate::models::ToolCall {
+            id: call_id.to_string(),
+            tool_name: "web_search".to_string(),
+            args_json: json!({ "q": "x" }),
+        });
+        let mut result = make_empty_message("tool", big_output.clone());
+        result.tool_result = Some(crate::models::ToolResult {
+            call_id: call_id.to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "data": big_output })),
+            usage: None,
+            citations: None,
+        });
+        vec![
+            make_empty_message("user", user_text.to_string()),
+            call,
+            result,
+            make_empty_message("assistant", "answer".to_string()),
+        ]
+    }
+
+    /// 消息的字节指纹（role + content + tool_result.data_json），
+    /// 用于断言 microcompact 后历史头部逐字稳定。
+    fn history_fingerprint(history: &[LegacyChatMessage]) -> Vec<String> {
+        history
+            .iter()
+            .map(|m| {
+                let data = m
+                    .tool_result
+                    .as_ref()
+                    .and_then(|tr| tr.data_json.as_ref())
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                format!("{}|{}|{}", m.role, m.content, data)
+            })
+            .collect()
+    }
+
+    /// 🆕 DESIGN 回归测试（必须做 3a）：连续两轮不 compaction 时，
+    /// 已 microcompact 的历史字节不变 —— 锚点冻结，不随新增 user 轮滑动。
+    ///
+    /// 旧行为（每轮按「最近 K 轮」滑动）：第 6 轮加入后第 3 轮（turn 2）的
+    /// 工具输出会变占位符 → 历史头部字节逐轮变、prompt cache 前缀失效。
+    #[test]
+    fn test_microcompact_anchor_freezes_history_bytes_between_compactions() {
+        // 轮 N：5 个 user 轮，锚点批量推进到 5 - K = 2
+        let mut turn_n: Vec<LegacyChatMessage> = Vec::new();
+        for i in 0..5 {
+            turn_n.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
+        }
+        let (anchor, eligible_n) =
+            advance_microcompact_anchor(None, None, microcompact_batch_eligible_turns(&turn_n));
+        assert_eq!(eligible_n, 2);
+        microcompact_old_tool_outputs(&mut turn_n, eligible_n);
+        let snapshot_n = history_fingerprint(&turn_n);
+
+        // 轮 N+1：同样的前 5 轮 + 新增第 6 轮；期间没有 compaction 事件
+        // （lineage 不变）→ 锚点冻结在 2，不随轮次滑动到 3。
+        let mut turn_n1: Vec<LegacyChatMessage> = Vec::new();
+        for i in 0..6 {
+            turn_n1.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
+        }
+        let (anchor_n1, eligible_n1) = advance_microcompact_anchor(
+            Some(&anchor),
+            None,
+            microcompact_batch_eligible_turns(&turn_n1),
+        );
+        assert_eq!(eligible_n1, 2, "无 compaction 事件 → 锚点冻结，不滑动");
+        assert_eq!(anchor_n1, anchor, "锚点状态本身也不变");
+        microcompact_old_tool_outputs(&mut turn_n1, eligible_n1);
+
+        // 前 5 轮（20 条消息）的字节与上一轮完全一致
+        let snapshot_n1 = history_fingerprint(&turn_n1[..20]);
+        assert_eq!(
+            snapshot_n1, snapshot_n,
+            "连续两轮不 compaction 时，已 microcompact 的历史头部字节必须不变"
+        );
+        // 特别地：turn 2 的工具输出仍是原文（旧滑动行为会把它变占位符）
+        let turn2_tool = &turn_n1[10];
+        assert!(turn2_tool.tool_result.is_some());
+        assert!(
+            !turn2_tool.content.contains("旧工具输出已省略"),
+            "锚点冻结期间 turn 2 的工具输出必须保留原文"
+        );
+    }
+
+    /// 🆕 锚点推进决策：只随 compaction 事件（lineage 变化）批量推进
+    #[test]
+    fn test_microcompact_anchor_advances_only_on_compaction_event() {
+        // 首次观察：按当前批量值建锚
+        let (anchor, eligible) = advance_microcompact_anchor(None, None, 2);
+        assert_eq!(eligible, 2);
+        assert_eq!(anchor.lineage, None);
+
+        // 无 compaction 事件：批量值涨到 4 也不推进
+        let (frozen, eligible) = advance_microcompact_anchor(Some(&anchor), None, 4);
+        assert_eq!(eligible, 2);
+        assert_eq!(frozen, anchor);
+
+        // compaction 事件（lineage None → cmp_1）：批量推进
+        let (advanced, eligible) = advance_microcompact_anchor(Some(&anchor), Some("cmp_1"), 4);
+        assert_eq!(eligible, 4);
+        assert_eq!(advanced.lineage.as_deref(), Some("cmp_1"));
+        assert_eq!(advanced.eligible_user_turns, 4);
+
+        // 同一 lineage 内再次冻结
+        let (again, eligible) = advance_microcompact_anchor(Some(&advanced), Some("cmp_1"), 6);
+        assert_eq!(eligible, 4);
+        assert_eq!(again, advanced);
+
+        // 防御性钳制：历史变短（编辑/换分支）时不越界
+        let (_, eligible) = advance_microcompact_anchor(Some(&advanced), Some("cmp_1"), 1);
+        assert_eq!(eligible, 1);
+    }
+
+    /// 🆕 DESIGN 回归测试（必须做 3b）：超预算时 compaction 先于 FIFO 头删；
+    /// 只有本轮已强制尝试过 compaction 才允许 FIFO 兜底。
+    #[test]
+    fn test_plan_history_overflow_compaction_before_fifo() {
+        let mut history: Vec<LegacyChatMessage> = Vec::new();
+        for i in 0..5 {
+            history.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
+        }
+
+        // 预算充足 → 无需处理
+        assert_eq!(
+            plan_history_overflow_action(&history, usize::MAX, false),
+            HistoryOverflowAction::WithinBudget
+        );
+
+        // 超预算且尚未强制 compaction → 必须先走 compaction，不许头删
+        assert_eq!(
+            plan_history_overflow_action(&history, 10, false),
+            HistoryOverflowAction::CompactionFirst
+        );
+
+        // 超预算但 compaction 已尝试（失败/跳过/回收不足）→ 才允许 FIFO 头删
+        assert_eq!(
+            plan_history_overflow_action(&history, 10, true),
+            HistoryOverflowAction::FifoTrim
+        );
+
+        // 可移除单元 ≤ 2 时 FIFO 本来就不会丢消息 → 无需强制 compaction
+        let tiny = vec![
+            make_empty_message("user", "big ".repeat(500)),
+            make_empty_message("assistant", "reply".to_string()),
+            make_empty_message("user", "next".to_string()),
+        ];
+        assert_eq!(
+            plan_history_overflow_action(&tiny, 10, false),
+            HistoryOverflowAction::WithinBudget
         );
     }
 
@@ -1523,5 +2327,183 @@ mod tests {
             &[spoofed_builtin.name.clone()],
             &[spoofed_builtin.name.clone()],
         ));
+    }
+
+    // ============================================================
+    // P1-8 技能锚定回归测试
+    // ============================================================
+
+    /// P1-8：跨轮插入点字节一致 —— 轮 1 live 注入的技能消息，轮 2 由
+    /// history.rs 按锚点重建后，[history][skills][userN] 前缀逐字节相等；
+    /// 且已锚定技能进入排除集后本轮差集为空，注入点冻结不再漂移。
+    #[test]
+    fn test_p1_8_cross_turn_injection_point_bytes_live_eq_replay() {
+        let skill_state = crate::chat_v2::types::SessionSkillState {
+            manual_pinned_skill_ids: vec!["skill-a".to_string(), "skill-b".to_string()],
+            version: 3,
+            ..Default::default()
+        };
+        let skill_contents = HashMap::from([
+            ("skill-a".to_string(), "skill body A".to_string()),
+            ("skill-b".to_string(), "skill body B".to_string()),
+        ]);
+
+        // 轮 1 live：[user1, assistant1] + 技能注入（历史末尾、user2 之前）+ user2
+        let history_prefix = || {
+            vec![
+                make_empty_message("user", "user turn 1".to_string()),
+                make_empty_message("assistant", "assistant turn 1".to_string()),
+            ]
+        };
+        let built = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            None,
+            None,
+            &HashSet::new(),
+        );
+        let anchor_ids = built.audit.injected_skill_ids.clone();
+        assert_eq!(
+            anchor_ids,
+            vec!["skill-a".to_string(), "skill-b".to_string()]
+        );
+
+        let mut live = history_prefix();
+        live.extend(built.messages);
+        live.push(make_empty_message("user", "user turn 2".to_string()));
+
+        // 轮 2 replay：按 meta.skill_injection_anchors 记录的 id 在同一位置重建
+        let mut replay = history_prefix();
+        replay.extend(super::super::history::rebuild_anchored_skill_messages(
+            &anchor_ids,
+            Some(&skill_contents),
+        ));
+        replay.push(make_empty_message("user", "user turn 2".to_string()));
+
+        assert_eq!(live.len(), replay.len());
+        for (l, r) in live.iter().zip(replay.iter()) {
+            assert_eq!(l.role, r.role);
+            assert_eq!(l.content, r.content, "重放技能消息必须与 live 字节相等");
+            assert_eq!(l.metadata, r.metadata);
+        }
+
+        // 轮 2 注入：历史里已锚定的技能进入排除集 → 差集为空，不再重复注入
+        let anchored = anchored_skill_ids_in_history(&replay);
+        assert_eq!(
+            anchored,
+            HashSet::from(["skill-a".to_string(), "skill-b".to_string()])
+        );
+        let second = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            None,
+            None,
+            &anchored,
+        );
+        assert!(second.messages.is_empty(), "注入点冻结后不得产生新技能消息");
+        assert!(second.audit.injected_skill_ids.is_empty());
+        // 排除集也要覆盖依赖闭包：skill-a 的依赖已注入时同样跳过
+        let deps = HashMap::from([("skill-a".to_string(), vec!["skill-b".to_string()])]);
+        let with_deps = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            Some(&deps),
+            None,
+            &anchored,
+        );
+        assert!(with_deps.messages.is_empty());
+    }
+
+    /// P1-8：环内 load_skills 新加载的技能追加到该 tool result 之后，
+    /// 当前 user 之前（含当前 user）的内存前缀逐字节不变。
+    #[test]
+    fn test_p1_8_in_loop_skills_do_not_touch_prefix_before_current_user() {
+        let skill_contents = HashMap::from([
+            ("skill-a".to_string(), "skill body A".to_string()),
+            ("skill-new".to_string(), "loaded in loop".to_string()),
+        ]);
+
+        // 同轮内存视图：[user1, skills(轮首), user2(当前), assistant tool_call, tool result]
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-load-skills".to_string(),
+            tool_name: "load_skills".to_string(),
+            args_json: json!({ "skill_ids": ["skill-new"] }),
+        });
+        let mut tool_result_message = make_empty_message("tool", "loaded".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-load-skills".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "loaded": ["skill-new"] })),
+            usage: None,
+            citations: None,
+        });
+        let mut messages = vec![
+            make_empty_message("user", "user turn 1".to_string()),
+            make_transient_skill_message("skill-a", "skill body A"),
+            make_empty_message("user", "current user turn".to_string()),
+            tool_call_message,
+            tool_result_message,
+        ];
+
+        // 快照：当前 user 及其之前的全部字节
+        let prefix_snapshot: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+
+        let mut injected = anchored_skill_ids_in_history(&messages);
+        assert!(injected.contains("skill-a"));
+        let batch = build_in_loop_skill_messages(
+            &["skill-new".to_string(), "skill-a".to_string()],
+            &skill_contents,
+            None,
+            None,
+            &injected,
+            4,
+        );
+        // 已注入的 skill-a 不重复；只有差集 skill-new
+        assert_eq!(
+            batch.audit.injected_skill_ids,
+            vec!["skill-new".to_string()]
+        );
+        injected.extend(batch.audit.injected_skill_ids.iter().cloned());
+
+        insert_skill_messages_after_tool_result(&mut messages, "call-load-skills", batch.messages);
+
+        // 新技能恰好插在 tool result 之后
+        assert_eq!(messages.len(), 6);
+        assert!(messages[4].tool_result.is_some());
+        assert!(is_transient_skill_message(&messages[5]));
+        assert_eq!(
+            transient_skill_message_skill_id(&messages[5]).as_deref(),
+            Some("skill-new")
+        );
+        // 当前 user 之前（含当前 user）的前缀逐字节不变
+        let prefix_after: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        assert_eq!(prefix_snapshot, prefix_after);
+
+        // 兜底：tool_call_id 不匹配时追加到末尾，仍不触碰前缀
+        let orphan = build_in_loop_skill_messages(
+            &["skill-a".to_string()],
+            &skill_contents,
+            None,
+            None,
+            &HashSet::new(),
+            4,
+        );
+        insert_skill_messages_after_tool_result(&mut messages, "call-missing", orphan.messages);
+        assert_eq!(messages.len(), 7);
+        assert!(is_transient_skill_message(&messages[6]));
+        let prefix_fallback: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        assert_eq!(prefix_snapshot, prefix_fallback);
     }
 }

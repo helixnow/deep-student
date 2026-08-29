@@ -68,6 +68,8 @@ pub mod event_types {
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
     pub const ANKI_CARDS: &str = "anki_cards";
+    /// 结构化 UI 意图（Generative UI）
+    pub const GENERATIVE_UI: &str = "generative_ui";
 
     // ========== 变体生命周期事件 ==========
     /// 变体开始生成
@@ -2053,6 +2055,7 @@ mod tests {
         assert_eq!(event_types::MEMORY, "memory");
         assert_eq!(event_types::WEB_SEARCH, "web_search");
         assert_eq!(event_types::ANKI_CARDS, "anki_cards");
+        assert_eq!(event_types::GENERATIVE_UI, "generative_ui");
         // 变体生命周期事件
         assert_eq!(event_types::VARIANT_START, "variant_start");
         assert_eq!(event_types::VARIANT_END, "variant_end");

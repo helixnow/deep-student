@@ -20,6 +20,13 @@ pub(crate) struct VariantLLMAdapter {
     in_think_tag: Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: Mutex<String>,
+    /// GLM/Qwen 路由专用的协议包装 token 流式过滤器（content 路径）。
+    wrap_token_filter: Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
+    /// reasoning 路径专用的**独立**包装 token 过滤器（Wave2-A R4 #1）。
+    /// 不与 content 路径的 `wrap_token_filter` 共享实例：过滤器持有跨 chunk 的
+    /// 行前缀/围栏状态，reasoning 与 content 两路交错到达会互相污染行状态。
+    reasoning_wrap_token_filter:
+        Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
     /// tool_call_id → preparing block_id 映射
     preparing_block_ids: Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲）
@@ -34,6 +41,7 @@ impl VariantLLMAdapter {
         enable_thinking: bool,
         skill_state_version: Option<u64>,
         round_id: Option<String>,
+        wrap_token_policy: crate::utils::model_special_tokens::ModelWrapTokenPolicy,
     ) -> Self {
         Self {
             ctx,
@@ -45,6 +53,16 @@ impl VariantLLMAdapter {
             finalized_thinking_block_id: Mutex::new(None),
             in_think_tag: Mutex::new(false),
             think_tag_buffer: Mutex::new(String::new()),
+            wrap_token_filter: Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
+            reasoning_wrap_token_filter: Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
             preparing_block_ids: Mutex::new(HashMap::new()),
             args_delta_buffer: Mutex::new(HashMap::new()),
             last_activity_at: Mutex::new(std::time::Instant::now()),
@@ -93,6 +111,33 @@ impl VariantLLMAdapter {
     }
 
     fn finalize_all_inner(&self, include_authoritative_content: bool) {
+        let filter_tail = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !filter_tail.is_empty() {
+            self.think_tag_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push_str(&filter_tail);
+        }
+
+        // reasoning 路径独立过滤器的尾巴直接归 thinking：reasoning 通道
+        // 不参与 <think> 标签状态机，不得回灌 think_tag_buffer
+        let reasoning_tail = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !reasoning_tail.is_empty() && self.enable_thinking {
+            self.ctx.append_reasoning(&reasoning_tail);
+            if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+                self.ctx
+                    .emit_chunk(event_types::THINKING, &block_id, &reasoning_tail);
+            }
+        }
+
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
         self.finalize_thinking();
@@ -386,6 +431,14 @@ impl VariantLLMAdapter {
             .think_tag_buffer
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = String::new();
+        self.wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
+        self.reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
         // 🔧 F2：新一轮视为新的流，重置空闲计时
         self.touch_activity();
         self.ctx.reset_for_new_round();
@@ -404,13 +457,22 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             return;
         }
 
+        let filtered = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
+            return;
+        }
+
         // 🔧 <think> 标签解析：将 chunk 追加到缓冲区并处理
         {
             let mut buffer = self
                 .think_tag_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            buffer.push_str(text);
+            buffer.push_str(&filtered);
         }
         self.process_think_tag_buffer();
     }
@@ -418,6 +480,21 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     fn on_reasoning_chunk(&self, text: &str) {
         self.touch_activity();
         if !self.enable_thinking {
+            return;
+        }
+        if text.is_empty() {
+            return;
+        }
+
+        // R4 #1：独立 reasoning 过滤器（不与 content 路径共享行状态）。
+        // 过滤后再累积/emit；过滤结果为空时不建块不发事件，
+        // 被暂扣的片段由 finalize_all_inner 的 flush 尾巴兜底
+        let filtered = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
             return;
         }
 
@@ -434,8 +511,9 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
         drop(initialized);
 
         if let Some(block_id) = self.ctx.get_thinking_block_id() {
-            self.ctx.emit_chunk(event_types::THINKING, &block_id, text);
-            self.ctx.append_reasoning(text);
+            self.ctx
+                .emit_chunk(event_types::THINKING, &block_id, &filtered);
+            self.ctx.append_reasoning(&filtered);
         }
     }
 
@@ -450,6 +528,18 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
 
         if ChatV2LLMAdapter::is_builtin_retrieval_tool(tool_name) {
             return;
+        }
+
+        // 幂等：Responses 流式路径会对同一 tool_call_id 触发两次 start
+        // （output_item.added 分块 + arguments.done 终态），复用已有 preparing 块
+        {
+            let guard = self
+                .preparing_block_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if guard.contains_key(tool_call_id) {
+                return;
+            }
         }
 
         // 生成 block_id 并存储映射，供后续 args delta chunk 使用

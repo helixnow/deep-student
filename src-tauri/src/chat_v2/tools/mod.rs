@@ -8,7 +8,6 @@
 //! - `types`: 工具类型定义（ToolDefinition, ToolCategory, ToolExecutionResult）
 //! - `registry`: Schema 工具注册表（SchemaToolRegistry）
 //! - `canvas_tools`: Canvas 智能笔记工具实现
-//! - `anki_executor`: 仅保留的 CardForge 兼容实现（未注册且不注入 Schema）
 //! - `executor`: ToolExecutor trait 定义（文档 29 P0-1）
 //! - `executor_registry`: 工具执行器注册表（文档 29 P0-1）
 //! - `general_executor`: 通用工具执行器（文档 29 P0-1）
@@ -36,9 +35,11 @@
 //! 详见 `executor.rs` 中 `ToolExecutor` trait 文档。
 
 pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + OpenAlex）
-pub mod anki_executor; // 旧 CardForge 兼容代码；生产管线不注册
+                                  // ★ 2026-08 死链路清理：anki_executor（旧 CardForge AnkiToolExecutor，
+                                  // 经 anki_tool_call 事件桥接前端 CardAgent）已删除——pipeline 从不注册它，
+                                  // 前端 CardAgent 也已不再监听 anki_tool_call。Anki 制卡统一走 chatanki_executor。
 mod arg_utils;
-pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互） // Anki 工具执行器（桥接到前端 CardAgent）
+pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）
 pub mod attachment_stage_executor; // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径）
 pub mod attempt_completion; // 🆕 任务完成工具（文档 29 P1-4）
@@ -49,6 +50,8 @@ pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP �
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
+pub mod chatanki_transform; // 🆕 chatanki_transform 声明式变换引擎（ops 模式纯 Rust）
+pub mod chatanki_transform_script; // 🆕 chatanki_transform 沙箱脚本模式（temp root job 目录 + 平台沙箱 + I/O 合同）
 pub mod connector_executor; // First-class connector registry and draft/confirm/commit bridge
 pub mod custom_agent_executor; // 🆕 custom_agent_* 自定义子代理 persona 管理（提案+审批两段式）
 pub mod data_governance_executor; // Agent-safe backup and sync tools
@@ -61,6 +64,7 @@ pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
 pub mod file_manager_executor;
 pub mod general_executor;
+pub mod generative_ui_executor; // 🆕 生成式 UI 工具执行器（render_generative_ui）
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
 pub mod injector;
@@ -116,6 +120,13 @@ pub use canvas_tools::{
     NoteSetTool,
 };
 
+/// Office 文档（DOCX/XLSX/PPTX）结构化读取的单文件解析安全上限（50MB）。
+///
+/// ★ #62/ATT-09：这是"整份文件读入内存解析"的安全阈值，不是附件上传上限
+/// （上传上限见 `vfs::repos::attachment_repo`：图片 50MB / 文件 200MB）。
+/// 各执行器的超限错误提示必须由本常量派生，禁止再各自硬编码 "50MB" 文案。
+pub(crate) const OFFICE_DOC_PARSE_MAX_BYTES: usize = 50 * 1024 * 1024;
+
 // 重导出注册表
 pub use registry::{get_registry, SchemaToolRegistry};
 
@@ -129,7 +140,6 @@ pub use types::{
 
 // 重导出执行器（文档 29 P0-1）
 pub use academic_search_executor::AcademicSearchExecutor; // 🆕 学术论文搜索执行器
-pub use anki_executor::AnkiToolExecutor; // 旧 CardForge 兼容执行器；仅保留类型
 pub use ask_user_executor::AskUserExecutor; // 🆕 用户提问工具执行器
 pub use attachment_executor::AttachmentToolExecutor; // 🆕 附件工具执行器
 pub use attachment_stage_executor::AttachmentStageExecutor; // 🆕 附件物化工具执行器
@@ -152,6 +162,7 @@ pub use executor_registry::{ToolExecutorRegistry, ToolRiskSnapshot};
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use file_manager_executor::FileManagerExecutor;
 pub use general_executor::GeneralToolExecutor;
+pub use generative_ui_executor::GenerativeUiExecutor; // 🆕 生成式 UI 工具执行器
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use index_webpage_executor::IndexWebpageToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器

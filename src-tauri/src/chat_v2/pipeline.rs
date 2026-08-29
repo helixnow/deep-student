@@ -80,13 +80,31 @@ pub mod constants;
 pub mod context_compiler;
 pub mod helpers;
 pub mod history;
+pub mod hooks; // WI-13: 流水线钩子（审批准入 + 审计记录内置 hook）
 pub mod llm_adapter;
+#[cfg(test)]
+mod llm_content_crash_tests;
+#[cfg(test)]
+mod llm_content_retry_gap_tests;
 pub mod multi_variant;
 #[cfg(test)]
 mod parallel_exec_tests;
 pub mod persistence;
+#[cfg(test)]
+mod prefix_generation_fork_finale_tests;
+#[cfg(test)]
+mod prefix_generation_fork_tests;
+#[cfg(test)]
+mod prefix_generation_restore_tests;
+#[cfg(test)]
+mod prefix_snapshot_tests;
 pub mod prompt;
 pub mod retrieval;
+#[cfg(test)]
+mod skill_replay_digest_tests;
+#[cfg(test)]
+mod skill_replay_edit_delete_tests;
+pub(crate) mod stream_filter_core;
 pub mod summary;
 pub mod token_resources;
 pub mod tool_loop;
@@ -96,6 +114,7 @@ pub use authority_mode::*;
 pub use compaction::*;
 pub(crate) use constants::*;
 pub(crate) use helpers::*;
+pub use hooks::*;
 pub use llm_adapter::*;
 pub(crate) use variant_adapter::*;
 
@@ -167,10 +186,36 @@ pub struct ChatV2Pipeline {
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
     /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
     compaction_locks: Arc<Mutex<HashSet<String>>>,
+    /// 🆕 microcompact 锚点（会话级状态）：session_id → 锚点。
+    /// 锚点只随 compaction 事件（活跃 compaction id 变化）批量推进，两次
+    /// compaction 之间冻结，保证历史头部字节逐轮稳定（prompt cache 友好）。
+    /// 所有 Pipeline clone 共享；这里是热路径读缓存，真身持久化在
+    /// session.metadata（`microcompactAnchor`）：桌面 App 重启后 provider
+    /// 侧 prompt cache 仍可能存活，内存 miss 时从 metadata 恢复同一
+    /// `eligible_user_turns`（load/store 见 helpers.rs），不再按当前历史
+    /// 跳变到 `U - K`。
+    microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
+    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → 权威工具面基线
+    /// `ToolFaceBaseline { generation, order, schema_digest }`（P1 代际
+    /// 升级：值型从裸 `Vec<String>` 扩为带代号的快照，单锁不变）。
+    /// 同一 session 内已发出的 tools 相对顺序（`order`，append-only
+    /// 首见序）跨轮（跨 execute_with_tools 调用）保持，新工具只追加末尾
+    /// —— 禁止下一稳定窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会
+    /// 从第 0 字节变化，整段 prompt cache 失效）。`generation` 仅在多变体
+    /// fan-out 收敛点检出真分叉时 +1（converge 见 helpers.rs），单变体
+    /// 纯扩展与 miss 回填永不 bump。所有 Pipeline clone 共享；这里是热
+    /// 路径读缓存，真身持久化在 session.metadata（`frozenToolSchemaOrder`
+    /// + `toolFacePrefixGeneration` + 可选 `toolSchemaDigest` 三键）：
+    /// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，内存 miss 时
+    /// 从 metadata 恢复同一前缀序与代号（load/store/converge 见
+    /// helpers.rs），不再按字母序冷重建。
+    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, helpers::ToolFaceBaseline>>>,
     /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
     memory_flush_next_retry_at_ms: Arc<AtomicI64>,
+    /// WI-13: 流水线钩子链（默认注册 ApprovalGateHook + TaskAuditHook）。
+    hooks: Arc<Vec<Arc<dyn PipelineHook>>>,
 }
 
 impl ChatV2Pipeline {
@@ -211,9 +256,21 @@ impl ChatV2Pipeline {
             question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
+            microcompact_anchors: Arc::new(Mutex::new(HashMap::new())),
+            frozen_tool_schema_orders: Arc::new(Mutex::new(HashMap::new())),
             memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
             memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
+            hooks: hooks::default_pipeline_hooks(),
         }
+    }
+
+    /// WI-13: 追加自定义流水线钩子（内置审批/审计钩子始终保留在链首，
+    /// 追加钩子按注册顺序在其后执行）。
+    pub(crate) fn with_pipeline_hook(mut self, hook: Arc<dyn PipelineHook>) -> Self {
+        let mut hooks = self.hooks.as_ref().clone();
+        hooks.push(hook);
+        self.hooks = Arc::new(hooks);
+        self
     }
 
     /// 设置审批管理器
@@ -307,6 +364,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
+        executors.push(Arc::new(super::tools::GenerativeUiExecutor::new())); // 🆕 生成式 UI 工具执行器
         executors.push(Arc::new(WorkspaceFsExecutor::new()));
         executors.push(Arc::new(FileManagerExecutor::new()));
         executors.push(Arc::new(
@@ -410,6 +468,7 @@ impl ChatV2Pipeline {
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
+            "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
@@ -877,17 +936,34 @@ impl ChatV2Pipeline {
             return Err(ChatV2Error::Cancelled);
         }
 
+        // 阶段 1.5：🆕 P0 预算口径对齐（FIFO 仅 compaction 不够时兜底）。
+        // 用户未配置 context_limit 时，历史裁剪预算不得回退到固定 32K ——
+        // 大窗口模型（如 200K）的 compaction 触发阈值（usable × 0.85）远高于
+        // 32K，固定回退会让 FIFO/强制压缩先于 compaction 自然阈值启动。
+        // 这里把本轮口径填充为 provider 真实 usable（context_window −
+        // max_output），恒大于 compaction 阈值，保证 compaction 恒先行；
+        // 对 compaction 自身无影响（effective_usable_tokens 取 min，
+        // min(usable, usable) = usable，与未配置时等价）。解析不到配置时
+        // 保持 None，由 constants::effective_history_token_budget 回退 32K
+        // （仍高于 compaction 默认口径阈值，有测试钳制）。
+        if ctx.options.context_limit.map_or(true, |v| v == 0) {
+            if let Some(config) = self.resolve_active_api_config(ctx).await {
+                let provider_usable = usable_tokens(Some(&config));
+                if provider_usable > 0 {
+                    log::debug!(
+                        "[ChatV2::pipeline] context_limit not configured; adopting provider usable budget {} for session={}",
+                        provider_usable,
+                        ctx.session_id
+                    );
+                    ctx.options.context_limit = Some(provider_usable);
+                }
+            }
+        }
+
         // 阶段 2：加载聊天历史
         self.load_chat_history(ctx).await?;
         // 🆕 FIFO 截断可见化：实际丢弃了消息时向前端发 context_trimmed 事件
         self.notify_context_trimmed(ctx, &emitter);
-        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
-        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
-        // happens for text-only active models.
-        tokio::select! {
-            result = self.compile_frozen_context(ctx) => result?,
-            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
-        }
 
         // 阶段 3：并行执行检索
         if cancel_token.is_cancelled() {
@@ -907,8 +983,31 @@ impl ChatV2Pipeline {
             .await;
         ctx.add_retrieval_refs_to_snapshot(retrieval_refs);
 
-        // 阶段 4：构建系统提示
+        // 阶段 4：构建系统提示（P1-10 拆分：稳定 system 返回，
+        // turn-volatile 块写入 ctx.turn_volatile_context 供编译注入 injected_context）
         let system_prompt = self.build_system_prompt(ctx).await;
+
+        // 阶段 4.5：编译冻结上下文（原阶段 2 尾；P1-10 后移到检索与
+        // 系统提示拆分之后，使 turn-volatile 块随当前 user 消息一起编译冻结）。
+        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
+        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
+        // happens for text-only active models.
+        tokio::select! {
+            result = self.compile_frozen_context(ctx) => result?,
+            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
+
+        // 阶段 4.6：R3-#1 llm_content 前移 —— 编译已冻结、用户块行已 INSERT
+        // （阶段 5 execute_with_tools 发起首个 provider 请求之前），轻量补写
+        // user CONTENT 块 llm_content sidecar，消除「已发 provider、sidecar
+        // 未保存」的崩溃窗口。失败只 warn 不阻断发送。
+        if let Err(e) = self.persist_user_llm_content_early(ctx).await {
+            log::warn!(
+                "[ChatV2::pipeline] persist_user_llm_content_early failed (non-fatal, later save points may retry when the target block exists): session={}, err={}",
+                ctx.session_id,
+                e
+            );
+        }
 
         // 阶段 5：调用 LLM（带工具递归）
         if cancel_token.is_cancelled() {
@@ -1030,6 +1129,149 @@ impl ChatV2Pipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 跨进程一致性测试 harness：迁移完备的临时 ChatV2 库 + 真实 Pipeline
+    /// + 一个已落库的 session。返回 TempDir 保持数据库文件存活。
+    fn cross_process_test_pipeline() -> (tempfile::TempDir, ChatV2Pipeline, String) {
+        use crate::chat_v2::types::ChatSession;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut coordinator =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_coordinator =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        let session_id = ChatSession::generate_id();
+        let session = ChatSession::new(session_id.clone(), "chat".to_string());
+        ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
+
+        let pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        // Keep main temp dir alive for the duration of the test.
+        std::mem::forget(main_dir);
+        (chat_dir, pipeline, session_id)
+    }
+
+    /// 🆕 P0 跨进程回归（写库 → 清内存 → load 一致）：tools 冻结基线
+    /// 经 store 持久化后，清空进程内存 HashMap（模拟桌面 App 重启），
+    /// load 必须恢复同一首见序 —— 禁止字母序冷重建。
+    #[tokio::test]
+    async fn frozen_tool_schema_order_survives_memory_clear() {
+        let (_dir, pipeline, session_id) = cross_process_test_pipeline();
+
+        // 首见序（非字母序）基线写入：内存 + DB
+        let baseline: Vec<String> = vec!["zeta_tool".into(), "alpha_tool".into()];
+        pipeline.store_session_frozen_tool_schema_order(&session_id, &baseline);
+
+        // 模拟进程重启：清空共享内存基线，只剩 DB
+        pipeline.frozen_tool_schema_orders.lock().unwrap().clear();
+
+        let restored = pipeline.load_session_frozen_tool_schema_order(&session_id);
+        assert_eq!(
+            restored, baseline,
+            "重启后 load 的基线必须与写库的首见序逐字一致"
+        );
+
+        // append-only：重启后继续推进不得打乱已持久化前缀
+        let advanced: Vec<String> =
+            vec!["zeta_tool".into(), "alpha_tool".into(), "new_tool".into()];
+        pipeline.store_session_frozen_tool_schema_order(&session_id, &advanced);
+        pipeline.frozen_tool_schema_orders.lock().unwrap().clear();
+        assert_eq!(
+            pipeline.load_session_frozen_tool_schema_order(&session_id),
+            advanced
+        );
+    }
+
+    /// 🆕 P0 跨进程回归（写库 → 清内存 → load 一致）：microcompact 锚点
+    /// 建锚后清空进程内存（模拟重启），同 lineage 下即使历史继续增长，
+    /// eligible_user_turns 必须沿用持久化锚点、不得跳到当前 U-K；
+    /// 只有 lineage 变化（compaction 事件）才批量推进。
+    #[tokio::test]
+    async fn microcompact_anchor_survives_memory_clear_without_jump() {
+        let (_dir, pipeline, session_id) = cross_process_test_pipeline();
+
+        let make_history = |user_turns: usize| -> Vec<LegacyChatMessage> {
+            let mut history = Vec::new();
+            for i in 0..user_turns {
+                history.push(make_empty_message("user", format!("question {}", i)));
+                history.push(make_empty_message("assistant", format!("answer {}", i)));
+            }
+            history
+        };
+
+        // 5 个 user 轮，K=3 → 建锚 eligible = 2（写库）
+        let eligible_first = pipeline.resolve_microcompact_eligible_turns(
+            &session_id,
+            Some("comp_evt_1"),
+            &make_history(5),
+        );
+        assert_eq!(eligible_first, 2);
+
+        // 模拟进程重启：清空共享内存锚点，只剩 DB
+        pipeline.microcompact_anchors.lock().unwrap().clear();
+
+        // 同 lineage、历史增长到 7 个 user 轮（批量值 4）：必须沿用持久化
+        // 锚点 2，不得跳变 —— 否则中间轮工具输出突然占位符化、头部字节变
+        let eligible_after_restart = pipeline.resolve_microcompact_eligible_turns(
+            &session_id,
+            Some("comp_evt_1"),
+            &make_history(7),
+        );
+        assert_eq!(
+            eligible_after_restart, 2,
+            "重启后同 lineage 必须沿用持久化锚点，eligible 不得跳到当前 U-K"
+        );
+
+        // compaction 事件（lineage 变化）→ 批量推进到 7-3=4 并持久化
+        let eligible_after_compaction = pipeline.resolve_microcompact_eligible_turns(
+            &session_id,
+            Some("comp_evt_2"),
+            &make_history(7),
+        );
+        assert_eq!(
+            eligible_after_compaction, 4,
+            "锚点只随 compaction 事件（lineage 变化）批量推进"
+        );
+
+        // 再次清内存：新锚点也已持久化（写库→清内存→load 一致）
+        pipeline.microcompact_anchors.lock().unwrap().clear();
+        assert_eq!(
+            pipeline.resolve_microcompact_eligible_turns(
+                &session_id,
+                Some("comp_evt_2"),
+                &make_history(8),
+            ),
+            4,
+            "compaction 事件推进后的锚点同样必须跨进程恢复一致"
+        );
+    }
 
     #[test]
     fn test_tool_pack_registered_before_general_executor() {

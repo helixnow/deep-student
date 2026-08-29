@@ -387,6 +387,12 @@ pub(crate) struct PipelineContext {
     pub(crate) execution_snapshot: Option<ModelExecutionSnapshot>,
     /// 检索到的来源
     pub(crate) retrieved_sources: MessageSources,
+    /// 🆕 P1-10：本轮 turn-volatile 块（格式 hints / 画像 / 待办 / 检索 context /
+    /// Canvas 笔记），由 prompt_builder 拆分产出，注入当前 user 消息的
+    /// `<injected_context>` 而非 system——system 是 input 第 0 位，逐轮变化
+    /// 会打碎全部历史 prompt cache。必须在 compile_frozen_context 之前赋值，
+    /// 编译后随 compiled_current_user_message 冻结并经 V20260806 llm_content 落库。
+    pub(crate) turn_volatile_context: Option<String>,
     /// 发送选项
     pub(crate) options: SendOptions,
     /// 工具调用结果
@@ -430,9 +436,18 @@ pub(crate) struct PipelineContext {
     /// 中回填 assistant(tool_call) 消息的 content，让 LLM 能看到上一轮说过的话
     pub(crate) round_text_by_tool_call_id: HashMap<String, String>,
 
-    /// OpenAI Responses reasoning item associated with the first tool call of
-    /// each round. Kept in memory and replayed on the next stateless request.
+    /// OpenAI Responses reasoning items keyed by the adjacent tool_call_id
+    /// (each function_call carries its own reasoning item; never all bound to
+    /// the first call of a batch). A tool-less final turn is stored under the
+    /// sentinel key [`crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY`].
+    /// Kept in memory and replayed on the next stateless request.
     pub(crate) response_reasoning_by_tool_call_id: HashMap<String, Value>,
+
+    /// P2-13 收尾：本次运行收集到的服务端 `web_search_call` 完整 item
+    /// （按 id 去重、后到覆盖）。随 assistant 消息 meta 持久化
+    /// （键 `openai_responses_web_search_items`），history 重放时挂回出站
+    /// assistant 消息 metadata，Responses 转换层原样回传 input。
+    pub(crate) response_web_search_items: Vec<Value>,
 
     /// Gemini 3 思维签名缓存（工具调用迭代时回传）
     /// 在工具调用场景下，API 返回的 thoughtSignature 需要缓存并在后续请求中回传
@@ -485,6 +500,12 @@ pub(crate) struct PipelineContext {
 
     /// 🆕 本轮流式内是否已发射过 `context_trimmed`（去重防刷屏）
     pub(crate) context_trim_notified: bool,
+
+    /// 🆕 DESIGN：FIFO 头删触发前强制 compaction 的每轮一次性闸门。
+    /// load_chat_history 发现超预算时先跑 compaction；本标志保证同一轮
+    /// send 至多强制一次，compaction 后仍超预算时直接 FIFO 兜底，不会
+    /// 陷入「compaction → 重载 → 再 compaction」的循环。
+    pub(crate) forced_compaction_before_trim: bool,
 }
 
 impl PipelineContext {
@@ -514,6 +535,7 @@ impl PipelineContext {
             canonical_content: Vec::new(),
             execution_snapshot: None,
             retrieved_sources: MessageSources::default(),
+            turn_volatile_context: None,
             options: request.options.unwrap_or_default(),
             tool_results: Vec::new(),
             final_content: String::new(),
@@ -533,6 +555,7 @@ impl PipelineContext {
             pending_reasoning_for_api: None,
             round_text_by_tool_call_id: HashMap::new(),
             response_reasoning_by_tool_call_id: HashMap::new(),
+            response_web_search_items: Vec::new(),
             pending_thought_signature: None,
             current_adapter: None,
             // 统一上下文注入系统支持
@@ -556,6 +579,7 @@ impl PipelineContext {
             doom_loop_guard: DoomLoopGuard::default(),
             pending_context_trim: None,
             context_trim_notified: false,
+            forced_compaction_before_trim: false,
         }
     }
 
@@ -577,6 +601,23 @@ impl PipelineContext {
     /// 添加工具调用结果
     pub(crate) fn add_tool_results(&mut self, results: Vec<ToolResultInfo>) {
         self.tool_results.extend(results);
+    }
+
+    /// P2-13 收尾：合并本轮流式收集的服务端 web_search_call 完整 item
+    /// （按 id 去重、后到覆盖，与 adapter 侧缓存语义一致）。
+    pub(crate) fn merge_response_web_search_items(&mut self, items: Vec<Value>) {
+        for item in items {
+            let id = item.get("id").and_then(Value::as_str).map(str::to_string);
+            let existing = id.as_deref().and_then(|id| {
+                self.response_web_search_items
+                    .iter_mut()
+                    .find(|existing| existing.get("id").and_then(Value::as_str) == Some(id))
+            });
+            match existing {
+                Some(existing) => *existing = item,
+                None => self.response_web_search_items.push(item),
+            }
+        }
     }
 
     /// 将**所有**工具调用结果转换为 LLM 消息格式
@@ -1018,6 +1059,7 @@ impl PipelineContext {
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "arxiv_search" | "scholar_search" => block_types::ACADEMIC_SEARCH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
+            "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
             "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
             // 🆕 契约 C11 配套（缺口 2 历史加载侧）：前端为 workspace_send 建专属块，
@@ -1187,12 +1229,23 @@ impl PipelineContext {
         )
     }
 
+    /// 组装 `<injected_context>` 内的内容块
+    ///
+    /// ## P1-10：turn-volatile 迁出 system
+    /// 顺序：runtime_facts → 用户上下文引用（formattedBlocks）→ turn-volatile 块
+    /// （格式 hints / 画像 / 待办 / 检索 context / Canvas 笔记）。
+    /// turn-volatile 块由 prompt_builder 拆分产出，各块内部已按旧 system
+    /// 注入规则完成 XML 转义，此处按预编排 XML 段原样拼接（同 runtime_facts）。
     pub(crate) fn build_injected_context_blocks(
         runtime_facts: &str,
         refs: &[SendContextRef],
+        turn_volatile: Option<&str>,
     ) -> Vec<ContentBlock> {
         let mut blocks = vec![ContentBlock::text(runtime_facts.to_string())];
         blocks.extend(Self::build_user_content_from_context_refs(refs));
+        if let Some(volatile) = turn_volatile.filter(|text| !text.is_empty()) {
+            blocks.push(ContentBlock::text(volatile.to_string()));
+        }
         blocks
     }
 
@@ -1231,8 +1284,11 @@ impl PipelineContext {
     /// - 合并后的用户内容文本
     /// - 从 formattedBlocks 中提取的图片 base64 列表
     pub(crate) fn get_combined_user_content(&self) -> (String, Vec<String>) {
-        let injected_blocks =
-            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        let injected_blocks = Self::build_injected_context_blocks(
+            &self.runtime_facts,
+            &self.user_context_refs,
+            self.turn_volatile_context.as_deref(),
+        );
         let (context_text, context_images) =
             Self::collect_injected_context_text_and_images(&injected_blocks);
         let combined_text =
@@ -1246,6 +1302,20 @@ impl PipelineContext {
         );
 
         (combined_text, context_images)
+    }
+
+    /// V20260806 B 层：当前用户消息 live 实际发送的完整包装文本
+    ///
+    /// 优先取 `compiled_current_user_message`（context_compiler 冻结后的
+    /// 最终请求内容，含 `<user_query>` 包装 + `<injected_context>`/
+    /// `<runtime_facts>` 及可能的派生 artifact 文本）；尚未编译时返回 None，
+    /// 由后续保存点（编译发生在首次 LLM 调用前）补写，避免把与 live 不一致
+    /// 的中间形态落进 `llm_content` 列。
+    pub(crate) fn live_user_llm_content(&self) -> Option<String> {
+        self.compiled_current_user_message
+            .as_ref()
+            .map(|message| message.content.clone())
+            .filter(|content| !content.is_empty())
     }
 
     /// 将用户上下文引用转换为 ContextRef（丢弃 formattedBlocks）
@@ -1323,8 +1393,11 @@ impl PipelineContext {
         }
 
         // 2. 处理上下文引用的 formattedBlocks（保持原始顺序）
-        let injected_blocks =
-            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        let injected_blocks = Self::build_injected_context_blocks(
+            &self.runtime_facts,
+            &self.user_context_refs,
+            self.turn_volatile_context.as_deref(),
+        );
         if !injected_blocks.is_empty() {
             blocks.push(ContentBlock::text("<injected_context>".to_string()));
             blocks.extend(injected_blocks);
@@ -1554,5 +1627,115 @@ mod citation_tests {
         let output = json!({ "sources": [{ "imageUrl": "asset://x" }] });
         assert!(sanitize_retrieval_output_for_llm("builtin-note_read", &output).is_none());
         assert!(sanitize_retrieval_output_for_llm("mcp_custom_tool", &output).is_none());
+    }
+}
+
+// ============================================================
+// P1-10：turn-volatile 迁入当前 user <injected_context> 的单元测试
+// ============================================================
+
+#[cfg(test)]
+mod turn_volatile_tests {
+    use super::*;
+
+    const FIXED_FACTS: &str = "<runtime_facts>\n当前日期: 2026-08-23\n</runtime_facts>";
+
+    fn build_user_text(volatile: Option<&str>) -> String {
+        let blocks = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], volatile);
+        let (text, images) = PipelineContext::collect_injected_context_text_and_images(&blocks);
+        assert!(images.is_empty());
+        PipelineContext::wrap_user_message_text("同一个问题", Some(text.as_str()))
+    }
+
+    #[test]
+    fn injected_context_carries_turn_volatile_blocks() {
+        let volatile = "<active_todos>\n以下是用户当前的待办事项：\n1. 复习\n</active_todos>";
+        let combined = build_user_text(Some(volatile));
+
+        // user_query 在前且不含 volatile 内容
+        let query_end = combined.find("</user_query>").expect("user_query block");
+        assert!(!combined[..query_end].contains("active_todos"));
+
+        // volatile 落在 <injected_context> 内部
+        let ic_start = combined
+            .find("<injected_context>")
+            .expect("injected_context open");
+        let ic_end = combined
+            .find("</injected_context>")
+            .expect("injected_context close");
+        let injected = &combined[ic_start..ic_end];
+        assert!(injected.contains("<runtime_facts>"));
+        assert!(injected.contains(volatile));
+    }
+
+    /// P1-10 跨轮快照（user 消息侧）：volatile 逐轮变化时，
+    /// `<injected_context>` 之前的字节（user_query + 包装骨架）逐轮不变，
+    /// 变化只发生在 injected_context 内部。
+    #[test]
+    fn cross_turn_changes_stay_inside_injected_context() {
+        let round1 = build_user_text(Some("<context>\n[知识库-1] 第一轮命中\n</context>"));
+        let round2 = build_user_text(Some("<context>\n[知识库-1] 第二轮命中\n</context>"));
+
+        let prefix1 = &round1[..round1.find("<injected_context>").unwrap()];
+        let prefix2 = &round2[..round2.find("<injected_context>").unwrap()];
+        assert_eq!(prefix1, prefix2);
+        assert!(round1.contains("第一轮命中") && !round1.contains("第二轮命中"));
+        assert!(round2.contains("第二轮命中") && !round2.contains("第一轮命中"));
+    }
+
+    /// P1-10 R4：runtime_facts（含当前日期/时间）的唯一归属是当前 user
+    /// 消息的 <injected_context>——本测试确认日期字节确实存在于
+    /// injected_context 内部；system 侧不含日期由
+    /// prompt_builder::tests::test_stable_system_free_of_runtime_facts_and_dates
+    /// 保证，两端合起来构成「日期不在 system」的完整回归。
+    #[test]
+    fn runtime_facts_with_date_live_inside_injected_context() {
+        let facts = PipelineContext::build_runtime_facts_block("讲讲牛顿第二定律");
+        assert!(facts.starts_with("<runtime_facts>"));
+        assert!(facts.contains("当前日期: "));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(facts.contains(&today));
+
+        let blocks = PipelineContext::build_injected_context_blocks(&facts, &[], None);
+        let (text, images) = PipelineContext::collect_injected_context_text_and_images(&blocks);
+        assert!(images.is_empty());
+        let combined =
+            PipelineContext::wrap_user_message_text("讲讲牛顿第二定律", Some(text.as_str()));
+
+        // runtime_facts 位于 <injected_context> 内部，且不泄漏进 user_query
+        let ic_start = combined
+            .find("<injected_context>")
+            .expect("injected_context open");
+        let ic_end = combined
+            .find("</injected_context>")
+            .expect("injected_context close");
+        let facts_pos = combined
+            .find("<runtime_facts>")
+            .expect("runtime_facts block");
+        assert!(ic_start < facts_pos && facts_pos < ic_end);
+        let query_end = combined.find("</user_query>").expect("user_query block");
+        assert!(!combined[..query_end].contains("runtime_facts"));
+        assert!(!combined[..query_end].contains(&today));
+    }
+
+    /// 时间敏感问法升级为「当前时间」精度，但仍只影响 user 消息侧，
+    /// 与 system 无关（system 侧断言见 prompt_builder 测试）。
+    #[test]
+    fn time_sensitive_query_upgrades_runtime_fact_precision() {
+        let normal = PipelineContext::build_runtime_facts_block("讲讲牛顿第二定律");
+        assert!(normal.contains("当前日期: "));
+        assert!(!normal.contains("当前时间: "));
+
+        let sensitive = PipelineContext::build_runtime_facts_block("今天是几号？");
+        assert!(sensitive.contains("当前时间: "));
+    }
+
+    #[test]
+    fn empty_turn_volatile_keeps_previous_block_shape() {
+        let none = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], None);
+        assert_eq!(none.len(), 1);
+        // 空串等价于无 volatile，不追加空文本块
+        let empty = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], Some(""));
+        assert_eq!(empty.len(), 1);
     }
 }

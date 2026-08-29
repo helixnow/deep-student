@@ -63,6 +63,7 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 提取 reasoning_tokens
     // - 顶层 reasoning_tokens（部分中转站/旧格式）
     // - 嵌套 completion_tokens_details.reasoning_tokens（OpenAI o系列/DeepSeek V3+ 标准格式）
+    // - 嵌套 output_tokens_details.reasoning_tokens（OpenAI Responses API 标准格式）
     let reasoning_tokens = usage
         .get("reasoning_tokens")
         .and_then(|v| v.as_u64())
@@ -73,6 +74,13 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
                 .and_then(|d| d.get("reasoning_tokens"))
                 .and_then(|v| v.as_u64())
                 .map(|v| v as u32)
+        })
+        .or_else(|| {
+            usage
+                .get("output_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32)
         });
 
     // 提取缓存命中 token（业界最佳实践 LiteLLM 对齐）
@@ -80,45 +88,69 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 归一化规则：
     // - Anthropic: cache_read_input_tokens 才是缓存命中；
     //   cache_creation_input_tokens 是计费元数据（写入缓存），不计入缓存命中
-    // - OpenAI: prompt_tokens_details.cached_tokens
-    // - DeepSeek: prompt_cache_hit_tokens
+    // - OpenAI Chat Completions: prompt_tokens_details.cached_tokens
+    // - OpenAI/DeepSeek Responses: input_tokens_details.cached_tokens
+    // - DeepSeek CC: prompt_cache_hit_tokens
     // - Gemini: cached_tokens（顶层，由 gemini-openai-converter 注入）
     //
     // 防中转站重复：使用 max() 而非 sum()
     // 网关（LiteLLM/OneAPI）可能同时返回多种格式表示同一份缓存数据
     let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
     let openai_cached = usage
         .get("prompt_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
+    let responses_cached = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64());
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let gemini_cached = usage
-        .get("cached_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let total_cached = anthropic_cache_hit
-        .max(openai_cached)
-        .max(deepseek_cached)
-        .max(gemini_cached);
-    let cached_tokens = if total_cached > 0 {
-        Some(total_cached)
-    } else {
-        None
-    };
+        .and_then(|v| v.as_u64());
+    let gemini_cached = usage.get("cached_tokens").and_then(|v| v.as_u64());
+    // Presence is the measurement signal: an explicit 0 is a measured miss,
+    // while no supported field at all is an unmeasured request.
+    let cached_tokens = [
+        anthropic_cache_hit,
+        openai_cached,
+        responses_cached,
+        deepseek_cached,
+        gemini_cached,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .map(|tokens| tokens.min(u32::MAX as u64) as u32);
 
-    Some(TokenUsage::from_api_with_cache(
-        prompt,
-        completion,
-        reasoning_tokens,
-        cached_tokens,
-    ))
+    // 提取缓存写入 token（计费元数据，不计入命中；观测用）
+    // - Anthropic: cache_creation_input_tokens
+    // - OpenAI/DeepSeek Responses: input_tokens_details.cache_write_tokens
+    // - 部分网关：顶层 cache_write_tokens
+    // 同一份写入量可能以多种格式重复出现，同样用 max() 归一
+    let anthropic_cache_write = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_u64());
+    let responses_cache_write = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cache_write_tokens"))
+        .and_then(|v| v.as_u64());
+    let gateway_cache_write = usage.get("cache_write_tokens").and_then(|v| v.as_u64());
+    let cache_write_tokens = [
+        anthropic_cache_write,
+        responses_cache_write,
+        gateway_cache_write,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .map(|tokens| tokens.min(u32::MAX as u64) as u32);
+
+    let mut token_usage =
+        TokenUsage::from_api_with_cache(prompt, completion, reasoning_tokens, cached_tokens);
+    token_usage.cache_write_tokens = cache_write_tokens;
+    Some(token_usage)
 }
 
 /// Chat V2 LLM 流式回调适配器
@@ -155,10 +187,23 @@ pub struct ChatV2LLMAdapter {
     in_think_tag: std::sync::Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: std::sync::Mutex<String>,
+    /// GLM/Qwen 路由专用的协议包装 token 流式过滤器（content 路径）。
+    wrap_token_filter:
+        std::sync::Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
+    /// reasoning 路径专用的**独立**包装 token 过滤器（Wave2-A R4 #1）。
+    /// 不与 content 路径的 `wrap_token_filter` 共享实例：过滤器持有跨 chunk 的
+    /// 行前缀/围栏状态，reasoning 与 content 两路交错到达会互相污染行状态。
+    reasoning_wrap_token_filter:
+        std::sync::Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
-    /// Complete OpenAI Responses reasoning item for the current tool round.
-    cached_response_reasoning_item: std::sync::Mutex<Option<Value>>,
+    /// OpenAI Responses reasoning items，按响应顺序收集（一次响应可含多个）。
+    /// 每个条目为 `(配对的 tool_call_id, 完整 item)`：reasoning item 在流中
+    /// 紧邻其后继 function_call，`on_tool_call_start` 到达时把最近一个未配对
+    /// 条目配到该 tool_call_id（禁止把所有 item 绑到本批第一个 tool id）。
+    /// 纯文本轮（无 function_call）条目保持未配对，由调用方按最终 assistant
+    /// 语义持久化回放。
+    response_reasoning_items: std::sync::Mutex<Vec<(Option<String>, Value)>>,
     /// tool_call_id → preparing block_id 映射（用于 args delta chunk 寻址）
     preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
@@ -171,6 +216,10 @@ pub struct ChatV2LLMAdapter {
     web_search_started_at: std::sync::Mutex<Option<std::time::Instant>>,
     /// 🆕 服务端搜索收集到的来源（供 pipeline 持久化检索块）
     cached_web_search_sources: std::sync::Mutex<Option<Vec<SourceInfo>>>,
+    /// P2-13 收尾：服务端 `web_search_call` 完整 item（流事件 `item` 键，
+    /// 按 id 去重、后到覆盖），供 pipeline 写入 assistant 消息 meta 并在
+    /// 下一轮 Responses 请求中原样回传 input
+    cached_web_search_items: std::sync::Mutex<Vec<Value>>,
 }
 
 impl ChatV2LLMAdapter {
@@ -180,6 +229,7 @@ impl ChatV2LLMAdapter {
         enable_thinking: bool,
         skill_state_version: Option<u64>,
         round_id: Option<String>,
+        wrap_token_policy: crate::utils::model_special_tokens::ModelWrapTokenPolicy,
     ) -> Self {
         Self {
             emitter,
@@ -197,14 +247,25 @@ impl ChatV2LLMAdapter {
             api_usage: std::sync::Mutex::new(None),
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
+            wrap_token_filter: std::sync::Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
+            reasoning_wrap_token_filter: std::sync::Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
             cached_thought_signature: std::sync::Mutex::new(None),
-            cached_response_reasoning_item: std::sync::Mutex::new(None),
+            response_reasoning_items: std::sync::Mutex::new(Vec::new()),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
             last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
             web_search_block_id: std::sync::Mutex::new(None),
             web_search_started_at: std::sync::Mutex::new(None),
             cached_web_search_sources: std::sync::Mutex::new(None),
+            cached_web_search_items: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -329,6 +390,39 @@ impl ChatV2LLMAdapter {
     }
 
     fn finalize_all_inner(&self, include_authoritative_content: bool) {
+        let filter_tail = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !filter_tail.is_empty() {
+            self.think_tag_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push_str(&filter_tail);
+        }
+
+        // reasoning 路径独立过滤器的尾巴直接归 thinking：reasoning 通道
+        // 不参与 <think> 标签状态机，不得回灌 think_tag_buffer
+        let reasoning_tail = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !reasoning_tail.is_empty() && self.enable_thinking {
+            {
+                let mut guard = self
+                    .accumulated_reasoning
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                guard.push_str(&reasoning_tail);
+            }
+            if let Some(block_id) = self.ensure_thinking_started() {
+                self.emitter
+                    .emit_chunk(event_types::THINKING, &block_id, &reasoning_tail, None);
+            }
+        }
+
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
 
@@ -497,14 +591,22 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        self.wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
+        self.reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
         *self
             .cached_thought_signature
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
-        *self
-            .cached_response_reasoning_item
+        self.response_reasoning_items
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.preparing_block_ids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -573,8 +675,10 @@ impl ChatV2LLMAdapter {
             .clone()
     }
 
-    pub fn get_response_reasoning_item(&self) -> Option<Value> {
-        self.cached_response_reasoning_item
+    /// 按响应顺序返回本轮收集的 Responses reasoning items。
+    /// 条目为 `(配对的 tool_call_id, 完整 item)`；纯文本轮条目未配对（None）。
+    pub fn get_response_reasoning_items(&self) -> Vec<(Option<String>, Value)> {
+        self.response_reasoning_items
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -588,10 +692,46 @@ impl ChatV2LLMAdapter {
             .take()
     }
 
+    /// P2-13 收尾：获取并清空服务端 `web_search_call` 完整 item（供 pipeline
+    /// 累积到 ctx 并随 assistant 消息 meta 持久化）。
+    pub fn take_web_search_items(&self) -> Vec<Value> {
+        std::mem::take(
+            &mut *self
+                .cached_web_search_items
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        )
+    }
+
+    /// 缓存流事件载荷里的完整 web_search_call item：按 id 去重，后到覆盖
+    /// （completed 带 search_results，覆盖 in_progress 的骨架 item）。
+    fn cache_web_search_item(&self, item: &Value) {
+        let mut items = self
+            .cached_web_search_items
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let id = item.get("id").and_then(Value::as_str);
+        let existing = id.and_then(|id| {
+            items
+                .iter_mut()
+                .find(|existing| existing.get("id").and_then(Value::as_str) == Some(id))
+        });
+        match existing {
+            Some(existing) => *existing = item.clone(),
+            None => items.push(item.clone()),
+        }
+    }
+
     /// 🆕 把服务端搜索载荷渲染为前端检索块事件。
     /// 载荷格式见 `StreamEvent::WebSearchCall`：
     /// `{"id","stage":"in_progress"|"searching"|"completed","sources":[{"title","url","snippet"}]}`
     fn handle_web_search(&self, payload: &Value) {
+        // P2-13 收尾：载荷携带完整 web_search_call item 时缓存（写入 assistant
+        // 消息 meta 键 openai_responses_web_search_items，下一轮原样回传 input）
+        if let Some(item) = payload.get("item") {
+            self.cache_web_search_item(item);
+        }
+
         let stage = payload
             .get("stage")
             .and_then(Value::as_str)
@@ -1014,13 +1154,22 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
+        let filtered = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
+            return;
+        }
+
         // 🔧 <think> 标签解析：将 chunk 追加到缓冲区并处理
         {
             let mut buffer = self
                 .think_tag_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            buffer.push_str(text);
+            buffer.push_str(&filtered);
         }
         self.process_think_tag_buffer();
     }
@@ -1040,15 +1189,26 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
+        // R4 #1：独立 reasoning 过滤器（不与 content 路径共享行状态）。
+        // 过滤后再累积/emit；被暂扣的片段由 finalize_all_inner 的 flush 尾巴兜底
+        let filtered = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
+            return;
+        }
+
         // 累积推理（简化日志：只输出 / 代表接收到 chunk）
         {
             let mut guard = self
                 .accumulated_reasoning
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            guard.push_str(text);
+            guard.push_str(&filtered);
             // 每 500 字符输出一个 / 以减少日志量
-            if guard.len() % 500 < text.len() {
+            if guard.len() % 500 < filtered.len() {
                 print!("/");
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
@@ -1057,7 +1217,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
 
         if let Some(block_id) = self.ensure_thinking_started() {
             self.emitter
-                .emit_chunk(event_types::THINKING, &block_id, text, None);
+                .emit_chunk(event_types::THINKING, &block_id, &filtered, None);
         }
     }
 
@@ -1070,6 +1230,25 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             tool_call_id,
             tool_name
         );
+
+        // Responses reasoning item 相邻配对：reasoning item 在流中先于其
+        // function_call 到达，把最近一个未配对条目配到本 tool_call_id。
+        // 同一 tool_call_id 可能触发多次 start（added 分块 + done 终态），
+        // 已配对过的 id 不再重复认领，防止吞掉下一轮的 reasoning item。
+        {
+            let mut items = self
+                .response_reasoning_items
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let already_claimed = items
+                .iter()
+                .any(|(id, _)| id.as_deref() == Some(tool_call_id));
+            if !already_claimed {
+                if let Some(entry) = items.iter_mut().rev().find(|(id, _)| id.is_none()) {
+                    entry.0 = Some(tool_call_id.to_string());
+                }
+            }
+        }
 
         // 🔧 2026-01-16: 检索工具（builtin-*）有自己的事件类型和块渲染器
         // 如果发射 tool_call_preparing，会创建一个 mcp_tool 类型的 preparing 块
@@ -1084,13 +1263,18 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
-        // 生成 block_id 并存储映射，供后续 args delta chunk 使用
+        // 生成 block_id 并存储映射，供后续 args delta chunk 使用。
+        // 幂等：Responses 流式路径（output_item.added 分块 + arguments.done 终态）
+        // 会对同一 tool_call_id 触发两次 start，复用已有 preparing 块避免 UI 重复
         let block_id = Self::generate_block_id();
         {
             let mut guard = self
                 .preparing_block_ids
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
+            if guard.contains_key(tool_call_id) {
+                return;
+            }
             guard.insert(tool_call_id.to_string(), block_id.clone());
         }
 
@@ -1172,11 +1356,11 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
 
     fn on_response_reasoning_item(&self, item: &Value) {
         self.touch_activity();
-        let mut guard = self
-            .cached_response_reasoning_item
+        // 按响应顺序追加（禁止单值覆盖）；配对留给随后到达的 on_tool_call_start
+        self.response_reasoning_items
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        *guard = Some(item.clone());
+            .unwrap_or_else(|e| e.into_inner())
+            .push((None, item.clone()));
     }
 
     fn on_tool_call(&self, msg: &LegacyChatMessage) {
@@ -1257,5 +1441,176 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // post-processed text in the terminal block event so the frontend can
         // reconcile a delayed or dropped tail before marking the block complete.
         self.finalize_all_with_authoritative_content();
+    }
+}
+
+#[cfg(test)]
+mod web_search_item_tests {
+    use super::*;
+
+    fn test_adapter() -> ChatV2LLMAdapter {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_ws_items".to_string(),
+        ));
+        ChatV2LLMAdapter::new(
+            emitter,
+            "msg_ws_items".to_string(),
+            false,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        )
+    }
+
+    /// P2-13 收尾：流事件载荷携带的完整 web_search_call item 被缓存，
+    /// 同 id 后到覆盖（completed 带 search_results 覆盖 in_progress 骨架），
+    /// take 后清空。
+    #[test]
+    fn handle_web_search_caches_full_items_deduped_by_id() {
+        let adapter = test_adapter();
+
+        // in_progress：骨架 item
+        adapter.handle_web_search(&json!({
+            "id": "ws_1",
+            "stage": "in_progress",
+            "item": { "type": "web_search_call", "id": "ws_1", "status": "in_progress" }
+        }));
+        // completed：完整 item（带 search_results），覆盖骨架
+        adapter.handle_web_search(&json!({
+            "id": "ws_1",
+            "stage": "completed",
+            "sources": [{ "title": "A", "url": "https://a.example.com" }],
+            "item": {
+                "type": "web_search_call",
+                "id": "ws_1",
+                "status": "completed",
+                "search_results": [{ "url": "https://a.example.com", "title": "A" }]
+            }
+        }));
+        // 第二个搜索调用
+        adapter.handle_web_search(&json!({
+            "id": "ws_2",
+            "stage": "completed",
+            "sources": [],
+            "item": { "type": "web_search_call", "id": "ws_2", "status": "completed" }
+        }));
+        // 无 item 键的载荷（进度事件）不影响缓存
+        adapter.handle_web_search(&json!({ "id": "ws_3", "stage": "searching" }));
+
+        let items = adapter.take_web_search_items();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["id"], json!("ws_1"));
+        assert_eq!(
+            items[0]["status"],
+            json!("completed"),
+            "同 id 后到的 completed item 应覆盖 in_progress 骨架"
+        );
+        assert!(items[0].get("search_results").is_some());
+        assert_eq!(items[1]["id"], json!("ws_2"));
+
+        // take 后清空
+        assert!(adapter.take_web_search_items().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod response_reasoning_pairing_tests {
+    use super::*;
+
+    fn test_adapter() -> ChatV2LLMAdapter {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_rr_pairing".to_string(),
+        ));
+        ChatV2LLMAdapter::new(
+            emitter,
+            "msg_rr_pairing".to_string(),
+            false,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        )
+    }
+
+    fn reasoning_item(id: &str) -> Value {
+        json!({
+            "type": "reasoning",
+            "id": id,
+            "encrypted_content": format!("enc-{}", id)
+        })
+    }
+
+    /// 回归：两个 function_call 各自带不同 reasoning item —— 按响应顺序收集
+    /// 且各自与相邻 function_call 配对，禁止全部绑到第一个 tool id。
+    #[test]
+    fn pairs_each_reasoning_item_with_adjacent_function_call() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        let r2 = reasoning_item("rs_2");
+
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_1", "tool_a");
+        adapter.on_response_reasoning_item(&r2);
+        adapter.on_tool_call_start("call_2", "tool_b");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(
+            items.len(),
+            2,
+            "两个 reasoning item 都应保留（禁止单值覆盖）"
+        );
+        assert_eq!(items[0], (Some("call_1".to_string()), r1));
+        assert_eq!(items[1], (Some("call_2".to_string()), r2));
+    }
+
+    /// Responses 流式路径同一 tool_call_id 会触发两次 start
+    /// （output_item.added 分块 + 终态），重复 start 不得认领下一轮的 item。
+    #[test]
+    fn repeated_tool_call_start_does_not_steal_next_reasoning_item() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        let r2 = reasoning_item("rs_2");
+
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_1", "tool_a");
+        adapter.on_response_reasoning_item(&r2);
+        adapter.on_tool_call_start("call_1", "tool_a"); // 终态重复 start
+        adapter.on_tool_call_start("call_2", "tool_b");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items[0].0.as_deref(), Some("call_1"));
+        assert_eq!(items[1].0.as_deref(), Some("call_2"));
+    }
+
+    /// 检索工具（builtin-*）跳过 preparing 事件但仍参与配对。
+    #[test]
+    fn builtin_retrieval_tool_still_claims_reasoning_item() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_rag", "builtin-rag_search");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items[0].0.as_deref(), Some("call_rag"));
+    }
+
+    /// 纯文本轮（无 function_call）：reasoning item 保持未配对，
+    /// 由 tool_loop 挂到哨兵键持久化回放。
+    #[test]
+    fn text_only_round_keeps_reasoning_item_unpaired() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_final");
+        adapter.on_response_reasoning_item(&r1);
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items, vec![(None, r1)]);
+    }
+
+    /// 外层重试复用同一 adapter：重置后不得残留上次的 reasoning items。
+    #[test]
+    fn reset_stream_state_clears_reasoning_items() {
+        let adapter = test_adapter();
+        adapter.on_response_reasoning_item(&reasoning_item("rs_1"));
+        adapter.reset_stream_state();
+        assert!(adapter.get_response_reasoning_items().is_empty());
     }
 }
