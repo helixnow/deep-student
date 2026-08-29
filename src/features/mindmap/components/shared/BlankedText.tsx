@@ -24,6 +24,9 @@ function getSelectionOffsets(container: HTMLElement, range: Range): { start: num
   return start < end ? { start, end } : null;
 }
 
+/** 遮盖态挖空需在视口内驻留多久才算「实际呈现」（防滚动扫过误计成功样本） */
+const BLANK_PRESENT_DWELL_MS = 500;
+
 interface BlankedTextProps {
   text: string;
   blankedRanges?: BlankRange[];
@@ -33,6 +36,12 @@ interface BlankedTextProps {
   allowSelectionActions?: boolean;
   isBold?: boolean;
   onRevealBlank?: (rangeIndex: number) => void;
+  /**
+   * 背诵会话统计的「实际呈现」信号：遮盖态挖空渲染进视口并驻留
+   * BLANK_PRESENT_DWELL_MS 后，上报当前仍处于遮盖态的区间索引。
+   * 只有呈现过的空才会在退出背诵时作为作答样本提交。
+   */
+  onBlanksPresented?: (rangeIndices: number[]) => void;
   onAddBlank?: (range: BlankRange) => void;
   onRemoveBlank?: (rangeIndex: number) => void;
   onToggleBold?: () => void;
@@ -48,6 +57,7 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   allowSelectionActions = false,
   isBold = false,
   onRevealBlank,
+  onBlanksPresented,
   onAddBlank,
   onRemoveBlank,
   onToggleBold,
@@ -66,6 +76,42 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   } | null>(null);
 
   const segments = splitTextByRanges(text, blankedRanges || []);
+
+  // 「实际呈现」信号：遮盖态挖空在视口内稳定驻留后上报一次。
+  // 用逗号串做依赖键，避免每次渲染新数组导致 effect 反复重挂。
+  const coveredIndicesKey = reciteMode && onBlanksPresented
+    ? segments
+      .filter((seg) => seg.isBlanked && !(revealedIndices?.[seg.rangeIndex] ?? false))
+      .map((seg) => seg.rangeIndex)
+      .join(',')
+    : '';
+  const onBlanksPresentedRef = useRef(onBlanksPresented);
+  onBlanksPresentedRef.current = onBlanksPresented;
+  useEffect(() => {
+    if (!reciteMode || coveredIndicesKey === '') return;
+    const element = containerRef.current;
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    const indices = coveredIndicesKey.split(',').map(Number);
+    let dwellTimer: number | null = null;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.some((entry) => entry.isIntersecting);
+      if (visible && dwellTimer == null) {
+        dwellTimer = window.setTimeout(() => {
+          dwellTimer = null;
+          onBlanksPresentedRef.current?.(indices);
+        }, BLANK_PRESENT_DWELL_MS);
+      } else if (!visible && dwellTimer != null) {
+        window.clearTimeout(dwellTimer);
+        dwellTimer = null;
+      }
+    }, { threshold: 0.5 });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (dwellTimer != null) window.clearTimeout(dwellTimer);
+    };
+  }, [reciteMode, coveredIndicesKey]);
+
   const selectionEnabled = !!onAddBlank && (reciteMode || allowSelectionActions);
   const selectableTextStyle: React.CSSProperties | undefined = selectionEnabled
     ? { userSelect: 'text', WebkitUserSelect: 'text' }

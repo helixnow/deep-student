@@ -35,7 +35,7 @@ export interface FindReplacePanelProps {
 const EXIT_FALLBACK_MS = 180;
 
 /** 📱 触屏：24px 图标按钮放大到 ≥44px 触控目标（面板为 flex 布局，输入框 min-w-0 自动收缩） */
-const COARSE_ICON_BTN = '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11';
+const COARSE_ICON_BTN = '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11';
 
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -126,7 +126,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       window.clearTimeout(feedbackTimerRef.current);
     }
     setReplaceFeedback(
-      t('notes:findReplace.replacedCount', { count, defaultValue: '已替换 {{count}} 处' }),
+      t('notes:findReplace.replaceMany', { count, defaultValue: 'Replaced {{count}} occurrences' }),
     );
     feedbackTimerRef.current = window.setTimeout(() => {
       feedbackTimerRef.current = null;
@@ -509,7 +509,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             <DsButton
               variant="secondary"
               size="sm"
-              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-xs"
+              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-xs"
               disabled={replaceDisabled}
               onClick={handleReplaceCurrent}
             >
@@ -518,7 +518,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             <DsButton
               variant="secondary"
               size="sm"
-              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-xs"
+              className="h-6 text-[10px] px-2 ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-xs"
               disabled={replaceDisabled}
               onClick={handleReplaceAll}
             >

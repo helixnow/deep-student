@@ -5,7 +5,7 @@
  * 处理方向键导航、节点增删、折叠展开等快捷键。
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, type RefObject } from 'react';
 import { useMindMapStore } from '../store';
 import { useMindMapIsActive } from '../MindMapActiveContext';
 import { collectTopLevelNodeIds, flattenVisibleNodes } from '../utils/node/traverse';
@@ -22,7 +22,17 @@ import { eventMatchesShortcut } from '../constants/shortcuts';
 // Hook
 // ============================================================================
 
-export function useMindMapKeyboard(): void {
+export interface UseMindMapKeyboardOptions {
+  /**
+   * 空间导航的 DOM 查询范围。分屏/多实例同时挂载多套画布时，
+   * 必须限定在本实例容器内，否则 `.react-flow__node` 全局查询会把
+   * 相邻画布的节点当成空间邻居（跨实例串扰）。
+   */
+  containerRef?: RefObject<HTMLElement | null>;
+}
+
+export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
+  const containerRef = options?.containerRef;
   // ★ 标签页保活：非活跃实例不得响应全局按键，否则每个挂载实例都会处理一次。
   const isActive = useMindMapIsActive();
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
@@ -114,6 +124,12 @@ export function useMindMapKeyboard(): void {
     // 正常不会冒泡到 document；下面的 editingNodeId 分支仅是兜底
     // （编辑态残留但焦点已不在 textarea 的异常场景），不会抢跑吞掉 draft。
     if (e.key === 'Escape') {
+      // 无编辑/背诵/选中/焦点时导图对 Esc 无事可做：放行给外层
+      // （工作台窗口、命令系统等），不得 preventDefault/stopPropagation 吞掉。
+      const hasEscapeTarget =
+        !!editingNodeId || !!editingNoteNodeId || reciteMode
+        || !!focusedNodeId || selection.length > 0;
+      if (!hasEscapeTarget) return;
       e.preventDefault();
       handled();
       if (editingNodeId) {
@@ -229,10 +245,13 @@ export function useMindMapKeyboard(): void {
 
     const focusSpatialNeighbor = (direction: 'up' | 'down' | 'left' | 'right'): boolean => {
       if (preferences.canvasNavigation !== 'spatial') return false;
+      // ★ 查询范围限定本实例容器：分屏双画布下全局查询会把另一实例的
+      // 节点当成候选邻居，导致焦点跳进别的导图。
+      const queryRoot: ParentNode = containerRef?.current ?? globalThis.document;
       const escaped = typeof CSS?.escape === 'function' ? CSS.escape(focusedNodeId) : focusedNodeId;
-      const current = globalThis.document.querySelector<HTMLElement>(`.react-flow__node[data-id="${escaped}"]`);
+      const current = queryRoot.querySelector<HTMLElement>(`.react-flow__node[data-id="${escaped}"]`);
       if (!current) return false;
-      const candidates = Array.from(globalThis.document.querySelectorAll<HTMLElement>('.react-flow__node[data-id]'))
+      const candidates = Array.from(queryRoot.querySelectorAll<HTMLElement>('.react-flow__node[data-id]'))
         .filter((element) => element !== current && !!element.dataset.id)
         .map((element) => ({ id: element.dataset.id!, rect: element.getBoundingClientRect() }));
       const nextId = findSpatialMindMapNeighbor(current.getBoundingClientRect(), candidates, direction);
@@ -552,7 +571,7 @@ export function useMindMapKeyboard(): void {
     addNode, deleteNodes, moveNodes, indentNodes, outdentNodes, selectAllVisible, duplicateNodes,
     toggleCollapse, collapseAll, expandAll, updateNode,
     undo, redo, save, reciteMode, revealedBlanks, revealBlank, setReciteMode,
-    viewRootId, setViewRootId,
+    viewRootId, setViewRootId, containerRef,
   ]);
 
   useEffect(() => {

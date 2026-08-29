@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 import type { CrepeEditorApi } from '@/components/crepe';
 import {
   useAIEditState,
@@ -137,7 +138,7 @@ export function useCanvasAIEditHandler({
         await sendResult({
           requestId: result.requestId,
           success: false,
-          error: '编辑器不可写，修改未应用',
+          error: i18n.t('vfs:canvas_edit.editor_readonly', { defaultValue: '编辑器不可写，修改未应用' }),
         });
         return;
       }
@@ -155,7 +156,10 @@ export function useCanvasAIEditHandler({
           await sendResult({
             requestId: result.requestId,
             success: false,
-            error: `文档在等待确认期间已被修改，建议无法应用：${recomputed.error}`,
+            error: i18n.t('vfs:canvas_edit.doc_changed_while_pending', {
+              defaultValue: '文档在等待确认期间已被修改，建议无法应用：{{error}}',
+              error: recomputed.error,
+            }),
           });
           return;
         }
@@ -171,11 +175,11 @@ export function useCanvasAIEditHandler({
             expectedMarkdown: contentBeforeApply,
           });
           if (!replaced) {
-            throw new Error('编辑器拒绝应用建议');
+            throw new Error(i18n.t('vfs:canvas_edit.apply_rejected', { defaultValue: '编辑器拒绝应用建议' }));
           }
         } else {
           if (!editor.setMarkdown(proposedContent)) {
-            throw new Error('编辑器拒绝应用建议');
+            throw new Error(i18n.t('vfs:canvas_edit.apply_rejected', { defaultValue: '编辑器拒绝应用建议' }));
           }
           if (onSaveRef.current) {
             await onSaveRef.current(proposedContent);
@@ -190,10 +194,10 @@ export function useCanvasAIEditHandler({
                 expectedMarkdown: proposedContent,
               });
               if (!restored) {
-                throw new Error('编辑器拒绝恢复建议前内容');
+                throw new Error(i18n.t('vfs:canvas_edit.restore_rejected', { defaultValue: '编辑器拒绝恢复建议前内容' }));
               }
             } else if (!editor.setMarkdown(contentBeforeApply)) {
-              throw new Error('编辑器拒绝恢复建议前内容');
+              throw new Error(i18n.t('vfs:canvas_edit.restore_rejected', { defaultValue: '编辑器拒绝恢复建议前内容' }));
             }
           } catch (restoreErr) {
             console.warn('[useCanvasAIEditHandler] Failed to restore after apply error:', restoreErr);
@@ -202,7 +206,9 @@ export function useCanvasAIEditHandler({
         await sendResult({
           requestId: result.requestId,
           success: false,
-          error: err instanceof Error ? err.message : '应用编辑建议失败',
+          error: err instanceof Error
+            ? err.message
+            : i18n.t('vfs:canvas_edit.apply_failed', { defaultValue: '应用编辑建议失败' }),
           beforePreview: result.beforePreview,
           afterPreview: result.afterPreview,
           addedContent: result.addedContent,
@@ -242,10 +248,10 @@ export function useCanvasAIEditHandler({
           expectedMarkdown: current,
         });
         if (!restored) {
-          throw new Error('编辑器拒绝回滚检查点');
+          throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
         }
       } else if (!editor.setMarkdown(checkpoint.originalContent)) {
-        throw new Error('编辑器拒绝回滚检查点');
+        throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
       }
     } catch (err) {
       console.warn('[useCanvasAIEditHandler] Rollback apply failed:', err);
@@ -296,7 +302,7 @@ export function useCanvasAIEditHandler({
       if (pendingRequest) {
         request.onLocalDisposition?.({
           accepted: false,
-          reason: '已有一条笔记编辑建议等待确认',
+          reason: i18n.t('vfs:canvas_edit.suggestion_pending', { defaultValue: '已有一条笔记编辑建议等待确认' }),
         });
         try {
           await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
@@ -307,7 +313,9 @@ export function useCanvasAIEditHandler({
           await sendResult({
             requestId: request.requestId,
             success: false,
-            error: '已有一条笔记编辑建议等待确认，请先接受或拒绝当前建议',
+            error: i18n.t('vfs:canvas_edit.suggestion_pending_detail', {
+              defaultValue: '已有一条笔记编辑建议等待确认，请先接受或拒绝当前建议',
+            }),
           });
         }
         return;
@@ -317,11 +325,12 @@ export function useCanvasAIEditHandler({
       const editor = editorApiRef.current;
       if (!editor) {
         settlePendingRequest();
-        request.onLocalDisposition?.({ accepted: false, reason: '编辑器未就绪' });
+        const editorNotReady = i18n.t('vfs:canvas_edit.editor_not_ready', { defaultValue: '编辑器未就绪' });
+        request.onLocalDisposition?.({ accepted: false, reason: editorNotReady });
         const result: CanvasAIEditResult = {
           requestId: request.requestId,
           success: false,
-          error: '编辑器未就绪',
+          error: editorNotReady,
         };
         await sendResult(result);
         return;
@@ -338,7 +347,8 @@ export function useCanvasAIEditHandler({
         settlePendingRequest();
         request.onLocalDisposition?.({
           accepted: false,
-          reason: immediateFailure.error ?? '建议内容无效',
+          reason: immediateFailure.error
+            ?? i18n.t('vfs:canvas_edit.invalid_suggestion', { defaultValue: '建议内容无效' }),
         });
         await sendResult(immediateFailure);
         return;
@@ -427,7 +437,7 @@ export function useCanvasAIEditHandler({
           result: {
             requestId: pending.request.requestId,
             success: false,
-            error: '编辑器已关闭，修改未应用',
+            error: i18n.t('vfs:canvas_edit.editor_closed', { defaultValue: '编辑器已关闭，修改未应用' }),
           },
         }).catch((err) => {
           console.warn('[useCanvasAIEditHandler] Failed to send unmount rejection:', err);

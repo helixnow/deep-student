@@ -12,6 +12,7 @@ export type {
   NodeId,
   NodeStyle,
   MindMapNodeStyle,
+  MindMapImage,
   MindMapNode,
   CreateNodeParams,
   UpdateNodeParams,
@@ -20,6 +21,7 @@ export type {
   
   // 文档类型
   MindMapMeta,
+  MindMapSheetMeta,
   DocumentMeta,
   MindMapDocument,
   DocumentSettings,

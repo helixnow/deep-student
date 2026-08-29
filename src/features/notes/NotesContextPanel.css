@@ -20,8 +20,10 @@
   opacity: 1;
 }
 
-/* 📱 触屏无 hover：预览常显，避免功能不可达 */
-@media (hover: none) {
+/* 📱 触屏主指针：预览常显，避免功能不可达。
+ * 仅看 pointer: coarse——(hover: none) 会漏掉「iPad + 触控板/鼠标」
+ * （hover 恢复为 hover 但主指针仍是手指触屏）的场景。 */
+@media (pointer: coarse) {
   .notes-outline-preview {
     max-height: 20px;
     opacity: 1;

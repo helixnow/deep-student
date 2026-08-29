@@ -417,7 +417,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-sm font-medium">{t('refs.pickerTitle')}</span>
-        <DsButton variant="ghost" onClick={onClose} aria-label={t('common:close', { defaultValue: '关闭' })} className="w-6 h-6 p-0 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9">
+        <DsButton variant="ghost" onClick={onClose} aria-label={t('common:close', { defaultValue: '关闭' })} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11">
           <X className="w-4 h-4" />
         </DsButton>
       </div>

@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Robot } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
+import { buildAIDiffSummaryIntent } from '@/features/generative-ui/utils/buildAIDiffSummaryIntent';
 import { isMacOS } from '@/utils/platform';
 import type { AIEditState, CanvasEditOperation, DiffLine } from './hooks/useAIEditState';
 
@@ -148,11 +150,33 @@ export function AIDiffPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!request) return null;
-
   const hasChanges = diffLines.some(line => line.type !== 'unchanged');
   const addedCount = diffLines.filter(line => line.type === 'added').length;
   const removedCount = diffLines.filter(line => line.type === 'removed').length;
+
+  const summaryIntent = useMemo(() => {
+    if (!request) return null;
+    return buildAIDiffSummaryIntent({
+      operation: request.operation,
+      operationLabel: operationLabels[request.operation],
+      addedCount,
+      removedCount,
+      hasChanges,
+      labels: {
+        metaTitle: t('aiDiff.summary.meta_title'),
+        metaDescription: t('aiDiff.summary.meta_description'),
+        statTitle: t('aiDiff.summary.stat_title'),
+        noChangeTrend: t('aiDiff.summary.no_change_trend'),
+        addedKey: t('aiDiff.summary.added'),
+        removedKey: t('aiDiff.summary.removed'),
+        operationKey: t('aiDiff.summary.operation'),
+        alertTitle: t('aiDiff.summary.no_diff_title'),
+        alertDescription: t('aiDiff.summary.no_diff_description'),
+      },
+    });
+  }, [addedCount, hasChanges, operationLabels, removedCount, request, t]);
+
+  if (!request || !summaryIntent) return null;
 
   return (
     <section
@@ -196,7 +220,7 @@ export function AIDiffPanel({
                 size="sm"
                 onClick={onReject}
                 disabled={isApplying}
-                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
+                className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
               >
                 <X size={13} className="mr-1" />
                 {t('aiDiff.reject')}
@@ -206,12 +230,16 @@ export function AIDiffPanel({
                 onClick={onAccept}
                 disabled={isApplying}
                 aria-busy={isApplying}
-                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
+                className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
               >
                 <Check size={13} className="mr-1" />
                 {t('aiDiff.accept')}
               </DsButton>
             </div>
+          </div>
+
+          <div className="flex-shrink-0 border-b border-border/40 px-3 py-2">
+            <GenerativeUIPanel intent={summaryIntent} showChrome={false} />
           </div>
 
           <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">

@@ -279,7 +279,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
         </h3>
         <DsButton
           variant="ghost"
-          className="mm-version-history-close p-1 hover:bg-[var(--mm-bg-hover)] rounded"
+          className="mm-version-history-close p-1 hover:bg-[var(--mm-bg-hover)] rounded [@media(pointer:coarse)]:!min-w-11 [@media(pointer:coarse)]:!min-h-11"
           onClick={onClose}
           aria-label={t('mindmap:versions.close')}
         >
@@ -345,7 +345,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                     </div>
                     <DsButton
                       variant="ghost"
-                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)]"
+                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)] [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => void handlePreview(version.versionId)}
                       disabled={previewingId === version.versionId}
                       aria-expanded={hasPreview}
@@ -359,7 +359,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                     </DsButton>
                     <DsButton
                       variant="ghost"
-                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)]"
+                      className="ds-btn mm-version-history-action shrink-0 text-xs text-[var(--mm-text-secondary)] [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setConfirmingId(version.versionId)}
                       disabled={isRestoring || restoringId !== null}
                     >
@@ -389,6 +389,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                               <span className="tabular-nums whitespace-nowrap">
                                 {t('mindmap:shellV2.versions.nodeCount', {
                                   count: preview.nodeCount,
+                                  defaultValue: '{{count}} node(s)',
                                 })}
                               </span>
                               <span aria-hidden>·</span>
@@ -433,7 +434,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                           </span>
                           <DsButton
                             variant="ghost"
-                            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)] [@media(pointer:coarse)]:!min-h-11"
                             onClick={() => void handleConfirmRestore(version.versionId)}
                             disabled={isRestoring}
                           >
@@ -450,7 +451,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                           </DsButton>
                           <DsButton
                             variant="ghost"
-                            className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
+                            className="ds-btn shrink-0 text-[var(--mm-text-muted)] [@media(pointer:coarse)]:!min-h-11"
                             onClick={() => setConfirmingId(null)}
                             disabled={isRestoring}
                           >

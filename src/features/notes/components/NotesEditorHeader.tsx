@@ -8,6 +8,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { cn } from '@/lib/utils';
 import { springSnap, motionSafe } from '@/styles/motion-springs';
 import { useTagSuggestions } from '../hooks/useTagSuggestions';
@@ -68,7 +69,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     tags: tagsProp,
     onTagsChange,
 }) => {
-    const { t, i18n } = useTranslation(['notes', 'common']);
+    const { t, i18n } = useTranslation(['notes', 'common', 'translation']);
     const isZh = (i18n.language || '').startsWith('zh');
     
     // ========== 模式判断 ==========
@@ -319,13 +320,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         ? [
             {
                 key: 'chars',
-                label: t('notes:editor.stats.chars_label', { defaultValue: isZh ? '字数' : 'Characters' }),
+                label: t('translation:stats.characters', { defaultValue: isZh ? '字数' : 'Characters' }),
                 value: String(displayCharCount),
             },
             ...(stats
                 ? [{
                     key: 'words',
-                    label: t('notes:editor.stats.words_label', { defaultValue: isZh ? '词数' : 'Words' }),
+                    label: t('translation:stats.words', { defaultValue: isZh ? '词数' : 'Words' }),
                     value: String(stats.wordCount),
                 }]
                 : []),
@@ -374,6 +375,25 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         if (tagInputOpen) tagInputRef.current?.focus();
     }, [tagInputOpen]);
 
+    // 📱 Android 返回键：标签建议 listbox 打开时先收起输入行（同 Esc 路径），
+    // 再轮到下层 overlay / 视图导航
+    const tagSuggestionsVisible =
+        canEditTags && tagInputOpen && (isLoadingTagSuggestions || tagSuggestions.length > 0);
+    useEffect(() => {
+        if (!tagSuggestionsVisible) return;
+        return registerBackHandler(() => {
+            // 保活守卫：编辑器 tab 在被隐藏的保活层里仍保持挂载（visibility:hidden），
+            // 建议展开态也随之滞留——此时不消费返回键，交还给当前活跃视图
+            const el = tagInputRef.current;
+            if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+            if (window.getComputedStyle(el).visibility === 'hidden') return false;
+            setTagInput('');
+            setTagError(null);
+            setTagInputOpen(false);
+            return true;
+        }, BACK_PRIORITY.overlay);
+    }, [tagSuggestionsVisible]);
+
     const applyTags = async (next: string[]) => {
         if (!commitTags || isSavingTags) return;
         setIsSavingTags(true);
@@ -381,7 +401,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             await commitTags(next);
         } catch (error: unknown) {
             console.error('[NotesEditorHeader] Failed to update tags:', error);
-            showGlobalNotification('error', t('notes:header.tags_save_failed', '标签保存失败'));
+            showGlobalNotification(
+                'error',
+                t('notes:notifications.tagStateSaveFailed', 'Failed to save tags'),
+            );
         } finally {
             setIsSavingTags(false);
         }
@@ -474,7 +497,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     ) : (
                                         <button
                                             type="button"
-                                            className="flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer"
+                                            className="relative flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={() => handleBreadcrumbClick(item)}
                                             title={item.title}
                                         >
@@ -532,7 +555,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {showRetry && (
                                 <button
                                     type="button"
-                                    className="underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150"
+                                    className="relative underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1.5 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
                                     onClick={() => {
                                         void onRetrySave?.();
                                     }}
@@ -567,7 +590,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
+                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}
@@ -621,7 +644,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 aria-autocomplete="list"
                                 aria-invalid={tagError ? true : undefined}
                                 aria-describedby={tagError ? tagErrorId : undefined}
-                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
+                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
                                 <CustomScrollArea
@@ -648,7 +671,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                                     role="option"
                                                     aria-selected={tagHighlightIndex === index}
                                                     className={cn(
-                                                        'flex cursor-pointer items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none',
+                                                        'flex cursor-pointer items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
                                                         tagHighlightIndex === index
                                                             ? 'bg-[var(--interactive-hover)] text-foreground'
                                                             : 'hover:bg-[var(--interactive-hover)]',
@@ -669,7 +692,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     ) : (
                         <button
                             type="button"
-                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                             onClick={() => setTagInputOpen(true)}
                             aria-label={t('notes:header.add_tags')}
                         >

@@ -86,6 +86,15 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mm-text-muted) 25%, transparent);
 }
 
+/* 📱 触屏：16px 字号防 iOS 聚焦缩放，高度对齐 44px 触控目标
+   （同 mindmap.css 的 .mm-search-input 范式；须位于上方基线之后，同特异性按源序取胜） */
+@media (pointer: coarse) {
+  .mm-association-label-input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
 @keyframes mm-association-hint-enter {
   from {
     opacity: 0;

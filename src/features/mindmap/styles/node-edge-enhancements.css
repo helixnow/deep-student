@@ -144,20 +144,39 @@
 
 /* ============================================
    触控设备：分支操作条 / 装饰按钮扩大命中
+   视觉尺寸保持小巧，::after 伪元素外扩命中区到 ≥44px
+   （Apple HIG 最小触控目标；与 mindmap.css / outline-enhancements.css 同一范式）
    ============================================ */
 
 @media (pointer: coarse) {
   .mindmap-container .mm-node-actions .mm-action-btn {
+    position: relative;
     width: 28px;
     height: 28px;
     min-width: 28px;
     min-height: 28px;
   }
 
+  /* 28px 视觉 + 8px 外扩 = 44px 命中 */
+  .mindmap-container .mm-node-actions .mm-action-btn::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
   .mm-deco-link,
   .mm-deco-checkbox {
+    position: relative;
     width: 20px;
     height: 20px;
+  }
+
+  /* 20px 视觉 + 12px 外扩 = 44px 命中 */
+  .mm-deco-link::after,
+  .mm-deco-checkbox::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
   }
 }
 

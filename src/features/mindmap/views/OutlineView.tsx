@@ -50,6 +50,11 @@ import {
   type FlatNode,
 } from './outline/outlineShared';
 import {
+  computeOutlineWindow,
+  estimateScrollTopForIndex,
+  shouldVirtualizeOutline,
+} from './outline/outlineVirtual';
+import {
   SortableOutlineNode,
   type OutlineNavigateDirection,
 } from './outline/SortableOutlineNode';
@@ -136,6 +141,9 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  /** 窗口化滚动状态（仅大列表时订阅 scroll/resize 更新） */
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
+  const [scrollWindowState, setScrollWindowState] = useState({ top: 0, height: 0 });
   const restoredScrollRef = useRef(false);
   const pendingScrollTopRef = useRef<number | null>(
     initialScrollTop != null && initialScrollTop >= 0 ? initialScrollTop : null,
@@ -154,7 +162,16 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     const row = root.querySelector(
       `[data-node-id="${escaped}"]`,
     ) as HTMLElement | null;
-    row?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'auto' });
+      return;
+    }
+    // 窗口化渲染时目标行可能未挂载：按估算行高直接定位，滚动后行随窗口挂载
+    const el = scrollViewportRef.current;
+    const index = flatNodeIndexByIdRef.current?.get(id);
+    if (el && index !== undefined) {
+      el.scrollTop = estimateScrollTopForIndex(index, el.clientHeight);
+    }
   }, [storeApi]);
 
   const restoreScrollIfNeeded = useCallback(
@@ -191,6 +208,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const setScrollViewport = useCallback(
     (el: HTMLDivElement | null) => {
       scrollViewportRef.current = el;
+      setViewportEl(el);
       restoreScrollIfNeeded(el);
     },
     [restoreScrollIfNeeded],
@@ -345,6 +363,50 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const flatNodeIndexByIdRef = useRef(flatNodeIndexById);
   flatNodeIndexByIdRef.current = flatNodeIndexById;
 
+  // ============ 大图窗口化渲染（行数 ≥ 阈值时只挂载视口附近的行） ============
+  // 拖拽期间关闭：dnd-kit 需要全量 droppable 测量（与关闭 outline-cv 同一策略）
+  const virtualEnabled = !activeId && shouldVirtualizeOutline(flatNodes.length);
+
+  useEffect(() => {
+    if (!virtualEnabled || !viewportEl) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      setScrollWindowState((prev) => {
+        const top = viewportEl.scrollTop;
+        const height = viewportEl.clientHeight;
+        return prev.top === top && prev.height === height ? prev : { top, height };
+      });
+    };
+    update();
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    viewportEl.addEventListener('scroll', onScroll, { passive: true });
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onScroll) : null;
+    resizeObserver?.observe(viewportEl);
+    return () => {
+      viewportEl.removeEventListener('scroll', onScroll);
+      resizeObserver?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [virtualEnabled, viewportEl]);
+
+  const outlineWindow = useMemo(() => {
+    if (!virtualEnabled) return null;
+    // 聚焦/编辑行 pin 住不卸载：编辑中的 textarea 被窗口滑出会丢未提交文本
+    const pinnedIndex = focusedNodeId != null
+      ? flatNodeIndexById.get(focusedNodeId) ?? null
+      : null;
+    return computeOutlineWindow({
+      totalCount: flatNodes.length,
+      scrollTop: scrollWindowState.top,
+      viewportHeight: scrollWindowState.height,
+      pinnedIndex,
+    });
+  }, [virtualEnabled, flatNodes.length, scrollWindowState, focusedNodeId, flatNodeIndexById]);
+
   // ★ 无焦点节点时的键盘入口：↓/Enter 聚焦首行、↑ 聚焦末行。
   // 行级键盘处理都挂在行内 textarea 上，初次进入大纲（未点击任何行）时
   // 方向键会完全无响应；这里补上 document 级兜底（活跃实例门控）。
@@ -414,7 +476,15 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
           ? globalThis.CSS.escape(currentSearchResultId)
           : currentSearchResultId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const row = root.querySelector<HTMLElement>(`[data-node-id="${escaped}"]`);
-      if (!row) return;
+      if (!row) {
+        // 窗口化时命中行可能未挂载：按估算行高定位（挂载后下次导航可精确居中）
+        const el = scrollViewportRef.current;
+        const index = flatNodeIndexByIdRef.current?.get(currentSearchResultId);
+        if (el && index !== undefined) {
+          el.scrollTop = estimateScrollTopForIndex(index, el.clientHeight);
+        }
+        return;
+      }
       const prefersReduced =
         !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       row.scrollIntoView({
@@ -424,6 +494,14 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     });
     return () => cancelAnimationFrame(raf);
   }, [currentSearchResultId]);
+
+  // 背诵复习导航（难点优先）：背诵模式下行内没有输入框聚焦 effect，
+  // focusedNodeId 变化时由视图层滚动到目标行（窗口外时按估算定位）
+  useEffect(() => {
+    if (!reciteMode || !focusedNodeId) return;
+    const raf = requestAnimationFrame(() => scrollFocusedRowIntoView());
+    return () => cancelAnimationFrame(raf);
+  }, [reciteMode, focusedNodeId, scrollFocusedRowIntoView]);
 
   // 专注模式 Esc 逐级返回：行级 Esc 已消化「退出编辑→清焦点」两段，
   // 焦点/选中都清空后再按 Esc 上移一层专注根，直至回到整棵树。
@@ -1004,46 +1082,61 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                 // 千级节点性能：视口外行跳过渲染；拖拽期间关闭以保测量精度
                 !activeId && "outline-cv"
               )}
+              // 窗口化 spacer 高度变化时禁用浏览器滚动锚定，避免视口跳动
+              style={{ overflowAnchor: virtualEnabled ? 'none' : undefined }}
               onClick={(e) => {
                 if (e.target === e.currentTarget) setSelection([]);
               }}
             >
-              {flatNodes.map((flatNode, index) => (
-                <SortableOutlineNode
-                  key={flatNode.id}
-                  flatNode={flatNode}
-                  isRoot={flatNode.level === 0}
-                  isDropTarget={overId === flatNode.id}
-                  dropPosition={dropPosition}
-                  isBeingDragged={activeId === flatNode.id}
-                  projectedLevel={overId === flatNode.id ? currentProjectedLevel : null}
-                  isEntering={enteringNodeIds.has(flatNode.id)}
-                  isExiting={agentExitingIds.has(flatNode.id)}
-                  isUpdated={agentUpdatedIds.has(flatNode.id)}
-                  isSelected={selectionSet.has(flatNode.id)}
-                  isMultiSelectActive={isMultiSelectActive}
-                  isSearchMatch={searchResultSet.has(flatNode.id)}
-                  isCurrentSearchMatch={currentSearchResultId === flatNode.id}
-                  searchQuery={searchQuery}
-                  nextVisibleNodeId={flatNodes[index + 1]?.id ?? null}
-                  prevVisibleNodeId={index > 0 ? flatNodes[index - 1].id : null}
-                  focusGuideIndex={
-                    focusGuide && focusGuide.ids.has(flatNode.id)
-                      ? focusGuide.guideIndex
-                      : null
-                  }
-                  keymap={keymap}
-                  descriptionPreview={descriptionPreview}
-                  onRowSelect={handleRowSelect}
-                  onNavigate={handleNavigate}
-                  onZoomIn={handleZoomIn}
-                  onZoomOut={handleZoomOut}
-                  onOpenResourcePicker={handleOpenResourcePicker}
-                  onBatchIndent={handleBatchIndent}
-                  onBatchOutdent={handleBatchOutdent}
-                  onBatchDelete={handleBatchDelete}
-                />
-              ))}
+              {(outlineWindow?.blocks ?? [
+                { type: 'rows' as const, key: 'all', startIndex: 0, endIndex: flatNodes.length },
+              ]).map((block) =>
+                block.type === 'spacer' ? (
+                  <div key={block.key} style={{ height: block.height }} aria-hidden="true" />
+                ) : (
+                  <React.Fragment key={block.key}>
+                    {flatNodes.slice(block.startIndex, block.endIndex).map((flatNode, i) => {
+                      const index = block.startIndex + i;
+                      return (
+                        <SortableOutlineNode
+                          key={flatNode.id}
+                          flatNode={flatNode}
+                          isRoot={flatNode.level === 0}
+                          isDropTarget={overId === flatNode.id}
+                          dropPosition={dropPosition}
+                          isBeingDragged={activeId === flatNode.id}
+                          projectedLevel={overId === flatNode.id ? currentProjectedLevel : null}
+                          isEntering={enteringNodeIds.has(flatNode.id)}
+                          isExiting={agentExitingIds.has(flatNode.id)}
+                          isUpdated={agentUpdatedIds.has(flatNode.id)}
+                          isSelected={selectionSet.has(flatNode.id)}
+                          isMultiSelectActive={isMultiSelectActive}
+                          isSearchMatch={searchResultSet.has(flatNode.id)}
+                          isCurrentSearchMatch={currentSearchResultId === flatNode.id}
+                          searchQuery={searchQuery}
+                          nextVisibleNodeId={flatNodes[index + 1]?.id ?? null}
+                          prevVisibleNodeId={index > 0 ? flatNodes[index - 1].id : null}
+                          focusGuideIndex={
+                            focusGuide && focusGuide.ids.has(flatNode.id)
+                              ? focusGuide.guideIndex
+                              : null
+                          }
+                          keymap={keymap}
+                          descriptionPreview={descriptionPreview}
+                          onRowSelect={handleRowSelect}
+                          onNavigate={handleNavigate}
+                          onZoomIn={handleZoomIn}
+                          onZoomOut={handleZoomOut}
+                          onOpenResourcePicker={handleOpenResourcePicker}
+                          onBatchIndent={handleBatchIndent}
+                          onBatchOutdent={handleBatchOutdent}
+                          onBatchDelete={handleBatchDelete}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                ),
+              )}
 
               {/* 幽灵新行：点击在当前范围末尾新增（拖拽/背诵时隐藏） */}
               {!hasOnlyRoot && !reciteMode && !activeId && (
