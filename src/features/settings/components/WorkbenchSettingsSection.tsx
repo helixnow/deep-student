@@ -794,7 +794,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                   <span className="min-w-0 break-words text-xs text-foreground/85">
                     {t(shortcut.descriptionKey, shortcut.defaultDescription)}
                   </span>
-                  <kbd className="shrink-0 rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                  <kbd className="shrink-0 rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
                     {shortcut.keys}
                   </kbd>
                 </li>

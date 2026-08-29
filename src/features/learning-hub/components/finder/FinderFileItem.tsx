@@ -268,7 +268,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               <>
                 {/* 子项数量（文件夹）或文件大小（文件类） */}
                 {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-                  <span className={cn('text-[11px] tabular-nums w-12 text-right', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
+                  <span className={cn('text-xs tabular-nums w-12 text-right', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {childCountLabel ?? formatSize(item.size)}
                   </span>
                 )}
@@ -279,7 +279,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                   </span>
                 )}
                 {/* 修改时间 */}
-                <span className={cn('text-[11px] tabular-nums shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
+                <span className={cn('text-xs tabular-nums shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
                   {relativeTime}
                 </span>
               </>
@@ -369,11 +369,11 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             autoSize
             className="mx-auto text-center"
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框调高到 44px 触达）
-            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-[16px]"
+            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-xs !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-[16px]"
           />
         ) : (
           <span className={cn(
-            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-[11px] leading-tight font-normal line-clamp-2 break-words',
+            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-xs leading-tight font-normal line-clamp-2 break-words',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
             {item.name}

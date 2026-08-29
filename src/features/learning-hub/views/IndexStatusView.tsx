@@ -1347,7 +1347,7 @@ export const IndexStatusView: React.FC = () => {
         size="sm"
         onClick={onClick}
         className={cn(
-          '!h-7 [@media(pointer:coarse)]:!h-11 !rounded-full !px-2.5 !py-0 text-[11px] font-medium gap-1.5 border border-transparent',
+          '!h-7 [@media(pointer:coarse)]:!h-11 !rounded-full !px-2.5 !py-0 text-xs font-medium gap-1.5 border border-transparent',
           'transition-[background-color,box-shadow,border-color] duration-150',
           config.bgColor,
           config.color,
@@ -1407,7 +1407,7 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 资源类型标签 — macOS 标签风格 */}
           <div className={cn(
-            'flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium flex-shrink-0',
+            'flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium flex-shrink-0',
             typeConfig.color
           )}>
             <TypeIcon className="h-3.5 w-3.5" />
@@ -1419,7 +1419,7 @@ export const IndexStatusView: React.FC = () => {
             <div className="font-medium truncate text-ui leading-tight text-foreground/90" title={resource.name}>
               {displayName}
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
               {resource.textChunkCount > 0 && (
                 <span className="px-1.5 py-0.5 rounded bg-muted/60">
                   {t('indexStatus.detail.chunks', { count: resource.textChunkCount })}
@@ -1448,7 +1448,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 状态标签 - 有 indexError 的显示错误状态 */}
           <div 
             className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border shrink-0 whitespace-nowrap',
+              'flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border shrink-0 whitespace-nowrap',
               isUnsupportedType && state === 'pending' && 'bg-muted/50 text-muted-foreground border-transparent',
               !isUnsupportedType && hasIndexError && !isEmptyContent && 'bg-warning/10 text-warning border-warning/30',
               !isUnsupportedType && isEmptyContent && 'bg-warning/10 text-warning border-warning/30',
@@ -1860,7 +1860,7 @@ export const IndexStatusView: React.FC = () => {
                               </div>
                               <div className="p-3 rounded-lg border border-border/50">
                                 <div className="text-muted-foreground mb-1">{t('indexStatus.detail.selectionLogic')}</div>
-                                <div className="font-medium text-[11px]">
+                                <div className="font-medium text-xs">
                                   {ocrInfo.activeSource === 'none' ? t('indexStatus.detail.noContent') : ocrInfo.activeSource === 'ocr' ? t('indexStatus.detail.ocrPreferred') : t('indexStatus.detail.fallbackToExtracted')}
                                 </div>
                               </div>
@@ -2336,7 +2336,7 @@ export const IndexStatusView: React.FC = () => {
                 onClick={() => { loadData(); }}
                 disabled={isLoading || batchIndexing}
                 title={t('indexStatus.action.refreshTitle')}
-                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11"
+                className="!h-8 !rounded-lg !px-2 text-xs bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11"
               >
                 <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
@@ -2346,7 +2346,7 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={() => setShowTestPanel(!showTestPanel)}
                 className={cn(
-                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11',
+                  '!h-8 !rounded-lg !px-2 text-xs border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11',
                   showTestPanel
                     ? 'bg-primary/10 text-primary border-primary/20'
                     : 'bg-muted/60 hover:bg-muted'
@@ -2364,7 +2364,7 @@ export const IndexStatusView: React.FC = () => {
               disabled={resetting || batchIndexing || mmIndexing}
               title={t('indexStatus.action.resetStateTitle')}
               className={cn(
-                '!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5 [@media(pointer:coarse)]:!h-11',
+                '!h-8 !rounded-lg text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/5 [@media(pointer:coarse)]:!h-11',
                 resetConfirmOpen && 'text-destructive bg-destructive/5'
               )}
             >
@@ -2386,7 +2386,7 @@ export const IndexStatusView: React.FC = () => {
             <Warning className="h-4 w-4 text-destructive shrink-0" weight="fill" />
             <div className="flex-1 min-w-[200px]">
               <div className="text-xs font-medium text-destructive">{t('indexStatus.confirm.resetTitle')}</div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.resetDescription')}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{t('indexStatus.confirm.resetDescription')}</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <DsButton
@@ -2394,12 +2394,12 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={handleResetAllIndexState}
                 disabled={resetting}
-                className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
+                className="!h-7 text-xs [@media(pointer:coarse)]:!h-11"
               >
                 {resetting ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                 {t('indexStatus.confirm.confirmReset')}
               </DsButton>
-              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
+              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">
                 {t('indexStatus.confirm.cancel')}
               </DsButton>
             </div>
@@ -2434,7 +2434,7 @@ export const IndexStatusView: React.FC = () => {
                       onClick={() => setTestMode(mode)}
                       aria-pressed={testMode === mode}
                       className={cn(
-                        '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
+                        '!h-7 !rounded-md !px-2.5 !py-0 text-xs font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                         testMode === mode
                           ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                           : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2553,7 +2553,7 @@ export const IndexStatusView: React.FC = () => {
       <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl">
         <CustomScrollArea className="min-w-0 flex-1" orientation="horizontal" fullHeight={false}>
           <div className="flex w-max min-w-full items-center gap-2">
-            <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
+            <span className="text-xs font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
             <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50 border border-black/[0.04] dark:border-white/[0.06]">
               {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
                 const isActive = selectedType === type;
@@ -2565,7 +2565,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={() => setSelectedType(type)}
                     className={cn(
-                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
+                      '!h-7 !rounded-md !px-2.5 !py-0 text-xs font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                       isActive
                         ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                         : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2579,7 +2579,7 @@ export const IndexStatusView: React.FC = () => {
           </div>
         </CustomScrollArea>
         {!useCompactHeader && (
-          <div className="text-[11px] tabular-nums text-muted-foreground shrink-0 pl-3 border-l border-black/[0.06] dark:border-white/[0.08] whitespace-nowrap">
+          <div className="text-xs tabular-nums text-muted-foreground shrink-0 pl-3 border-l border-black/[0.06] dark:border-white/[0.08] whitespace-nowrap">
             <span className="font-semibold text-foreground/90">{summary.resources.length}</span>
             <span className="mx-1 text-muted-foreground/40">/</span>
             <span>{summary.totalResources}</span>
@@ -2655,7 +2655,7 @@ export const IndexStatusView: React.FC = () => {
                         onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                         disabled={retryingFailed || batchIndexing || mmIndexing}
                         className={cn(
-                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-[11px] shrink-0 text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
+                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-xs shrink-0 text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                           retryFailedConfirmOpen && 'bg-danger/10'
                         )}
                       >
@@ -2672,14 +2672,14 @@ export const IndexStatusView: React.FC = () => {
                         <WarningCircle className="h-4 w-4 text-danger shrink-0" weight="fill" />
                         <div className="flex-1 min-w-[180px]">
                           <div className="text-xs font-medium text-danger">{t('indexStatus.confirm.retryFailedTitle')}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
+                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">
                             {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                             {t('indexStatus.confirm.confirmRetry')}
                           </DsButton>
-                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
+                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">
                             {t('indexStatus.confirm.cancel')}
                           </DsButton>
                         </div>
@@ -2710,7 +2710,7 @@ export const IndexStatusView: React.FC = () => {
                     onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                     disabled={retryingFailed || batchIndexing || mmIndexing}
                     className={cn(
-                      '!h-6 !rounded-md !px-2 text-[11px] text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
+                      '!h-6 !rounded-md !px-2 text-xs text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                       retryFailedConfirmOpen && 'bg-danger/10'
                     )}
                   >
@@ -2724,14 +2724,14 @@ export const IndexStatusView: React.FC = () => {
                       <WarningCircle className="h-4 w-4 text-danger shrink-0" weight="fill" />
                       <div className="flex-1 min-w-[180px]">
                         <div className="text-xs font-medium text-danger">{t('indexStatus.confirm.retryFailedTitle')}</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
+                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">
                           {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                           {t('indexStatus.confirm.confirmRetry')}
                         </DsButton>
-                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
+                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">
                           {t('indexStatus.confirm.cancel')}
                         </DsButton>
                       </div>
@@ -2751,7 +2751,7 @@ export const IndexStatusView: React.FC = () => {
           <div className="flex flex-col items-center gap-2 py-4 border-t border-black/[0.04] dark:border-white/[0.06]">
             {/* 头部计数为全量，仅在无筛选时展示「已加载 X / 全量」 */}
             {selectedState === 'all' && selectedType === 'all' && (
-              <span className="text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-xs text-muted-foreground tabular-nums">
                 {t('indexStatus.list.showingPartial', { shown: summary.resources.length, total: summary.totalResources })}
               </span>
             )}
@@ -2760,7 +2760,7 @@ export const IndexStatusView: React.FC = () => {
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
+              className="!h-7 text-xs [@media(pointer:coarse)]:!h-11"
             >
               {loadingMore ? (
                 <>

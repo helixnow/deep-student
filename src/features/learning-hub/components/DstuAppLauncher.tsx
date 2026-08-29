@@ -338,7 +338,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
         {showCreateMenu && (
           <div role="menu" className="absolute right-0 top-full z-dropdown mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
-            <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/50">
               {t('learningHub:quickCreate.title')}
             </div>
             <DsButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className={CREATE_MENU_ITEM_CLASS}>

@@ -1321,7 +1321,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 title={opt.desc}
                 onClick={() => handleFrequencyChange(opt.value)}
                 className={cn(
-                  'px-2 py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:min-h-11',
+                  'px-2 py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
                   config.autoExtractFrequency === opt.value
                     ? 'bg-primary/15 text-primary font-medium'
                     : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1340,7 +1340,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="mt-1 rounded-lg border border-border/60 bg-card/50 overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
                   <FolderOpen size={13} className="text-muted-foreground" />
-                  <span className="text-[11px] font-medium text-muted-foreground">{t('memory.select_root_folder')}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{t('memory.select_root_folder')}</span>
                   <div className="flex-1 relative ml-1">
                     <Input
                       value={pickerFilter}
@@ -1348,7 +1348,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       onKeyDown={(e) => { if (e.key === 'Escape') setIsPickerOpen(false); }}
                       placeholder={t('memory.filter_folders')}
                       autoFocus
-                      className="w-full h-6 px-2 text-[11px] bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+                      className="w-full h-6 px-2 text-xs bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
                     />
                   </div>
                   <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('common:cancel')}>
@@ -1358,7 +1358,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 <CustomScrollArea className="max-h-48 min-h-0" fullHeight={false}>
                   <div className="p-1">
                     {filteredFolderList.length === 0 ? (
-                      <div className="px-3 py-3 text-[11px] text-muted-foreground/60 text-center">
+                      <div className="px-3 py-3 text-xs text-muted-foreground/60 text-center">
                         {t('memory.no_results')}
                       </div>
                     ) : filteredFolderList.map((folder) => (
@@ -1435,7 +1435,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="px-4 py-3 space-y-3">
                       {profileSections.map((section) => (
                         <div key={section.category}>
-                          <div className="text-[11px] font-medium text-foreground/70 mb-1">{section.category}</div>
+                          <div className="text-xs font-medium text-foreground/70 mb-1">{section.category}</div>
                           <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{section.content}</div>
                         </div>
                       ))}
@@ -1571,7 +1571,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setBatchImportType(type)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
                           batchImportType === type
                             ? 'bg-primary/15 text-primary font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1593,7 +1593,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setBatchImportPurpose(p)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
                           batchImportPurpose === p
                             ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1677,7 +1677,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setNewMemoryType(type)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
                           newMemoryType === type
                             ? 'bg-primary/15 text-primary font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1700,7 +1700,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setNewMemoryPurpose(p)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:!min-h-11',
                           newMemoryPurpose === p
                             ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -2007,7 +2007,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         isConfirmingDelete ? (
                           <DsButton
                             variant="ghost" size="sm"
-                            className="!h-auto !px-2 !py-1 text-[11px] text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                            className="!h-auto !px-2 !py-1 text-xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                             onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }}
                             aria-label={t('memory.aria.delete')}
                           >
@@ -2375,7 +2375,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
               {isLongContent && (
                 /* 触屏：裸文字链接命中区太小，coarse 下撑到 ≥44px（-mx 抵消横向扩展，视觉不动） */
                 <button
-                  className="mt-1 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                  className="mt-1 text-xs text-primary hover:underline [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
                   onClick={(e) => { e.stopPropagation(); setShowFullContent(v => !v); }}
                 >
                   {showFullContent ? t('memory.show_less') : t('memory.show_full')}

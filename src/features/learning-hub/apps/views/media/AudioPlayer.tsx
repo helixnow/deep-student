@@ -159,7 +159,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               ariaLabel={t('learningHub:mediaPreview.progress')}
               onSeek={seekTo}
             />
-            <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
+            <div className="flex justify-between text-xs tabular-nums text-muted-foreground">
               <span>{formatMediaTime(currentTime)}</span>
               <span>{isReady ? formatMediaTime(duration) : '--:--'}</span>
             </div>

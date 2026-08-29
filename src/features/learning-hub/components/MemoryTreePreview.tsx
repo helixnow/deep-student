@@ -250,7 +250,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
         <GitBranch size={14} className="text-muted-foreground" />
-        <span className="text-[11px] font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground">
           {t('memory.tree_title')}
         </span>
         <span className="text-2xs text-muted-foreground/50">

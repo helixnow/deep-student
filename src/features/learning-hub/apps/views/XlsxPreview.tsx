@@ -1177,7 +1177,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 <CaretRight size={14} />
               </DsButton>
               <span
-                className="flex-shrink-0 text-[11px] tabular-nums text-muted-foreground"
+                className="flex-shrink-0 text-xs tabular-nums text-muted-foreground"
                 aria-live="polite"
               >
                 {currentSheetIndex + 1}/{sheetCount}
@@ -1186,7 +1186,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
           ) : (
             <div className="min-w-0 flex-1" />
           )}
-          <div className="flex flex-shrink-0 items-center gap-3 pl-2 text-[11px] text-muted-foreground">
+          <div className="flex flex-shrink-0 items-center gap-3 pl-2 text-xs text-muted-foreground">
             {selectionInfo && (
               <span
                 className="font-medium tabular-nums text-primary"
