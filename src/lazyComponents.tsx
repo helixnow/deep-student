@@ -98,9 +98,9 @@ export const LazyImportConversationDialog = React.lazy(() =>
   import('./components/ImportConversationDialog').then(m => ({ default: m.ImportConversationDialog }))
 );
 
-// 技能管理
+// 技能管理（feature 公共出口转导出，见 features/skills-management/index.ts）
 export const LazySkillsManagementPage = React.lazy(() =>
-  import('./components/skills-management/SkillsManagementPage').then(m => ({ default: m.SkillsManagementPage }))
+  import('./features/skills-management').then(m => ({ default: m.SkillsManagementPage }))
 );
 
 // 模板管理
@@ -165,7 +165,7 @@ export const LazyImageViewer = React.lazy(() =>
 );
 
 // 🚀 Chat V2 主页面（默认视图，改为懒加载以减少初始 bundle）
-// 其依赖链包含 @hello-pangea/dnd、framer-motion、chat-v2/init 等重量级模块
+// 其依赖链包含 @dnd-kit/*、framer-motion、chat-v2/init 等重量级模块
 export const LazyChatV2Page = React.lazy(() =>
   import('./features/chat/pages').then(m => ({ default: m.ChatV2Page }))
 );

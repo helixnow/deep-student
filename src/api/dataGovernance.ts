@@ -580,6 +580,8 @@ export interface ResumableJob {
   created_at: string;
   /** 状态消息 */
   message?: string;
+  /** 导入 ZIP 携带密封敏感载荷，续传时必须重新提供备份密码 */
+  requires_password: boolean;
 }
 
 /**
@@ -589,13 +591,16 @@ export interface ResumableJob {
  * 任务将从中断点继续执行。
  *
  * @param jobId 要恢复的任务 ID
+ * @param password 加密导入任务的备份密码（密码不会持久化到检查点）
  * @returns 任务启动响应
  */
 export async function resumeBackupJob(
   jobId: string,
+  password?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_resume_backup_job", {
     jobId,
+    password,
   });
 }
 
@@ -618,6 +623,8 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
     const phase = p.phase;
     const progress_raw = p.progress;
     const created_at_raw = p.created_at ?? p.createdAt;
+    const requires_password_raw =
+      p.requires_password ?? p.requiresPassword;
 
     const job_id =
       typeof job_id_raw === "string"
@@ -648,6 +655,7 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
       progress,
       created_at,
       message,
+      requires_password: requires_password_raw === true,
     };
   };
 
@@ -711,6 +719,10 @@ export async function backupTiered(
  *
  * 默认执行完整备份（数据库 + 资产）并导出 ZIP 到用户指定路径。
  * 若 useTiered=true，则按分层配置执行备份后导出。
+ *
+ * @param encryptionPassword 可选 E2EE 备份密码。提供后执行加密全保真导出：
+ *   敏感数据（本地密钥、审计库等）密封进密码加密载荷，导入时输入同一密码
+ *   即可整槽恢复（跨设备换机闭环）。留空则导出未加密便携 ZIP（不能整槽恢复）。
  */
 export async function backupAndExportZip(
   outputPath: string,
@@ -720,6 +732,7 @@ export async function backupAndExportZip(
   tiers?: BackupTier[],
   includeAssets?: boolean,
   assetTypes?: AssetType[],
+  encryptionPassword?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>(
     "data_governance_backup_and_export_zip",
@@ -731,6 +744,7 @@ export async function backupAndExportZip(
       tiers,
       includeAssets,
       assetTypes,
+      encryptionPassword,
     },
   );
 }
@@ -751,18 +765,26 @@ export async function backupAndExportZip(
  *   - 4-6: 平衡（推荐）
  *   - 7-9: 最大压缩
  * @param includeChecksums 是否包含校验和文件（可选，默认 true）
+ * @param encryptionPassword 可选 E2EE 备份密码（加密全保真导出，见 backupAndExportZip）
+ * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
+ *   显式非空密码优先；开关打开却读不到密码时后端拒绝导出，不会默默打成便携包。
+ *   不要把安全存储密码读回前端。
  */
 export async function exportZip(
   backupId: string,
   outputPath?: string,
   compressionLevel?: number,
   includeChecksums?: boolean,
+  encryptionPassword?: string,
+  useStoredCloudEncryptionPassword?: boolean,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_export_zip", {
     backupId,
     outputPath,
     compressionLevel,
     includeChecksums,
+    encryptionPassword,
+    useStoredCloudEncryptionPassword,
   });
 }
 
@@ -774,14 +796,23 @@ export async function exportZip(
  *
  * @param zipPath ZIP 文件路径
  * @param backupId 解压后的备份 ID（可选，默认从时间戳生成）
+ * @param password 可选 E2EE 备份密码：导入加密全保真包时必须提供与导出时
+ *   相同的密码，才能解封为可整槽恢复的完整快照
+ * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
+ *   只对带密封载荷的加密全保真 ZIP 生效；便携包忽略 stored，避免旧云端包导入失败。
+ *   不要把安全存储密码读回前端。
  */
 export async function importZip(
   zipPath: string,
   backupId?: string,
+  password?: string,
+  useStoredCloudEncryptionPassword?: boolean,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_import_zip", {
     zipPath,
     backupId,
+    password,
+    useStoredCloudEncryptionPassword,
   });
 }
 
@@ -1359,10 +1390,29 @@ export async function listRecordConflicts(
 }
 
 /**
- * 按数据库统计未解决冲突数（用于 UI 徽章）
+ * 单个数据库的未解决冲突计数
+ * - groups: 按 (table_name, record_id) 去重的记录组数（与冲突面板分组口径一致）
+ * - rows: __sync_conflicts 中未解决的原始行数（一次冲突通常 local + cloud 两行）
  */
-export async function countRecordConflicts(): Promise<Record<string, number>> {
-  return invoke<Record<string, number>>(
+export interface RecordConflictCountEntry {
+  groups: number;
+  rows: number;
+}
+
+/**
+ * 未解决冲突计数汇总（跨所有数据库）
+ */
+export interface RecordConflictCounts {
+  per_database: Record<string, RecordConflictCountEntry>;
+  total_groups: number;
+  total_rows: number;
+}
+
+/**
+ * 按数据库统计未解决冲突数（用于 UI 徽章；同时提供 groups 与 rows 两种口径）
+ */
+export async function countRecordConflicts(): Promise<RecordConflictCounts> {
+  return invoke<RecordConflictCounts>(
     "data_governance_count_record_conflicts",
   );
 }
@@ -1406,6 +1456,59 @@ export async function purgeResolvedConflicts(
   return invoke<number>("data_governance_purge_resolved_conflicts", {
     olderThanDays,
   });
+}
+
+// ==================== [R11-history] 记录级时点恢复 ====================
+
+/**
+ * 自动快照批次（冲突批量解决 / 库级策略覆盖执行前系统自动创建，仅存本地）
+ */
+export interface SyncSnapshotBatchRow {
+  database_name: string;
+  batch_id: string;
+  /** policy_override | conflict_resolve | rollback_undo */
+  reason: string;
+  created_at: string;
+  record_count: number;
+  rolled_back_at?: string | null;
+}
+
+/**
+ * 列出所有数据库最近的记录快照批次（新的在前，只读）
+ */
+export async function listSyncSnapshotBatches(
+  limit?: number,
+): Promise<SyncSnapshotBatchRow[]> {
+  return invoke<SyncSnapshotBatchRow[]>(
+    "data_governance_list_sync_snapshot_batches",
+    { limit },
+  );
+}
+
+/**
+ * 单批回退的结果
+ */
+export interface RollbackSnapshotResponse {
+  batch_id: string;
+  restored: number;
+  deleted: number;
+  skipped: number;
+  /** 回退前自动创建的撤销点批次 id（回退本身可再撤销） */
+  undo_batch_id: string;
+}
+
+/**
+ * 按批次回退一组记录快照。回退结果会进入待上传变更并刷新时间戳，
+ * 后续同步不会把旧值再覆盖回来；回退前自动创建撤销点批次。
+ */
+export async function rollbackSyncSnapshotBatch(
+  databaseName: string,
+  batchId: string,
+): Promise<RollbackSnapshotResponse> {
+  return invoke<RollbackSnapshotResponse>(
+    "data_governance_rollback_sync_snapshot_batch",
+    { databaseName, batchId },
+  );
 }
 
 // ==================== 同步检疫 API ====================
@@ -1627,6 +1730,10 @@ export const DataGovernanceApi = {
   countRecordConflicts,
   resolveRecordConflict,
   purgeResolvedConflicts,
+
+  // [R11-history] 记录级时点恢复（自动快照 / 单批回退）
+  listSyncSnapshotBatches,
+  rollbackSyncSnapshotBatch,
   listQuarantine,
   retryQuarantine,
   discardQuarantine,
