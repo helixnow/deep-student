@@ -13,6 +13,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode, type QuestionStructuredData } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import {
+  useQuestionBankStore,
+  type PracticeSessionOwner,
+  type DailyProgressSnapshot,
+} from '@/stores/questionBankStore';
 
 // Store 侧类型（snake_case，与 Rust 序列化一致）
 interface StoreQuestion {
@@ -70,7 +75,24 @@ interface SubmitAnswerResult {
   submission_id: string;
   updated_question: StoreQuestion;
   updated_stats: StoreStats;
+  /**
+   * 后端在提交/改判响应里回带的当日权威 daily 进度快照
+   * （Rust SubmitAnswerResult.daily_progress，serde snake_case、Option 字段）。
+   * 旧后端载荷无此键时为 undefined。本 hook 只负责透传给调用方，
+   * 由判分调用点决定是否覆盖 store 的本地乐观增量。
+   */
+  daily_progress?: DailyProgressSnapshot | null;
 }
+
+/**
+ * hook 对外的提交结果：在 API 层 SubmitResult 之上附带权威 daily 快照。
+ * submitAnswer / markCorrect（改判）都会返回，调用点在完成本地乐观回写后
+ * 应以它为准覆盖（applyAuthoritativeDailyProgress）——这是首答锁 fail-closed
+ * 分支（已答但无判定基线）唯一的即时收敛路径。
+ */
+export type SessionSubmitResult = SubmitResult & {
+  dailyProgress?: DailyProgressSnapshot;
+};
 
 function generateClientRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -129,6 +151,8 @@ interface UseQuestionBankSessionOptions {
 }
 
 interface UseQuestionBankSessionReturn {
+  /** 本 hook 实例的稳定归属键；同一 examId 的两个保活实例也不会共享进度。 */
+  practiceSessionOwner: PracticeSessionOwner | null;
   questions: Question[];
   currentQuestion: Question | null;
   currentIndex: number;
@@ -145,8 +169,9 @@ interface UseQuestionBankSessionReturn {
   loadQuestions: () => Promise<void>;
   loadMoreQuestions: () => Promise<void>;
   refreshQuestion: (questionId: string) => Promise<void>;
-  submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SubmitResult>;
-  markCorrect: (questionId: string, isCorrect: boolean) => Promise<void>;
+  submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SessionSubmitResult>;
+  /** 自评改判。返回本次改判的提交结果（含权威 daily 快照），供调用点回写进度。 */
+  markCorrect: (questionId: string, isCorrect: boolean) => Promise<SessionSubmitResult>;
   navigate: (index: number) => void;
   toggleFavorite: (questionId: string) => Promise<void>;
   practiceMode: PracticeMode;
@@ -183,6 +208,17 @@ function writeLastQuestionId(examId: string, questionId: string | null): void {
 export function useQuestionBankSession({
   examId,
 }: UseQuestionBankSessionOptions): UseQuestionBankSessionReturn {
+  const practiceViewInstanceIdRef = useRef<string | null>(null);
+  if (practiceViewInstanceIdRef.current === null) {
+    practiceViewInstanceIdRef.current = `qbank_view_${generateClientRequestId()}`;
+  }
+  const practiceSessionOwner = useMemo<PracticeSessionOwner | null>(
+    () => examId
+      ? { examId, viewInstanceId: practiceViewInstanceIdRef.current! }
+      : null,
+    [examId],
+  );
+
   // ========== ★ 完全本地化状态 ==========
   const [localQuestions, setLocalQuestions] = useState<Map<string, StoreQuestion>>(new Map());
   const [localOrder, setLocalOrder] = useState<string[]>([]);
@@ -193,6 +229,21 @@ export function useQuestionBankSession({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, hasMore: false });
+  const ensurePracticeSession = useQuestionBankStore((state) => state.ensurePracticeSession);
+  const releasePracticeSession = useQuestionBankStore((state) => state.releasePracticeSession);
+
+  // 全局容器只负责跨「做题 / 错题本 / 统计」子视图保留即时进度。
+  // 归属由当前 hook 实例显式提供，题目白名单随本地题目集刷新。
+  useEffect(() => {
+    if (!practiceSessionOwner) return;
+    ensurePracticeSession(practiceSessionOwner, localOrder);
+  }, [practiceSessionOwner, localOrder, ensurePracticeSession]);
+
+  // 整个题库视图卸载（关闭标签）后释放分片；切换内部子视图不会卸载本 hook。
+  useEffect(() => {
+    if (!practiceSessionOwner) return;
+    return () => releasePracticeSession(practiceSessionOwner);
+  }, [practiceSessionOwner, releasePracticeSession]);
 
   // Refs for concurrent request protection
   const examIdRef = useRef(examId);
@@ -202,6 +253,8 @@ export function useQuestionBankSession({
   const localOrderRef = useRef<string[]>([]);
   // 提交防重入：isSubmitting state 在同一帧内读到的是旧值，连点会触发双提交
   const submitInFlightRef = useRef(false);
+  // 每题最近一次提交 id（本会话内）：自评改判时传给后端定位要改判的提交
+  const lastSubmissionIdsRef = useRef<Map<string, string>>(new Map());
   examIdRef.current = examId;
   currentQuestionIdRef.current = currentQuestionId;
   localOrderRef.current = localOrder;
@@ -332,6 +385,7 @@ export function useQuestionBankSession({
   useEffect(() => {
     sessionEpochRef.current += 1;
     const epoch = sessionEpochRef.current;
+    lastSubmissionIdsRef.current.clear();
     if (examId) {
       setLocalQuestions(new Map());
       setLocalOrder([]);
@@ -449,7 +503,7 @@ export function useQuestionBankSession({
   }, []);
 
   // ========== 提交答案 ==========
-  const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SubmitResult> => {
+  const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SessionSubmitResult> => {
     if (submitInFlightRef.current) {
       throw new Error('Submission already in flight');
     }
@@ -458,12 +512,18 @@ export function useQuestionBankSession({
     const currentExamId = examIdRef.current;
     setIsSubmitting(true);
     try {
+      // 自评改判：该题最近一次提交出自本会话时带上其 id，后端对该提交改判
+      // 而非新插作答记录，避免"我答对了/我答错了"把 attempt_count 双计。
+      const regradeSubmissionId = isCorrectOverride !== undefined
+        ? lastSubmissionIdsRef.current.get(questionId) ?? null
+        : null;
       const result = await invoke<SubmitAnswerResult>('qbank_submit_answer', {
         request: {
           question_id: questionId,
           user_answer: answer,
           is_correct_override: isCorrectOverride,
           client_request_id: generateClientRequestId(),
+          regrade_submission_id: regradeSubmissionId,
         },
       });
       if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
@@ -477,6 +537,7 @@ export function useQuestionBankSession({
         return next;
       });
       setLocalStats(result.updated_stats);
+      lastSubmissionIdsRef.current.set(questionId, result.submission_id);
 
       return {
         isCorrect: result.is_correct,
@@ -484,6 +545,8 @@ export function useQuestionBankSession({
         needsManualGrading: result.needs_manual_grading,
         message: result.message,
         submissionId: result.submission_id,
+        // 权威 daily 快照透传（旧后端载荷无此键时保持 undefined）
+        ...(result.daily_progress ? { dailyProgress: result.daily_progress } : {}),
       };
     } catch (err: unknown) {
       // 会话已切换时不把过期错误写进新会话的 error 状态
@@ -500,10 +563,12 @@ export function useQuestionBankSession({
   }, []);
 
   // ========== 标记正确/错误 ==========
-  const markCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
+  const markCorrect = useCallback(async (questionId: string, isCorrect: boolean): Promise<SessionSubmitResult> => {
     const question = localQuestions.get(questionId);
     const userAnswer = question?.user_answer || '';
-    await submitAnswer(questionId, userAnswer, isCorrect);
+    // 结果（含权威 daily 快照）回传调用点：改判正是首答锁差量修正 +
+    // 权威覆盖收敛最需要的路径，不能在这里吞掉。
+    return await submitAnswer(questionId, userAnswer, isCorrect);
   }, [localQuestions, submitAnswer]);
 
   // ========== ★ 本地化导航（含 practiceMode） ==========
@@ -583,6 +648,7 @@ export function useQuestionBankSession({
   const isMigrated = questions.length > 0;
 
   return {
+    practiceSessionOwner,
     questions,
     currentQuestion,
     currentIndex,

@@ -23,8 +23,16 @@ function isUnifiedChatEventName(name: string): boolean {
   return n.startsWith('chat_stream_') || n.startsWith('summary_stream_');
 }
 
+/** 精确匹配的非聊天事件；前缀型平台事件在 isWhitelistedNonChat 中处理。 */
+export const GUARDED_LISTEN_EXACT_NON_CHAT_EVENTS = [
+  'hpias_event',
+  'stream_error',
+] as const;
+
+const EXACT_NON_CHAT_EVENT_SET = new Set<string>(GUARDED_LISTEN_EXACT_NON_CHAT_EVENTS);
+
 // 白名单：允许在 dev + new 下直接放行的非聊天事件
-function isWhitelistedNonChat(name: string): boolean {
+export function isWhitelistedNonChat(name: string): boolean {
   const n = String(name || '');
   return (
     n.startsWith('tauri://') ||
@@ -35,7 +43,7 @@ function isWhitelistedNonChat(name: string): boolean {
     n.startsWith('irec_') ||
     n.startsWith('mistake_') ||
     n.startsWith('unified_chat_save_') ||
-    n === 'stream_error'
+    EXACT_NON_CHAT_EVENT_SET.has(n)
   );
 }
 

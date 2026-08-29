@@ -185,4 +185,92 @@ describe('providerProtocolRegistry', () => {
     expect(getAllowedProtocolsForProviderType('anthropic')).toEqual(['anthropic_messages']);
     expect(getAllowedProtocolsForProviderType('gemini')).toEqual(['google_generate_content']);
   });
+
+  it('routes official Anthropic/Gemini hosts to native protocols even under a mislabeled providerType', () => {
+    // 官方端点只说原生协议：providerType 误配为 custom/openai 时官方 host 覆盖之，
+    // 避免 2026.8 官方 Claude/Gemini 被当成 OpenAI 兼容端点后 404/协议错。
+    for (const providerType of ['custom', 'openai', 'general']) {
+      expect(
+        resolvePreferredProtocol({
+          providerType,
+          baseUrl: 'https://api.anthropic.com',
+          adapter: 'general',
+        }),
+        `${providerType} + official Anthropic host`,
+      ).toBe('anthropic_messages');
+      expect(
+        resolvePreferredProtocol({
+          providerType,
+          baseUrl: 'https://generativelanguage.googleapis.com',
+          adapter: 'general',
+        }),
+        `${providerType} + official Gemini host`,
+      ).toBe('google_generate_content');
+    }
+
+    // 带 path、无 scheme、尾斜杠等常见写法同样按 hostname 精确识别。
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'https://api.anthropic.com/v1/',
+        adapter: 'anthropic',
+      }),
+    ).toBe('anthropic_messages');
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'generativelanguage.googleapis.com/v1beta',
+        adapter: 'google',
+      }),
+    ).toBe('google_generate_content');
+
+    // 官方 providerType + 官方 host 的既有原生路由不变。
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        adapter: 'anthropic',
+      }),
+    ).toBe('anthropic_messages');
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        adapter: 'google',
+      }),
+    ).toBe('google_generate_content');
+  });
+
+  it('does not treat relay URLs embedding official Anthropic/Gemini domains as official hosts', () => {
+    // path 携带官方域名（中转伪造）不得命中。
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'https://myproxy.com/api.anthropic.com/v1',
+        adapter: 'anthropic',
+      }),
+    ).toBe('openai_chat_completions');
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'https://myproxy.com/generativelanguage.googleapis.com/v1beta',
+        adapter: 'google',
+      }),
+    ).toBe('openai_chat_completions');
+    // 子域伪造不得命中。
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'https://api.anthropic.com.evil.example/v1',
+        adapter: 'anthropic',
+      }),
+    ).toBe('openai_chat_completions');
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'custom',
+        baseUrl: 'https://generativelanguage.googleapis.com.evil.example/v1beta',
+        adapter: 'google',
+      }),
+    ).toBe('openai_chat_completions');
+  });
 });

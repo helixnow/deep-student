@@ -27,6 +27,16 @@ export const isAndroid = (): boolean => {
   return ua.includes('android') || pf.includes('android');
 };
 
+export const isIOS = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const pf = (navigator.platform || '').toLowerCase();
+  // iPadOS 13+ 桌面站点模式伪装成 Macintosh / MacIntel，
+  // 与 isMobilePlatform 同款 maxTouchPoints 区分（真 Mac 触点数为 0）
+  const isIPadOS = pf === 'macintel' && (navigator.maxTouchPoints ?? 0) > 1;
+  return /iphone|ipad|ipod/.test(ua) || /iphone|ipad|ipod/.test(pf) || isIPadOS;
+};
+
 /**
  * 检测是否在 Android WebView 中运行
  * WebView 的 userAgent 通常包含 "wv" 或 "WebView" 字样

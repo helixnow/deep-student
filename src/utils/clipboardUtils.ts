@@ -1,5 +1,6 @@
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { invoke } from '@tauri-apps/api/core';
+import i18next from 'i18next';
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   // 1. Try Tauri plugin wrapper
@@ -45,7 +46,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     console.warn('[clipboard] execCommand fallback failed:', error);
   }
 
-  throw new Error('All clipboard methods failed. Check browser console for details.');
+  throw new Error(i18next.t('common:copy_failed'));
 }
 
 export async function readTextFromClipboard(): Promise<string | null> {

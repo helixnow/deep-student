@@ -114,7 +114,8 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
     /^meta$/i,
     /^meta\//i,
     /^meta-llama\//i,
-    /llama-[23]/i,
+    /llama-[234]/i,
+    /\bllama4/i,  // 无连字符写法（如 llama4），\b 避免误伤 ollama 等
     /llama-guard/i,
   ],
   

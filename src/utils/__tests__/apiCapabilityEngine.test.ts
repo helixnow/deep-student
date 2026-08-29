@@ -62,6 +62,31 @@ describe('apiCapabilityEngine vision inference', () => {
     expect(caps.functionCalling).toBe(true);
     expect(caps.reasoning).toBe(true);
     expect(caps.contextWindow).toBe(32768);
+    expect(caps.contextWindowSource).toBe('registry');
+  });
+
+  it('reports context window source for registry hits, rule hits and defaults', () => {
+    const qwen = inferApiCapabilities({ id: 'qwen3.5-32b', providerScope: 'siliconflow' });
+    expect(qwen.contextWindow).toBe(32_768);
+    expect(qwen.contextWindowSource).toBe('registry');
+
+    const glm = inferApiCapabilities({ id: 'glm-4.5v' });
+    expect(glm.contextWindow).toBe(64_000);
+    expect(glm.contextWindowSource).toBe('registry');
+
+    // claude-fable-5 在注册表中有确认记录（max_context_tokens=1M），注册表优先于规则
+    const registryHit = inferApiCapabilities({ id: 'claude-fable-5' });
+    expect(registryHit.contextWindow).toBe(1_000_000);
+    expect(registryHit.contextWindowSource).toBe('registry');
+
+    // codestral 不在注册表中，仅由 CONTEXT_WINDOW_RULES 命中
+    const ruleHit = inferApiCapabilities({ id: 'codestral-2508' });
+    expect(ruleHit.contextWindow).toBe(256_000);
+    expect(ruleHit.contextWindowSource).toBe('rule');
+
+    const miss = inferApiCapabilities({ id: 'mystery-model-x' });
+    expect(miss.contextWindow).toBe(100_000);
+    expect(miss.contextWindowSource).toBe('default');
   });
 
   it('keeps generic open-source Qwen3.5 records when provider scope is absent', () => {
@@ -74,6 +99,61 @@ describe('apiCapabilityEngine vision inference', () => {
     const record = findModelRecordById('Qwen/Qwen3.5-397B-A17B');
     expect(record?.provider_scope).toBe('siliconflow');
     expect(record?.provider_model_id).toBe('Qwen/Qwen3.5-397B-A17B');
+  });
+});
+
+describe('modelCapabilityRegistry 2026-08 supplement lookups', () => {
+  it('resolves claude-haiku-4-5 with the official 200K context window', () => {
+    const record = findModelRecordById('claude-haiku-4-5');
+    expect(record?.model_id).toBe('claude-haiku-4-5');
+    expect(record?.capabilities.max_context_tokens).toBe(200000);
+    expect(record?.capabilities.max_output_tokens).toBe(64000);
+    expect(record?.capabilities.vision).toBe(true);
+    expect(record?.capabilities.reasoning).toBe(true);
+  });
+
+  it('resolves the dated claude-haiku-4-5-20251001 id via provider_model_id', () => {
+    const record = findModelRecordById('claude-haiku-4-5-20251001');
+    expect(record?.model_id).toBe('claude-haiku-4-5');
+    expect(record?.provider_model_id).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('keeps claude-haiku-5 unresolved because Anthropic has not published that model id', () => {
+    expect(findModelRecordById('claude-haiku-5')).toBeUndefined();
+  });
+
+  it('resolves official claude-opus-5 with the 1M context window', () => {
+    const record = findModelRecordById('claude-opus-5');
+    expect(record?.model_id).toBe('claude-opus-5');
+    expect(record?.capabilities.max_context_tokens).toBe(1_000_000);
+    expect(record?.capabilities.max_output_tokens).toBe(128000);
+    expect(record?.capabilities.vision).toBe(true);
+    expect(record?.capabilities.reasoning).toBe(true);
+  });
+
+  it('resolves gemini-3.1-flash-lite with official token limits', () => {
+    const record = findModelRecordById('gemini-3.1-flash-lite');
+    expect(record?.model_id).toBe('gemini-3.1-flash-lite');
+    expect(record?.capabilities.max_context_tokens).toBe(1048576);
+    expect(record?.capabilities.max_output_tokens).toBe(65536);
+    expect(record?.capabilities.reasoning).toBe(true);
+    expect(record?.capabilities.function_calling).toBe(true);
+  });
+
+  it('resolves gemini-3.5-flash-lite as the latest stable 3.x Flash-Lite', () => {
+    const record = findModelRecordById('gemini-3.5-flash-lite');
+    expect(record?.model_id).toBe('gemini-3.5-flash-lite');
+    expect(record?.capabilities.max_context_tokens).toBe(1048576);
+    expect(record?.capabilities.max_output_tokens).toBe(65536);
+  });
+
+  it('resolves MiniMax-M2 case-insensitively with the official 204800 context window', () => {
+    for (const input of ['MiniMax-M2', 'minimax-m2']) {
+      const record = findModelRecordById(input);
+      expect(record?.model_id).toBe('MiniMax-M2');
+      expect(record?.capabilities.max_context_tokens).toBe(204800);
+      expect(record?.capabilities.reasoning).toBe(true);
+    }
   });
 });
 
@@ -129,7 +209,8 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(chatCaps.webSearch).toBe(true);
     expect(reasonerCaps.webSearch).toBe(true);
 
-    // V4-Pro（正式版发布前无 Responses）与 V3.x 仍视为不支持
+    // V4-Pro 虽已支持 Responses（2026-08-23 文档），但服务端 web_search 工具
+    // 当前仅确认 flash 系列及 legacy 别名；V3.x 无 Responses，同样不支持
     const proCaps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
     const v32Caps = inferApiCapabilities({ id: 'deepseek-ai/DeepSeek-V3.2', providerScope: 'siliconflow' });
     expect(proCaps.webSearch).toBe(false);
@@ -168,6 +249,12 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
     const opus = inferApiCapabilities({ id: 'claude-opus-4-8' });
     expect(opus.vision).toBe(true);
     expect(opus.supportsThinkingTokens).toBe(true);
+  });
+
+  it('uses the official 1M context window for Claude Opus 5', () => {
+    const caps = inferApiCapabilities({ id: 'claude-opus-5' });
+    expect(caps.contextWindow).toBe(1_000_000);
+    expect(caps.contextWindowSource).toBe('registry');
   });
 
   it('treats Grok 4.3 as reasoning-effort capable with 1M context', () => {

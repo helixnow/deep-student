@@ -33,15 +33,33 @@ export const getProviderProtocolRecord = (providerType?: string | null): Provide
 };
 
 // 使用 URL host 精确匹配，避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
-const resolvesToOfficialOpenAi = (baseUrl?: string | null) => {
+const resolveHostnameFromBaseUrl = (baseUrl?: string | null): string | null => {
   const normalizedBaseUrl = normalizeBaseUrlForProtocolRegistry(baseUrl);
-  if (!normalizedBaseUrl) return false;
+  if (!normalizedBaseUrl) return null;
   const candidate = normalizedBaseUrl.includes('://') ? normalizedBaseUrl : `https://${normalizedBaseUrl}`;
   try {
-    return new URL(candidate).hostname === 'api.openai.com';
+    return new URL(candidate).hostname;
   } catch {
-    return false;
+    return null;
   }
+};
+
+const resolvesToOfficialOpenAi = (baseUrl?: string | null) =>
+  resolveHostnameFromBaseUrl(baseUrl) === 'api.openai.com';
+
+// 官方原生协议主机：与 resolvesToOfficialOpenAi 同风格的 hostname 精确匹配，
+// path 携带官方域名（myproxy.com/api.anthropic.com）或子域伪造
+// （api.anthropic.com.evil.example）都不会命中。
+const OFFICIAL_NATIVE_PROTOCOL_HOSTS: Readonly<Record<string, ApiProtocol>> = {
+  'api.anthropic.com': 'anthropic_messages',
+  'generativelanguage.googleapis.com': 'google_generate_content',
+};
+
+// 导出给 settings 层（modelConverters）复用：官方 host 的原生协议不受
+// providerType allowed 列表约束，判定逻辑必须与 resolvePreferredProtocol 同源。
+export const resolveOfficialNativeProtocol = (baseUrl?: string | null): ApiProtocol | undefined => {
+  const hostname = resolveHostnameFromBaseUrl(baseUrl);
+  return hostname ? OFFICIAL_NATIVE_PROTOCOL_HOSTS[hostname] : undefined;
 };
 
 export const providerSupportsOpenAiResponses = (args: {
@@ -66,6 +84,18 @@ export const resolvePreferredProtocol = (args: {
   baseUrl?: string | null;
   supportsOpenAIResponses?: boolean | null;
 }): ApiProtocol => {
+  // 官方 Anthropic / Gemini 端点只说原生协议：用户把 Base URL 填成官方主机、
+  // 但 providerType 误配为 custom/openai 时，allowed 列表不含原生协议，若照走
+  // openai_chat_completions，2026.8 的官方 Claude/Gemini 会直接 404/协议错。
+  // 因此官方 host 在此覆盖错误的 providerType，即使 allowed 不含该原生协议也
+  // 返回 native——这是与官方 api.openai.com 相同的 URL 特例，不改动
+  // getAllowedProtocolsForProviderType('custom')；代理/中转 host 不受影响，
+  // 仍按下方 allowed + adapter 的既有规则走 OpenAI 兼容路由。
+  const officialNativeProtocol = resolveOfficialNativeProtocol(args.baseUrl);
+  if (officialNativeProtocol) {
+    return officialNativeProtocol;
+  }
+
   const normalizedAdapter = normalize(args.adapter);
   const allowed = getAllowedProtocolsForProviderType(args.providerType);
   const nativeProtocol =

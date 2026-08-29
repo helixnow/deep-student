@@ -17,13 +17,17 @@ import { useCallback, useSyncExternalStore } from 'react';
 function subscribeMediaQuery(query: string, callback: () => void): () => void {
   if (typeof window === 'undefined' || !window.matchMedia) return () => {};
   const mql = window.matchMedia(query);
+  if (!mql) return () => {};
   // 旧 WebView 兼容：addEventListener 缺失时退回 addListener
   if (typeof mql.addEventListener === 'function') {
     mql.addEventListener('change', callback);
     return () => mql.removeEventListener('change', callback);
   }
-  mql.addListener(callback);
-  return () => mql.removeListener(callback);
+  if (typeof mql.addListener === 'function') {
+    mql.addListener(callback);
+    return () => mql.removeListener(callback);
+  }
+  return () => {};
 }
 
 export function useMediaQuery(query: string): boolean {
@@ -32,7 +36,7 @@ export function useMediaQuery(query: string): boolean {
     [query],
   );
   const getSnapshot = useCallback(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches,
+    () => Boolean(typeof window !== 'undefined' && window.matchMedia?.(query)?.matches),
     [query],
   );
   return useSyncExternalStore(subscribe, getSnapshot, () => false);
