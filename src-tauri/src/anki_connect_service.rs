@@ -148,6 +148,41 @@ fn normalize_key(key: &str) -> String {
         .collect::<String>()
 }
 
+/// 导入时由 apkg_importer_service 注入的元数据保留字段（与
+/// `apkg_exporter_service::RESERVED_IMPORT_METADATA_FIELDS` 名单一致）。
+/// 这些键只在本应用内部有意义，不得作为字段值来源发给 Anki。
+const RESERVED_IMPORT_METADATA_FIELDS: [&str; 13] = [
+    "AnkiNoteId",
+    "AnkiCardId",
+    "AnkiCardOrd",
+    "AnkiDeckId",
+    "AnkiModelId",
+    "AnkiModelName",
+    "AnkiSchedType",
+    "AnkiQueue",
+    "AnkiDue",
+    "AnkiIvl",
+    "AnkiFactor",
+    "AnkiReps",
+    "AnkiLapses",
+];
+
+fn is_reserved_import_metadata_field(name: &str) -> bool {
+    RESERVED_IMPORT_METADATA_FIELDS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(name))
+}
+
+/// 机器协议字段判定：`_` 前缀键（`_occlusion`/`_qa_flags`/`_original_generation` 等）
+/// 与 13 个 `Anki*` 导入元数据保留键一律不进入发往 Anki 的 fields。
+///
+/// 关键动机：`normalize_key("_occlusion")` 会剥掉下划线得到 `"occlusion"`，
+/// 若目标模型带有官方 Image Occlusion 的 `Occlusion` 字段，内部 spec JSON
+/// 会被灌进该字段（语法完全不兼容）。在取值源头剔除即可杜绝碰撞。
+fn is_internal_protocol_field(name: &str) -> bool {
+    name.starts_with('_') || is_reserved_import_metadata_field(name)
+}
+
 fn build_basic_fields(card: &AnkiCard, note_type: &str) -> HashMap<String, String> {
     let mut fields = HashMap::new();
 
@@ -194,9 +229,12 @@ fn build_fields_with_model_names(
         return build_basic_fields(card, note_type);
     }
 
+    // 剔除机器协议字段：`_` 前缀键与 Anki* 保留键不作为任何模型字段的取值来源，
+    // 否则 normalize 匹配会把 `_occlusion` 灌进官方 IO 模型的 `Occlusion` 字段。
     let mut lower_extra: HashMap<String, String> = card
         .extra_fields
         .iter()
+        .filter(|(k, _)| !is_internal_protocol_field(k))
         .map(|(k, v)| (k.to_lowercase(), v.clone()))
         .collect();
 
@@ -873,6 +911,114 @@ fn media_basename(path: &str) -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
+// ============================================================================
+// 图像遮挡卡（`_occlusion` / tag `image-occlusion`）发送前调整
+// ============================================================================
+
+/// 遮挡卡识别：带 `_occlusion` 协议字段或 `image-occlusion` tag。
+fn is_occlusion_card(card: &AnkiCard) -> bool {
+    card.extra_fields
+        .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD)
+        || card
+            .tags
+            .iter()
+            .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG)
+}
+
+/// VlmFull 流水线中图片尚未落地时的占位 scheme；无实体文件可挂，跳过媒体处理。
+const OCCLUSION_PENDING_IMAGE_SCHEME: &str = "vlm://";
+
+/// 从 `_occlusion` spec 重建标准 Cloze Text（`<img src="文件名"><br>{{cN::label}}`）。
+///
+/// 仅作为兜底：`card.text` 缺失或不含 cloze 标记时才会被调用。
+/// spec 缺失/校验失败返回 `None`（调用方降级为原字段并写 warning）。
+fn rebuild_occlusion_cloze_text(
+    spec: Option<&crate::anki_image_occlusion::OcclusionSpec>,
+    image_file_name: Option<&str>,
+) -> Option<String> {
+    let spec = spec?;
+    let validated = crate::anki_image_occlusion::validate_spec(
+        spec,
+        &crate::anki_image_occlusion::OcclusionConfig::default(),
+    )
+    .ok()?;
+    let built = crate::anki_image_occlusion::build_card_fields(&validated, image_file_name, None);
+    Some(built.text)
+}
+
+/// 遮挡卡发送 Anki 前的闭环调整（非遮挡卡零改动，行为与旧版完全一致）：
+///
+/// 1. **Cloze Text**：优先沿用 `card.text`（`build_fields_with_model_names` 已把它
+///    写进模型的 `Text` 字段）；若发出的 Text 不含 `{{c` 标记，则从 `_occlusion`
+///    spec 重建标准 Cloze 文本兜底，保证可复习主路径是标准 Cloze。
+/// 2. **媒体**：`_occlusion.imageRef` 追加进本卡（导出用克隆）的 `images`，
+///    交给后续 `prepare_note_media` 复用现有 storeMediaFile 上传 / `picture`
+///    附件挂载逻辑；`vlm://` 占位引用视为无图降级。
+/// 3. `_occlusion` JSON 本体绝不作为字段发出（取值源头已由
+///    `is_internal_protocol_field` 过滤）。
+///
+/// 不硬依赖 Anki 端的 Image Occlusion 模型：modelName 沿用调用方给定的
+/// Cloze/当前模型，本函数只调整字段值与媒体输入。
+/// 调整仅作用于本次同步的内存克隆，不写回卡片库。
+fn prepare_occlusion_note(
+    card: &mut AnkiCard,
+    fields: &mut HashMap<String, String>,
+    warnings: &mut Vec<String>,
+) {
+    if !is_occlusion_card(card) {
+        return;
+    }
+
+    let spec = crate::anki_image_occlusion::parse_occlusion_field(&card.extra_fields);
+    if spec.is_none()
+        && card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD)
+    {
+        warnings.push(
+            "遮挡卡的 _occlusion 数据不合法，已按普通卡片同步（图片与遮挡信息可能缺失）"
+                .to_string(),
+        );
+    }
+
+    // imageRef → 媒体候选：并入 images 后由 prepare_note_media 统一上传/附件。
+    let image_ref = spec
+        .as_ref()
+        .map(|s| s.image_ref.trim().to_string())
+        .filter(|r| !r.is_empty() && !r.starts_with(OCCLUSION_PENDING_IMAGE_SCHEME));
+    if let Some(image_ref) = image_ref.as_ref() {
+        if !card.images.iter().any(|existing| existing == image_ref) {
+            card.images.push(image_ref.clone());
+        }
+    }
+
+    // Cloze Text 兜底：仅当模型有 Text 字段且当前值不含 cloze 标记时重建。
+    let text_key = fields
+        .keys()
+        .find(|key| key.eq_ignore_ascii_case("text"))
+        .cloned();
+    if let Some(text_key) = text_key {
+        let has_cloze = fields
+            .get(&text_key)
+            .map(|value| value.contains("{{c"))
+            .unwrap_or(false);
+        if !has_cloze {
+            let image_file_name = image_ref.as_deref().and_then(media_basename);
+            match rebuild_occlusion_cloze_text(spec.as_ref(), image_file_name.as_deref()) {
+                Some(rebuilt) => {
+                    fields.insert(text_key, rebuilt);
+                }
+                None => {
+                    warnings.push(
+                        "遮挡卡缺少 Cloze 文本且无法从 _occlusion 重建，可能在 Anki 中不可复习"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// 同步前处理单张卡片的媒体（行为受设置项 `anki_connect_media_mode` 控制）：
 ///
 /// `upload_media`（默认，历史行为）：
@@ -1219,7 +1365,7 @@ pub async fn add_notes_to_anki_detailed(
     let mut notes: Vec<Note> = Vec::with_capacity(cards.len());
     let mut uploaded_media: HashSet<String> = HashSet::new();
     let mut failed_media: HashSet<String> = HashSet::new();
-    for card in cards {
+    for mut card in cards {
         let model_name = card_models
             .get(&card.id)
             .cloned()
@@ -1235,6 +1381,9 @@ pub async fn add_notes_to_anki_detailed(
         } else {
             build_basic_fields(&card, &model_name)
         };
+
+        // 遮挡卡闭环：Cloze Text 兜底 + imageRef 并入媒体输入（非遮挡卡为 no-op）
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
 
         let (picture, audio) = prepare_note_media(
             &card,
@@ -1651,5 +1800,175 @@ mod tests {
         assert!(value["warnings"][0]
             .as_str()
             .is_some_and(|w| w.contains("addNote")));
+    }
+
+    // ========================================================================
+    // 图像遮挡闭环 + 内部协议字段过滤（Wave2-E r2-04）
+    // ========================================================================
+
+    /// 构造带 `_occlusion` spec 的遮挡测试卡（imageRef 可定制，走 serde 默认值）。
+    fn occlusion_test_card(text: Option<&str>, image_ref: &str) -> AnkiCard {
+        let occlusion_json = serde_json::json!({
+            "imageRef": image_ref,
+            "boxes": [
+                {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2, "label": "左心房", "clozeIndex": 1},
+                {"x": 0.6, "y": 0.6, "w": 0.2, "h": 0.2, "label": "右心室", "clozeIndex": 2}
+            ]
+        })
+        .to_string();
+        serde_json::from_value(serde_json::json!({
+            "front": "正面",
+            "back": "背面",
+            "text": text,
+            "tags": ["image-occlusion"],
+            "extra_fields": { "_occlusion": occlusion_json }
+        }))
+        .expect("build occlusion test card")
+    }
+
+    fn plain_test_card() -> AnkiCard {
+        serde_json::from_value(serde_json::json!({
+            "front": "问题",
+            "back": "答案",
+            "extra_fields": { "Extra": "补充" }
+        }))
+        .expect("build plain test card")
+    }
+
+    #[test]
+    fn internal_protocol_field_predicate_covers_underscore_and_reserved_keys() {
+        assert!(is_internal_protocol_field("_occlusion"));
+        assert!(is_internal_protocol_field("_qa_flags"));
+        assert!(is_internal_protocol_field("_original_generation"));
+        assert!(is_internal_protocol_field("AnkiNoteId"));
+        assert!(is_internal_protocol_field("ankilapses")); // 大小写不敏感
+        assert!(!is_internal_protocol_field("Occlusion")); // 用户/模型正常字段不受影响
+        assert!(!is_internal_protocol_field("Front"));
+    }
+
+    #[test]
+    fn occlusion_json_never_leaks_into_emitted_fields() {
+        // 目标模型带官方 IO 的 `Occlusion` 字段 + 一个撞保留键的字段：
+        // normalize_key("_occlusion") == "occlusion"，过滤前会碰撞泄漏。
+        let mut card = occlusion_test_card(Some("{{c1::左心房}}"), "/abs/diagram.png");
+        card.extra_fields
+            .insert("_qa_flags".to_string(), "{\"flags\":[]}".to_string());
+        card.extra_fields
+            .insert("AnkiNoteId".to_string(), "12345".to_string());
+
+        let model_fields = vec![
+            "Text".to_string(),
+            "Extra".to_string(),
+            "Occlusion".to_string(),
+            "AnkiNoteId".to_string(),
+        ];
+        let fields = build_fields_with_model_names(&card, &model_fields, "Cloze");
+
+        // `_occlusion` JSON 与保留键值绝不发出
+        assert_eq!(fields.get("Occlusion").map(String::as_str), Some(""));
+        assert_eq!(fields.get("AnkiNoteId").map(String::as_str), Some(""));
+        assert!(!fields.contains_key("_occlusion"));
+        for value in fields.values() {
+            assert!(!value.contains("imageRef"), "spec JSON 泄漏: {}", value);
+            assert!(!value.contains("_occlusion"));
+        }
+        // 可复习主路径：Text 是标准 Cloze
+        assert!(fields.get("Text").is_some_and(|t| t.contains("{{c")));
+    }
+
+    #[test]
+    fn occlusion_card_prefers_card_text_and_mounts_image_ref() {
+        let authored_text = "<img src=\"diagram.png\"><br>{{c1::左心房}} {{c2::右心室}}";
+        let mut card = occlusion_test_card(Some(authored_text), "/abs/diagram.png");
+        let model_fields = vec!["Text".to_string(), "Extra".to_string()];
+        let mut fields = build_fields_with_model_names(&card, &model_fields, "Cloze");
+        let mut warnings = Vec::new();
+
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
+
+        // 优先沿用 card.text（已含 cloze 标记，不重建）
+        assert_eq!(fields.get("Text").map(String::as_str), Some(authored_text));
+        // imageRef 并入 images，由 prepare_note_media 复用现有上传/picture 附件逻辑
+        assert!(card.images.iter().any(|p| p == "/abs/diagram.png"));
+        assert!(warnings.is_empty(), "不应产生告警: {:?}", warnings);
+    }
+
+    #[test]
+    fn occlusion_card_without_cloze_text_rebuilds_from_spec() {
+        // 旧数据形态：merge 未写 card.text，Text 落到 front/back 拼接（无 cloze 标记）
+        let mut card = occlusion_test_card(None, "/abs/diagram.png");
+        let model_fields = vec!["Text".to_string(), "Extra".to_string()];
+        let mut fields = build_fields_with_model_names(&card, &model_fields, "Cloze");
+        assert!(!fields.get("Text").unwrap().contains("{{c"));
+        let mut warnings = Vec::new();
+
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
+
+        let text = fields.get("Text").expect("Text 字段存在");
+        assert!(
+            text.contains("{{c1::左心房}}"),
+            "Text 应重建为标准 Cloze: {}",
+            text
+        );
+        assert!(text.contains("{{c2::右心室}}"));
+        // img 引用按包内文件名对齐（imageRef 的 basename），媒体由 images 路径上传
+        assert!(
+            text.contains("<img src=\"diagram.png\">"),
+            "Text 应含图: {}",
+            text
+        );
+        assert!(card.images.iter().any(|p| p == "/abs/diagram.png"));
+    }
+
+    #[test]
+    fn occlusion_pending_image_ref_is_not_mounted() {
+        let mut card = occlusion_test_card(None, "vlm://pending-image");
+        let model_fields = vec!["Text".to_string()];
+        let mut fields = build_fields_with_model_names(&card, &model_fields, "Cloze");
+        let mut warnings = Vec::new();
+
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
+
+        // 占位引用不挂媒体；Cloze 文本仍重建（无 <img>，降级为看标签回忆）
+        assert!(card.images.is_empty());
+        let text = fields.get("Text").expect("Text 字段存在");
+        assert!(text.contains("{{c1::左心房}}"));
+        assert!(!text.contains("<img"));
+    }
+
+    #[test]
+    fn occlusion_invalid_spec_degrades_with_warning() {
+        let mut card = plain_test_card();
+        card.extra_fields
+            .insert("_occlusion".to_string(), "not-json".to_string());
+        let model_fields = vec!["Front".to_string(), "Back".to_string()];
+        let mut fields = build_fields_with_model_names(&card, &model_fields, "Basic");
+        let before = fields.clone();
+        let mut warnings = Vec::new();
+
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
+
+        assert_eq!(fields, before, "坏 spec 不得改动字段");
+        assert!(card.images.is_empty());
+        assert!(warnings.iter().any(|w| w.contains("_occlusion")));
+    }
+
+    #[test]
+    fn plain_card_regression_prepare_occlusion_note_is_noop() {
+        let mut card = plain_test_card();
+        let model_fields = vec!["Front".to_string(), "Back".to_string(), "Extra".to_string()];
+        let mut fields = build_fields_with_model_names(&card, &model_fields, "Basic");
+        let before = fields.clone();
+        let mut warnings = Vec::new();
+
+        prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
+
+        assert_eq!(fields, before, "普通卡字段不得改动");
+        assert!(card.images.is_empty(), "普通卡不得凭空挂媒体");
+        assert!(warnings.is_empty());
+        // 普通 extra 字段（非 `_` 前缀、非保留键）照常发出
+        assert_eq!(fields.get("Extra").map(String::as_str), Some("补充"));
+        assert_eq!(fields.get("Front").map(String::as_str), Some("问题"));
+        assert_eq!(fields.get("Back").map(String::as_str), Some("答案"));
     }
 }

@@ -1620,6 +1620,14 @@ impl DataSpaceManager {
                 ));
             }
         }
+        // 收敛被中断的全局密钥发布：cutover lease 已持久化则前滚清理，
+        // 否则把旧密钥从回滚目录还原，避免「活跃槽仍旧库 + 全局密钥已换」
+        // 的静默代际错位。必须先于任何 SecureStore/业务库访问执行。
+        let lease_ref = st
+            .restore_cutover_pending
+            .as_ref()
+            .map(|lease| (lease.backup_id.as_str(), lease.target_slot.as_str()));
+        crate::crypto_publication::recover_crypto_publication(&self.base_dir, lease_ref)?;
         // pending 已原子提交后，匹配当前活动槽的 rollback 才失去恢复价值。
         // 失败恢复只会在非活动槽留下 trash，因此这里不会误删尚未提交的回滚点。
         if let Some(active_slot) = Slot::from_name(&st.active) {
@@ -2733,6 +2741,84 @@ mod tests {
         let after = mgr.read_state().unwrap();
         assert_eq!(after.active, "slotA", "无效 pending 时应保持原 active");
         assert!(after.pending.is_none(), "pending 应已清除");
+    }
+
+    // -----------------------------------------------------------------------
+    // 8a-1. initialize_on_start — 未提交的密钥发布在启动时回滚
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_initialize_on_start_rolls_back_uncommitted_crypto_publication() {
+        let (tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        let root = tmp.path();
+
+        // 模拟发布中途崩溃：旧密钥已移入回滚目录、新密钥已装入根目录，
+        // 但 cutover lease 尚未落盘。
+        let rollback = crate::crypto_publication::rollback_dir(root);
+        fs::create_dir_all(&rollback).unwrap();
+        fs::write(rollback.join(".master_key"), b"old-master").unwrap();
+        fs::write(root.join(".master_key"), b"new-master").unwrap();
+        crate::crypto_publication::write_journal(
+            root,
+            &crate::crypto_publication::CryptoPublicationJournal {
+                version: 1,
+                backup_id: Some("backup-1".to_string()),
+                target_slot: Some("slotB".to_string()),
+                had_old_master: true,
+                had_old_secure: false,
+                installs_master: true,
+                installs_secure: false,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            },
+        )
+        .unwrap();
+
+        mgr.initialize_on_start().unwrap();
+
+        assert_eq!(fs::read(root.join(".master_key")).unwrap(), b"old-master");
+        assert!(!crate::crypto_publication::journal_path(root).exists());
+        assert!(!crate::crypto_publication::rollback_dir(root).exists());
+    }
+
+    // -----------------------------------------------------------------------
+    // 8a-2. initialize_on_start — lease 已持久化的密钥发布在启动时前滚
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_initialize_on_start_rolls_forward_committed_crypto_publication() {
+        let (tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        let root = tmp.path();
+        populate_slot(&mgr, Slot::B);
+        mgr.mark_restore_cutover_pending(Slot::B, "backup-1")
+            .unwrap();
+
+        let rollback = crate::crypto_publication::rollback_dir(root);
+        fs::create_dir_all(&rollback).unwrap();
+        fs::write(rollback.join(".master_key"), b"old-master").unwrap();
+        fs::write(root.join(".master_key"), b"new-master").unwrap();
+        crate::crypto_publication::write_journal(
+            root,
+            &crate::crypto_publication::CryptoPublicationJournal {
+                version: 1,
+                backup_id: Some("backup-1".to_string()),
+                target_slot: Some("slotB".to_string()),
+                had_old_master: true,
+                had_old_secure: false,
+                installs_master: true,
+                installs_secure: false,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            },
+        )
+        .unwrap();
+
+        mgr.initialize_on_start().unwrap();
+
+        // lease 已持久化：新密钥保留，journal 与回滚目录被前滚清理。
+        assert_eq!(fs::read(root.join(".master_key")).unwrap(), b"new-master");
+        assert!(!crate::crypto_publication::journal_path(root).exists());
+        assert!(!crate::crypto_publication::rollback_dir(root).exists());
+        let after = mgr.read_state().unwrap();
+        assert_eq!(after.active, "slotB");
     }
 
     // -----------------------------------------------------------------------

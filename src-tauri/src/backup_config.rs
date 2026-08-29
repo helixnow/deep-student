@@ -531,7 +531,20 @@ async fn check_and_perform_auto_backup(
                     cleanup_old_backups(&backups_dir, max_count)?;
                 }
 
-                let recovery_kind = if manifest.validate_for_slot_restore().is_ok() {
+                // 诚实标签：保留下来的产物是 ZIP，而 ZIP 内的清单已被导出器
+                // 改写为未加密便携归档（剥离密钥、mark_partial、
+                // key_policy=excluded_portable）。可恢复性必须按 ZIP 内实际
+                // 清单判定，而不是暂存目录里的本地清单——否则会把导入后
+                // 无法整槽恢复的便携 ZIP 误标成 disaster_recovery。
+                let portable_manifest_bytes =
+                    crate::data_governance::backup::zip_export::portable_manifest_bytes(
+                        &backup_subdir,
+                    )
+                    .map_err(|e| AppError::internal(format!("生成便携清单用于分类失败: {}", e)))?;
+                let portable_manifest: BackupManifest =
+                    serde_json::from_slice(&portable_manifest_bytes)
+                        .map_err(|e| AppError::internal(format!("解析便携清单失败: {}", e)))?;
+                let recovery_kind = if portable_manifest.validate_for_slot_restore().is_ok() {
                     "disaster_recovery"
                 } else {
                     "partial_archive"
@@ -582,7 +595,8 @@ async fn check_and_perform_auto_backup(
                         message: Some(if recovery_kind == "disaster_recovery" {
                             "自动灾备恢复点已验证并发布".to_string()
                         } else {
-                            "自动便携归档已发布（不允许替换完整数据槽）".to_string()
+                            "自动便携归档已发布（未加密 ZIP 不含密钥材料，导入后不能整槽恢复；恢复后需重新输入 API 凭据）"
+                                .to_string()
                         }),
                         error: None,
                         duration_ms: None,

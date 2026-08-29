@@ -210,6 +210,9 @@ fn record_voice_input_usage(
         0,
     )
     .with_provider_id(resolve_requested_provider_id(request))
+    // ASR 端点不返回 token usage，0/0 是本地占位而非 API 实测；
+    // 不标注会落 schema 默认 "api"，把无测量伪装成实测
+    .with_token_source(crate::chat_v2::types::TokenSource::Heuristic.to_string())
     .with_duration(latency_ms);
 
     if let Some(config_id) = request

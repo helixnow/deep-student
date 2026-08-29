@@ -19,6 +19,9 @@
 //!
 //! 云存储凭据专用 API：
 //! - `save_cloud_credentials` / `get_cloud_credentials` / `delete_cloud_credentials`
+//! - staged generation 原子发布（R2）：`write_staged_cloud_credentials` /
+//!   `commit_staged_cloud_credentials` / `abort_staged_cloud_credentials` /
+//!   `cloud_credentials_active_generation` / `delete_cloud_credentials_transactional`
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,14 @@ use zeroize::{Zeroize, Zeroizing};
 const SERVICE_NAME: &str = "deep-student";
 /// 云存储凭据键前缀
 const CLOUD_STORAGE_KEY: &str = "cloud_storage_credentials";
+/// staged 槽（R2 原子发布）：独立 secret 记录，内容为
+/// `StagedCloudCredentials`（目标 generation + 合并后的完整凭据）。
+/// 写 staged 绝不触碰 active 记录（`CLOUD_STORAGE_KEY`）与 generation pointer。
+const CLOUD_STORAGE_STAGED_KEY: &str = "cloud_storage_credentials_staged";
+/// active generation pointer（R2）：十进制 u64 字符串。
+/// **缺失 = 0**：老用户只有未版本化的 active 记录，语义即「generation 0 已 active」，
+/// 读路径（`get_cloud_credentials` / hydrate）不感知该键，行为与历史版本完全一致。
+const CLOUD_STORAGE_GENERATION_KEY: &str = "cloud_storage_credentials_generation";
 
 /// 安全存储错误类型
 #[derive(Debug, thiserror::Error)]
@@ -50,6 +61,18 @@ pub enum SecureStoreError {
     EncryptionError(String),
     #[error("其他错误: {0}")]
     Other(String),
+    /// 云端 E2EE 密码短于最小 Unicode 码点数；不是密钥库故障。
+    #[error("{0}")]
+    CloudEncryptionPasswordTooShort(String),
+    /// [Wave2-R5] 云端 E2EE **新设**密码命中弱口令黑名单或熵下限；不是密钥库
+    /// 故障。只在新设入口触发——`encryption_password_is_preexisting = true`
+    /// 的存量口令入口完全不经过弱口令检查（与短口令放行同一取向）。
+    #[error("{0}")]
+    CloudEncryptionPasswordTooWeak(String),
+    /// staged generation 与调用方期望不一致（并发提交 / 过期句柄）。
+    /// 不是 IO 故障：重读 active generation 后重新 stage 即可恢复。
+    #[error("{0}")]
+    CloudCredentialGenerationConflict(String),
 }
 
 impl SecureStoreError {
@@ -63,6 +86,11 @@ impl SecureStoreError {
             Self::AccessDenied(_) => "SECURE_STORE_ACCESS_DENIED",
             Self::SerializationError(_) => "SECURE_STORE_DATA_INVALID",
             Self::EncryptionError(_) => "SECURE_STORE_CRYPTO_ERROR",
+            Self::CloudEncryptionPasswordTooShort(_) => CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+            Self::CloudEncryptionPasswordTooWeak(_) => CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE,
+            Self::CloudCredentialGenerationConflict(_) => {
+                CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE
+            }
             Self::Other(_) => "SECURE_STORE_INTERNAL",
         }
     }
@@ -1878,7 +1906,11 @@ mod tests {
 // ==================== 云存储凭据专用 API ====================
 
 /// 云存储凭据（仅包含敏感信息）
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// 注意：不派生 `Debug`——所有字段都是 secret，派生实现会把明文密码带进
+/// 日志/错误链（`{:?}`、`unwrap`/`expect` panic 消息等）。下方手写的 `Debug`
+/// 只输出字段是否存在（`Some("[REDACTED]")` / `None`），绝不输出明文。
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudStorageCredentials {
     /// WebDAV 密码
@@ -1896,6 +1928,155 @@ pub struct CloudStorageCredentials {
     /// 端到端加密密码（备份 ZIP 上传前用的）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption_password: Option<String>,
+}
+
+/// 与 ZIP 全保真导出 `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。
+/// 短于此长度的密码不能导出加密全保真包，禁止写入安全存储冒充「已配置」。
+pub const MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS: usize = 8;
+/// 短密码拒绝的稳定 IPC code。前端只按 code 分派，文案可改语言。
+pub const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE: &str = "E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT";
+/// staged generation 冲突的稳定 IPC code（R2 原子发布）。与 IO 故障区分：
+/// 调用方收到此 code 应重读 active generation 并重新 stage，而不是重试提交。
+pub const CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE: &str =
+    "E_CLOUD_CREDENTIALS_GENERATION_CONFLICT";
+
+pub(crate) fn cloud_encryption_password_too_short(password: Option<&str>) -> bool {
+    password
+        .map(str::trim)
+        .filter(|password| !password.is_empty())
+        .is_some_and(|password| password.chars().count() < MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS)
+}
+
+pub fn cloud_encryption_password_too_short_message() -> String {
+    format!(
+        "[{}] 云端端到端加密密码至少需要 {} 个字符（不能为空白）",
+        CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE, MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
+    )
+}
+
+// ==================== [Wave2-R5] 新设口令弱口令准入 ====================
+//
+// 与 8 字符长度门**同一路径、同一开关**：只作用于新设加密口令
+// （`encryption_password_is_preexisting = false`）。存量口令入口（换机/重装
+// 重输、legacy 迁移，preexisting = true）完全不经过本检查——密文已经存在，
+// 按新设标准拒绝存量口令会把旧加密备份变成产品内打不开的黑盒。
+
+/// [Wave2-R5] 弱口令拒绝的稳定 IPC code。前端只按 code 分派，文案可改语言。
+pub const CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE: &str = "E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK";
+
+/// 新设口令最少需要的**不同** Unicode 码点数（熵下限的粗粒度近似）。
+///
+/// 拦的是「aaaaaaaa」「abababab」「12121212」这类通过了 8 字符长度门、但
+/// 字符集小到近乎零熵的口令。4 个不同字符是刻意保守的下限：正常人手选的
+/// 任何口令都轻松通过，不会造成新设摩擦。
+pub const MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS: usize = 4;
+
+/// 极弱口令小黑名单（榜单常客级）。
+///
+/// 收录规则（刻意保持很小，不追求覆盖率）：
+/// - 只收 8 字符及以上——更短的（如 "letmein"、"123456"）先被长度门拒绝，
+///   收进来是死代码；
+/// - 只收各大泄露口令榜（RockYou / NCSC / SecLists top 列表）常年霸榜、且
+///   与本产品无关的通用弱口令；不收人名等误伤面大的词；
+/// - 匹配前先 `trim` + Unicode 小写化，大小写变体（"Password123"）同样命中。
+///
+/// 这不是（也不可能是）完整的口令强度评估：目的只是把「攻击者第一批就会试」
+/// 的口令挡在新设入口，其余强度判断留给前端提示与用户自己。
+const CLOUD_ENCRYPTION_PASSWORD_BLACKLIST: &[&str] = &[
+    "password",
+    "password1",
+    "password12",
+    "password123",
+    "passw0rd",
+    "p@ssw0rd",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "11111111",
+    "00000000",
+    "88888888",
+    "66666666",
+    "aa123456",
+    "abc12345",
+    "a1b2c3d4",
+    "1q2w3e4r",
+    "1qaz2wsx",
+    "qwer1234",
+    "qwertyui",
+    "qwertyuiop",
+    "asdfghjk",
+    "asdfghjkl",
+    "zxcvbnm123",
+    "iloveyou",
+    "sunshine",
+    "princess",
+    "football",
+    "baseball",
+    "superman",
+    "internet",
+    "computer",
+];
+
+/// 新设口令是否命中弱口令判定（黑名单或熵下限）。
+///
+/// 语义与 [`cloud_encryption_password_too_short`] 对齐：`None`、空串、纯空白
+/// 都返回 `false`——合并语义里它们表示「保留现有值」，不是一次新设。
+pub(crate) fn cloud_encryption_password_too_weak(password: Option<&str>) -> bool {
+    let Some(password) = password.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    let lowered = password.to_lowercase();
+    if CLOUD_ENCRYPTION_PASSWORD_BLACKLIST.contains(&lowered.as_str()) {
+        return true;
+    }
+    let distinct_chars = password
+        .chars()
+        .collect::<std::collections::HashSet<char>>()
+        .len();
+    distinct_chars < MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS
+}
+
+pub fn cloud_encryption_password_too_weak_message() -> String {
+    format!(
+        "[{}] 云端端到端加密密码过于常见或过于单一（常见弱口令、或不同字符少于 {} 个），\
+         请换一个更难猜的密码",
+        CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE, MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS
+    )
+}
+
+/// **新设**加密口令的统一准入门：长度门在前（保持既有错误优先级），弱口令
+/// 门在后。两个写入口（[`SecureStore::update_cloud_credentials_with_policy`]
+/// 与 [`SecureStore::write_staged_cloud_credentials`]）在
+/// `encryption_password_is_preexisting = false` 时都必须走本函数，保证
+/// 「新设」的判定标准只有一份；preexisting = true 时调用方直接跳过本函数。
+fn check_new_cloud_encryption_password(password: Option<&str>) -> Result<(), SecureStoreError> {
+    if cloud_encryption_password_too_short(password) {
+        return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
+            cloud_encryption_password_too_short_message(),
+        ));
+    }
+    if cloud_encryption_password_too_weak(password) {
+        return Err(SecureStoreError::CloudEncryptionPasswordTooWeak(
+            cloud_encryption_password_too_weak_message(),
+        ));
+    }
+    Ok(())
+}
+
+/// 手写 Debug：secret 字段一律脱敏为 `[REDACTED]`，仅保留 Some/None 的存在性
+/// 信息（排障需要知道哪些凭据已配置，但绝不需要明文值）。
+impl std::fmt::Debug for CloudStorageCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn redact(value: &Option<String>) -> Option<&'static str> {
+            value.as_ref().map(|_| "[REDACTED]")
+        }
+        f.debug_struct("CloudStorageCredentials")
+            .field("webdav_password", &redact(&self.webdav_password))
+            .field("s3_secret_access_key", &redact(&self.s3_secret_access_key))
+            .field("ftp_password", &redact(&self.ftp_password))
+            .field("encryption_password", &redact(&self.encryption_password))
+            .finish()
+    }
 }
 
 /// Credential presence exposed to the WebView. Secret values never cross the
@@ -1983,6 +2164,18 @@ impl CloudStorageCredentials {
     }
 }
 
+/// staged 槽落盘形状（R2 原子发布）。
+///
+/// `generation` 冗余存进记录本身而不是仅靠 `active+1` 推算：写 staged 与
+/// commit 之间 active pointer 可能被并发提交推进，commit 必须能识别出
+/// 「这份 staged 是针对旧基线合并的」并 fail-closed，而不是把过期合并结果
+/// 发布出去。`credentials` 的 Debug 已脱敏（见 `CloudStorageCredentials`）。
+#[derive(Debug, Serialize, Deserialize)]
+struct StagedCloudCredentials {
+    generation: u64,
+    credentials: CloudStorageCredentials,
+}
+
 impl SecureStore {
     /// 保存云存储凭据
     pub fn save_cloud_credentials(
@@ -2017,6 +2210,25 @@ impl SecureStore {
         &self,
         update: &CloudStorageCredentials,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        self.update_cloud_credentials_with_policy(update, false)
+    }
+
+    /// `update_cloud_credentials`，带口令准入策略。
+    ///
+    /// 8 字符下限与 [Wave2-R5] 弱口令检查（黑名单 + 熵下限）只是**新设**加密
+    /// 口令的准入规则。v0.9.44 对口令长度/强度没有任何限制，密文已经存在：
+    /// 换机/重装后重输原口令、legacy localStorage→SSOT 迁移携带的存量口令，
+    /// 如果按新设标准拒绝，用户的旧加密备份就变成产品内打不开的黑盒。
+    /// `encryption_password_is_preexisting = true` 声明提交的是存量口令，
+    /// 放行任意非空口令（短的、弱的都放行）；新设入口保持 fail-closed。
+    pub fn update_cloud_credentials_with_policy(
+        &self,
+        update: &CloudStorageCredentials,
+        encryption_password_is_preexisting: bool,
+    ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        if !encryption_password_is_preexisting {
+            check_new_cloud_encryption_password(update.encryption_password.as_deref())?;
+        }
         let mut credentials = self.get_cloud_credentials()?.unwrap_or_default();
         credentials.apply_nonempty_update(update);
         if credentials.has_any_secret() {
@@ -2037,9 +2249,254 @@ impl SecureStore {
             .unwrap_or_default())
     }
 
+    /// 显式停用端到端加密：仅删除加密密码，WebDAV/S3/FTP 传输凭据保持不变。
+    ///
+    /// `update_cloud_credentials` 的合并语义把空字段视为「保留现有值」（防止
+    /// 空白表单误删凭据），因此停用加密必须走这个显式 API，而不是提交空密码。
+    /// fail-closed：读取或写回失败时直接返回错误，绝不顺带清空其他凭据。
+    pub fn clear_cloud_encryption_password(
+        &self,
+    ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        let Some(mut credentials) = self.get_cloud_credentials()? else {
+            return Ok(CloudStorageCredentialStatus::default());
+        };
+        credentials.encryption_password = None;
+        if credentials.has_any_secret() {
+            self.save_cloud_credentials(&credentials)?;
+        } else {
+            self.delete_cloud_credentials()?;
+        }
+        Ok(credentials.status())
+    }
+
     /// 删除云存储凭据
     pub fn delete_cloud_credentials(&self) -> Result<(), SecureStoreError> {
         self.delete_secret(CLOUD_STORAGE_KEY)
+    }
+
+    // ==================== staged generation 原子发布（R2） ====================
+    //
+    // 记录布局：
+    // - active：`CLOUD_STORAGE_KEY`（既有未版本化记录，所有读路径不变）
+    // - staged：`CLOUD_STORAGE_STAGED_KEY`（`StagedCloudCredentials` JSON）
+    // - pointer：`CLOUD_STORAGE_GENERATION_KEY`（十进制 u64；缺失 = 0 = legacy）
+    //
+    // commit 顺序（崩溃可恢复，绝不指向空凭据）：
+    //   1. 写新 active（底层 `atomic_write_secure_file` 临时文件+rename）——失败则什么都没改
+    //   2. 写 pointer = expected_generation ——失败则尽力写回旧 active（staged 保留，可重试）
+    //   3. 删 staged ——此时 commit 已持久化；失败可用相同 expected_generation 重放收敛
+    // 崩在 1↔2 之间：active=新内容、pointer=旧值、staged 仍在 → 重放 commit 幂等收敛。
+    // 崩在 2↔3 之间：pointer 已推进 → 重放 commit 走「已提交，仅清理 staged」分支。
+
+    /// 当前 active generation。缺 pointer 键 = 0：legacy 未版本化记录即 active。
+    ///
+    /// pointer 内容损坏（非十进制 u64）时 fail-closed 报 `SerializationError`，
+    /// 而不是静默当 0——静默会让并发提交方把过期 staged 误判为 `active+1`。
+    pub fn cloud_credentials_active_generation(&self) -> Result<u64, SecureStoreError> {
+        match self.get_secret(CLOUD_STORAGE_GENERATION_KEY)? {
+            None => Ok(0),
+            Some(raw) => raw.trim().parse::<u64>().map_err(|e| {
+                SecureStoreError::SerializationError(format!(
+                    "云凭据 generation pointer 内容非法: {e}"
+                ))
+            }),
+        }
+    }
+
+    /// 读 staged 槽记录；缺失返回 None，内容损坏 fail-closed 报错（commit 侧禁止
+    /// 发布无法解析的合并结果；清除损坏记录走 `abort_staged_cloud_credentials`）。
+    fn get_staged_cloud_credentials_record(
+        &self,
+    ) -> Result<Option<StagedCloudCredentials>, SecureStoreError> {
+        match self.get_secret(CLOUD_STORAGE_STAGED_KEY)? {
+            None => Ok(None),
+            Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| {
+                SecureStoreError::SerializationError(format!("云凭据 staged 记录非法: {e}"))
+            }),
+        }
+    }
+
+    /// 把一次凭据更新写入 staged 槽，返回该 staged 所属的 generation（= 当前
+    /// active generation + 1），供后续 `commit_staged_cloud_credentials` /
+    /// `abort_staged_cloud_credentials` 作为 `expected_generation` 使用。
+    ///
+    /// - 合并语义与 `update_cloud_credentials` 相同（空/省略 = 保留），但保留的
+    ///   基线是**当前 active** 的值：staged 记录里存的是合并后的完整凭据快照。
+    /// - 口令准入（长度门 + [Wave2-R5] 弱口令门）与
+    ///   `update_cloud_credentials_with_policy` 完全一致：
+    ///   `encryption_password_is_preexisting = true` 放行存量短/弱口令，新设 fail-closed。
+    /// - **不改 active 记录、不改 generation pointer**；重复调用覆盖旧 staged。
+    pub fn write_staged_cloud_credentials(
+        &self,
+        update: &CloudStorageCredentials,
+        encryption_password_is_preexisting: bool,
+    ) -> Result<u64, SecureStoreError> {
+        if !encryption_password_is_preexisting {
+            check_new_cloud_encryption_password(update.encryption_password.as_deref())?;
+        }
+        let mut merged = self.get_cloud_credentials()?.unwrap_or_default();
+        merged.apply_nonempty_update(update);
+        let staged_generation = self
+            .cloud_credentials_active_generation()?
+            .checked_add(1)
+            .ok_or_else(|| {
+                SecureStoreError::Other("云凭据 generation 溢出（u64::MAX）".to_string())
+            })?;
+        let record = StagedCloudCredentials {
+            generation: staged_generation,
+            credentials: merged,
+        };
+        let json = serde_json::to_string(&record)
+            .map_err(|e| SecureStoreError::SerializationError(e.to_string()))?;
+        self.save_secret(CLOUD_STORAGE_STAGED_KEY, &json)?;
+        Ok(staged_generation)
+    }
+
+    /// 把 staged 槽发布为 active：校验 staged 属于 `expected_generation`
+    /// （且 = active generation + 1），然后按「写新 active → 推进 pointer →
+    /// 删 staged」的顺序提交。任一步失败 fail-closed：pointer 未推进时 active
+    /// 保持（或被回滚为）旧内容，staged 原样保留，可重放本函数收敛。
+    ///
+    /// 幂等重放：pointer 已经等于 `expected_generation`（上次提交崩在删 staged
+    /// 之前/之后）时，仅清理残留 staged 并成功返回。
+    pub fn commit_staged_cloud_credentials(
+        &self,
+        expected_generation: u64,
+    ) -> Result<(), SecureStoreError> {
+        let active_generation = self.cloud_credentials_active_generation()?;
+
+        // 重放分支：本 generation 已提交（active + pointer 均已持久化），
+        // 只剩 staged 清理。staged 缺失 = 完全提交，直接成功。
+        if active_generation == expected_generation {
+            return match self.get_staged_cloud_credentials_record()? {
+                None => Ok(()),
+                Some(record) if record.generation == expected_generation => {
+                    self.delete_secret(CLOUD_STORAGE_STAGED_KEY)
+                }
+                Some(record) => Err(SecureStoreError::CloudCredentialGenerationConflict(
+                    format!(
+                        "[{}] staged generation {} 与已提交的 generation {} 不符，拒绝清理",
+                        CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE,
+                        record.generation,
+                        expected_generation
+                    ),
+                )),
+            };
+        }
+
+        let Some(staged) = self.get_staged_cloud_credentials_record()? else {
+            return Err(SecureStoreError::KeyNotFound(format!(
+                "云凭据 staged 记录不存在，无法提交 generation {expected_generation}"
+            )));
+        };
+        if staged.generation != expected_generation
+            || active_generation.checked_add(1) != Some(expected_generation)
+        {
+            return Err(SecureStoreError::CloudCredentialGenerationConflict(
+                format!(
+                    "[{}] 期望提交 generation {expected_generation}，但 active={active_generation}、staged={}；\
+                     staged 基线已过期，请重读后重新 stage",
+                    CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE, staged.generation
+                ),
+            ));
+        }
+
+        // pointer 写失败时用于回滚 active 的快照（明文 JSON，仅驻留本调用栈）。
+        let previous_active = self.get_secret(CLOUD_STORAGE_KEY)?;
+
+        // 步骤 1：写新 active。镜像 update_cloud_credentials 的语义：合并结果
+        // 无任何 secret 时删除整条 active 记录而不是写空壳。失败 = 什么都没改。
+        if staged.credentials.has_any_secret() {
+            self.save_cloud_credentials(&staged.credentials)?;
+        } else {
+            self.delete_secret(CLOUD_STORAGE_KEY)?;
+        }
+
+        // 步骤 2：推进 pointer。失败则尽力写回旧 active（fail-closed：pointer
+        // 未推进的世界里 active 必须仍是旧内容），staged 保留供重试。
+        if let Err(error) = self.save_secret(
+            CLOUD_STORAGE_GENERATION_KEY,
+            &expected_generation.to_string(),
+        ) {
+            let restore = match previous_active.as_deref() {
+                Some(json) => self.save_secret(CLOUD_STORAGE_KEY, json),
+                None => self.delete_secret(CLOUD_STORAGE_KEY),
+            };
+            if let Err(restore_error) = restore {
+                warn!(
+                    "云凭据提交失败且回滚 active 也失败（staged 保留，可重放 commit 收敛）: \
+                     pointer 错误={error}, 回滚错误={restore_error}"
+                );
+            }
+            return Err(error);
+        }
+
+        // 步骤 3：删 staged。至此提交已持久化；删除失败如实报错，
+        // 调用方用相同 expected_generation 重放本函数即可走清理分支收敛。
+        self.delete_secret(CLOUD_STORAGE_STAGED_KEY)
+    }
+
+    /// 丢弃 staged 槽：generation 匹配则删除；staged 缺失视为成功（幂等）。
+    /// generation 不匹配 fail-closed 报冲突——staged 可能属于另一次进行中的
+    /// 更新，不许拿过期句柄误删。staged 内容损坏时允许删除（它永远无法通过
+    /// commit 的解析校验，abort 是唯一的清障出口）。
+    pub fn abort_staged_cloud_credentials(
+        &self,
+        expected_generation: u64,
+    ) -> Result<(), SecureStoreError> {
+        let Some(json) = self.get_secret(CLOUD_STORAGE_STAGED_KEY)? else {
+            return Ok(());
+        };
+        match serde_json::from_str::<StagedCloudCredentials>(&json) {
+            Ok(record) if record.generation == expected_generation => {
+                self.delete_secret(CLOUD_STORAGE_STAGED_KEY)
+            }
+            Ok(record) => Err(SecureStoreError::CloudCredentialGenerationConflict(
+                format!(
+                    "[{}] staged generation {} 与期望 {} 不符，拒绝丢弃",
+                    CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE,
+                    record.generation,
+                    expected_generation
+                ),
+            )),
+            Err(parse_error) => {
+                warn!("清除无法解析的云凭据 staged 记录: {parse_error}");
+                self.delete_secret(CLOUD_STORAGE_STAGED_KEY)
+            }
+        }
+    }
+
+    /// 事务化全清：快照 active + staged + generation pointer 三条记录后逐一
+    /// 删除；任一步失败则尽力写回快照并**如实上抛原始错误**（绝不静默成功）。
+    ///
+    /// 删除顺序 staged → active → pointer：崩溃残留的任何组合都安全——
+    /// pointer 残留而 active 缺失时读路径返回「未配置」，staged 已先删不会被
+    /// 后续 commit 复活。快照读取本身失败时直接报错，什么都不删。
+    pub fn delete_cloud_credentials_transactional(&self) -> Result<(), SecureStoreError> {
+        let snapshot_active = self.get_secret(CLOUD_STORAGE_KEY)?;
+        let snapshot_staged = self.get_secret(CLOUD_STORAGE_STAGED_KEY)?;
+        let snapshot_generation = self.get_secret(CLOUD_STORAGE_GENERATION_KEY)?;
+
+        let result = self
+            .delete_secret(CLOUD_STORAGE_STAGED_KEY)
+            .and_then(|()| self.delete_secret(CLOUD_STORAGE_KEY))
+            .and_then(|()| self.delete_secret(CLOUD_STORAGE_GENERATION_KEY));
+
+        if let Err(error) = result {
+            for (key, snapshot) in [
+                (CLOUD_STORAGE_KEY, &snapshot_active),
+                (CLOUD_STORAGE_STAGED_KEY, &snapshot_staged),
+                (CLOUD_STORAGE_GENERATION_KEY, &snapshot_generation),
+            ] {
+                if let Some(value) = snapshot.as_deref() {
+                    if let Err(restore_error) = self.save_secret(key, value) {
+                        warn!("事务化删除失败后写回快照 {key} 也失败: {restore_error}");
+                    }
+                }
+            }
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
@@ -2058,15 +2515,23 @@ fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
     SecureStore::new(config)
 }
 
-/// 保存云存储凭据到安全存储
+/// 保存云存储凭据到安全存储。
+///
+/// `encryption_password_is_preexisting`：前端在「重输存量口令」入口（换机/
+/// 重装恢复、legacy 云配置迁移）置 true，跳过新设口令的最小长度与
+/// [Wave2-R5] 弱口令准入；缺省/false 保持新设口令 fail-closed。
 #[tauri::command]
 pub fn secure_save_cloud_credentials(
     app: tauri::AppHandle,
     credentials: CloudStorageCredentials,
+    encryption_password_is_preexisting: Option<bool>,
 ) -> Result<CloudStorageCredentialStatus, CommandError> {
     let store = get_secure_store(Some(&app));
     store
-        .update_cloud_credentials(&credentials)
+        .update_cloud_credentials_with_policy(
+            &credentials,
+            encryption_password_is_preexisting.unwrap_or(false),
+        )
         .map_err(|e| e.to_command_error("save_cloud_credentials"))
 }
 
@@ -2092,6 +2557,17 @@ pub(crate) fn delete_cloud_credentials_for_app(
 pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), CommandError> {
     delete_cloud_credentials_for_app(&app)
         .map_err(|e| e.to_command_error("delete_cloud_credentials"))
+}
+
+/// 显式停用端到端加密：仅从安全存储删除加密密码，传输凭据不受影响。
+#[tauri::command]
+pub fn secure_clear_cloud_encryption_password(
+    app: tauri::AppHandle,
+) -> Result<CloudStorageCredentialStatus, CommandError> {
+    let store = get_secure_store(Some(&app));
+    store
+        .clear_cloud_encryption_password()
+        .map_err(|e| e.to_command_error("clear_cloud_encryption_password"))
 }
 
 /// 检查安全存储是否可用
@@ -2397,6 +2873,54 @@ mod cloud_hydration_tests {
     }
 
     #[test]
+    fn debug_output_redacts_all_secret_values() {
+        let credentials = CloudStorageCredentials {
+            webdav_password: Some("webdav-secret".to_string()),
+            s3_secret_access_key: Some("s3-secret".to_string()),
+            ftp_password: Some("ftp-secret".to_string()),
+            encryption_password: Some("encryption-secret".to_string()),
+        };
+
+        for rendered in [format!("{:?}", credentials), format!("{:#?}", credentials)] {
+            for plaintext in [
+                "webdav-secret",
+                "s3-secret",
+                "ftp-secret",
+                "encryption-secret",
+            ] {
+                assert!(
+                    !rendered.contains(plaintext),
+                    "Debug 输出不得包含明文 {plaintext}: {rendered}"
+                );
+            }
+            assert!(rendered.contains("[REDACTED]"));
+            // 字段名保留，便于排障时定位
+            assert!(rendered.contains("webdav_password"));
+            assert!(rendered.contains("s3_secret_access_key"));
+            assert!(rendered.contains("ftp_password"));
+            assert!(rendered.contains("encryption_password"));
+        }
+    }
+
+    #[test]
+    fn debug_output_preserves_presence_information() {
+        let credentials = CloudStorageCredentials {
+            webdav_password: Some("webdav-secret".to_string()),
+            ..Default::default()
+        };
+
+        let rendered = format!("{:?}", credentials);
+        assert_eq!(
+            rendered,
+            "CloudStorageCredentials { \
+             webdav_password: Some(\"[REDACTED]\"), \
+             s3_secret_access_key: None, \
+             ftp_password: None, \
+             encryption_password: None }"
+        );
+    }
+
+    #[test]
     fn credential_update_preserves_omitted_backend_secrets() {
         let mut credentials = CloudStorageCredentials {
             webdav_password: Some("stored-webdav".to_string()),
@@ -2418,6 +2942,260 @@ mod cloud_hydration_tests {
             Some("stored-encryption")
         );
         assert_eq!(credentials.s3_secret_access_key.as_deref(), Some("new-s3"));
+    }
+
+    #[test]
+    fn short_encryption_password_is_rejected_and_does_not_mark_configured() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let error = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("short".to_string()),
+                ..Default::default()
+            })
+            .expect_err("短于 8 字符的云端加密密码必须拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            error.stable_code(),
+            CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(&MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
+            "unexpected error: {error}"
+        );
+        assert!(store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .is_none());
+
+        let status = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("long-enough-password".to_string()),
+                ..Default::default()
+            })
+            .expect("8+ 字符密码应写入");
+        assert!(status.encryption_password_configured);
+    }
+
+    /// 升级兼容：v0.9.44 没有口令长度下限。换机/重装重输、legacy 迁移提交的
+    /// 存量短口令必须放行，否则旧加密备份在产品内永远打不开。
+    #[test]
+    fn preexisting_short_encryption_password_is_accepted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量短口令（v0.9.44 时代）必须放行");
+        assert!(status.encryption_password_configured);
+
+        let stored = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("credentials persisted");
+        assert_eq!(stored.encryption_password.as_deref(), Some("short6"));
+    }
+
+    /// preexisting 只放行存量口令入口；默认（新设）入口仍 fail-closed。
+    #[test]
+    fn preexisting_policy_does_not_relax_the_default_entry() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let error = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect_err("新设短口令必须继续拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+    }
+
+    // ---------------- [Wave2-R5] 新设口令弱口令门 ----------------
+
+    #[test]
+    fn weak_password_predicate_semantics() {
+        // 黑名单：大小写变体与首尾空白都命中
+        assert!(cloud_encryption_password_too_weak(Some("password123")));
+        assert!(cloud_encryption_password_too_weak(Some("Password123")));
+        assert!(cloud_encryption_password_too_weak(Some("  qwertyuiop  ")));
+        assert!(cloud_encryption_password_too_weak(Some("12345678")));
+        // 熵下限：通过 8 字符长度门但不同字符 < 4 的口令
+        assert!(cloud_encryption_password_too_weak(Some("aaaaaaaa")));
+        assert!(cloud_encryption_password_too_weak(Some("abababab")));
+        assert!(cloud_encryption_password_too_weak(Some("12121212")));
+        // 恰好 4 个不同字符：达到熵下限，放行
+        assert!(!cloud_encryption_password_too_weak(Some("aabbccdd")));
+        // 正常口令放行
+        assert!(!cloud_encryption_password_too_weak(Some(
+            "correct horse battery staple"
+        )));
+        assert!(!cloud_encryption_password_too_weak(Some(
+            "long-enough-password"
+        )));
+        // None / 空 / 纯空白 = 「保留现有值」，不是新设，不判弱
+        assert!(!cloud_encryption_password_too_weak(None));
+        assert!(!cloud_encryption_password_too_weak(Some("")));
+        assert!(!cloud_encryption_password_too_weak(Some("   ")));
+    }
+
+    #[test]
+    fn new_password_gate_checks_length_before_weakness() {
+        // 既短又弱（"1234567" 是 7 字符的低熵串）：长度门在前，错误优先级不变。
+        let error = check_new_cloud_encryption_password(Some("1234567"))
+            .expect_err("短口令必须先被长度门拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn new_weak_encryption_password_is_rejected_and_not_persisted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        for weak in ["password123", "aaaaaaaa"] {
+            let error = store
+                .update_cloud_credentials(&CloudStorageCredentials {
+                    encryption_password: Some(weak.to_string()),
+                    ..Default::default()
+                })
+                .expect_err("新设弱口令必须拒绝");
+            assert!(
+                matches!(error, SecureStoreError::CloudEncryptionPasswordTooWeak(_)),
+                "unexpected error: {error}"
+            );
+            assert_eq!(error.stable_code(), CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE);
+            assert!(
+                store
+                    .get_cloud_credentials()
+                    .expect("read cloud credentials")
+                    .is_none(),
+                "被拒绝的弱口令不得留下任何持久化痕迹"
+            );
+        }
+
+        // 正常强度口令照常写入
+        let status = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("correct horse battery staple".to_string()),
+                ..Default::default()
+            })
+            .expect("正常口令应写入");
+        assert!(status.encryption_password_configured);
+    }
+
+    /// 升级兼容红线：弱口令检查只影响新设。v0.9.44 时代用户完全可能用
+    /// "password123" 加密过备份——换机/重装重输、legacy 迁移必须放行，
+    /// 否则旧加密备份在产品内永远打不开。
+    #[test]
+    fn preexisting_weak_encryption_password_is_accepted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量弱口令必须放行");
+        assert!(status.encryption_password_configured);
+
+        let stored = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("credentials persisted");
+        assert_eq!(stored.encryption_password.as_deref(), Some("password123"));
+    }
+
+    #[test]
+    fn clearing_encryption_password_keeps_transport_credentials() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("webdav-secret".to_string()),
+                encryption_password: Some("encryption-secret".to_string()),
+                ..Default::default()
+            })
+            .expect("save cloud credentials");
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("clear encryption password");
+
+        assert!(!status.encryption_password_configured);
+        assert!(status.webdav_password_configured);
+        let remaining = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("transport credentials must survive");
+        assert_eq!(remaining.webdav_password.as_deref(), Some("webdav-secret"));
+        assert!(remaining.encryption_password.is_none());
+    }
+
+    #[test]
+    fn clearing_the_only_secret_removes_the_record_entirely() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("encryption-secret".to_string()),
+                ..Default::default()
+            })
+            .expect("save cloud credentials");
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("clear encryption password");
+
+        assert_eq!(status, CloudStorageCredentialStatus::default());
+        assert!(store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .is_none());
+    }
+
+    #[test]
+    fn clearing_encryption_password_without_stored_credentials_is_a_noop() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("noop clear must succeed");
+
+        assert_eq!(status, CloudStorageCredentialStatus::default());
     }
 
     #[test]
@@ -2444,5 +3222,425 @@ mod cloud_hydration_tests {
             .path()
             .join(".secure/cloud_storage_credentials.enc")
             .exists());
+    }
+
+    // ==================== staged generation 原子发布（R2） ====================
+
+    fn store_in(dir: &TempDir) -> SecureStore {
+        SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf())
+    }
+
+    /// 写 staged 不得触碰 active 记录与 generation pointer；staged 的合并基线
+    /// 是当前 active（省略字段 = 保留 active 现值）。
+    #[test]
+    fn staged_write_leaves_active_record_and_generation_untouched() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("active-webdav".to_string()),
+                encryption_password: Some("active-encryption".to_string()),
+                ..Default::default()
+            })
+            .expect("save active credentials");
+
+        // legacy：缺 pointer 键 = generation 0（未版本化记录即 active）
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("staged-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write staged credentials");
+        assert_eq!(staged_generation, 1);
+
+        // active 记录与 pointer 均未变
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("active record must survive staging");
+        assert_eq!(active.webdav_password.as_deref(), Some("active-webdav"));
+        assert_eq!(
+            active.encryption_password.as_deref(),
+            Some("active-encryption")
+        );
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+
+        // staged 内容 = 以 active 为基线的合并结果（省略的加密口令被保留）
+        let staged = store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .expect("staged record persisted");
+        assert_eq!(staged.generation, 1);
+        assert_eq!(
+            staged.credentials.webdav_password.as_deref(),
+            Some("staged-webdav")
+        );
+        assert_eq!(
+            staged.credentials.encryption_password.as_deref(),
+            Some("active-encryption")
+        );
+    }
+
+    /// commit 后 generation +1，读路径（get）看到 staged 的合并结果，staged 槽清空。
+    #[test]
+    fn commit_advances_generation_and_publishes_staged_values() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("active-webdav".to_string()),
+                encryption_password: Some("active-encryption".to_string()),
+                ..Default::default()
+            })
+            .expect("save active credentials");
+
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("staged-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write staged credentials");
+
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("commit staged credentials");
+
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            1
+        );
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("committed record present");
+        assert_eq!(active.webdav_password.as_deref(), Some("staged-webdav"));
+        assert_eq!(
+            active.encryption_password.as_deref(),
+            Some("active-encryption")
+        );
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+
+        // 幂等重放：pointer 已推进且 staged 已清空时再次 commit 直接成功
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("replayed commit must be idempotent");
+    }
+
+    /// abort 只删 staged；active 与 pointer 不动；staged 缺失时幂等成功。
+    #[test]
+    fn abort_discards_staged_without_touching_active() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("active-webdav".to_string()),
+                ..Default::default()
+            })
+            .expect("save active credentials");
+
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("staged-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write staged credentials");
+
+        store
+            .abort_staged_cloud_credentials(staged_generation)
+            .expect("abort staged credentials");
+
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("active record must survive abort");
+        assert_eq!(active.webdav_password.as_deref(), Some("active-webdav"));
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+
+        // staged 缺失当成功（幂等）
+        store
+            .abort_staged_cloud_credentials(staged_generation)
+            .expect("abort with missing staged must succeed");
+    }
+
+    /// staged 写入的短口令政策与 update_cloud_credentials_with_policy 完全一致：
+    /// 新设短口令 fail-closed 拒绝且不留 staged 残留；preexisting 放行并可提交。
+    #[test]
+    fn staged_write_enforces_the_same_short_password_policy() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+
+        let error = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect_err("新设短口令必须继续拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            error.stable_code(),
+            CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE
+        );
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+
+        // 存量口令（v0.9.44 时代）放行，且能走完 commit 全程
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量短口令（v0.9.44 时代）必须放行");
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("commit preexisting short password");
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("committed record present");
+        assert_eq!(active.encryption_password.as_deref(), Some("short6"));
+    }
+
+    /// [Wave2-R5] staged 写入的弱口令政策与 update_cloud_credentials_with_policy
+    /// 完全一致：新设弱口令 fail-closed 拒绝且不留 staged 残留；preexisting
+    /// 放行并可走完 commit 全程。
+    #[test]
+    fn staged_write_enforces_the_same_weak_password_policy() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+
+        let error = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect_err("新设弱口令必须拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooWeak(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(error.stable_code(), CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE);
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+
+        // 存量弱口令（v0.9.44 时代）放行，且能走完 commit 全程
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量弱口令必须放行");
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("commit preexisting weak password");
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("committed record present");
+        assert_eq!(active.encryption_password.as_deref(), Some("password123"));
+    }
+
+    /// 过期 generation 句柄的 commit / abort 一律 fail-closed 冲突，active 不动。
+    #[test]
+    fn stale_generation_handles_fail_closed_without_touching_active() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("active-webdav".to_string()),
+                ..Default::default()
+            })
+            .expect("save active credentials");
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("staged-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write staged credentials");
+
+        for stale in [staged_generation + 1, staged_generation + 7] {
+            let error = store
+                .commit_staged_cloud_credentials(stale)
+                .expect_err("过期 generation 的 commit 必须拒绝");
+            assert!(
+                matches!(
+                    error,
+                    SecureStoreError::CloudCredentialGenerationConflict(_)
+                ),
+                "unexpected error: {error}"
+            );
+            assert_eq!(
+                error.stable_code(),
+                CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE
+            );
+            let error = store
+                .abort_staged_cloud_credentials(stale)
+                .expect_err("过期 generation 的 abort 必须拒绝");
+            assert!(
+                matches!(
+                    error,
+                    SecureStoreError::CloudCredentialGenerationConflict(_)
+                ),
+                "unexpected error: {error}"
+            );
+        }
+
+        // active / pointer / staged 全部原样
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("active record untouched");
+        assert_eq!(active.webdav_password.as_deref(), Some("active-webdav"));
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_some());
+    }
+
+    /// 缺 staged 时 commit 报 KeyNotFound（而不是静默成功或推进 pointer）。
+    #[test]
+    fn commit_without_staged_record_fails_closed() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+
+        let error = store
+            .commit_staged_cloud_credentials(1)
+            .expect_err("缺 staged 记录的 commit 必须拒绝");
+        assert!(
+            matches!(error, SecureStoreError::KeyNotFound(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+    }
+
+    /// 事务化删除把 active + staged + pointer 三条记录一起清掉。
+    #[test]
+    fn transactional_delete_clears_active_staged_and_generation() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("active-webdav".to_string()),
+                ..Default::default()
+            })
+            .expect("save active credentials");
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("next-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write staged credentials");
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("commit staged credentials");
+        // 再留一份未提交的 staged，验证三条记录全被清理
+        store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    webdav_password: Some("orphan-webdav".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect("write orphan staged credentials");
+
+        store
+            .delete_cloud_credentials_transactional()
+            .expect("transactional delete");
+
+        assert!(store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .is_none());
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+        assert_eq!(
+            store
+                .cloud_credentials_active_generation()
+                .expect("read active generation"),
+            0
+        );
+        for file in [
+            "cloud_storage_credentials.enc",
+            "cloud_storage_credentials_staged.enc",
+            "cloud_storage_credentials_generation.enc",
+        ] {
+            assert!(
+                !dir.path().join(".secure").join(file).exists(),
+                "{file} 必须被事务化删除清理"
+            );
+        }
     }
 }

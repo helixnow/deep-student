@@ -20,7 +20,7 @@ const DATABASE_FILENAME: &str = "llm_usage.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260525;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260826;
 
 /// LLM Usage Schema 版本（公开导出用于测试）
 pub const LLM_USAGE_SCHEMA_VERSION: u32 = CURRENT_SCHEMA_VERSION;
@@ -466,19 +466,106 @@ impl LlmUsageDatabase {
             }
 
             let mut conn = self.get_conn()?;
-            llm_usage_migrations::migrations::runner()
+            let runner = llm_usage_migrations::migrations::runner()
                 .set_grouped(false)
                 .set_abort_divergent(false)
-                .set_abort_missing(false)
-                .run(&mut *conn)
-                .map_err(|error| {
-                    LlmUsageError::Migration(format!(
-                        "Failed to initialize llm_usage schema: {}",
-                        error
-                    ))
-                })?;
+                .set_abort_missing(false);
+            Self::repair_cache_write_migration_residue(&conn, &runner)?;
+            runner.run(&mut *conn).map_err(|error| {
+                LlmUsageError::Migration(format!(
+                    "Failed to initialize llm_usage schema: {}",
+                    error
+                ))
+            })?;
         }
 
+        Ok(())
+    }
+
+    /// The app normally reaches this initializer after `MigrationCoordinator`,
+    /// but tests and isolated consumers can open LLM Usage directly. Keep that
+    /// path safe when V20260824's ADD COLUMN persisted and its refinery history
+    /// write did not: the migration contains no other statements, so the
+    /// existing column is sufficient proof to restore its exact history row.
+    #[cfg(feature = "data_governance")]
+    fn repair_cache_write_migration_residue(
+        conn: &rusqlite::Connection,
+        runner: &refinery::Runner,
+    ) -> LlmUsageResult<()> {
+        const VERSION: i32 = 20260824;
+        const PREDECESSOR: i32 = 20260525;
+
+        let table_exists: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = 'llm_usage_logs'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        if !table_exists {
+            return Ok(());
+        }
+
+        let column_exists: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM pragma_table_info('llm_usage_logs')
+                WHERE name = 'cache_write_tokens'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        if !column_exists {
+            return Ok(());
+        }
+
+        let history_exists: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = 'refinery_schema_history'
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        if !history_exists {
+            return Ok(());
+        }
+        let (recorded, predecessor_recorded): (bool, bool) = conn.query_row(
+            "SELECT
+                EXISTS(SELECT 1 FROM refinery_schema_history WHERE version = ?1),
+                EXISTS(SELECT 1 FROM refinery_schema_history WHERE version = ?2)",
+            [VERSION, PREDECESSOR],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if recorded || !predecessor_recorded {
+            return Ok(());
+        }
+
+        let migration = runner
+            .get_migrations()
+            .iter()
+            .find(|migration| migration.version() == VERSION)
+            .ok_or_else(|| {
+                LlmUsageError::Migration(format!(
+                    "embedded llm_usage migration V{VERSION} is missing"
+                ))
+            })?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO refinery_schema_history
+                (version, name, applied_on, checksum)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                VERSION,
+                migration.name(),
+                chrono::Utc::now().to_rfc3339(),
+                migration.checksum().to_string(),
+            ],
+        )?;
+        info!(
+            "[LlmUsage::Database] Repaired interrupted V{} migration history",
+            VERSION
+        );
         Ok(())
     }
 }
@@ -547,6 +634,60 @@ mod tests {
             .get_schema_version()
             .expect("Failed to get schema version");
         assert_eq!(version2, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_direct_initializer_repairs_v20260824_column_without_history() {
+        mod migrations {
+            refinery::embed_migrations!("migrations/llm_usage");
+        }
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join(DATABASE_FILENAME);
+        let mut conn = rusqlite::Connection::open(&db_path).expect("open old db");
+        migrations::migrations::runner()
+            .set_target(refinery::Target::Version(20260525))
+            .set_grouped(false)
+            .run(&mut conn)
+            .expect("build v0.9.44 llm_usage schema");
+        conn.execute(
+            "INSERT INTO llm_usage_logs (
+                id, timestamp, provider, model, caller_type,
+                prompt_tokens, completion_tokens, total_tokens
+             ) VALUES (
+                'old-row', '2026-08-09T00:00:00Z', 'openai', 'gpt-4o',
+                'chat_v2', 10, 5, 15
+             )",
+            [],
+        )
+        .expect("old writer insert");
+        conn.execute_batch(include_str!(
+            "../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .expect("persist interrupted ALTER");
+        drop(conn);
+
+        let db = LlmUsageDatabase::new(temp_dir.path())
+            .expect("direct initializer must repair missing refinery history");
+        assert_eq!(db.get_schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+        let conn = db.get_conn().unwrap();
+        let history_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM refinery_schema_history WHERE version = 20260824",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history_count, 1);
+        let old_value: Option<i64> = conn
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'old-row'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_value, None);
     }
 
     #[test]

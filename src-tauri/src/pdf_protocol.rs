@@ -92,6 +92,74 @@ fn opened_file_path(_file: &File) -> Option<PathBuf> {
     None
 }
 
+// ★ 2026-08-23（#59）：Windows 白名单路径比较的书写形式归一化。
+//
+// `std::fs::canonicalize` 在 Windows 返回 `\\?\C:\...`（verbatim）形式；
+// 白名单目录一旦以普通 `C:\...` 形式参与比较（例如 canonicalize 失败后保留原始路径），
+// `Path::starts_with` 会因 Prefix 组件不同（VerbatimDisk(D) ≠ Disk(D)）恒为 false，
+// 导致授权目录内的文件（如 `D:\中文目录\x.pdf`）被误判 403。
+//
+// 下列辅助函数只统一"同一路径的不同书写形式"（verbatim 前缀、正/反斜杠、
+// 尾部分隔符、大小写——Windows 文件系统默认大小写不敏感），
+// 不放宽"仅允许授权目录"的判定语义：比较仍要求目录前缀在组件边界上完全匹配。
+// 字符串级实现使其可以在任意平台上做单元测试（std::path 的解析是平台相关的）。
+
+/// 把 Windows 路径文本归一到可比较形式：
+/// `\\?\UNC\srv\share\x` → `\\srv\share\x`；`\\?\D:\x` → `D:\x`；
+/// `/` → `\`；去除尾部 `\`；大小写折叠。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn windows_comparable_path_text(path: &str) -> String {
+    let unified = path.replace('/', "\\");
+    let stripped = if let Some(rest) = unified.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", rest)
+    } else if let Some(rest) = unified.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        unified
+    };
+    stripped.trim_end_matches('\\').to_lowercase()
+}
+
+/// Windows 语义下 `path` 是否位于目录 `dir` 内（或就是 `dir` 本身）。
+/// 前缀匹配必须落在组件边界：`D:\Docs2\x` 不属于 `D:\Docs`。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn windows_path_starts_with(path: &str, dir: &str) -> bool {
+    let path = windows_comparable_path_text(path);
+    let dir = windows_comparable_path_text(dir);
+    if dir.is_empty() {
+        return false;
+    }
+    if path == dir {
+        return true;
+    }
+    match path.strip_prefix(&dir) {
+        Some(rest) => rest.starts_with('\\'),
+        None => false,
+    }
+}
+
+/// 白名单包含判定：先走组件级 `Path::starts_with`（所有平台的快路径，
+/// 也是非 Windows 平台的唯一判定），Windows 上再做书写形式归一化比较，
+/// 消除 `\\?\` verbatim 与普通盘符形式不一致造成的误拒。
+pub(crate) fn path_is_within(path: &Path, dir: &Path) -> bool {
+    if path.starts_with(dir) {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        // 含非法 Unicode 的路径无法可靠做文本比较，保守拒绝（fail-closed，
+        // 上面的组件级比较已经覆盖了完全一致的情况）。
+        match (path.to_str(), dir.to_str()) {
+            (Some(path), Some(dir)) => windows_path_starts_with(path, dir),
+            _ => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 fn opened_file_matches_authorized_path(
     file: &File,
     expected_path: &std::path::Path,
@@ -104,7 +172,10 @@ fn opened_file_matches_authorized_path(
         else {
             return false;
         };
-        actual_path == expected_path && allowed_dirs.iter().any(|dir| actual_path.starts_with(dir))
+        actual_path == expected_path
+            && allowed_dirs
+                .iter()
+                .any(|dir| path_is_within(&actual_path, dir))
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -121,7 +192,7 @@ fn opened_file_matches_authorized_path(
             && post_open_path == expected_path
             && allowed_dirs
                 .iter()
-                .any(|dir| post_open_path.starts_with(dir))
+                .any(|dir| path_is_within(&post_open_path, dir))
     }
 }
 
@@ -205,9 +276,13 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
         resolvers.push(Box::new(|| app.path().picture_dir()));
     }
 
+    // ★ 2026-08-23（#59）：canonicalize 失败（权限、长路径、网络盘等）时保留
+    // 原始授权目录，而不是静默丢弃——丢弃会让该目录下所有文件误判 403。
+    // 请求路径仍会 canonicalize；两侧书写形式差异由 path_is_within 归一化处理。
     let mut dirs: Vec<PathBuf> = resolvers
         .into_iter()
-        .filter_map(|f| f().ok().and_then(|p| std::fs::canonicalize(&p).ok()))
+        .filter_map(|f| f().ok())
+        .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
         .collect();
 
     // ★ 2026-06-12（审阅问题 R1 配套）：VFS blobs 目录加入白名单。
@@ -215,10 +290,10 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
     // 教材 PDF 复制进 blob 后需要可被 pdfstream:// 流式读取。
     if let Some(state) = app.try_state::<crate::commands::AppState>() {
         if let Some(vfs_db) = state.vfs_db.as_ref() {
-            if let Ok(blobs_dir) = std::fs::canonicalize(vfs_db.blobs_dir()) {
-                if !dirs.contains(&blobs_dir) {
-                    dirs.push(blobs_dir);
-                }
+            let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
+                .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
+            if !dirs.contains(&blobs_dir) {
+                dirs.push(blobs_dir);
             }
         }
     }
@@ -285,9 +360,11 @@ pub fn handle_asset_protocol(
     };
 
     // 安全检查 1：目录白名单 — 规范路径必须位于已授权目录下
+    // （#59：path_is_within 归一化 Windows 的 \\?\ verbatim 与普通盘符书写形式，
+    //   避免中文路径 + 反斜杠 URL 在授权目录内仍被误拒）
     let is_in_allowed_dir = allowed_dirs
         .iter()
-        .any(|dir| canonical_path.starts_with(dir));
+        .any(|dir| path_is_within(&canonical_path, dir));
     if !is_in_allowed_dir {
         warn!(
             "[pdfstream] 拒绝访问白名单外路径: {}",
@@ -723,5 +800,164 @@ mod tests {
             get_mime_type(&PathBuf::from("test.unknown")),
             "application/octet-stream"
         );
+    }
+
+    // ── #59：Windows 路径书写形式归一化（字符串级实现，可在任意平台测试）──
+
+    #[test]
+    fn test_windows_comparable_path_text_aligns_verbatim_and_plain_forms() {
+        // \\?\ verbatim 盘符 与 普通盘符 归一后一致（含中文路径）
+        assert_eq!(
+            windows_comparable_path_text(r"\\?\D:\学习软件\学习"),
+            windows_comparable_path_text(r"D:\学习软件\学习")
+        );
+        // \\?\UNC\ 与 \\server\share 归一后一致
+        assert_eq!(
+            windows_comparable_path_text(r"\\?\UNC\srv\share\教材"),
+            windows_comparable_path_text(r"\\srv\share\教材")
+        );
+        // 大小写折叠（Windows 文件系统默认大小写不敏感）
+        assert_eq!(
+            windows_comparable_path_text(r"D:\Docs\A.PDF"),
+            windows_comparable_path_text(r"d:\docs\a.pdf")
+        );
+        // 尾部分隔符与正斜杠归一
+        assert_eq!(
+            windows_comparable_path_text(r"D:\Docs\"),
+            windows_comparable_path_text("D:/Docs")
+        );
+    }
+
+    #[test]
+    fn test_windows_path_starts_with_aligns_whitelist_forms() {
+        // issue #59 场景：canonicalize 后的 verbatim 文件路径 vs 普通形式白名单目录
+        assert!(windows_path_starts_with(
+            r"\\?\D:\学习软件\学习\明朝那些事儿.pdf",
+            r"D:\学习软件"
+        ));
+        // 反向：普通形式文件路径 vs verbatim 白名单目录
+        assert!(windows_path_starts_with(
+            r"D:\学习软件\学习\明朝那些事儿.pdf",
+            r"\\?\D:\学习软件\学习"
+        ));
+        // 盘符根目录作为白名单
+        assert!(windows_path_starts_with(r"\\?\D:\x.pdf", r"D:\"));
+        // 路径等于目录本身
+        assert!(windows_path_starts_with(r"\\?\D:\Docs", r"D:\Docs"));
+        // UNC 形式对齐
+        assert!(windows_path_starts_with(
+            r"\\?\UNC\srv\share\教材\a.pdf",
+            r"\\srv\share\教材"
+        ));
+
+        // 组件边界：D:\Docs2 不属于 D:\Docs（防止前缀目录逃逸）
+        assert!(!windows_path_starts_with(r"D:\Docs2\x.pdf", r"D:\Docs"));
+        assert!(!windows_path_starts_with(
+            r"\\?\D:\学习软件2\x.pdf",
+            r"D:\学习软件"
+        ));
+        // 不同盘符 / 白名单外路径仍拒绝
+        assert!(!windows_path_starts_with(r"\\?\C:\Windows\x.pdf", r"D:\"));
+        assert!(!windows_path_starts_with(
+            r"\\?\D:\学习软件\x.pdf",
+            r"D:\其他目录"
+        ));
+        // 空目录永不匹配
+        assert!(!windows_path_starts_with(r"D:\x.pdf", ""));
+    }
+
+    #[test]
+    fn test_path_is_within_preserves_unix_semantics() {
+        // 组件级快路径（所有平台一致）
+        assert!(path_is_within(Path::new("/a/b/c.pdf"), Path::new("/a/b")));
+        assert!(path_is_within(Path::new("/a/b"), Path::new("/a/b")));
+        // 组件边界不被破坏
+        assert!(!path_is_within(Path::new("/a/bc/x.pdf"), Path::new("/a/b")));
+        assert!(!path_is_within(Path::new("/etc/passwd"), Path::new("/a")));
+        // 非 Windows 平台大小写敏感语义保持不变
+        #[cfg(not(windows))]
+        assert!(!path_is_within(Path::new("/A/B/c.pdf"), Path::new("/a/b")));
+    }
+
+    /// 中文路径 + 百分号编码 URL 的端到端回归（#59）：
+    /// 与前端 convertFileSrc(encodeURIComponent) 一致的编码方式，
+    /// 授权目录内的中文名 PDF 必须能正常 200/206，不得误判 403。
+    #[test]
+    fn test_pdfstream_serves_chinese_path_via_encoded_url() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let nested = temp_dir.path().join("学习软件").join("学习");
+        std::fs::create_dir_all(&nested).expect("mkdir chinese dirs");
+        let pdf_path = nested.join("明朝那些事儿.pdf");
+        std::fs::write(&pdf_path, b"%PDF-1.4 test-body").expect("write pdf");
+
+        let encoded = urlencoding::encode(&pdf_path.to_string_lossy()).into_owned();
+        let uri = format!("pdfstream://localhost/{}", encoded);
+        let allowed_dirs = vec![temp_dir.path().canonicalize().expect("canonical tempdir")];
+
+        let get = tauri::http::Request::builder()
+            .method(tauri::http::Method::GET)
+            .uri(&uri)
+            .body(Vec::new())
+            .expect("GET request");
+        let response = handle_asset_protocol(&get, &allowed_dirs).expect("GET response");
+        assert_eq!(response.status(), tauri::http::StatusCode::OK);
+        assert_eq!(response.body().as_slice(), b"%PDF-1.4 test-body");
+
+        let range = tauri::http::Request::builder()
+            .method(tauri::http::Method::GET)
+            .uri(&uri)
+            .header("Range", "bytes=0-7")
+            .body(Vec::new())
+            .expect("Range request");
+        let response = handle_asset_protocol(&range, &allowed_dirs).expect("Range response");
+        assert_eq!(response.status(), tauri::http::StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.body().as_slice(), b"%PDF-1.4");
+    }
+
+    /// 白名单外的中文名 PDF 仍必须 403（修复不得削弱「只允许授权目录」）。
+    #[test]
+    fn test_pdfstream_still_rejects_chinese_path_outside_whitelist() {
+        let allowed = tempfile::tempdir().expect("allowed tempdir");
+        let outside = tempfile::tempdir().expect("outside tempdir");
+        let pdf_path = outside.path().join("明朝那些事儿.pdf");
+        std::fs::write(&pdf_path, b"%PDF-secret").expect("write pdf");
+
+        let encoded = urlencoding::encode(&pdf_path.to_string_lossy()).into_owned();
+        let uri = format!("pdfstream://localhost/{}", encoded);
+        let allowed_dirs = vec![allowed.path().canonicalize().expect("canonical allowed")];
+
+        let get = tauri::http::Request::builder()
+            .method(tauri::http::Method::GET)
+            .uri(&uri)
+            .body(Vec::new())
+            .expect("GET request");
+        let response = handle_asset_protocol(&get, &allowed_dirs).expect("GET response");
+        assert_eq!(response.status(), tauri::http::StatusCode::FORBIDDEN);
+        assert!(response.body().is_empty());
+    }
+
+    /// Windows 实机验证：canonicalize 产生的 \\?\ verbatim 路径必须能匹配
+    /// 普通盘符形式的白名单目录（std::path 解析平台相关，仅 Windows 可测）。
+    #[cfg(windows)]
+    #[test]
+    fn test_path_is_within_mixed_verbatim_forms_on_windows() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let nested = temp_dir.path().join("学习软件");
+        std::fs::create_dir_all(&nested).expect("mkdir");
+        let pdf_path = nested.join("明朝那些事儿.pdf");
+        std::fs::write(&pdf_path, b"%PDF").expect("write pdf");
+
+        // canonicalize 输出 \\?\ verbatim 形式
+        let canonical_file = std::fs::canonicalize(&pdf_path).expect("canonical file");
+        // 白名单目录保持普通（非 verbatim）形式，模拟 canonicalize 失败保留原始路径
+        let plain_dir = temp_dir.path().to_path_buf();
+
+        assert!(path_is_within(&canonical_file, &plain_dir));
+        // 反向：普通形式文件路径 vs verbatim 目录
+        let canonical_dir = std::fs::canonicalize(temp_dir.path()).expect("canonical dir");
+        assert!(path_is_within(&pdf_path, &canonical_dir));
+        // 白名单外仍拒绝
+        let other_dir = tempfile::tempdir().expect("other tempdir");
+        assert!(!path_is_within(&canonical_file, other_dir.path()));
     }
 }

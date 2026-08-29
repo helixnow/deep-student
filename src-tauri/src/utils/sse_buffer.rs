@@ -1,3 +1,10 @@
+//! SSE 行/事件缓冲工具
+//!
+//! 注：本文件包含 issue #122 定位探针（invalid/lossy 分支的 log::warn，仅记录
+//! 长度类元数据，不记录任何 chunk/用户文本内容），不声称修复 #122。
+
+use crate::llm_manager::utf8_stream::Utf8StreamDecoder;
+
 /// SSE行缓冲工具
 /// 用于处理跨chunk的不完整SSE行，确保数据完整性
 pub struct SseLineBuffer {
@@ -114,11 +121,18 @@ impl Default for SseLineBuffer {
 /// Byte-oriented SSE event buffer for LLM streams.
 ///
 /// Unlike `SseLineBuffer`, this keeps `event:` metadata attached to its `data:`
-/// payload and does not decode UTF-8 until a complete line is available. A
-/// complete JSON data line is emitted immediately so data-only OpenAI streams
-/// retain their existing low-latency behavior.
+/// payload. Raw network bytes are fed through an incremental UTF-8 decoder
+/// (`Utf8StreamDecoder`), so a multi-byte character split across chunk
+/// boundaries is held back until its remaining bytes arrive instead of being
+/// lossy-decoded into U+FFFD (`�`). A complete JSON data line is emitted
+/// immediately so data-only OpenAI streams retain their existing low-latency
+/// behavior.
 pub struct SseEventBuffer {
-    byte_buffer: Vec<u8>,
+    /// 跨 chunk 增量 UTF-8 解码器：chunk 末尾被切断的多字节字符（中文/emoji）
+    /// 暂存在这里等待后续字节，绝不对半截序列做 lossy 替换（issue #122）。
+    decoder: Utf8StreamDecoder,
+    /// 已解码、但尚未凑满一整行的文本
+    text_buffer: String,
     pending_lines: Vec<String>,
     max_buffer_size: usize,
 }
@@ -126,7 +140,8 @@ pub struct SseEventBuffer {
 impl SseEventBuffer {
     pub fn new() -> Self {
         Self {
-            byte_buffer: Vec::new(),
+            decoder: Utf8StreamDecoder::new(),
+            text_buffer: String::new(),
             pending_lines: Vec::new(),
             max_buffer_size: DEFAULT_MAX_BUFFER_SIZE,
         }
@@ -135,7 +150,8 @@ impl SseEventBuffer {
     #[cfg(test)]
     fn with_max_size(max_buffer_size: usize) -> Self {
         Self {
-            byte_buffer: Vec::new(),
+            decoder: Utf8StreamDecoder::new(),
+            text_buffer: String::new(),
             pending_lines: Vec::new(),
             max_buffer_size,
         }
@@ -149,14 +165,14 @@ impl SseEventBuffer {
             .map(|line| line.len().saturating_add(1))
             .sum::<usize>();
         if self
-            .byte_buffer
+            .text_buffer
             .len()
             .saturating_add(pending_size)
             .saturating_add(chunk.len())
             > self.max_buffer_size
         {
             tracing::error!(
-                byte_buffer_len = self.byte_buffer.len(),
+                text_buffer_len = self.text_buffer.len(),
                 pending_size,
                 chunk_len = chunk.len(),
                 max = self.max_buffer_size,
@@ -166,16 +182,17 @@ impl SseEventBuffer {
             return Vec::new();
         }
 
-        self.byte_buffer.extend_from_slice(chunk);
+        // 增量解码：跨 chunk 被切断的多字节字符保留在 decoder 内部，
+        // 待下一个 chunk 补齐后再输出，保证行内容永远是完整字符。
+        self.text_buffer.push_str(&self.decoder.decode(chunk));
         let mut events = Vec::new();
 
-        while let Some(newline) = self.byte_buffer.iter().position(|byte| *byte == b'\n') {
-            let mut line_bytes: Vec<u8> = self.byte_buffer.drain(..=newline).collect();
-            line_bytes.pop();
-            if line_bytes.last() == Some(&b'\r') {
-                line_bytes.pop();
+        while let Some(newline) = self.text_buffer.find('\n') {
+            let mut line: String = self.text_buffer.drain(..=newline).collect();
+            line.pop();
+            if line.ends_with('\r') {
+                line.pop();
             }
-            let line = decode_complete_sse_line(line_bytes);
             self.push_line(line, &mut events);
         }
 
@@ -183,14 +200,28 @@ impl SseEventBuffer {
     }
 
     /// Flush a stream that closed without a trailing blank line.
+    ///
+    /// 若流恰好在一个多字节字符中间被截断（网络中断），残留的半截字符
+    /// 按 lossy 语义补一个 U+FFFD —— 此时确实丢了数据，不是解码错误。
     pub fn flush(&mut self) -> Vec<String> {
+        let tail = self.decoder.flush();
+        if !tail.is_empty() {
+            // issue #122 定位探针（不声称修复）：流关闭时解码器仍有半截多字节
+            // 字符，说明连接在字符中间被截断。只记录长度元数据。
+            log::warn!(
+                "[sse_buffer][issue#122 探针] 流结束时残留不完整 UTF-8 序列，已按 lossy 语义补 U+FFFD：tail_len={}, text_buffer_len={}, pending_lines={}",
+                tail.len(),
+                self.text_buffer.len(),
+                self.pending_lines.len()
+            );
+        }
+        self.text_buffer.push_str(&tail);
         let mut events = Vec::new();
-        if !self.byte_buffer.is_empty() {
-            let mut line_bytes = std::mem::take(&mut self.byte_buffer);
-            if line_bytes.last() == Some(&b'\r') {
-                line_bytes.pop();
+        if !self.text_buffer.is_empty() {
+            let mut line = std::mem::take(&mut self.text_buffer);
+            if line.ends_with('\r') {
+                line.pop();
             }
-            let line = decode_complete_sse_line(line_bytes);
             self.push_line(line, &mut events);
         }
         self.flush_pending(&mut events);
@@ -204,7 +235,8 @@ impl SseEventBuffer {
     }
 
     pub fn clear(&mut self) {
-        self.byte_buffer.clear();
+        let _ = self.decoder.flush();
+        self.text_buffer.clear();
         self.pending_lines.clear();
     }
 
@@ -269,16 +301,6 @@ impl SseEventBuffer {
 impl Default for SseEventBuffer {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn decode_complete_sse_line(bytes: Vec<u8>) -> String {
-    match String::from_utf8(bytes) {
-        Ok(line) => line,
-        Err(error) => {
-            tracing::warn!("SSE event contained invalid UTF-8; replacing invalid bytes");
-            String::from_utf8_lossy(error.as_bytes()).into_owned()
-        }
     }
 }
 
@@ -470,6 +492,59 @@ mod tests {
 
         assert_eq!(events, vec![source.trim().to_string()]);
         assert!(!events[0].contains('\u{fffd}'));
+    }
+
+    #[test]
+    fn event_buffer_no_replacement_char_when_chinese_split_in_two_chunks() {
+        // issue #122 锚点：一个汉字（3 字节）拆成两个 byte chunk，
+        // 中间不得出现 �，拼起来必须正确。
+        let source = "data: {\"choices\":[{\"delta\":{\"content\":\"中\"}}]}\n";
+        let bytes = source.as_bytes();
+        let split = source.find('中').unwrap() + 1; // “中”= E4 B8 AD，切成 [E4] + [B8 AD]
+
+        let mut buffer = SseEventBuffer::new();
+        let first = buffer.process_bytes(&bytes[..split]);
+        assert!(first.is_empty(), "半截 UTF-8 不应产出任何事件");
+
+        let second = buffer.process_bytes(&bytes[split..]);
+        assert_eq!(second, vec![source.trim().to_string()]);
+        assert!(!second[0].contains('\u{fffd}'));
+        assert!(buffer.flush().is_empty());
+    }
+
+    #[test]
+    fn event_buffer_reassembles_multibyte_content_split_at_every_byte_boundary() {
+        // 对含中文与 4 字节 emoji 的完整 SSE 事件在每个字节位置切分，
+        // 任意 TCP 分帧点都不得产生 U+FFFD。
+        let source = "data: {\"choices\":[{\"delta\":{\"content\":\"中文乱码测试🚀\"}}]}\n\n";
+        let bytes = source.as_bytes();
+        for split in 1..bytes.len() {
+            let mut buffer = SseEventBuffer::new();
+            let mut events = buffer.process_bytes(&bytes[..split]);
+            for event in &events {
+                assert!(
+                    !event.contains('\u{fffd}'),
+                    "切分点 {split} 处提前产生 U+FFFD"
+                );
+            }
+            events.extend(buffer.process_bytes(&bytes[split..]));
+            events.extend(buffer.flush());
+            assert_eq!(
+                events,
+                vec![source.trim().to_string()],
+                "切分点 {split} 处事件重组失败"
+            );
+        }
+    }
+
+    #[test]
+    fn event_buffer_flush_marks_stream_truncated_mid_character() {
+        // 流在字符中间被截断（网络中断）：数据确实丢了，
+        // flush 按 lossy 语义补一个 U+FFFD，而不是丢弃残留。
+        let mut buffer = SseEventBuffer::new();
+        let bytes = "data: 中".as_bytes();
+        assert!(buffer.process_bytes(&bytes[..bytes.len() - 1]).is_empty());
+        assert_eq!(buffer.flush(), vec!["data: \u{fffd}".to_string()]);
     }
 
     #[test]

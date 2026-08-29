@@ -1177,9 +1177,13 @@ impl FileManager {
             return Err(AppError::validation("图片数据为空"));
         }
 
-        if image_bytes.len() > 50 * 1024 * 1024 {
-            // 50MB限制
-            return Err(AppError::validation("图片文件过大，超过50MB限制"));
+        // #62/ATT-09: 引用附件仓库的统一图片上限，提示文案由常量派生，避免硬编码漂移
+        const MAX_IMAGE_BYTES: usize = crate::vfs::repos::attachment_repo::MAX_IMAGE_BYTES;
+        if image_bytes.len() > MAX_IMAGE_BYTES {
+            return Err(AppError::validation(format!(
+                "图片文件过大，超过{}MB限制",
+                MAX_IMAGE_BYTES / (1024 * 1024)
+            )));
         }
 
         debug!(
