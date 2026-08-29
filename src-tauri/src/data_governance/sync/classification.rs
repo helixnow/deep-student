@@ -67,8 +67,8 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             category: SyncCategory::RowSync,
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
-            has_json_blobs: false,
-            merge_notes: "tags field uses set union with single-value tag normalization (memory value-encoded tags like _hits:/_type:, see field_merge NOTES_*_VALUE_TAG_PREFIXES)",
+            has_json_blobs: true,
+            merge_notes: "tags uses set union with single-value tag normalization; is_favorite uses boolean OR; props is an arbitrary JSON object and intentionally stays out of the automatic field-merge picklist, so concurrent whole-object replacements use row-level LWW",
         },
         TableClassification {
             database: "vfs",
@@ -158,7 +158,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "tags use set union; attempt_count/correct_count use max; options_json/images_json/user_note use row-level LWW/conflict handling",
+            merge_notes: "tags use set union; attempt_count/correct_count are a coupled pair updated atomically per answer and may legitimately reset, so they use row-level LWW (not max, see field_merge [R04]); options_json/images_json/user_note use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -178,7 +178,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "question_id",
             has_json_blobs: false,
-            merge_notes: "question_id UNIQUE conflict = same question; total_reviews/total_correct/interval_days/consecutive_failures use max; ease_factor uses row-level LWW",
+            merge_notes: "question_id UNIQUE conflict = same question; total_reviews/total_correct use max; interval_days/consecutive_failures are non-monotonic (can legitimately decrease/reset) so they use row-level LWW, not max (see field_merge [R02]); ease_factor uses row-level LWW",
         },
         TableClassification {
             database: "vfs",

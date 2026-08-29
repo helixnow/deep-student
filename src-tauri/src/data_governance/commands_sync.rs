@@ -17,6 +17,7 @@ use super::sync::{
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::cloud_config_commands::{load_hydrated_cloud_config_ssot, CloudConfigSsotError};
+use crate::cloud_storage::sync_lease::acquire_sync_target_lease;
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
@@ -29,6 +30,53 @@ use super::commands_backup::{
 /// 便捷函数：获取各表主键列名映射
 fn id_column_map() -> HashMap<String, String> {
     build_id_column_map()
+}
+
+/// 配置里生效的端到端加密密码（空字符串视为未配置）。
+fn config_encryption_password(config: &CloudStorageConfig) -> Option<&str> {
+    config
+        .encryption_password
+        .as_deref()
+        .filter(|s| !s.is_empty())
+}
+
+/// [R07-record-verifier] 记录级上传前的端到端加密一致性策略（带密码校验）。
+///
+/// 与 ZIP 备份上传（`cloud_sync_upload`）共用同一个云端 `.encryption-marker`，
+/// 并同样走密码校验子入口：
+/// - 本机配置了加密密码：校验 / 登记云端加密标记的不可逆密码校验子——
+///   配错密码的设备在写入任何记录级对象之前即失败，而不是把无法互解的
+///   密文写进同一恢复链；无标记时登记带校验子的 v2 标记后放行；
+/// - 本机未配置密码：若该云 root 已有加密标记，直接拒绝明文记录级上传，
+///   避免同一 root / 同一恢复链上明文与密文混布。
+///
+/// `CloudSyncManager` 按值持有 storage，因此调用方为策略检查单独创建一份
+/// storage 实例，主同步流程继续使用自己的实例。
+async fn enforce_record_upload_encryption_policy(
+    storage: Box<dyn CloudStorage>,
+    device_id: &str,
+    encryption_password: Option<&str>,
+) -> Result<(), String> {
+    crate::cloud_storage::CloudSyncManager::new(storage, device_id.to_string())
+        .enforce_encryption_policy_before_upload_with_password(encryption_password)
+        .await
+        .map_err(|e| format!("同步加密一致性检查未通过: {}", e))
+}
+
+/// [R04-sync-e2ee] 便捷入口：为策略检查单独创建 storage 后执行检查。
+async fn enforce_record_upload_encryption_policy_for_config(
+    config: &CloudStorageConfig,
+    device_id: &str,
+) -> Result<(), String> {
+    let policy_storage = create_storage(config)
+        .await
+        .map_err(|e| format!("创建云存储失败: {}", e))?;
+    enforce_record_upload_encryption_policy(
+        policy_storage,
+        device_id,
+        config_encryption_password(config),
+    )
+    .await
 }
 
 fn rollback_marked_sync_versions(
@@ -1580,9 +1628,10 @@ pub async fn data_governance_run_sync(
         .map_err(|_| "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string())?;
 
     // 创建云存储实例
-    let storage = create_storage(&config)
+    let storage: std::sync::Arc<dyn CloudStorage> = create_storage(&config)
         .await
-        .map_err(|e| format!("创建云存储失败: {}", e))?;
+        .map_err(|e| format!("创建云存储失败: {}", e))?
+        .into();
 
     let active_dir = get_active_data_dir(&app)?;
     let app_data_dir = get_app_data_dir(&app)?;
@@ -1594,10 +1643,25 @@ pub async fn data_governance_run_sync(
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    // [R11-lease] 格式门槛必须先于租约写入：未来版本客户端留下的 format.json
+    // 会在云端零写入（包括零租约 contender）的状态下 fail-closed。
     manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
         .map_err(|e| format!("同步格式协商失败: {}", e))?;
+
+    // 所有常规同步方向都获取 target 租约：纯 Download 在成功应用后也会上传
+    // cursor/manifest，因此同样存在远端写窗口。守卫覆盖文件、行变更、manifest
+    // 与 prune 全窗口；提前返回由 Drop 尽力释放，进程崩溃则由 TTL 回收。
+    let sync_target_lease = acquire_sync_target_lease(std::sync::Arc::clone(&storage), &device_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // [R07-record-verifier] 涉及上传的方向在写入任何业务对象前先过加密一致性
+    // 策略；该策略可能登记 .encryption-marker，因此也必须位于 target 租约内。
+    if sync_direction != SyncDirection::Download {
+        enforce_record_upload_encryption_policy_for_config(&config, &device_id).await?;
+    }
 
     validate_sync_registry_drift(&active_dir)?;
 
@@ -2032,7 +2096,7 @@ pub async fn data_governance_run_sync(
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    match result {
+    let response = match result {
         Ok((mut exec_result, skipped)) => {
             // Upload 的文件级阶段已在行级包发布前完成；Download 和
             // Bidirectional 在行级下载应用后补齐云端文件。
@@ -2176,7 +2240,16 @@ pub async fn data_governance_run_sync(
                 skipped_changes: 0,
             })
         }
+    };
+
+    if let Err(error) = sync_target_lease.release().await {
+        // 同步结果已确定，释放失败不能把成功改写成失败；TTL/下轮陈旧回收兜底。
+        warn!(
+            "[data_governance] 释放同步目标租约失败，将等待 TTL 回收: {}",
+            error
+        );
     }
+    response
 }
 
 /// 同步执行响应
@@ -2303,6 +2376,12 @@ pub async fn data_governance_export_sync_data(
 
     // 确定输出路径（虚拟 URI 先导出到本地临时文件，再复制到目标 URI）
     let mut target_virtual_uri: Option<String> = None;
+    if let Some(p) = output_path.as_deref() {
+        crate::unified_file_manager::reject_double_encoded_virtual_uri(p)
+            .map_err(|e| e.to_string())?;
+        crate::unified_file_manager::queue_persistable_saf_uri(&app_data_dir, p)
+            .map_err(|e| e.to_string())?;
+    }
     let output = match output_path {
         Some(p) if crate::unified_file_manager::is_virtual_uri(&p) => {
             let temp_dir = app_data_dir.join("temp_sync_export");
@@ -2416,6 +2495,10 @@ pub async fn data_governance_import_sync_data(
     let app_data_dir = get_app_data_dir(&app)?;
     let active_dir = get_active_data_dir(&app)?;
 
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&input_path)
+        .map_err(|e| e.to_string())?;
+    crate::unified_file_manager::queue_persistable_saf_uri(&app_data_dir, &input_path)
+        .map_err(|e| e.to_string())?;
     let (input_file_path, cleanup_path) =
         if crate::unified_file_manager::is_virtual_uri(&input_path) {
             let temp_dir = app_data_dir.join("temp_sync_import");
@@ -2737,8 +2820,8 @@ pub async fn data_governance_run_sync_with_progress(
     emitter.emit_detecting_changes().await;
 
     // 创建云存储实例
-    let storage = match create_storage(&config).await {
-        Ok(s) => s,
+    let storage: std::sync::Arc<dyn CloudStorage> = match create_storage(&config).await {
+        Ok(storage) => storage.into(),
         Err(e) => {
             let error_msg = format!("创建云存储失败: {}", e);
             emitter.emit_failed(&error_msg).await;
@@ -2759,6 +2842,8 @@ pub async fn data_governance_run_sync_with_progress(
     // [P0-2] 透传加密密码
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+
+    // [R11-lease] remote format 门槛先于任何租约 contender 写入。
     if let Err(e) = manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
@@ -2766,6 +2851,26 @@ pub async fn data_governance_run_sync_with_progress(
         let error_msg = format!("同步格式协商失败: {}", e);
         emitter.emit_failed(&error_msg).await;
         return Err(error_msg);
+    }
+
+    let sync_target_lease =
+        match acquire_sync_target_lease(std::sync::Arc::clone(&storage), &device_id).await {
+            Ok(lease) => lease,
+            Err(error) => {
+                let error_msg = error.to_string();
+                emitter.emit_failed(&error_msg).await;
+                return Err(error_msg);
+            }
+        };
+
+    // 加密策略可能登记 .encryption-marker，也必须在 target 租约保护窗口内。
+    if sync_direction != SyncDirection::Download {
+        if let Err(e) =
+            enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
+        {
+            emitter.emit_failed(&e).await;
+            return Err(e);
+        }
     }
 
     if let Err(e) = validate_sync_registry_drift(&active_dir) {
@@ -2943,7 +3048,7 @@ pub async fn data_governance_run_sync_with_progress(
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    match result {
+    let response = match result {
         Ok((exec_result, skipped)) => {
             // [P0-3/O1] 同步结果诚实化：仅当 success 且无 error_message（无文件级失败、
             // 无被跳过的不完整变更）时才发射"完成"。否则发射带具体原因的终态，避免
@@ -3061,7 +3166,15 @@ pub async fn data_governance_run_sync_with_progress(
                 skipped_changes: 0,
             })
         }
+    };
+
+    if let Err(error) = sync_target_lease.release().await {
+        warn!(
+            "[data_governance] 释放带进度同步目标租约失败，将等待 TTL 回收: {}",
+            error
+        );
     }
+    response
 }
 
 // ============================================================================
@@ -3749,6 +3862,36 @@ async fn execute_bidirectional_with_progress_v2(
 
 // ==================== Tombstone API ====================
 
+/// [R4-tombstone-serial] tombstone 直接命令的 limiter busy 稳定码。
+///
+/// tombstone 清单是「下载 → 合并 → 上传」的 read-modify-write：两个直接命令
+/// 交错时，后写者会用自己下载到的旧清单覆盖先写者刚插入的条目（lost update，
+/// 删除记录静默丢失）。因此直接命令必须与同步/备份/恢复共用同一把
+/// `BACKUP_GLOBAL_LIMITER` 做同设备串行化；抢不到锁时以本稳定码立即失败，
+/// 由调用方（VFS 删除队列重试 / 开发者工具）稍后重试，而不是各写各的坏状态。
+pub const TOMBSTONE_LIMITER_BUSY_CODE: &str = "E_DG_TOMBSTONE_LIMITER_BUSY";
+
+/// 在给定 limiter 上为一次 tombstone 直接写入取全局互斥许可。
+///
+/// 与同步命令（P1-4）同语义：`try_acquire` 占用即刻失败，不排队；错误信息
+/// 携带 [`TOMBSTONE_LIMITER_BUSY_CODE`]，供前端/调用方稳定识别后重试。
+/// limiter 拆成参数是为了测试能用独立 semaphore 确定性复现双调用交错，
+/// 不依赖（也不污染）全局静态锁。
+fn try_acquire_tombstone_write_permit_on(
+    limiter: std::sync::Arc<tokio::sync::Semaphore>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+    limiter.try_acquire_owned().map_err(|_| {
+        format!(
+            "[{TOMBSTONE_LIMITER_BUSY_CODE}] 另一个数据治理任务（同步/备份/恢复/删除标记）正在进行中，请稍后再试。"
+        )
+    })
+}
+
+/// 生产入口：tombstone 直接命令与同步/备份/恢复共用 `BACKUP_GLOBAL_LIMITER`。
+fn acquire_tombstone_write_permit() -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+    try_acquire_tombstone_write_permit_on(BACKUP_GLOBAL_LIMITER.clone())
+}
+
 /// 标记一个 blob 已被本地删除。
 ///
 /// 后续同步时 `sync_vfs_blobs_with_tombstones` 会把这条删除记录传播到云端和其他设备。
@@ -3769,11 +3912,22 @@ pub async fn data_governance_mark_blob_deleted(
 ) -> Result<(), String> {
     // [P0-3A] 空白凭据由后端从安全存储补全
     crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    // [R4-tombstone-serial] 与同步相同的同设备全局互斥：tombstone 清单是
+    // download→merge→upload 的 read-modify-write，与另一次直接命令或同步的
+    // tombstone 写交错会互相覆盖。持锁窗口覆盖加密策略检查与 mark_blob_deleted
+    // 全程（含 PUT 后 GET 复读闸）；提前返回由 Drop 释放。
+    let _permit = acquire_tombstone_write_permit()?;
+
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
+
+    // [R07-record-verifier] tombstone 清单同样是记录级上传，写入前先过带密码校验的加密一致性策略
+    enforce_record_upload_encryption_policy_for_config(&cloud_config, &device_id).await?;
+
     // [P0-2] 透传加密密码，确保 tombstone 清单也走 DSBK
     let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
@@ -3799,11 +3953,20 @@ pub async fn data_governance_mark_asset_deleted(
 ) -> Result<(), String> {
     // [P0-3A] 空白凭据由后端从安全存储补全
     crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    // [R4-tombstone-serial] 同 data_governance_mark_blob_deleted：直接命令的
+    // read-modify-write 必须与同步/备份/恢复及另一次直接命令串行化。
+    let _permit = acquire_tombstone_write_permit()?;
+
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
+
+    // [R07-record-verifier] tombstone 清单同样是记录级上传，写入前先过带密码校验的加密一致性策略
+    enforce_record_upload_encryption_policy_for_config(&cloud_config, &device_id).await?;
+
     // [P0-2] 透传加密密码
     let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
@@ -4181,13 +4344,60 @@ pub async fn data_governance_list_record_conflicts(
         .collect())
 }
 
-/// 统计每个数据库的待解决冲突数
+/// 单个数据库的未解决冲突计数
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct RecordConflictCountEntry {
+    /// 记录组数：按 (table_name, record_id) 去重。一次冲突写入 local + cloud
+    /// 两行，UI 上"待解决的冲突"数量与 list API 的分组口径都以组为单位。
+    pub groups: u64,
+    /// 原始行数：`__sync_conflicts` 中 `resolved_at IS NULL` 的行。
+    pub rows: u64,
+}
+
+/// 未解决冲突计数汇总（跨所有数据库）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RecordConflictCounts {
+    /// 各数据库的计数；没有未解决冲突的数据库不会出现在这里。
+    pub per_database: HashMap<String, RecordConflictCountEntry>,
+    /// 所有数据库的未解决记录组总数（与 UI 徽章、冲突面板分页口径一致）。
+    pub total_groups: u64,
+    /// 所有数据库的未解决冲突行总数。
+    pub total_rows: u64,
+}
+
+/// 统计单库 `__sync_conflicts` 的未解决冲突：返回 (groups, rows)。
+///
+/// groups 按 (table_name, record_id) 去重，与
+/// `data_governance_list_record_conflicts` 的分组/分页口径一致；rows 是
+/// 底层未解决行数（一次冲突通常是 local + cloud 两行）。
+fn count_unresolved_conflicts(conn: &rusqlite::Connection) -> rusqlite::Result<(u64, u64)> {
+    let table_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_conflicts')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !table_exists {
+        return Ok((0, 0));
+    }
+    let (groups, rows): (i64, i64) = conn.query_row(
+        "SELECT COUNT(DISTINCT table_name || '\u{1f}' || record_id), COUNT(*)
+         FROM __sync_conflicts
+         WHERE resolved_at IS NULL",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok((groups.max(0) as u64, rows.max(0) as u64))
+}
+
+/// 统计每个数据库的待解决冲突数（同时给出 groups 与 rows 两种口径）
 #[tauri::command]
 pub async fn data_governance_count_record_conflicts(
     app: tauri::AppHandle,
-) -> Result<HashMap<String, u64>, String> {
+) -> Result<RecordConflictCounts, String> {
     let active_dir = get_active_data_dir(&app)?;
-    let mut out: HashMap<String, u64> = HashMap::new();
+    let mut per_database: HashMap<String, RecordConflictCountEntry> = HashMap::new();
+    let mut total_groups: u64 = 0;
+    let mut total_rows: u64 = 0;
 
     for db_id in _DatabaseId::all_ordered() {
         let db_path =
@@ -4199,34 +4409,21 @@ pub async fn data_governance_count_record_conflicts(
             Ok(c) => c,
             Err(_) => continue,
         };
-        let table_exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_conflicts')",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-        if !table_exists {
-            continue;
-        }
-        // 按 record_id 去重：一次冲突保存 2 条（local + cloud），用户关心的是"有多少条记录有冲突"
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM (
-                    SELECT table_name, record_id
-                    FROM __sync_conflicts
-                    WHERE resolved_at IS NULL
-                    GROUP BY table_name, record_id
-                 )",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-        if count > 0 {
-            out.insert(db_id.as_str().to_string(), count as u64);
+        let (groups, rows) = count_unresolved_conflicts(&conn).unwrap_or((0, 0));
+        if groups > 0 {
+            per_database.insert(
+                db_id.as_str().to_string(),
+                RecordConflictCountEntry { groups, rows },
+            );
+            total_groups = total_groups.saturating_add(groups);
+            total_rows = total_rows.saturating_add(rows);
         }
     }
-    Ok(out)
+    Ok(RecordConflictCounts {
+        per_database,
+        total_groups,
+        total_rows,
+    })
 }
 
 fn table_has_column(conn: &rusqlite::Connection, table_name: &str, column_name: &str) -> bool {
@@ -4337,14 +4534,20 @@ pub async fn data_governance_resolve_record_conflict(
     let current_local_snapshot =
         SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
             .map_err(|e| format!("读取当前本地记录失败: {}", e))?;
-    let recorded_local_raw =
-        get_side_data("local")?.ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?;
+    let recorded_local_raw = get_side_data("local")?;
     let recorded_cloud_raw =
         get_side_data("cloud")?.ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?;
-    let recorded_local_snapshot = {
-        let value: serde_json::Value = serde_json::from_str(&recorded_local_raw)
-            .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
-        (!value.is_null()).then_some(value)
+    // [R06-del-resolve] LWW 门败方（DELETE / UPSERT SkipStale）只落 side='cloud'
+    // 单行——本地行是胜方、未被改动，因此没有必要的 local 快照。缺失 local 侧时
+    // 回退为当前业务表行（本地行即胜方状态），使这类单侧冲突可被解决，
+    // 不再永久占据冲突面板。
+    let recorded_local_snapshot = match recorded_local_raw {
+        Some(raw) => {
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
+            (!value.is_null()).then_some(value)
+        }
+        None => current_local_snapshot.clone(),
     };
     let recorded_cloud_snapshot = {
         let value: serde_json::Value = serde_json::from_str(&recorded_cloud_raw)
@@ -4408,6 +4611,97 @@ pub async fn data_governance_resolve_record_conflict(
     };
 
     let now = chrono::Utc::now().to_rfc3339();
+
+    // [R06-del-resolve] 决策结果与业务表当前状态一致时（典型：单侧 DELETE 冲突
+    // 选 keep_local——本地行本就是 LWW 胜方），无需也无法走同步回写：
+    // force 应用链路会把语义等价的 Update 幂等跳过（success_count=0），
+    // 而本地行已是全网收敛状态、无新决策需要广播。此时只把冲突行标记为已解决。
+    let already_in_desired_state = match (&operation, &data) {
+        (crate::data_governance::sync::ChangeOperation::Delete, _) => {
+            current_local_snapshot.is_none()
+        }
+        (_, Some(desired)) => current_local_snapshot.as_ref().is_some_and(|current| {
+            SyncManager::records_semantically_equal_for_sync(current, desired)
+        }),
+        (_, None) => false,
+    };
+    if already_in_desired_state {
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| format!("开始冲突标记事务失败: {}", e))?;
+        let mark_result = (|| -> Result<(), String> {
+            // 事务内重验 generation：期间若有新冲突行出现，旧决策作废
+            let mut current = Vec::new();
+            {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id FROM __sync_conflicts
+                         WHERE table_name = ?1 AND record_id = ?2 AND resolved_at IS NULL
+                         ORDER BY id ASC",
+                    )
+                    .map_err(|e| format!("提交前读取冲突 generation 失败: {}", e))?;
+                let rows = stmt
+                    .query_map(rusqlite::params![&table_name, &record_id], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|e| format!("提交前查询冲突 generation 失败: {}", e))?;
+                for row in rows {
+                    current
+                        .push(row.map_err(|e| format!("提交前解析冲突 generation 失败: {}", e))?);
+                }
+            }
+            current.sort_unstable();
+            if current != expected_ids {
+                return Err("冲突已在后台变化，旧决策未执行；请刷新后重新确认".to_string());
+            }
+            // [R12-conflict-fast] 关闭 P2-3（FINDINGS-WRAP P2-2）：上方
+            // `already_in_desired_state` 用的是事务外快照，窗口内的纯本地编辑
+            // 不触碰 __sync_conflicts，generation 重验发现不了。这里在事务内
+            // 重读业务行，按同一套 (operation, data) 重算是否仍处于决策目标
+            // 状态；不再匹配即 fail-closed 拒绝，绝不用旧快照标 resolved。
+            let in_transaction_snapshot =
+                SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
+                    .map_err(|e| format!("提交前重读本地记录失败: {}", e))?;
+            let still_in_desired_state = match (&operation, &data) {
+                (crate::data_governance::sync::ChangeOperation::Delete, _) => {
+                    in_transaction_snapshot.is_none()
+                }
+                (_, Some(desired)) => in_transaction_snapshot.as_ref().is_some_and(|row| {
+                    SyncManager::records_semantically_equal_for_sync(row, desired)
+                }),
+                (_, None) => false,
+            };
+            if !still_in_desired_state {
+                return Err("本地记录在冲突确认期间已变化，请刷新后重新确认".to_string());
+            }
+            for conflict_id in &expected_ids {
+                let updated = conn
+                    .execute(
+                        "UPDATE __sync_conflicts
+                         SET resolved_at = ?1, resolution = ?2
+                         WHERE id = ?3 AND table_name = ?4 AND record_id = ?5
+                           AND resolved_at IS NULL",
+                        rusqlite::params![&now, &resolution, conflict_id, &table_name, &record_id],
+                    )
+                    .map_err(|e| format!("更新冲突状态失败: {}", e))?;
+                if updated != 1 {
+                    return Err("冲突状态在提交前发生变化".to_string());
+                }
+            }
+            Ok(())
+        })();
+        return match mark_result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| format!("提交冲突标记事务失败: {}", e))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        };
+    }
+
     if let Some(obj) = data.as_mut().and_then(serde_json::Value::as_object_mut) {
         if table_has_column(&conn, &table_name, "updated_at") {
             let current = obj.get("updated_at");
@@ -4439,6 +4733,10 @@ pub async fn data_governance_resolve_record_conflict(
     let preflight_record = record_id.clone();
     let preflight_id_column = id_column.to_string();
     let preflight_snapshot = current_local_snapshot;
+    // [R11-history] 冲突解决（含前端批量循环的每一次调用）写回业务表之前，
+    // 在同一事务内把被覆盖记录的当前状态快照进 __sync_record_history，
+    // 事后可在冲突面板按批次一键回退（快照只在本地，不上云）。
+    let history_batch_id = crate::data_governance::sync::history::new_batch_id();
     let final_expected_ids = expected_ids.clone();
     let final_table = table_name.clone();
     let final_record = record_id.clone();
@@ -4460,6 +4758,14 @@ pub async fn data_governance_resolve_record_conflict(
                     "本地记录在提交冲突决策前发生变化".to_string(),
                 ));
             }
+            crate::data_governance::sync::history::snapshot_record_with_data(
+                transaction_conn,
+                &history_batch_id,
+                crate::data_governance::sync::history::REASON_CONFLICT_RESOLVE,
+                &preflight_table,
+                &preflight_record,
+                latest.as_ref(),
+            )?;
             Ok(())
         },
         move |transaction_conn, apply_result| {
@@ -4650,9 +4956,1071 @@ pub async fn data_governance_detect_prune_gap(
     })
 }
 
+// ==================== [R11-check] 云端仓库巡检（restic `check` 档，只读） ====================
+
+/// 云端仓库巡检：遍历 manifest 引用对象，核对存在性 / SHA256 / DSBK 头可解，
+/// 报告孤儿与缺失对象。**只读**——不写入、不删除任何云端对象；列表被截断时
+/// 结论降级为「巡检不完整」，绝不给出全绿（详见 `cloud_storage::repo_check`）。
+#[tauri::command]
+pub async fn data_governance_repo_check(
+    app: tauri::AppHandle,
+    mut cloud_config: CloudStorageConfig,
+) -> Result<crate::cloud_storage::repo_check::RepoCheckReport, String> {
+    check_maintenance_mode(&app)?;
+
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    let storage = create_storage(&cloud_config)
+        .await
+        .map_err(|e| format!("创建云存储失败: {}", e))?;
+    crate::cloud_storage::repo_check::run_repo_check(storage.as_ref())
+        .await
+        .map_err(|e| format!("云端仓库巡检失败: {}", e))
+}
+
+// ==================== [R11-history] 记录级时点恢复 ====================
+
+/// 快照批次行（跨库列表，供冲突面板「自动快照」区展示）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SyncSnapshotBatchRow {
+    pub database_name: String,
+    pub batch_id: String,
+    /// policy_override | conflict_resolve | rollback_undo
+    pub reason: String,
+    pub created_at: String,
+    pub record_count: u64,
+    pub rolled_back_at: Option<String>,
+}
+
+/// 列出所有数据库最近的记录快照批次（新的在前）。
+///
+/// 快照由冲突批量解决 / 库级策略覆盖在执行前自动创建（`history.rs`），
+/// 只保存在本地数据库、不上云。本命令只读，不需要数据治理全局锁。
+#[tauri::command]
+pub async fn data_governance_list_sync_snapshot_batches(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<SyncSnapshotBatchRow>, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let per_db_limit = limit.unwrap_or(50).min(500) as usize;
+
+    let mut out: Vec<SyncSnapshotBatchRow> = Vec::new();
+    for db_id in _DatabaseId::all_ordered() {
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        if !db_path.exists() {
+            continue;
+        }
+        let conn = match open_sync_connection(&db_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let batches = crate::data_governance::sync::history::list_batches(&conn, per_db_limit)
+            .map_err(|e| format!("读取 {} 的快照批次失败: {}", db_id.as_str(), e))?;
+        for batch in batches {
+            out.push(SyncSnapshotBatchRow {
+                database_name: db_id.as_str().to_string(),
+                batch_id: batch.batch_id,
+                reason: batch.reason,
+                created_at: batch.created_at,
+                record_count: batch.record_count,
+                rolled_back_at: batch.rolled_back_at,
+            });
+        }
+    }
+    // 跨库统一按创建时间倒序（batch_id 前缀是 UTC 时间戳，同秒内可稳定比较）
+    out.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
+    out.truncate(per_db_limit);
+    Ok(out)
+}
+
+/// 单批回退的结果
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RollbackSnapshotResponse {
+    pub batch_id: String,
+    /// 恢复（写回快照值）的记录数
+    pub restored: usize,
+    /// 因快照时不存在而被删除的记录数
+    pub deleted: usize,
+    /// 已处于快照状态、无需改动的记录数
+    pub skipped: usize,
+    /// 回退前自动创建的撤销点批次 id（回退本身可再撤销）
+    pub undo_batch_id: String,
+}
+
+/// 按批次回退一组记录快照：把批内每条记录恢复到快照时的状态。
+///
+/// 回退通过同步链路写回（`suppress_change_log=false` + 刷新 `updated_at`），
+/// 因此：① 回退结果进入 change_log 待上传，下次同步广播给其他设备；
+/// ② 旧的云端胜方值在后续下载重放中输掉 LWW 门，不会把回退结果再覆盖回去。
+/// 回退前自动创建 `rollback_undo` 撤销点批次；同一批次只能回退一次。
+#[tauri::command]
+pub async fn data_governance_rollback_sync_snapshot_batch(
+    app: tauri::AppHandle,
+    database_name: String,
+    batch_id: String,
+) -> Result<RollbackSnapshotResponse, String> {
+    check_maintenance_mode(&app)?;
+    let _permit = BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "其他备份、恢复或同步操作正在进行，请稍后重试".to_string())?;
+
+    let active_dir = get_active_data_dir(&app)?;
+    let db_id = _DatabaseId::all_ordered()
+        .into_iter()
+        .find(|id| id.as_str() == database_name)
+        .ok_or_else(|| format!("未知数据库: {}", database_name))?;
+    let db_path =
+        crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+    let conn = open_sync_connection(&db_path)
+        .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+
+    let id_columns = build_id_column_map();
+    let outcome = crate::data_governance::sync::history::rollback_batch(
+        &conn,
+        &batch_id,
+        Some(&id_columns),
+        Some(&database_name),
+    )
+    .map_err(|e| format!("回退快照批次失败: {}", e))?;
+
+    info!(
+        "[data_governance] 快照批次回退完成: db={}, batch={}, restored={}, deleted={}, skipped={}, undo_batch={}",
+        database_name,
+        outcome.batch_id,
+        outcome.restored,
+        outcome.deleted,
+        outcome.skipped,
+        outcome.undo_batch_id
+    );
+
+    Ok(RollbackSnapshotResponse {
+        batch_id: outcome.batch_id,
+        restored: outcome.restored,
+        deleted: outcome.deleted,
+        skipped: outcome.skipped,
+        undo_batch_id: outcome.undo_batch_id,
+    })
+}
+
+// ==================== [R11-unsynced-ui] 未同步文件清单（只读查询） ====================
+//
+// Dropbox 档「未同步文件清单」的数据源：对照云端 blob / 资产清单与本地文件，
+// 把「云端有、本地没有」的对象按原因分类返回，供常驻面板展示。
+//
+// ## 只读契约
+//
+// 本段所有函数对云端只做 GET / LIST，对本地只做存在性探测；不写入、不删除、
+// 不推进任何同步状态。清单解码复用 `SyncManager` 公开实现的
+// `tombstone::PayloadCodec`（E2EE 透明解密），不复制任何加密逻辑。
+//
+// ## 布局常量
+//
+// 云端对象布局是跨版本稳定的存储格式。清单 key 常量与 `sync/mod.rs` 内
+// `SyncManager` 的私有常量一致，按 `repo_check.rs` 的先例在本段复制并注明，
+// 避免改动本轮其他代理独占的 `sync/mod.rs`。
+
+/// 旧版单文件 blob 清单（与 `SyncManager::BLOBS_MANIFEST_KEY` 一致）。
+const UNSYNCED_BLOBS_MANIFEST_KEY: &str = "data_governance/blobs_manifest.json";
+/// per-device blob 清单目录（与 `SyncManager::BLOBS_MANIFESTS_PREFIX` 一致）。
+const UNSYNCED_BLOBS_MANIFESTS_PREFIX: &str = "data_governance/file_manifests/blobs";
+/// 旧版单文件资产清单（与 `SyncManager::ASSETS_MANIFEST_KEY` 一致）。
+const UNSYNCED_ASSETS_MANIFEST_KEY: &str = "data_governance/assets_manifest.json";
+/// per-device 资产清单目录（与 `SyncManager::ASSETS_MANIFESTS_PREFIX` 一致）。
+const UNSYNCED_ASSETS_MANIFESTS_PREFIX: &str = "data_governance/file_manifests/assets";
+/// 报告里最多保留的条目数；超出部分只置 `items_truncated`，绝不静默丢弃计数。
+const UNSYNCED_MAX_ITEMS: usize = 500;
+
+/// 未同步条目的原因类别（camelCase 经 IPC 给前端映射人话与建议）。
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum UnsyncedItemKind {
+    /// 云端对象尚未成功落地本设备（下载失败或尚未执行下载同步）→ 建议重试下载
+    DownloadPending,
+    /// 明文遗留对象：本端已启用 E2EE，防降级拒收 → 建议在源设备重新加密上传
+    LegacyPlaintext,
+    /// 与另一文件仅大小写不同，大小写不敏感文件系统上会互相覆盖 → 建议改名
+    CaseConflict,
+    /// 净化后与另一云端 key 重名且内容不同，无法同时物化 → 建议在源设备改名
+    SanitizedNameConflict,
+    /// key 结构非法 / 无法映射到本地安全路径 → 建议在源设备改名后重新同步
+    InvalidKey,
+}
+
+/// 单条未同步对象。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsyncedItem {
+    pub kind: UnsyncedItemKind,
+    /// 对象域："blob"（VFS 附件，key 为内容哈希）或 "asset"（资产目录相对 key）
+    pub scope: String,
+    /// 云端 key（blob 为内容哈希；asset 形如 `active/images/a.png`）
+    pub key: String,
+    /// 冲突对方 key（大小写 / 净化重名类给出）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterpart: Option<String>,
+    /// 云端登记的明文大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    /// 面向排查的技术细节（中文；前端按 kind 显示人话原因与建议）
+    pub detail: String,
+}
+
+/// 未同步文件清单报告（只读产物，可直接经 IPC 序列化给前端）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsyncedItemsReport {
+    pub items: Vec<UnsyncedItem>,
+    /// 条目超过 [`UNSYNCED_MAX_ITEMS`] 被截断（`total_unsynced` 仍是全量计数）
+    pub items_truncated: bool,
+    /// 截断前的全量未同步条目数
+    pub total_unsynced: usize,
+    /// 参与对照的云端 blob 清单条目总数
+    pub blob_entries_total: usize,
+    /// 参与对照的云端资产清单条目总数
+    pub asset_entries_total: usize,
+    /// 本端是否启用 E2EE（决定明文遗留对象是否会被拒收）
+    pub encryption_enabled: bool,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// 诊断口径的时间戳先后比较（镜像 `SyncManager::timestamp_after` 的语义：
+/// 双方可解析按时间比，否则退回字符串比较；任一为空视为「不晚于」）。
+fn unsynced_timestamp_after(candidate: &str, reference: &str) -> bool {
+    if candidate.trim().is_empty() || reference.trim().is_empty() {
+        return false;
+    }
+    match (
+        crate::data_governance::sync::parse_flexible_timestamp_public(candidate),
+        crate::data_governance::sync::parse_flexible_timestamp_public(reference),
+    ) {
+        (Some(candidate), Some(reference)) => candidate > reference,
+        _ => candidate > reference,
+    }
+}
+
+/// 拉取并解码一个清单 key 前缀下的全部 JSON 清单（旧版单文件 + per-device）。
+///
+/// 列表被截断时如实报错——半份清单会把「已同步」误判成「未同步」，宁可失败。
+async fn unsynced_fetch_manifests<T: serde::de::DeserializeOwned>(
+    storage: &dyn CloudStorage,
+    codec: &dyn crate::data_governance::sync::tombstone::PayloadCodec,
+    legacy_key: &str,
+    prefix: &str,
+    label: &str,
+) -> Result<Vec<T>, String> {
+    let mut manifests = Vec::new();
+    if let Some(bytes) = storage
+        .get(legacy_key)
+        .await
+        .map_err(|e| format!("获取旧{}清单失败: {}", label, e))?
+    {
+        let decoded = codec
+            .decode(&bytes)
+            .map_err(|e| format!("旧{}清单无法解密（请检查加密密码）: {}", label, e))?;
+        manifests.push(
+            serde_json::from_slice::<T>(&decoded)
+                .map_err(|e| format!("旧{}清单损坏: {}", label, e))?,
+        );
+    }
+    let listed = storage
+        .list_outcome(prefix)
+        .await
+        .map_err(|e| format!("列举{}清单失败: {}", label, e))?;
+    if listed.truncated {
+        return Err(format!("{}清单列表被截断，无法给出可信的未同步清单", label));
+    }
+    for file in listed.files {
+        if !file.key.ends_with(".json") {
+            continue;
+        }
+        let bytes = storage
+            .get(&file.key)
+            .await
+            .map_err(|e| format!("读取{}清单 {} 失败: {}", label, file.key, e))?
+            .ok_or_else(|| format!("已列举的{}清单消失: {}", label, file.key))?;
+        let decoded = codec
+            .decode(&bytes)
+            .map_err(|e| format!("{}清单 {} 无法解密: {}", label, file.key, e))?;
+        manifests.push(
+            serde_json::from_slice::<T>(&decoded)
+                .map_err(|e| format!("{}清单 {} 损坏: {}", label, file.key, e))?,
+        );
+    }
+    Ok(manifests)
+}
+
+/// 合并多份 blob 清单（镜像 `download_blobs_manifest` 语义：密文条目一律优先于
+/// 明文遗留条目且永不被降级覆盖，其余按 `updated_at` 较新者胜）。
+fn unsynced_merge_blob_manifests(
+    manifests: Vec<crate::data_governance::sync::BlobsManifest>,
+) -> crate::data_governance::sync::BlobsManifest {
+    let mut merged = crate::data_governance::sync::BlobsManifest::default();
+    for manifest in manifests {
+        if manifest.updated_at > merged.updated_at {
+            merged.updated_at = manifest.updated_at;
+        }
+        for (hash, entry) in manifest.entries {
+            let replace = merged
+                .entries
+                .get(&hash)
+                .map(|current| {
+                    if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() {
+                        true
+                    } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none() {
+                        false
+                    } else {
+                        unsynced_timestamp_after(&entry.updated_at, &current.updated_at)
+                    }
+                })
+                .unwrap_or(true);
+            if replace {
+                merged.entries.insert(hash, entry);
+            }
+        }
+    }
+    merged
+}
+
+/// 合并多份资产清单（镜像 `download_assets_manifest` 语义：revision 高者胜，
+/// 平局按 `updated_at` 较新者胜；诊断口径下 mtime 平局的内容哈希决胜省略——
+/// 该分支只影响「哪份等价条目胜出」，不影响本地是否存在的判定）。
+fn unsynced_merge_asset_manifests(
+    manifests: Vec<crate::data_governance::sync::AssetDirsManifest>,
+) -> crate::data_governance::sync::AssetDirsManifest {
+    let mut merged = crate::data_governance::sync::AssetDirsManifest::default();
+    for manifest in manifests {
+        if manifest.updated_at > merged.updated_at {
+            merged.updated_at = manifest.updated_at;
+        }
+        for (key, entry) in manifest.entries {
+            let replace = merged
+                .entries
+                .get(&key)
+                .map(|current| match entry.revision.cmp(&current.revision) {
+                    std::cmp::Ordering::Greater => true,
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => {
+                        unsynced_timestamp_after(&entry.updated_at, &current.updated_at)
+                    }
+                })
+                .unwrap_or(true);
+            if replace {
+                merged.entries.insert(key, entry);
+            }
+        }
+    }
+    merged
+}
+
+/// blob 相对路径的安全校验：只允许普通路径分量，拒绝 `..` / 绝对路径注入。
+fn unsynced_blob_rel_path_is_safe(rel: &str) -> bool {
+    let path = std::path::Path::new(rel);
+    let mut count = 0usize;
+    for component in path.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return false;
+        }
+        count += 1;
+    }
+    count > 0
+}
+
+/// 资产 key → 本地路径（镜像 `SyncManager::asset_local_path_from_key` 的映射与
+/// 白名单校验；非法 key 返回 `None`，由调用方归入 [`UnsyncedItemKind::InvalidKey`]）。
+fn unsynced_asset_local_path_from_key(
+    active_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
+    key: &str,
+) -> Option<std::path::PathBuf> {
+    let mut parts = key.splitn(3, '/');
+    let root = parts.next()?;
+    let top = parts.next()?;
+    let rel = parts.next()?;
+    if top.is_empty()
+        || matches!(top, "." | "..")
+        || !std::path::Path::new(top)
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    let rel_path = std::path::PathBuf::from(rel);
+    let rel_components = rel_path.components().collect::<Vec<_>>();
+    if rel_components.is_empty()
+        || rel_components
+            .iter()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    let base = match root {
+        "active" => active_dir,
+        "app_data" => app_data_dir,
+        _ => return None,
+    };
+    Some(base.join(top).join(rel_path))
+}
+
+/// 对照云端 blob 清单与本地 `vfs_blobs/`，产出未同步 blob 条目。
+fn unsynced_classify_blobs(
+    manifest: &crate::data_governance::sync::BlobsManifest,
+    blobs_dir: &std::path::Path,
+    encryption_enabled: bool,
+) -> Vec<UnsyncedItem> {
+    let mut items = Vec::new();
+    for (hash, entry) in &manifest.entries {
+        if !unsynced_blob_rel_path_is_safe(&entry.relative_path) {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::InvalidKey,
+                scope: "blob".to_string(),
+                key: hash.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: format!(
+                    "blob 清单登记了非法相对路径 {:?}，已拒绝落地",
+                    entry.relative_path
+                ),
+            });
+            continue;
+        }
+        if blobs_dir.join(&entry.relative_path).exists() {
+            continue;
+        }
+        if encryption_enabled && entry.cipher_sha256.is_none() {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::LegacyPlaintext,
+                scope: "blob".to_string(),
+                key: hash.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: format!(
+                    "云端对象 {} 是启用加密前上传的明文遗留对象，本端已启用端到端加密，防降级拒收",
+                    entry.relative_path
+                ),
+            });
+        } else {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::DownloadPending,
+                scope: "blob".to_string(),
+                key: hash.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: format!("云端对象 {} 尚未成功下载到本设备", entry.relative_path),
+            });
+        }
+    }
+    items
+}
+
+/// 对照云端资产清单与本地资产目录，产出未同步资产条目。
+///
+/// 与 `sync_asset_directories` 的下载语义对齐：
+/// - 净化等价视图：同一净化形态下多个云端 key 时，代表 key 优先取「本身即净化
+///   形态」者，否则字典序最小；被遮蔽方内容不同 → 净化重名冲突（内容相同则是
+///   内容寻址的无害重复，跳过不报）。
+/// - 大小写槽位：本地已存在的 key 优先占位，其次字典序最小的净化 key；槽位被
+///   其他 key 占用的缺席条目 → 大小写冲突。
+///
+/// 本地存在性按净化 key 与原始 key 两个候选路径探测（本地文件可能仍保留净化前
+/// 的原名）；探测不到时如实归入缺席分类。
+/// 大小写敏感的存在性探测。`Path::exists` 在大小写不敏感文件系统（macOS/
+/// Windows 默认配置）上会把 `photo.png` 匹配到 `Photo.PNG`，使本地存在性探测
+/// 把 CaseConflict 误判为"已存在"而漏报。这里自根向下逐段比对父目录的真实
+/// 条目名，只有每一级都完全同名（含大小写）才算存在。
+fn unsynced_path_exists_exact(path: &std::path::Path) -> bool {
+    use std::path::Component;
+
+    // 不存在（含大小写变体也不存在）时直接短路，避免无谓的目录枚举。
+    if !path.exists() {
+        return false;
+    }
+    let mut current = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => current.push(component.as_os_str()),
+            Component::Normal(name) => {
+                let found = std::fs::read_dir(&current)
+                    .map(|entries| {
+                        entries
+                            .filter_map(std::result::Result::ok)
+                            .any(|entry| entry.file_name() == name)
+                    })
+                    .unwrap_or(false);
+                if !found {
+                    return false;
+                }
+                current.push(name);
+            }
+            // 已校验的 key 路径不会含 `.`/`..`；防御性拒绝。
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn unsynced_classify_assets(
+    manifest: &crate::data_governance::sync::AssetDirsManifest,
+    active_dir: &std::path::Path,
+    app_data_dir: &std::path::Path,
+    encryption_enabled: bool,
+) -> Vec<UnsyncedItem> {
+    use crate::data_governance::sync::asset_filenames;
+
+    let mut items = Vec::new();
+
+    // ---- 1. 净化等价视图（镜像下载侧 canonical_to_cloud 构建） -----------------
+    let mut canonical_to_cloud: HashMap<String, String> = HashMap::new();
+    let mut sorted_cloud_keys: Vec<&String> = manifest.entries.keys().collect();
+    sorted_cloud_keys.sort();
+    for cloud_key in &sorted_cloud_keys {
+        let Some(canonical) = asset_filenames::sanitize_asset_key(cloud_key) else {
+            let entry = &manifest.entries[*cloud_key];
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::InvalidKey,
+                scope: "asset".to_string(),
+                key: (*cloud_key).clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: "云端 key 结构非法（应为 root/目录/相对路径 三段），无法映射到本地"
+                    .to_string(),
+            });
+            continue;
+        };
+        match canonical_to_cloud.entry(canonical) {
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert((*cloud_key).clone());
+            }
+            std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                let incoming_is_canonical = cloud_key.as_str() == occupied.key().as_str();
+                let current_is_canonical = occupied.get() == occupied.key();
+                let (shadowed, kept) = if incoming_is_canonical && !current_is_canonical {
+                    let previous = occupied.insert((*cloud_key).clone());
+                    (previous, (*cloud_key).clone())
+                } else {
+                    ((*cloud_key).clone(), occupied.get().clone())
+                };
+                // 内容相同的净化重复是内容寻址的无害等价条目，不打扰用户
+                let divergent = match (manifest.entries.get(&shadowed), manifest.entries.get(&kept))
+                {
+                    (Some(a), Some(b)) => a.sha256 != b.sha256,
+                    _ => false,
+                };
+                if divergent {
+                    let size = manifest.entries.get(&shadowed).map(|entry| entry.size);
+                    items.push(UnsyncedItem {
+                        kind: UnsyncedItemKind::SanitizedNameConflict,
+                        scope: "asset".to_string(),
+                        key: shadowed,
+                        counterpart: Some(kept),
+                        size,
+                        detail: "与另一云端条目在文件名净化后重名且内容不同，本地无法同时物化"
+                            .to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // ---- 2. 本地存在性探测（净化 key 与原始 key 双候选路径） --------------------
+    let mut local_exists: HashMap<&String, bool> = HashMap::new();
+    for (canonical, cloud_key) in &canonical_to_cloud {
+        let mut exists = false;
+        for candidate in [canonical.as_str(), cloud_key.as_str()] {
+            if let Some(path) =
+                unsynced_asset_local_path_from_key(active_dir, app_data_dir, candidate)
+            {
+                if unsynced_path_exists_exact(&path) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        local_exists.insert(canonical, exists);
+    }
+
+    // ---- 3. 大小写槽位（镜像下载侧 claimed_slots：本地已存在者优先占位） --------
+    let mut claimed_slots: HashMap<String, String> = HashMap::new();
+    let mut sorted_canonicals: Vec<&String> = canonical_to_cloud.keys().collect();
+    sorted_canonicals.sort();
+    for canonical in &sorted_canonicals {
+        if local_exists.get(*canonical).copied().unwrap_or(false) {
+            claimed_slots
+                .entry(asset_filenames::casefold_key(canonical))
+                .or_insert_with(|| (*canonical).clone());
+        }
+    }
+    for canonical in &sorted_canonicals {
+        claimed_slots
+            .entry(asset_filenames::casefold_key(canonical))
+            .or_insert_with(|| (*canonical).clone());
+    }
+
+    // ---- 4. 缺席条目分类 -----------------------------------------------------
+    for canonical in &sorted_canonicals {
+        if local_exists.get(*canonical).copied().unwrap_or(false) {
+            continue;
+        }
+        let cloud_key = &canonical_to_cloud[*canonical];
+        let entry = &manifest.entries[cloud_key];
+        if unsynced_asset_local_path_from_key(active_dir, app_data_dir, canonical).is_none() {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::InvalidKey,
+                scope: "asset".to_string(),
+                key: cloud_key.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: "净化后的 key 仍无法映射到本地安全路径，已拒绝落地".to_string(),
+            });
+            continue;
+        }
+        let slot = asset_filenames::casefold_key(canonical);
+        if let Some(owner) = claimed_slots.get(&slot) {
+            if owner.as_str() != canonical.as_str() {
+                items.push(UnsyncedItem {
+                    kind: UnsyncedItemKind::CaseConflict,
+                    scope: "asset".to_string(),
+                    key: cloud_key.clone(),
+                    counterpart: Some(owner.clone()),
+                    size: Some(entry.size),
+                    detail: "与另一文件仅文件名大小写不同，为避免在大小写不敏感的系统上互相覆盖已跳过下载"
+                        .to_string(),
+                });
+                continue;
+            }
+        }
+        if encryption_enabled && entry.cipher_sha256.is_none() {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::LegacyPlaintext,
+                scope: "asset".to_string(),
+                key: cloud_key.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: "云端条目是启用加密前上传的明文遗留对象，本端已启用端到端加密，防降级拒收"
+                    .to_string(),
+            });
+        } else {
+            items.push(UnsyncedItem {
+                kind: UnsyncedItemKind::DownloadPending,
+                scope: "asset".to_string(),
+                key: cloud_key.clone(),
+                counterpart: None,
+                size: Some(entry.size),
+                detail: "云端条目尚未成功下载到本设备".to_string(),
+            });
+        }
+    }
+
+    items
+}
+
+/// [R11-unsynced-ui] 未同步文件清单（Dropbox 档，**只读**）。
+///
+/// 对照云端 blob / 资产清单与本地文件，把「云端有、本地没有」的对象按原因
+/// 分类返回：下载未落地、明文遗留拒收、大小写冲突、净化重名、非法 key。
+/// 不写入、不删除、不推进任何同步状态；tombstone 已删除的条目不计入。
+#[tauri::command]
+pub async fn data_governance_list_unsynced_items(
+    app: tauri::AppHandle,
+    mut cloud_config: CloudStorageConfig,
+) -> Result<UnsyncedItemsReport, String> {
+    use crate::data_governance::sync::tombstone;
+
+    check_maintenance_mode(&app)?;
+
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    let active_dir = get_active_data_dir(&app)?;
+    let app_data_dir = get_app_data_dir(&app).unwrap_or_else(|_| active_dir.clone());
+    let device_id = get_device_id(&app);
+    // 只用于清单解码（PayloadCodec）与 E2EE 状态判断，不执行任何同步动作
+    let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
+    let encryption_enabled = manager.encryption_enabled();
+
+    let storage = create_storage(&cloud_config)
+        .await
+        .map_err(|e| format!("创建云存储失败: {}", e))?;
+    let storage = storage.as_ref();
+
+    // ---- blob 清单 + tombstone ------------------------------------------------
+    let blob_manifests = unsynced_fetch_manifests::<crate::data_governance::sync::BlobsManifest>(
+        storage,
+        &manager,
+        UNSYNCED_BLOBS_MANIFEST_KEY,
+        UNSYNCED_BLOBS_MANIFESTS_PREFIX,
+        " blob ",
+    )
+    .await?;
+    let mut blob_manifest = unsynced_merge_blob_manifests(blob_manifests);
+    let blob_tombstones = tombstone::download_blob_tombstones(storage, &manager)
+        .await
+        .map_err(|e| format!("获取 blob tombstone 失败: {}", e))?;
+    for (hash, tombstone_entry) in blob_tombstones.entries {
+        let should_remove = blob_manifest
+            .entries
+            .get(&hash)
+            .map(|entry| !unsynced_timestamp_after(&entry.updated_at, &tombstone_entry.deleted_at))
+            .unwrap_or(false);
+        if should_remove {
+            blob_manifest.entries.remove(&hash);
+        }
+    }
+
+    // ---- 资产清单 + tombstone --------------------------------------------------
+    let asset_manifests =
+        unsynced_fetch_manifests::<crate::data_governance::sync::AssetDirsManifest>(
+            storage,
+            &manager,
+            UNSYNCED_ASSETS_MANIFEST_KEY,
+            UNSYNCED_ASSETS_MANIFESTS_PREFIX,
+            "资产",
+        )
+        .await?;
+    let mut asset_manifest = unsynced_merge_asset_manifests(asset_manifests);
+    let asset_tombstones = tombstone::download_asset_tombstones(storage, &manager)
+        .await
+        .map_err(|e| format!("获取资产 tombstone 失败: {}", e))?;
+    for (key, tombstone_entry) in asset_tombstones.entries {
+        let should_remove = asset_manifest
+            .entries
+            .get(&key)
+            .map(|entry| !unsynced_timestamp_after(&entry.updated_at, &tombstone_entry.deleted_at))
+            .unwrap_or(false);
+        if should_remove {
+            asset_manifest.entries.remove(&key);
+        }
+    }
+
+    // ---- 对照本地并分类 ---------------------------------------------------------
+    let blobs_dir = active_dir.join("vfs_blobs");
+    let mut items = unsynced_classify_blobs(&blob_manifest, &blobs_dir, encryption_enabled);
+    items.extend(unsynced_classify_assets(
+        &asset_manifest,
+        &active_dir,
+        &app_data_dir,
+        encryption_enabled,
+    ));
+    items.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.key.cmp(&b.key)));
+
+    let total_unsynced = items.len();
+    let items_truncated = total_unsynced > UNSYNCED_MAX_ITEMS;
+    items.truncate(UNSYNCED_MAX_ITEMS);
+
+    Ok(UnsyncedItemsReport {
+        items,
+        items_truncated,
+        total_unsynced,
+        blob_entries_total: blob_manifest.entries.len(),
+        asset_entries_total: asset_manifest.entries.len(),
+        encryption_enabled,
+        generated_at: chrono::Utc::now(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ============ [R04-sync-e2ee] 记录级上传加密一致性策略 ============
+
+    const ENCRYPTION_MARKER_KEY: &str = ".encryption-marker";
+
+    /// 测试用内存云存储（仅覆盖策略检查用到的 get/put，其余最小实现）。
+    #[derive(Default)]
+    struct PolicyMemoryStorage {
+        files: std::sync::Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for std::sync::Arc<PolicyMemoryStorage> {
+        fn provider_name(&self) -> &'static str {
+            "memory"
+        }
+
+        async fn check_connection(&self) -> crate::cloud_storage::Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> crate::cloud_storage::Result<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), data.to_vec());
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> crate::cloud_storage::Result<Option<Vec<u8>>> {
+            Ok(self.files.lock().unwrap().get(key).cloned())
+        }
+
+        async fn list(
+            &self,
+            prefix: &str,
+        ) -> crate::cloud_storage::Result<Vec<crate::cloud_storage::FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, data)| crate::cloud_storage::FileInfo {
+                    key: key.clone(),
+                    size: data.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                })
+                .collect())
+        }
+
+        async fn delete(&self, key: &str) -> crate::cloud_storage::Result<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+
+        async fn stat(
+            &self,
+            key: &str,
+        ) -> crate::cloud_storage::Result<Option<crate::cloud_storage::FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .get(key)
+                .map(|data| crate::cloud_storage::FileInfo {
+                    key: key.to_string(),
+                    size: data.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                }))
+        }
+    }
+
+    fn policy_storage() -> std::sync::Arc<PolicyMemoryStorage> {
+        std::sync::Arc::new(PolicyMemoryStorage::default())
+    }
+
+    #[test]
+    fn config_encryption_password_ignores_empty_password() {
+        let mut config = CloudStorageConfig::default();
+        assert_eq!(config_encryption_password(&config), None);
+        config.encryption_password = Some(String::new());
+        assert_eq!(config_encryption_password(&config), None);
+        config.encryption_password = Some("pw".to_string());
+        assert_eq!(config_encryption_password(&config), Some("pw"));
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_allows_plaintext_without_marker() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", None)
+            .await
+            .expect("无标记且未启用加密时应放行");
+        assert!(
+            !storage
+                .files
+                .lock()
+                .unwrap()
+                .contains_key(ENCRYPTION_MARKER_KEY),
+            "明文上传不应写入加密标记"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_writes_marker_with_verifier_when_encrypted() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", Some("pw"))
+            .await
+            .expect("启用加密时应放行");
+        let marker_bytes = storage
+            .files
+            .lock()
+            .unwrap()
+            .get(ENCRYPTION_MARKER_KEY)
+            .cloned()
+            .expect("加密上传前必须先写入云端加密标记");
+        let marker: serde_json::Value = serde_json::from_slice(&marker_bytes).unwrap();
+        assert!(
+            marker.get("keyVerifier").map(|v| !v.is_null()) == Some(true),
+            "记录级上传登记的标记必须携带密码校验子: {marker}"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_rejects_plaintext_when_marker_exists() {
+        let storage = policy_storage();
+        // 另一台设备曾经加密上传，在同一 root 留下标记
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", Some("pw"))
+            .await
+            .unwrap();
+
+        let error =
+            enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-b", None)
+                .await
+                .expect_err("云端有加密标记且本机无密码时必须拒绝明文记录级上传");
+        assert!(
+            error.contains("已存在端到端加密备份"),
+            "错误应说明拒绝原因: {error}"
+        );
+        assert!(
+            error.contains("加密密码"),
+            "错误应给出可操作的处理路径: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_allows_same_password_when_marker_exists() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", Some("pw"))
+            .await
+            .unwrap();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-b", Some("pw"))
+            .await
+            .expect("已有标记且本机密码一致时应放行");
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_rejects_wrong_password_before_upload() {
+        let storage = policy_storage();
+        // 设备 A 用正确密码登记带校验子的标记
+        enforce_record_upload_encryption_policy(
+            Box::new(storage.clone()),
+            "device-a",
+            Some("correct-pw"),
+        )
+        .await
+        .unwrap();
+        let original = storage
+            .files
+            .lock()
+            .unwrap()
+            .get(ENCRYPTION_MARKER_KEY)
+            .cloned()
+            .unwrap();
+
+        // 设备 B 配错密码：记录级上传必须在写入任何对象之前失败
+        let error = enforce_record_upload_encryption_policy(
+            Box::new(storage.clone()),
+            "device-b",
+            Some("wrong-pw"),
+        )
+        .await
+        .expect_err("错误密码必须在记录级上传前被拦截");
+        assert!(
+            error.contains("密码") && error.contains("不一致"),
+            "错误应说明密码不一致: {error}"
+        );
+
+        // 标记不被错密码设备覆盖
+        let after = storage
+            .files
+            .lock()
+            .unwrap()
+            .get(ENCRYPTION_MARKER_KEY)
+            .cloned()
+            .unwrap();
+        assert_eq!(original, after, "错密码设备不得改写云端加密标记");
+    }
+
+    fn conflicts_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __sync_conflicts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                side TEXT NOT NULL CHECK(side IN ('local','cloud')),
+                data_json TEXT NOT NULL,
+                data_hash TEXT NOT NULL DEFAULT '',
+                winning_device_id TEXT,
+                losing_device_id TEXT,
+                detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                resolved_at TEXT,
+                resolution TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_conflict(
+        conn: &rusqlite::Connection,
+        table_name: &str,
+        record_id: &str,
+        side: &str,
+        resolved_at: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO __sync_conflicts (table_name, record_id, side, data_json, resolved_at)
+             VALUES (?1, ?2, ?3, '{}', ?4)",
+            rusqlite::params![table_name, record_id, side, resolved_at],
+        )
+        .unwrap();
+    }
+
+    /// 锁定计数口径：groups 按 (table_name, record_id) 去重，rows 是未解决的
+    /// 原始行数；一次冲突（local + cloud 两行）算 1 组 2 行。
+    #[test]
+    fn count_unresolved_conflicts_reports_groups_and_rows() {
+        let conn = conflicts_test_db();
+        // 记录 A：完整的 local + cloud 一对 → 1 组 2 行
+        insert_conflict(&conn, "notes", "a", "local", None);
+        insert_conflict(&conn, "notes", "a", "cloud", None);
+        // 记录 B：只剩单边行 → 仍算 1 组 1 行
+        insert_conflict(&conn, "notes", "b", "cloud", None);
+        // 已解决的行不参与计数
+        insert_conflict(&conn, "notes", "c", "local", Some("2026-01-01T00:00:00Z"));
+        insert_conflict(&conn, "notes", "c", "cloud", Some("2026-01-01T00:00:00Z"));
+        // 不同表的同名 record_id 是不同的组
+        insert_conflict(&conn, "tags", "a", "local", None);
+
+        let (groups, rows) = count_unresolved_conflicts(&conn).unwrap();
+        assert_eq!(groups, 3, "notes/a + notes/b + tags/a 共 3 组");
+        assert_eq!(rows, 4, "未解决的原始行共 4 行");
+    }
+
+    #[test]
+    fn count_unresolved_conflicts_is_zero_without_table_or_rows() {
+        let empty = rusqlite::Connection::open_in_memory().unwrap();
+        assert_eq!(count_unresolved_conflicts(&empty).unwrap(), (0, 0));
+
+        let conn = conflicts_test_db();
+        assert_eq!(count_unresolved_conflicts(&conn).unwrap(), (0, 0));
+
+        insert_conflict(&conn, "notes", "a", "local", Some("2026-01-01T00:00:00Z"));
+        assert_eq!(
+            count_unresolved_conflicts(&conn).unwrap(),
+            (0, 0),
+            "全部已解决时必须为 0"
+        );
+    }
+
+    /// 锁定 count 与 list 的分组口径一致：两者都必须按 (table_name, record_id)
+    /// 分组，count API 的 total_groups 才能与冲突面板的分页总数对齐。
+    #[test]
+    fn count_and_list_share_group_semantics() {
+        let source = include_str!("commands_sync.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        assert!(
+            production_source
+                .contains("COUNT(DISTINCT table_name || '\\u{1f}' || record_id), COUNT(*)"),
+            "count API 必须同时给出 groups（按 table_name+record_id 去重）与 rows 两种口径"
+        );
+        assert!(
+            production_source.contains("row.table_name.clone(),")
+                && production_source.contains("row.record_id.clone(),"),
+            "list API 的分页分组键必须保持 (database, table_name, record_id)"
+        );
+    }
 
     #[test]
     fn progress_v2_download_paths_enforce_prune_gap_check() {
@@ -4768,5 +6136,400 @@ mod tests {
 
         let err = validate_sync_registry_drift(temp.path()).unwrap_err();
         assert!(err.contains("vfs.review_history 存在 __change_log 触发器"));
+    }
+}
+
+// ==================== [R4-tombstone-serial] tombstone 直接命令串行化测试 ====================
+//
+// 只写不跑（本轮禁止编译/测试执行）。测试用独立 semaphore 注入
+// `try_acquire_tombstone_write_permit_on`，确定性复现双调用交错，
+// 不触碰全局 `BACKUP_GLOBAL_LIMITER`，与其他测试无共享状态。
+#[cfg(test)]
+mod tombstone_serial_tests {
+    use super::{try_acquire_tombstone_write_permit_on, TOMBSTONE_LIMITER_BUSY_CODE};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    /// 最小 mock storage：模拟每设备 tombstone 清单对象。
+    /// 只关心 read-modify-write 的交错语义，不需要完整 CloudStorage trait。
+    #[derive(Default)]
+    struct MockTombstoneStore {
+        manifest: tokio::sync::Mutex<Vec<String>>,
+        write_count: AtomicUsize,
+    }
+
+    impl MockTombstoneStore {
+        /// 对应 `tombstone::download_*_tombstones_for_device`
+        async fn download(&self) -> Vec<String> {
+            self.manifest.lock().await.clone()
+        }
+
+        /// 对应 `tombstone::upload_*_tombstones`（整清单覆盖写）
+        async fn upload(&self, manifest: Vec<String>) {
+            self.write_count.fetch_add(1, Ordering::SeqCst);
+            *self.manifest.lock().await = manifest;
+        }
+
+        fn writes(&self) -> usize {
+            self.write_count.load(Ordering::SeqCst)
+        }
+
+        async fn entries(&self) -> Vec<String> {
+            self.manifest.lock().await.clone()
+        }
+    }
+
+    /// 第一入者在「已下载、未上传」的交错窗口内停住所用的门。
+    type InterleaveGate = (
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    );
+
+    /// 与生产命令同形的守卫流程：先过 limiter，再做
+    /// download → merge → upload（对应 `SyncManager::mark_blob_deleted` /
+    /// `mark_asset_deleted` 的 read-modify-write）。
+    async fn guarded_mark_deleted(
+        limiter: Arc<Semaphore>,
+        store: Arc<MockTombstoneStore>,
+        hash: String,
+        gate: Option<InterleaveGate>,
+    ) -> Result<(), String> {
+        let _permit = try_acquire_tombstone_write_permit_on(limiter)?;
+        let mut manifest = store.download().await;
+        if let Some((entered_tx, release_rx)) = gate {
+            // 通知测试主体：已进入最危险的交错窗口（清单已读、尚未写回）
+            let _ = entered_tx.send(());
+            let _ = release_rx.await;
+        }
+        manifest.push(hash);
+        store.upload(manifest).await;
+        Ok(())
+    }
+
+    /// 双调用交错：第一入者停在 download 与 upload 之间时，第二入者必须
+    /// 拿到 limiter busy 稳定码立即失败且零写入；不得出现「两边各拿旧清单
+    /// 各写各的、后写覆盖先写」的 lost update。busy 方按稳定码重试后，
+    /// 两条 tombstone 必须都在。
+    #[tokio::test]
+    async fn concurrent_direct_tombstone_marks_serialize_or_fail_busy() {
+        let limiter = Arc::new(Semaphore::new(1));
+        let store = Arc::new(MockTombstoneStore::default());
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+
+        let first = tokio::spawn(guarded_mark_deleted(
+            Arc::clone(&limiter),
+            Arc::clone(&store),
+            "blob-a".to_string(),
+            Some((entered_tx, release_rx)),
+        ));
+
+        // 等第一入者确实进入交错窗口（持锁、已读旧清单、未写回）
+        entered_rx.await.expect("第一入者应进入交错窗口");
+
+        // 第二入者在窗口内进入：必须立即拿到 busy 稳定码，而不是并行写
+        let second_err = guarded_mark_deleted(
+            Arc::clone(&limiter),
+            Arc::clone(&store),
+            "blob-b".to_string(),
+            None,
+        )
+        .await
+        .expect_err("交错窗口内的第二入者必须被同设备互斥挡下");
+        assert!(
+            second_err.contains(TOMBSTONE_LIMITER_BUSY_CODE),
+            "busy 错误必须携带稳定码 {TOMBSTONE_LIMITER_BUSY_CODE}: {second_err}"
+        );
+        assert_eq!(
+            store.writes(),
+            0,
+            "被挡下的第二入者不得写入任何字节（不得各写各的坏状态）"
+        );
+
+        // 放行第一入者：它写回的清单必须完整包含自己的条目
+        release_tx.send(()).expect("放行第一入者");
+        first
+            .await
+            .expect("第一入者任务不应 panic")
+            .expect("第一入者应成功完成");
+        assert_eq!(store.entries().await, vec!["blob-a".to_string()]);
+        assert_eq!(store.writes(), 1);
+
+        // busy 方释放锁后重试：合并写入，先写者的 tombstone 不丢
+        guarded_mark_deleted(limiter, Arc::clone(&store), "blob-b".to_string(), None)
+            .await
+            .expect("锁释放后的重试应成功");
+        assert_eq!(
+            store.entries().await,
+            vec!["blob-a".to_string(), "blob-b".to_string()],
+            "串行重试后两条 tombstone 都必须在（无 lost update）"
+        );
+    }
+
+    /// busy 稳定码是前端/调用方的重试契约，锁死字面量。
+    #[test]
+    fn tombstone_limiter_busy_code_is_stable() {
+        assert_eq!(TOMBSTONE_LIMITER_BUSY_CODE, "E_DG_TOMBSTONE_LIMITER_BUSY");
+        let limiter = Arc::new(Semaphore::new(1));
+        let _held = limiter.clone().try_acquire_owned().unwrap();
+        let err = try_acquire_tombstone_write_permit_on(limiter).unwrap_err();
+        assert!(err.contains("[E_DG_TOMBSTONE_LIMITER_BUSY]"));
+        assert!(
+            err.contains("正在进行中"),
+            "错误信息应可读并提示稍后重试: {err}"
+        );
+    }
+
+    /// 源码契约：两个 tombstone 直接命令都必须先过全局互斥；且（不变量 12）
+    /// 仍必须经 `SyncManager::mark_*` 路由——其内部的 PUT 后 GET 复读闸
+    /// （`tombstone.rs` fail-closed）不许被绕过或放宽，命令层不得出现
+    /// 绕过复读的裸 `storage.put`。
+    #[test]
+    fn tombstone_direct_commands_take_permit_and_keep_readback_invariant() {
+        let source = include_str!("commands_sync.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        let section_start = production
+            .find("// ==================== Tombstone API ====================")
+            .expect("Tombstone API section exists");
+        let section_end = production
+            .find("// ==================== __sync_conflicts")
+            .expect("Tombstone API section is bounded");
+        let section = &production[section_start..section_end];
+
+        assert_eq!(
+            section
+                .matches("let _permit = acquire_tombstone_write_permit()?;")
+                .count(),
+            2,
+            "mark_blob_deleted 与 mark_asset_deleted 两个直接命令都必须持全局互斥许可"
+        );
+        // 许可必须在创建云存储之前取得，覆盖整个远端写窗口
+        let blob_permit = section
+            .find("let _permit = acquire_tombstone_write_permit()?;")
+            .unwrap();
+        let blob_storage = section.find("let storage = create_storage").unwrap();
+        assert!(
+            blob_permit < blob_storage,
+            "互斥许可必须先于云存储创建，确保持锁窗口覆盖全部远端读写"
+        );
+
+        // 不变量 12：命令仍经 SyncManager（内部 upload_*_tombstones 走复读闸）
+        assert!(
+            section.contains(".mark_blob_deleted(storage.as_ref()"),
+            "blob tombstone 必须经 SyncManager::mark_blob_deleted（含复读闸）"
+        );
+        assert!(
+            section.contains(".mark_asset_deleted(storage.as_ref()"),
+            "asset tombstone 必须经 SyncManager::mark_asset_deleted（含复读闸）"
+        );
+        assert!(
+            !section.contains("storage.put("),
+            "tombstone 命令层不得绕过复读闸直接写云端对象"
+        );
+    }
+}
+
+// ==================== [R11-unsynced-ui] 未同步清单分类单元测试 ====================
+#[cfg(test)]
+mod unsynced_items_tests {
+    use super::*;
+    use crate::data_governance::sync::{
+        AssetDirsManifest, AssetFileEntry, BlobEntry, BlobsManifest,
+    };
+
+    fn blob_entry(relative_path: &str, cipher: Option<&str>, updated_at: &str) -> BlobEntry {
+        BlobEntry {
+            relative_path: relative_path.to_string(),
+            size: 42,
+            updated_at: updated_at.to_string(),
+            cipher_sha256: cipher.map(str::to_string),
+            cipher_size: cipher.map(|_| 58),
+        }
+    }
+
+    fn asset_entry(sha256: &str, cipher: Option<&str>) -> AssetFileEntry {
+        AssetFileEntry {
+            sha256: sha256.to_string(),
+            size: 7,
+            updated_at: "2026-08-24T00:00:00Z".to_string(),
+            object_key: None,
+            base_sha256: None,
+            revision: 1,
+            device_id: None,
+            cipher_sha256: cipher.map(str::to_string),
+            cipher_size: cipher.map(|_| 23),
+        }
+    }
+
+    fn kinds_by_key(items: &[UnsyncedItem]) -> HashMap<String, UnsyncedItemKind> {
+        items
+            .iter()
+            .map(|item| (item.key.clone(), item.kind))
+            .collect()
+    }
+
+    #[test]
+    fn classify_blobs_distinguishes_present_pending_and_legacy_plaintext() {
+        let temp = tempfile::tempdir().unwrap();
+        let blobs_dir = temp.path().join("vfs_blobs");
+        std::fs::create_dir_all(blobs_dir.join("ab")).unwrap();
+        std::fs::write(blobs_dir.join("ab/present.bin"), b"x").unwrap();
+
+        let mut manifest = BlobsManifest::default();
+        manifest.entries.insert(
+            "hash-present".to_string(),
+            blob_entry("ab/present.bin", Some("c1"), "2026-08-24T00:00:00Z"),
+        );
+        manifest.entries.insert(
+            "hash-missing".to_string(),
+            blob_entry("cd/missing.bin", Some("c2"), "2026-08-24T00:00:00Z"),
+        );
+        manifest.entries.insert(
+            "hash-legacy".to_string(),
+            blob_entry("ef/legacy.bin", None, "2026-08-24T00:00:00Z"),
+        );
+        manifest.entries.insert(
+            "hash-evil".to_string(),
+            blob_entry("../escape.bin", Some("c3"), "2026-08-24T00:00:00Z"),
+        );
+
+        let items = unsynced_classify_blobs(&manifest, &blobs_dir, true);
+        let kinds = kinds_by_key(&items);
+        assert!(!kinds.contains_key("hash-present"), "本地已存在的不得上报");
+        assert_eq!(kinds["hash-missing"], UnsyncedItemKind::DownloadPending);
+        assert_eq!(kinds["hash-legacy"], UnsyncedItemKind::LegacyPlaintext);
+        assert_eq!(kinds["hash-evil"], UnsyncedItemKind::InvalidKey);
+
+        // 未启用加密时，明文遗留对象只是普通的待下载对象
+        let items_plain = unsynced_classify_blobs(&manifest, &blobs_dir, false);
+        let kinds_plain = kinds_by_key(&items_plain);
+        assert_eq!(
+            kinds_plain["hash-legacy"],
+            UnsyncedItemKind::DownloadPending
+        );
+    }
+
+    #[test]
+    fn classify_assets_reports_case_conflict_sanitized_conflict_and_invalid_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let active_dir = temp.path().join("active");
+        let app_data_dir = temp.path().join("app_data");
+        // 本地已有 active/images/Photo.PNG → 同 casefold 槽位的 photo.png 是冲突方
+        std::fs::create_dir_all(active_dir.join("images")).unwrap();
+        std::fs::write(active_dir.join("images/Photo.PNG"), b"local").unwrap();
+
+        let mut manifest = AssetDirsManifest::default();
+        manifest.entries.insert(
+            "active/images/Photo.PNG".to_string(),
+            asset_entry("sha-local", Some("c1")),
+        );
+        manifest.entries.insert(
+            "active/images/photo.png".to_string(),
+            asset_entry("sha-other", Some("c2")),
+        );
+        // 净化后重名且内容不同：`report?.md` 的可逆编码结果与清单里另一个
+        // 已编码形态的 key 撞名（R11 起 `?` 不再净化为 `_`，而是全宽 `？` 编码）。
+        let encoded_report =
+            crate::data_governance::sync::asset_filenames::encode_asset_key_segments(
+                "active",
+                "documents",
+                &["report?.md"],
+            )
+            .expect("encode report?.md");
+        manifest.entries.insert(
+            "active/documents/report?.md".to_string(),
+            asset_entry("sha-a", Some("c3")),
+        );
+        manifest
+            .entries
+            .insert(encoded_report, asset_entry("sha-b", Some("c4")));
+        // 结构非法：只有两段
+        manifest.entries.insert(
+            "active/only-two".to_string(),
+            asset_entry("sha-c", Some("c5")),
+        );
+        // 普通缺席条目 + 明文遗留条目
+        manifest.entries.insert(
+            "active/audio/lecture.mp3".to_string(),
+            asset_entry("sha-d", Some("c6")),
+        );
+        manifest.entries.insert(
+            "active/videos/old.mp4".to_string(),
+            asset_entry("sha-e", None),
+        );
+
+        let items = unsynced_classify_assets(&manifest, &active_dir, &app_data_dir, true);
+        let kinds = kinds_by_key(&items);
+
+        assert!(
+            !kinds.contains_key("active/images/Photo.PNG"),
+            "本地已存在的不得上报"
+        );
+        assert_eq!(
+            kinds["active/images/photo.png"],
+            UnsyncedItemKind::CaseConflict
+        );
+        let case_item = items
+            .iter()
+            .find(|item| item.key == "active/images/photo.png")
+            .unwrap();
+        assert_eq!(
+            case_item.counterpart.as_deref(),
+            Some("active/images/Photo.PNG")
+        );
+        assert_eq!(
+            kinds["active/documents/report?.md"],
+            UnsyncedItemKind::SanitizedNameConflict
+        );
+        assert_eq!(kinds["active/only-two"], UnsyncedItemKind::InvalidKey);
+        assert_eq!(
+            kinds["active/audio/lecture.mp3"],
+            UnsyncedItemKind::DownloadPending
+        );
+        assert_eq!(
+            kinds["active/videos/old.mp4"],
+            UnsyncedItemKind::LegacyPlaintext
+        );
+    }
+
+    #[test]
+    fn merge_blob_manifests_prefers_cipher_entries_over_plaintext() {
+        let mut older = BlobsManifest::default();
+        older.entries.insert(
+            "h1".to_string(),
+            blob_entry("ab/a.bin", Some("cipher"), "2026-08-01T00:00:00Z"),
+        );
+        let mut newer = BlobsManifest::default();
+        newer.entries.insert(
+            "h1".to_string(),
+            blob_entry("ab/a.bin", None, "2026-08-20T00:00:00Z"),
+        );
+
+        // 密文条目不得被时间戳更新的明文条目降级覆盖
+        let merged = unsynced_merge_blob_manifests(vec![older, newer]);
+        assert!(merged.entries["h1"].cipher_sha256.is_some());
+    }
+
+    #[test]
+    fn merge_asset_manifests_higher_revision_wins() {
+        let mut low = AssetDirsManifest::default();
+        let mut entry_low = asset_entry("sha-old", None);
+        entry_low.revision = 1;
+        low.entries
+            .insert("active/images/a.png".to_string(), entry_low);
+
+        let mut high = AssetDirsManifest::default();
+        let mut entry_high = asset_entry("sha-new", None);
+        entry_high.revision = 3;
+        high.entries
+            .insert("active/images/a.png".to_string(), entry_high);
+
+        let merged = unsynced_merge_asset_manifests(vec![high, low]);
+        assert_eq!(merged.entries["active/images/a.png"].sha256, "sha-new");
     }
 }

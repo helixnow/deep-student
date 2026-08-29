@@ -774,6 +774,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(usage_count, 1, "{ctx}: llm_usage 读回 smoke 失败");
+        let cache_write: Option<i64> = llm
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'usage_smoke_001'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            cache_write, None,
+            "{ctx}: 未携带新列的旧式 INSERT 必须保持 NULL（无测量）"
+        );
     }
 
     // ========================================================================

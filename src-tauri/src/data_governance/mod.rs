@@ -46,6 +46,7 @@ pub mod file_deletion_queue;
 pub mod init;
 pub mod migration;
 pub mod plugin;
+pub mod restore_codes;
 pub mod schema_registry;
 pub mod sync;
 
@@ -261,9 +262,11 @@ pub use commands_sync::{
     data_governance_count_record_conflicts, data_governance_detect_conflicts,
     data_governance_detect_prune_gap, data_governance_export_sync_data,
     data_governance_get_sync_status, data_governance_import_sync_data,
-    data_governance_list_record_conflicts, data_governance_mark_asset_deleted,
+    data_governance_list_record_conflicts, data_governance_list_sync_snapshot_batches,
+    data_governance_list_unsynced_items, data_governance_mark_asset_deleted,
     data_governance_mark_blob_deleted, data_governance_purge_resolved_conflicts,
-    data_governance_resolve_conflicts, data_governance_resolve_record_conflict,
+    data_governance_repo_check, data_governance_resolve_conflicts,
+    data_governance_resolve_record_conflict, data_governance_rollback_sync_snapshot_batch,
     data_governance_run_sync, data_governance_run_sync_with_progress,
 };
 

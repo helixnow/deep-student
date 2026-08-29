@@ -549,6 +549,19 @@ impl SyncStateStore {
     }
 }
 
+/// 串行化会写入共享 `sync_state.db` 的测试（仅测试编译，产品行为不变）。
+///
+/// `reserve_tombstone_event_seq_with_existing` 在 DEFERRED 事务里做
+/// SELECT→INSERT 锁升级；`open_default` 每次调用都开新连接指向同一个
+/// 磁盘库，两个并发连接同时升级时 SQLite 的死锁检测会绕过 busy_timeout
+/// 直接返回 `database is locked`。并行测试 harness 是唯一常态触发场景，
+/// 所以在会写库的测试入口处取该锁串行执行。
+#[cfg(test)]
+pub(crate) fn test_write_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

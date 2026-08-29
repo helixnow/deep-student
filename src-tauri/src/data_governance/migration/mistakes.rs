@@ -272,6 +272,17 @@ pub const V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED: MigrationDef = MigrationDe
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
 
+/// V20260824: 归一化历史 Anki 卡片中可空的 JSON / 来源字段。
+///
+/// 只补齐 NULL / 空串，不改写有效 extra_fields_json，确保 `_qa_flags` 与
+/// `_occlusion` 等结构化元数据在升级中原样保留。
+pub const V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON: MigrationDef = MigrationDef::new(
+    20260824,
+    "normalize_anki_card_optional_json",
+    include_str!("../../../migrations/mistakes/V20260824__normalize_anki_card_optional_json.sql"),
+)
+.idempotent();
+
 /// V20260720: durable FSRS -> mastery outbox marker.
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
@@ -424,6 +435,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260722_FSRS_SCHEDULER_HARDENING,
         V20260723_TEMPLATE_USER_STATE,
         V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED,
+        V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON,
     ],
 };
 
@@ -667,9 +679,21 @@ mod tests {
         assert_eq!(anki_dedup.name, "anki_dedup_index_exclude_deleted");
         assert!(anki_dedup.idempotent);
 
+        let normalize_anki_json = MISTAKES_MIGRATIONS
+            .get(20260824)
+            .expect("V20260824 should exist");
+        assert_eq!(
+            normalize_anki_json.name,
+            "normalize_anki_card_optional_json"
+        );
+        assert!(normalize_anki_json.idempotent);
+        assert!(normalize_anki_json
+            .sql
+            .contains("WHERE extra_fields_json IS NULL"));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260724,
+            20260824,
             "Latest version should track the newest published mistakes migration"
         );
     }

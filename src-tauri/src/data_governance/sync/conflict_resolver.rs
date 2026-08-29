@@ -111,11 +111,46 @@ impl ConflictAwareApplyResult {
 /// 冲突解决器
 pub struct ConflictResolver {
     policy: ConflictPolicy,
+    /// [R11-history] 时点恢复快照批次：同一个 resolver 实例（= 同一次
+    /// `apply_downloaded_changes_with_conflict_guard` 调用 = 一次库级策略
+    /// 覆盖）内所有"Cloud 胜、本地被覆盖/删除"的记录共享一个批次，
+    /// 事后可在冲突面板按批次一键回退（见 `history.rs`）。
+    history_batch_id: String,
 }
 
 impl ConflictResolver {
     pub fn new(policy: ConflictPolicy) -> Self {
-        Self { policy }
+        Self {
+            policy,
+            history_batch_id: super::history::new_batch_id(),
+        }
+    }
+
+    /// [R11-history] 本 resolver 实例的快照批次 id（懒落地：仅当发生
+    /// Cloud 胜覆盖时才会有对应批次行）
+    pub fn history_batch_id(&self) -> &str {
+        &self.history_batch_id
+    }
+
+    /// [R11-history] Cloud 胜方即将覆盖/删除本地行之前，把本地行当前状态
+    /// 快照进 `__sync_record_history`。快照失败即整条变更失败（fail-closed：
+    /// 没有留下可回退的快照就不允许覆盖）。
+    fn snapshot_local_before_overwrite(
+        &self,
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+        local_data: &serde_json::Value,
+    ) -> Result<(), SyncError> {
+        super::history::snapshot_record_with_data(
+            conn,
+            &self.history_batch_id,
+            super::history::REASON_POLICY_OVERRIDE,
+            table_name,
+            record_id,
+            Some(local_data),
+        )?;
+        Ok(())
     }
 
     /// 在一个数据库连接上初始化冲突表（幂等）
@@ -321,6 +356,15 @@ impl ConflictResolver {
                     }
                 }
             };
+            // [R11-history] Cloud 胜 = 本地行将被删除：先留可回退快照
+            if winner == ConflictSide::Cloud {
+                self.snapshot_local_before_overwrite(
+                    conn,
+                    &change.table_name,
+                    &change.record_id,
+                    &local_data,
+                )?;
+            }
             return Ok(Some(ConflictOutcome {
                 winner,
                 loser,
@@ -402,6 +446,16 @@ impl ConflictResolver {
                 }
             }
         };
+
+        // [R11-history] Cloud 胜 = 本地行将被云端值覆盖：先留可回退快照
+        if winner == ConflictSide::Cloud {
+            self.snapshot_local_before_overwrite(
+                conn,
+                &change.table_name,
+                &change.record_id,
+                &local_data,
+            )?;
+        }
 
         Ok(Some(ConflictOutcome {
             winner,

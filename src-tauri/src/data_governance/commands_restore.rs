@@ -1,8 +1,8 @@
 // ==================== 恢复相关命令 ====================
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::{Manager, State};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
@@ -20,6 +20,38 @@ use super::commands_backup::{
 };
 
 const RESTORE_ACTIVATION_MARKER: &str = ".restore_activation_pending.json";
+
+/// Mirror of the private `backup::asset_requires_explicit_trust` for the slot
+/// orchestrator (G4): assets owned by an UntrustedExecutable domain (agents /
+/// user-skills) must never be written to the candidate slot automatically.
+/// Their DomainRestorePlan isolates them pending an explicit trust decision
+/// (`consume_complete_domains`). Built on the public domain registry so this
+/// file does not need edits in backup/mod.rs.
+fn asset_requires_explicit_trust_for_slot(asset: &super::backup::assets::BackedUpAsset) -> bool {
+    use super::backup::{persistent_domain_registry, RestoreTrustPolicy};
+
+    fn path_is_at_or_below(path: &str, root: &str) -> bool {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    }
+
+    persistent_domain_registry().into_iter().any(|spec| {
+        spec.restore_trust == RestoreTrustPolicy::UntrustedExecutable
+            && (path_is_at_or_below(&asset.relative_path, &spec.archive_root)
+                || (spec.id == "agents"
+                    && path_is_at_or_below(&asset.relative_path, "workspaces/agents"))
+                || path_is_at_or_below(&asset.original_path, &spec.restore_target))
+    })
+}
+
+fn atomic_restore_unavailable_error() -> String {
+    format!(
+        "[{}] A/B 数据空间管理器不可用，已在写入任何恢复数据前中止；当前数据未改动",
+        super::backup::ATOMIC_RESTORE_UNAVAILABLE_CODE
+    )
+}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct RestoreActivationMarker {
@@ -72,6 +104,39 @@ fn write_restore_activation_marker(
             new_device_id: None,
         },
     )
+}
+
+fn publish_restore_keys_and_commit_cutover<F>(
+    manager: &super::backup::BackupManager,
+    manifest: &super::backup::BackupManifest,
+    backup_subdir: &Path,
+    target_slot: &str,
+    commit_cutover: F,
+) -> Result<usize, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let keys_required = manifest.key_policy == super::backup::BackupKeyPolicy::IncludedLocal;
+    manager
+        .restore_crypto_keys_from_manifest_transactional(
+            manifest,
+            backup_subdir,
+            Some((manifest.backup_id.as_str(), target_slot)),
+            move |restored| {
+                if keys_required && restored == 0 {
+                    return Err(super::backup::BackupError::RestoreFailed(
+                        "备份声明包含加密密钥，但未恢复任何密钥文件".to_string(),
+                    ));
+                }
+                commit_cutover().map_err(|error| {
+                    super::backup::BackupError::RestoreFailed(format!(
+                        "登记恢复切槽失败: {}",
+                        error
+                    ))
+                })
+            },
+        )
+        .map_err(|error| error.to_string())
 }
 
 /// Commit device/cursor generation only after the restored slot has become
@@ -146,6 +211,56 @@ pub(crate) fn finalize_restore_activation(active_dir: &Path) -> Result<bool, Str
         marker.backup_id, marker.snapshot_epoch, old_device_id, new_device_id
     );
     Ok(true)
+}
+
+/// 切槽提交后的失败上报（R6 最小止血）：密钥发布与 A/B 切换登记已原子持久
+/// 化，**不存在撤销路径**——重启侧只会依据 journal 与维护租约向前收敛到候选
+/// 槽。因此这里不尝试任何回滚，只保证两件事：
+///
+/// 1. 任务必须以失败终止（绝不带着未消费/失败域宣告成功）；
+/// 2. 失败详情必须诚实：明确告知切槽已提交、重启后将激活候选槽 `target_slot`、
+///    失败的域不会被自动补齐；并把已知的每域终态（`domains`）连同
+///    `cutover_committed: true` 写入审计日志——成功路径记录 domains，
+///    失败路径同样必须留痕，否则事后无法审计哪些域缺失。
+///
+/// 维护屏障保持 fail-close（不解除、不删激活标记），与调用点既有语义一致。
+fn fail_restore_after_committed_cutover(
+    app: &tauri::AppHandle,
+    job_ctx: &BackupJobContext,
+    backup_id: &str,
+    target_slot: &str,
+    error: String,
+    domain_outcomes: Option<&serde_json::Value>,
+) {
+    let honest_error = format!(
+        "{}（切槽与加密密钥已原子提交、不可撤销：重启后将激活候选槽 {}；本任务按失败终止，失败/未消费的域不会自动恢复，请依据审计日志中的 domains 终态处置）",
+        error, target_slot
+    );
+    error!("[data_governance] {}", honest_error);
+    #[cfg(feature = "data_governance")]
+    {
+        try_save_audit_log(
+            app,
+            AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id.to_string(),
+            )
+            .fail(honest_error.clone())
+            .with_details(serde_json::json!({
+                "job_id": job_ctx.job_id.clone(),
+                "cutover_committed": true,
+                "activates_slot_on_restart": target_slot,
+                "domains": domain_outcomes.cloned().unwrap_or(serde_json::Value::Null),
+            })),
+        );
+    }
+    #[cfg(not(feature = "data_governance"))]
+    {
+        let _ = (app, backup_id, domain_outcomes);
+    }
+    job_ctx.fail(honest_error);
 }
 
 fn set_restore_cutover_maintenance(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
@@ -450,11 +565,18 @@ async fn execute_restore_with_progress(
         return;
     }
     if let Err(e) = manifest.validate_for_slot_restore() {
-        job_ctx.fail(format!("备份不能用于完整恢复: {}", e));
+        job_ctx.fail(format!(
+            "[{}] 备份不能用于完整恢复: {}",
+            super::backup::PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+            e
+        ));
         return;
     }
     if restore_assets == Some(false) {
-        job_ctx.fail("完整快照恢复不能跳过资产；partial archive 不能替换数据槽".to_string());
+        job_ctx.fail(format!(
+            "[{}] 完整快照恢复不能跳过资产；partial archive 不能替换数据槽",
+            super::backup::PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE
+        ));
         return;
     }
     match manager.verify_with_assets(&manifest) {
@@ -483,11 +605,26 @@ async fn execute_restore_with_progress(
         .filter(|f| f.path.ends_with(".db") && f.database_id.is_some())
         .collect();
     let total_databases = database_files.len() as u64;
+    // G4：UntrustedExecutable 域（agents / user-skills）的资产不得自动落盘，
+    // 由 DomainRestorePlan 隔离待信任；先从自动恢复的进度总数中剔除。
+    let untrusted_asset_file_count: u64 = manifest
+        .assets
+        .as_ref()
+        .map(|a| {
+            a.files
+                .iter()
+                .filter(|asset| {
+                    !asset.is_directory && asset_requires_explicit_trust_for_slot(asset)
+                })
+                .count() as u64
+        })
+        .unwrap_or(0);
     let asset_file_count: u64 = manifest
         .assets
         .as_ref()
         .map(|a| a.total_files as u64)
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .saturating_sub(untrusted_asset_file_count);
     // total_items = databases + asset files（用于前端显示 "X / Y 项"）
     let workspace_file_count = manifest
         .files
@@ -625,24 +762,20 @@ async fn execute_restore_with_progress(
     // ============ 阶段 3: Replace (15-80%) - 逐数据库恢复 ============
     // 获取非活跃插槽目录：恢复写入非活跃插槽，避免 Windows OS error 32
     // （活跃插槽的数据库文件被连接池持有，Windows 上无法写入/删除）
-    let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
-        Some(mgr) => {
-            let slot = mgr.inactive_slot();
-            let dir = mgr.slot_dir(slot);
-            info!(
-                "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
-                slot.name(),
-                dir.display()
-            );
-            (dir, Some(slot))
-        }
-        None => {
-            // 未启用双空间模式，回退到 slots/slotB
-            let dir = app_data_dir.join("slots").join("slotB");
-            warn!("[data_governance] DataSpaceManager 未初始化，回退到 slotB");
-            (dir, None)
-        }
+    // 整槽恢复只能由 DataSpaceManager 原子登记 A/B 切换。旧回退路径会先把
+    // 完整数据库写进 slotB，最后才因无法登记切槽而失败，留下半恢复槽。
+    // 必须在磁盘预算、清槽和任何数据库写入之前 fail-closed。
+    let Some(data_space_manager) = crate::data_space::get_data_space_manager() else {
+        job_ctx.fail(atomic_restore_unavailable_error());
+        return;
     };
+    let inactive_slot = data_space_manager.inactive_slot();
+    let inactive_dir = data_space_manager.slot_dir(inactive_slot);
+    info!(
+        "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
+        inactive_slot.name(),
+        inactive_dir.display()
+    );
 
     // 磁盘空间预检查：备份大小 × 2 作为安全余量（Android 设备存储较紧张）
     {
@@ -691,34 +824,30 @@ async fn execute_restore_with_progress(
     }
 
     // ★ 审阅 15 P1-2 / S1 遗留：恢复写入前清空目标插槽，避免残留文件混入恢复结果
-    if let Some(slot) = inactive_slot {
-        if let Some(mgr) = crate::data_space::get_data_space_manager() {
-            match mgr.clear_slot_for_restore(slot) {
-                Ok(trash) => {
-                    if let Some(trash_path) = trash {
-                        info!(
-                            "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
-                            slot.name(),
-                            trash_path.display()
-                        );
-                    } else {
-                        info!(
-                            "[data_governance] 恢复前插槽 {} 已为空（或已重建）",
-                            slot.name()
-                        );
-                    }
-                }
-                Err(e) => {
-                    let msg = format!(
-                        "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
-                        slot.name(),
-                        e
-                    );
-                    error!("[data_governance] {}", msg);
-                    job_ctx.fail(msg);
-                    return;
-                }
+    match data_space_manager.clear_slot_for_restore(inactive_slot) {
+        Ok(trash) => {
+            if let Some(trash_path) = trash {
+                info!(
+                    "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
+                    inactive_slot.name(),
+                    trash_path.display()
+                );
+            } else {
+                info!(
+                    "[data_governance] 恢复前插槽 {} 已为空（或已重建）",
+                    inactive_slot.name()
+                );
             }
+        }
+        Err(e) => {
+            let msg = format!(
+                "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
+                inactive_slot.name(),
+                e
+            );
+            error!("[data_governance] {}", msg);
+            job_ctx.fail(msg);
+            return;
         }
     }
 
@@ -851,27 +980,6 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    // ============ 阶段 3a: 恢复加密密钥（跨设备恢复支持） ============
-    manager.set_app_data_dir(inactive_dir.clone());
-    match manager.restore_crypto_keys(&backup_subdir) {
-        Ok(count) => {
-            if manifest.key_policy == super::backup::BackupKeyPolicy::IncludedLocal && count == 0 {
-                job_ctx.fail("备份声明包含加密密钥，但未恢复任何密钥文件".to_string());
-                return;
-            }
-            if count > 0 {
-                info!(
-                    "[data_governance] 加密密钥恢复完成: {} 个文件（API 密钥可跨设备解密）",
-                    count
-                );
-            }
-        }
-        Err(e) => {
-            job_ctx.fail(format!("加密密钥恢复失败: {}", e));
-            return;
-        }
-    }
-
     // ============ 阶段 3b: Replace/Assets (80-92%) - 恢复资产文件 ============
     if restore_assets == Some(false) {
         job_ctx.fail("完整快照恢复不能跳过资产；请使用完整恢复".to_string());
@@ -886,15 +994,32 @@ async fn execute_restore_with_progress(
         let asset_progress_range = 12.0_f32; // 80% → 92%
 
         if let Some(asset_result) = &manifest.assets {
+            // G4 修复：过滤 UntrustedExecutable 域的资产（agents 域打包在
+            // manifest.assets 下，旧代码全量传入导致可执行内容自动落盘）。
+            // 与 restore_non_database_manifest_files 对 manifest.files 的
+            // archive_path_requires_explicit_trust 拦截保持一致；被过滤的
+            // 文件由 consume_complete_domains 按 plan 隔离待信任。
+            let trusted_asset_files: Vec<assets::BackedUpAsset> = asset_result
+                .files
+                .iter()
+                .filter(|asset| !asset_requires_explicit_trust_for_slot(asset))
+                .cloned()
+                .collect();
+            if untrusted_asset_file_count > 0 {
+                info!(
+                    "[data_governance] 已从自动资产恢复中排除 {} 个待信任可执行文件（UntrustedExecutable 域），交由 DomainRestorePlan 隔离",
+                    untrusted_asset_file_count
+                );
+            }
             info!(
                 "[data_governance] 开始恢复资产文件: {} 个",
-                asset_result.total_files
+                asset_file_count
             );
 
             job_ctx.mark_running(
                 BackupJobPhase::Replace,
                 asset_progress_base,
-                Some(format!("正在恢复资产文件: 0/{}", asset_result.total_files)),
+                Some(format!("正在恢复资产文件: 0/{}", asset_file_count)),
                 total_databases,
                 total_items,
             );
@@ -902,7 +1027,7 @@ async fn execute_restore_with_progress(
             match assets::restore_assets_with_progress(
                 &backup_subdir,
                 &inactive_dir,
-                &asset_result.files,
+                &trusted_asset_files,
                 |restored, total_asset| {
                     if job_ctx.is_cancelled() {
                         return false;
@@ -1076,25 +1201,158 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    let Some(slot) = inactive_slot else {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail("DataSpaceManager 未初始化，无法原子登记恢复切槽".to_string());
-        return;
+    // The candidate is fully restored, migrated, baselined and protected by
+    // the maintenance barrier. Key publication writes a durable journal first,
+    // keeps the previous global crypto generation in the fixed rollback
+    // directory until pending-slot registration is durable, and a registration
+    // failure restores the old keys before returning. A crash mid-publication
+    // is reconciled at next startup by matching the journal against the lease.
+    let restored_crypto_keys = match publish_restore_keys_and_commit_cutover(
+        &manager,
+        &manifest,
+        &backup_subdir,
+        inactive_slot.name(),
+        || {
+            data_space_manager
+                .mark_restore_cutover_pending(inactive_slot, &backup_id)
+                .map_err(|error| error.to_string())
+        },
+    ) {
+        Ok(count) => count,
+        Err(error) => {
+            let _ = set_restore_cutover_maintenance(&app, false);
+            let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
+            job_ctx.fail(format!("提交恢复密钥与切槽失败: {}", error));
+            return;
+        }
     };
-    let Some(mgr) = crate::data_space::get_data_space_manager() else {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail("DataSpaceManager 不可用，无法原子登记恢复切槽".to_string());
-        return;
-    };
-    if let Err(e) = mgr.mark_restore_cutover_pending(slot, &backup_id) {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail(format!("登记恢复切槽失败: {}", e));
+    if restored_crypto_keys > 0 {
+        info!(
+            "[data_governance] 加密密钥与恢复切槽原子提交完成: {} 个文件",
+            restored_crypto_keys
+        );
+    }
+    info!(
+        "[data_governance] 已原子登记下次启动切换到 {}",
+        inactive_slot.name()
+    );
+
+    // ============ 阶段 4b: DomainRestorePlan 消费（audit / persistent / 隔离域） ============
+    // 切槽登记已持久化且维护屏障仍然生效、候选槽要到重启才会激活：此时消费
+    // 剩余计划域——audit（ApplicationData scope，只允许在切槽过了不可回退点
+    // 之后写入应用数据目录）、webview-settings / custom-grading-modes（写入
+    // 候选槽），并把 UntrustedExecutable 域（agents / user-skills）隔离待
+    // 信任，绝不自动落盘可执行内容。crypto 已由上方事务消费，此处不重复。
+    job_ctx.mark_running(
+        BackupJobPhase::Cleanup,
+        95.0,
+        Some("正在恢复辅助域（审计/设置/待信任隔离）...".to_string()),
+        total_items,
+        total_items,
+    );
+    let domain_outcomes =
+        match manager.consume_complete_domains(&manifest, &backup_subdir, &inactive_dir) {
+            Ok(outcomes) => outcomes,
+            Err(error) => {
+                // 密钥与切槽已原子提交：维护屏障保持 fail-close（不回退、
+                // 不删激活标记），由重启侧依据 journal 与租约收敛；任务本身
+                // 按失败上报，绝不带着未消费域宣告成功。
+                fail_restore_after_committed_cutover(
+                    &app,
+                    &job_ctx,
+                    &backup_id,
+                    inactive_slot.name(),
+                    format!("消费域恢复计划失败: {}", error),
+                    None,
+                );
+                return;
+            }
+        };
+    // 提前物化每域终态 JSON：后续任何失败上报（域失败 / 未消费断言）都必须
+    // 把它写进审计详情，不能只在成功路径留痕。
+    let domain_outcomes_json =
+        serde_json::to_value(&domain_outcomes).unwrap_or(serde_json::Value::Null);
+    let failed_domains: Vec<String> = domain_outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome.state,
+                super::backup::DomainRestoreOutcomeState::Failed
+            )
+        })
+        .map(|outcome| {
+            format!(
+                "{}: {}",
+                outcome.domain_id,
+                outcome.detail.clone().unwrap_or_default()
+            )
+        })
+        .collect();
+    if !failed_domains.is_empty() {
+        fail_restore_after_committed_cutover(
+            &app,
+            &job_ctx,
+            &backup_id,
+            inactive_slot.name(),
+            format!("域恢复计划执行失败: {}", failed_domains.join("; ")),
+            Some(&domain_outcomes_json),
+        );
         return;
     }
-    info!("[data_governance] 已原子登记下次启动切换到 {}", slot.name());
+    // IsolatedPendingTrust 必须对用户可见（details + 稳定码），不得静默
+    // 假装可执行域（agents / user-skills）已恢复。
+    let isolated_domain_summary: Vec<String> = domain_outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome.state,
+                super::backup::DomainRestoreOutcomeState::IsolatedPendingTrust
+            )
+        })
+        .map(|outcome| match &outcome.code {
+            Some(code) => format!("{}[{}]", outcome.domain_id, code),
+            None => outcome.domain_id.clone(),
+        })
+        .collect();
+
+    // 未消费 Complete 域断言：fail-closed。coverage ledger 中每个
+    // status == Complete 的域必须被本编排（核心库 / workspaces / 资产根 /
+    // crypto 事务）或 consume_complete_domains（restored / isolated）之一
+    // 显式消费，否则任务不得 complete 成功。
+    let mut consumed_domain_ids: Vec<String> = databases_restored
+        .iter()
+        .map(|id| format!("database:{}", id))
+        .collect();
+    consumed_domain_ids.push("workspaces-root".to_string());
+    consumed_domain_ids.extend(
+        super::backup::persistent_domain_registry()
+            .into_iter()
+            .filter(|spec| spec.id.starts_with("asset-root:"))
+            .map(|spec| spec.id),
+    );
+    consumed_domain_ids.push("crypto".to_string());
+    consumed_domain_ids.extend(
+        domain_outcomes
+            .iter()
+            .map(|outcome| outcome.domain_id.clone()),
+    );
+    if let Err(error) =
+        super::backup::assert_no_unconsumed_complete_domains(&manifest, &consumed_domain_ids)
+    {
+        fail_restore_after_committed_cutover(
+            &app,
+            &job_ctx,
+            &backup_id,
+            inactive_slot.name(),
+            format!(
+                "[{}] 存在未被恢复编排消费的 Complete 域: {}",
+                super::backup::RESTORE_DOMAIN_UNCONSUMED_CODE,
+                error
+            ),
+            Some(&domain_outcomes_json),
+        );
+        return;
+    }
 
     job_ctx.mark_running(
         BackupJobPhase::Cleanup,
@@ -1121,6 +1379,12 @@ async fn execute_restore_with_progress(
                 "restored_assets": restored_assets,
                 "databases_restored": databases_restored.clone(),
                 "asset_errors": restore_errors,
+                // 每个计划域的终态（restored / skipped_empty /
+                // isolated_pending_trust / failed），含 audit、
+                // webview-settings、custom-grading-modes、agents、user-skills。
+                "domains": domain_outcomes_json.clone(),
+                "isolated_domains": isolated_domain_summary.clone(),
+                "quarantined_executable_assets": untrusted_asset_file_count,
             })),
         );
     }
@@ -1128,7 +1392,7 @@ async fn execute_restore_with_progress(
     // Every required component and the pending cutover journal is durable here.
     job_ctx.complete(
         Some(format!(
-            "恢复完成，已恢复 {} 个数据库{}{}",
+            "恢复完成，已恢复 {} 个数据库{}{}{}",
             databases_restored.len(),
             if should_restore_assets {
                 format!("，资产文件 {} 个", restored_assets)
@@ -1139,6 +1403,11 @@ async fn execute_restore_with_progress(
                 format!("（{} 个资产恢复失败）", restore_errors.len())
             } else {
                 "".to_string()
+            },
+            if isolated_domain_summary.is_empty() {
+                "".to_string()
+            } else {
+                format!("；隔离待信任: {}", isolated_domain_summary.join(", "))
             }
         )),
         total_items,
@@ -1147,15 +1416,23 @@ async fn execute_restore_with_progress(
             success: true,
             output_path: Some(restore_target_path.clone()),
             resolved_path: Some(restore_target_path.clone()),
-            message: Some(if should_restore_assets {
-                format!(
-                    "已恢复数据库: {}；资产文件: {}",
-                    databases_restored.join(", "),
-                    restored_assets
-                )
-            } else {
-                format!("已恢复数据库: {}", databases_restored.join(", "))
-            }),
+            message: Some(format!(
+                "{}{}",
+                if should_restore_assets {
+                    format!(
+                        "已恢复数据库: {}；资产文件: {}",
+                        databases_restored.join(", "),
+                        restored_assets
+                    )
+                } else {
+                    format!("已恢复数据库: {}", databases_restored.join(", "))
+                },
+                if isolated_domain_summary.is_empty() {
+                    "".to_string()
+                } else {
+                    format!("；隔离待信任: {}", isolated_domain_summary.join(", "))
+                }
+            )),
             error: None,
             duration_ms: Some(duration_ms),
             stats: Some(serde_json::json!({
@@ -1166,6 +1443,11 @@ async fn execute_restore_with_progress(
                 "restored_assets": restored_assets,
                 "restore_target": restore_target_path,
                 "asset_errors": restore_errors,
+                // 每个计划域的终态；user-skills / agents 的
+                // isolated_pending_trust 必须对用户可见，不得假装已恢复。
+                "domains": domain_outcomes_json,
+                "isolated_domains": isolated_domain_summary,
+                "quarantined_executable_assets": untrusted_asset_file_count,
             })),
             // 恢复完成后需要重启以切换到恢复的数据插槽
             requires_restart: true,
@@ -1173,6 +1455,432 @@ async fn execute_restore_with_progress(
             resumable_job_id: None,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{atomic_restore_unavailable_error, publish_restore_keys_and_commit_cutover};
+    use crate::data_governance::backup::{
+        calculate_file_sha256, BackupFile, BackupKeyPolicy, BackupManager, BackupManifest,
+        CoverageStatus,
+    };
+    use crate::data_space::{DataSpaceManager, Slot};
+    use std::fs;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn crypto_restore_manifest(backup_subdir: &Path) -> BackupManifest {
+        let paths = ["crypto/.master_key", "crypto/.secure/.key_seed"];
+        let files = paths
+            .iter()
+            .map(|relative| {
+                let path = backup_subdir.join(relative);
+                BackupFile {
+                    path: (*relative).to_string(),
+                    size: fs::metadata(&path).unwrap().len(),
+                    sha256: calculate_file_sha256(&path).unwrap(),
+                    database_id: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut manifest = BackupManifest::new("test");
+        manifest.key_policy = BackupKeyPolicy::IncludedLocal;
+        manifest.files = files;
+        let crypto = manifest
+            .coverage
+            .as_mut()
+            .unwrap()
+            .domains
+            .get_mut("crypto")
+            .unwrap();
+        crypto.status = CoverageStatus::Complete;
+        crypto.paths = paths.iter().map(|path| (*path).to_string()).collect();
+        crypto.file_count = crypto.paths.len();
+        crypto.total_size = manifest.files.iter().map(|file| file.size).sum();
+        manifest
+    }
+
+    #[test]
+    fn atomic_restore_unavailable_refusal_has_stable_code() {
+        let error = atomic_restore_unavailable_error();
+        assert!(
+            error.contains(super::super::backup::ATOMIC_RESTORE_UNAVAILABLE_CODE),
+            "atomic-restore refusal must carry a stable code: {error}"
+        );
+        assert!(error.contains("写入任何恢复数据前中止"));
+    }
+
+    #[test]
+    fn post_key_publication_failure_restores_old_global_keys_and_active_slot() {
+        for old_keys_exist in [true, false] {
+            let app_data = TempDir::new().unwrap();
+            let data_space = DataSpaceManager::new(app_data.path().to_path_buf());
+            data_space.ensure_layout().unwrap();
+            fs::write(data_space.slot_dir(Slot::A).join("active.db"), b"old-slot").unwrap();
+            fs::write(
+                data_space.slot_dir(Slot::B).join("candidate.db"),
+                b"new-slot",
+            )
+            .unwrap();
+
+            if old_keys_exist {
+                // 旧主密钥必须是合法 Base64（解码 32 字节）：恢复前的当前密钥
+                // 快照会走 backup_crypto_keys 的校验，非法密钥将被 fail-close 拒绝。
+                fs::write(
+                    app_data.path().join(".master_key"),
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE=",
+                )
+                .unwrap();
+                let old_secure = app_data.path().join(".secure");
+                fs::create_dir_all(&old_secure).unwrap();
+                fs::write(old_secure.join(".key_seed"), b"old-seed").unwrap();
+                fs::write(old_secure.join("old.enc"), b"old-credential").unwrap();
+            }
+
+            let backup_root = TempDir::new().unwrap();
+            let backup_subdir = backup_root.path().join("snapshot");
+            let backup_secure = backup_subdir.join("crypto/.secure");
+            fs::create_dir_all(&backup_secure).unwrap();
+            fs::write(
+                backup_subdir.join("crypto/.master_key"),
+                b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            )
+            .unwrap();
+            let new_seed = "aa".repeat(32);
+            fs::write(backup_secure.join(".key_seed"), &new_seed).unwrap();
+            let manifest = crypto_restore_manifest(&backup_subdir);
+
+            let mut manager = BackupManager::new(backup_root.path().join("manager"));
+            manager.set_app_data_dir(app_data.path().to_path_buf());
+            let mut failure_injected_after_publication = false;
+            let error = publish_restore_keys_and_commit_cutover(
+                &manager,
+                &manifest,
+                &backup_subdir,
+                Slot::B.name(),
+                || {
+                    failure_injected_after_publication = true;
+                    assert_eq!(
+                        fs::read(app_data.path().join(".master_key")).unwrap(),
+                        b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+                    );
+                    assert_eq!(
+                        fs::read_to_string(app_data.path().join(".secure/.key_seed")).unwrap(),
+                        new_seed
+                    );
+                    assert_eq!(data_space.active_slot(), Slot::A);
+                    // 密钥发布期间 journal 必须已持久化，供崩溃后的启动侧收敛。
+                    assert!(crate::crypto_publication::journal_path(app_data.path()).exists());
+                    Err("injected post-key-publication failure".to_string())
+                },
+            )
+            .expect_err("cutover failure after key publication must abort");
+
+            assert!(failure_injected_after_publication);
+            assert!(error.contains("已恢复旧密钥"), "{error}");
+            assert_eq!(data_space.active_slot(), Slot::A);
+            assert!(data_space.restore_cutover_pending().unwrap().is_none());
+            // 就地回滚成功后事务已解决：journal 与回滚目录不得残留。
+            assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+            assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
+            if old_keys_exist {
+                assert_eq!(
+                    fs::read(app_data.path().join(".master_key")).unwrap(),
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE="
+                );
+                assert_eq!(
+                    fs::read(app_data.path().join(".secure/.key_seed")).unwrap(),
+                    b"old-seed"
+                );
+                assert_eq!(
+                    fs::read(app_data.path().join(".secure/old.enc")).unwrap(),
+                    b"old-credential"
+                );
+            } else {
+                assert!(!app_data.path().join(".master_key").exists());
+                assert!(!app_data.path().join(".secure").exists());
+            }
+        }
+    }
+
+    // ========================================================================
+    // R7（0824 Wave2-D 第 7 轮）：恢复中断续传
+    // ========================================================================
+
+    /// R7：切槽登记前的失败/中断不留任何单向状态——同一环境上第二次发布
+    /// 必须能干净重试，并成功登记切槽租约（未 cutover 则可重试）。
+    ///
+    /// 第一段复用既有回滚断言（密钥回原、无租约、journal/rollback 无残留），
+    /// 第二段是本轮新增的重试闭环：重跑 `publish_restore_keys_and_commit_cutover`
+    /// 必须成功、密钥落回应用根、租约为「已提交未激活」，活跃槽保持不变。
+    #[test]
+    fn pre_cutover_interruption_is_retryable_and_second_publish_commits_lease() {
+        let app_data = TempDir::new().unwrap();
+        let data_space = DataSpaceManager::new(app_data.path().to_path_buf());
+        data_space.ensure_layout().unwrap();
+        fs::write(data_space.slot_dir(Slot::A).join("active.db"), b"old-slot").unwrap();
+        fs::write(
+            data_space.slot_dir(Slot::B).join("candidate.db"),
+            b"new-slot",
+        )
+        .unwrap();
+
+        let backup_root = TempDir::new().unwrap();
+        let backup_subdir = backup_root.path().join("snapshot");
+        let backup_secure = backup_subdir.join("crypto/.secure");
+        fs::create_dir_all(&backup_secure).unwrap();
+        fs::write(
+            backup_subdir.join("crypto/.master_key"),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+        .unwrap();
+        let new_seed = "aa".repeat(32);
+        fs::write(backup_secure.join(".key_seed"), &new_seed).unwrap();
+        let manifest = crypto_restore_manifest(&backup_subdir);
+
+        let mut manager = BackupManager::new(backup_root.path().join("manager"));
+        manager.set_app_data_dir(app_data.path().to_path_buf());
+
+        // 第一次尝试：密钥已发布、切槽登记前被中断（取消/失败等价）。
+        let error = publish_restore_keys_and_commit_cutover(
+            &manager,
+            &manifest,
+            &backup_subdir,
+            Slot::B.name(),
+            || Err("simulated mid-restore interruption before cutover".to_string()),
+        )
+        .expect_err("切槽登记失败必须使发布中止");
+        assert!(error.contains("已恢复旧密钥"), "{error}");
+
+        // 未 cutover：无租约、活跃槽不变、密钥回到原状、事务无残留——可重试。
+        assert!(data_space.restore_cutover_pending().unwrap().is_none());
+        assert_eq!(data_space.active_slot(), Slot::A);
+        assert!(!app_data.path().join(".master_key").exists());
+        assert!(!app_data.path().join(".secure").exists());
+        assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+        assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
+
+        // 第二次尝试（重试）：同一环境重新发布并成功登记切槽。
+        let restored = publish_restore_keys_and_commit_cutover(
+            &manager,
+            &manifest,
+            &backup_subdir,
+            Slot::B.name(),
+            || {
+                data_space
+                    .mark_restore_cutover_pending(Slot::B, &manifest.backup_id)
+                    .map_err(|error| error.to_string())
+            },
+        )
+        .expect("未 cutover 的中断后重试必须成功");
+        assert_eq!(restored, 2, "重试必须恢复 .master_key 与 .key_seed");
+
+        assert_eq!(
+            fs::read(app_data.path().join(".master_key")).unwrap(),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        );
+        assert_eq!(
+            fs::read_to_string(app_data.path().join(".secure/.key_seed")).unwrap(),
+            new_seed
+        );
+        let lease = data_space
+            .restore_cutover_pending()
+            .unwrap()
+            .expect("重试成功后必须持有切槽租约");
+        assert_eq!(lease.target_slot, Slot::B.name());
+        assert_eq!(lease.backup_id, manifest.backup_id);
+        assert!(!lease.activation_committed);
+        // 切槽在重启时才生效：任务期内活跃槽保持不变。
+        assert_eq!(data_space.active_slot(), Slot::A);
+        // 成功路径事务已解决：journal 与回滚目录不得残留。
+        assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+        assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
+    }
+
+    /// R7：切槽提交后的失败必须以 `cutover_committed: true` 留痕，并经
+    /// job_id 关联收口此前的 Started 行——事后审计不能出现「永远 Started」
+    /// 的恢复，也必须能按 cutover_committed 直接筛选出「已提交但失败」的
+    /// 恢复任务。
+    ///
+    /// 缺口声明：`fail_restore_after_committed_cutover` 需要
+    /// `tauri::AppHandle`（Wry），宿主单测无法直接驱动（mock runtime 的
+    /// `AppHandle<MockRuntime>` 类型不兼容）；本测试以与其**完全一致**的
+    /// 审计载荷锁定持久化、收口与查询契约。若该函数的 details 形状改变，
+    /// 请同步更新本测试（见 R7 报告）。
+    #[test]
+    fn post_cutover_failure_audit_details_carry_cutover_committed_and_close_started_row() {
+        use crate::data_governance::audit::{
+            AuditFilter, AuditLog, AuditOperation, AuditRepository, AuditStatus,
+        };
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        AuditRepository::init(&conn).unwrap();
+
+        let backup_id = "backup_r7_cutover";
+        let job_id = "job-r7-resume-0540";
+
+        // 任务启动时（data_governance_restore_backup）写入的 Started 行。
+        AuditRepository::save(
+            &conn,
+            &AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id,
+            )
+            .with_details(serde_json::json!({
+                "job_id": job_id,
+                "restore_assets": true,
+            })),
+        )
+        .unwrap();
+
+        // 切槽提交后的失败行：details 形状与
+        // fail_restore_after_committed_cutover 完全一致。
+        let honest_error = "域恢复计划执行失败: audit: 消费失败（切槽与加密密钥已原子提交、\
+                            不可撤销：重启后将激活候选槽 slotB；本任务按失败终止，失败/未消费的域\
+                            不会自动恢复，请依据审计日志中的 domains 终态处置）"
+            .to_string();
+        AuditRepository::save(
+            &conn,
+            &AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id,
+            )
+            .fail(honest_error.clone())
+            .with_details(serde_json::json!({
+                "job_id": job_id,
+                "cutover_committed": true,
+                "activates_slot_on_restart": "slotB",
+                "domains": [{"domain_id": "audit", "state": "failed"}],
+            })),
+        )
+        .unwrap();
+
+        // Started 行必须被同 job_id 的失败行收口：只剩一条、状态 Failed。
+        let logs = AuditRepository::query(&conn, AuditFilter::default()).unwrap();
+        assert_eq!(
+            logs.len(),
+            1,
+            "post-cutover 失败必须收口 Started 行，不得残留双行"
+        );
+        let log = &logs[0];
+        assert!(
+            matches!(log.status, AuditStatus::Failed),
+            "已 cutover 的失败绝不能被记成 Completed/Partial"
+        );
+        assert_eq!(
+            log.details.get("cutover_committed"),
+            Some(&serde_json::Value::Bool(true)),
+            "失败详情必须携带 cutover_committed: true"
+        );
+        assert_eq!(
+            log.details
+                .get("activates_slot_on_restart")
+                .and_then(|value| value.as_str()),
+            Some("slotB"),
+            "失败详情必须指明重启后将激活的候选槽"
+        );
+        assert!(
+            log.details
+                .get("domains")
+                .is_some_and(|domains| !domains.is_null()),
+            "失败路径必须与成功路径一样留痕每域终态"
+        );
+        assert_eq!(log.error_message.as_deref(), Some(honest_error.as_str()));
+
+        // 运维查询面：cutover_committed 必须可被 json_extract 直接筛选。
+        let flagged: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __audit_log \
+                 WHERE json_extract(details, '$.cutover_committed') = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(flagged, 1);
+    }
+
+    /// R7：恢复任务一旦以失败/取消终止（含切槽提交后的诚实失败），状态机
+    /// 不允许再翻转为成功——已 cutover 的失败绝不能被后续代码标成完成；
+    /// 中断后的重试语义 = 另起新任务，而不是复活旧任务。
+    #[tokio::test]
+    async fn terminal_restore_job_can_never_flip_to_success() {
+        use crate::backup_job_manager::{
+            BackupJobKind, BackupJobManager, BackupJobPhase, BackupJobResultPayload,
+            BackupJobStatus,
+        };
+
+        let manager = BackupJobManager::new_for_tests();
+        let success_payload = || BackupJobResultPayload {
+            success: true,
+            output_path: None,
+            resolved_path: None,
+            message: Some("attempt to flip terminal job to success".to_string()),
+            error: None,
+            duration_ms: Some(1),
+            stats: None,
+            requires_restart: true,
+            checkpoint_path: None,
+            resumable_job_id: None,
+        };
+
+        // 分支一：切槽提交后的失败（fail_restore_after_committed_cutover 的
+        // job 侧语义：job_ctx.fail 携带诚实错误）。
+        let failed_job = manager.create_job(BackupJobKind::Import);
+        failed_job.mark_running(
+            BackupJobPhase::Cleanup,
+            95.0,
+            Some("正在恢复辅助域（审计/设置/待信任隔离）...".to_string()),
+            9,
+            10,
+        );
+        failed_job.fail(
+            "域恢复计划执行失败（切槽与加密密钥已原子提交、不可撤销：重启后将激活候选槽 slotB）"
+                .to_string(),
+        );
+        let snapshot = manager
+            .get_job(&failed_job.job_id)
+            .expect("失败任务在保留期内必须可查询");
+        assert!(matches!(snapshot.status, BackupJobStatus::Failed));
+        assert!(!snapshot.result.as_ref().unwrap().success);
+
+        // 后续任何 complete 尝试都必须被状态机拒绝（终态单调）。
+        failed_job.complete(Some("bogus success".to_string()), 10, 10, success_payload());
+        let after = manager
+            .get_job(&failed_job.job_id)
+            .expect("终态任务在保留期内必须可查询");
+        assert!(
+            matches!(after.status, BackupJobStatus::Failed),
+            "已 cutover 后失败的恢复任务不得被翻转成成功"
+        );
+        let result = after.result.as_ref().unwrap();
+        assert!(!result.success);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("不可撤销")),
+            "失败结果必须保留切槽已提交的诚实错误"
+        );
+
+        // 分支二：用户取消（未 cutover 的中断）同样是不可翻转的终态。
+        let cancelled_job = manager.create_job(BackupJobKind::Import);
+        cancelled_job.mark_running(BackupJobPhase::Verify, 10.0, None, 0, 10);
+        assert!(manager.request_cancel(&cancelled_job.job_id));
+        assert!(cancelled_job.is_cancelled());
+        cancelled_job.cancelled(Some("用户取消恢复（验证阶段）".to_string()));
+        cancelled_job.complete(None, 10, 10, success_payload());
+        let after_cancel = manager.get_job(&cancelled_job.job_id).unwrap();
+        assert!(matches!(after_cancel.status, BackupJobStatus::Cancelled));
+        assert!(!after_cancel.result.as_ref().unwrap().success);
+
+        // 重试入口保持畅通：新任务不继承旧任务的取消标志。
+        let retry_job = manager.create_job(BackupJobKind::Import);
+        assert!(!retry_job.is_cancelled());
+    }
 }
 
 // ==================== 可恢复的执行函数 ====================
@@ -1409,264 +2117,6 @@ pub(super) async fn execute_backup_with_progress_resumable(
         Err(e) => {
             error!("[data_governance] 后台备份失败: {}", e);
             job_ctx.fail(format!("备份失败: {}", e));
-        }
-    }
-}
-
-/// 执行可恢复的 ZIP 导入（带断点续传支持）
-///
-/// 与 execute_zip_import_with_progress 类似，但会：
-/// 1. 设置任务参数供持久化
-/// 2. 初始化检查点
-/// 3. 断点续传：跳过目标目录中已存在且大小匹配的文件
-pub(super) async fn execute_zip_import_with_progress_resumable(
-    app: tauri::AppHandle,
-    job_ctx: BackupJobContext,
-    zip_file_path: PathBuf,
-    backup_id: Option<String>,
-) {
-    use super::backup::zip_export::{import_backup_from_zip_resumable, ZipImportPhase};
-    use std::time::Instant;
-
-    let start = Instant::now();
-
-    // 全局互斥：避免备份/恢复/ZIP 导入导出并发
-    let _global_permit =
-        match acquire_backup_global_permit(&job_ctx, "正在等待其他备份/恢复任务完成...").await
-        {
-            Some(p) => p,
-            None => return,
-        };
-
-    // 设置任务参数（用于持久化和恢复）
-    job_ctx.set_params(BackupJobParams {
-        zip_path: Some(zip_file_path.to_string_lossy().to_string()),
-        backup_id: backup_id.clone(),
-        ..Default::default()
-    });
-
-    // 获取应用数据目录
-    let app_data_dir = match get_app_data_dir(&app) {
-        Ok(dir) => dir,
-        Err(e) => {
-            job_ctx.fail(format!("获取应用数据目录失败: {}", e));
-            return;
-        }
-    };
-    let backup_dir = get_backup_dir(&app_data_dir);
-
-    // 确保备份目录存在
-    if !backup_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&backup_dir) {
-            job_ctx.fail(format!("创建备份目录失败: {}", e));
-            return;
-        }
-    }
-
-    // 获取已处理的项目列表（用于断点续传）
-    let processed_items = job_ctx.get_processed_items();
-    let is_resuming = !processed_items.is_empty();
-
-    if is_resuming {
-        info!(
-            "[data_governance] 从检查点恢复 ZIP 导入任务，已处理 {} 个文件",
-            processed_items.len()
-        );
-    }
-
-    // 确定备份 ID
-    let generated_backup_id = backup_id.unwrap_or_else(|| {
-        use uuid::Uuid;
-        let now = chrono::Utc::now();
-        let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-        let millis = now.timestamp_subsec_millis();
-        let rand8 = &Uuid::new_v4().simple().to_string()[..8];
-        format!("{}_{}_{:03}_imported", timestamp, rand8, millis)
-    });
-
-    let target_backup_id = match validate_backup_id(&generated_backup_id) {
-        Ok(id) => id,
-        Err(e) => {
-            job_ctx.fail(format!("backup_id 非法: {}", e));
-            return;
-        }
-    };
-
-    let target_dir = backup_dir.join(&target_backup_id);
-
-    // 如果是恢复，目标目录可能已经存在（部分解压）
-    if target_dir.exists() && !is_resuming {
-        if let Err(e) = ensure_existing_path_within_backup_dir(&target_dir, &backup_dir) {
-            job_ctx.fail(format!("备份路径校验失败: {}", e));
-            return;
-        }
-        job_ctx.fail(format!("备份已存在: {}", target_backup_id));
-        return;
-    }
-
-    // 阶段 1: 扫描
-    job_ctx.mark_running(
-        BackupJobPhase::Scan,
-        0.0,
-        Some(if is_resuming {
-            "从检查点恢复，正在验证 ZIP 文件...".to_string()
-        } else {
-            "正在验证 ZIP 文件...".to_string()
-        }),
-        processed_items.len() as u64,
-        0,
-    );
-
-    // 检查取消
-    if job_ctx.is_cancelled() {
-        job_ctx.cancelled(Some("用户取消导入".to_string()));
-        return;
-    }
-
-    // 使用带进度的导入函数
-    let job_ctx_for_progress = job_ctx.clone();
-    let job_ctx_for_cancel = job_ctx.clone();
-
-    // 断点续传：使用 import_backup_from_zip_resumable，
-    // 自动跳过目标目录中已存在且大小匹配的文件
-    let result = import_backup_from_zip_resumable(
-        &zip_file_path,
-        &target_dir,
-        |progress| {
-            let phase = match progress.phase {
-                ZipImportPhase::Scan => BackupJobPhase::Scan,
-                ZipImportPhase::Extract => BackupJobPhase::Extract,
-                ZipImportPhase::Verify => BackupJobPhase::Verify,
-                ZipImportPhase::Completed => BackupJobPhase::Completed,
-            };
-
-            job_ctx_for_progress.mark_running(
-                phase,
-                progress.progress,
-                Some(
-                    if is_resuming && progress.phase == ZipImportPhase::Extract {
-                        format!("(断点续传) {}", progress.message)
-                    } else {
-                        progress.message
-                    },
-                ),
-                progress.processed_files as u64,
-                progress.total_files as u64,
-            );
-
-            // 更新检查点
-            if let Some(ref file_name) = progress.current_file {
-                job_ctx_for_progress.update_checkpoint(file_name);
-            }
-        },
-        || job_ctx_for_cancel.is_cancelled(),
-    );
-
-    match result {
-        Ok(file_count) => {
-            let duration_ms = start.elapsed().as_millis() as u64;
-
-            // 阶段 4: 清理（90% - 100%）
-            job_ctx.mark_running(
-                BackupJobPhase::Cleanup,
-                95.0,
-                Some("正在清理临时文件...".to_string()),
-                file_count as u64,
-                file_count as u64,
-            );
-
-            // 完成
-            let result_payload = BackupJobResultPayload {
-                success: true,
-                output_path: Some(target_backup_id.clone()),
-                resolved_path: Some(target_dir.to_string_lossy().to_string()),
-                message: Some(format!(
-                    "ZIP 导入完成: {} 个文件, 耗时 {}ms{}",
-                    file_count,
-                    duration_ms,
-                    if is_resuming {
-                        " (从检查点恢复)"
-                    } else {
-                        ""
-                    }
-                )),
-                error: None,
-                duration_ms: Some(duration_ms),
-                stats: Some(serde_json::json!({
-                    "backup_id": target_backup_id,
-                    "file_count": file_count,
-                    "zip_path": zip_file_path.to_string_lossy(),
-                    "resumed_from_checkpoint": is_resuming,
-                })),
-                requires_restart: false,
-                checkpoint_path: None,
-                resumable_job_id: None,
-            };
-
-            #[cfg(feature = "data_governance")]
-            {
-                try_save_audit_log(
-                    &app,
-                    AuditLog::new(
-                        AuditOperation::Backup {
-                            backup_type: super::audit::BackupType::Full,
-                            file_count,
-                            total_size: 0,
-                        },
-                        format!("zip_import/{}", target_backup_id),
-                    )
-                    .complete(duration_ms)
-                    .with_details(serde_json::json!({
-                        "job_id": job_ctx.job_id.clone(),
-                        "zip_path": zip_file_path.to_string_lossy(),
-                        "backup_id": target_backup_id,
-                        "backup_path": target_dir.to_string_lossy(),
-                        "file_count": file_count,
-                        "resumed_from_checkpoint": is_resuming,
-                        "subtype": "zip_import_resumable",
-                    })),
-                );
-            }
-
-            job_ctx.complete(
-                Some(format!("ZIP 导入完成: {}", target_backup_id)),
-                file_count as u64,
-                file_count as u64,
-                result_payload,
-            );
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("用户取消") || error_msg.contains("Interrupted") {
-                job_ctx.cancelled(Some("用户取消导入".to_string()));
-            } else {
-                error!("[data_governance] ZIP 导入失败: {}", e);
-                job_ctx.fail(format!("ZIP 导入失败: {}", e));
-            }
-
-            #[cfg(feature = "data_governance")]
-            {
-                try_save_audit_log(
-                    &app,
-                    AuditLog::new(
-                        AuditOperation::Backup {
-                            backup_type: super::audit::BackupType::Full,
-                            file_count: 0,
-                            total_size: 0,
-                        },
-                        format!("zip_import/{}", target_backup_id),
-                    )
-                    .fail(error_msg.clone())
-                    .with_details(serde_json::json!({
-                        "job_id": job_ctx.job_id.clone(),
-                        "zip_path": zip_file_path.to_string_lossy(),
-                        "backup_id": target_backup_id,
-                        "backup_path": target_dir.to_string_lossy(),
-                        "resumed_from_checkpoint": is_resuming,
-                        "subtype": "zip_import_resumable",
-                    })),
-                );
-            }
         }
     }
 }

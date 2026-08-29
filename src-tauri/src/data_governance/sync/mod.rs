@@ -37,10 +37,12 @@
 //! - 进度回调和实时状态更新
 
 // 子模块声明
+pub mod asset_filenames;
 pub mod classification;
 pub mod conflict_resolver;
 pub mod emitter;
 pub mod field_merge;
+pub mod history;
 pub mod hlc;
 pub mod pomodoro_counts;
 pub mod progress;
@@ -48,6 +50,7 @@ pub mod state;
 pub mod tombstone;
 
 // 重新导出常用类型
+pub use asset_filenames::FILENAME_CONFLICT_MARKER;
 pub use conflict_resolver::{
     ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
     ConflictResolver, ConflictSide,
@@ -154,7 +157,7 @@ where
 
 #[cfg(feature = "data_governance")]
 // 云存储集成
-use crate::cloud_storage::CloudStorage;
+use crate::cloud_storage::{device_id_short_hash, CloudStorage};
 
 /// 同步清单
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -467,6 +470,14 @@ pub struct WorkspaceEntry {
     /// 每个 workspace 的单调修订号；0 表示 legacy 未知。
     #[serde(default)]
     pub revision: u64,
+    /// [R07-file-e2ee] 云端密文对象（DSBK 容器）的哈希。
+    /// `Some` = 对象已端到端加密，下载先按此哈希校验传输，再解密并按
+    /// `sha256` 校验明文；`None` = 加密启用前的明文遗留对象。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 /// VFS blob 云同步清单（内容寻址）
@@ -486,6 +497,12 @@ pub struct BlobEntry {
     pub size: u64,
     #[serde(default)]
     pub updated_at: String,
+    /// [R07-file-e2ee] 云端密文对象哈希；`None` = 明文遗留对象（见 [`WorkspaceEntry::cipher_sha256`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 /// VFS Blob 同步结果，区分完全成功与部分失败
@@ -540,6 +557,12 @@ pub struct AssetFileEntry {
     pub revision: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    /// [R07-file-e2ee] 云端密文对象哈希；`None` = 明文遗留对象（见 [`WorkspaceEntry::cipher_sha256`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -562,11 +585,23 @@ impl AssetSyncOutcome {
         if !self.has_failures() {
             return None;
         }
-        Some(format!(
+        let mut summary = format!(
             "资产目录同步部分失败：{} 个上传失败，{} 个下载失败",
             self.upload_failures.len(),
             self.download_failures.len()
-        ))
+        );
+        // [R09-names] 文件名冲突需要用户改名才能消解：把第一条冲突详情（含稳定
+        // 标记）带进 summary，前端据标记映射为人话错误。
+        if let Some(conflict) = self
+            .upload_failures
+            .iter()
+            .chain(self.download_failures.iter())
+            .find(|message| message.contains(asset_filenames::FILENAME_CONFLICT_MARKER))
+        {
+            summary.push_str("；");
+            summary.push_str(conflict);
+        }
+        Some(summary)
     }
 }
 
@@ -717,24 +752,35 @@ fn default_min_reader_version() -> u32 {
 pub struct SyncManager {
     /// 本地设备 ID
     device_id: String,
-    /// 可选的端到端加密密码（对文本 payload 生效，批判报告 P0-2 修复）
+    /// 可选的端到端加密密码（批判报告 P0-2 修复；[R07-file-e2ee] 扩展到文件级对象）
     ///
     /// 覆盖范围：
     /// - ✅ 加密：`SyncManifest`、`SyncChangesPayload`、`*Tombstones`、
     ///   各种 metadata manifest（workspaces/blobs/assets）
-    /// - ❌ **不**加密：VFS blob 的 raw bytes、workspace `.db` 文件。
-    ///   原因：blob 走内容寻址（sha256 作 key），加密会破坏去重语义；
-    ///   workspace DB 的完整性校验依赖明文 sha256。这两类的加密需要
-    ///   额外的密文-明文 hash 双校验，作为后续 P1 任务单独处理。
+    /// - ✅ [R07-file-e2ee] 文件级对象：workspace `.db` 快照、VFS blob、资产文件
+    ///   （DSBK v2 分块流式容器）。清单条目新增 `cipher_sha256`/`cipher_size`，
+    ///   下载先按**密文哈希**校验传输完整性，解密后再按**明文哈希**校验内容；
+    ///   对象 key 仍使用明文哈希（保留内容寻址去重；哈希本身只泄露"内容相同"
+    ///   这一事实，不泄露内容）。
     ///
     /// 语义：
     /// - `None` 或空字符串：所有 payload 明文上传（向后兼容旧数据）
-    /// - `Some(pw)` 非空：文本 payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
+    /// - `Some(pw)` 非空：payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
     ///
-    /// 解密端自动探测：遇到 `DSBK` 魔数走解密，否则当明文处理。这让加密可以
-    /// 平滑启用，不破坏已存在的明文云端数据。
+    /// 解密端探测规则（[R04-sync-e2ee] 防降级）：
+    /// - 遇到 `DSBK` 魔数走解密；
+    /// - 无 `DSBK` 头的明文仅在本端**未启用**加密时放行；本端已启用加密时
+    ///   一律显式报错（不再静默接受明文），避免密文被明文对象静默替换。
+    ///   文件级对象同理：清单条目缺 `cipher_sha256`（旧明文对象）时拒收，
+    ///   并给出可操作的迁移指引。
     #[cfg(feature = "data_governance")]
     encryption_password: Option<String>,
+    /// [R07-file-e2ee] 会话级加密器（懒初始化）：一轮同步只做一次 Argon2 派生，
+    /// 所有清单 payload 与文件级对象共用会话密钥；解密对端对象时按容器头
+    /// salt 缓存派生结果。
+    #[cfg(feature = "data_governance")]
+    file_cipher:
+        std::sync::Mutex<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>>,
 }
 
 impl SyncManager {
@@ -744,6 +790,8 @@ impl SyncManager {
             device_id: crate::cloud_storage::normalize_device_id(&device_id),
             #[cfg(feature = "data_governance")]
             encryption_password: None,
+            #[cfg(feature = "data_governance")]
+            file_cipher: std::sync::Mutex::new(None),
         }
     }
 
@@ -756,6 +804,7 @@ impl SyncManager {
         Self {
             device_id: crate::cloud_storage::normalize_device_id(&device_id),
             encryption_password: password,
+            file_cipher: std::sync::Mutex::new(None),
         }
     }
 
@@ -768,48 +817,203 @@ impl SyncManager {
             .unwrap_or(false)
     }
 
+    /// [R07-file-e2ee] 取得（并懒初始化）会话级加密器。
+    ///
+    /// - 未启用加密 → `Ok(None)`；
+    /// - 已启用 → 首次调用做一次 Argon2 派生并缓存，之后整轮同步复用。
+    #[cfg(feature = "data_governance")]
+    fn file_cipher(
+        &self,
+    ) -> Result<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>, SyncError>
+    {
+        let Some(password) = self
+            .encryption_password
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        else {
+            return Ok(None);
+        };
+        let mut guard = self
+            .file_cipher
+            .lock()
+            .map_err(|_| SyncError::Database("同步加密器锁被毒化".to_string()))?;
+        if let Some(cipher) = guard.as_ref() {
+            return Ok(Some(cipher.clone()));
+        }
+        let cipher = std::sync::Arc::new(
+            crate::crypto::backup_crypto::FileCipherSession::new(password)
+                .map_err(|e| SyncError::Database(format!("初始化同步加密会话失败: {}", e)))?,
+        );
+        *guard = Some(cipher.clone());
+        Ok(Some(cipher))
+    }
+
     /// 加密文本 payload 为上传格式（若未启用则原样返回）
     ///
-    /// 输出：`DSBK` 容器（参见 `crypto::backup_crypto::encrypt_backup`）
+    /// 输出：`DSBK` 容器（参见 `crypto::backup_crypto::encrypt_backup`）。
+    /// [R07-file-e2ee] 走会话级密钥复用，避免每个 payload 一次 Argon2。
     #[cfg(feature = "data_governance")]
     fn encode_payload(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
-        match self.encryption_password.as_deref() {
-            Some(pw) if !pw.is_empty() => {
-                crate::crypto::backup_crypto::encrypt_backup(plaintext, pw)
-                    .map_err(|e| SyncError::Database(format!("加密 sync payload 失败: {}", e)))
-            }
-            _ => Ok(plaintext.to_vec()),
+        match self.file_cipher()? {
+            Some(cipher) => cipher
+                .encrypt_bytes(plaintext)
+                .map_err(|e| SyncError::Database(format!("加密 sync payload 失败: {}", e))),
+            None => Ok(plaintext.to_vec()),
         }
     }
 
-    /// 解密下载的 payload（若魔数匹配则解密；否则原样返回，向后兼容老明文数据）
+    /// 解密下载的 payload（若魔数匹配则解密）
     ///
     /// 失败模式：
     /// - 数据带 `DSBK` 头但本端未配密码 → 返回错误（提示用户设置密码）
     /// - 数据带 `DSBK` 头但密码错误 → 返回错误
-    /// - 数据未加密（无 `DSBK` 头） → 原样返回（兼容）
+    /// - 数据未加密（无 `DSBK` 头）且本端**未启用**加密 → 原样返回（兼容明文模式）
+    /// - 数据未加密（无 `DSBK` 头）但本端**已启用**加密 → 返回错误（[R04-sync-e2ee]）
+    ///
+    /// 最后一条是防降级：本机已配置加密密码时，静默接受明文会让攻击者
+    /// （或一台配置错误的旧设备）用明文对象替换密文对象而不被察觉。
+    /// 老明文数据在加密启用后必须显式处理（见错误信息），不再自动放行。
     #[cfg(feature = "data_governance")]
     fn decode_payload(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
         if crate::crypto::backup_crypto::is_encrypted_backup(data) {
-            match self.encryption_password.as_deref() {
-                Some(pw) if !pw.is_empty() => {
-                    crate::crypto::backup_crypto::decrypt_backup(data, pw).map_err(|e| {
-                        SyncError::Database(format!(
-                            "解密 sync payload 失败（密码错误或数据损坏）: {}",
-                            e
-                        ))
-                    })
-                }
-                _ => Err(SyncError::Database(
+            match self.file_cipher()? {
+                Some(cipher) => cipher.decrypt_bytes(data).map_err(|e| {
+                    SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                        crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                        format!("解密 sync payload 失败（密码错误或数据损坏）: {}", e),
+                    ))
+                }),
+                None => Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                    crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE,
                     "检测到加密的 sync payload 但本端未配置加密密码。\
-                     请在云同步设置里填入正确的密码后重试。"
-                        .to_string(),
-                )),
+                     请在云同步设置里填入正确的密码后重试。",
+                ))),
             }
+        } else if self.encryption_enabled() {
+            Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+                "本机已启用同步加密，但云端 payload 缺少 DSBK 加密头（明文数据）。\
+                 为防止端到端加密被静默降级，已拒绝读取该数据。\
+                 若这是启用加密前遗留的旧明文数据：请先在云同步设置里暂时清除加密密码，\
+                 完成一次下载同步把云端数据合并到本地，再清空该云端目录（或改用新目录）\
+                 并重新配置密码后执行完整上传；若确认不需要加密，请清除加密密码后重试。",
+            )))
         } else {
             Ok(data.to_vec())
         }
     }
+
+    // ================= [R07-asset-e2ee] 文件级对象端到端加密 =================
+    //
+    // 记录级 payload 早已通过 `encode_payload`/`decode_payload` 走 DSBK 容器，
+    // 但文件级对象（VFS blob、workspace `.db` 快照、资产文件）此前一直明文
+    // `put_file` 直传。以下辅助方法补齐文件级的加密上传 / 透明解包下载，
+    // 以及"无密码但云端已有加密标记"的上传拒绝（与 R04/R06 记录级政策一致）。
+
+    /// 云端根目录的端到端加密标记键。
+    ///
+    /// 与 `cloud_storage::sync_manager::ENCRYPTION_MARKER_FILE` 指向同一对象。
+    /// 本模块只做**存在性**探测，不解析、不写入标记内容，避免与
+    /// R06-key-verify 的标记格式（版本/密码校验子）耦合。
+    #[cfg(feature = "data_governance")]
+    const ENCRYPTION_MARKER_KEY: &'static str = ".encryption-marker";
+
+    /// [R07-asset-e2ee] 文件级上传前的加密一致性门。
+    ///
+    /// - 本端已配置加密密码：放行（上传侧会经 [`Self::put_file_encoded`]
+    ///   包装为 DSBK 密文）；
+    /// - 本端未配置密码但云端 root 已有 `.encryption-marker`：**拒绝**明文
+    ///   文件级上传——同一 root 已有端到端加密数据时，静默明文上传会造成
+    ///   明文/密文混布并破坏其他设备的防降级预期；
+    /// - 读取标记失败（网络错误等）：fail-closed，宁可本轮不传。
+    #[cfg(feature = "data_governance")]
+    async fn ensure_file_upload_encryption_policy(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<(), SyncError> {
+        if self.encryption_enabled() {
+            return Ok(());
+        }
+        let marker = storage
+            .get(Self::ENCRYPTION_MARKER_KEY)
+            .await
+            .map_err(|e| {
+                SyncError::Network(format!(
+                    "读取云端加密标记失败，无法确认加密策略，已停止文件级上传（fail-closed）: {}",
+                    e
+                ))
+            })?;
+        if marker.is_some() {
+            return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+                "云端根目录已存在端到端加密标记（.encryption-marker），但本机未配置加密密码。\
+                 为避免明文文件与加密数据混布，已拒绝文件级明文上传。\
+                 请在云同步设置里填入该根目录既有的加密密码后重试，\
+                 或改用一个全新的云端根目录。",
+            )));
+        }
+        Ok(())
+    }
+
+    /// [R07-asset-e2ee] 文件级对象上传（透明 DSBK 包装）。
+    ///
+    /// - 已配置密码：先把 `path` 的明文内容以 DSBK v2 流式容器
+    ///   （`crypto::backup_crypto::encrypt_backup_file`，恒定内存）加密到
+    ///   临时文件，再上传密文。对象键与清单中的 hash 保持**明文内容哈希**
+    ///   不变：内容寻址与去重语义不受包装影响，包装层与明文 hash 可分离。
+    /// - 未配置密码：直接明文上传（调用方必须先通过
+    ///   [`Self::ensure_file_upload_encryption_policy`] 的一致性门）。
+    #[cfg(feature = "data_governance")]
+    async fn put_file_encoded(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        path: &std::path::Path,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+    ) -> Result<(), SyncError> {
+        let Some(password) = self
+            .encryption_password
+            .as_deref()
+            .filter(|pw| !pw.is_empty())
+        else {
+            let expected = std::fs::metadata(path)
+                .map(|m| m.len())
+                .map_err(|e| SyncError::Database(format!("读取文件级对象大小失败: {e}")))?;
+            Self::put_file_and_verify_size(storage, key, path, expected, progress, "文件级对象")
+                .await?;
+            return Ok(());
+        };
+
+        let encrypted_tmp = tempfile::Builder::new()
+            .prefix(".sync-e2ee-upload-")
+            .suffix(".tmp")
+            .tempfile()
+            .map_err(|e| SyncError::Database(format!("创建临时加密文件失败: {}", e)))?
+            .into_temp_path();
+        crate::crypto::backup_crypto::encrypt_backup_file(path, &encrypted_tmp, password)
+            .map_err(|e| SyncError::Database(format!("文件级对象加密失败 {}: {}", key, e)))?;
+        let expected = std::fs::metadata(&encrypted_tmp)
+            .map(|m| m.len())
+            .map_err(|e| SyncError::Database(format!("读取加密文件级对象大小失败: {e}")))?;
+        Self::put_file_and_verify_size(
+            storage,
+            key,
+            &encrypted_tmp,
+            expected,
+            progress,
+            "加密文件级对象",
+        )
+        .await?;
+        Ok(())
+    }
+
+    // [FINDINGS-R11 P2-1] 此处原有 `get_file_decoded`（文件级对象下载 + 透明
+    // DSBK 解包）：全仓零调用的死代码，且在本端启用加密时接受明文对象，与
+    // 真实下载路径 `download_file_object` 的防降级门禁（缺 cipher_sha256 的
+    // 明文遗留在启用加密时拒收）语义相悖。为避免被后来者当成可用积木接回、
+    // 静默重新打开防降级豁免，已连同其唯一消费者 `file_has_dsbk_magic` 一并
+    // 删除。文件级对象下载一律走 `download_file_object`。
+    // 锁定测：tests/sync_r12_decoded_dead.rs。
 
     /// 获取设备 ID
     pub fn device_id(&self) -> &str {
@@ -1117,9 +1321,74 @@ impl SyncManager {
     /// They must not advance cursors across a prune gap or authorize pruning.
     const AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED: bool = false;
 
-    /// 构建按设备隔离的清单路径
+    /// 记录级对象路径里的设备目录名：短哈希，避免把完整 device_id 写进 key。
+    /// 清单 JSON / 变更 payload 仍写完整 `device_id`。
+    fn device_path_id(device_id: &str) -> String {
+        device_id_short_hash(device_id)
+    }
+
+    /// 路径段是否指向该设备：兼容旧明文 `device_id` 与新短哈希。
+    fn path_id_matches_device(path_id: &str, device_id: &str) -> bool {
+        !path_id.is_empty() && (path_id == device_id || path_id == Self::device_path_id(device_id))
+    }
+
+    /// 新写入的 per-device 清单：`data_governance/manifests/<短哈希>.json`
     fn device_manifest_key(device_id: &str) -> String {
+        format!(
+            "{}/{}.json",
+            Self::MANIFESTS_PREFIX,
+            Self::device_path_id(device_id)
+        )
+    }
+
+    /// 旧客户端写下的 `data_governance/manifests/<device_id>.json`
+    fn device_manifest_legacy_key(device_id: &str) -> String {
         format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
+    }
+
+    /// 把路径里的设备段收成规范 device_id，避免新旧前缀被当成两台设备。
+    ///
+    /// 优先本机、再设备清单内容、再「同一 listing 里同时出现明文与其短哈希」。
+    fn resolve_path_device_id(
+        path_id: &str,
+        self_device_id: &str,
+        manifests: &HashMap<String, SyncManifest>,
+        path_aliases: &HashMap<String, String>,
+    ) -> String {
+        if Self::path_id_matches_device(path_id, self_device_id) {
+            return self_device_id.to_string();
+        }
+        if let Some(manifest) = manifests
+            .values()
+            .find(|manifest| Self::path_id_matches_device(path_id, &manifest.device_id))
+        {
+            if !manifest.device_id.trim().is_empty() {
+                return manifest.device_id.clone();
+            }
+        }
+        if let Some(canonical) = manifests
+            .keys()
+            .find(|canonical| Self::path_id_matches_device(path_id, canonical))
+        {
+            return canonical.clone();
+        }
+        path_aliases
+            .get(path_id)
+            .cloned()
+            .unwrap_or_else(|| path_id.to_string())
+    }
+
+    /// 同一 listing 里同时出现 `device_id` 与其短哈希时，短哈希并进明文 ID。
+    fn path_device_aliases(path_ids: &HashSet<String>) -> HashMap<String, String> {
+        let mut aliases = HashMap::new();
+        for raw in path_ids {
+            let hashed = Self::device_path_id(raw);
+            if hashed != *raw && path_ids.contains(&hashed) {
+                aliases.insert(hashed, raw.clone());
+                aliases.insert(raw.clone(), raw.clone());
+            }
+        }
+        aliases
     }
 
     fn v4_features() -> Vec<String> {
@@ -1361,13 +1630,34 @@ impl SyncManager {
         });
         let bytes = serde_json::to_vec_pretty(&body)
             .map_err(|e| SyncError::Database(format!("序列化远端实例标识失败: {}", e)))?;
-        storage
-            .put(Self::INSTANCE_KEY, &bytes)
-            .await
-            .map_err(|e| SyncError::Network(format!("写入远端实例标识失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, Self::INSTANCE_KEY, &bytes, "远端实例标识").await?;
         let store = SyncStateStore::open_default()?;
         store.bind_instance(&instance_id, provider, &endpoint_hint)?;
         Ok(instance_id)
+    }
+
+    /// 小对象 PUT 后 GET 回读字节。`put` 成功不等于对象完整落地；
+    /// 设备清单 / 实例标识静默短写会让后续同步把错误水位当已发布。
+    async fn put_bytes_and_reread(
+        storage: &dyn CloudStorage,
+        key: &str,
+        payload: &[u8],
+        context: &str,
+    ) -> Result<(), SyncError> {
+        storage
+            .put(key, payload)
+            .await
+            .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
+        match storage.get(key).await {
+            Ok(Some(read_back)) if read_back == payload => Ok(()),
+            Ok(Some(_)) => Err(SyncError::Network(format!(
+                "{context} 上传后回读不一致，已停止并不得报成功"
+            ))),
+            Ok(None) => Err(SyncError::Network(format!(
+                "{context} 上传后对象不存在，已停止并不得报成功"
+            ))),
+            Err(e) => Err(SyncError::Network(format!("{context} 上传后回读失败: {e}"))),
+        }
     }
 
     /// 上传本地清单到云端（按设备隔离，自带网络重试）
@@ -1418,13 +1708,13 @@ impl SyncManager {
             let payload = payload.clone();
             let key = key.clone();
             async move {
-                storage
-                    .put(&key, &payload)
-                    .await
-                    .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))
+                Self::put_bytes_and_reread(storage, &key, &payload, "记录级设备清单").await
             }
         })
         .await?;
+
+        self.delete_legacy_device_manifest_if_migrated(storage, &self.device_id)
+            .await;
 
         tracing::info!(
             "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}, encrypted={}",
@@ -1438,6 +1728,37 @@ impl SyncManager {
         Ok(())
     }
 
+    async fn delete_legacy_device_manifest_if_migrated(
+        &self,
+        storage: &dyn CloudStorage,
+        device_id: &str,
+    ) {
+        let new_key = Self::device_manifest_key(device_id);
+        let legacy_key = Self::device_manifest_legacy_key(device_id);
+        if new_key == legacy_key {
+            return;
+        }
+        match storage.stat(&legacy_key).await {
+            Ok(Some(_)) => {
+                if let Err(error) = storage.delete(&legacy_key).await {
+                    tracing::warn!(
+                        "[sync] 迁移设备清单后删除旧对象 {} 失败（新清单已发布）: {}",
+                        legacy_key,
+                        error
+                    );
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    "[sync] 迁移设备清单时探测旧对象 {} 失败: {}",
+                    legacy_key,
+                    error
+                );
+            }
+        }
+    }
+
     async fn mark_device_manifest_superseded(
         &self,
         storage: &dyn CloudStorage,
@@ -1449,12 +1770,21 @@ impl SyncManager {
         }
         self.validate_remote_format(storage, true).await?;
 
-        let key = Self::device_manifest_key(old_device_id);
-        let mut manifest = match storage
-            .get(&key)
+        let hashed_key = Self::device_manifest_key(old_device_id);
+        let legacy_key = Self::device_manifest_legacy_key(old_device_id);
+        let hashed_bytes = storage
+            .get(&hashed_key)
             .await
-            .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?
-        {
+            .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?;
+        let legacy_bytes = if hashed_bytes.is_none() && legacy_key != hashed_key {
+            storage
+                .get(&legacy_key)
+                .await
+                .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?
+        } else {
+            None
+        };
+        let mut manifest = match hashed_bytes.or(legacy_bytes) {
             Some(bytes) => {
                 let decoded = self.decode_payload(&bytes)?;
                 serde_json::from_slice::<SyncManifest>(&decoded)
@@ -1484,10 +1814,10 @@ impl SyncManager {
         let json = serde_json::to_vec_pretty(&manifest)
             .map_err(|e| SyncError::Database(format!("序列化旧设备清单失败: {}", e)))?;
         let payload = self.encode_payload(&json)?;
-        storage
-            .put(&key, &payload)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传旧设备 superseded_by 失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, &hashed_key, &payload, "旧设备 superseded_by 清单")
+            .await?;
+        self.delete_legacy_device_manifest_if_migrated(storage, old_device_id)
+            .await;
         Ok(())
     }
 
@@ -1528,7 +1858,9 @@ impl SyncManager {
                 .and_then(|f| f.strip_suffix(".json"))
                 .unwrap_or("");
 
-            if file_device_id == self.device_id || file_device_id.is_empty() {
+            if file_device_id.is_empty()
+                || Self::path_id_matches_device(file_device_id, &self.device_id)
+            {
                 continue;
             }
 
@@ -1538,7 +1870,8 @@ impl SyncManager {
                 .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?;
             if let Some(bytes) = bytes {
                 // [P0-2] 透明解密：data_governance feature 下走 decode_payload；
-                // 老明文数据 + 加密数据都由 decode_payload 自动识别 DSBK 魔数分流
+                // DSBK 魔数自动分流。[R04-sync-e2ee] 本端启用加密后，明文对象
+                // 会被 decode_payload 显式拒绝（防降级），不再静默当明文读。
                 //
                 // [P2 fail-close] 解密失败必须硬错误，与变更文件路径口径一致。
                 // 此前静默 continue 会让密码配错的设备把云端视为近空实例：
@@ -1557,6 +1890,9 @@ impl SyncManager {
                         continue;
                     }
                 };
+                if Self::path_id_matches_device(&manifest.device_id, &self.device_id) {
+                    continue;
+                }
                 any_found = true;
                 if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
                     if latest_created_at.is_none_or(|prev| dt > prev) {
@@ -1674,7 +2010,7 @@ impl SyncManager {
                 "云端清单列表被截断，已停止同步以避免漏读设备状态".to_string(),
             ));
         }
-        let mut manifests = HashMap::new();
+        let mut manifests: HashMap<String, SyncManifest> = HashMap::new();
         for file in list.files {
             let Some(device_id) = file
                 .key
@@ -1702,7 +2038,23 @@ impl SyncManager {
             })?;
             match serde_json::from_slice::<SyncManifest>(&decoded) {
                 Ok(manifest) => {
-                    manifests.insert(device_id.to_string(), manifest);
+                    let canonical = if manifest.device_id.trim().is_empty() {
+                        device_id.to_string()
+                    } else {
+                        manifest.device_id.clone()
+                    };
+                    let incoming_hashed = file.key == Self::device_manifest_key(&canonical);
+                    if let Some(existing) = manifests.get(&canonical) {
+                        if manifest.published_max_seq < existing.published_max_seq {
+                            continue;
+                        }
+                        if manifest.published_max_seq == existing.published_max_seq
+                            && !incoming_hashed
+                        {
+                            continue;
+                        }
+                    }
+                    manifests.insert(canonical, manifest);
                 }
                 Err(e) => {
                     return Err(SyncError::Database(format!(
@@ -1767,10 +2119,7 @@ impl SyncManager {
         // [P0-2] 保持与新链路一致的加密行为
         let payload = self.encode_payload(&json)?;
 
-        storage
-            .put(&key, &payload)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, &key, &payload, "记录级变更(legacy)").await?;
 
         tracing::info!(
             "[sync] 变更数据已上传(legacy): device={}, count={}, key={}, encrypted={}",
@@ -1865,7 +2214,10 @@ impl SyncManager {
                 .map_err(|e| SyncError::Database(format!("写入临时上传文件失败: {}", e)))?;
 
             let streamed_ok = match storage.put_file(&key, tmp.path(), Some(cb)).await {
-                Ok(_) => Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await,
+                Ok(_) => {
+                    Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await
+                        && Self::verify_uploaded_bytes(storage, &key, &final_bytes).await
+                }
                 Err(e) => {
                     tracing::warn!(
                         "[sync] 变更流式上传失败，将回退重试: key={}, err={}",
@@ -1901,6 +2253,26 @@ impl SyncManager {
     ///
     /// stat 失败或对象缺失/大小不符均返回 `false`（视为未确认，触发重传），
     /// 而不是直接报错，以便上层统一处理重试与回退。
+    /// PUT 后 GET 回读字节。size 一致仍可能是同长度短写/错包，
+    /// 记录级变更不得只靠 size 推进水位。不宣称远端 SHA。
+    async fn verify_uploaded_bytes(storage: &dyn CloudStorage, key: &str, expected: &[u8]) -> bool {
+        match storage.get(key).await {
+            Ok(Some(actual)) if actual == expected => true,
+            Ok(Some(_)) => {
+                tracing::warn!("[sync] 上传后回读不一致: key={}", key);
+                false
+            }
+            Ok(None) => {
+                tracing::warn!("[sync] 上传后回读对象不存在: key={}", key);
+                false
+            }
+            Err(e) => {
+                tracing::warn!("[sync] 上传后回读失败: key={}, err={}", key, e);
+                false
+            }
+        }
+    }
+
     async fn verify_uploaded_size(storage: &dyn CloudStorage, key: &str, expected: u64) -> bool {
         match storage.stat(key).await {
             Ok(Some(info)) => {
@@ -1927,6 +2299,30 @@ impl SyncManager {
         }
     }
 
+    /// 文件级对象 `put_file` 后 `stat` 核对远端大小。
+    /// 生产 provider 的 `put_file` 已自核，这里再拦一层：默认 `put_file`
+    /// 不自动核对，短写不得写入文件级清单。不宣称全量回读 / 远端 SHA。
+    async fn put_file_and_verify_size(
+        storage: &dyn CloudStorage,
+        key: &str,
+        path: &std::path::Path,
+        expected_size: u64,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+        context: &str,
+    ) -> Result<(), SyncError> {
+        storage
+            .put_file(key, path, progress)
+            .await
+            .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
+        if Self::verify_uploaded_size(storage, key, expected_size).await {
+            Ok(())
+        } else {
+            Err(SyncError::Network(format!(
+                "{context} 上传后大小不一致或对象不存在，已停止并不得写入清单"
+            )))
+        }
+    }
+
     /// [P0-10/C8] 带退避重试的 PUT，每次上传后立即回验 size，不符即报错并触发下次重试。
     async fn put_change_with_verify_retry(
         storage: &dyn CloudStorage,
@@ -1943,13 +2339,27 @@ impl SyncManager {
                     .await
                     .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
                 match storage.stat(&key).await {
-                    Ok(Some(info)) if info.size == expected => Ok(()),
-                    Ok(Some(info)) => Err(SyncError::Network(format!(
-                        "上传后 size 校验失败: key={}, 期望={}, 实际={}",
-                        key, expected, info.size
-                    ))),
+                    Ok(Some(info)) if info.size == expected => {}
+                    Ok(Some(info)) => {
+                        return Err(SyncError::Network(format!(
+                            "上传后 size 校验失败: key={}, 期望={}, 实际={}",
+                            key, expected, info.size
+                        )));
+                    }
+                    Ok(None) => {
+                        return Err(SyncError::Network(format!("上传后对象不存在: key={}", key)));
+                    }
+                    Err(e) => {
+                        return Err(SyncError::Network(format!("上传后回验失败: {}", e)));
+                    }
+                }
+                match storage.get(&key).await {
+                    Ok(Some(read_back)) if read_back == bytes => Ok(()),
+                    Ok(Some(_)) => Err(SyncError::Network(
+                        "记录级变更 上传后回读不一致，已停止并不得推进水位".to_string(),
+                    )),
                     Ok(None) => Err(SyncError::Network(format!("上传后对象不存在: key={}", key))),
-                    Err(e) => Err(SyncError::Network(format!("上传后回验失败: {}", e))),
+                    Err(e) => Err(SyncError::Network(format!("上传后回读失败: {}", e))),
                 }
             }
         })
@@ -1993,6 +2403,16 @@ impl SyncManager {
 
         let mut v3_files: HashMap<String, Vec<(u64, u64, String)>> = HashMap::new();
         let mut legacy_files: Vec<(String, u64, String)> = Vec::new();
+        let listed_path_ids: HashSet<String> = files
+            .iter()
+            .filter_map(|key| match Self::parse_change_key(key) {
+                Some(ParsedChangeKey::V4Shard { device_id, .. })
+                | Some(ParsedChangeKey::V3 { device_id, .. })
+                | Some(ParsedChangeKey::Legacy { device_id, .. }) => Some(device_id),
+                None => None,
+            })
+            .collect();
+        let path_aliases = Self::path_device_aliases(&listed_path_ids);
         for key in files {
             match Self::parse_change_key(&key) {
                 Some(ParsedChangeKey::V4Shard {
@@ -2006,21 +2426,33 @@ impl SyncManager {
                     seq,
                     version,
                 }) => {
-                    if device_id == self.device_id {
+                    if Self::path_id_matches_device(&device_id, &self.device_id) {
                         continue;
                     }
-                    v3_files.entry(device_id).or_default().push((
+                    let canonical = Self::resolve_path_device_id(
+                        &device_id,
+                        &self.device_id,
+                        &device_manifests,
+                        &path_aliases,
+                    );
+                    v3_files.entry(canonical).or_default().push((
                         seq,
                         Self::normalize_version_to_seconds(version),
                         key,
                     ));
                 }
                 Some(ParsedChangeKey::Legacy { device_id, version }) => {
-                    if device_id == self.device_id {
+                    if Self::path_id_matches_device(&device_id, &self.device_id) {
                         continue;
                     }
+                    let canonical = Self::resolve_path_device_id(
+                        &device_id,
+                        &self.device_id,
+                        &device_manifests,
+                        &path_aliases,
+                    );
                     legacy_files.push((
-                        device_id,
+                        canonical,
                         Self::normalize_version_to_seconds(version),
                         key,
                     ));
@@ -2042,11 +2474,20 @@ impl SyncManager {
                     uploader, duplicate[0].0, duplicate[0].2, duplicate[1].2
                 )));
             }
-            let mut expected = store.get_cursor(&instance_id, &uploader)?.saturating_add(1);
+            let mut expected = store
+                .get_cursor(&instance_id, &uploader)?
+                .max(store.get_cursor(&instance_id, &Self::device_path_id(&uploader))?)
+                .saturating_add(1);
             let listed_max = files.iter().map(|(seq, _, _)| *seq).max().unwrap_or(0);
             let published_max = device_manifests
                 .get(&uploader)
                 .map(|m| m.published_max_seq)
+                .or_else(|| {
+                    device_manifests
+                        .values()
+                        .find(|m| Self::path_id_matches_device(&uploader, &m.device_id))
+                        .map(|m| m.published_max_seq)
+                })
                 .unwrap_or(0)
                 .max(listed_max);
 
@@ -2069,6 +2510,8 @@ impl SyncManager {
 
                 {
                     let (_, version, key) = files[index].clone();
+                    // 生产 provider 的 get() 在声明了长度时拒绝半包。
+                    // 截断体不得解码、不得推进水位。不宣称远端 SHA。
                     let Some(data) = storage
                         .get(&key)
                         .await
@@ -2105,7 +2548,15 @@ impl SyncManager {
                             key
                         )));
                     }
-                    if !payload.source_device_id.is_empty() && payload.source_device_id != uploader
+                    let path_device_id = match Self::parse_change_key(&key) {
+                        Some(ParsedChangeKey::V4Shard { device_id, .. })
+                        | Some(ParsedChangeKey::V3 { device_id, .. })
+                        | Some(ParsedChangeKey::Legacy { device_id, .. }) => device_id,
+                        None => String::new(),
+                    };
+                    if !payload.source_device_id.is_empty()
+                        && payload.source_device_id != uploader
+                        && !Self::path_id_matches_device(&path_device_id, &payload.source_device_id)
                     {
                         return Err(SyncError::Network(format!(
                             "变更分片路径 device 与 payload 不一致: {}",
@@ -2137,6 +2588,11 @@ impl SyncManager {
                         all_changes.push((source_device.clone(), source_seq, version, change));
                     }
                     cursor_advancements.insert(uploader.clone(), seq);
+                    cursor_advancements.insert(Self::device_path_id(&uploader), seq);
+                    if !source_device.is_empty() {
+                        cursor_advancements.insert(source_device.clone(), seq);
+                        cursor_advancements.insert(Self::device_path_id(&source_device), seq);
+                    }
                     index += 1;
                 }
 
@@ -2271,17 +2727,20 @@ impl SyncManager {
         match Self::parse_change_key(key) {
             Some(ParsedChangeKey::V4Shard { device_id, .. })
             | Some(ParsedChangeKey::V3 { device_id, .. })
-            | Some(ParsedChangeKey::Legacy { device_id, .. }) => device_id == self_device_id,
+            | Some(ParsedChangeKey::Legacy { device_id, .. }) => {
+                Self::path_id_matches_device(&device_id, self_device_id)
+            }
             None => false,
         }
     }
 
     /// 从文件路径解析版本号
     fn parse_version_from_key(key: &str) -> Option<u64> {
-        // v3 格式: data_governance/changes/{device_id}/{seq}-{version}-{nonce}.json.zst
-        // 新格式: data_governance/changes/{device_id}/{version}-{nonce}.json.zst
-        // 旧格式: data_governance/changes/{device_id}/{version}-{nonce}.json
-        //     或: data_governance/changes/{device_id}/{version}.json
+        // v3 格式: data_governance/changes/{path_id}/{seq}-{version}-{nonce}.json.zst
+        // 新格式: data_governance/changes/{path_id}/{version}-{nonce}.json.zst
+        // 旧格式: data_governance/changes/{path_id}/{version}-{nonce}.json
+        //     或: data_governance/changes/{path_id}/{version}.json
+        // path_id 新写入为 device_id 短哈希，读取仍兼容旧明文 device_id。
         match Self::parse_change_key(key) {
             Some(ParsedChangeKey::V4Shard { version, .. }) => Some(version),
             Some(ParsedChangeKey::V3 { version, .. }) => Some(version),
@@ -2427,7 +2886,7 @@ impl SyncManager {
         format!(
             "{}/{}/{}-{}.json.zst",
             Self::CHANGES_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             version,
             nonce
         )
@@ -2439,7 +2898,7 @@ impl SyncManager {
         format!(
             "{}/{}/{:012}-{}-{}.json.zst",
             Self::CHANGES_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             seq,
             version,
             nonce
@@ -2452,7 +2911,7 @@ impl SyncManager {
         format!(
             "{}/{}/{:012}-{}-{}.json.zst",
             Self::V4_SHARDS_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             seq,
             version,
             operation_id
@@ -2493,20 +2952,24 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         device_id: &str,
     ) -> Result<u64, SyncError> {
-        let mut keys = Self::list_complete_keys(
-            storage,
-            &format!("{}/{}", Self::CHANGES_PREFIX, device_id),
-            "本设备 v3 变更文件",
-        )
-        .await?;
-        keys.extend(
-            Self::list_complete_keys(
-                storage,
-                &format!("{}/{}", Self::V4_SHARDS_PREFIX, device_id),
-                "本设备 v4 变更分片",
-            )
-            .await?,
-        );
+        let hashed = Self::device_path_id(device_id);
+        let mut prefixes = vec![
+            format!("{}/{}", Self::CHANGES_PREFIX, hashed),
+            format!("{}/{}", Self::V4_SHARDS_PREFIX, hashed),
+        ];
+        if hashed != device_id {
+            prefixes.push(format!("{}/{}", Self::CHANGES_PREFIX, device_id));
+            prefixes.push(format!("{}/{}", Self::V4_SHARDS_PREFIX, device_id));
+        }
+        let mut keys = Vec::new();
+        for prefix in prefixes {
+            let label = if prefix.contains("/v4/shards/") {
+                "本设备 v4 变更分片"
+            } else {
+                "本设备 v3 变更文件"
+            };
+            keys.extend(Self::list_complete_keys(storage, &prefix, label).await?);
+        }
         Ok(keys
             .iter()
             .filter_map(|key| match Self::parse_change_key(key) {
@@ -2519,7 +2982,7 @@ impl SyncManager {
                     device_id: parsed,
                     seq,
                     ..
-                }) if parsed == device_id => Some(seq),
+                }) if Self::path_id_matches_device(&parsed, device_id) => Some(seq),
                 _ => None,
             })
             .max()
@@ -2538,13 +3001,12 @@ impl SyncManager {
         }
     }
 
-    fn snapshot_key(database_name: &str, device_id: &str) -> String {
+    /// 新快照对象名不编码时间或设备。到期/裁剪看 `last_modified`，语义看清单内容。
+    fn snapshot_key(database_name: &str, _device_id: &str) -> String {
         format!(
-            "{}/{}/{}-{}-{}.json.zst",
+            "{}/{}/{}.json.zst",
             Self::SNAPSHOTS_PREFIX,
             database_name,
-            chrono::Utc::now().timestamp_millis(),
-            device_id,
             uuid::Uuid::new_v4()
         )
     }
@@ -2984,7 +3446,10 @@ impl SyncManager {
         let active_cutoff = chrono::Utc::now() - chrono::Duration::days(active_days as i64);
         let mut active_consumer_cursors = Vec::new();
         for (device_id, manifest) in manifests {
-            if device_id == self.device_id || manifest.superseded_by.is_some() {
+            if Self::path_id_matches_device(&device_id, &self.device_id)
+                || Self::path_id_matches_device(&manifest.device_id, &self.device_id)
+                || manifest.superseded_by.is_some()
+            {
                 continue;
             }
             let active = Self::parse_flexible_timestamp(&manifest.created_at)
@@ -3105,7 +3570,8 @@ impl SyncManager {
             match Self::parse_change_key(&key) {
                 Some(ParsedChangeKey::V4Shard { device_id, seq, .. })
                 | Some(ParsedChangeKey::V3 { device_id, seq, .. })
-                    if device_id == self.device_id && seq <= safe_seq =>
+                    if Self::path_id_matches_device(&device_id, &self.device_id)
+                        && seq <= safe_seq =>
                 {
                     storage.delete(&key).await.map_err(|e| {
                         SyncError::Network(format!("删除变更文件失败 {}: {}", key, e))
@@ -3368,6 +3834,24 @@ impl SyncManager {
     /// 获取待同步的变更
     ///
     /// 查询 __change_log 表中 sync_version = 0 的所有记录。
+    ///
+    /// # 传播契约（迁移写入必须进 change_log）
+    ///
+    /// 本方法是上传路径的唯一变更来源：任何没有落进 `__change_log` 的本地
+    /// 写入对同步永远不可见。schema 迁移中的数据规范化（normalization）
+    /// UPDATE 也不例外——多设备混版本场景下，已升级设备清洗出的干净数据
+    /// 只有经由 change_log 触发器记为 pending 才会传播给其他设备。
+    ///
+    /// 因此对规范化类迁移的硬性要求：**目标表的 trg__change_log_* 触发器
+    /// 必须在规范化 SQL 执行之前的版本就已装配**，且迁移不得以
+    /// DROP TRIGGER / 重建表的方式绕过触发器。
+    ///
+    /// - 合规示例：mistakes V20260824（anki_cards 可选 JSON 规范化）晚于
+    ///   V20260131 的 anki_cards 触发器，规范化 UPDATE 自动进入 change_log；
+    ///   由 tests/sync_r13_migration_change_log_propagation.rs 契约锁定。
+    /// - 历史缺口（勿再新增）：vfs V20260302（folder_items 时间戳规范化）
+    ///   早于 V20260523 的 folder_items 触发器，其修复从未经 change_log
+    ///   传播，只能依赖每台设备各自执行同一迁移完成本地自愈。
     ///
     /// # 参数
     /// * `conn` - 数据库连接
@@ -6925,12 +7409,16 @@ impl SyncManager {
                                     )
                                     .ok();
 
-                                // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用
+                                // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用。
+                                // [R02] 冲突路径必须启用字段级合并：resolve_one 命中冲突的
+                                // 前提正是"本地有未同步修改且业务数据不同"，这恰是 tag 并集、
+                                // 布尔 OR 等可交换策略要弥合的场景；此前传 false 导致
+                                // 字段级合并在冲突保护生产路径上不可达（整行覆盖丢本地 tag）。
                                 let applied = Self::apply_single_change_force(
                                     conn,
                                     &cloud_change,
                                     id_column,
-                                    false,
+                                    true,
                                 )?;
                                 if applied {
                                     apply_result.success_count += 1;
@@ -6965,7 +7453,16 @@ impl SyncManager {
                                     );
                                 }
                             } else {
-                                // Local 胜，跳过应用云端变更；但记录为 rejected，上层会在下一轮把本地值上传
+                                // Local 胜，跳过应用云端整行变更；但记录为 rejected，上层会在下一轮把本地值上传。
+                                // [R02] 安全可交换字段（tag 并集、布尔 OR、单调计数 max）仍折叠进
+                                // 胜出的本地行：否则"本地胜的一端只剩本地 tag、云端胜的一端已并集"，
+                                // 两台设备会永久分叉。折叠写入不抑制 change log，随下一轮上传收敛。
+                                // [R04] 折叠受策略门约束：Manual/KeepLocal 下不自动改写本地行。
+                                Self::fold_safe_field_merge_into_local(
+                                    conn,
+                                    &change_to_apply,
+                                    policy,
+                                )?;
                                 conflict_result.rejected += 1;
                                 apply_result.skipped_count += 1;
                             }
@@ -7394,6 +7891,121 @@ impl SyncManager {
         Self::apply_single_change_inner(conn, change, id_column, false, allow_field_merge)
     }
 
+    /// [R02] 冲突裁决为 Local 胜时，把云端败方 payload 中登记为字段级合并的
+    /// "安全可交换字段"（tag 并集、布尔 OR、单调计数 max）折叠进胜出的本地行。
+    ///
+    /// 行级 LWW 拒绝云端整行是对的（非可交换字段以本地为准、败方完整 payload 已入
+    /// `__sync_conflicts`），但可交换合并语义与胜负无关：本地胜的一端若不折叠，
+    /// 而云端胜的一端做了并集，两台设备会停在分叉状态。折叠产生的 UPDATE 不抑制
+    /// change log（触发器照常记 pending），合并结果随下一轮上传传播给对端。
+    ///
+    /// [R04] 折叠只在 `KeepLatest`（自动 LWW 裁决）下进行：`KeepLocal`（含上游
+    /// `MergeStrategy::Manual` 映射到的 KeepLocal）是用户显式指令"本地行原样保留 /
+    /// 等待手动裁决"，自动改写本地行会违背该指令——云端败方 payload 已完整入
+    /// `__sync_conflicts`，用户可在冲突面板手动采纳。KeepCloud 下 Local 不会胜出，
+    /// 本函数不可达。
+    ///
+    /// 返回是否有字段被实际折叠。
+    fn fold_safe_field_merge_into_local(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        policy: conflict_resolver::ConflictPolicy,
+    ) -> Result<bool, SyncError> {
+        if policy != conflict_resolver::ConflictPolicy::KeepLatest {
+            return Ok(false);
+        }
+        if change.operation == ChangeOperation::Delete {
+            return Ok(false);
+        }
+        let Some(data) = change.data.as_ref().and_then(|d| d.as_object()) else {
+            return Ok(false);
+        };
+        let table_name = change.table_name.as_str();
+        let picklist: Vec<&'static str> = Self::field_merge_column_picklist(table_name)
+            .into_iter()
+            .filter(|col| Self::table_has_column(conn, table_name, col))
+            .filter(|col| matches!(data.get(*col), Some(v) if !v.is_null()))
+            .collect();
+        if picklist.is_empty() {
+            return Ok(false);
+        }
+
+        let table_ident = Self::quote_identifier(table_name)?;
+        let pk_columns = Self::primary_key_columns(conn, table_name)?;
+        let pk_values = Self::parse_record_key_values(table_name, &change.record_id, &pk_columns)?;
+        let pk_predicate = Self::build_primary_key_predicate(&pk_columns)?;
+
+        let cols_sql: Vec<String> = picklist
+            .iter()
+            .map(|c| Self::quote_identifier(c))
+            .collect::<Result<Vec<_>, _>>()?;
+        let read_sql = format!(
+            "SELECT {} FROM {} WHERE {}",
+            cols_sql.join(","),
+            table_ident,
+            pk_predicate
+        );
+        let params_refs: Vec<&dyn rusqlite::ToSql> = pk_values
+            .iter()
+            .map(|v| v as &dyn rusqlite::ToSql)
+            .collect();
+        let mut stmt = conn
+            .prepare(&read_sql)
+            .map_err(|e| SyncError::Database(format!("读取冲突折叠本地值失败: {}", e)))?;
+        let local_values: Option<Vec<serde_json::Value>> = stmt
+            .query_row(params_refs.as_slice(), |row| {
+                Ok((0..picklist.len())
+                    .map(|i| Self::sqlite_value_to_json(row, i))
+                    .collect())
+            })
+            .optional()
+            .map_err(|e| SyncError::Database(format!("读取冲突折叠本地值失败: {}", e)))?;
+        let Some(local_values) = local_values else {
+            return Ok(false);
+        };
+
+        let mut folded = false;
+        for (col_name, local_val) in picklist.iter().zip(local_values.iter()) {
+            let remote_val = data.get(*col_name).expect("picklist filtered on presence");
+            let (merged_val, was_merged, merge_conflict) =
+                field_merge::merge_field(table_name, col_name, Some(local_val), Some(remote_val));
+            // [R04] 比较前先 canonicalize：SQLite TEXT 列里的 '["a","b"]' 与合并产物
+            // Array(["a","b"]) 语义等价但原始比较不等，会产生空转 UPDATE（触发器
+            // 记 pending → 无意义上传回声）。canonicalize 抹平字符串/JSON 形态差异。
+            if !was_merged
+                || merge_conflict
+                || Self::canonicalize_sync_value_for_compare(&merged_val)
+                    == Self::canonicalize_sync_value_for_compare(local_val)
+            {
+                continue;
+            }
+            let update_pk_predicate = Self::build_primary_key_predicate_from(&pk_columns, 2)?;
+            let col_ident = Self::quote_identifier(col_name)?;
+            let update_sql = format!(
+                "UPDATE {} SET {} = ?1 WHERE {}",
+                table_ident, col_ident, update_pk_predicate
+            );
+            let Some(sql_value) = Self::json_value_to_sql_param(&merged_val) else {
+                continue;
+            };
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![sql_value];
+            for value in &pk_values {
+                params_vec.push(Box::new(value.clone()));
+            }
+            let update_params: Vec<&dyn rusqlite::ToSql> =
+                params_vec.iter().map(|v| v.as_ref()).collect();
+            conn.execute(&update_sql, update_params.as_slice())
+                .map_err(|e| {
+                    SyncError::Database(format!(
+                        "冲突败方安全字段折叠写入失败: {}.{} {}",
+                        table_name, col_name, e
+                    ))
+                })?;
+            folded = true;
+        }
+        Ok(folded)
+    }
+
     /// 同 `apply_single_change`，但跳过 LWW 时间戳门（用于 conflict_guard/手动解决已决策场景）
     fn apply_single_change_force(
         conn: &Connection,
@@ -7431,60 +8043,104 @@ impl SyncManager {
                 // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 疑似时钟漂移，
                 //    进隔离区（可见、可重放），绝不静默跳过（INV-1：禁止无记录的数据丢弃）
                 // 2. 如果本地记录的 updated_at 严格胜过云端 DELETE 的 changed_at → 跳过（LWW）
-                if !skip_lww && has_tombstone {
-                    if let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) {
-                        let now = chrono::Utc::now();
-                        let drift_ms = cloud_ms - now.timestamp_millis();
-                        if drift_ms > hlc::MAX_DRIFT_MS {
-                            tracing::warn!(
-                                "[sync] DELETE 时间戳漂移过大，转入隔离区: {}.{} = {}, drift_ms={}",
-                                change.table_name,
-                                id_column,
-                                change.record_id,
-                                drift_ms
-                            );
-                            return Err(SyncError::ClockDriftSuspected {
-                                table: change.table_name.clone(),
-                                record_id: change.record_id.clone(),
-                                drift_ms,
-                            });
-                        }
+                //
+                // [R02] 该保护同样覆盖没有 deleted_at 的 hard-delete 表：此前只在
+                // has_tombstone 时生效，导致迟到/较旧的 DELETE 无条件物理删除更新的
+                // 本地行且不可恢复（INV-1 违例）。被 LWW 拒绝的 DELETE 不写
+                // __sync_delete_versions，较新的本地行随下一轮上传正常收敛。
+                if !skip_lww {
+                    // [R04] changed_at 不可解析时 fail-closed：漂移检查与 LWW 门都无法
+                    // 运行，此前会直落到无条件删除（hard-delete 表不可恢复，INV-1 违例）。
+                    // 返回非 transient 错误 → 调用方 quarantine_change 落隔离区
+                    // （可见、可重放/手动处理），绝不静默硬删。
+                    // skip_lww=true 的强制路径不受影响：冲突已被 resolve_one 显式裁决。
+                    let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) else {
+                        tracing::warn!(
+                            "[sync] DELETE changed_at 不可解析，fail-closed 转入隔离区: {}.{} = {}, changed_at={:?}",
+                            change.table_name,
+                            id_column,
+                            change.record_id,
+                            change.changed_at
+                        );
+                        return Err(SyncError::Database(format!(
+                            "DELETE changed_at 不可解析，fail-closed 拒绝删除: {}.{} = {}, changed_at={:?}",
+                            change.table_name, id_column, change.record_id, change.changed_at
+                        )));
+                    };
+                    let now = chrono::Utc::now();
+                    let drift_ms = cloud_ms - now.timestamp_millis();
+                    if drift_ms > hlc::MAX_DRIFT_MS {
+                        tracing::warn!(
+                            "[sync] DELETE 时间戳漂移过大，转入隔离区: {}.{} = {}, drift_ms={}",
+                            change.table_name,
+                            id_column,
+                            change.record_id,
+                            drift_ms
+                        );
+                        return Err(SyncError::ClockDriftSuspected {
+                            table: change.table_name.clone(),
+                            record_id: change.record_id.clone(),
+                            drift_ms,
+                        });
+                    }
 
-                        if Self::table_has_column(conn, &change.table_name, "updated_at") {
-                            let local_data_opt = Self::get_record_data(
-                                conn,
-                                &change.table_name,
-                                &change.record_id,
-                                id_column,
-                            )?;
+                    if Self::table_has_column(conn, &change.table_name, "updated_at") {
+                        let local_data_opt = Self::get_record_data(
+                            conn,
+                            &change.table_name,
+                            &change.record_id,
+                            id_column,
+                        )?;
 
-                            if let Some(local_data) = local_data_opt {
-                                let local_ts = local_data
-                                    .get("updated_at")
-                                    .and_then(Self::timestamp_value_to_lww_string);
-                                if local_ts.as_deref().is_some_and(|local_ts| {
-                                    let (local_dev, cloud_dev) = Self::lww_device_pair(
-                                        &local_data,
-                                        None,
-                                        change.source_device_id.as_deref(),
-                                    );
-                                    Self::compare_lww_timestamps(
-                                        local_ts,
-                                        local_dev,
-                                        &local_data.to_string(),
-                                        &change.changed_at,
-                                        cloud_dev,
-                                        "",
-                                    ) == std::cmp::Ordering::Greater
-                                }) {
-                                    tracing::debug!(
-                                        "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
-                                        change.table_name,
-                                        id_column,
-                                        change.record_id
-                                    );
-                                    return Ok(false);
+                        if let Some(local_data) = local_data_opt {
+                            let local_ts = local_data
+                                .get("updated_at")
+                                .and_then(Self::timestamp_value_to_lww_string);
+                            if local_ts.as_deref().is_some_and(|local_ts| {
+                                let (local_dev, cloud_dev) = Self::lww_device_pair(
+                                    &local_data,
+                                    None,
+                                    change.source_device_id.as_deref(),
+                                );
+                                Self::compare_lww_timestamps(
+                                    local_ts,
+                                    local_dev,
+                                    &local_data.to_string(),
+                                    &change.changed_at,
+                                    cloud_dev,
+                                    "",
+                                ) == std::cmp::Ordering::Greater
+                            }) {
+                                tracing::debug!(
+                                    "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
+                                    change.table_name,
+                                    id_column,
+                                    change.record_id
+                                );
+                                // [R04/INV-1] 输掉 LWW 的 DELETE 与 UPSERT SkipStale 对称：
+                                // 慢钟设备的删除意图不能只 debug 丢弃——以 Null payload
+                                // （与 resolve_one 的 DELETE 冲突表示一致）落
+                                // __sync_conflicts（side='cloud'），用户可见、可手动采纳。
+                                // 本地行已 tombstone 时删除意图已达成（纯回声），不记录；
+                                // 重复投递由 (table, record, side, data_hash) 部分唯一索引去重。
+                                let already_tombstoned = local_data
+                                    .get("deleted_at")
+                                    .map(|v| !v.is_null())
+                                    .unwrap_or(false);
+                                if !already_tombstoned {
+                                    conflict_resolver::ConflictResolver::save_conflict_record(
+                                        conn,
+                                        conflict_resolver::ConflictRecordToSave {
+                                            table_name: &change.table_name,
+                                            record_id: &change.record_id,
+                                            side: conflict_resolver::ConflictSide::Cloud,
+                                            data: &serde_json::Value::Null,
+                                            winning_device_id: None,
+                                            losing_device_id: change.source_device_id.as_deref(),
+                                        },
+                                    )?;
                                 }
+                                return Ok(false);
                             }
                         }
                     }
@@ -7610,6 +8266,34 @@ impl SyncManager {
                                 id_column,
                                 change.record_id
                             );
+                            // [R02/INV-1] 慢钟保护：时钟落后的对端设备，其全部写入都会
+                            // 在这里输掉 LWW。不能只 debug 丢弃——把败方 payload 落入
+                            // __sync_conflicts（side='cloud'），用户可见、可手动采纳。
+                            // 与本地语义等价的回声（纯时间戳差异）不记录；重复投递由
+                            // (table, record, side, data_hash) 部分唯一索引去重。
+                            let is_semantic_echo = Self::get_record_data(
+                                conn,
+                                &change.table_name,
+                                &change.record_id,
+                                id_column,
+                            )?
+                            .map(|local_data| {
+                                Self::records_semantically_equal_for_sync(&local_data, data)
+                            })
+                            .unwrap_or(false);
+                            if !is_semantic_echo {
+                                conflict_resolver::ConflictResolver::save_conflict_record(
+                                    conn,
+                                    conflict_resolver::ConflictRecordToSave {
+                                        table_name: &change.table_name,
+                                        record_id: &change.record_id,
+                                        side: conflict_resolver::ConflictSide::Cloud,
+                                        data,
+                                        winning_device_id: None,
+                                        losing_device_id: change.source_device_id.as_deref(),
+                                    },
+                                )?;
+                            }
                             return Ok(false);
                         }
                         UpsertFreshness::SuspectDrift { drift_ms } => {
@@ -8946,14 +9630,10 @@ impl SyncManager {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
     }
 
-    fn append_only_file_manifest_key(prefix: &str, device_id: &str) -> String {
-        format!(
-            "{}/{}/{}-{}.json",
-            prefix,
-            device_id,
-            chrono::Utc::now().timestamp_millis(),
-            uuid::Uuid::new_v4()
-        )
+    /// 新文件级清单：`file_manifests/<kind>/<uuid>.json`。
+    /// 不编码时间或设备；列举按整前缀合并，旧明文/短哈希设备目录仍可读。
+    fn append_only_file_manifest_key(prefix: &str, _device_id: &str) -> String {
+        format!("{}/{}.json", prefix, uuid::Uuid::new_v4())
     }
 
     async fn publish_file_manifest<T: Serialize>(
@@ -8968,9 +9648,7 @@ impl SyncManager {
             .map_err(|error| SyncError::Database(format!("序列化{}清单失败: {}", label, error)))?;
         let payload = self.encode_payload(&json)?;
         let key = Self::append_only_file_manifest_key(prefix, &self.device_id);
-        storage.put(&key, &payload).await.map_err(|error| {
-            SyncError::Network(format!("发布{}清单失败 {}: {}", label, key, error))
-        })
+        Self::put_bytes_and_reread(storage, &key, &payload, &format!("文件级{label}清单")).await
     }
 
     fn file_transfer_progress(
@@ -8982,6 +9660,170 @@ impl SyncManager {
                 progress(item.clone(), done, total);
             }) as Box<dyn Fn(u64, u64) + Send + Sync>
         })
+    }
+
+    /// [R07-file-e2ee] 加密开启时把 `path` 加密到临时文件，返回
+    /// `(临时密文文件, cipher_sha256, cipher_size)`；未启用加密返回 `None`。
+    ///
+    /// 临时文件放系统临时目录（drop 自动清理），避免污染被扫描的数据目录。
+    #[cfg(feature = "data_governance")]
+    fn encrypt_upload_object(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Option<(tempfile::TempPath, String, u64)>, SyncError> {
+        let Some(cipher) = self.file_cipher()? else {
+            return Ok(None);
+        };
+        let tmp = tempfile::Builder::new()
+            .prefix("dsbk-up-")
+            .suffix(".tmp")
+            .tempfile()
+            .map_err(|e| SyncError::Database(format!("创建加密临时文件失败: {}", e)))?
+            .into_temp_path();
+        cipher
+            .encrypt_file(path, &tmp)
+            .map_err(|e| SyncError::Database(format!("加密上传对象失败 {:?}: {}", path, e)))?;
+        let cipher_sha256 = crate::backup_common::calculate_file_hash(&tmp)
+            .map_err(|e| SyncError::Database(format!("计算密文哈希失败: {}", e)))?;
+        let cipher_size = std::fs::metadata(&tmp)
+            .map(|m| m.len())
+            .map_err(|e| SyncError::Database(format!("读取密文大小失败: {}", e)))?;
+        Ok(Some((tmp, cipher_sha256, cipher_size)))
+    }
+
+    /// [R07-file-e2ee] 选择实际上传的文件与要写入清单的密文元数据。
+    #[cfg(feature = "data_governance")]
+    fn upload_object_source<'a>(
+        encrypted: &'a Option<(tempfile::TempPath, String, u64)>,
+        plain: &'a std::path::Path,
+    ) -> (&'a std::path::Path, Option<String>, Option<u64>) {
+        match encrypted {
+            Some((tmp, cipher_sha256, cipher_size)) => {
+                (tmp, Some(cipher_sha256.clone()), Some(*cipher_size))
+            }
+            None => (plain, None, None),
+        }
+    }
+
+    /// [R07-file-e2ee] 下载单个文件级对象并落地到 `dest`。
+    ///
+    /// - `cipher_sha256 = Some`：云端对象是 DSBK 密文。先按**密文哈希**校验
+    ///   下载完整性（防篡改/防截断在 AEAD 之外再加一道传输校验），再解密到
+    ///   同目录临时文件、按**明文哈希**校验内容，最后原子替换 `dest`；
+    ///   任一步失败都不会触碰已有的 `dest`。
+    /// - `cipher_sha256 = None`：明文遗留对象。本端启用加密时**拒收**
+    ///   （[R04-sync-e2ee] 防降级延伸到文件级），并给出可操作的迁移指引；
+    ///   未启用加密时保持原有"按明文哈希校验下载"行为。
+    #[cfg(feature = "data_governance")]
+    async fn download_file_object(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        dest: &std::path::Path,
+        expected_plain_sha256: Option<&str>,
+        cipher_sha256: Option<&str>,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+        label: &str,
+    ) -> Result<(), SyncError> {
+        let Some(expected_cipher) = cipher_sha256 else {
+            if self.encryption_enabled() {
+                return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                    crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+                    format!(
+                        "{label} 的云端条目是启用加密前的明文对象（缺少 cipher_sha256），\
+                         本端已启用端到端加密，为防止密文被明文静默替换已拒绝下载。\
+                         处理办法：在仍持有该数据的设备上配置同一加密密码并执行一次上传同步\
+                         （会自动把该对象重新加密上传）；或暂时清除本端加密密码取回旧明文数据后，\
+                         重新配置密码并执行一次完整上传。"
+                    ),
+                )));
+            }
+            // 明文：续传写入按内容哈希区分的 `.ds-dl.part`，校验后再替换 dest。
+            // 绝不能对已有 dest 追加——旧工作区 / blob / 资产会被接上新前缀。
+            if storage.supports_resumable_download() {
+                let part = crate::cloud_storage::resume::content_keyed_part_path(
+                    dest,
+                    expected_plain_sha256.unwrap_or("unknown"),
+                );
+                crate::cloud_storage::resume::cleanup_stale_parts(dest, &part);
+                crate::cloud_storage::resume::get_file_with_optional_resume(
+                    storage,
+                    key,
+                    &part,
+                    expected_plain_sha256,
+                    progress,
+                )
+                .await
+                .map_err(|e| SyncError::Network(format!("下载 {label} 失败: {e}")))?;
+                crate::cloud_storage::resume::persist_download(&part, dest)
+                    .map_err(|e| SyncError::Database(format!("保存 {label} 失败: {e}")))?;
+            } else {
+                storage
+                    .get_file(key, dest, expected_plain_sha256, progress)
+                    .await
+                    .map_err(|e| SyncError::Network(format!("下载 {label} 失败: {e}")))?;
+            }
+            return Ok(());
+        };
+
+        let Some(cipher) = self.file_cipher()? else {
+            return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+                format!(
+                    "{label} 的云端对象已端到端加密（存在 cipher_sha256），但本端未配置加密密码，\
+                     无法解密。请在云同步设置中填入正确的加密密码后重试。"
+                ),
+            )));
+        };
+        let parent = dest
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or_else(|| SyncError::Database(format!("下载目标路径非法: {:?}", dest)))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| SyncError::Database(format!("创建下载目录失败: {}", e)))?;
+
+        // 密文旁路按 cipher_sha256 命名，跨次同步可续传；匿名 tempfile
+        // 会在进程退出后丢掉已下载前缀。哈希不匹配时编排会丢弃该旁路。
+        let cipher_part =
+            crate::cloud_storage::resume::content_keyed_part_path(dest, expected_cipher);
+        crate::cloud_storage::resume::cleanup_stale_parts(dest, &cipher_part);
+        crate::cloud_storage::resume::get_file_with_optional_resume(
+            storage,
+            key,
+            &cipher_part,
+            Some(expected_cipher),
+            progress,
+        )
+        .await
+        .map_err(|e| SyncError::Network(format!("下载加密对象 {label} 失败: {e}")))?;
+
+        // 解密到 dest 同目录临时文件，成功且明文哈希匹配后才原子替换 dest。
+        let plain_tmp = tempfile::Builder::new()
+            .prefix(".dsbk-pt-")
+            .suffix(".tmp")
+            .tempfile_in(parent)
+            .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
+            .into_temp_path();
+        cipher.decrypt_file(&cipher_part, &plain_tmp).map_err(|e| {
+            SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"),
+            ))
+        })?;
+        if let Some(expected_plain) = expected_plain_sha256 {
+            let actual = crate::backup_common::calculate_file_hash(&plain_tmp)
+                .map_err(|e| SyncError::Database(format!("计算 {label} 明文哈希失败: {e}")))?;
+            if actual != expected_plain {
+                return Err(SyncError::Database(format!(
+                    "{label} 解密后明文哈希不匹配: 期望 {expected_plain}, 实际 {actual}"
+                )));
+            }
+        }
+        plain_tmp
+            .persist(dest)
+            .map_err(|e| SyncError::Database(format!("替换 {label} 目标文件失败: {e}")))?;
+        let _ = std::fs::remove_file(&cipher_part);
+        Ok(())
     }
 
     fn validate_remote_object_key(key: &str, expected_prefix: &str) -> Result<(), SyncError> {
@@ -9027,6 +9869,15 @@ impl SyncManager {
                 "拒绝越界或非法的资产对象 key: {key:?}"
             )))
         }
+    }
+
+    /// 对象是否落在内容寻址前缀（`data_governance/asset_objects/<sha256>`）。
+    ///
+    /// 只有 legacy 前缀 `data_governance/assets/` 下的对象与逻辑 key 一一对应，可以
+    /// 随 tombstone 物理删除。内容寻址对象在仍有活跃引用时保留，最后一个引用
+    /// 消失后再删除。
+    fn is_content_addressed_asset_object(key: &str) -> bool {
+        Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
     }
 
     /// 文件级 LWW：本地文件是否胜过云端清单条目。
@@ -9283,6 +10134,8 @@ impl SyncManager {
         let mut new_manifest = cloud_manifest.clone();
         let mut failures: Vec<String> = Vec::new();
         if direction != SyncDirection::Download {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
             for (ws_id, (path, sha256, size, local_updated_at)) in &local_entries {
                 let should_upload = match cloud_manifest.entries.get(ws_id) {
                     None => true,
@@ -9293,13 +10146,20 @@ impl SyncManager {
                         // 本地文件恰好是云端快照本身（刚下载所得）也视为未变更。
                         let unchanged = ce.source_sha256.as_deref() == Some(sha256.as_str())
                             || ce.sha256 == *sha256;
-                        !unchanged
-                            && Self::local_file_wins(
-                                local_updated_at,
-                                &ce.updated_at,
-                                sha256,
-                                ce.source_sha256.as_deref().unwrap_or(&ce.sha256),
-                            )
+                        // [R07-file-e2ee] 云端条目仍是明文而本端已启用加密：内容
+                        // 未变也要重新加密上传（迁移明文遗留对象）。内容有变时
+                        // 走正常 LWW 判定——若云端更新，下载侧会以可操作错误拒收
+                        // 明文对象，而不是在这里用旧内容覆盖更新的云端版本。
+                        let needs_encryption_migration =
+                            self.encryption_enabled() && ce.cipher_sha256.is_none();
+                        (unchanged && needs_encryption_migration)
+                            || (!unchanged
+                                && Self::local_file_wins(
+                                    local_updated_at,
+                                    &ce.updated_at,
+                                    sha256,
+                                    ce.source_sha256.as_deref().unwrap_or(&ce.sha256),
+                                ))
                     }
                 };
                 if should_upload {
@@ -9322,18 +10182,41 @@ impl SyncManager {
                     let snapshot_size = std::fs::metadata(&snapshot)
                         .map(|m| m.len())
                         .unwrap_or(*size);
+                    // [R07-file-e2ee] 对象 key 保持明文快照哈希（内容寻址去重）；
+                    // 加密开启时实际上传 DSBK 密文，密文哈希写入 cipher_sha256。
                     let key = format!(
                         "{}/{}/{}.db",
                         Self::WORKSPACES_CLOUD_PREFIX,
                         ws_id,
                         snapshot_hash
                     );
+                    let encrypted = match self.encrypt_upload_object(&snapshot) {
+                        Ok(encrypted) => encrypted,
+                        Err(e) => {
+                            let _ = std::fs::remove_file(&snapshot);
+                            tracing::warn!("[sync] 工作区数据库加密失败: {}: {}", ws_id, e);
+                            failures.push(format!("{}: {}", ws_id, e));
+                            continue;
+                        }
+                    };
+                    let (upload_path, cipher_sha256, cipher_size) =
+                        Self::upload_object_source(&encrypted, &snapshot);
                     let transfer_progress = Self::file_transfer_progress(
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage.put_file(&key, &snapshot, transfer_progress).await {
-                        Ok(_) => {
+                    let expected_remote = cipher_size.unwrap_or(snapshot_size);
+                    match Self::put_file_and_verify_size(
+                        storage,
+                        &key,
+                        upload_path,
+                        expected_remote,
+                        transfer_progress,
+                        "工作区数据库",
+                    )
+                    .await
+                    {
+                        Ok(()) => {
                             new_manifest.entries.insert(
                                 ws_id.clone(),
                                 WorkspaceEntry {
@@ -9354,6 +10237,8 @@ impl SyncManager {
                                         .get(ws_id)
                                         .map(|entry| entry.revision.saturating_add(1).max(1))
                                         .unwrap_or(1),
+                                    cipher_sha256,
+                                    cipher_size,
                                 },
                             );
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
@@ -9410,8 +10295,18 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(&cloud_entry.sha256), transfer_progress)
+                    // [R07-file-e2ee] 加密对象：先校验密文哈希再解密，解密后
+                    // 校验明文快照哈希；明文遗留条目在本端启用加密时被拒收。
+                    match self
+                        .download_file_object(
+                            storage,
+                            &key,
+                            &dest,
+                            Some(&cloud_entry.sha256),
+                            cloud_entry.cipher_sha256.as_deref(),
+                            transfer_progress,
+                            &format!("工作区数据库 {}", ws_id),
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -9495,7 +10390,14 @@ impl SyncManager {
                         &entry.sha256,
                     )
                 });
-                if !theirs_newer {
+                // [R07-file-e2ee] 明文遗留条目 → 密文条目的迁移不受时间戳
+                // 干扰：本端已启用加密时无法接受明文条目，用密文版本覆盖。
+                let ours_upgrades_encryption = entry.cipher_sha256.is_some()
+                    && merged
+                        .entries
+                        .get(ws_id)
+                        .is_some_and(|theirs| theirs.cipher_sha256.is_none());
+                if !theirs_newer || ours_upgrades_encryption {
                     merged.entries.insert(ws_id.clone(), entry.clone());
                 }
             }
@@ -9673,9 +10575,16 @@ impl SyncManager {
         let mut upload_failures: Vec<String> = Vec::new();
 
         if direction != SyncDirection::Download {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
             for (hash, path) in &local_blobs {
-                if cloud_manifest.entries.contains_key(hash.as_str()) {
-                    continue;
+                if let Some(cloud_entry) = cloud_manifest.entries.get(hash.as_str()) {
+                    // [R07-file-e2ee] 仅当本端启用加密而云端仍是明文遗留对象时
+                    // 重新加密上传（内容寻址：同 hash 必同内容，覆盖是安全的）；
+                    // 其余情况保持原有"已存在即跳过"的去重行为。
+                    if !(self.encryption_enabled() && cloud_entry.cipher_sha256.is_none()) {
+                        continue;
+                    }
                 }
                 let relative = path
                     .strip_prefix(blobs_dir)
@@ -9692,6 +10601,19 @@ impl SyncManager {
                     .cloned()
                     .unwrap_or_else(|| Self::file_mtime_rfc3339(path));
 
+                // [R07-file-e2ee] 加密开启时上传 DSBK 密文（对象 key 仍是明文
+                // hash 路径，保留内容寻址去重）；密文哈希/大小写入清单。
+                let encrypted = match self.encrypt_upload_object(path) {
+                    Ok(encrypted) => encrypted,
+                    Err(e) => {
+                        tracing::error!("[sync] blob 加密失败: {}: {}", hash, e);
+                        upload_failures.push(hash.clone());
+                        continue;
+                    }
+                };
+                let (upload_path, cipher_sha256, cipher_size) =
+                    Self::upload_object_source(&encrypted, path);
+
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
@@ -9699,14 +10621,26 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage.put_file(&key, path, transfer_progress).await {
-                        Ok(_) => {
+                    let expected_remote = cipher_size.unwrap_or(size);
+                    match Self::put_file_and_verify_size(
+                        storage,
+                        &key,
+                        upload_path,
+                        expected_remote,
+                        transfer_progress,
+                        "VFS blob",
+                    )
+                    .await
+                    {
+                        Ok(()) => {
                             new_manifest.entries.insert(
                                 hash.clone(),
                                 BlobEntry {
                                     relative_path: relative.clone(),
                                     size,
                                     updated_at: updated_at.clone(),
+                                    cipher_sha256: cipher_sha256.clone(),
+                                    cipher_size,
                                 },
                             );
                             uploaded += 1;
@@ -9750,6 +10684,20 @@ impl SyncManager {
                 }
                 let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
 
+                // [R07-file-e2ee] 明文遗留条目在本端启用加密时直接拒收（防降级），
+                // 不做无意义的网络重试；错误给出可操作的迁移指引。
+                if self.encryption_enabled() && cloud_entry.cipher_sha256.is_none() {
+                    tracing::error!(
+                        "[sync] [{}] blob 下载被拒绝（明文遗留对象，本端已启用端到端加密）: {}。\
+                         请在仍持有该附件的设备上配置同一加密密码并执行一次上传同步，\
+                         该对象会被自动重新加密上传。",
+                        crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+                        hash
+                    );
+                    download_failures.push(hash.clone());
+                    continue;
+                }
+
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
@@ -9757,8 +10705,16 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(hash), transfer_progress)
+                    match self
+                        .download_file_object(
+                            storage,
+                            &key,
+                            &dest,
+                            Some(hash),
+                            cloud_entry.cipher_sha256.as_deref(),
+                            transfer_progress,
+                            &format!("VFS blob {}", hash),
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -9834,10 +10790,19 @@ impl SyncManager {
                 }
             };
             for (hash, entry) in &new_manifest.entries {
-                merged
-                    .entries
-                    .entry(hash.clone())
-                    .or_insert_with(|| entry.clone());
+                match merged.entries.get(hash) {
+                    None => {
+                        merged.entries.insert(hash.clone(), entry.clone());
+                    }
+                    // [R07-file-e2ee] 用密文条目升级遗留明文条目（内容寻址下
+                    // 内容一致，只是对象换成了 DSBK 密文）。
+                    Some(current)
+                        if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() =>
+                    {
+                        merged.entries.insert(hash.clone(), entry.clone());
+                    }
+                    Some(_) => {}
+                }
             }
             merged.updated_at = chrono::Utc::now().to_rfc3339();
             self.publish_file_manifest(storage, Self::BLOBS_MANIFESTS_PREFIX, &merged, "blob")
@@ -9909,7 +10874,19 @@ impl SyncManager {
                 let replace = merged
                     .entries
                     .get(&hash)
-                    .map(|current| Self::timestamp_after(&entry.updated_at, &current.updated_at))
+                    .map(|current| {
+                        // [R07-file-e2ee] blob 内容寻址（同 hash 必同内容），条目
+                        // 差异只在对象形态：密文条目一律优先于明文遗留条目，且
+                        // 永不被明文条目降级覆盖——不受 updated_at 影响，否则
+                        // 遗留清单里时间戳更新的明文条目会盖掉迁移后的密文条目。
+                        if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() {
+                            true
+                        } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none() {
+                            false
+                        } else {
+                            Self::timestamp_after(&entry.updated_at, &current.updated_at)
+                        }
+                    })
                     .unwrap_or(true);
                 if replace {
                     merged.entries.insert(hash, entry);
@@ -9983,12 +10960,22 @@ impl SyncManager {
 
         let mut local_files: HashMap<String, (std::path::PathBuf, String, u64, String)> =
             HashMap::new();
+        // [R09-names] 本地两个文件净化后重名（`file.` vs `file`、NFC vs NFD）的
+        // 冲突记录，稍后并入 upload_failures。
+        let mut scan_conflicts: Vec<String> = Vec::new();
         for dir_name in Self::ACTIVE_ASSET_DIRS {
             let dir = active_dir.join(dir_name);
             if !dir.exists() {
                 continue;
             }
-            Self::scan_asset_tree("active", dir_name, &dir, &dir, &mut local_files)?;
+            Self::scan_asset_tree(
+                "active",
+                dir_name,
+                &dir,
+                &dir,
+                &mut local_files,
+                &mut scan_conflicts,
+            )?;
         }
 
         let app_side = app_data_dir.join("pdf_ocr_sessions");
@@ -9999,35 +10986,218 @@ impl SyncManager {
                 &app_side,
                 &app_side,
                 &mut local_files,
+                &mut scan_conflicts,
             )?;
+        }
+
+        // [R11-names2] 云端 key 的可逆编码等价视图：
+        // - 新编码 key 幂等映射到自身；R09 之前的未编码非法名映射到新形态；
+        // - 结构非法、编码损坏或长度越界一律终止本轮同步，禁止回退到原 key 落盘；
+        // - 同一形态下多个云端 key 优先取本身已是新形态者。
+        let mut canonical_to_cloud: HashMap<String, String> = HashMap::new();
+        let mut shadowed_cloud_keys: Vec<(String, String)> = Vec::new(); // (被遮蔽, 代表)
+        {
+            let mut sorted_cloud_keys: Vec<&String> = cloud_manifest.entries.keys().collect();
+            sorted_cloud_keys.sort();
+            for cloud_key in sorted_cloud_keys {
+                let canonical =
+                    asset_filenames::sanitize_asset_key(cloud_key).ok_or_else(|| {
+                        SyncError::Database(format!(
+                            "拒绝非法、损坏或超长资产键，未推进文件同步: {cloud_key:?}"
+                        ))
+                    })?;
+                match canonical_to_cloud.entry(canonical) {
+                    std::collections::hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(cloud_key.clone());
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                        let incoming_is_canonical = cloud_key == occupied.key();
+                        let current_is_canonical = occupied.get() == occupied.key();
+                        if incoming_is_canonical && !current_is_canonical {
+                            shadowed_cloud_keys.push((occupied.get().clone(), cloud_key.clone()));
+                            occupied.insert(cloud_key.clone());
+                        } else {
+                            shadowed_cloud_keys.push((cloud_key.clone(), occupied.get().clone()));
+                        }
+                    }
+                }
+            }
+        }
+        // 大小写折叠视图（冲突检测）：casefold -> 字典序最小的净化 key
+        let mut cloud_casefold: HashMap<String, String> = HashMap::new();
+        {
+            let mut canonicals: Vec<&String> = canonical_to_cloud.keys().collect();
+            canonicals.sort();
+            for canonical in canonicals {
+                cloud_casefold
+                    .entry(asset_filenames::casefold_key(canonical))
+                    .or_insert_with(|| canonical.clone());
+            }
         }
 
         let mut new_manifest = cloud_manifest.clone();
         let mut uploaded = 0usize;
         let mut upload_failures = Vec::new();
+        // 可逆 key -> 被迁移的遗留云端 key（内容更新时改名迁移）
+        let mut migrated_from: HashMap<String, String> = HashMap::new();
+
+        // R09 `_` key 无法独立反推原名。只在没有 exact 本地拥有者时提供双 key
+        // 查找；若多个新名都能退化成同一旧 key，仅唯一内容匹配者可认领。
+        // 该映射由上传和下载共同使用，确保原名仍在本地时不会旁落一个 `_` 副本。
+        let mut legacy_candidates: HashMap<String, Vec<String>> = HashMap::new();
+        for key in local_files.keys() {
+            let Some(legacy) = asset_filenames::legacy_sanitized_asset_key(key) else {
+                continue;
+            };
+            if legacy != *key
+                && !canonical_to_cloud.contains_key(key)
+                && !local_files.contains_key(&legacy)
+                && cloud_manifest.entries.contains_key(&legacy)
+            {
+                legacy_candidates
+                    .entry(legacy)
+                    .or_default()
+                    .push(key.clone());
+            }
+        }
+        let mut legacy_alias_owner: HashMap<String, String> = HashMap::new();
+        for (legacy, mut candidates) in legacy_candidates {
+            candidates.sort();
+            let owner = if candidates.len() == 1 {
+                candidates.into_iter().next()
+            } else {
+                let entry = &cloud_manifest.entries[&legacy];
+                let matching: Vec<String> = candidates
+                    .into_iter()
+                    .filter(|candidate| {
+                        local_files.get(candidate).is_some_and(|(_, sha, size, _)| {
+                            sha == &entry.sha256 && *size == entry.size
+                        })
+                    })
+                    .collect();
+                if matching.len() == 1 {
+                    matching.into_iter().next()
+                } else {
+                    None
+                }
+            };
+            if let Some(owner) = owner {
+                legacy_alias_owner.insert(owner, legacy);
+            }
+        }
 
         if direction != SyncDirection::Download {
-            for (key, (path, sha256, size, local_updated_at)) in &local_files {
-                let should_upload = match cloud_manifest.entries.get(key) {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
+            upload_failures.append(&mut scan_conflicts);
+
+            // 本地 key 之间的大小写冲突：每个 casefold 槽位保留一个（优先云端已
+            // 存在的 key，其次字典序最小），其余跳过上传并报告。
+            let mut local_case_losers: HashMap<String, String> = HashMap::new(); // 败方 -> 胜方
+            {
+                let mut groups: HashMap<String, Vec<&String>> = HashMap::new();
+                for key in local_files.keys() {
+                    groups
+                        .entry(asset_filenames::casefold_key(key))
+                        .or_default()
+                        .push(key);
+                }
+                for (_, mut group) in groups {
+                    if group.len() < 2 {
+                        continue;
+                    }
+                    group.sort();
+                    let winner = group
+                        .iter()
+                        .find(|key| canonical_to_cloud.contains_key(key.as_str()))
+                        .copied()
+                        .unwrap_or(group[0]);
+                    for key in group {
+                        if key != winner {
+                            local_case_losers.insert(key.clone(), winner.clone());
+                        }
+                    }
+                }
+            }
+
+            let mut sorted_local: Vec<(&String, &(std::path::PathBuf, String, u64, String))> =
+                local_files.iter().collect();
+            sorted_local.sort_by(|a, b| a.0.cmp(b.0));
+            for (key, (path, sha256, size, local_updated_at)) in sorted_local {
+                if let Some(winner) = local_case_losers.get(key) {
+                    upload_failures.push(asset_filenames::local_case_conflict_message(key, winner));
+                    continue;
+                }
+                // 云端等价条目：新 key exact → 未编码旧原名 → R09 `_` 旧 key。
+                let cloud_alias: Option<&String> = if cloud_manifest.entries.contains_key(key) {
+                    Some(key)
+                } else {
+                    canonical_to_cloud
+                        .get(key)
+                        .filter(|alias| alias.as_str() != key.as_str())
+                        .or_else(|| legacy_alias_owner.get(key))
+                };
+                if cloud_alias.is_none() {
+                    // 新文件：与云端既有 key 仅大小写不同 → 拒绝上传，防止在
+                    // 大小写不敏感设备上互相覆盖。
+                    if let Some(occupied) = cloud_casefold.get(&asset_filenames::casefold_key(key))
+                    {
+                        if occupied != key {
+                            upload_failures
+                                .push(asset_filenames::upload_case_conflict_message(key, occupied));
+                            continue;
+                        }
+                    }
+                }
+                let cloud_entry = cloud_alias.and_then(|alias| cloud_manifest.entries.get(alias));
+                let should_upload = match cloud_entry {
                     None => true,
                     Some(entry) => {
-                        (entry.sha256 != *sha256 || entry.size != *size)
-                            && Self::local_file_wins(
-                                local_updated_at,
-                                &entry.updated_at,
-                                sha256,
-                                &entry.sha256,
-                            )
+                        let unchanged = entry.sha256 == *sha256 && entry.size == *size;
+                        // [R07-file-e2ee] 云端条目仍是明文而本端已启用加密：内容
+                        // 未变也重新加密上传（迁移）；内容有变走正常 LWW 判定。
+                        let needs_encryption_migration =
+                            self.encryption_enabled() && entry.cipher_sha256.is_none();
+                        (unchanged && needs_encryption_migration)
+                            || (!unchanged
+                                && Self::local_file_wins(
+                                    local_updated_at,
+                                    &entry.updated_at,
+                                    sha256,
+                                    &entry.sha256,
+                                ))
                     }
                 };
                 if !should_upload {
                     continue;
                 }
+                // [R07-file-e2ee] 对象 key 保持明文哈希（内容寻址去重）；加密开启
+                // 时上传 DSBK 密文并把密文哈希/大小写入清单。
                 let remote_key = format!("{}/{}", Self::ASSET_OBJECTS_PREFIX, sha256);
+                let encrypted = match self.encrypt_upload_object(path) {
+                    Ok(encrypted) => encrypted,
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产加密失败（跳过）: {}: {}", key, e);
+                        upload_failures.push(key.clone());
+                        continue;
+                    }
+                };
+                let (upload_path, cipher_sha256, cipher_size) =
+                    Self::upload_object_source(&encrypted, path);
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage.put_file(&remote_key, path, transfer_progress).await {
-                    Ok(_) => {
+                let expected_remote = cipher_size.unwrap_or(*size);
+                match Self::put_file_and_verify_size(
+                    storage,
+                    &remote_key,
+                    upload_path,
+                    expected_remote,
+                    transfer_progress,
+                    "资产文件",
+                )
+                .await
+                {
+                    Ok(()) => {
                         new_manifest.entries.insert(
                             key.clone(),
                             AssetFileEntry {
@@ -10035,18 +11205,23 @@ impl SyncManager {
                                 size: *size,
                                 updated_at: local_updated_at.clone(),
                                 object_key: Some(remote_key.clone()),
-                                base_sha256: cloud_manifest
-                                    .entries
-                                    .get(key)
-                                    .map(|entry| entry.sha256.clone()),
-                                revision: cloud_manifest
-                                    .entries
-                                    .get(key)
+                                base_sha256: cloud_entry.map(|entry| entry.sha256.clone()),
+                                revision: cloud_entry
                                     .map(|entry| entry.revision.saturating_add(1).max(1))
                                     .unwrap_or(1),
                                 device_id: Some(self.device_id.clone()),
+                                cipher_sha256,
+                                cipher_size,
                             },
                         );
+                        // 内容更新时把未编码原名或 R09 `_` key 迁移为可逆 key
+                        //（清单删旧名、写新名；内容寻址对象不受影响）。
+                        if let Some(alias) = cloud_alias {
+                            if alias.as_str() != key.as_str() {
+                                new_manifest.entries.remove(alias);
+                                migrated_from.insert(key.clone(), alias.clone());
+                            }
+                        }
                         uploaded += 1;
                     }
                     Err(e) => {
@@ -10060,8 +11235,32 @@ impl SyncManager {
         let mut downloaded = 0usize;
         let mut download_failures = Vec::new();
         if direction != SyncDirection::Upload {
-            for (key, entry) in &cloud_manifest.entries {
-                let should_download = match local_files.get(key) {
+            // 每个 casefold 槽位只允许一个可逆编码 key 物化为新文件；
+            // 本地已存在的 key 优先占位（字典序最小者，确定性）。已存在于本地
+            // 的 key 的更新下载不受槽位限制（更新的是用户自己的文件）。
+            let mut claimed_slots: HashMap<String, String> = HashMap::new();
+            {
+                let mut sorted_local_keys: Vec<&String> = local_files.keys().collect();
+                sorted_local_keys.sort();
+                for key in sorted_local_keys {
+                    claimed_slots
+                        .entry(asset_filenames::casefold_key(key))
+                        .or_insert_with(|| key.clone());
+                }
+            }
+
+            let mut sorted_canonicals: Vec<(&String, &String)> =
+                canonical_to_cloud.iter().collect();
+            sorted_canonicals.sort();
+            for (canonical, cloud_key) in sorted_canonicals {
+                let entry = &cloud_manifest.entries[cloud_key];
+                let local = local_files.get(canonical).or_else(|| {
+                    legacy_alias_owner
+                        .iter()
+                        .find(|(_, legacy)| legacy.as_str() == canonical.as_str())
+                        .and_then(|(owner, _)| local_files.get(owner))
+                });
+                let should_download = match local {
                     None => true,
                     Some((_path, sha256, size, local_updated_at)) => {
                         (*sha256 != entry.sha256 || *size != entry.size)
@@ -10076,39 +11275,102 @@ impl SyncManager {
                 if !should_download {
                     continue;
                 }
-                let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
-                else {
-                    return Err(SyncError::Database(format!(
-                        "拒绝非法资产键，未推进文件同步: {key:?}"
-                    )));
+                let dest = match local {
+                    // 本地已有等价文件：落回其真实路径（净化前的原名保留在本地）
+                    Some((path, _, _, _)) => path.clone(),
+                    None => {
+                        // 新物化文件：大小写槽位被其他 key 占用 → 跳过并报告，
+                        // 防止在大小写不敏感文件系统上互相覆盖。
+                        let slot = asset_filenames::casefold_key(canonical);
+                        if let Some(owner) = claimed_slots.get(&slot) {
+                            if owner != canonical {
+                                download_failures.push(
+                                    asset_filenames::download_case_conflict_message(
+                                        cloud_key, owner,
+                                    ),
+                                );
+                                continue;
+                            }
+                        }
+                        let Some(dest) =
+                            Self::asset_local_path_from_key(active_dir, app_data_dir, canonical)
+                        else {
+                            return Err(SyncError::Database(format!(
+                                "拒绝非法资产键，未推进文件同步: {cloud_key:?}"
+                            )));
+                        };
+                        dest
+                    }
                 };
                 if let Some(parent) = dest.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if dest.exists() {
                     if let Err(e) = Self::save_conflict_copy(&dest, &self.device_id) {
-                        tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", key, e);
+                        tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", cloud_key, e);
                     }
                 }
                 let remote_key = entry
                     .object_key
                     .clone()
-                    .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
+                    .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, cloud_key));
                 Self::validate_asset_object_key(&remote_key)?;
-                let transfer_progress =
-                    Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage
-                    .get_file(&remote_key, &dest, Some(&entry.sha256), transfer_progress)
+                let transfer_progress = Self::file_transfer_progress(
+                    progress.as_ref(),
+                    format!("资产文件 {}", cloud_key),
+                );
+                // [R07-file-e2ee] 加密对象先校验密文哈希再解密并校验明文哈希；
+                // 明文遗留条目在本端启用加密时拒收（可操作错误见日志）。
+                match self
+                    .download_file_object(
+                        storage,
+                        &remote_key,
+                        &dest,
+                        Some(&entry.sha256),
+                        entry.cipher_sha256.as_deref(),
+                        transfer_progress,
+                        &format!("资产文件 {}", cloud_key),
+                    )
                     .await
                 {
-                    Ok(_) => downloaded += 1,
+                    Ok(_) => {
+                        downloaded += 1;
+                        claimed_slots
+                            .insert(asset_filenames::casefold_key(canonical), canonical.clone());
+                    }
                     Err(e) => {
-                        tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
+                        tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", cloud_key, e);
                         // Provider downloads verify into a sibling temporary file and only
                         // replace `dest` after checksum success. Keep an existing local file
                         // when the remote object is corrupt or disappears mid-transfer.
-                        download_failures.push(key.clone());
+                        download_failures.push(cloud_key.clone());
                     }
+                }
+            }
+
+            // 云端遗留的「映射后重名」条目：内容不同且被遮蔽方按 LWW 更新时，
+            // 无法同时物化 → 显式报告而非静默丢弃。被遮蔽方较旧（典型：改名
+            // 迁移后残留在旧 append-only 清单文件里的原条目）走正常 LWW 静默
+            // 让位，避免迁移后每轮同步都报假冲突。
+            for (shadowed, kept) in &shadowed_cloud_keys {
+                let shadowed_wins = match (
+                    cloud_manifest.entries.get(shadowed),
+                    cloud_manifest.entries.get(kept),
+                ) {
+                    (Some(a), Some(b)) => {
+                        a.sha256 != b.sha256
+                            && Self::local_file_wins(
+                                &a.updated_at,
+                                &b.updated_at,
+                                &a.sha256,
+                                &b.sha256,
+                            )
+                    }
+                    _ => false,
+                };
+                if shadowed_wins {
+                    download_failures
+                        .push(asset_filenames::shadowed_divergent_message(shadowed, kept));
                 }
             }
         }
@@ -10123,12 +11385,23 @@ impl SyncManager {
                     cloud_manifest.clone()
                 }
             };
+            // [R09-names] 改名迁移失败（云端并发变化）的遗留 key：不得从合并
+            // 清单里删除，否则会丢数据。
+            let mut failed_migrations: HashSet<String> = HashSet::new();
             for (key, entry) in &new_manifest.entries {
                 let ours_changed = cloud_manifest.entries.get(key) != Some(entry);
                 if !ours_changed {
                     continue;
                 }
-                let base_matches = match merged.entries.get(key) {
+                // [R09-names] 改名迁移的条目：base 校验对象是被迁移的遗留 key。
+                let counterpart_key: &String = if merged.entries.contains_key(key) {
+                    key
+                } else if let Some(alias) = migrated_from.get(key) {
+                    alias
+                } else {
+                    key
+                };
+                let base_matches = match merged.entries.get(counterpart_key) {
                     Some(theirs) => {
                         entry.base_sha256.as_deref() == Some(theirs.sha256.as_str())
                             && (theirs.revision == 0
@@ -10140,13 +11413,16 @@ impl SyncManager {
                     if let Some((path, _, _, _)) = local_files.get(key) {
                         Self::save_conflict_copy(path, &self.device_id)?;
                     }
+                    if let Some(alias) = migrated_from.get(key) {
+                        failed_migrations.insert(alias.clone());
+                    }
                     upload_failures.push(format!(
                         "{}: 云端 base hash/revision 已变化，本地资产保留为冲突副本",
                         key
                     ));
                     continue;
                 }
-                let theirs_newer = merged.entries.get(key).is_some_and(|theirs| {
+                let theirs_newer = merged.entries.get(counterpart_key).is_some_and(|theirs| {
                     Self::local_file_wins(
                         &theirs.updated_at,
                         &entry.updated_at,
@@ -10154,12 +11430,20 @@ impl SyncManager {
                         &entry.sha256,
                     )
                 });
-                if !theirs_newer {
+                // [R07-file-e2ee] 明文遗留条目 → 密文条目的迁移不受时间戳干扰。
+                let ours_upgrades_encryption = entry.cipher_sha256.is_some()
+                    && merged
+                        .entries
+                        .get(counterpart_key)
+                        .is_some_and(|theirs| theirs.cipher_sha256.is_none());
+                if !theirs_newer || ours_upgrades_encryption {
                     merged.entries.insert(key.clone(), entry.clone());
+                } else if let Some(alias) = migrated_from.get(key) {
+                    failed_migrations.insert(alias.clone());
                 }
             }
             for key in cloud_manifest.entries.keys() {
-                if !new_manifest.entries.contains_key(key) {
+                if !new_manifest.entries.contains_key(key) && !failed_migrations.contains(key) {
                     merged.entries.remove(key);
                 }
             }
@@ -10179,6 +11463,30 @@ impl SyncManager {
     async fn download_assets_manifest(
         &self,
         storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, true)
+            .await
+    }
+
+    /// 保留被 tombstone 覆盖的条目，供删除传播解析物理 object_key。
+    ///
+    /// 过滤版清单会先把 tombstoned 逻辑 key 摘掉，删除传播再去查 `object_key` 必然
+    /// miss，从而回退到 legacy 逻辑路径 `data_governance/assets/{key}`；新布局的对象
+    /// 实际在 `data_governance/asset_objects/{sha256}`。tombstone 应用必须在过滤前
+    /// 解析物理 key，才能正确判断共享引用，并避免 FTP 回退路径因父目录 CWD 550
+    /// 硬失败。
+    async fn download_assets_manifest_before_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, false)
+            .await
+    }
+
+    async fn download_assets_manifest_with_tombstone_filter(
+        &self,
+        storage: &dyn CloudStorage,
+        filter_tombstones: bool,
     ) -> Result<AssetDirsManifest, SyncError> {
         let mut manifests = Vec::new();
         if let Some(bytes) = storage
@@ -10253,15 +11561,17 @@ impl SyncManager {
                 }
             }
         }
-        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
-        for (key, tombstone) in tombstones.entries {
-            let should_remove = merged
-                .entries
-                .get(&key)
-                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
-                .unwrap_or(false);
-            if should_remove {
-                merged.entries.remove(&key);
+        if filter_tombstones {
+            let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+            for (key, tombstone) in tombstones.entries {
+                let should_remove = merged
+                    .entries
+                    .get(&key)
+                    .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                    .unwrap_or(false);
+                if should_remove {
+                    merged.entries.remove(&key);
+                }
             }
         }
         Ok(merged)
@@ -10273,6 +11583,7 @@ impl SyncManager {
         base_dir: &std::path::Path,
         current_dir: &std::path::Path,
         out: &mut HashMap<String, (std::path::PathBuf, String, u64, String)>,
+        conflicts: &mut Vec<String>,
     ) -> Result<(), SyncError> {
         for entry in std::fs::read_dir(current_dir)
             .map_err(|e| SyncError::Database(format!("读取资产目录失败: {}", e)))?
@@ -10281,19 +11592,54 @@ impl SyncManager {
                 entry.map_err(|e| SyncError::Database(format!("读取资产条目失败: {}", e)))?;
             let path = entry.path();
             if path.is_dir() {
-                Self::scan_asset_tree(root_alias, top_dir, base_dir, &path, out)?;
+                Self::scan_asset_tree(root_alias, top_dir, base_dir, &path, out, conflicts)?;
                 continue;
             }
             if !path.is_file() {
                 continue;
             }
 
-            let rel = path
-                .strip_prefix(base_dir)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let key = format!("{}/{}/{}", root_alias, top_dir, rel);
+            let rel_path = path.strip_prefix(base_dir).map_err(|_| {
+                SyncError::Database(format!("资产路径越出扫描根目录，已拒绝同步: {path:?}"))
+            })?;
+            let mut raw_segments = Vec::new();
+            for component in rel_path.components() {
+                let std::path::Component::Normal(segment) = component else {
+                    return Err(SyncError::Database(format!(
+                        "资产路径包含非普通段，已拒绝同步: {path:?}"
+                    )));
+                };
+                let segment = segment.to_str().ok_or_else(|| {
+                    SyncError::Database(format!(
+                        "资产文件名不是有效 UTF-8，无法无损生成云 key: {path:?}"
+                    ))
+                })?;
+                raw_segments.push(segment);
+            }
+            // [R11-names2] 操作系统路径按组件编码，不能把 Unix 文件名中的反斜杠
+            // 误当分隔符。任何段/总长越界在读取内容和云端写入前终止本轮同步。
+            let key =
+                asset_filenames::sanitize_asset_key_segments(root_alias, top_dir, &raw_segments)
+                    .map_err(|error| {
+                        SyncError::Database(format!("资产文件名无法安全编码，已拒绝同步: {error}"))
+                    })?;
+            // 可逆映射理论上无碰撞；保留此防线处理未来协议回归或异常输入：
+            // 按原始路径字典序确定性保留较小者，另一方跳过并报告。
+            if let Some((existing_path, _, _, _)) = out.get(&key) {
+                if *existing_path <= path {
+                    conflicts.push(asset_filenames::local_duplicate_message(
+                        &key,
+                        &existing_path.to_string_lossy(),
+                        &path.to_string_lossy(),
+                    ));
+                    continue;
+                }
+                conflicts.push(asset_filenames::local_duplicate_message(
+                    &key,
+                    &path.to_string_lossy(),
+                    &existing_path.to_string_lossy(),
+                ));
+            }
             let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
                 SyncError::Database(format!("计算资产文件校验和失败 {:?}: {}", path, e))
             })?;
@@ -10798,7 +12144,9 @@ impl SyncManager {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
-        let cloud_manifest = self.download_assets_manifest(storage).await?;
+        let cloud_manifest = self
+            .download_assets_manifest_before_tombstones(storage)
+            .await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_asset_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
@@ -10833,7 +12181,18 @@ impl SyncManager {
                     );
                     continue;
                 }
-                // 云端删除
+                applied_tombstone_keys.push(key.clone());
+            }
+
+            // 先过滤本轮实际应用的 tombstone，再判断内容对象是否仍被活跃条目引用。
+            // 只要还有引用就保留共享对象；最后一个引用消失时立即删除，避免把所有
+            // 内容寻址对象永久交给尚不存在的 GC 而造成泄漏。
+            let mut live_manifest = cloud_manifest.clone();
+            for key in &applied_tombstone_keys {
+                live_manifest.entries.remove(key);
+            }
+            let mut deleted_remote_keys = HashSet::new();
+            for key in &applied_tombstone_keys {
                 if direction != SyncDirection::Download {
                     let remote_key = cloud_manifest
                         .entries
@@ -10841,11 +12200,27 @@ impl SyncManager {
                         .and_then(|manifest| manifest.object_key.clone())
                         .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                     Self::validate_asset_object_key(&remote_key)?;
-                    storage.delete(&remote_key).await.map_err(|e| {
-                        SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
-                    })?;
+                    // 内容寻址对象按 sha256 去重，可被多个逻辑 key 共享：只要仍有
+                    // 活跃清单条目引用同一对象就保留；最后一个引用消失时立即删除，
+                    // 避免把物理回收永久交给尚不存在的 GC 而造成泄漏。
+                    let has_live_reference = Self::is_content_addressed_asset_object(&remote_key)
+                        && live_manifest.entries.values().any(|manifest| {
+                            manifest.object_key.as_deref() == Some(remote_key.as_str())
+                        });
+                    if has_live_reference {
+                        tracing::info!(
+                            "[sync] 资产 tombstone 后仍有活跃引用，保留共享对象: {} -> {}",
+                            key,
+                            remote_key
+                        );
+                    } else if deleted_remote_keys.insert(remote_key.clone()) {
+                        storage.delete(&remote_key).await.map_err(|e| {
+                            SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
+                        })?;
+                    }
                 }
-                // 本地删除
+
+                let local_path = Self::asset_local_path_from_key(active_dir, app_data_dir, key);
                 if let Some(local) = local_path {
                     if local.exists() {
                         // 资产路径不是内容寻址，mtime 不能证明本地内容就是删除所针对
@@ -10855,22 +12230,21 @@ impl SyncManager {
                         std::fs::remove_file(&local)?;
                     }
                 }
-                applied_tombstone_keys.push(key.clone());
             }
             excluded_tombstone_keys.extend(applied_tombstone_keys.iter().cloned());
 
             // 从云端资产清单摘掉 tombstoned 条目
             // [P0-2] 同样需要透明 encode/decode
             if direction != SyncDirection::Download {
-                let mut mf = cloud_manifest.clone();
-                let before = mf.entries.len();
-                for key in &applied_tombstone_keys {
-                    mf.entries.remove(key);
-                }
-                if mf.entries.len() != before {
-                    mf.updated_at = chrono::Utc::now().to_rfc3339();
-                    self.publish_file_manifest(storage, Self::ASSETS_MANIFESTS_PREFIX, &mf, "资产")
-                        .await?;
+                if live_manifest.entries.len() != cloud_manifest.entries.len() {
+                    live_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+                    self.publish_file_manifest(
+                        storage,
+                        Self::ASSETS_MANIFESTS_PREFIX,
+                        &live_manifest,
+                        "资产",
+                    )
+                    .await?;
                 }
             }
         }
@@ -10922,6 +12296,82 @@ mod tests {
         assert!(!SyncManager::missing_sequence_is_proven(1, 1, 1));
         assert!(SyncManager::missing_sequence_is_proven(1, 2, 0));
         assert!(SyncManager::missing_sequence_is_proven(6, 7, 5));
+    }
+
+    // ============ [R04-sync-e2ee] decode_payload 防降级 ============
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_accepts_plaintext_when_encryption_disabled() {
+        let plaintext: &[u8] = br#"{"hello":"world"}"#;
+
+        let manager = SyncManager::new("device-plain".to_string());
+        assert_eq!(manager.decode_payload(plaintext).unwrap(), plaintext);
+
+        // 空密码等价于未启用加密（with_encryption 会过滤空字符串）
+        let manager = SyncManager::with_encryption("device-plain".to_string(), Some(String::new()));
+        assert!(!manager.encryption_enabled());
+        assert_eq!(manager.decode_payload(plaintext).unwrap(), plaintext);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_rejects_plaintext_when_encryption_enabled() {
+        let manager =
+            SyncManager::with_encryption("device-enc".to_string(), Some("pw-123".to_string()));
+        let error = manager
+            .decode_payload(br#"{"hello":"world"}"#)
+            .expect_err("本机启用加密时必须拒绝无 DSBK 头的明文 payload");
+        let message = error.to_string();
+        assert!(
+            message.contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文 payload 拒绝必须带稳定 code: {message}"
+        );
+        assert!(
+            message.contains("已启用同步加密"),
+            "错误应说明原因: {message}"
+        );
+        assert!(
+            message.contains("DSBK"),
+            "错误应指出缺少 DSBK 加密头: {message}"
+        );
+        assert!(
+            message.contains("清除加密密码"),
+            "错误应给出可操作的处理路径: {message}"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_roundtrips_encrypted_payload() {
+        let manager =
+            SyncManager::with_encryption("device-enc".to_string(), Some("pw-123".to_string()));
+        let plaintext = b"sync payload bytes";
+        let encoded = manager.encode_payload(plaintext).unwrap();
+        assert!(
+            crate::crypto::backup_crypto::is_encrypted_backup(&encoded),
+            "启用加密后 encode_payload 输出必须是 DSBK 容器"
+        );
+        assert_eq!(manager.decode_payload(&encoded).unwrap(), plaintext);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_rejects_encrypted_payload_without_password() {
+        let sender =
+            SyncManager::with_encryption("device-a".to_string(), Some("pw-123".to_string()));
+        let encoded = sender.encode_payload(b"secret").unwrap();
+
+        let receiver = SyncManager::new("device-b".to_string());
+        let message = receiver
+            .decode_payload(&encoded)
+            .expect_err("未配置密码的设备必须拒绝 DSBK payload")
+            .to_string();
+        assert!(
+            message.contains(crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE),
+            "缺密码必须带稳定 code: {message}"
+        );
+        assert!(message.contains("未配置加密密码"), "{message}");
     }
 
     fn create_test_manifest(
@@ -10979,10 +12429,15 @@ mod tests {
     fn regression_c1_v3_change_key_parses_seq_and_timestamp() {
         let manager = SyncManager::new("device-1".to_string());
         let key = manager.build_change_key_v3(42, 1_707_500_000);
+        let path_id = SyncManager::device_path_id("device-1");
 
         assert_eq!(
             SyncManager::parse_version_from_key(&key),
             Some(1_707_500_000)
+        );
+        assert!(
+            !key.contains("device-1"),
+            "新 v3 路径不得暴露明文 device_id: {key}"
         );
         assert!(matches!(
             SyncManager::parse_change_key(&key),
@@ -10990,7 +12445,7 @@ mod tests {
                 device_id,
                 seq: 42,
                 version: 1_707_500_000,
-            }) if device_id == "device-1"
+            }) if device_id == path_id
         ));
     }
 
@@ -10998,7 +12453,15 @@ mod tests {
     fn v4_change_shard_key_is_sequenced_and_parseable() {
         let manager = SyncManager::new("device-1".to_string());
         let key = manager.build_change_key_v4(43, 1_707_500_001);
-        assert!(key.starts_with("data_governance/v4/shards/device-1/"));
+        let path_id = SyncManager::device_path_id("device-1");
+        assert!(
+            key.starts_with(&format!("data_governance/v4/shards/{path_id}/")),
+            "新 v4 分片应落在短哈希目录: {key}"
+        );
+        assert!(
+            !key.contains("device-1"),
+            "新 v4 路径不得暴露明文 device_id: {key}"
+        );
         assert!(matches!(
             SyncManager::parse_change_key(&key),
             Some(ParsedChangeKey::V4Shard {
@@ -11006,7 +12469,7 @@ mod tests {
                 seq: 43,
                 version: 1_707_500_001,
                 operation_id,
-            }) if device_id == "device-1" && !operation_id.is_empty()
+            }) if device_id == path_id && !operation_id.is_empty()
         ));
     }
 
@@ -11145,6 +12608,38 @@ mod tests {
             source.contains("Ok(Some(info)) if info.size == expected"),
             "size 与期望不符时必须拒绝推进 mark"
         );
+        assert!(
+            source.contains("put_bytes_and_reread"),
+            "设备清单/实例标识/legacy 变更必须 GET 回读，不得只认 put 成功"
+        );
+        assert!(
+            source.contains("记录级设备清单"),
+            "upload_manifest 必须走回读闸"
+        );
+        assert!(
+            source.contains("文件级{label}清单"),
+            "publish_file_manifest 必须走同一条 GET 回读闸"
+        );
+        assert!(
+            source.contains("put_file_and_verify_size"),
+            "文件级对象 put_file 后必须 stat 回验大小，不得只认 put 成功"
+        );
+        assert!(
+            source.contains("不得写入清单"),
+            "文件级对象短写不得写入工作区/blob/资产清单"
+        );
+        assert!(
+            source.contains("verify_uploaded_bytes"),
+            "记录级变更分片 PUT 后必须 GET 回读，不得只认 size"
+        );
+        assert!(
+            source.contains("记录级变更 上传后回读不一致"),
+            "同长度短写/错包必须拒绝推进水位"
+        );
+        assert!(
+            source.contains("截断体不得解码、不得推进水位"),
+            "记录级变更下载必须依赖 get() 半包闸，不得把短读当已发布"
+        );
     }
 
     #[test]
@@ -11201,6 +12696,100 @@ mod tests {
         // 但版本号应可正确解析
         assert_eq!(SyncManager::parse_version_from_key(&key1), Some(1707500000));
         assert_eq!(SyncManager::parse_version_from_key(&key2), Some(1707500000));
+        let path_id = SyncManager::device_path_id("device-1");
+        assert!(key1.contains(&format!("data_governance/changes/{path_id}/")));
+        assert!(
+            !key1.contains("device-1"),
+            "legacy 变更路径也不得暴露明文 device_id: {key1}"
+        );
+    }
+
+    #[test]
+    fn record_path_id_is_short_hash_and_matches_raw_or_hashed() {
+        let raw = "device-1";
+        let hashed = SyncManager::device_path_id(raw);
+        assert_eq!(hashed.len(), 16);
+        assert_ne!(hashed, raw);
+        assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(SyncManager::path_id_matches_device(raw, raw));
+        assert!(SyncManager::path_id_matches_device(&hashed, raw));
+        assert!(!SyncManager::path_id_matches_device("device-other", raw));
+        assert_eq!(
+            SyncManager::device_manifest_key(raw),
+            format!("data_governance/manifests/{hashed}.json")
+        );
+        assert_eq!(
+            SyncManager::device_manifest_legacy_key(raw),
+            "data_governance/manifests/device-1.json"
+        );
+    }
+
+    #[test]
+    fn file_and_snapshot_keys_are_neutral_ids() {
+        let raw = "device-file-path";
+        let hashed = SyncManager::device_path_id(raw);
+        let file_key =
+            SyncManager::append_only_file_manifest_key(SyncManager::BLOBS_MANIFESTS_PREFIX, raw);
+        assert!(
+            file_key.starts_with("data_governance/file_manifests/blobs/"),
+            "{file_key}"
+        );
+        assert!(file_key.ends_with(".json"), "{file_key}");
+        let file_name = file_key.rsplit('/').next().unwrap();
+        assert_eq!(file_name.len(), 36 + ".json".len(), "{file_key}");
+        assert!(
+            !file_key.contains(raw) && !file_key.contains(&hashed),
+            "文件级清单路径不得含 device_id 或其短哈希: {file_key}"
+        );
+        assert!(
+            !file_name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "文件级清单名不得再以毫秒时间戳开头: {file_key}"
+        );
+
+        let snap = SyncManager::snapshot_key("vfs", raw);
+        assert!(snap.starts_with("data_governance/snapshots/vfs/"), "{snap}");
+        assert!(snap.ends_with(".json.zst"), "{snap}");
+        let snap_name = snap.rsplit('/').next().unwrap();
+        assert!(
+            !snap.contains(raw) && !snap.contains(&hashed),
+            "快照路径不得含 device_id 或其短哈希: {snap}"
+        );
+        assert!(
+            !snap_name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "快照文件名不得再以毫秒时间戳开头: {snap}"
+        );
+    }
+
+    #[test]
+    fn is_own_change_file_accepts_hashed_and_legacy_raw_prefix() {
+        let hashed = SyncManager::device_path_id("device-1");
+        let hashed_key =
+            format!("data_governance/changes/{hashed}/000000000001-1707500000-nonce.json.zst");
+        let raw_key = "data_governance/changes/device-1/000000000001-1707500000-nonce.json.zst";
+        let other = format!(
+            "data_governance/changes/{}/000000000001-1707500000-nonce.json.zst",
+            SyncManager::device_path_id("device-2")
+        );
+        assert!(SyncManager::is_own_change_file(&hashed_key, "device-1"));
+        assert!(SyncManager::is_own_change_file(raw_key, "device-1"));
+        assert!(!SyncManager::is_own_change_file(&other, "device-1"));
+    }
+
+    #[test]
+    fn path_aliases_merge_raw_and_hashed_prefixes() {
+        let raw = "device-peer".to_string();
+        let hashed = SyncManager::device_path_id(&raw);
+        let mut ids = HashSet::new();
+        ids.insert(raw.clone());
+        ids.insert(hashed.clone());
+        ids.insert("unrelated".to_string());
+        let aliases = SyncManager::path_device_aliases(&ids);
+        assert_eq!(
+            aliases.get(&hashed).map(String::as_str),
+            Some("device-peer")
+        );
+        assert_eq!(aliases.get(&raw).map(String::as_str), Some("device-peer"));
+        assert!(aliases.get("unrelated").is_none());
     }
 
     #[test]
@@ -12553,6 +14142,504 @@ mod tests {
             tags, r#"["local","remote"]"#,
             "本地存在 pending 修改时仍允许集合字段并发合并"
         );
+    }
+
+    fn create_notes_table_for_r02(conn: &Connection, tags: &str, updated_at: &str) {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                tags TEXT,
+                is_favorite INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes(id, tags, is_favorite, updated_at) VALUES(?1, ?2, 0, ?3)",
+            rusqlite::params!["note-r02", tags, updated_at],
+        )
+        .unwrap();
+    }
+
+    fn notes_update_change_for_r02(
+        tags: serde_json::Value,
+        updated_at: &str,
+    ) -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-r02".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "note-r02",
+                "tags": tags,
+                "is_favorite": 1,
+                "updated_at": updated_at,
+            })),
+            changed_at: updated_at.to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("device-cloud".to_string()),
+            source_seq: None,
+        }
+    }
+
+    #[test]
+    fn regression_r02_conflict_guard_merges_tags_union_when_cloud_wins() {
+        // [R02] 字段级合并必须在生产路径 apply_downloaded_changes_with_conflict_guard 可达：
+        // 本地有 pending 修改 + 业务数据不同 → resolve_one 命中冲突 → Cloud 胜时
+        // 强制应用必须带字段级合并，tag 并集/布尔 OR 不得被整行覆盖丢掉。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local"]"#, "2026-02-09T00:00:00Z");
+        insert_test_change_log(&conn, "notes", "note-r02", "UPDATE", 0);
+
+        let changes = vec![notes_update_change_for_r02(
+            json!(["remote"]),
+            "2026-02-10T00:00:00Z", // 云端更新 → KeepLatest 裁决 Cloud 胜
+        )];
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-cloud"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert!(
+            conflict_result.conflicts_saved > 0,
+            "冲突双方仍应入 __sync_conflicts"
+        );
+        let (tags, favorite): (String, i64) = conn
+            .query_row(
+                "SELECT tags, is_favorite FROM notes WHERE id='note-r02'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            tags, r#"["local","remote"]"#,
+            "guard 冲突路径 Cloud 胜时 tag 必须并集而非整行覆盖"
+        );
+        assert_eq!(favorite, 1);
+    }
+
+    #[test]
+    fn regression_r02_conflict_guard_folds_safe_fields_when_local_wins() {
+        // [R02] Local 胜时云端整行被拒（进冲突表），但 tag 并集/布尔 OR 等
+        // 可交换字段必须折叠进胜出的本地行，否则两台设备停在永久分叉。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local"]"#, "2026-02-10T00:00:00Z");
+        insert_test_change_log(&conn, "notes", "note-r02", "UPDATE", 0);
+
+        let changes = vec![notes_update_change_for_r02(
+            json!(["remote"]),
+            "2026-02-09T00:00:00Z", // 云端较旧 → KeepLatest 裁决 Local 胜
+        )];
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-cloud"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(conflict_result.rejected, 1, "云端整行变更应被拒绝");
+        let (tags, favorite, updated_at): (String, i64, String) = conn
+            .query_row(
+                "SELECT tags, is_favorite, updated_at FROM notes WHERE id='note-r02'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            tags, r#"["local","remote"]"#,
+            "Local 胜时安全可交换字段仍应折叠进本地行"
+        );
+        assert_eq!(favorite, 1, "布尔 OR 字段应折叠为 true");
+        assert_eq!(
+            updated_at, "2026-02-10T00:00:00Z",
+            "Local 胜：行级时间戳保持本地值"
+        );
+    }
+
+    #[test]
+    fn regression_r04_keep_local_policy_does_not_fold_safe_fields() {
+        // [R04] KeepLocal（含上游 MergeStrategy::Manual 映射到的 KeepLocal）是用户
+        // 显式指令"本地行原样保留 / 等待手动裁决"：自动折叠会违背该指令。
+        // 云端败方 payload 已完整入 __sync_conflicts，用户可在冲突面板手动采纳。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local"]"#, "2026-02-10T00:00:00Z");
+        insert_test_change_log(&conn, "notes", "note-r02", "UPDATE", 0);
+
+        let changes = vec![notes_update_change_for_r02(
+            json!(["remote"]),
+            "2026-02-11T00:00:00Z", // 即使云端更新，KeepLocal 也裁决 Local 胜
+        )];
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLocal,
+            Some("device-cloud"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(conflict_result.rejected, 1, "KeepLocal：云端整行变更被拒绝");
+        let (tags, favorite): (String, i64) = conn
+            .query_row(
+                "SELECT tags, is_favorite FROM notes WHERE id='note-r02'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            tags, r#"["local"]"#,
+            "KeepLocal/Manual 下不得自动折叠改写本地行"
+        );
+        assert_eq!(favorite, 0, "布尔 OR 也不得在 KeepLocal 下折叠");
+
+        let cloud_side: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_conflicts
+                 WHERE table_name='notes' AND record_id='note-r02' AND side='cloud'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(cloud_side > 0, "云端败方 payload 仍应入冲突表供手动采纳");
+    }
+
+    #[test]
+    fn regression_r04_fold_skips_semantically_equal_local_values() {
+        // [R04] 折叠比较前先 canonicalize：远端 tags 是本地子集时并集结果与本地
+        // 语义等价（仅 TEXT/Array 形态差异），不得产生空转 UPDATE（触发器会记
+        // pending → 无意义上传回声）。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local","remote"]"#, "2026-02-10T00:00:00Z");
+
+        let change = SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-r02".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "note-r02",
+                "tags": ["remote"], // 本地子集：并集 == 本地集合
+                "updated_at": "2026-02-09T00:00:00Z",
+            })),
+            changed_at: "2026-02-09T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("device-cloud".to_string()),
+            source_seq: None,
+        };
+
+        let folded = SyncManager::fold_safe_field_merge_into_local(
+            &conn,
+            &change,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+        )
+        .unwrap();
+        assert!(!folded, "语义等价（远端为本地子集）不得产生空转写");
+
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-r02'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(tags, r#"["local","remote"]"#, "本地值保持原样");
+
+        // 对照：真正的新增 tag 仍会折叠
+        let change_with_new_tag = SyncChangeWithData {
+            data: Some(json!({
+                "id": "note-r02",
+                "tags": ["extra"],
+                "updated_at": "2026-02-09T00:00:00Z",
+            })),
+            ..change
+        };
+        let folded = SyncManager::fold_safe_field_merge_into_local(
+            &conn,
+            &change_with_new_tag,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+        )
+        .unwrap();
+        assert!(folded, "真正的集合增量仍应折叠");
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-r02'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(tags, r#"["extra","local","remote"]"#);
+    }
+
+    #[test]
+    fn regression_r02_stale_delete_without_tombstone_is_rejected() {
+        // [R02/INV-1] test_records 没有 deleted_at 列：较旧的 DELETE 不得无条件
+        // 物理删除更新的本地行（hard delete 不可恢复）。LWW 拒绝后本地行保留。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "newer-local",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let stale_delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T12:00:00Z", // 早于本地 updated_at
+            None,
+            "device-slow",
+            1,
+        );
+        let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &[stale_delete],
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-slow"),
+            Some("device-local"),
+        )
+        .unwrap();
+        assert_eq!(result.success_count, 0);
+        assert_eq!(result.skipped_count, 1, "较旧 DELETE 必须被 LWW 拒绝");
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "更新的本地行不得被迟到 DELETE 物理删除");
+
+        // 对照：严格更晚的 DELETE 仍应正常删除
+        let fresh_delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T14:00:00Z",
+            None,
+            "device-fresh",
+            2,
+        );
+        let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &[fresh_delete],
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-fresh"),
+            Some("device-local"),
+        )
+        .unwrap();
+        assert_eq!(result.success_count, 1);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "较新 DELETE 应正常生效");
+    }
+
+    #[test]
+    fn regression_r02_slow_clock_stale_upsert_is_visible_in_conflicts() {
+        // [R02/INV-1] 慢钟设备的写入输掉 LWW 时不得只 debug 丢弃：
+        // 败方 payload 必须进 __sync_conflicts（side='cloud'），且重复投递去重。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "newer-local",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let stale_upsert = operation_change(
+            ChangeOperation::Update,
+            "2026-07-10T12:00:00Z",
+            Some(json!({
+                "id": "delete-version-record",
+                "content": "slow-clock-write",
+                "updated_at": "2026-07-10T12:00:00Z"
+            })),
+            "device-slow",
+            1,
+        );
+        for _ in 0..2 {
+            let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+                &conn,
+                &[stale_upsert.clone()],
+                None,
+                conflict_resolver::ConflictPolicy::KeepLatest,
+                Some("device-slow"),
+                Some("device-local"),
+            )
+            .unwrap();
+            assert_eq!(result.success_count, 0);
+            assert_eq!(result.skipped_count, 1);
+        }
+
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "newer-local", "本地较新值保持不变");
+
+        let (count, side, data_json, losing_device): (i64, String, String, Option<String>) = conn
+            .query_row(
+                "SELECT COUNT(*), side, data_json, losing_device_id FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "慢钟败方写入应入冲突表且重复投递被去重");
+        assert_eq!(side, "cloud");
+        assert!(data_json.contains("slow-clock-write"), "败方 payload 可见");
+        assert_eq!(losing_device.as_deref(), Some("device-slow"));
+    }
+
+    #[test]
+    fn regression_r04_delete_with_unparseable_changed_at_fails_closed() {
+        // [R04/INV-1] changed_at 不可解析时漂移检查与 LWW 门都无法运行，
+        // 此前会直落到无条件硬删（不可恢复）。必须 fail-closed：
+        // 变更进隔离区（可见、可重放/手动处理），本地行原样保留。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "must-survive",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let bad_delete = operation_change(
+            ChangeOperation::Delete,
+            "not-a-timestamp", // HLC / RFC3339 / SQLite datetime / 毫秒数均解析失败
+            None,
+            "device-bad-clock",
+            3,
+        );
+        let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &[bad_delete],
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-bad-clock"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(
+            result.failure_count, 1,
+            "changed_at 不可解析的 DELETE 必须 fail-closed 而非静默应用/跳过"
+        );
+
+        let survivors: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(survivors, 1, "本地行不得被不可解析时间戳的 DELETE 硬删");
+
+        let quarantined: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_quarantine
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND operation='DELETE'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            quarantined, 1,
+            "fail-closed 的 DELETE 必须落隔离区（可见、可处理）"
+        );
+    }
+
+    #[test]
+    fn regression_r04_stale_delete_losing_lww_lands_in_sync_conflicts() {
+        // [R04/INV-1] 输掉 LWW 的 DELETE 与 UPSERT SkipStale 对称：慢钟设备的
+        // 删除意图不得只 debug 丢弃，必须以 Null payload（与 resolve_one 的
+        // DELETE 冲突表示一致）落 __sync_conflicts（side='cloud'），且重复投递去重。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "newer-local",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let stale_delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T12:00:00Z", // 早于本地 updated_at → 输掉 LWW
+            None,
+            "device-slow",
+            1,
+        );
+        for _ in 0..2 {
+            let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+                &conn,
+                &[stale_delete.clone()],
+                None,
+                conflict_resolver::ConflictPolicy::KeepLatest,
+                Some("device-slow"),
+                Some("device-local"),
+            )
+            .unwrap();
+            assert_eq!(result.success_count, 0);
+            assert_eq!(result.skipped_count, 1, "较旧 DELETE 仍应被 LWW 拒绝");
+        }
+
+        let survivors: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(survivors, 1, "更新的本地行保留");
+
+        let (count, side, data_json, losing_device): (i64, String, String, Option<String>) = conn
+            .query_row(
+                "SELECT COUNT(*), side, data_json, losing_device_id FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "败方 DELETE 应入冲突表且重复投递被去重");
+        assert_eq!(side, "cloud");
+        assert_eq!(
+            data_json, "null",
+            "DELETE 败方以 Null payload 表示（与 resolve_one 一致）"
+        );
+        assert_eq!(losing_device.as_deref(), Some("device-slow"));
     }
 
     #[test]
@@ -14669,5 +16756,758 @@ mod tests {
             user_sync_version, 0,
             "existing user update log must not be marked as synced by replay suppression"
         );
+    }
+
+    // ============ [R07-file-e2ee] 文件级对象端到端加密 ============
+
+    use crate::cloud_storage::{FileInfo, Result as StorageResult};
+
+    #[derive(Default)]
+    struct FileE2eeMemoryStorage {
+        files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+    }
+
+    impl FileE2eeMemoryStorage {
+        fn object(&self, key: &str) -> Option<Vec<u8>> {
+            self.files.lock().unwrap().get(key).cloned()
+        }
+
+        fn keys_with_prefix(&self, prefix: &str) -> Vec<String> {
+            self.files
+                .lock()
+                .unwrap()
+                .keys()
+                .filter(|k| k.starts_with(prefix))
+                .cloned()
+                .collect()
+        }
+
+        fn put_raw(&self, key: &str, data: Vec<u8>) {
+            self.files.lock().unwrap().insert(key.to_string(), data);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for FileE2eeMemoryStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-file-e2ee-test"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), data.to_vec());
+            Ok(())
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            Ok(self.files.lock().unwrap().get(key).cloned())
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, value)| FileInfo {
+                    key: key.clone(),
+                    size: value.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                })
+                .collect())
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            Ok(self.files.lock().unwrap().get(key).map(|value| FileInfo {
+                key: key.to_string(),
+                size: value.len() as u64,
+                last_modified: chrono::Utc::now(),
+                etag: None,
+            }))
+        }
+    }
+
+    /// 带加密的 SyncManager，注入低成本 Argon2 参数的会话（仅为测试提速；
+    /// 容器头会如实登记参数，加解密语义与默认参数完全一致）。
+    fn encrypted_manager(device_id: &str, password: &str) -> SyncManager {
+        let manager =
+            SyncManager::with_encryption(device_id.to_string(), Some(password.to_string()));
+        *manager.file_cipher.lock().unwrap() = Some(std::sync::Arc::new(
+            crate::crypto::backup_crypto::FileCipherSession::with_params(password, 8, 1, 1)
+                .unwrap(),
+        ));
+        manager
+    }
+
+    fn is_dsbk(data: &[u8]) -> bool {
+        crate::crypto::backup_crypto::is_encrypted_backup(data)
+    }
+
+    fn sha256_hex(data: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(data))
+    }
+
+    /// 在 `active_dir/workspaces/` 下创建一个真实 SQLite 工作区库并写入一行数据
+    fn create_workspace_db(active_dir: &std::path::Path, ws_id: &str, content: &str) {
+        let dir = active_dir.join("workspaces");
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = rusqlite::Connection::open(dir.join(format!("{}.db", ws_id))).unwrap();
+        conn.execute_batch("CREATE TABLE notes (id TEXT PRIMARY KEY, content TEXT)")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO notes (id, content) VALUES ('n1', ?1)",
+            params![content],
+        )
+        .unwrap();
+    }
+
+    fn read_workspace_note(active_dir: &std::path::Path, ws_id: &str) -> String {
+        let conn =
+            rusqlite::Connection::open(active_dir.join("workspaces").join(format!("{}.db", ws_id)))
+                .unwrap();
+        conn.query_row("SELECT content FROM notes WHERE id = 'n1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    /// 只截断文件级对象 PUT；清单 JSON 保持完整，避免发布回读先拦住。
+    struct TruncateFileObjectPut {
+        inner: FileE2eeMemoryStorage,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for TruncateFileObjectPut {
+        fn provider_name(&self) -> &'static str {
+            "memory-truncate-file-object"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            if key.ends_with(".json") {
+                return CloudStorage::put(&self.inner, key, data).await;
+            }
+            let keep = data.len() / 2;
+            CloudStorage::put(&self.inner, key, &data[..keep]).await
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn workspace_upload_fails_when_remote_object_size_mismatches() {
+        let storage = TruncateFileObjectPut {
+            inner: FileE2eeMemoryStorage::default(),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        create_workspace_db(dir.path(), "ws_size_mismatch", "must-not-publish");
+        let manager = encrypted_manager("device-file-size", "shared-pw");
+        let error = manager
+            .sync_workspace_databases(&storage, dir.path(), SyncDirection::Upload)
+            .await
+            .expect_err("文件级对象短写必须 fail-closed");
+        assert!(
+            error.to_string().contains("上传后大小不一致或对象不存在"),
+            "拒绝原因必须指向对象 size 回验，实际: {error}"
+        );
+        let manifest = manager
+            .download_workspaces_manifest(&storage)
+            .await
+            .expect("未发布条目时清单仍可合并为空");
+        assert!(
+            !manifest.entries.contains_key("ws_size_mismatch"),
+            "短写对象不得写入工作区清单"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_roundtrip_between_encrypted_devices() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_e2ee_rt", "encrypted note");
+
+        let manager_a = encrypted_manager("device-e2ee-a", "shared-pw");
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        // 云端 workspace 对象必须是 DSBK 密文（不再明文 put_file）
+        let object_keys = storage.keys_with_prefix(SyncManager::WORKSPACES_CLOUD_PREFIX);
+        assert_eq!(object_keys.len(), 1, "应恰好上传一个工作区对象");
+        let object = storage.object(&object_keys[0]).unwrap();
+        assert!(is_dsbk(&object), "工作区对象必须是 DSBK 密文");
+
+        // 清单条目必须登记密文哈希/大小，且与对象一致；对象 key 仍是明文快照哈希
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
+        let entry = manifest.entries.get("ws_e2ee_rt").unwrap();
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
+        assert_eq!(entry.cipher_size, Some(object.len() as u64));
+        assert!(
+            object_keys[0].contains(&entry.sha256),
+            "对象 key 应保持明文快照哈希（内容寻址去重）: {}",
+            object_keys[0]
+        );
+        assert_ne!(
+            entry.cipher_sha256.as_deref(),
+            Some(entry.sha256.as_str()),
+            "密文哈希与明文哈希必须不同"
+        );
+
+        // 另一台配置相同密码的设备：下载→双哈希校验→解密→SQLite 完整性检查
+        let manager_b = encrypted_manager("device-e2ee-b", "shared-pw");
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_e2ee_rt"),
+            "encrypted note"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_plaintext_mode_unaffected() {
+        // 未启用加密时行为不变：对象是明文 SQLite，清单无 cipher_sha256
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_plain_rt", "plain note");
+
+        let manager_a = SyncManager::new("device-plain-a".to_string());
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let object_keys = storage.keys_with_prefix(SyncManager::WORKSPACES_CLOUD_PREFIX);
+        assert_eq!(object_keys.len(), 1);
+        let object = storage.object(&object_keys[0]).unwrap();
+        assert!(!is_dsbk(&object), "明文模式对象不得带 DSBK 头");
+
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
+        let entry = manifest.entries.get("ws_plain_rt").unwrap();
+        assert!(entry.cipher_sha256.is_none());
+        assert!(entry.cipher_size.is_none());
+
+        let manager_b = SyncManager::new("device-plain-b".to_string());
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_plain_rt"),
+            "plain note"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_manifest_publish_uses_neutral_object_name() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir = tempfile::tempdir().unwrap();
+        create_workspace_db(dir.path(), "ws_r12_names", "hashed path note");
+        let device = "r12-file-manifest-device";
+        let manager = SyncManager::new(device.to_string());
+        manager
+            .sync_workspace_databases(&storage, dir.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let keys = storage.keys_with_prefix(SyncManager::WORKSPACES_MANIFESTS_PREFIX);
+        let hashed = SyncManager::device_path_id(device);
+        let published = keys
+            .iter()
+            .find(|key| {
+                key.starts_with("data_governance/file_manifests/workspaces/")
+                    && key.ends_with(".json")
+            })
+            .cloned()
+            .unwrap_or_else(|| panic!("应写出文件级清单: {keys:?}"));
+        assert!(
+            !published.contains(device) && !published.contains(&hashed),
+            "新文件级清单不得含 device_id 或其短哈希: {published}"
+        );
+        let name = published.rsplit('/').next().unwrap();
+        assert!(
+            !name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "新文件级清单名不得再以毫秒时间戳开头: {published}"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_manifest_download_reads_legacy_raw_device_dir() {
+        let storage = FileE2eeMemoryStorage::default();
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = "2026-08-01T00:00:00Z".to_string();
+        manifest.entries.insert(
+            "ws_legacy_name".to_string(),
+            WorkspaceEntry {
+                sha256: "aa".repeat(32),
+                size: 1,
+                updated_at: "2026-08-01T00:00:00Z".to_string(),
+                source_sha256: None,
+                device_id: Some("device-legacy-raw".to_string()),
+                object_key: None,
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        storage.put_raw(
+            "data_governance/file_manifests/workspaces/device-legacy-raw/1-seed.json",
+            serde_json::to_vec(&manifest).unwrap(),
+        );
+
+        let loaded = SyncManager::new("reader".to_string())
+            .download_workspaces_manifest(&storage)
+            .await
+            .expect("旧明文设备目录必须仍可合并");
+        assert!(loaded.entries.contains_key("ws_legacy_name"));
+    }
+
+    /// 在（已加密的）清单里手工登记一个明文遗留 workspace 条目 + 明文对象，
+    /// 模拟"启用加密前上传的旧数据被带进了加密后的清单"。
+    async fn seed_legacy_plaintext_workspace(
+        storage: &FileE2eeMemoryStorage,
+        publisher: &SyncManager,
+        ws_id: &str,
+    ) -> (String, u64) {
+        let tmp = tempfile::tempdir().unwrap();
+        create_workspace_db(tmp.path(), ws_id, "legacy plaintext note");
+        let db_path = tmp.path().join("workspaces").join(format!("{}.db", ws_id));
+        let bytes = std::fs::read(&db_path).unwrap();
+        let sha256 = sha256_hex(&bytes);
+        let size = bytes.len() as u64;
+        let object_key = format!(
+            "{}/{}/{}.db",
+            SyncManager::WORKSPACES_CLOUD_PREFIX,
+            ws_id,
+            sha256
+        );
+        storage.put_raw(&object_key, bytes);
+
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manifest.entries.insert(
+            ws_id.to_string(),
+            WorkspaceEntry {
+                sha256: sha256.clone(),
+                size,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                source_sha256: Some(sha256.clone()),
+                device_id: Some("device-legacy".to_string()),
+                object_key: Some(object_key),
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        publisher
+            .publish_file_manifest(
+                storage,
+                SyncManager::WORKSPACES_MANIFESTS_PREFIX,
+                &manifest,
+                "工作区",
+            )
+            .await
+            .unwrap();
+        (sha256, size)
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_rejects_legacy_plaintext_entry() {
+        let storage = FileE2eeMemoryStorage::default();
+        let publisher = encrypted_manager("device-seed", "shared-pw");
+        // publish_file_manifest 前需要初始化远端格式描述符
+        publisher.ensure_remote_instance_id(&storage).await.unwrap();
+        seed_legacy_plaintext_workspace(&storage, &publisher, "ws_legacy").await;
+
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-e2ee-strict", "shared-pw");
+        let error = manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .expect_err("本端启用加密时必须拒收明文遗留 workspace 对象")
+            .to_string();
+        assert!(
+            error.contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文遗留 workspace 拒收必须带稳定 code: {error}"
+        );
+        assert!(
+            error.contains("cipher_sha256"),
+            "错误应指出缺少密文哈希: {error}"
+        );
+        assert!(error.contains("拒绝下载"), "错误应明确拒收行为: {error}");
+        assert!(error.contains("加密密码"), "错误应给出可操作指引: {error}");
+        assert!(
+            !dir_b
+                .path()
+                .join("workspaces")
+                .join("ws_legacy.db")
+                .exists(),
+            "被拒收的明文对象不得落地"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_migrates_legacy_plaintext_entry_on_upload() {
+        let storage = FileE2eeMemoryStorage::default();
+        let publisher = encrypted_manager("device-seed", "shared-pw");
+        publisher.ensure_remote_instance_id(&storage).await.unwrap();
+
+        // 设备 A 本地已有同一工作区（内容独立创建，哈希与云端明文条目不同也可，
+        // 这里手工把清单条目的 source_sha256 对齐成 A 的本地哈希以模拟"内容未变"）。
+        let dir_a = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_migrate", "note to migrate");
+        let local_db = dir_a.path().join("workspaces").join("ws_migrate.db");
+        let local_sha = sha256_hex(&std::fs::read(&local_db).unwrap());
+
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manifest.entries.insert(
+            "ws_migrate".to_string(),
+            WorkspaceEntry {
+                sha256: local_sha.clone(),
+                size: std::fs::metadata(&local_db).unwrap().len(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                source_sha256: Some(local_sha.clone()),
+                device_id: Some("device-legacy".to_string()),
+                object_key: Some(format!(
+                    "{}/ws_migrate/{}.db",
+                    SyncManager::WORKSPACES_CLOUD_PREFIX,
+                    local_sha
+                )),
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        publisher
+            .publish_file_manifest(
+                &storage,
+                SyncManager::WORKSPACES_MANIFESTS_PREFIX,
+                &manifest,
+                "工作区",
+            )
+            .await
+            .unwrap();
+
+        // 内容未变 + 云端条目是明文 → 迁移路径应重新加密上传
+        let manager_a = encrypted_manager("device-e2ee-migrator", "shared-pw");
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
+        let entry = manifest.entries.get("ws_migrate").unwrap();
+        assert!(
+            entry.cipher_sha256.is_some(),
+            "迁移后清单条目必须带密文哈希"
+        );
+        let object = storage
+            .object(entry.object_key.as_deref().unwrap())
+            .unwrap();
+        assert!(is_dsbk(&object), "迁移后云端对象必须是 DSBK 密文");
+
+        // 迁移完成后，加密设备可正常下载
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-e2ee-reader", "shared-pw");
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_migrate"),
+            "note to migrate"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_blob_roundtrip_rejection_and_migration() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let blobs_a = dir_a.path().join("vfs_blobs");
+
+        // 内容寻址 blob：ab/<hash>.pdf
+        let payload = b"blob payload for e2ee".to_vec();
+        let hash = sha256_hex(&payload);
+        let relative = format!("{}/{}.pdf", &hash[..2], hash);
+        let blob_path = blobs_a.join(&relative);
+        std::fs::create_dir_all(blob_path.parent().unwrap()).unwrap();
+        std::fs::write(&blob_path, &payload).unwrap();
+
+        let manager_a = encrypted_manager("device-blob-a", "shared-pw");
+        let outcome = manager_a
+            .sync_vfs_blobs(&storage, &blobs_a, SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1);
+        assert!(!outcome.has_failures());
+
+        let object_key = format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, relative);
+        let object = storage.object(&object_key).unwrap();
+        assert!(is_dsbk(&object), "blob 对象必须是 DSBK 密文");
+
+        let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get(&hash).unwrap();
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
+        assert_eq!(entry.cipher_size, Some(object.len() as u64));
+        assert_eq!(entry.size, payload.len() as u64, "size 字段保持明文大小");
+
+        // 同密码设备 B：下载后内容与明文一致
+        let dir_b = tempfile::tempdir().unwrap();
+        let blobs_b = dir_b.path().join("vfs_blobs");
+        std::fs::create_dir_all(&blobs_b).unwrap();
+        let manager_b = encrypted_manager("device-blob-b", "shared-pw");
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(std::fs::read(blobs_b.join(&relative)).unwrap(), payload);
+
+        // 密文对象被篡改 → 密文哈希校验失败 → 下载失败且不落地
+        let mut tampered = object.clone();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0xFF;
+        storage.put_raw(&object_key, tampered);
+        let dir_c = tempfile::tempdir().unwrap();
+        let blobs_c = dir_c.path().join("vfs_blobs");
+        std::fs::create_dir_all(&blobs_c).unwrap();
+        let manager_c = encrypted_manager("device-blob-c", "shared-pw");
+        let outcome = manager_c
+            .sync_vfs_blobs(&storage, &blobs_c, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.download_failures, vec![hash.clone()]);
+        assert!(!blobs_c.join(&relative).exists(), "篡改对象不得落地");
+        storage.put_raw(&object_key, object);
+
+        // 明文遗留条目：本端启用加密时拒收
+        let legacy_payload = b"legacy plaintext blob".to_vec();
+        let legacy_hash = sha256_hex(&legacy_payload);
+        let legacy_relative = format!("{}/{}.pdf", &legacy_hash[..2], legacy_hash);
+        storage.put_raw(
+            &format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, legacy_relative),
+            legacy_payload.clone(),
+        );
+        let mut legacy_manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        legacy_manifest.entries.insert(
+            legacy_hash.clone(),
+            BlobEntry {
+                relative_path: legacy_relative.clone(),
+                size: legacy_payload.len() as u64,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        legacy_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manager_a
+            .publish_file_manifest(
+                &storage,
+                SyncManager::BLOBS_MANIFESTS_PREFIX,
+                &legacy_manifest,
+                "blob",
+            )
+            .await
+            .unwrap();
+
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.download_failures,
+            vec![legacy_hash.clone()],
+            "明文遗留 blob 必须被拒收"
+        );
+        assert!(!blobs_b.join(&legacy_relative).exists());
+
+        // 迁移：持有该 blob 明文的加密设备执行上传 → 对象被重新加密，其他设备可下载
+        let legacy_local = blobs_a.join(&legacy_relative);
+        std::fs::create_dir_all(legacy_local.parent().unwrap()).unwrap();
+        std::fs::write(&legacy_local, &legacy_payload).unwrap();
+        let outcome = manager_a
+            .sync_vfs_blobs(&storage, &blobs_a, SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1, "明文遗留对象应被重新加密上传");
+        let migrated = storage
+            .object(&format!(
+                "{}/{}",
+                SyncManager::BLOBS_CLOUD_PREFIX,
+                legacy_relative
+            ))
+            .unwrap();
+        assert!(is_dsbk(&migrated), "迁移后 blob 对象必须是 DSBK 密文");
+        let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        assert!(
+            manifest
+                .entries
+                .get(&legacy_hash)
+                .unwrap()
+                .cipher_sha256
+                .is_some(),
+            "迁移后清单条目必须升级为密文条目"
+        );
+
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(
+            std::fs::read(blobs_b.join(&legacy_relative)).unwrap(),
+            legacy_payload
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_asset_roundtrip_and_legacy_rejection() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir_a.path().join("images")).unwrap();
+        std::fs::write(dir_a.path().join("images/pic.png"), b"png bytes here").unwrap();
+
+        let manager_a = encrypted_manager("device-asset-a", "shared-pw");
+        let outcome = manager_a
+            .sync_asset_directories(&storage, dir_a.path(), dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1);
+        assert!(!outcome.has_failures());
+
+        // 资产对象必须是密文；对象 key 保持明文哈希（去重）
+        let plain_sha = sha256_hex(b"png bytes here");
+        let object_key = format!("{}/{}", SyncManager::ASSET_OBJECTS_PREFIX, plain_sha);
+        let object = storage
+            .object(&object_key)
+            .expect("对象 key 应保持明文哈希");
+        assert!(is_dsbk(&object), "资产对象必须是 DSBK 密文");
+
+        let manifest = manager_a.download_assets_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get("active/images/pic.png").unwrap();
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
+        assert_eq!(entry.sha256, plain_sha);
+
+        // 同密码设备 B 下载
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-asset-b", "shared-pw");
+        let outcome = manager_b
+            .sync_asset_directories(
+                &storage,
+                dir_b.path(),
+                dir_b.path(),
+                SyncDirection::Download,
+            )
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(
+            std::fs::read(dir_b.path().join("images/pic.png")).unwrap(),
+            b"png bytes here"
+        );
+
+        // 明文遗留资产条目：启用加密的设备必须拒收
+        let legacy_bytes = b"legacy plaintext asset".to_vec();
+        let legacy_sha = sha256_hex(&legacy_bytes);
+        let legacy_key = format!("{}/{}", SyncManager::ASSET_OBJECTS_PREFIX, legacy_sha);
+        storage.put_raw(&legacy_key, legacy_bytes.clone());
+        let mut legacy_manifest = manager_a.download_assets_manifest(&storage).await.unwrap();
+        legacy_manifest.entries.insert(
+            "active/images/legacy.png".to_string(),
+            AssetFileEntry {
+                sha256: legacy_sha.clone(),
+                size: legacy_bytes.len() as u64,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                object_key: Some(legacy_key),
+                base_sha256: None,
+                revision: 1,
+                device_id: Some("device-legacy".to_string()),
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        legacy_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manager_a
+            .publish_file_manifest(
+                &storage,
+                SyncManager::ASSETS_MANIFESTS_PREFIX,
+                &legacy_manifest,
+                "资产",
+            )
+            .await
+            .unwrap();
+
+        let outcome = manager_b
+            .sync_asset_directories(
+                &storage,
+                dir_b.path(),
+                dir_b.path(),
+                SyncDirection::Download,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.download_failures,
+            vec!["active/images/legacy.png".to_string()],
+            "明文遗留资产必须被拒收"
+        );
+        assert!(!dir_b.path().join("images/legacy.png").exists());
     }
 }
