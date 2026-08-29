@@ -345,7 +345,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       <CardHeader className="flex flex-col items-start justify-between gap-2 sm:flex-row">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <Warning size={16} className="text-amber-500" />
+            <Warning size={16} className="text-warning" />
             {/* 标题只报未解决冲突总数；「已加载 X/Y」的分页细节留给下方加载更多按钮 */}
             {t('sync:record_conflict_panel.title', {
               count: Math.max(totalGroups, pairs.length),
@@ -408,7 +408,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       <CardContent className="space-y-3">
         {pairs.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-            <CheckCircle size={16} className="text-emerald-500" />
+            <CheckCircle size={16} className="text-success" />
             {t('data:governance.conflict_empty')}
           </div>
         )}

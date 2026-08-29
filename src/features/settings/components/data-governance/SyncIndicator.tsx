@@ -57,7 +57,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
   if (total === 0) {
     if (compact) return null;
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1 text-xs text-success">
         <CheckCircle size={12} />
         无冲突
       </span>
@@ -71,7 +71,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
 
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30"
+      className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30"
       title={`未解决冲突：${perDb}`}
     >
       <Warning size={12} />

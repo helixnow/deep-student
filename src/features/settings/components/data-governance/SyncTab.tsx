@@ -255,7 +255,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               {t("data:governance.database_sync_status")}
             </h3>
             <span
-              className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+              className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
               title={t("sync:experimentalBadgeTooltip")}
             >
               {t("data:governance.experimental_badge")}
@@ -322,7 +322,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.has_change_log ? (
-                      <CheckCircle size={16} className="text-emerald-500/70" />
+                      <CheckCircle size={16} className="text-success/70" />
                     ) : (
                       <XCircle size={16} className="text-muted-foreground/50" />
                     )}
@@ -378,7 +378,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 <span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
                   {t("data:governance.change_log")}
                   {db.has_change_log ? (
-                    <CheckCircle size={16} className="text-emerald-500/70" />
+                    <CheckCircle size={16} className="text-success/70" />
                   ) : (
                     <XCircle size={16} className="text-muted-foreground/50" />
                   )}
@@ -429,7 +429,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               {t("data:governance.cloud_sync_title")}
             </h3>
             <span
-              className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+              className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
               title={t("sync:experimentalBadgeTooltip")}
             >
               {t("data:governance.experimental_badge")}
@@ -449,7 +449,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         {!cloudSyncConfigured ? (
           <div className="rounded-lg border border-border/40 bg-muted/20 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Warning size={16} className="text-amber-500" />
+              <Warning size={16} className="text-warning" />
               {t("data:governance.cloud_sync_not_configured")}
             </div>
             <p className="text-sm text-muted-foreground pl-6">
@@ -683,8 +683,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
       {/* 冲突信息 */}
       {conflicts && conflicts.has_conflicts && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
-          <div className="flex items-center gap-2 text-amber-600 font-medium">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-4">
+          <div className="flex items-center gap-2 text-warning font-medium">
             <Warning size={16} />
             {t("data:governance.conflicts_detected")}
           </div>
@@ -697,7 +697,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </p>
 
           {conflicts.needs_migration && (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-warning">
               {t("data:governance.schema_mismatch_needs_migration")}
             </p>
           )}

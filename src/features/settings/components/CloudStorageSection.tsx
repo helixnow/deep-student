@@ -1275,7 +1275,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {secureStoreIssue && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300"
+          className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
         >
           <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden />
           <div className="min-w-0">
@@ -1555,9 +1555,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         </div>
 
         {/* 端到端加密配置（可选） */}
-        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+        <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <WarningCircle size={16} className="text-warning shrink-0" />
             <Label htmlFor="cloud-encryption-password" className="font-medium">
               {t('cloudStorage:encryption.title')}
             </Label>
@@ -1565,7 +1565,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
                 credentialStatus.encryptionPasswordConfigured
-                  ? 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400'
+                  ? 'border-success/40 bg-success/10 text-success'
                   : 'border-border bg-muted/40 text-muted-foreground'
               }`}
             >
@@ -1623,22 +1623,22 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             ) : configPhase === 'published' ? (
               <>
-                <ShieldCheck size={14} className="text-green-500" />
+                <ShieldCheck size={14} className="text-success" />
                 <span>{t('cloudStorage:phase.published')}</span>
               </>
             ) : connectionStatus === 'connected' ? (
               <>
-                <CheckCircle size={14} className="text-amber-500" />
+                <CheckCircle size={14} className="text-warning" />
                 <span>{t('cloudStorage:phase.draftTested')}</span>
               </>
             ) : connectionStatus === 'failed' ? (
               <>
-                <XCircle size={14} className="text-red-500" />
+                <XCircle size={14} className="text-destructive" />
                 <span>{t('cloudStorage:phase.draftTestFailed')}</span>
               </>
             ) : (
               <>
-                <WarningCircle size={14} className="text-amber-500" />
+                <WarningCircle size={14} className="text-warning" />
                 <span>{t('cloudStorage:phase.draftUntested')}</span>
               </>
             )}
@@ -1660,8 +1660,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             ) : (
               <>
-                {connectionStatus === 'connected' && <CheckCircle size={16} className="mr-2 text-green-500" />}
-                {connectionStatus === 'failed' && <XCircle size={16} className="mr-2 text-red-500" />}
+                {connectionStatus === 'connected' && <CheckCircle size={16} className="mr-2 text-success" />}
+                {connectionStatus === 'failed' && <XCircle size={16} className="mr-2 text-destructive" />}
                 {t('cloudStorage:actions.testConnection')}
               </>
             )}
@@ -1687,9 +1687,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <div className="border rounded-lg p-4 space-y-3">
             <h4 className="font-medium flex items-center gap-2">
               {syncStatus.connected ? (
-                <CheckCircle size={16} className="text-green-500" />
+                <CheckCircle size={16} className="text-success" />
               ) : (
-                <XCircle size={16} className="text-red-500" />
+                <XCircle size={16} className="text-destructive" />
               )}
               {t('cloudStorage:status.title')}
             </h4>
@@ -1741,8 +1741,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
             {/* [P11] 本机加密目录记忆写入失败：第二道明文防线降级，必须可见 */}
             {syncStatus.encryptionMemoryPersistFailure && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-sm">
-                <WarningCircle size={16} className="mt-0.5 shrink-0 text-amber-500" />
+              <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-sm">
+                <WarningCircle size={16} className="mt-0.5 shrink-0 text-warning" />
                 <span>
                   {t('cloudStorage:status.encryptionMemoryPersistFailed')}
                   <span className="ml-1 text-xs text-muted-foreground">
@@ -2000,7 +2000,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-3 text-sm">
                 {/* 结论徽标：全绿 / 有问题 / 不完整（截断时绝不显示全绿） */}
                 {repoCheckReport.status === 'ok' && (
-                  <div className="flex items-start gap-2 rounded-lg border border-green-500/40 bg-green-500/10 p-3 text-green-700 dark:text-green-400">
+                  <div className="flex items-start gap-2 rounded-lg border border-success/40 bg-success/10 p-3 text-success">
                     <CheckCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
                     <p className="font-medium">{t('cloudStorage:repoCheck.statusOk')}</p>
                   </div>
@@ -2014,7 +2014,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   </div>
                 )}
                 {repoCheckReport.status === 'incomplete' && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300">
+                  <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-warning">
                     <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
                     <p className="font-medium">{t('cloudStorage:repoCheck.statusIncomplete')}</p>
                   </div>
@@ -2033,7 +2033,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   <p className="text-xs text-muted-foreground">{t('cloudStorage:repoCheck.encryptedRepo')}</p>
                 )}
                 {repoCheckReport.listingTruncated && (
-                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                  <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
                     {t('cloudStorage:repoCheck.truncatedNotice')}
                   </div>
                 )}

@@ -155,7 +155,7 @@ const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, pr
       {phaseLabels.map((label, idx) => (
         <div key={idx} className="flex items-center gap-2">
           {idx < currentPhaseIndex ? (
-            <CheckCircle size={12} className="text-green-500 shrink-0" />
+            <CheckCircle size={12} className="text-success shrink-0" />
           ) : idx === currentPhaseIndex ? (
             <CircleNotch size={12} className="text-primary animate-spin shrink-0" />
           ) : (
@@ -519,7 +519,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     const status = verificationStatusMap?.[backup.path];
     if (status === 'verified') {
       return (
-        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs whitespace-nowrap">
           <CheckCircle size={12} className="shrink-0" />
           {t('data:governance.verification_verified')}
         </div>
@@ -527,7 +527,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     }
     if (status === 'failed') {
       return (
-        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs whitespace-nowrap">
           <Warning size={12} className="shrink-0" />
           {t('data:governance.verification_failed')}
         </div>
@@ -535,7 +535,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     }
     if (status === 'verifying') {
       return (
-        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-info/10 text-info text-xs whitespace-nowrap">
           <CircleNotch size={12} className="shrink-0 animate-spin" />
           {t('data:governance.verification_verifying')}
         </div>
@@ -648,14 +648,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {t('data:governance.export_backup_desc')}
           </p>
           {encryptionPassword ? (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+            <p className="text-xs text-success">
               {t('data:governance.e2ee_export_note', {
                 defaultValue:
                   '已设置备份密码：API 凭据、密钥等敏感材料会被加密保护，输入同一密码后可整槽恢复；聊天记录、错题、文件等归档内容本身未加密，请勿通过不可信渠道传播。丢失密码后业务数据仍可读取，但凭据和整槽恢复资格将丢失。',
               })}
             </p>
           ) : (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-warning">
               {t('data:governance.portable_zip_honest_note', {
                 defaultValue:
                   '未加密的导出 ZIP 是便携归档：不包含本地加密密钥与审计记录，在其他设备导入后不能整槽恢复，API 密钥等凭据需要重新录入。',
@@ -714,7 +714,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         {useTieredBackup && (
           <div className="space-y-4 pl-4 border-l-2 border-border/40">
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-warning">
               {t('data:governance.tiered_backup_honest_note', {
                 defaultValue:
                   '分层备份（包括默认的核心层）只覆盖所选层级，产物是部分归档，不能整槽恢复，仅支持导出与检查。',
@@ -723,7 +723,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {!tieredSelectionCoversVfsBlobs && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+                className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
               >
                 <Warning size={14} className="mt-0.5 shrink-0" />
                 <span>
@@ -1316,12 +1316,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
-            <CheckCircle size={20} className="text-green-500" />
+            <CheckCircle size={20} className="text-success" />
             {t('data:governance.restore_complete_title')}
           </DsDialogTitle>
           <DsDialogDescription>
             <p>{t('data:governance.restore_complete_desc')}</p>
-            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+            <p className="text-warning font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
@@ -1341,7 +1341,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogTitle>
           <DsDialogDescription>
             <p>{t('data:governance.import_complete_desc')}</p>
-            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+            <p className="text-warning font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
@@ -1375,8 +1375,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               {/* 总体状态 */}
               <div className={`flex items-center gap-2 p-2 rounded-md ${
                 verifyResult.is_valid
-                  ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400'
-                  : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-destructive/10 text-destructive'
               }`}>
                 {verifyResult.is_valid ? (
                   <CheckCircle size={16} />
@@ -1406,15 +1406,15 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                           <div className="flex items-center gap-1.5">
                             {db.is_valid ? (
                               <>
-                                <CheckCircle size={14} className="text-green-500" />
-                                <span className="text-xs text-green-600 dark:text-green-400">
+                                <CheckCircle size={14} className="text-success" />
+                                <span className="text-xs text-success">
                                   {t('data:governance.verify_db_pass')}
                                 </span>
                               </>
                             ) : (
                               <>
-                                <XCircle className="h-3.5 w-3.5 text-red-500" />
-                                <span className="text-xs text-red-600 dark:text-red-400">
+                                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                                <span className="text-xs text-destructive">
                                   {t('data:governance.verify_db_fail')}
                                 </span>
                               </>

@@ -155,7 +155,7 @@ export const UnsyncedItemsPanel: React.FC<{
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <CloudSlash size={16} className="text-amber-500" />
+            <CloudSlash size={16} className="text-warning" />
             {t("sync:unsynced.title", {
               count: report?.totalUnsynced ?? 0,
             })}
@@ -213,13 +213,13 @@ export const UnsyncedItemsPanel: React.FC<{
 
         {isEmpty && !loading && report && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-            <CheckCircle size={16} className="text-emerald-500" />
+            <CheckCircle size={16} className="text-success" />
             {t("sync:unsynced.empty")}
           </div>
         )}
 
         {report?.itemsTruncated && (
-          <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <div className="flex items-start gap-1.5 text-xs text-warning">
             <Warning size={13} className="mt-0.5 shrink-0" />
             {t("sync:unsynced.truncated", {
               shown: items.length,
