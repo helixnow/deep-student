@@ -244,13 +244,13 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) => {
         <ProgressRing ratio={masteryRatio} className="text-success" />
         <div className="flex items-baseline gap-1 leading-none">
           <span className="text-xs font-semibold tabular-nums text-foreground">{masteryPercent}%</span>
-          <span className="text-[10px] text-muted-foreground">{t('exam.shell.mastery')}</span>
+          <span className="text-2xs text-muted-foreground">{t('exam.shell.mastery')}</span>
         </div>
       </div>
       <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
       <div className="flex items-baseline gap-1 leading-none" title={t('exam.shell.correctRate')}>
         <span className="text-xs font-semibold tabular-nums text-foreground">{correctPercent}%</span>
-        <span className="text-[10px] text-muted-foreground">{t('exam.shell.correctRate')}</span>
+        <span className="text-2xs text-muted-foreground">{t('exam.shell.correctRate')}</span>
       </div>
     </div>
   );
@@ -2223,7 +2223,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       icon={<Icon size={16} />}
                       checked={viewMode === mode}
                       suffix={badge > 0 ? (
-                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-[10px] font-medium tabular-nums text-warning">
+                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-2xs font-medium tabular-nums text-warning">
                           {badge > 99 ? '99+' : badge}
                         </span>
                       ) : undefined}

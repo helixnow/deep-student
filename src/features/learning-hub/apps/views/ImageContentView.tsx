@@ -1182,7 +1182,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
       {/* 图片信息条：尺寸 / 格式 / 文件大小（常驻底部细条） */}
       {naturalSize && (
         <div
-          className="flex items-center justify-center gap-2 border-t bg-muted/30 px-4 py-1 text-[11px] tabular-nums text-muted-foreground"
+          className="flex items-center justify-center gap-2 border-t bg-muted/30 px-4 py-1 text-xs tabular-nums text-muted-foreground"
           role="group"
           aria-label={t('learningHub:image.imageInfo')}
         >

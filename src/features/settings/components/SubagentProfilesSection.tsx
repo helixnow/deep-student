@@ -585,7 +585,7 @@ export const SubagentProfilesSection: React.FC = () => {
             {builtinDisplayName(profile.id)}
           </span>
           <code className="text-xs text-muted-foreground/70">{profile.id}</code>
-          <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+          <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
             {t('settings:subagentProfiles.builtin_badge')}
           </span>
         </div>
@@ -655,17 +655,17 @@ export const SubagentProfilesSection: React.FC = () => {
               <span className="min-w-0 truncate text-sm font-medium text-foreground" title={displayName}>
                 {displayName}
               </span>
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary">
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-2xs leading-none text-primary">
                 {t('settings:subagentProfiles.custom_badge')}
               </span>
               {!file.valid && (
-                <span className="flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] leading-none text-warning">
+                <span className="flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-2xs leading-none text-warning">
                   <WarningCircle className="h-3 w-3" aria-hidden="true" />
                   {t('settings:subagentProfiles.invalid_badge')}
                 </span>
               )}
               {file.valid && !file.active && (
-                <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground">
                   {t('settings:subagentProfiles.inactive_badge')}
                 </span>
               )}

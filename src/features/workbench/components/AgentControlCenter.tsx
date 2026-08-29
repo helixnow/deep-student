@@ -567,12 +567,12 @@ export function AgentControlDockEntry({
                         automationState === 'tripped' && 'bg-red-500',
                       )}
                     />
-                    <span className="flex items-center gap-1 text-[11px] font-semibold">
+                    <span className="flex items-center gap-1 text-xs font-semibold">
                       <Lightning size={12} weight="duotone" aria-hidden="true" />
                       {t('agentControlCenter.automationCard.title')}
                     </span>
                     {automationState === 'running' ? (
-                      <span className="ml-auto text-[10px] text-muted-foreground">
+                      <span className="ml-auto text-2xs text-muted-foreground">
                         {t('agentControlCenter.automationCard.running')}
                       </span>
                     ) : null}
@@ -587,18 +587,18 @@ export function AgentControlDockEntry({
                       aria-atomic="true"
                       aria-busy={killSwitchBusy || undefined}
                     >
-                      <p className="m-0 text-[11px] font-semibold leading-snug">
+                      <p className="m-0 text-xs font-semibold leading-snug">
                         {automationState === 'tripped'
                           ? t('agentControlCenter.automationCard.tripped')
                           : t('agentControlCenter.automationCard.paused')}
                       </p>
-                      <small className="text-[10px] leading-snug text-muted-foreground">
+                      <small className="text-2xs leading-snug text-muted-foreground">
                         {automationState === 'tripped'
                           ? t('agentControlCenter.automationCard.trippedHint')
                           : t('agentControlCenter.automationCard.pausedHint')}
                       </small>
                       {automationState === 'tripped' && killSwitch.reason ? (
-                        <small className="text-[10px] leading-snug text-muted-foreground">
+                        <small className="text-2xs leading-snug text-muted-foreground">
                           {t('agentControlCenter.killSwitch.trippedReason', {
                             reason: killSwitch.reason,
                           })}

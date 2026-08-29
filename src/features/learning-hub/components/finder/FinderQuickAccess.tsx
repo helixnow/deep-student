@@ -164,7 +164,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           onClick={isActive ? undefined : () => onNavigate(type)}
           leftSlot={renderedIcon}
           rightSlot={count !== undefined && count > 0 ? (
-            <span className="text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
+            <span className="text-xs tabular-nums text-[color:var(--shell-navigation-muted)]">
               {count}
             </span>
           ) : null}
@@ -196,7 +196,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             </span>
             {count !== undefined && count > 0 && (
               <span className={cn(
-                "text-[11px] tabular-nums px-1.5 py-0.5 rounded-full",
+                "text-xs tabular-nums px-1.5 py-0.5 rounded-full",
                 isActive 
                   ? "bg-primary/15 text-primary" 
                   : "text-muted-foreground/60"

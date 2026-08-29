@@ -130,7 +130,7 @@ function FinderDropChip({
       ref={setNodeRef}
       className={cn(
         // 触屏拖放目标放大到标准 44px 高（手指拖拽命中）
-        'px-2 py-0.5 rounded-md text-[11px] font-medium truncate max-w-[140px]',
+        'px-2 py-0.5 rounded-md text-xs font-medium truncate max-w-[140px]',
         '[@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
         'border border-transparent transition-colors',
         isOver ? overClass : idleClass
@@ -1162,7 +1162,7 @@ export function FinderFileList({
 
         {/* 快捷操作提示（桌面端） */}
         {canCreate && !isSmallScreen && (
-        <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground/40">
+        <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground/40">
           <kbd className="px-1.5 py-0.5 rounded bg-muted/60 font-mono">{t('finder.empty.rightClick')}</kbd>
           <span>{t('finder.empty.contextMenuHint')}</span>
         </div>
@@ -1286,7 +1286,7 @@ export function FinderFileList({
                 {dragCount > 1 && (
                   <div className={cn(
                     "absolute -top-2 -right-2 bg-primary text-primary-foreground",
-                    "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
+                    "text-xs font-semibold rounded-full min-w-[20px] h-5 px-1.5",
                     "flex items-center justify-center shadow-card-lg",
                     "finder-pop-in"
                   )}>
@@ -1427,7 +1427,7 @@ export function FinderFileList({
               {dragCount > 1 && (
                 <div className={cn(
                   "absolute -top-2 -right-2 bg-primary text-primary-foreground",
-                  "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
+                  "text-xs font-semibold rounded-full min-w-[20px] h-5 px-1.5",
                   "flex items-center justify-center shadow-card-lg",
                   "finder-pop-in"
                 )}>

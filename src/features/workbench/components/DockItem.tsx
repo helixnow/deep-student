@@ -528,7 +528,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
                   className={cn(
                     'wb-dock-badge absolute',
                     badge.kind === 'count'
-                      ? '-right-1 -top-1 h-4 min-w-[16px] rounded-full px-1 text-center text-[10px] font-medium leading-4'
+                      ? '-right-1 -top-1 h-4 min-w-[16px] rounded-full px-1 text-center text-2xs font-medium leading-4'
                       : 'right-0 top-0 h-2 w-2 min-w-0 rounded-full p-0',
                   )}
                 >
