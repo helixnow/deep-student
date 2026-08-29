@@ -1,0 +1,211 @@
+/**
+ * Generative UI 样式：compact 间距 token + chrome 流式指示 + 键盘 focus-visible 语义环。
+ * compact：`.generative-ui-compact` 仅 4/8/12 档。
+ * 动效降级：@media (prefers-reduced-motion: reduce) 与根节点 [data-reduced-motion]。
+ * 焦点环：button / a / [tabindex] 走 --ring token，不用裸蓝。
+ */
+
+.generative-ui-stream-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.generative-ui-stream-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+  opacity: 0.4;
+  animation: generative-ui-stream-pulse 1s ease-in-out infinite;
+}
+
+.generative-ui-stream-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.generative-ui-stream-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes generative-ui-stream-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generative-ui-stream-dot {
+    animation: none;
+    transform: none;
+    opacity: 0.7;
+  }
+
+  [data-generative-ui] [role='progressbar'] .bar,
+  [data-generative-progress] [role='progressbar'] .bar,
+  [data-generative-ui] .progress-indeterminate > div {
+    animation: none;
+    transition: none;
+  }
+
+  [data-generative-ui] .animate-spin {
+    animation: none;
+  }
+}
+
+[data-generative-ui][data-reduced-motion] .generative-ui-stream-dot,
+[data-generative-ui-chrome][data-reduced-motion] .generative-ui-stream-dot,
+.generative-ui-stream-indicator[data-reduced-motion] .generative-ui-stream-dot {
+  animation: none;
+  transform: none;
+  opacity: 0.7;
+}
+
+[data-generative-ui][data-reduced-motion] [role='progressbar'] .bar,
+[data-generative-progress][data-reduced-motion] [role='progressbar'] .bar,
+[data-generative-ui][data-reduced-motion] .progress-indeterminate > div {
+  animation: none;
+  transition: none;
+}
+
+[data-generative-ui][data-reduced-motion] .animate-spin {
+  animation: none;
+}
+
+/**
+ * 键盘焦点语义环：仅 :focus-visible（鼠标点击不出环）。
+ * 颜色走 --ring token，禁止裸蓝 / 裸 hex。
+ */
+[data-generative-ui] :is(button, a, [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+[data-generative-ui] :is(button, a, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+/**
+ * Compact 间距 token：仅 4 / 8 / 12（宪法 §2 前三档）。16 / 24 不进入 compact。
+ * 根节点 class 由 Renderer 映射：`.generative-ui-compact` + `data-compact`。
+ */
+.generative-ui-compact {
+  --generative-ui-space-1: 4px;
+  --generative-ui-space-2: 8px;
+  --generative-ui-space-3: 12px;
+}
+
+/* 根级块间距：8（原临时 class space-y-2） */
+.generative-ui-compact > * + * {
+  margin-block-start: var(--generative-ui-space-2);
+}
+
+/* 标题与描述微间距：4 */
+.generative-ui-compact > :where(div:has(> h3)) > * + * {
+  margin-block-start: var(--generative-ui-space-1);
+}
+
+/* chrome：12 水平 / 8 垂直，簇内 4（收掉 gap-1.5 等非档位） */
+.generative-ui-compact [data-generative-ui-chrome] {
+  gap: var(--generative-ui-space-2);
+  padding-block: var(--generative-ui-space-2);
+  padding-inline: var(--generative-ui-space-3);
+}
+
+.generative-ui-compact [data-generative-ui-chrome] > div {
+  gap: var(--generative-ui-space-1);
+}
+
+/* 布局网格 gap：8（与 JS `gap-2` 同档，不改 layout 算法） */
+.generative-ui-compact [data-layout-mode] {
+  gap: var(--generative-ui-space-2);
+}
+
+/* 块槽根节点内边距：8（原临时 class [&_[data-block-type]>div]:p-2） */
+.generative-ui-compact [data-block-type] > div {
+  padding: var(--generative-ui-space-2);
+}
+
+/**
+ * Round 45 a11y/print rules.
+ * forced-colors：按钮/链接/焦点环走系统色，避免语义 hsl 在 Windows 高对比下消失。
+ * print：只藏 chrome / 工具栏，块内容保留，避免槽内分页切断。
+ */
+@media (forced-colors: active) {
+  [data-generative-ui] {
+    forced-color-adjust: auto;
+    color: CanvasText;
+    border: 1px solid CanvasText;
+  }
+
+  [data-generative-ui] :is(button, [role='button']) {
+    color: ButtonText;
+    border: 1px solid ButtonBorder;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] a {
+    color: LinkText;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] :is(button, a, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  [data-generative-ui] .generative-ui-stream-dot {
+    background: CanvasText;
+    opacity: 1;
+    animation: none;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] [role='region'],
+  [data-generative-ui] [data-generative-block] {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media print {
+  [data-generative-ui-chrome],
+  .generative-ui-stream-indicator,
+  [data-generative-ui] [role='toolbar'],
+  [data-generative-ui] [data-action-live] {
+    display: none;
+  }
+
+  [data-generative-block] {
+    break-inside: avoid;
+  }
+}
+
+/**
+ * prefers-contrast: more — 加粗语义边框；JS 同步写 [data-contrast]。
+ * 焦点环保持 2px，颜色走 token / currentColor，不用裸 hex。
+ */
+@media (prefers-contrast: more) {
+  [data-generative-ui],
+  [data-generative-ui][data-contrast] {
+    border: 2px solid hsl(var(--border));
+  }
+
+  [data-generative-ui] :is(button, [role='button'], [data-generative-block], [role='region']),
+  [data-generative-ui][data-contrast] :is(button, [role='button'], [data-generative-block], [role='region']) {
+    border: 2px solid currentColor;
+  }
+
+  [data-generative-ui] :is(button, a, [tabindex]):focus-visible,
+  [data-generative-ui][data-contrast] :is(button, a, [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
