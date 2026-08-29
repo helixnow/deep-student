@@ -376,10 +376,9 @@ fn legacy_anchor_without_digest_blindly_replays_edited_body() {
     let contents_after_edit = contents_map(&[("legacy-skill", v2)]);
 
     // 旧 JSON：无 skillContentDigests / skillContentRev 字段
-    let legacy: SkillInjectionAnchors = serde_json::from_str(
-        r#"{"turnSkillIds": ["legacy-skill"], "beforeTurnUser": true}"#,
-    )
-    .expect("old-format anchors must stay parseable");
+    let legacy: SkillInjectionAnchors =
+        serde_json::from_str(r#"{"turnSkillIds": ["legacy-skill"], "beforeTurnUser": true}"#)
+            .expect("old-format anchors must stay parseable");
     assert!(legacy.skill_content_digests.is_empty());
     assert_eq!(legacy.content_digest_for("legacy-skill"), None);
 
@@ -392,7 +391,11 @@ fn legacy_anchor_without_digest_blindly_replays_edited_body() {
     );
 
     // 兼容档现状：盲取新正文重建（输出的正是「新正文当旧历史」字节）
-    assert_eq!(restored.len(), 1, "旧锚点无 digest → 有正文就重建（兼容契约）");
+    assert_eq!(
+        restored.len(),
+        1,
+        "旧锚点无 digest → 有正文就重建（兼容契约）"
+    );
     assert_eq!(
         llm_visible_bytes(&restored[0]),
         llm_visible_bytes(&make_transient_skill_message("legacy-skill", v2)),
@@ -406,7 +409,8 @@ fn legacy_anchor_without_digest_blindly_replays_edited_body() {
     assert!(signal.is_empty(), "无 digest 的旧锚点永不产生切代信号");
 
     // 二参兼容入口（anchors=None）与旧锚点行为一致
-    let ungated = rebuild_anchored_skill_messages(&legacy.turn_skill_ids, Some(&contents_after_edit));
+    let ungated =
+        rebuild_anchored_skill_messages(&legacy.turn_skill_ids, Some(&contents_after_edit));
     assert_eq!(ungated.len(), 1);
     assert_eq!(
         llm_visible_bytes(&ungated[0]),

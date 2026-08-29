@@ -4212,10 +4212,7 @@ mod tests {
             inject(raw);
             let before = note_props::malformed_props_total();
             let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
-            assert!(
-                fetched.props.is_none(),
-                "畸形 props {raw:?} 应回退 None"
-            );
+            assert!(fetched.props.is_none(), "畸形 props {raw:?} 应回退 None");
             assert!(
                 note_props::malformed_props_total() > before,
                 "畸形 props {raw:?} 必须计入原子计数（不允许静默）"
@@ -4227,7 +4224,11 @@ mod tests {
         let before = note_props::malformed_props_total();
         let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
         let props = fetched.props.expect("合法 props 应读出");
-        assert_eq!(props["priority"], serde_json::json!(2), "读侧保留 JSON 类型");
+        assert_eq!(
+            props["priority"],
+            serde_json::json!(2),
+            "读侧保留 JSON 类型"
+        );
         assert_eq!(note_props::malformed_props_total(), before);
     }
 
@@ -4254,11 +4255,8 @@ mod tests {
             .expect("共享向量中的合法键应全部可存");
 
         for (key, _expected_tag) in test_vectors::INVALID_KEYS {
-            let result = VfsNoteRepo::set_note_props(
-                &db,
-                &note.id,
-                serde_json::json!({ (*key): "v" }),
-            );
+            let result =
+                VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ (*key): "v" }));
             assert!(result.is_err(), "共享向量中的非法键 {key:?} 应被写侧拒绝");
         }
         assert!(

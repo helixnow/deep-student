@@ -811,7 +811,9 @@ impl CloudStorage for S3Storage {
                 if service_error.is_no_such_key() {
                     return Ok(None);
                 }
-                return Err(AppError::network(format!("S3 前缀读取失败: {service_error}")));
+                return Err(AppError::network(format!(
+                    "S3 前缀读取失败: {service_error}"
+                )));
             }
         };
 

@@ -102,9 +102,15 @@ fn tools_bytes(tools: &[Value]) -> Vec<u8> {
 /// 用空基线首轮 freeze 建立（G6 字母序），与产品路径同构。
 fn established_baseline() -> Vec<String> {
     let mut baseline: Vec<String> = Vec::new();
-    let mut tools = vec![tool_schema("search", "检索"), tool_schema("read_file", "读文件")];
+    let mut tools = vec![
+        tool_schema("search", "检索"),
+        tool_schema("read_file", "读文件"),
+    ];
     freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut baseline);
-    assert_eq!(baseline, vec!["read_file".to_string(), "search".to_string()]);
+    assert_eq!(
+        baseline,
+        vec!["read_file".to_string(), "search".to_string()]
+    );
     baseline
 }
 
@@ -116,7 +122,11 @@ fn variant_discloses(snapshot_baseline: &[String], disclosed: &[&str]) -> (Vec<S
     let mut tools: Vec<Value> = snapshot_baseline
         .iter()
         .map(|name| tool_schema(name, "基线工具"))
-        .chain(disclosed.iter().map(|name| tool_schema(name, "披露技能工具")))
+        .chain(
+            disclosed
+                .iter()
+                .map(|name| tool_schema(name, "披露技能工具")),
+        )
         .collect();
     freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut local_order);
     let emitted_names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
@@ -165,8 +175,14 @@ fn divergent_variant_tails_x_vs_y_converge_by_variant_index_and_bump_generation(
     let mut race_b_first = session_baseline.clone();
     merge_frozen_tool_schema_order_baseline(&mut race_b_first, &variant_b_order);
     merge_frozen_tool_schema_order_baseline(&mut race_b_first, &variant_a_order);
-    assert_eq!(race_a_first, vec!["read_file", "search", "quiz_gen", "anki_export"]);
-    assert_eq!(race_b_first, vec!["read_file", "search", "anki_export", "quiz_gen"]);
+    assert_eq!(
+        race_a_first,
+        vec!["read_file", "search", "quiz_gen", "anki_export"]
+    );
+    assert_eq!(
+        race_b_first,
+        vec!["read_file", "search", "anki_export", "quiz_gen"]
+    );
     assert_ne!(
         race_a_first, race_b_first,
         "旧行为：合并序由 store 完成竞态抽签，[…,X,Y] 与 […,Y,X] 皆可能——不可复现"
@@ -217,7 +233,10 @@ fn single_variant_prefix_extension_does_not_bump_generation() {
 
     // 单变体环内披露 Z：本地 order 是基线的纯前缀扩展（单写者天然无分叉）。
     let (single_variant_order, _) = variant_discloses(&session_baseline, &["zip_export"]);
-    assert_eq!(single_variant_order, vec!["read_file", "search", "zip_export"]);
+    assert_eq!(
+        single_variant_order,
+        vec!["read_file", "search", "zip_export"]
+    );
 
     // expected API（#1 落地后替换）：单变体路径继续走
     //   store_session_frozen_tool_schema_order（tool_loop.rs:992 语义不变，
@@ -275,7 +294,10 @@ fn later_round_both_variants_see_xy_share_generation_1_order() {
         converge_orders_by_variant_index(&[variant_a_order, variant_b_order]);
     let generation_t_plus_1 = generation_t + generation_bump;
 
-    assert_eq!(generation_bump, 0, "两变体尾部全等（皆空）→ 非真分叉，不切代");
+    assert_eq!(
+        generation_bump, 0,
+        "两变体尾部全等（皆空）→ 非真分叉，不切代"
+    );
     assert_eq!(generation_t_plus_1, 1, "T+1 共享 generation 仍为 1");
     assert_eq!(
         converged_order, converged_baseline,
@@ -309,8 +331,7 @@ fn t_plus_2_steady_state_after_fork_both_variants_share_order_and_generation() {
     // ===== 轮 T+1：fan-out 统一快照自 (g=1, B_1)，无新增披露 =====
     let (t1_a_order, t1_a_bytes) = variant_discloses(&order_after_t, &[]);
     let (t1_b_order, t1_b_bytes) = variant_discloses(&order_after_t, &[]);
-    let (bump_t1, order_after_t1) =
-        converge_orders_by_variant_index(&[t1_a_order, t1_b_order]);
+    let (bump_t1, order_after_t1) = converge_orders_by_variant_index(&[t1_a_order, t1_b_order]);
     let generation_t1 = generation_t + bump_t1;
     assert_eq!(bump_t1, 0, "T+1 无互异尾部，不切代");
     assert_eq!(order_after_t1, order_after_t, "T+1 收敛 order 不动");
@@ -337,7 +358,10 @@ fn t_plus_2_steady_state_after_fork_both_variants_share_order_and_generation() {
 
     // 同序：两变体本地 order 互等，且与轮 T 收敛基线逐位一致——
     // 稳态 order 是轮 T 收敛结果的不动点。
-    assert_eq!(t2_a_order, t2_b_order, "T+2 两变体本地 order 逐位一致（同序）");
+    assert_eq!(
+        t2_a_order, t2_b_order,
+        "T+2 两变体本地 order 逐位一致（同序）"
+    );
     assert_eq!(
         order_after_t2, order_after_t,
         "T+2 收敛 order 与轮 T 收敛基线逐位一致，稳态不动点"

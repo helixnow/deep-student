@@ -273,9 +273,7 @@ fn document_id_and_recent_reads_share_the_same_null_defaults() {
     assert_null_card_defaults(&by_ids[0]);
     assert_ok_card_intact(&by_ids[1]);
 
-    let recent = db
-        .get_recent_anki_cards(10)
-        .expect("最近卡片读取不得失败");
+    let recent = db.get_recent_anki_cards(10).expect("最近卡片读取不得失败");
     assert_eq!(recent.len(), 3, "状态恢复读路径同样容忍 NULL 行");
     // created_at DESC：card-null 排最后
     assert_null_card_defaults(&recent[2]);

@@ -3914,7 +3914,10 @@ impl BackupManager {
             // 回滚干净时事务已就地解决；否则保留 journal 供下次启动继续修复。
             if rollback_errors.is_empty() {
                 if let Err(e) = crate::crypto_publication::remove_journal(&app_data_root) {
-                    warn!("[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}", e);
+                    warn!(
+                        "[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}",
+                        e
+                    );
                 }
                 let _ = remove_crypto_path(&rollback_dir);
             }
@@ -3933,9 +3936,8 @@ impl BackupManager {
         let publish_result = (|| -> Result<(), BackupError> {
             // 在登记 cutover lease 之前把密钥 rename 落盘：崩溃后不允许出现
             // 「lease 已持久化但密钥安装未持久化」的组合。
-            crate::crypto_publication::sync_directory(&app_data_root).map_err(|e| {
-                BackupError::RestoreFailed(format!("密钥发布落盘失败: {}", e))
-            })?;
+            crate::crypto_publication::sync_directory(&app_data_root)
+                .map_err(|e| BackupError::RestoreFailed(format!("密钥发布落盘失败: {}", e)))?;
             if has_master {
                 crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
             }
@@ -3967,7 +3969,10 @@ impl BackupManager {
             );
             if rollback_errors.is_empty() {
                 if let Err(e) = crate::crypto_publication::remove_journal(&app_data_root) {
-                    warn!("[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}", e);
+                    warn!(
+                        "[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}",
+                        e
+                    );
                 }
                 let _ = remove_crypto_path(&rollback_dir);
             }
@@ -4015,10 +4020,7 @@ impl BackupManager {
                     moved_secure,
                 );
                 return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
-                    format!(
-                        "密钥发布 journal 清理失败，已恢复旧密钥: {}",
-                        journal_error
-                    )
+                    format!("密钥发布 journal 清理失败，已恢复旧密钥: {}", journal_error)
                 } else {
                     format!(
                         "密钥发布 journal 清理失败且旧密钥回滚不完整（journal 已保留，重启后自动修复）: {}; {}",

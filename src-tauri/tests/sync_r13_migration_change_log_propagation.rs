@@ -36,8 +36,7 @@ fn migrate_real_mistakes_db() -> (TempDir, Connection) {
         report.success,
         "migration report should be successful: {report:?}"
     );
-    let conn =
-        Connection::open(root.join("mistakes.db")).expect("open migrated mistakes database");
+    let conn = Connection::open(root.join("mistakes.db")).expect("open migrated mistakes database");
     (temp_dir, conn)
 }
 
@@ -202,8 +201,7 @@ fn v20260824_normalization_updates_enter_change_log_as_pending() {
 #[test]
 fn v20260824_null_source_tombstone_sweep_enters_change_log() {
     let temp_dir = TempDir::new().expect("create temp dir");
-    let conn =
-        Connection::open(temp_dir.path().join("mistakes.db")).expect("open raw mistakes db");
+    let conn = Connection::open(temp_dir.path().join("mistakes.db")).expect("open raw mistakes db");
 
     conn.execute_batch(include_str!("../migrations/mistakes/V20260130__init.sql"))
         .expect("apply real mistakes init");
@@ -278,7 +276,10 @@ fn v20260824_null_source_tombstone_sweep_enters_change_log() {
             |row| row.get(0),
         )
         .expect("read loser row");
-    assert!(old_deleted.is_some(), "older colliding row must be tombstoned");
+    assert!(
+        old_deleted.is_some(),
+        "older colliding row must be tombstoned"
+    );
 
     // 传播契约：墓碑清扫与 source 规范化都必须以 pending UPDATE 进 change_log。
     let pending = pending_rows_for_table(&conn, "anki_cards");

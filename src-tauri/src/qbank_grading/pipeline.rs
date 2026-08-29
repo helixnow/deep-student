@@ -359,9 +359,8 @@ fn persist_grading_result(
     // 事务内重读 submission，以其"旧 is_correct"为差值基准（r1-06 §2）：
     // 流式评判耗时较长，期间用户可能已自评/再提交；沿用评判开始前的旧快照
     // 或题目级 is_correct 都会算错差值方向。同时校验归属，防止串题写入。
-    let submission = get_submission_by_id_with_conn(conn, submission_id)?.ok_or_else(|| {
-        AppError::not_found(format!("作答记录不存在: {}", submission_id))
-    })?;
+    let submission = get_submission_by_id_with_conn(conn, submission_id)?
+        .ok_or_else(|| AppError::not_found(format!("作答记录不存在: {}", submission_id)))?;
     if submission.question_id != question.id {
         return Err(AppError::validation(format!(
             "作答记录 {} 不属于题目 {}",
@@ -933,10 +932,12 @@ mod tests {
         .expect("create question");
 
         let submission_id = match first_verdict {
-            Some(v) => crate::question_bank_service::QuestionBankService::new(Arc::clone(db))
-                .submit_answer(&question.id, "学生答案", Some(v), None)
-                .expect("submit baseline answer")
-                .submission_id,
+            Some(v) => {
+                crate::question_bank_service::QuestionBankService::new(Arc::clone(db))
+                    .submit_answer(&question.id, "学生答案", Some(v), None)
+                    .expect("submit baseline answer")
+                    .submission_id
+            }
             None => {
                 let conn = db.get_conn_safe().expect("conn");
                 VfsQuestionRepo::insert_submission_with_conn(
@@ -969,10 +970,7 @@ mod tests {
         .expect("query question counters")
     }
 
-    fn submission_state(
-        conn: &rusqlite::Connection,
-        submission_id: &str,
-    ) -> (Option<i64>, String) {
+    fn submission_state(conn: &rusqlite::Connection, submission_id: &str) -> (Option<i64>, String) {
         conn.query_row(
             "SELECT is_correct, grading_method FROM answer_submissions WHERE id = ?1",
             params![submission_id],
@@ -983,11 +981,7 @@ mod tests {
 
     /// 未删除 mastery 事件按 outcome 计数（幂等键前缀 me_qbank_{submission_id}；
     /// 换判纠正的修订事件带 _rN 后缀，同属该前缀）。
-    fn live_mastery_events(
-        conn: &rusqlite::Connection,
-        submission_id: &str,
-        outcome: &str,
-    ) -> i64 {
+    fn live_mastery_events(conn: &rusqlite::Connection, submission_id: &str, outcome: &str) -> i64 {
         conn.query_row(
             "SELECT COUNT(*) FROM mastery_events
              WHERE id LIKE ?1 AND outcome = ?2 AND deleted_at IS NULL",

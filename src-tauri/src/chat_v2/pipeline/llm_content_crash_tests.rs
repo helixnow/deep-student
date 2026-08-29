@@ -449,10 +449,7 @@ fn edit_resend_invalidates_stale_sidecar_then_early_persist_backfills() {
         replayed_pre_early, BARE_EDITED,
         "失效后崩溃：回退编辑后的裸文本"
     );
-    assert_ne!(
-        replayed_pre_early, WRAPPED,
-        "编辑前旧包装已失效，不得复活"
-    );
+    assert_ne!(replayed_pre_early, WRAPPED, "编辑前旧包装已失效，不得复活");
 
     // 编辑轮早写：行已由编辑事务保证存在，补写编辑轮新编译包装
     row.llm_content = Some(WRAPPED_EDITED.to_string());

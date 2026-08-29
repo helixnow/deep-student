@@ -50,11 +50,8 @@ pub const ANKI_SCHED_METADATA_KEYS: [&str; 7] = [
 ///
 /// 注意：只剥离这份可信凭证名单，不无差别剥离所有 `_` 前缀字段，
 /// 维持 lossless-only 导入语义的最小侵入。
-const UNTRUSTED_IMPORT_PROTOCOL_FIELDS: [&str; 3] = [
-    "_original_generation",
-    "_content_provenance",
-    "_qa_flags",
-];
+const UNTRUSTED_IMPORT_PROTOCOL_FIELDS: [&str; 3] =
+    ["_original_generation", "_content_provenance", "_qa_flags"];
 
 fn is_untrusted_import_protocol_field(name: &str) -> bool {
     UNTRUSTED_IMPORT_PROTOCOL_FIELDS

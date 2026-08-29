@@ -4477,7 +4477,9 @@ mod tests {
         let d = skill_body_digest("manual-a", "body text");
         assert_eq!(d, skill_body_digest("manual-a", "body text"));
         assert_eq!(d.len(), 64);
-        assert!(d.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(d
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
         assert_eq!(
             d,
             // = sha256("manual-a" || 0x1f || "body text" || 0x1e)

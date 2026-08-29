@@ -740,15 +740,9 @@ impl MigrationCoordinator {
             let mut stmt = dst_conn.prepare("PRAGMA quick_check").map_err(|e| {
                 MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
             })?;
-            let rows = stmt
-                .query_map([], |row| row.get(0))
-                .map_err(|e| {
-                    MigrationError::Database(format!(
-                        "备份完整性检查失败 {}: {}",
-                        dst.display(),
-                        e
-                    ))
-                })?;
+            let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| {
+                MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
+            })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
                 MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
             })?
@@ -2150,8 +2144,7 @@ impl MigrationCoordinator {
                             actual: db_checksum.clone(),
                         });
                     }
-                    reason = if LEGACY_CHECKSUM_DRIFT_ALLOWLIST.contains(&(id.as_str(), version))
-                    {
+                    reason = if LEGACY_CHECKSUM_DRIFT_ALLOWLIST.contains(&(id.as_str(), version)) {
                         "allowlisted_legacy_drift"
                     } else {
                         "verified_schema_convergence"
@@ -2555,11 +2548,7 @@ impl MigrationCoordinator {
 
             match conn.execute_batch(&statement) {
                 Ok(()) => {
-                    tracing::info!(
-                        "🔧 [PreRepair] VFS: 补齐缺失 init {} {}",
-                        master_type,
-                        name
-                    );
+                    tracing::info!("🔧 [PreRepair] VFS: 补齐缺失 init {} {}", master_type, name);
                 }
                 Err(e) => {
                     // 可降级：语句全部带 IF NOT EXISTS，失败通常意味着旧表缺列，
@@ -2638,7 +2627,12 @@ impl MigrationCoordinator {
             } else {
                 None
             };
-            results.push((master_type, name, target_table, sql[start..end].trim().to_string()));
+            results.push((
+                master_type,
+                name,
+                target_table,
+                sql[start..end].trim().to_string(),
+            ));
             pos = end;
         }
 
@@ -6253,7 +6247,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(non_table_objects, 0, "sparse fixture must not carry objects");
+        assert_eq!(
+            non_table_objects, 0,
+            "sparse fixture must not carry objects"
+        );
 
         // 按 runner 真实 checksum 记账，避免 repair_refinery_checksums 的
         // checksum-drift fail-close 抢在 verifier 之前触发，污染本测试的立证点。
@@ -6355,7 +6352,14 @@ mod tests {
         // 生产同路径 verifier：migrate_database 迁移后走的同一 verify_migrations，
         // 契约同为 VFS_MIGRATION_SET，版本 = 记账的 20260130。
         let err = coordinator
-            .verify_migrations(&conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .verify_migrations(
+                &conn,
+                &DatabaseId::Vfs,
+                &VFS_MIGRATION_SET,
+                20260130,
+                0,
+                false,
+            )
             .expect_err(
                 "verifier must fail-close on a table-only backfilled sparse VFS \
                  (missing init indexes / questions_fts / trash_view)",
@@ -6422,7 +6426,14 @@ mod tests {
         // 生产同路径 verifier 此时必须放行：表 + 索引 + smoke query
         // （questions_fts / trash_view）全部满足 V20260130 契约。
         coordinator
-            .verify_migrations(&conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .verify_migrations(
+                &conn,
+                &DatabaseId::Vfs,
+                &VFS_MIGRATION_SET,
+                20260130,
+                0,
+                false,
+            )
             .expect(
                 "verifier must accept the sparse VFS once init tables AND \
                  non-table objects are additively backfilled",
@@ -6590,7 +6601,10 @@ mod tests {
             SPARSE_MATRIX_QUESTIONS_FTS,
             SPARSE_MATRIX_TRASH_VIEW,
         ] {
-            if dropped.iter().any(|&(_, dropped_name, _)| dropped_name == name) {
+            if dropped
+                .iter()
+                .any(|&(_, dropped_name, _)| dropped_name == name)
+            {
                 continue;
             }
             assert!(
@@ -6636,7 +6650,14 @@ mod tests {
 
         // 只跑表回填时，生产 verifier 必须 fail-close。
         let err = coordinator
-            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .verify_migrations(
+                conn,
+                &DatabaseId::Vfs,
+                &VFS_MIGRATION_SET,
+                20260130,
+                0,
+                false,
+            )
             .expect_err(
                 "verifier must fail-close while matrix init objects are missing \
                  (table backfill alone is not enough)",
@@ -6672,7 +6693,14 @@ mod tests {
 
         // 同一生产 verifier 此时必须放行——契约仍是同一份 V20260130_INIT。
         coordinator
-            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .verify_migrations(
+                conn,
+                &DatabaseId::Vfs,
+                &VFS_MIGRATION_SET,
+                20260130,
+                0,
+                false,
+            )
             .expect("verifier must pass once dropped matrix objects are backfilled");
     }
 

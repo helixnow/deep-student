@@ -180,9 +180,15 @@ fn tools_bytes(tools: &[Value]) -> Vec<u8> {
 /// 已收敛的会话基线 B̂ = [read_file, search]（分叉前两轮状态）。
 fn established_baseline() -> Vec<String> {
     let mut baseline: Vec<String> = Vec::new();
-    let mut tools = vec![tool_schema("search", "检索"), tool_schema("read_file", "读文件")];
+    let mut tools = vec![
+        tool_schema("search", "检索"),
+        tool_schema("read_file", "读文件"),
+    ];
     freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut baseline);
-    assert_eq!(baseline, vec!["read_file".to_string(), "search".to_string()]);
+    assert_eq!(
+        baseline,
+        vec!["read_file".to_string(), "search".to_string()]
+    );
     baseline
 }
 
@@ -193,7 +199,11 @@ fn variant_discloses(snapshot_baseline: &[String], disclosed: &[&str]) -> (Vec<S
     let mut tools: Vec<Value> = snapshot_baseline
         .iter()
         .map(|name| tool_schema(name, "基线工具"))
-        .chain(disclosed.iter().map(|name| tool_schema(name, "披露技能工具")))
+        .chain(
+            disclosed
+                .iter()
+                .map(|name| tool_schema(name, "披露技能工具")),
+        )
         .collect();
     freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut local_order);
     let emitted_names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
@@ -217,7 +227,10 @@ fn fork_round_t_converged_and_persisted() -> (ToolFacePrefixSnapshot, Option<Val
 
     let (generation_bump, converged_order) =
         converge_orders_by_variant_index(&[variant_a_order, variant_b_order]);
-    assert_eq!(generation_bump, 1, "轮 T 前提：X ≠ Y 真分叉必须切代（第 2 轮已覆盖）");
+    assert_eq!(
+        generation_bump, 1,
+        "轮 T 前提：X ≠ Y 真分叉必须切代（第 2 轮已覆盖）"
+    );
     assert_eq!(
         converged_order,
         vec!["read_file", "search", "quiz_gen", "anki_export"],
@@ -251,10 +264,13 @@ fn after_fork_next_round_both_variants_see_x_and_y_with_stable_generation() {
 
     // ===== 轮 T+1 fan-out：入口统一快照——从持久化态读回，两变体拿到
     // **同一份** (g=1, B_1)，不是各自的轮 T 本地尾部 =====
-    let snapshot_t_plus_1 = snapshot_from_metadata(metadata.as_ref())
-        .expect("轮 T 持久化过的会话必须能还原快照");
+    let snapshot_t_plus_1 =
+        snapshot_from_metadata(metadata.as_ref()).expect("轮 T 持久化过的会话必须能还原快照");
     assert_eq!(snapshot_t_plus_1.generation, 1, "T+1 入口快照代际 = 1");
-    assert_eq!(snapshot_t_plus_1.order, converged.order, "T+1 入口基线 = 轮 T 收敛 order");
+    assert_eq!(
+        snapshot_t_plus_1.order, converged.order,
+        "T+1 入口基线 = 轮 T 收敛 order"
+    );
 
     let (variant_a_order, variant_a_bytes) = variant_discloses(&snapshot_t_plus_1.order, &[]);
     let (variant_b_order, variant_b_bytes) = variant_discloses(&snapshot_t_plus_1.order, &[]);
@@ -285,13 +301,19 @@ fn after_fork_next_round_both_variants_see_x_and_y_with_stable_generation() {
     // ===== 稳态：收敛 Δg = 0，generation 稳定在 1 =====
     let (generation_bump, converged_t_plus_1) =
         converge_orders_by_variant_index(&[variant_a_order, variant_b_order]);
-    assert_eq!(generation_bump, 0, "T+1 两变体尾部全等（皆空）→ 非真分叉，不切代");
+    assert_eq!(
+        generation_bump, 0,
+        "T+1 两变体尾部全等（皆空）→ 非真分叉，不切代"
+    );
     assert_eq!(
         converged.generation + generation_bump,
         1,
         "generation 稳定在 1：分叉只发生一次，稳态轮绝不再 bump"
     );
-    assert_eq!(converged_t_plus_1, converged.order, "T+1 收敛 order = 轮 T 基线（无变化）");
+    assert_eq!(
+        converged_t_plus_1, converged.order,
+        "T+1 收敛 order = 轮 T 基线（无变化）"
+    );
 
     // ===== 稳态写回：advance 无变更必须跳过写库，metadata 字节不动 =====
     let steady_writeback = ToolFacePrefixSnapshot {
@@ -346,7 +368,8 @@ fn steady_state_survives_many_rounds_and_variant_index_shuffles() {
         };
         let (generation_bump, converged_order) = converge_orders_by_variant_index(&inputs);
         assert_eq!(
-            generation_bump, 0,
+            generation_bump,
+            0,
             "第 T+{round} 轮（索引洗牌={}）不得切代",
             round % 2 != 0
         );
@@ -389,7 +412,10 @@ fn restart_between_fork_and_next_round_preserves_xy_visibility_and_generation() 
     // 存活，禁止字母序冷重建、禁止 generation 归零）
     let restored = snapshot_from_metadata(metadata.as_ref())
         .expect("轮 T 持久化过的会话重启后必须能从 metadata 还原快照");
-    assert_eq!(restored.generation, 1, "恢复的 generation 必须仍是 1，禁止归零回退");
+    assert_eq!(
+        restored.generation, 1,
+        "恢复的 generation 必须仍是 1，禁止归零回退"
+    );
     assert_eq!(
         restored.order, converged.order,
         "恢复的 order 必须与轮 T 收敛结果逐项一致（X 先于 Y 的索引序血统）"
@@ -409,13 +435,23 @@ fn restart_between_fork_and_next_round_preserves_xy_visibility_and_generation() 
             && variant_a_order.iter().any(|name| name == "anki_export"),
         "重启后变体 A 依然同现 X+Y"
     );
-    assert_eq!(variant_a_order, variant_b_order, "重启后两变体工具面仍逐位一致");
-    assert_eq!(variant_a_bytes, variant_b_bytes, "重启后两变体字节仍逐字节一致");
+    assert_eq!(
+        variant_a_order, variant_b_order,
+        "重启后两变体工具面仍逐位一致"
+    );
+    assert_eq!(
+        variant_a_bytes, variant_b_bytes,
+        "重启后两变体字节仍逐字节一致"
+    );
 
     let (generation_bump, converged_after_restart) =
         converge_orders_by_variant_index(&[variant_a_order, variant_b_order]);
     assert_eq!(generation_bump, 0, "重启不是分叉：恢复后的稳态轮不得切代");
-    assert_eq!(restored.generation + generation_bump, 1, "跨进程 generation 稳定在 1");
+    assert_eq!(
+        restored.generation + generation_bump,
+        1,
+        "跨进程 generation 稳定在 1"
+    );
     assert_eq!(converged_after_restart, converged.order);
 }
 
@@ -426,8 +462,7 @@ fn restart_between_fork_and_next_round_preserves_xy_visibility_and_generation() 
 #[test]
 fn stale_pre_fork_writeback_cannot_regress_steady_state() {
     let (converged, mut metadata) = fork_round_t_converged_and_persisted();
-    let steady_bytes =
-        serde_json::to_string(&metadata).expect("serialize steady-state metadata");
+    let steady_bytes = serde_json::to_string(&metadata).expect("serialize steady-state metadata");
 
     // 掉队变体 B 在收敛完成后才写回它轮 T 的本地快照：generation 还是
     // 分叉前的 0，order 是 B̂ + [Y]（收敛 order 的**子集**，Y 已在稳态
@@ -465,9 +500,18 @@ fn stale_pre_fork_writeback_cannot_regress_steady_state() {
     );
     let (variant_a_order, variant_a_bytes) = variant_discloses(&after.order, &[]);
     let (variant_b_order, variant_b_bytes) = variant_discloses(&after.order, &[]);
-    assert_eq!(variant_a_order, variant_b_order, "后轮两变体仍同现 X+Y，序一致");
-    assert_eq!(variant_a_bytes, variant_b_bytes, "后轮两变体字节仍逐字节一致");
+    assert_eq!(
+        variant_a_order, variant_b_order,
+        "后轮两变体仍同现 X+Y，序一致"
+    );
+    assert_eq!(
+        variant_a_bytes, variant_b_bytes,
+        "后轮两变体字节仍逐字节一致"
+    );
     let (generation_bump, _) =
         converge_orders_by_variant_index(&[variant_a_order, variant_b_order]);
-    assert_eq!(generation_bump, 0, "稳态延续：generation 稳定在 1，不再切代");
+    assert_eq!(
+        generation_bump, 0,
+        "稳态延续：generation 稳定在 1，不再切代"
+    );
 }

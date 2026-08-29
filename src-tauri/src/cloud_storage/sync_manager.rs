@@ -874,8 +874,7 @@ impl CloudSyncManager {
                         latest_version: latest,
                         last_sync_time: device_last_sync,
                         error: None,
-                        encryption_memory_persist_failure:
-                            last_encryption_memory_persist_failure(),
+                        encryption_memory_persist_failure: last_encryption_memory_persist_failure(),
                     }
                 }
                 Err(e) => SyncStatus {
@@ -1289,7 +1288,10 @@ impl CloudSyncManager {
                 Ok(())
             }
             Err(fallback_error) => {
-                tracing::warn!("次新版本 {} 回退试解同样失败: {fallback_error}", fallback.id);
+                tracing::warn!(
+                    "次新版本 {} 回退试解同样失败: {fallback_error}",
+                    fallback.id
+                );
                 // 报错沿用最新版本那次尝试：错误码与文案对用户保持稳定。
                 Err(primary_error)
             }
@@ -1394,9 +1396,10 @@ impl CloudSyncManager {
             }
         }
 
-        let plan = backup_crypto::plan_first_chunk_trial(&prefix, version.size).map_err(
-            |error| Self::prove_trial_failed_error(allow_plaintext_zip, &version.id, error),
-        )?;
+        let plan =
+            backup_crypto::plan_first_chunk_trial(&prefix, version.size).map_err(|error| {
+                Self::prove_trial_failed_error(allow_plaintext_zip, &version.id, error)
+            })?;
         let prefix_len = match plan {
             backup_crypto::FirstChunkPlan::LegacyV1WholeFile => {
                 return Ok(FirstChunkProveOutcome::LegacyV1NeedsWholeFile);
@@ -2657,7 +2660,10 @@ mod tests {
         );
         let object_len = storage.object_len(&format!("{}/{}.zip", BACKUPS_DIR, version_id));
         for (key, len) in storage.prefix_reads_snapshot() {
-            assert!(key.ends_with(&format!("{version_id}.zip")), "前缀读取目标: {key}");
+            assert!(
+                key.ends_with(&format!("{version_id}.zip")),
+                "前缀读取目标: {key}"
+            );
             assert!(
                 len < object_len,
                 "前缀读取必须严格小于整包（{len} < {object_len}）"
@@ -2852,19 +2858,12 @@ mod tests {
             .await
             .expect_err("伪造首块必须试解失败（fail-closed）")
             .to_string();
-        assert!(
-            error.contains("未通过"),
-            "错误应为试解未通过文案: {error}"
-        );
+        assert!(error.contains("未通过"), "错误应为试解未通过文案: {error}");
         assert!(
             storage.prefix_read_count() >= 2,
             "非默认分块必须触发按计划补读"
         );
-        assert_eq!(
-            storage.full_backup_get_count(),
-            0,
-            "失败也不得整包下载"
-        );
+        assert_eq!(storage.full_backup_get_count(), 0, "失败也不得整包下载");
     }
 
     #[tokio::test]
@@ -3173,7 +3172,10 @@ mod tests {
         // 模拟并发赢家在我们的上传窗口内改写了标记。
         storage.files.lock().unwrap().insert(
             ENCRYPTION_MARKER_FILE.to_string(),
-            (b"{\"version\":2,\"createdByDevice\":\"other\"}".to_vec(), Utc::now()),
+            (
+                b"{\"version\":2,\"createdByDevice\":\"other\"}".to_vec(),
+                Utc::now(),
+            ),
         );
 
         let dir = tempfile::tempdir().unwrap();
@@ -3322,10 +3324,9 @@ mod tests {
                 .get(ENCRYPTION_MARKER_FILE)
                 .map(|(data, _)| data.clone());
             if result_a.is_ok() || result_b.is_ok() {
-                let marker: EncryptionMarker = serde_json::from_slice(
-                    marker_raw.as_deref().expect("有赢家时标记必须已发布"),
-                )
-                .expect("已发布标记必须可解析");
+                let marker: EncryptionMarker =
+                    serde_json::from_slice(marker_raw.as_deref().expect("有赢家时标记必须已发布"))
+                        .expect("已发布标记必须可解析");
                 let verifier = marker.key_verifier.as_ref().expect("认领标记必须带校验子");
                 let winner_password = if result_a.is_ok() {
                     "pw-alpha-2026"
@@ -3358,17 +3359,18 @@ mod tests {
                 // 恰好绑定两个口令之一。
                 let marker: EncryptionMarker =
                     serde_json::from_slice(&raw).expect("留下的标记必须可解析");
-                let verifier = marker.key_verifier.as_ref().expect("留下的标记必须带校验子");
+                let verifier = marker
+                    .key_verifier
+                    .as_ref()
+                    .expect("留下的标记必须带校验子");
                 let alpha = crate::crypto::backup_crypto::check_password_verifier(
                     "pw-alpha-2026",
                     verifier,
                 )
                 .unwrap();
-                let beta = crate::crypto::backup_crypto::check_password_verifier(
-                    "pw-beta-2026",
-                    verifier,
-                )
-                .unwrap();
+                let beta =
+                    crate::crypto::backup_crypto::check_password_verifier("pw-beta-2026", verifier)
+                        .unwrap();
                 assert!(
                     alpha ^ beta,
                     "第 {round} 轮：双失败留下的标记必须恰好绑定其中一个口令"

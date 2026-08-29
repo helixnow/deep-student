@@ -138,7 +138,10 @@ fn false_to_true_correction_recomputes_state_and_breaks_first_verdict_lock() {
             .record_qbank_answer_with_conn(&tx, sid, qid, &tags, true)
             .expect("record-path flip attempt");
         tx.commit().expect("commit no-op flip");
-        assert_eq!(locked.wrong_count, 1, "record 路换向必须仍停在首判（锁死复现）");
+        assert_eq!(
+            locked.wrong_count, 1,
+            "record 路换向必须仍停在首判（锁死复现）"
+        );
         assert!((locked.score - 0.35).abs() < 1e-9);
         assert_eq!(chain_count(&vfs, sid), 1, "DO NOTHING 不得插入第二条事件");
     }
@@ -155,13 +158,19 @@ fn false_to_true_correction_recomputes_state_and_breaks_first_verdict_lock() {
         corrected.score
     );
     assert_eq!(corrected.total, 1, "纠正是改判不是新作答，total 不得翻倍");
-    assert_eq!(corrected.wrong_count, 0, "首判 wrong 信号必须被 tombstone 排除");
+    assert_eq!(
+        corrected.wrong_count, 0,
+        "首判 wrong 信号必须被 tombstone 排除"
+    );
     assert_eq!(corrected.streak, 1);
 
     // 表终态：append-only tombstone + 修订事件
     let (base_outcome, _, base_deleted) =
         event_row(&vfs, "me_qbank_sub_it_corr_main").expect("base event row exists");
-    assert!(base_deleted.is_some(), "首判事件应被 tombstone（deleted_at 落值）");
+    assert!(
+        base_deleted.is_some(),
+        "首判事件应被 tombstone（deleted_at 落值）"
+    );
     assert_eq!(
         base_outcome, "wrong",
         "append-only：tombstone 只动同步元数据，旧事件 outcome 不得被 UPDATE"
@@ -308,13 +317,19 @@ fn compensation_entry_interops_with_product_written_verdict_chain() {
     let corrected = mastery
         .record_qbank_verdict_correction(&sid, &question.id, &tags, true)
         .expect("out-of-band compensation correction");
-    assert_eq!(corrected.concept_key, "physics", "concept 取题目首个非空 tag");
+    assert_eq!(
+        corrected.concept_key, "physics",
+        "concept 取题目首个非空 tag"
+    );
     assert!(
         (corrected.score - 0.65).abs() < 1e-9,
         "补偿后 score 应按存活纠正事件重算为 0.65，got {}",
         corrected.score
     );
-    assert_eq!(corrected.wrong_count, 0, "产品写入的首判 wrong 必须被 tombstone");
+    assert_eq!(
+        corrected.wrong_count, 0,
+        "产品写入的首判 wrong 必须被 tombstone"
+    );
     assert!(
         event_row(&vfs, &base_id).expect("base row").2.is_some(),
         "产品首判事件应被补偿纠正 tombstone"

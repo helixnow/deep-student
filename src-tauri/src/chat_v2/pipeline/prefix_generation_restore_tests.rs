@@ -333,8 +333,8 @@ fn simulate_concurrent_first_load(
 fn concurrent_first_build_converges_to_single_generation_zero_baseline() {
     // ===== 场景 1：全新会话（metadata 无任何冻结键 → None → 默认空基线）
     // 双调用同时 miss =====
-    let fresh_persisted = snapshot_from_metadata(Some(&json!({ "authorityMode": "chat" })))
-        .unwrap_or_default();
+    let fresh_persisted =
+        snapshot_from_metadata(Some(&json!({ "authorityMode": "chat" }))).unwrap_or_default();
     assert_eq!(fresh_persisted.generation, 0, "全新会话基线代际必须是 0");
     assert!(fresh_persisted.order.is_empty());
 
@@ -485,8 +485,7 @@ fn advance_skips_write_when_generation_order_digest_unchanged() {
         advance_snapshot_into_metadata(&mut metadata, &extended),
         "order 追加新名属于变更，必须写库"
     );
-    let after_extend =
-        snapshot_from_metadata(metadata.as_ref()).expect("扩展后必须能还原快照");
+    let after_extend = snapshot_from_metadata(metadata.as_ref()).expect("扩展后必须能还原快照");
     assert_eq!(
         after_extend.generation, 2,
         "纯前缀扩展绝不 bump generation——切代判定只属于 converge 收敛点"

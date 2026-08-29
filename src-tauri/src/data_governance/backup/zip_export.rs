@@ -3332,9 +3332,9 @@ mod tests {
                 "cancelled import must not leave NamedTempFile leftovers: {}",
                 relative
             );
-            let expected_size = entry_sizes.get(relative).unwrap_or_else(|| {
-                panic!("unexpected file in target after cancel: {}", relative)
-            });
+            let expected_size = entry_sizes
+                .get(relative)
+                .unwrap_or_else(|| panic!("unexpected file in target after cancel: {}", relative));
             assert_eq!(
                 actual_size, expected_size,
                 "every landed file must be byte-complete, never truncated: {}",
@@ -3421,8 +3421,7 @@ mod tests {
 
         // 第二遍：同参数、不再取消，续传补齐剩余条目。
         let file_count =
-            import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None)
-                .unwrap();
+            import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None).unwrap();
 
         assert_eq!(
             file_count,

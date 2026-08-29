@@ -2414,9 +2414,10 @@ impl SecureStore {
 
         // 步骤 2：推进 pointer。失败则尽力写回旧 active（fail-closed：pointer
         // 未推进的世界里 active 必须仍是旧内容），staged 保留供重试。
-        if let Err(error) =
-            self.save_secret(CLOUD_STORAGE_GENERATION_KEY, &expected_generation.to_string())
-        {
+        if let Err(error) = self.save_secret(
+            CLOUD_STORAGE_GENERATION_KEY,
+            &expected_generation.to_string(),
+        ) {
             let restore = match previous_active.as_deref() {
                 Some(json) => self.save_secret(CLOUD_STORAGE_KEY, json),
                 None => self.delete_secret(CLOUD_STORAGE_KEY),
@@ -3489,10 +3490,7 @@ mod cloud_hydration_tests {
             .get_cloud_credentials()
             .expect("read active credentials")
             .expect("committed record present");
-        assert_eq!(
-            active.encryption_password.as_deref(),
-            Some("password123")
-        );
+        assert_eq!(active.encryption_password.as_deref(), Some("password123"));
     }
 
     /// 过期 generation 句柄的 commit / abort 一律 fail-closed 冲突，active 不动。

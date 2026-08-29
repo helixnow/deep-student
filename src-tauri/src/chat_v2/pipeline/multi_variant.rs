@@ -588,16 +588,18 @@ impl ChatV2Pipeline {
         // generation += 1，digest 按共识规则采纳。锁内合并克隆、
         // 放锁后写库（advance 失败仅 warn，不阻断）。
         {
-            let variant_local_prefixes: Vec<(usize, crate::chat_v2::types::ToolFacePrefixSnapshot)> =
-                variant_contexts
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(variant_index, (ctx, _))| {
-                        ctx.get_meta()
-                            .and_then(|meta| meta.tool_face_prefix)
-                            .map(|prefix| (variant_index, prefix))
-                    })
-                    .collect();
+            let variant_local_prefixes: Vec<(
+                usize,
+                crate::chat_v2::types::ToolFacePrefixSnapshot,
+            )> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix))
+                })
+                .collect();
             if !variant_local_prefixes.is_empty() {
                 self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }
@@ -2854,16 +2856,18 @@ impl ChatV2Pipeline {
         // fan-out 同一收敛原语，快照含 order 与窗口 digest；单变体重试
         // = 纯扩展不切代由 converge 的前缀检查构造保证）。
         {
-            let variant_local_prefixes: Vec<(usize, crate::chat_v2::types::ToolFacePrefixSnapshot)> =
-                variant_contexts
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(variant_index, (ctx, _, _))| {
-                        ctx.get_meta()
-                            .and_then(|meta| meta.tool_face_prefix)
-                            .map(|prefix| (variant_index, prefix))
-                    })
-                    .collect();
+            let variant_local_prefixes: Vec<(
+                usize,
+                crate::chat_v2::types::ToolFacePrefixSnapshot,
+            )> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix))
+                })
+                .collect();
             if !variant_local_prefixes.is_empty() {
                 self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }

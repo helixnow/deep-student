@@ -1573,7 +1573,9 @@ mod tests {
             build_occlusion_draft_marker_from_spec(&spec, &OcclusionConfig::default()).unwrap();
         let fields = extract_occlusion_draft_fields(&marker).unwrap();
         assert!(
-            fields.text.starts_with("<img src=\"heart-anatomy.png\"><br>"),
+            fields
+                .text
+                .starts_with("<img src=\"heart-anatomy.png\"><br>"),
             "text 应以图片 basename 的 <img> 开头: {}",
             fields.text
         );
@@ -1597,7 +1599,9 @@ mod tests {
                 build_occlusion_draft_marker_from_spec(&spec, &OcclusionConfig::default()).unwrap();
             let fields = extract_occlusion_draft_fields(&marker).unwrap();
             assert!(
-                fields.text.starts_with(&format!("<img src=\"{expected}\">")),
+                fields
+                    .text
+                    .starts_with(&format!("<img src=\"{expected}\">")),
                 "ref={image_ref} text={}",
                 fields.text
             );

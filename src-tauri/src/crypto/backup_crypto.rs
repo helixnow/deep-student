@@ -654,9 +654,9 @@ pub fn plan_first_chunk_trial(head: &[u8], object_len: u64) -> Result<FirstChunk
                     head.len()
                 ));
             }
-            let plaintext_chunk = u32::from_le_bytes(
-                head[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?,
-            ) as u64;
+            let plaintext_chunk =
+                u32::from_le_bytes(head[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?)
+                    as u64;
             if plaintext_chunk == 0 || plaintext_chunk > DSBK_MAX_PLAINTEXT_CHUNK as u64 {
                 return Err(anyhow!("加密分块大小非法: {plaintext_chunk}"));
             }
@@ -665,7 +665,9 @@ pub fn plan_first_chunk_trial(head: &[u8], object_len: u64) -> Result<FirstChunk
                 .checked_sub(DSBK_V2_HEADER_LEN as u64)
                 .filter(|len| *len >= DSBK_GCM_TAG_LEN as u64)
                 .ok_or_else(|| {
-                    anyhow!("加密备份缺少数据块（对象总长 {object_len} 字节，装不下 v2 头 + GCM tag）")
+                    anyhow!(
+                        "加密备份缺少数据块（对象总长 {object_len} 字节，装不下 v2 头 + GCM tag）"
+                    )
                 })?;
             Ok(FirstChunkPlan::StreamV2 {
                 prefix_len: DSBK_V2_HEADER_LEN as u64 + body_len.min(cipher_chunk),
@@ -708,9 +710,8 @@ pub fn trial_decrypt_first_chunk(prefix: &[u8], object_len: u64, password: &str)
     let p_cost = u32::from_le_bytes(prefix[13..17].try_into()?);
     let salt: [u8; 16] = prefix[17..33].try_into()?;
     let nonce_prefix: [u8; 7] = prefix[33..40].try_into()?;
-    let plaintext_chunk = u32::from_le_bytes(
-        prefix[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?,
-    ) as u64;
+    let plaintext_chunk =
+        u32::from_le_bytes(prefix[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?) as u64;
     let cipher_chunk = plaintext_chunk + DSBK_GCM_TAG_LEN as u64;
 
     // final 判定与流式解密一致：首块之后再无字节 → 首块即 final 块。
@@ -1479,11 +1480,8 @@ mod tests {
             "解密/存量路径的预检不得引用新设封顶"
         );
         // 对照：同一参数在新写入面预检里，移动端必须拒绝、桌面维持放行。
-        let new_write = ensure_kdf_params_allowed_for_new_encryption(
-            legacy_m,
-            DEFAULT_T_COST,
-            DEFAULT_P_COST,
-        );
+        let new_write =
+            ensure_kdf_params_allowed_for_new_encryption(legacy_m, DEFAULT_T_COST, DEFAULT_P_COST);
         if cfg!(any(target_os = "android", target_os = "ios")) {
             assert!(new_write.is_err(), "移动端新写入面必须拒绝 256 MiB 以上");
         } else {
@@ -1581,9 +1579,7 @@ mod tests {
         let enc = dir.path().join("enc.dsbk");
         let plain: Vec<u8> = (0..plain_len).map(|i| (i % 251) as u8).collect();
         std::fs::write(&input, &plain).unwrap();
-        cheap_session(password)
-            .encrypt_file(&input, &enc)
-            .unwrap();
+        cheap_session(password).encrypt_file(&input, &enc).unwrap();
         std::fs::read(&enc).unwrap()
     }
 
@@ -1693,10 +1689,9 @@ mod tests {
         let good = cheap_v2_object("pw", 128);
         for bad_chunk in [0u32, DSBK_MAX_PLAINTEXT_CHUNK + 1] {
             let mut bad = good.clone();
-            bad[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN]
-                .copy_from_slice(&bad_chunk.to_le_bytes());
-            let err = plan_first_chunk_trial(&bad, bad.len() as u64)
-                .expect_err("非法 chunk 必须拒绝");
+            bad[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].copy_from_slice(&bad_chunk.to_le_bytes());
+            let err =
+                plan_first_chunk_trial(&bad, bad.len() as u64).expect_err("非法 chunk 必须拒绝");
             assert!(err.to_string().contains("分块大小非法"), "实际: {err}");
         }
 
@@ -1737,7 +1732,12 @@ mod tests {
     fn speculative_prefix_len_covers_own_write_surface() {
         // 投机前缀必须覆盖本应用自己写出的一切 v2 对象的首块计划：
         // 大对象一次前缀读即可完成试解，小对象钳到对象总长。
-        for plain_len in [0usize, 100, STREAM_PLAINTEXT_CHUNK, STREAM_PLAINTEXT_CHUNK * 2 + 7] {
+        for plain_len in [
+            0usize,
+            100,
+            STREAM_PLAINTEXT_CHUNK,
+            STREAM_PLAINTEXT_CHUNK * 2 + 7,
+        ] {
             let object = cheap_v2_object("spec-pw", plain_len);
             let object_len = object.len() as u64;
             let FirstChunkPlan::StreamV2 { prefix_len } =

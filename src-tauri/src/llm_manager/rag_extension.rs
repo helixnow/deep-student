@@ -1400,10 +1400,9 @@ impl LLMManager {
         // （行首独占 token 行 / 流首尾包装），故始终启用保守过滤。
         // 对无泄漏输出过滤为恒等。
         let cleaned = {
-            let mut filter =
-                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
-                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
-                );
+            let mut filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
+            );
             let mut output = filter.process(&result.assistant_message);
             output.push_str(&filter.flush());
             output

@@ -1269,10 +1269,8 @@ mod skill_replay_gate_tests {
     /// digest 一致 → 与 live 渲染同字节；skip 不阻塞其余锚点、不换序。
     #[test]
     fn gate_skips_mismatch_and_rebuilds_match_in_anchor_order() {
-        let anchors = anchors_with_digests(&[
-            ("skill-a", "正文 A（未改）"),
-            ("skill-b", "正文 B v1"),
-        ]);
+        let anchors =
+            anchors_with_digests(&[("skill-a", "正文 A（未改）"), ("skill-b", "正文 B v1")]);
         let ids = vec!["skill-a".to_string(), "skill-b".to_string()];
         // 当轮请求携带的 skill-b 正文已被编辑为 v2
         let contents = contents_map(&[("skill-a", "正文 A（未改）"), ("skill-b", "正文 B v2")]);
@@ -1308,7 +1306,9 @@ mod skill_replay_gate_tests {
         assert_eq!(ungated[0].content, gated[0].content);
 
         // 正文缺失（skill-ghost）在两条路径都被 skip，不阻塞重放
-        assert!(rebuild_anchored_skill_messages_gated(&ids, None, Some(&legacy_anchors)).is_empty());
+        assert!(
+            rebuild_anchored_skill_messages_gated(&ids, None, Some(&legacy_anchors)).is_empty()
+        );
     }
 
     /// r5 #8：只有「有 digest 且正文漂移」计入切代信号；digest 命中、
@@ -1317,10 +1317,7 @@ mod skill_replay_gate_tests {
     /// （与无信号兼容入口输出逐字节一致）。
     #[test]
     fn gate_signal_collects_only_digest_mismatches_deduped() {
-        let anchors = anchors_with_digests(&[
-            ("skill-ok", "正文未改"),
-            ("skill-drift", "正文 v1"),
-        ]);
+        let anchors = anchors_with_digests(&[("skill-ok", "正文未改"), ("skill-drift", "正文 v1")]);
         let ids = vec![
             "skill-ok".to_string(),
             "skill-drift".to_string(),
@@ -1336,7 +1333,10 @@ mod skill_replay_gate_tests {
             &mut signal,
         );
         assert_eq!(restored.len(), 1, "只有 digest 命中的 skill-ok 重建");
-        assert_eq!(restored[0].content, make_transient_skill_message("skill-ok", "正文未改").content);
+        assert_eq!(
+            restored[0].content,
+            make_transient_skill_message("skill-ok", "正文未改").content
+        );
         assert_eq!(
             signal,
             vec!["skill-drift".to_string()],

@@ -47,9 +47,8 @@ use deep_student_lib::anki_critic::{
     Verdict, CRITIC_FLAG_CODE, CRITIC_REVISED_CODE,
 };
 use deep_student_lib::anki_gold_set::{
-    has_critic_revision_marker, is_llm_critic_actor, is_user_proven_edit,
-    parse_content_provenance, CONTENT_PROVENANCE_FIELD, CRITIC_REVISED_QA_CODE,
-    PROVENANCE_ACTOR_LLM_CRITIC,
+    has_critic_revision_marker, is_llm_critic_actor, is_user_proven_edit, parse_content_provenance,
+    CONTENT_PROVENANCE_FIELD, CRITIC_REVISED_QA_CODE, PROVENANCE_ACTOR_LLM_CRITIC,
 };
 use deep_student_lib::anki_protocol::StructuredOutputOptions;
 use deep_student_lib::anki_qa_lint::{
@@ -94,7 +93,11 @@ fn options_json(enable_qa_pass: Option<bool>) -> String {
 
 /// 复现 `run_critic_pass` 的门控接线（anki_critic.rs L987-997 语义）：
 /// 裁决落地照常，仅当 options JSON 解析出 `enable_qa_pass=false` 时收口。
-fn plan_with_qa_gate(cards: &[AnkiCard], verdicts: &[CardVerdict], options_json: &str) -> CriticPlan {
+fn plan_with_qa_gate(
+    cards: &[AnkiCard],
+    verdicts: &[CardVerdict],
+    options_json: &str,
+) -> CriticPlan {
     let mut plan = plan_updates(cards, verdicts);
     if !StructuredOutputOptions::from_options_json(options_json).qa_pass_enabled() {
         sanitize_plan_for_disabled_qa_pass(&mut plan, cards);
@@ -211,8 +214,7 @@ fn options_wire_qa_pass_toggle_parses_explicit_default_and_malformed() {
         "非法 JSON 回退默认 = 开启"
     );
     assert!(
-        StructuredOutputOptions::from_options_json(r#"{"enable_qa_pass":false}"#)
-            .qa_pass_enabled(),
+        StructuredOutputOptions::from_options_json(r#"{"enable_qa_pass":false}"#).qa_pass_enabled(),
         "残缺 options（缺必填字段）整体解析失败 → 回退默认开启，false 不生效"
     );
 }
@@ -308,7 +310,11 @@ fn enabled_qa_pass_critic_flag_verdict_appends_llm_critic_entry() {
     );
 
     assert_eq!(plan.flagged, 1);
-    assert_eq!(plan.updates.len(), 1, "flag 裁决在 QA 开启时必须产生留痕写回");
+    assert_eq!(
+        plan.updates.len(),
+        1,
+        "flag 裁决在 QA 开启时必须产生留痕写回"
+    );
     let updated = &plan.updates[0];
     let entries = qa_entries(&updated.extra_fields);
     assert_eq!(entries.len(), history_len + 1, "只追加一条 llm_critic 条目");
@@ -344,7 +350,10 @@ fn enabled_qa_pass_critic_revise_relints_audits_and_stamps_provenance() {
     assert_eq!(plan.revised, 1);
     assert_eq!(plan.updates.len(), 1);
     let updated = &plan.updates[0];
-    assert_eq!(updated.back, "请参考 {{DOCUMENT_CONTENT}}", "修订内容必须写回");
+    assert_eq!(
+        updated.back, "请参考 {{DOCUMENT_CONTENT}}",
+        "修订内容必须写回"
+    );
     assert_eq!(updated.id, "c-revise", "主键永不变更");
 
     let entries = qa_entries(&updated.extra_fields);
@@ -358,7 +367,10 @@ fn enabled_qa_pass_critic_revise_relints_audits_and_stamps_provenance() {
         .find(|e| e.get("code").and_then(Value::as_str) == Some(codes::PLACEHOLDER_RESIDUE))
         .expect("relint 必须抓到 revise 引入的模板占位符");
     assert_eq!(relint.get("field").and_then(Value::as_str), Some("back"));
-    assert_eq!(relint.get("severity").and_then(Value::as_str), Some("error"));
+    assert_eq!(
+        relint.get("severity").and_then(Value::as_str),
+        Some("error")
+    );
 
     assert!(has_critic_revision_marker(&updated.extra_fields));
     let prov = parse_content_provenance(&updated.extra_fields)
@@ -387,7 +399,7 @@ fn enabled_qa_pass_full_combo_keeps_all_flag_sources_coexisting_deduped() {
         codes::FIELD_RULE_PATTERN,
         codes::MULTI_CONCEPT, // 来源 2：确定性 lint（送审前）
         codes::TAGS_EMPTY,
-        CRITIC_REVISED_CODE,       // 来源 3a：critic 审计
+        CRITIC_REVISED_CODE,        // 来源 3a：critic 审计
         codes::PLACEHOLDER_RESIDUE, // 来源 3b：critic relint
     ] {
         assert!(
@@ -444,15 +456,19 @@ fn disabled_qa_pass_revise_strips_all_flag_sources_but_provenance_survives() {
     );
 
     assert_eq!(plan.revised, 1);
-    assert_eq!(plan.updates.len(), 1, "有实质内容差异的 revise 必须保留写回");
+    assert_eq!(
+        plan.updates.len(),
+        1,
+        "有实质内容差异的 revise 必须保留写回"
+    );
     let updated = &plan.updates[0];
     assert_eq!(updated.back, "请参考 {{DOCUMENT_CONTENT}}");
     assert!(
         !updated.extra_fields.contains_key(QA_FLAGS_FIELD),
         "false 侧不得落任何 _qa_flags（字段规则/lint/审计/relint 一律剥）"
     );
-    let prov = parse_content_provenance(&updated.extra_fields)
-        .expect("溯源戳必须随内容修订一并落盘");
+    let prov =
+        parse_content_provenance(&updated.extra_fields).expect("溯源戳必须随内容修订一并落盘");
     assert_eq!(prov.actor, PROVENANCE_ACTOR_LLM_CRITIC);
     assert_eq!(prov.code.as_deref(), Some(CRITIC_REVISED_QA_CODE));
 }
@@ -488,7 +504,13 @@ fn disabled_qa_pass_drops_noop_revise_where_only_provenance_differs() {
 /// critic 自改在任何开关组合下都不得被洗白成「用户编辑」。
 #[test]
 fn disabled_qa_pass_output_card_still_excluded_by_provenance_gold_gate() {
-    let card = card_from_json("c-gate", "什么是熵？", "系统混乱程度的度量", &["热学"], json!({}));
+    let card = card_from_json(
+        "c-gate",
+        "什么是熵？",
+        "系统混乱程度的度量",
+        &["热学"],
+        json!({}),
+    );
     let plan = plan_with_qa_gate(
         std::slice::from_ref(&card),
         &[revise_verdict("c-gate", "熵是系统微观状态数的对数度量")],
@@ -525,7 +547,9 @@ fn disabled_qa_pass_output_card_still_excluded_by_provenance_gold_gate() {
 fn combined_flag_entries_preserve_per_source_severity() {
     let field_issues = lint_field_against_rule("correct", "E", &correct_field_rule());
     assert!(
-        field_issues.iter().all(|i| i.severity == LintSeverity::Warn),
+        field_issues
+            .iter()
+            .all(|i| i.severity == LintSeverity::Warn),
         "字段规则违规恒为 Warn（不丢卡）"
     );
 

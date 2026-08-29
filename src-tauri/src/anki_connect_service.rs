@@ -1905,10 +1905,18 @@ mod tests {
         prepare_occlusion_note(&mut card, &mut fields, &mut warnings);
 
         let text = fields.get("Text").expect("Text 字段存在");
-        assert!(text.contains("{{c1::左心房}}"), "Text 应重建为标准 Cloze: {}", text);
+        assert!(
+            text.contains("{{c1::左心房}}"),
+            "Text 应重建为标准 Cloze: {}",
+            text
+        );
         assert!(text.contains("{{c2::右心室}}"));
         // img 引用按包内文件名对齐（imageRef 的 basename），媒体由 images 路径上传
-        assert!(text.contains("<img src=\"diagram.png\">"), "Text 应含图: {}", text);
+        assert!(
+            text.contains("<img src=\"diagram.png\">"),
+            "Text 应含图: {}",
+            text
+        );
         assert!(card.images.iter().any(|p| p == "/abs/diagram.png"));
     }
 
@@ -1948,11 +1956,7 @@ mod tests {
     #[test]
     fn plain_card_regression_prepare_occlusion_note_is_noop() {
         let mut card = plain_test_card();
-        let model_fields = vec![
-            "Front".to_string(),
-            "Back".to_string(),
-            "Extra".to_string(),
-        ];
+        let model_fields = vec!["Front".to_string(), "Back".to_string(), "Extra".to_string()];
         let mut fields = build_fields_with_model_names(&card, &model_fields, "Basic");
         let before = fields.clone();
         let mut warnings = Vec::new();

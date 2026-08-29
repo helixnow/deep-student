@@ -23,7 +23,7 @@
 //! HTML 负例测试（`<table>`/`<td>` 不得误判为 think 标签）随迁不删。
 
 #![allow(dead_code)] // 保留：pipeline.rs 已声明 mod，但核心未接线、尚无生产调用方
-// （R4 reasoning 过滤已在两适配器内联完成，未迁入本核心）；适配器接线后移除本属性。
+                     // （R4 reasoning 过滤已在两适配器内联完成，未迁入本核心）；适配器接线后移除本属性。
 
 use crate::utils::model_special_tokens::{ModelWrapTokenPolicy, ModelWrapTokenStreamFilter};
 

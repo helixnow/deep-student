@@ -760,7 +760,10 @@ mod tests {
         // role word leaked as content).
         assert_eq!(filter_chunks(&["<|im_start|>assistant\n你好"]), "你好");
         // Stream ends right on the header (stop finally hit): drop it.
-        assert_eq!(filter_chunks(&["正文\n", "<|im_start|>assistant"]), "正文\n");
+        assert_eq!(
+            filter_chunks(&["正文\n", "<|im_start|>assistant"]),
+            "正文\n"
+        );
         // Trailing whitespace after the role word is still a header.
         assert_eq!(
             filter_chunks(&["正文\n<|im_start|>assistant \n续写"]),
@@ -793,7 +796,10 @@ mod tests {
             "前文\n<|im_start|>assistants\n后文"
         );
         // Partial role word at end of stream: cannot confirm, emit literally.
-        assert_eq!(filter_chunks(&["前文\n<|im_start|>assi"]), "前文\n<|im_start|>assi");
+        assert_eq!(
+            filter_chunks(&["前文\n<|im_start|>assi"]),
+            "前文\n<|im_start|>assi"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -803,7 +809,10 @@ mod tests {
     #[test]
     fn strips_tail_glued_closer_at_flush() {
         assert_eq!(filter_chunks(&["回答完毕<|im_end|>"]), "回答完毕");
-        assert_eq!(filter_chunks(&["回答完毕<|im_end|>", "<|endoftext|>"]), "回答完毕");
+        assert_eq!(
+            filter_chunks(&["回答完毕<|im_end|>", "<|endoftext|>"]),
+            "回答完毕"
+        );
         // Held whitespace between/after the closers survives; token text does not.
         assert_eq!(filter_chunks(&["回答完毕<|im_end|>\n"]), "回答完毕\n");
         assert_eq!(filter_chunks(&["回答完毕<|end_of_box|> "]), "回答完毕 ");

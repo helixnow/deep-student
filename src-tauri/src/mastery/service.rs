@@ -403,12 +403,7 @@ impl MasteryService {
             }
         }
 
-        let next_revision = chain
-            .iter()
-            .map(|event| event.revision)
-            .max()
-            .unwrap_or(0)
-            + 1;
+        let next_revision = chain.iter().map(|event| event.revision).max().unwrap_or(0) + 1;
         let correction_id = format!("{revision_prefix}{next_revision}");
         let signal = clamp01(outcome.target_signal());
         // weight=1 直写：换判纠正不套 compute_event_weight_with_conn 的 60s 防刷衰减
@@ -1493,7 +1488,10 @@ mod tests {
                 .record_qbank_answer_with_conn(&tx, sid, qid, &[concept.to_string()], true)
                 .unwrap();
             tx.commit().unwrap();
-            assert_eq!(locked.wrong_count, 1, "record 路换向应仍停在首判（锁死复现）");
+            assert_eq!(
+                locked.wrong_count, 1,
+                "record 路换向应仍停在首判（锁死复现）"
+            );
             assert!((locked.score - 0.35).abs() < 1e-9);
         }
 
@@ -1523,7 +1521,10 @@ mod tests {
             )
             .unwrap();
         assert!(old_deleted.is_some(), "首判事件应被 tombstone");
-        assert_eq!(old_outcome, "wrong", "append-only：旧事件语义列不得被 UPDATE");
+        assert_eq!(
+            old_outcome, "wrong",
+            "append-only：旧事件语义列不得被 UPDATE"
+        );
         let (rev_outcome, rev_weight, rev_deleted): (String, f64, Option<String>) = conn
             .query_row(
                 "SELECT outcome, weight, deleted_at FROM mastery_events

@@ -326,7 +326,10 @@ fn test_export_fields_filter_excludes_underscore_protocol_fields() {
 fn test_legacy_card_without_occlusion_field_skips_conversion() {
     // 旧普通卡：有用户字段、有其他协议字段，但没有 _occlusion
     let mut legacy_fields: HashMap<String, String> = HashMap::new();
-    legacy_fields.insert("Text".to_string(), "{{c1::线粒体}}是细胞的能量工厂".to_string());
+    legacy_fields.insert(
+        "Text".to_string(),
+        "{{c1::线粒体}}是细胞的能量工厂".to_string(),
+    );
     legacy_fields.insert("Extra".to_string(), "生物学基础".to_string());
     legacy_fields.insert(
         "_qa_flags".to_string(),
@@ -379,7 +382,9 @@ fn test_image_ref_maps_to_media_file_name() {
     assert_eq!(media_name, "heart-diagram.png");
     let fields = build_card_fields(&validated, Some(&media_name), None);
     assert!(
-        fields.text.starts_with("<img src=\"heart-diagram.png\"><br>"),
+        fields
+            .text
+            .starts_with("<img src=\"heart-diagram.png\"><br>"),
         "媒体文件名应嵌入 Text 的 <img>：{}",
         fields.text
     );
@@ -518,8 +523,7 @@ fn test_vlm_pending_placeholder_image_ref_stays_out_of_images_end_to_end() {
          {{\"x\":0.5,\"y\":0.5,\"w\":0.25,\"h\":0.125,\"label\":\"右心室\",\"clozeIndex\":2}}\n]\n```\n{}\n后续讲解。",
         OCCLUSION_BOXES_OPEN, OCCLUSION_BOXES_CLOSE
     );
-    let pending_spec =
-        parse_occlusion_boxes_from_vlm(&vlm_text).expect("合法坐标块应解析出 spec");
+    let pending_spec = parse_occlusion_boxes_from_vlm(&vlm_text).expect("合法坐标块应解析出 spec");
     assert_eq!(
         pending_spec.image_ref, "vlm://pending-image",
         "VLM 解析产出的必须是占位引用"
@@ -659,7 +663,9 @@ fn test_occlusion_draft_marker_pipeline_end_to_end_to_export_filter() {
     // 3) 入库：同一分段还原出生成字段（<img> + cloze + _occlusion + tag）
     let fields = extract_occlusion_draft_fields(&segment).expect("含 marker 的分段应还原字段");
     assert!(
-        fields.text.starts_with("<img src=\"heart-diagram.png\"><br>"),
+        fields
+            .text
+            .starts_with("<img src=\"heart-diagram.png\"><br>"),
         "Text 应以 image_ref basename 的 <img> 开头：{}",
         fields.text
     );
@@ -667,8 +673,7 @@ fn test_occlusion_draft_marker_pipeline_end_to_end_to_export_filter() {
     assert_eq!(fields.tags, vec![OCCLUSION_TAG.to_string()]);
 
     // 4) 回读：坐标严格逐位不漂移（fixture 全部二进制可精确表示）
-    let parsed =
-        parse_occlusion_field(&fields.extra_fields).expect("_occlusion 应可回读为 spec");
+    let parsed = parse_occlusion_field(&fields.extra_fields).expect("_occlusion 应可回读为 spec");
     let source = heart_spec();
     assert_eq!(parsed.image_ref, source.image_ref);
     assert_eq!(parsed.boxes, source.boxes, "全链路坐标/标签/序号漂移");

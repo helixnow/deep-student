@@ -250,10 +250,8 @@ fn modified_skill_digest_mismatch_skips_instead_of_forging_history() {
     // 本段自此转为**兼容入口语义钉子**：无锚点 digest 时按 id 盲取即
     // 输出 v2 字节 —— 恰好自证门禁必要性。门禁版的 skip 终局断言见
     // 第 5 节 `finale_modified_skill_gate_skips_signals_and_recovers_on_revert`。
-    let ungated = rebuild_anchored_skill_messages(
-        &["solve-equation".to_string()],
-        Some(&replay_contents),
-    );
+    let ungated =
+        rebuild_anchored_skill_messages(&["solve-equation".to_string()], Some(&replay_contents));
     assert_eq!(ungated.len(), 1);
     assert_eq!(
         llm_visible_bytes(&ungated[0]),
@@ -351,8 +349,7 @@ fn deleted_skill_missing_content_warns_and_skips_without_blocking() {
     );
 
     // 正文映射整体缺席（None）等价于全部缺正文：全 skip、零重建
-    let (restored_none, skipped_none) =
-        contract_rebuild_anchored_skill_messages(&anchors, None);
+    let (restored_none, skipped_none) = contract_rebuild_anchored_skill_messages(&anchors, None);
     assert!(restored_none.is_empty());
     assert_eq!(skipped_none.len(), 2);
     assert!(skipped_none
@@ -455,7 +452,7 @@ fn digest_is_deterministic_and_sensitive_to_any_byte_change() {
 
     // 字节敏感：以下每个变体的 digest 都必须与 base 及彼此互异
     let variants = [
-        "步骤一：先审题。\n步骤二：列方程！", // 单字符改动
+        "步骤一：先审题。\n步骤二：列方程！",   // 单字符改动
         "步骤一：先审题。\n步骤二：列方程。\n", // 尾随换行
         "步骤一：先审题。\r\n步骤二：列方程。", // LF → CRLF
         "",                                     // 空串
@@ -532,7 +529,11 @@ fn finale_modified_skill_gate_skips_signals_and_recovers_on_revert() {
         restored.is_empty(),
         "生产门禁：digest 不一致必须 skip，不得用 v2 伪造轮 1 历史"
     );
-    assert_eq!(signal, vec![skill_id.to_string()], "mismatch 必须发换代信号");
+    assert_eq!(
+        signal,
+        vec![skill_id.to_string()],
+        "mismatch 必须发换代信号"
+    );
 
     // 同一 skill 的第二个锚点（tool 级共用同一 digest map）再次 mismatch：
     // skip 结果不变，信号按 skill_id 去重不重复累计
@@ -543,7 +544,11 @@ fn finale_modified_skill_gate_skips_signals_and_recovers_on_revert() {
         &mut signal,
     );
     assert!(restored_tool_anchor.is_empty());
-    assert_eq!(signal, vec![skill_id.to_string()], "同 id 多锚点 mismatch 只记一次");
+    assert_eq!(
+        signal,
+        vec![skill_id.to_string()],
+        "同 id 多锚点 mismatch 只记一次"
+    );
 
     // 稳态自证：正文停在 v2，后续每一轮重放终局恒等（skip + 不再增信号）
     for _later_turn in 0..3 {
@@ -560,16 +565,13 @@ fn finale_modified_skill_gate_skips_signals_and_recovers_on_revert() {
 
     // 丢信号薄包装与带信号版判定一致（生产两入口不允许分叉）
     assert!(
-        rebuild_anchored_skill_messages_gated(&ids, Some(&v2_contents), Some(&anchors))
-            .is_empty(),
+        rebuild_anchored_skill_messages_gated(&ids, Some(&v2_contents), Some(&anchors)).is_empty(),
         "_gated 包装与 _with_signal 的 skip 判定必须一致"
     );
 
     // 契约副本（r3 第 1 节）与生产门禁同判：双方都 skip，语义未漂移
-    let (contract_restored, contract_skipped) = contract_rebuild_anchored_skill_messages(
-        &[anchor_skill(skill_id, v1)],
-        Some(&v2_contents),
-    );
+    let (contract_restored, contract_skipped) =
+        contract_rebuild_anchored_skill_messages(&[anchor_skill(skill_id, v1)], Some(&v2_contents));
     assert!(contract_restored.is_empty());
     assert_eq!(contract_skipped.len(), 1);
 
@@ -636,10 +638,7 @@ fn finale_deleted_skill_gate_skips_without_signal_and_recovery_needs_exact_bytes
     let ids: Vec<String> = anchors.turn_skill_ids.clone();
 
     // 终局主体：ghost 被删（无正文）、drifted 被改（v2）、alive 完好
-    let mixed_contents = contents_map(&[
-        ("alive-skill", alive),
-        ("drifted-skill", drifted_v2),
-    ]);
+    let mixed_contents = contents_map(&[("alive-skill", alive), ("drifted-skill", drifted_v2)]);
     let mut signal: Vec<String> = Vec::new();
     let restored = rebuild_anchored_skill_messages_gated_with_signal(
         &ids,
@@ -647,7 +646,11 @@ fn finale_deleted_skill_gate_skips_without_signal_and_recovery_needs_exact_bytes
         Some(&anchors),
         &mut signal,
     );
-    assert_eq!(restored.len(), 1, "只有完好技能重建：删除与漂移都 skip 且互不阻塞");
+    assert_eq!(
+        restored.len(),
+        1,
+        "只有完好技能重建：删除与漂移都 skip 且互不阻塞"
+    );
     assert_eq!(
         llm_visible_bytes(&restored[0]),
         llm_visible_bytes(&make_transient_skill_message("alive-skill", alive)),
@@ -687,7 +690,10 @@ fn finale_deleted_skill_gate_skips_without_signal_and_recovery_needs_exact_bytes
     assert_eq!(
         contract_skipped
             .iter()
-            .map(|skip| (skip.skill_id.as_str(), matches!(skip.reason, ReplaySkipReason::MissingContent)))
+            .map(|skip| (
+                skip.skill_id.as_str(),
+                matches!(skip.reason, ReplaySkipReason::MissingContent)
+            ))
             .collect::<Vec<_>>(),
         vec![("ghost-skill", true), ("drifted-skill", false)],
         "契约副本：ghost 归缺正文档、drifted 归 mismatch 档"

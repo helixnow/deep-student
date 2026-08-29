@@ -68,7 +68,11 @@ pub struct PublishSpec {
 
 impl PublishSpec {
     /// 无版本条件的发布规格（当前后端唯一可走通的形态）。
-    pub fn unconditional(key: impl Into<String>, max_bytes: u64, recovery: PublishRecovery) -> Self {
+    pub fn unconditional(
+        key: impl Into<String>,
+        max_bytes: u64,
+        recovery: PublishRecovery,
+    ) -> Self {
         Self {
             key: key.into(),
             max_bytes,
@@ -246,16 +250,16 @@ async fn apply_recovery(
         PublishRecovery::KeepTmp => {
             format!("已按 KeepTmp 保留可疑对象 {bad_object_key} 供诊断{tmp_note}")
         }
-        PublishRecovery::IsolateBad => match isolate_bad_object(storage, bad_object_key, max_bytes)
-            .await
-        {
-            Ok(bad_key) => {
-                format!("已把坏对象 {bad_object_key} 隔离为 {bad_key}{tmp_note}")
+        PublishRecovery::IsolateBad => {
+            match isolate_bad_object(storage, bad_object_key, max_bytes).await {
+                Ok(bad_key) => {
+                    format!("已把坏对象 {bad_object_key} 隔离为 {bad_key}{tmp_note}")
+                }
+                Err(detail) => {
+                    format!("隔离失败（fail-closed，原件未删）：{detail}{tmp_note}")
+                }
             }
-            Err(detail) => {
-                format!("隔离失败（fail-closed，原件未删）：{detail}{tmp_note}")
-            }
-        },
+        }
     }
 }
 
@@ -293,7 +297,8 @@ pub async fn verified_publish(
 
     // 第 1-2 步：写暂存键并有界回读。失败时暂存对象即「坏对象」。
     storage.put(&tmp_key, data).await?;
-    if let Err(err) = read_back_and_compare(storage, &tmp_key, data, spec.max_bytes, "暂存").await {
+    if let Err(err) = read_back_and_compare(storage, &tmp_key, data, spec.max_bytes, "暂存").await
+    {
         let disposition =
             apply_recovery(storage, spec.recovery, &tmp_key, &tmp_key, spec.max_bytes).await;
         return Err(AppError::internal(format!(
@@ -498,7 +503,10 @@ mod tests {
             .expect_err("无 CAS 能力时条件发布必须明确失败");
         let msg = err.to_string();
         assert!(msg.contains(VERIFIED_PUBLISH_UNCONDITIONAL_WRITE_CODE));
-        assert!(msg.contains("无条件写"), "错误必须点名「无条件写」让上层走租约");
+        assert!(
+            msg.contains("无条件写"),
+            "错误必须点名「无条件写」让上层走租约"
+        );
         assert!(mem.keys().is_empty(), "条件拒绝不得产生任何写入");
     }
 

@@ -849,7 +849,8 @@ mod tests {
     /// 且缺省（false）时明文历史仍默认拒绝。
     #[test]
     fn download_opt_in_has_no_effect_on_ciphertext_and_default_still_rejects() {
-        ensure_download_not_degraded(true, true, true, true).expect("DSBK 对象与 opt-in 无关，放行");
+        ensure_download_not_degraded(true, true, true, true)
+            .expect("DSBK 对象与 opt-in 无关，放行");
         ensure_download_not_degraded(true, false, false, false)
             .expect_err("未 opt-in 时明文历史不得默认成功");
     }
@@ -861,9 +862,9 @@ mod tests {
         assert!(!crate::crypto::backup_crypto::is_encrypted_backup(
             b"PK\x03\x04"
         ));
-        assert!(!crate::crypto::backup_crypto::is_encrypted_backup(
-            &[0x00, 0x11, 0x22, 0x33]
-        ));
+        assert!(!crate::crypto::backup_crypto::is_encrypted_backup(&[
+            0x00, 0x11, 0x22, 0x33
+        ]));
         assert!(crate::crypto::backup_crypto::is_encrypted_backup(b"DSBK"));
     }
 }

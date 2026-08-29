@@ -83,18 +83,17 @@ impl KnowledgeExecutor {
         // <|begin_of_box|> 类包装会破坏解析，而合法 JSON 不含会被误删的
         // token 形态，故始终启用保守过滤。对无泄漏输出过滤为恒等。
         let cleaned = {
-            let mut filter =
-                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
-                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
-                );
+            let mut filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
+            );
             let mut output = filter.process(&response.assistant_message);
             output.push_str(&filter.flush());
             output
         };
 
         // 解析响应
-        let candidates = parse_extraction_response(&cleaned)
-            .map_err(|e| format!("解析提取结果失败: {}", e))?;
+        let candidates =
+            parse_extraction_response(&cleaned).map_err(|e| format!("解析提取结果失败: {}", e))?;
 
         // 规范化 conversation_id
         let normalized_id = conversation_id

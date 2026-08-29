@@ -241,11 +241,11 @@ pub mod test_vectors {
 
     /// 写侧可存、但搜索操作符语法无法表达的键（可存不可搜缝隙，显式钉住）
     pub const STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS: &[&str] = &[
-        "my key",   // 含空格：操作符按空白分词
-        "a:b",      // 含冒号：会被解析成 key=a value=b…
-        "emoji🙂",  // 🙂 不属于 \p{L}\p{N}_-
-        "-lead",    // 首字符不允许连字符
-        "得 分",    // CJK + 空格
+        "my key",  // 含空格：操作符按空白分词
+        "a:b",     // 含冒号：会被解析成 key=a value=b…
+        "emoji🙂", // 🙂 不属于 \p{L}\p{N}_-
+        "-lead",   // 首字符不允许连字符
+        "得 分",   // CJK + 空格
     ];
 
     /// 非法键（写侧拒绝）与预期失败类别标签
@@ -292,10 +292,7 @@ mod tests {
     #[test]
     fn valid_operator_keys_pass_all_three_syntaxes() {
         for key in test_vectors::VALID_OPERATOR_KEYS {
-            assert!(
-                validate_prop_key(key).is_ok(),
-                "写侧应接受合法键 {key:?}"
-            );
+            assert!(validate_prop_key(key).is_ok(), "写侧应接受合法键 {key:?}");
             assert!(
                 normalize_prop_key(key).is_some(),
                 "搜索侧规范化不应丢弃合法键 {key:?}"
@@ -324,8 +321,7 @@ mod tests {
     #[test]
     fn invalid_keys_are_rejected_with_expected_category() {
         for (key, expected_tag) in test_vectors::INVALID_KEYS {
-            let error = validate_prop_key(key)
-                .expect_err(&format!("写侧应拒绝非法键 {key:?}"));
+            let error = validate_prop_key(key).expect_err(&format!("写侧应拒绝非法键 {key:?}"));
             assert_eq!(
                 error_tag(&error),
                 *expected_tag,

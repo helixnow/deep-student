@@ -472,13 +472,20 @@ mod tests {
         };
         assert_eq!(key, KEY);
         assert_eq!(consumed, tmp_key);
-        assert_eq!(storage.bytes(KEY).unwrap(), GOOD, "正式对象必须收敛为 .tmp 内容");
+        assert_eq!(
+            storage.bytes(KEY).unwrap(),
+            GOOD,
+            "正式对象必须收敛为 .tmp 内容"
+        );
         assert!(storage.bytes(&tmp_key).is_none(), "被消费的 .tmp 应删除");
 
         let record = quarantine.expect("坏正式对象存在，必须有隔离记录");
         assert_eq!(record.original_key, KEY);
         assert_eq!(record.bad_sha256, sha256_hex(BAD));
-        assert!(record.original_deleted, "manifest 属元数据，原坏对象应移入隔离区");
+        assert!(
+            record.original_deleted,
+            "manifest 属元数据，原坏对象应移入隔离区"
+        );
         assert_eq!(record.recovered_from_tmp.as_deref(), Some(tmp_key.as_str()));
         assert_eq!(
             storage.bytes(&record.quarantined_key).unwrap(),
@@ -552,10 +559,7 @@ mod tests {
         assert_eq!(reason_keys.len(), 1);
         let record: QuarantineRecord =
             serde_json::from_slice(&storage.bytes(&reason_keys[0]).unwrap()).unwrap();
-        assert!(
-            !record.original_deleted,
-            "记录必须如实标注原对象未删除"
-        );
+        assert!(!record.original_deleted, "记录必须如实标注原对象未删除");
     }
 
     /// 健康正式对象：不做任何写操作，隔离区保持为空。
@@ -662,20 +666,34 @@ mod tests {
         };
         assert_eq!(tmp_key, publish_tmp);
         assert_eq!(storage.bytes(KEY).unwrap(), GOOD);
-        assert!(storage.bytes(&publish_tmp).is_none(), "被消费的暂存对象应删除");
+        assert!(
+            storage.bytes(&publish_tmp).is_none(),
+            "被消费的暂存对象应删除"
+        );
     }
 
     /// [R6-tmp-naming] 两代命名都认；隔离产物（`.bad-<ts>-<salt>`）不得被误认。
     #[test]
     fn tmp_object_key_recognition_covers_both_generations() {
-        assert!(is_tmp_object_key("manifests/a.json.0123abcd.tmp"), "历史 .tmp 后缀");
-        assert!(is_tmp_object_key("manifests/a.json.tmp-0123abcd4567"), "现行 .tmp-<op>");
+        assert!(
+            is_tmp_object_key("manifests/a.json.0123abcd.tmp"),
+            "历史 .tmp 后缀"
+        );
+        assert!(
+            is_tmp_object_key("manifests/a.json.tmp-0123abcd4567"),
+            "现行 .tmp-<op>"
+        );
         assert!(!is_tmp_object_key("manifests/a.json"), "正式对象不是暂存键");
         assert!(
-            !is_tmp_object_key("manifests/a.json.tmp-0123abcd4567.bad-20250101T000000000Z-cafe0123"),
+            !is_tmp_object_key(
+                "manifests/a.json.tmp-0123abcd4567.bad-20250101T000000000Z-cafe0123"
+            ),
             "verified_publish 隔离产物不得被误认为暂存键"
         );
-        assert!(!is_tmp_object_key("manifests/a.json.tmp-"), "空操作号不算暂存键");
+        assert!(
+            !is_tmp_object_key("manifests/a.json.tmp-"),
+            "空操作号不算暂存键"
+        );
     }
 
     /// 入口 key 卫兵：隔离前缀下的对象与两代暂存键本身都不接受收敛。
@@ -778,15 +796,26 @@ mod tests {
         // ---- 残局形状：坏正式对象在场且确实过不了校验；恰有一个已验证暂存键 ----
         let corrupted = mem.bytes(KEY).expect("KeepTmp 不动坏的最终对象");
         assert_ne!(corrupted, GOOD);
-        assert!(json_validate(&corrupted).is_err(), "坏字节必须过不了当场校验");
+        assert!(
+            json_validate(&corrupted).is_err(),
+            "坏字节必须过不了当场校验"
+        );
         let residue_tmps: Vec<String> = mem
             .keys_with_prefix(&format!("{KEY}."))
             .into_iter()
             .filter(|key| key.contains(TMP_OP_MARKER))
             .collect();
-        assert_eq!(residue_tmps.len(), 1, "KeepTmp 残局应恰有一个暂存对象: {residue_tmps:?}");
+        assert_eq!(
+            residue_tmps.len(),
+            1,
+            "KeepTmp 残局应恰有一个暂存对象: {residue_tmps:?}"
+        );
         let residue_tmp = residue_tmps[0].clone();
-        assert_eq!(mem.bytes(&residue_tmp).unwrap(), GOOD, "暂存对象持有已验证字节");
+        assert_eq!(
+            mem.bytes(&residue_tmp).unwrap(),
+            GOOD,
+            "暂存对象持有已验证字节"
+        );
         // [R6-tmp-naming] 跨模块命名契约：写侧运行时生成的暂存键，读侧必须认。
         assert!(
             is_tmp_object_key(&residue_tmp),
@@ -806,13 +835,23 @@ mod tests {
             panic!("期望 RecoveredFromTmp");
         };
         assert_eq!(key, KEY);
-        assert_eq!(tmp_key, residue_tmp, "消费的必须是 verified_publish 留下的暂存键");
-        assert_eq!(mem.bytes(KEY).unwrap(), GOOD, "正式键收敛为当初要发布的内容");
+        assert_eq!(
+            tmp_key, residue_tmp,
+            "消费的必须是 verified_publish 留下的暂存键"
+        );
+        assert_eq!(
+            mem.bytes(KEY).unwrap(),
+            GOOD,
+            "正式键收敛为当初要发布的内容"
+        );
         assert!(mem.bytes(&residue_tmp).is_none(), "被消费的暂存对象应删除");
 
         let record = quarantine.expect("坏正式对象在场，必须有隔离记录");
         assert_eq!(record.bad_sha256, sha256_hex(&corrupted));
-        assert_eq!(record.recovered_from_tmp.as_deref(), Some(residue_tmp.as_str()));
+        assert_eq!(
+            record.recovered_from_tmp.as_deref(),
+            Some(residue_tmp.as_str())
+        );
         assert_eq!(
             mem.bytes(&record.quarantined_key).unwrap(),
             corrupted,
@@ -855,7 +894,10 @@ mod tests {
             matches!(outcome, BadObjectOutcome::Absent),
             "坏 .tmp 不得被采信为可收敛残局"
         );
-        assert!(mem.bytes(KEY).is_none(), "不得用未通过校验的字节冒充正式对象");
+        assert!(
+            mem.bytes(KEY).is_none(),
+            "不得用未通过校验的字节冒充正式对象"
+        );
         let retained: Vec<String> = mem
             .keys_with_prefix(&format!("{KEY}."))
             .into_iter()

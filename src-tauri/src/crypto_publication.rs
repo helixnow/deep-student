@@ -345,8 +345,7 @@ mod tests {
         let root = TempDir::new().unwrap();
         seed_torn_publication(root.path(), true);
 
-        let outcome =
-            recover_crypto_publication(root.path(), Some(("backup-1", "slotB"))).unwrap();
+        let outcome = recover_crypto_publication(root.path(), Some(("backup-1", "slotB"))).unwrap();
 
         assert_eq!(outcome, CryptoPublicationRecovery::RolledForward);
         assert_eq!(
@@ -484,7 +483,11 @@ mod tests {
         let rollback = rollback_dir(root.path());
         fs::create_dir_all(&rollback).unwrap();
         write_journal(root.path(), &cutover_journal(true)).unwrap();
-        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(
+            root.path().join(".master_key"),
+            rollback.join(".master_key"),
+        )
+        .unwrap();
         // —— 注入崩溃：第 2 步之后、第 3 步之前 ——
         assert!(!root.path().join(".master_key").exists(), "撕裂前提");
 
@@ -504,7 +507,11 @@ mod tests {
         let rollback = rollback_dir(root.path());
         fs::create_dir_all(&rollback).unwrap();
         write_journal(root.path(), &cutover_journal(true)).unwrap();
-        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(
+            root.path().join(".master_key"),
+            rollback.join(".master_key"),
+        )
+        .unwrap();
         fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
         fs::write(root.path().join(".master_key"), b"new-master").unwrap();
         // —— 注入崩溃：第 4 步之后、第 5 步之前 ——
@@ -553,7 +560,11 @@ mod tests {
         let rollback = rollback_dir(root.path());
         fs::create_dir_all(&rollback).unwrap();
         write_journal(root.path(), &cutover_journal(true)).unwrap();
-        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(
+            root.path().join(".master_key"),
+            rollback.join(".master_key"),
+        )
+        .unwrap();
         fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
         fs::write(root.path().join(".master_key"), b"new-master").unwrap();
         let new_secure = root.path().join(".secure");
@@ -578,7 +589,11 @@ mod tests {
         let rollback = rollback_dir(root.path());
         fs::create_dir_all(&rollback).unwrap();
         write_journal(root.path(), &cutover_journal(true)).unwrap();
-        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(
+            root.path().join(".master_key"),
+            rollback.join(".master_key"),
+        )
+        .unwrap();
         fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
         fs::write(root.path().join(".master_key"), b"new-master").unwrap();
         let new_secure = root.path().join(".secure");
@@ -586,11 +601,13 @@ mod tests {
         fs::write(new_secure.join(".key_seed"), b"new-seed").unwrap();
         // —— 注入崩溃：lease 已落盘（journal 与之匹配），清理未执行 ——
 
-        let outcome =
-            recover_crypto_publication(root.path(), Some(("backup-1", "slotB"))).unwrap();
+        let outcome = recover_crypto_publication(root.path(), Some(("backup-1", "slotB"))).unwrap();
 
         assert_eq!(outcome, CryptoPublicationRecovery::RolledForward);
-        assert_eq!(fs::read(root.path().join(".master_key")).unwrap(), b"new-master");
+        assert_eq!(
+            fs::read(root.path().join(".master_key")).unwrap(),
+            b"new-master"
+        );
         assert_eq!(
             fs::read(root.path().join(".secure/.key_seed")).unwrap(),
             b"new-seed"

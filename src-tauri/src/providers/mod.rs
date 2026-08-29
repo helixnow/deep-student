@@ -3791,9 +3791,9 @@ impl ProviderAdapter for GeminiAdapter {
 }
 
 #[cfg(test)]
-mod wave2_a_prefix_snapshot_tests;
-#[cfg(test)]
 mod wave2_a_anthropic_budget_tests;
+#[cfg(test)]
+mod wave2_a_prefix_snapshot_tests;
 
 #[cfg(test)]
 mod tests {

@@ -6146,9 +6146,7 @@ mod tests {
 // 不触碰全局 `BACKUP_GLOBAL_LIMITER`，与其他测试无共享状态。
 #[cfg(test)]
 mod tombstone_serial_tests {
-    use super::{
-        try_acquire_tombstone_write_permit_on, TOMBSTONE_LIMITER_BUSY_CODE,
-    };
+    use super::{try_acquire_tombstone_write_permit_on, TOMBSTONE_LIMITER_BUSY_CODE};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::Semaphore;
@@ -6278,7 +6276,10 @@ mod tombstone_serial_tests {
         let _held = limiter.clone().try_acquire_owned().unwrap();
         let err = try_acquire_tombstone_write_permit_on(limiter).unwrap_err();
         assert!(err.contains("[E_DG_TOMBSTONE_LIMITER_BUSY]"));
-        assert!(err.contains("正在进行中"), "错误信息应可读并提示稍后重试: {err}");
+        assert!(
+            err.contains("正在进行中"),
+            "错误信息应可读并提示稍后重试: {err}"
+        );
     }
 
     /// 源码契约：两个 tombstone 直接命令都必须先过全局互斥；且（不变量 12）
@@ -6311,9 +6312,7 @@ mod tombstone_serial_tests {
         let blob_permit = section
             .find("let _permit = acquire_tombstone_write_permit()?;")
             .unwrap();
-        let blob_storage = section
-            .find("let storage = create_storage")
-            .unwrap();
+        let blob_storage = section.find("let storage = create_storage").unwrap();
         assert!(
             blob_permit < blob_storage,
             "互斥许可必须先于云存储创建，确保持锁窗口覆盖全部远端读写"
@@ -6446,7 +6445,9 @@ mod unsynced_items_tests {
             "active/documents/report?.md".to_string(),
             asset_entry("sha-a", Some("c3")),
         );
-        manifest.entries.insert(encoded_report, asset_entry("sha-b", Some("c4")));
+        manifest
+            .entries
+            .insert(encoded_report, asset_entry("sha-b", Some("c4")));
         // 结构非法：只有两段
         manifest.entries.insert(
             "active/only-two".to_string(),

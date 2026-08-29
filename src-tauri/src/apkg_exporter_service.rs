@@ -114,10 +114,7 @@ fn build_occlusion_cloze_text(spec: &crate::anki_image_occlusion::OcclusionSpec)
         .iter()
         .enumerate()
         .map(|(idx, b)| {
-            let ord = b
-                .cloze_index
-                .filter(|n| *n > 0)
-                .unwrap_or(idx as u32 + 1);
+            let ord = b.cloze_index.filter(|n| *n > 0).unwrap_or(idx as u32 + 1);
             let label = b.label.trim();
             let label = if label.is_empty() {
                 format!("区域 {}", ord)
@@ -3027,8 +3024,14 @@ mod tests {
         let mut card = test_card("internal", "Q", "A");
         card.extra_fields = HashMap::from([
             ("_qa_flags".to_string(), "[{\"code\":\"x\"}]".to_string()),
-            ("_original_generation".to_string(), "{\"front\":\"Q\"}".to_string()),
-            ("_content_provenance".to_string(), "{\"actor\":\"llm\"}".to_string()),
+            (
+                "_original_generation".to_string(),
+                "{\"front\":\"Q\"}".to_string(),
+            ),
+            (
+                "_content_provenance".to_string(),
+                "{\"actor\":\"llm\"}".to_string(),
+            ),
             ("Subject".to_string(), "Physics".to_string()),
         ]);
 

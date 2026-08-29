@@ -302,7 +302,10 @@ async fn race_empty_root_concurrent_claim_with_two_passwords_at_most_one_succeed
         .verify_encryption_password_before_upload("pw-alpha-2026")
         .await
         .expect("A 的认领没有争抢，必须成功");
-    assert_eq!(claimed_by_a.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+    assert_eq!(
+        claimed_by_a.version,
+        ENCRYPTION_MARKER_VERSION_WITH_VERIFIER
+    );
     assert_eq!(
         claimed_by_a.created_by_device,
         device_id_short_hash("device-a")
@@ -536,7 +539,10 @@ async fn race_v1_to_v2_upgrade_same_password_writes_marker_at_most_once() {
 
     // 无论 B 成功与否，云端标记必须绑定共同密码且为 v2。
     let final_marker = storage.parsed_marker().unwrap();
-    assert_eq!(final_marker.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+    assert_eq!(
+        final_marker.version,
+        ENCRYPTION_MARKER_VERSION_WITH_VERIFIER
+    );
     assert!(
         backup_crypto::check_password_verifier(
             "shared-team-pw",

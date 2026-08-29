@@ -158,10 +158,7 @@ pub const V20260826_ADD_STREAM_IDENTITY: MigrationDef = MigrationDef::new(
     ("llm_usage_logs", "variant_id"),
     ("llm_usage_logs", "run_id"),
 ])
-.with_expected_indexes(&[
-    "idx_llm_usage_logs_variant_id",
-    "idx_llm_usage_logs_run_id",
-]);
+.with_expected_indexes(&["idx_llm_usage_logs_variant_id", "idx_llm_usage_logs_run_id"]);
 
 /// V20260201 同步字段索引
 const LLM_USAGE_V20260201_SYNC_INDEXES: &[&str] = &[

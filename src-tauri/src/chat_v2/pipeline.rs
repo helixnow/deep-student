@@ -82,29 +82,29 @@ pub mod helpers;
 pub mod history;
 pub mod hooks; // WI-13: 流水线钩子（审批准入 + 审计记录内置 hook）
 pub mod llm_adapter;
+#[cfg(test)]
+mod llm_content_crash_tests;
+#[cfg(test)]
+mod llm_content_retry_gap_tests;
 pub mod multi_variant;
 #[cfg(test)]
 mod parallel_exec_tests;
 pub mod persistence;
 #[cfg(test)]
-mod prefix_snapshot_tests;
+mod prefix_generation_fork_finale_tests;
 #[cfg(test)]
 mod prefix_generation_fork_tests;
 #[cfg(test)]
 mod prefix_generation_restore_tests;
 #[cfg(test)]
-mod llm_content_crash_tests;
+mod prefix_snapshot_tests;
+pub mod prompt;
+pub mod retrieval;
 #[cfg(test)]
 mod skill_replay_digest_tests;
 #[cfg(test)]
-mod prefix_generation_fork_finale_tests;
-#[cfg(test)]
 mod skill_replay_edit_delete_tests;
-#[cfg(test)]
-mod llm_content_retry_gap_tests;
 pub(crate) mod stream_filter_core;
-pub mod prompt;
-pub mod retrieval;
 pub mod summary;
 pub mod token_resources;
 pub mod tool_loop;

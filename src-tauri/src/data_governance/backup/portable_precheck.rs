@@ -293,7 +293,9 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
             "fail-fast 拒绝必须携带稳定码: {}",
             error
         );
@@ -332,11 +334,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let corrupted = write_corrupted_sealed_zip(dir.path(), "corrupted.zip");
         let mut archive = open_archive(&corrupted);
-        let error =
-            precheck_explicit_import_password(&mut archive, Some(TEST_PASSWORD), false)
-                .unwrap_err();
+        let error = precheck_explicit_import_password(&mut archive, Some(TEST_PASSWORD), false)
+            .unwrap_err();
         assert!(
-            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
             "损坏载荷的拒绝必须携带稳定码: {}",
             error
         );
@@ -410,9 +413,8 @@ mod tests {
 
         let import_dir = TempDir::new().unwrap();
         let target = import_dir.path().join("restored");
-        let error =
-            import_backup_from_zip_with_password(&zip_path, &target, Some(TEST_PASSWORD))
-                .unwrap_err();
+        let error = import_backup_from_zip_with_password(&zip_path, &target, Some(TEST_PASSWORD))
+            .unwrap_err();
 
         assert!(
             error.to_string().contains("不是加密全保真备份"),
@@ -452,7 +454,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
             "错密码 fail-fast 必须携带稳定码: {}",
             error
         );
@@ -501,7 +505,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
             "unexpected error: {}",
             error
         );

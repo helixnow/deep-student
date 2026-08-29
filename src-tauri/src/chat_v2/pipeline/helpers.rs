@@ -1084,19 +1084,20 @@ impl ChatV2Pipeline {
         {
             return existing.clone();
         }
-        let persisted: ToolFaceBaseline =
-            match ChatV2Repo::get_session_tool_face_prefix(&self.db, session_id) {
-                Ok(Some(snapshot)) => snapshot.into(),
-                Ok(None) => ToolFaceBaseline::default(),
-                Err(err) => {
-                    log::warn!(
+        let persisted: ToolFaceBaseline = match ChatV2Repo::get_session_tool_face_prefix(
+            &self.db, session_id,
+        ) {
+            Ok(Some(snapshot)) => snapshot.into(),
+            Ok(None) => ToolFaceBaseline::default(),
+            Err(err) => {
+                log::warn!(
                         "[ChatV2::pipeline] Failed to load persisted tool face prefix (fallback to fresh generation-0 baseline): session_id={}, error={}",
                         session_id,
                         err
                     );
-                    ToolFaceBaseline::default()
-                }
-            };
+                ToolFaceBaseline::default()
+            }
+        };
         let mut orders = self
             .frozen_tool_schema_orders
             .lock()
@@ -1272,8 +1273,9 @@ impl ChatV2Pipeline {
         let marked = (|| -> ChatV2Result<Option<u64>> {
             let mut conn = self.db.get_conn_safe()?;
             let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            let pending =
-                ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(&tx, session_id)?;
+            let pending = ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &tx, session_id,
+            )?;
             tx.commit()?;
             Ok(pending)
         })();

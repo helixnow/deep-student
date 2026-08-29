@@ -900,7 +900,8 @@ impl CloudStorage for FtpStorage {
 
             // [R4-get-budget] SIZE 即声明长度：超出调用方预算先拒，不发 RETR、
             // 不读任何数据字节。预算错误优先于 quit 结果（quit 失败不得吞掉拒绝）。
-            if let Err(budget_err) = ensure_declared_len_within_budget("FTP", key, Some(size), max_bytes)
+            if let Err(budget_err) =
+                ensure_declared_len_within_budget("FTP", key, Some(size), max_bytes)
             {
                 let _ = client.quit().await;
                 return Err(budget_err);

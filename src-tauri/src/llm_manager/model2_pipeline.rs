@@ -3330,8 +3330,7 @@ fn cache_debug_first_divergent_segment(
 
 /// 同作用域上一请求的四段指纹（scope key = session::variant，跨 run 存续，
 /// 这正是 provider 端 prompt cache 的存活作用域）
-fn cache_debug_fingerprint_store(
-) -> &'static std::sync::Mutex<HashMap<String, [String; 4]>> {
+fn cache_debug_fingerprint_store() -> &'static std::sync::Mutex<HashMap<String, [String; 4]>> {
     static STORE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, [String; 4]>>> =
         std::sync::OnceLock::new();
     STORE.get_or_init(Default::default)

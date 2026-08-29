@@ -1966,7 +1966,10 @@ mod tests {
             "O(n log n)",
         );
         let refs = gold_references_from_cards(&[legacy], "task-current", &cfg);
-        assert!(refs.is_empty(), "无编辑者证明的旧卡不得进 grounded reference");
+        assert!(
+            refs.is_empty(),
+            "无编辑者证明的旧卡不得进 grounded reference"
+        );
     }
 
     #[test]

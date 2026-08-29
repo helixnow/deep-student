@@ -171,7 +171,10 @@ impl MatrixEnv {
         fs::write(notes_dir.join("dsr3_readme_7ccb.md"), NOTE_PAYLOAD).unwrap();
 
         // audit（ApplicationData 根）。
-        create_marker_db(&root.path().join("databases").join("audit.db"), AUDIT_MARKER);
+        create_marker_db(
+            &root.path().join("databases").join("audit.db"),
+            AUDIT_MARKER,
+        );
 
         // crypto（ApplicationData 根，IncludedLocal）。
         fs::write(root.path().join(".master_key"), MASTER_KEY).unwrap();
@@ -258,7 +261,13 @@ enum ExpectedEndState {
 
 #[test]
 fn matrix_registry_locks_domain_terminal_contract() {
-    let matrix: [(&str, &str, RestoreScope, RestoreTrustPolicy, ExpectedEndState); 6] = [
+    let matrix: [(
+        &str,
+        &str,
+        RestoreScope,
+        RestoreTrustPolicy,
+        ExpectedEndState,
+    ); 6] = [
         (
             "crypto",
             ".",
@@ -352,10 +361,9 @@ fn full_snapshot_marks_all_matrix_domains_complete() {
         );
         assert!(!plan.files.is_empty(), "{domain} 计划必须列出归档文件");
         assert!(
-            plan.files.iter().all(|file| file
-                .sha256
-                .as_ref()
-                .is_some_and(|hash| hash.len() == 64)),
+            plan.files
+                .iter()
+                .all(|file| file.sha256.as_ref().is_some_and(|hash| hash.len() == 64)),
             "{domain} 每个文件都必须带 SHA-256"
         );
     }

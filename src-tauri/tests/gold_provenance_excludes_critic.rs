@@ -80,8 +80,8 @@ use deep_student_lib::anki_critic::{
 use deep_student_lib::anki_gold_set::{
     classify_candidate, gold_lint_config, has_critic_revision_marker, insert_content_provenance,
     is_llm_critic_actor, is_user_proven_edit, mine_gold_set, parse_content_provenance,
-    select_grounded_reference_pairs, ContentProvenance, GoldCandidate, GoldLabel,
-    GoldMiningConfig, CRITIC_REVISED_QA_CODE, ORIGINAL_GENERATION_FIELD, PROVENANCE_ACTOR_IMPORT,
+    select_grounded_reference_pairs, ContentProvenance, GoldCandidate, GoldLabel, GoldMiningConfig,
+    CRITIC_REVISED_QA_CODE, ORIGINAL_GENERATION_FIELD, PROVENANCE_ACTOR_IMPORT,
     PROVENANCE_ACTOR_LLM_CRITIC, PROVENANCE_ACTOR_SYNC, PROVENANCE_ACTOR_USER,
 };
 use deep_student_lib::anki_qa_lint::QA_FLAGS_FIELD;
@@ -389,8 +389,16 @@ fn classify_critic_revised_candidate_never_gets_edited_label() {
 
     let cfg = GoldMiningConfig::default();
     let sample = classify_candidate(&candidate, &cfg);
-    assert_ne!(sample.label, GoldLabel::EditedMinor, "critic 自改不得 EditedMinor");
-    assert_ne!(sample.label, GoldLabel::EditedMajor, "critic 自改不得 EditedMajor");
+    assert_ne!(
+        sample.label,
+        GoldLabel::EditedMinor,
+        "critic 自改不得 EditedMinor"
+    );
+    assert_ne!(
+        sample.label,
+        GoldLabel::EditedMajor,
+        "critic 自改不得 EditedMajor"
+    );
     assert_eq!(sample.label, GoldLabel::Unlabeled);
     assert!(sample.repair_pair.is_none(), "不得产出修正对");
 
@@ -407,7 +415,11 @@ fn classify_user_actor_minor_edit_is_edited_minor() {
     let candidate = candidate_from_json(edited_candidate_json("cand-user", Some(ACTOR_USER)));
 
     let sample = classify_candidate(&candidate, &GoldMiningConfig::default());
-    assert_eq!(sample.label, GoldLabel::EditedMinor, "真用户小幅编辑不得被新闸门误伤");
+    assert_eq!(
+        sample.label,
+        GoldLabel::EditedMinor,
+        "真用户小幅编辑不得被新闸门误伤"
+    );
     let pair = sample.repair_pair.expect("必须携带修正对");
     assert!(
         pair.distance_ratio > 0.0 && pair.distance_ratio < 0.25,
@@ -445,8 +457,16 @@ fn classify_import_actor_never_gets_edited_label() {
 
     let cfg = GoldMiningConfig::default();
     let sample = classify_candidate(&candidate, &cfg);
-    assert_ne!(sample.label, GoldLabel::EditedMinor, "import 不得 EditedMinor");
-    assert_ne!(sample.label, GoldLabel::EditedMajor, "import 不得 EditedMajor");
+    assert_ne!(
+        sample.label,
+        GoldLabel::EditedMinor,
+        "import 不得 EditedMinor"
+    );
+    assert_ne!(
+        sample.label,
+        GoldLabel::EditedMajor,
+        "import 不得 EditedMajor"
+    );
     assert!(sample.repair_pair.is_none(), "import 候选不得产出修正对");
 
     let samples = mine_gold_set(std::slice::from_ref(&candidate), &cfg);
@@ -465,10 +485,8 @@ fn classify_import_actor_never_gets_edited_label() {
 fn marker_helper_hits_only_structured_stable_code() {
     use std::collections::HashMap;
 
-    let hit: HashMap<String, String> = HashMap::from([(
-        QA_FLAGS_FIELD.to_string(),
-        critic_marker_flags(),
-    )]);
+    let hit: HashMap<String, String> =
+        HashMap::from([(QA_FLAGS_FIELD.to_string(), critic_marker_flags())]);
     assert!(has_critic_revision_marker(&hit), "结构化 code 必须命中");
 
     let message_only: HashMap<String, String> = HashMap::from([(
@@ -482,13 +500,19 @@ fn marker_helper_hits_only_structured_stable_code() {
 
     let not_json: HashMap<String, String> =
         HashMap::from([(QA_FLAGS_FIELD.to_string(), "not-json".to_string())]);
-    assert!(!has_critic_revision_marker(&not_json), "非法 JSON 保守不命中");
+    assert!(
+        !has_critic_revision_marker(&not_json),
+        "非法 JSON 保守不命中"
+    );
 
     let not_array: HashMap<String, String> = HashMap::from([(
         QA_FLAGS_FIELD.to_string(),
         json!({ "code": CRITIC_REVISED_QA_CODE }).to_string(),
     )]);
-    assert!(!has_critic_revision_marker(&not_array), "非数组形状保守不命中");
+    assert!(
+        !has_critic_revision_marker(&not_array),
+        "非数组形状保守不命中"
+    );
 
     assert!(
         !has_critic_revision_marker(&HashMap::new()),
@@ -614,11 +638,17 @@ fn update_anki_card_user_stamp_proves_user_edit_and_yields_reference() {
         }),
     );
     // 模拟前端 payload 夹带的陈旧 llm_critic provenance……
-    insert_content_provenance(&mut card.extra_fields, &ContentProvenance::llm_critic_revision());
+    insert_content_provenance(
+        &mut card.extra_fields,
+        &ContentProvenance::llm_critic_revision(),
+    );
     // ……被 update_anki_card 的后端统一戳覆盖（last-writer-wins）
     insert_content_provenance(&mut card.extra_fields, &stamp);
 
-    assert!(is_user_proven_edit(&card.extra_fields), "覆盖后必须是用户证明");
+    assert!(
+        is_user_proven_edit(&card.extra_fields),
+        "覆盖后必须是用户证明"
+    );
     assert!(!is_llm_critic_actor(&card.extra_fields));
     let parsed = parse_content_provenance(&card.extra_fields).expect("产品构造子的戳必须可解析");
     assert_eq!(parsed.actor, PROVENANCE_ACTOR_USER);
@@ -626,12 +656,18 @@ fn update_anki_card_user_stamp_proves_user_edit_and_yields_reference() {
 
     // 卡片层：该戳必须被收集器接纳为修正对
     let refs = mine_references(&[card]);
-    assert_eq!(refs.len(), 1, "update_anki_card user 戳的编辑卡必须入选修正对");
+    assert_eq!(
+        refs.len(),
+        1,
+        "update_anki_card user 戳的编辑卡必须入选修正对"
+    );
     assert_eq!(refs[0].front, "什么是惯性？");
 
     // 标注层：edit_actor 取自同一戳的 actor 值 → EditedMinor + 修正对
-    let candidate =
-        candidate_from_json(edited_candidate_json("cand-update-stamp", Some(parsed.actor.as_str())));
+    let candidate = candidate_from_json(edited_candidate_json(
+        "cand-update-stamp",
+        Some(parsed.actor.as_str()),
+    ));
     let sample = classify_candidate(&candidate, &GoldMiningConfig::default());
     assert_eq!(
         sample.label,
@@ -663,7 +699,11 @@ fn import_actor_product_stamp_is_never_user_proof() {
     // import / sync / 未知 actor：一律非用户证明，卡片层 0 条 reference
     let mut tainted_batch = Vec::new();
     for (id, actor, code) in [
-        ("c-prod-import", PROVENANCE_ACTOR_IMPORT, Some("apkg_import")),
+        (
+            "c-prod-import",
+            PROVENANCE_ACTOR_IMPORT,
+            Some("apkg_import"),
+        ),
         ("c-prod-sync", PROVENANCE_ACTOR_SYNC, Some("sync_merge")),
         ("c-prod-future", "future_agent", None),
     ] {
@@ -727,6 +767,10 @@ fn import_actor_product_stamp_is_never_user_proof() {
             actor,
             sample.label
         );
-        assert!(sample.repair_pair.is_none(), "actor={} 不得产出修正对", actor);
+        assert!(
+            sample.repair_pair.is_none(),
+            "actor={} 不得产出修正对",
+            actor
+        );
     }
 }

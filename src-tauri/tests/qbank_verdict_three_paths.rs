@@ -286,8 +286,8 @@ fn pending_override_resubmit_merges_into_regrade_without_double_count() {
     assert_eq!(q.attempt_count, 1, "去重分支不得双计 attempt_count");
     assert_eq!(q.correct_count, 1, "NULL→true 计数 +1（与 C 路等价）");
     assert_eq!(submission_count(&vfs_db, &question.id), 1);
-    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 1)
-        .expect("read merged submission");
+    let submissions =
+        VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 1).expect("read merged submission");
     assert_eq!(submissions[0].grading_method, "manual");
 }
 
@@ -361,7 +361,10 @@ fn pub_regrade_entrypoint_advances_submission_rowsync_columns() {
         .expect("idempotent regrade");
     let (updated_at_3, version_3) = submission_rowsync(&vfs_db, &submission_id);
     assert_eq!(version_3, version_2, "同向幂等路径不得推进 local_version");
-    assert_eq!(updated_at_3, updated_at_2, "同向幂等路径不得推进 updated_at");
+    assert_eq!(
+        updated_at_3, updated_at_2,
+        "同向幂等路径不得推进 updated_at"
+    );
 }
 
 // ============================================================================
@@ -416,7 +419,10 @@ fn daily_progress_write_back_matches_get_daily_practice() {
         .expect("regrade correct→wrong");
     let dp = back.daily_progress.expect("daily progress snapshot");
     assert_eq!(dp.completed_count, 1);
-    assert_eq!(dp.correct_count, 0, "唯一提交被改判为错后当日 correct 应回收");
+    assert_eq!(
+        dp.correct_count, 0,
+        "唯一提交被改判为错后当日 correct 应回收"
+    );
 
     let daily = service
         .get_daily_practice(&exam_id, 3)
@@ -468,8 +474,14 @@ fn legacy_question_without_submission_rows_still_counts_into_daily() {
     let daily = service
         .get_daily_practice(&exam_id, 2)
         .expect("daily with legacy question");
-    assert_eq!(daily.completed_count, 1, "旧卡必须按 last_attempt_at 兜底计入");
-    assert_eq!(daily.correct_count, 1, "旧卡的 is_correct=1 计入当日 correct");
+    assert_eq!(
+        daily.completed_count, 1,
+        "旧卡必须按 last_attempt_at 兜底计入"
+    );
+    assert_eq!(
+        daily.correct_count, 1,
+        "旧卡的 is_correct=1 计入当日 correct"
+    );
 
     // 新路径作答另一题：快照要把旧卡与新提交合并（按题去重）
     let submitted = service
@@ -496,7 +508,9 @@ fn submit_answer_result_without_daily_progress_field_still_deserializes() {
         .expect("submit for serde fixture");
 
     let mut payload = serde_json::to_value(&result).expect("serialize SubmitAnswerResult");
-    let map = payload.as_object_mut().expect("result serializes to object");
+    let map = payload
+        .as_object_mut()
+        .expect("result serializes to object");
     map.remove("daily_progress");
 
     let revived: SubmitAnswerResult =
@@ -553,7 +567,11 @@ fn grading_method_origin_matrix_matches_documented_table() {
     };
     assert_eq!(method_of(&choice.id), "auto", "客观题自动判分起点应为 auto");
     assert_eq!(method_of(&subjective.id), "ai", "主观题待判定起点应为 ai");
-    assert_eq!(method_of(&overridden.id), "manual", "override 新作答起点应为 manual");
+    assert_eq!(
+        method_of(&overridden.id),
+        "manual",
+        "override 新作答起点应为 manual"
+    );
 }
 
 // ============================================================================
@@ -586,10 +604,13 @@ fn auto_graded_choice_regrade_transfers_method_and_counts() {
     let q = reload_question(&vfs_db, &question.id);
     assert_eq!(q.correct_count, 1, "auto 起点的 false→true 也必须 +1");
     assert_eq!(q.status, QuestionStatus::InProgress);
-    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
-        .expect("read submissions");
+    let submissions =
+        VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50).expect("read submissions");
     assert_eq!(submissions.len(), 1, "改判不新插作答记录");
-    assert_eq!(submissions[0].grading_method, "manual", "换判生效必须收敛 manual");
+    assert_eq!(
+        submissions[0].grading_method, "manual",
+        "换判生效必须收敛 manual"
+    );
 
     // true → false（再次换回）：-1、回 review、attempt 全程恒 1
     service
@@ -623,8 +644,8 @@ fn idempotent_regrade_of_auto_verdict_preserves_grading_method_and_rowsync() {
         .regrade_submission(&question.id, &auto.submission_id, true)
         .expect("idempotent regrade of auto verdict");
 
-    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 1)
-        .expect("read submission");
+    let submissions =
+        VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 1).expect("read submission");
     assert_eq!(
         submissions[0].grading_method, "auto",
         "同向幂等不得把 auto 洗成 manual"
@@ -691,8 +712,8 @@ fn ai_decided_verdict_manual_flip_converges_to_manual_method() {
     assert_eq!(q.correct_count, 0, "ai 起点的 true→false 也必须 -1");
     assert_eq!(q.status, QuestionStatus::Review);
     assert_eq!(q.attempt_count, 1, "换判不递增 attempt_count");
-    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
-        .expect("read submissions");
+    let submissions =
+        VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50).expect("read submissions");
     assert_eq!(submissions.len(), 1, "换判不新插作答记录");
     assert_eq!(
         submissions[0].grading_method, "manual",
@@ -700,7 +721,11 @@ fn ai_decided_verdict_manual_flip_converges_to_manual_method() {
     );
     let (updated_at_after, version_after) = submission_rowsync(&vfs_db, &pending.submission_id);
     assert!(updated_at_after.is_some());
-    assert_eq!(version_after, version_before + 1, "换判必须推进 local_version");
+    assert_eq!(
+        version_after,
+        version_before + 1,
+        "换判必须推进 local_version"
+    );
 }
 
 // ============================================================================
@@ -805,12 +830,16 @@ fn regrade_guard_rejects_stale_or_unknown_submission_without_side_effects() {
         (q_before.attempt_count, q_before.correct_count),
         "被拒绝的改判不得留下计数副作用"
     );
-    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
-        .expect("read submissions");
+    let submissions =
+        VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50).expect("read submissions");
     assert_eq!(submissions.len(), 2);
     // get_submissions 按时间倒序：[0]=最近(B, 错), [1]=历史(A, 对)
     assert_eq!(submissions[1].id, first.submission_id);
-    assert_eq!(submissions[1].is_correct, Some(true), "stale 提交判定不得被改动");
+    assert_eq!(
+        submissions[1].is_correct,
+        Some(true),
+        "stale 提交判定不得被改动"
+    );
     assert_eq!(submissions[1].grading_method, "auto");
     assert_eq!(submissions[0].is_correct, Some(false));
 }

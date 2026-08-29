@@ -66,13 +66,19 @@ mod tests {
     /// 任何改动都必须显式改这里并同步前端映射与 i18n。
     #[test]
     fn stable_code_literals_are_frozen() {
-        assert_eq!(RESTORE_DOMAIN_UNCONSUMED_CODE, "E_RESTORE_DOMAIN_UNCONSUMED");
+        assert_eq!(
+            RESTORE_DOMAIN_UNCONSUMED_CODE,
+            "E_RESTORE_DOMAIN_UNCONSUMED"
+        );
         assert_eq!(RESTORE_DOMAIN_FAILED_CODE, "E_RESTORE_DOMAIN_FAILED");
         assert_eq!(
             RESTORE_UNTRUSTED_ISOLATED_CODE,
             "E_RESTORE_UNTRUSTED_ISOLATED"
         );
-        assert_eq!(RESTORE_ISOLATION_STATE_PENDING_TRUST, "IsolatedPendingTrust");
+        assert_eq!(
+            RESTORE_ISOLATION_STATE_PENDING_TRUST,
+            "IsolatedPendingTrust"
+        );
         assert_eq!(RESTORE_DETAILS_ISOLATION_STATE_FIELD, "isolation_state");
         assert_eq!(
             RESTORE_DETAILS_UNCONSUMED_DOMAINS_FIELD,
@@ -84,10 +90,7 @@ mod tests {
     #[test]
     fn tagged_message_matches_bracket_prefix_convention() {
         let message = tagged_message(RESTORE_DOMAIN_UNCONSUMED_CODE, "crypto 域未被消费");
-        assert_eq!(
-            message,
-            "[E_RESTORE_DOMAIN_UNCONSUMED] crypto 域未被消费"
-        );
+        assert_eq!(message, "[E_RESTORE_DOMAIN_UNCONSUMED] crypto 域未被消费");
         // 前端 localizeBackupJobError 按 message.includes(code) 分发，
         // 稳定码必须原样出现在消息中。
         assert!(message.contains(RESTORE_DOMAIN_UNCONSUMED_CODE));

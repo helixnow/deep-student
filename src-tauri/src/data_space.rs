@@ -2789,7 +2789,8 @@ mod tests {
         mgr.ensure_layout().unwrap();
         let root = tmp.path();
         populate_slot(&mgr, Slot::B);
-        mgr.mark_restore_cutover_pending(Slot::B, "backup-1").unwrap();
+        mgr.mark_restore_cutover_pending(Slot::B, "backup-1")
+            .unwrap();
 
         let rollback = crate::crypto_publication::rollback_dir(root);
         fs::create_dir_all(&rollback).unwrap();

@@ -1015,7 +1015,9 @@ mod tests {
     async fn oversized_lease_object_fails_closed_within_ttl_window() {
         let storage = Arc::new(MemoryStorage::default());
         let big = vec![b'x'; (MAX_E2EE_CLAIM_OBJECT_BYTES + 1) as usize];
-        CloudStorage::put(&storage, &lease_key(), &big).await.unwrap();
+        CloudStorage::put(&storage, &lease_key(), &big)
+            .await
+            .unwrap();
         let error = claim_encryption_marker(
             &storage,
             MARKER_KEY,
@@ -1132,7 +1134,9 @@ mod tests {
                             MarkerCase::LegacyV1 => Some(v1_marker_bytes("device-legacy")),
                         };
                         if let Some(bytes) = &initial_marker {
-                            CloudStorage::put(&storage, MARKER_KEY, bytes).await.unwrap();
+                            CloudStorage::put(&storage, MARKER_KEY, bytes)
+                                .await
+                                .unwrap();
                         }
                         let initial_lease = match lease_case {
                             LeaseCase::NoLease => None,
@@ -1140,7 +1144,9 @@ mod tests {
                             LeaseCase::ExpiredForeign => Some(lease_json("device-x", -5)),
                         };
                         if let Some(bytes) = &initial_lease {
-                            CloudStorage::put(&storage, &lease_key(), bytes).await.unwrap();
+                            CloudStorage::put(&storage, &lease_key(), bytes)
+                                .await
+                                .unwrap();
                         }
                         // 初始铺设不计入被测协议的写入统计。
                         storage.put_log.lock().unwrap().clear();
@@ -1332,7 +1338,9 @@ mod tests {
                     CloudStorage::put(&inner, MARKER_KEY, bytes).await.unwrap();
                 }
                 if let Some(bytes) = &initial_lease {
-                    CloudStorage::put(&inner, &lease_key(), bytes).await.unwrap();
+                    CloudStorage::put(&inner, &lease_key(), bytes)
+                        .await
+                        .unwrap();
                 }
                 let rival_payload = v2_marker_bytes("device-rival");
                 let storage = RivalClaimsBeforeOurLeasePut {

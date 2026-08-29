@@ -183,7 +183,11 @@ fn openai_chat_prefix_segments_byte_identical_across_consecutive_requests() {
     );
 
     // 前缀段 2：sanitize 归一化后的 tools 数组（含缺省 parameters 的补全）
-    assert_segment_byte_identical("OpenAI chat tools", &first.body["tools"], &second.body["tools"]);
+    assert_segment_byte_identical(
+        "OpenAI chat tools",
+        &first.body["tools"],
+        &second.body["tools"],
+    );
     let tools = first.body["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 3, "三个工具定义都应保留");
     assert_eq!(
@@ -262,7 +266,9 @@ fn anthropic_system_and_tools_prefix_byte_identical_across_consecutive_requests(
     assert_segment_byte_identical("Anthropic system", &first["system"], &second["system"]);
     let system_blocks = first["system"].as_array().expect("system blocks");
     assert_eq!(
-        system_blocks.last().and_then(|block| block.get("cache_control")),
+        system_blocks
+            .last()
+            .and_then(|block| block.get("cache_control")),
         Some(&json!({ "type": "ephemeral" })),
         "system 尾块应自动带 ephemeral 断点且两次落点一致"
     );

@@ -1247,7 +1247,11 @@ mod tests {
     #[test]
     fn non_user_actors_never_enter_edited_buckets() {
         // import / sync / 未知 actor：有 provenance 但不是用户证明 → Unlabeled
-        for actor in [PROVENANCE_ACTOR_IMPORT, PROVENANCE_ACTOR_SYNC, "future_agent"] {
+        for actor in [
+            PROVENANCE_ACTOR_IMPORT,
+            PROVENANCE_ACTOR_SYNC,
+            "future_agent",
+        ] {
             let mut c = base_candidate(&format!("actor-{}", actor));
             c.original = Some(snap("什么是惯性？？", "物体保持原有运动状态不变的性质"));
             c.edit_actor = Some(actor.to_string());

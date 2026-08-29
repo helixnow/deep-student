@@ -1570,9 +1570,7 @@ mod tests {
                     );
                     assert_eq!(data_space.active_slot(), Slot::A);
                     // 密钥发布期间 journal 必须已持久化，供崩溃后的启动侧收敛。
-                    assert!(
-                        crate::crypto_publication::journal_path(app_data.path()).exists()
-                    );
+                    assert!(crate::crypto_publication::journal_path(app_data.path()).exists());
                     Err("injected post-key-publication failure".to_string())
                 },
             )

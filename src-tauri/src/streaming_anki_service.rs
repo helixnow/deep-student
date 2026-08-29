@@ -5442,9 +5442,14 @@ mod tests {
             Some("doc-1")
         );
         // struct 序列化字段：金标观测必须在 wire 上（本轮修复的核心断言）
-        assert_eq!(inner.get("gold_references").and_then(Value::as_u64), Some(4));
         assert_eq!(
-            inner.get("gold_references_truncated").and_then(Value::as_u64),
+            inner.get("gold_references").and_then(Value::as_u64),
+            Some(4)
+        );
+        assert_eq!(
+            inner
+                .get("gold_references_truncated")
+                .and_then(Value::as_u64),
             Some(1)
         );
         // Sidekick 路由观测字段（Some 时序列化）
@@ -5485,7 +5490,10 @@ mod tests {
         assert!(!inner.contains_key("routed_model"));
         assert!(!inner.contains_key("routed_degraded"));
         // 金标观测字段即使为 0 也序列化（无 skip 注解）
-        assert_eq!(inner.get("gold_references").and_then(Value::as_u64), Some(0));
+        assert_eq!(
+            inner.get("gold_references").and_then(Value::as_u64),
+            Some(0)
+        );
     }
 
     #[test]
@@ -5505,7 +5513,9 @@ mod tests {
 
         // 有 dropped 时必须标记"带警告完成"
         assert_eq!(
-            inner.get("completed_with_warnings").and_then(Value::as_bool),
+            inner
+                .get("completed_with_warnings")
+                .and_then(Value::as_bool),
             Some(true)
         );
         assert_eq!(
@@ -5513,7 +5523,10 @@ mod tests {
             Some(2)
         );
         assert_eq!(inner.get("failed_cards").and_then(Value::as_u64), Some(0));
-        assert_eq!(inner.get("duplicate_cards").and_then(Value::as_u64), Some(0));
+        assert_eq!(
+            inner.get("duplicate_cards").and_then(Value::as_u64),
+            Some(0)
+        );
         assert_eq!(inner.get("flagged_cards").and_then(Value::as_u64), Some(0));
         // 旧 wire 字段保持不变
         assert_eq!(inner.get("task_id").and_then(Value::as_str), Some("task-3"));
@@ -5543,7 +5556,9 @@ mod tests {
             .and_then(Value::as_object)
             .expect("外部标签 TaskCompleted");
         assert_eq!(
-            inner.get("completed_with_warnings").and_then(Value::as_bool),
+            inner
+                .get("completed_with_warnings")
+                .and_then(Value::as_bool),
             Some(false)
         );
         assert_eq!(
@@ -5582,7 +5597,11 @@ mod tests {
                 ..Default::default()
             },
         ] {
-            assert!(stats.has_warnings(), "任一非零计数应判定为带警告: {:?}", stats);
+            assert!(
+                stats.has_warnings(),
+                "任一非零计数应判定为带警告: {:?}",
+                stats
+            );
             assert!(stats.has_any_signal());
         }
     }

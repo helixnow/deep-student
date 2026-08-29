@@ -191,8 +191,15 @@ fn guard_overflow_crosses_from_tools_into_system() {
 
     enforce_anthropic_cache_breakpoint_budget(Some(&mut tools), &mut system);
 
-    assert_eq!(tool_marker_count(&tools), 0, "tools marker 先于 system 被剥");
-    assert!(system[0].get("cache_control").is_none(), "续剥 system 最靠前块");
+    assert_eq!(
+        tool_marker_count(&tools),
+        0,
+        "tools marker 先于 system 被剥"
+    );
+    assert!(
+        system[0].get("cache_control").is_none(),
+        "续剥 system 最靠前块"
+    );
     assert_eq!(system[1]["cache_control"], ephemeral());
     assert_eq!(system[2]["cache_control"], ephemeral());
     assert_eq!(system[3]["cache_control"], ephemeral());

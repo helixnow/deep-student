@@ -726,8 +726,8 @@ fn apply_draft_credentials(
             ftp.password = password.to_string();
         }
     }
-    config.encryption_password = nonempty(credentials.encryption_password.as_deref())
-        .map(str::to_string);
+    config.encryption_password =
+        nonempty(credentials.encryption_password.as_deref()).map(str::to_string);
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -793,17 +793,16 @@ pub async fn cloud_config_test_connection_draft(
     let storage = crate::cloud_storage::create_storage(&runtime)
         .await
         .map_err(|error| cloud_app_error_to_command_error(error, "E_CLOUD_CONFIG_INVALID"))?;
-    storage
-        .check_connection()
-        .await
-        .map_err(|error| {
-            cloud_app_error_to_command_error(error, CLOUD_CONNECTION_CHECK_FAILED_CODE)
-        })?;
+    storage.check_connection().await.map_err(|error| {
+        cloud_app_error_to_command_error(error, CLOUD_CONNECTION_CHECK_FAILED_CODE)
+    })?;
 
     // 只读探测 active generation（pointer key 缺失 = 0）。不写任何 secret。
     let generation = cloud_secure_store(&app)
         .cloud_credentials_active_generation()
-        .map_err(|error| secure_store_command_error(error, "cloud_credentials_active_generation"))?;
+        .map_err(|error| {
+            secure_store_command_error(error, "cloud_credentials_active_generation")
+        })?;
 
     Ok(CloudConfigDraftTestResponse {
         ok: true,
@@ -843,9 +842,7 @@ pub async fn cloud_config_publish(
     let ssot_snapshot = state
         .database
         .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
-        .map_err(|error| {
-            CloudConfigSsotError::Storage(error.to_string()).into_command_error()
-        })?;
+        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()).into_command_error())?;
 
     // 非敏感预检：无效草稿绝不进入 staged 写。
     let config = config
@@ -977,9 +974,7 @@ pub async fn cloud_config_ssot_clear(
     let _ssot_snapshot = state
         .database
         .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
-        .map_err(|error| {
-            CloudConfigSsotError::Storage(error.to_string()).into_command_error()
-        })?;
+        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()).into_command_error())?;
 
     let store = cloud_secure_store(&app);
     // 凭据快照仅驻留本调用栈，用于步骤 3 失败时的 best-effort 恢复。

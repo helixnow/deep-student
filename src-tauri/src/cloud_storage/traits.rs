@@ -612,8 +612,14 @@ mod tests {
             .push(&chunk)
             .expect_err("累计越界的这一块必须中断，不得继续收");
         let msg = err.to_string();
-        assert!(msg.contains(MEMORY_GET_BUDGET_EXCEEDED), "错误必须带预算标记: {msg}");
-        assert!(msg.contains("manifests/flood.json"), "错误必须点名对象: {msg}");
+        assert!(
+            msg.contains(MEMORY_GET_BUDGET_EXCEEDED),
+            "错误必须带预算标记: {msg}"
+        );
+        assert!(
+            msg.contains("manifests/flood.json"),
+            "错误必须点名对象: {msg}"
+        );
         assert_eq!(
             body.len(),
             BUDGET,
@@ -630,8 +636,14 @@ mod tests {
             ensure_declared_len_within_budget("WebDAV", "changes/huge.bin", Some(u64::MAX), BUDGET)
                 .expect_err("声明 u64::MAX 字节必须先拒不读 body");
         let msg = err.to_string();
-        assert!(msg.contains(MEMORY_GET_BUDGET_EXCEEDED), "错误必须带预算标记: {msg}");
-        assert!(msg.contains("读取响应体前"), "必须表明在读 body 前拒绝: {msg}");
+        assert!(
+            msg.contains(MEMORY_GET_BUDGET_EXCEEDED),
+            "错误必须带预算标记: {msg}"
+        );
+        assert!(
+            msg.contains("读取响应体前"),
+            "必须表明在读 body 前拒绝: {msg}"
+        );
 
         let err = ensure_declared_len_within_budget("S3", "k", Some(BUDGET + 1), BUDGET)
             .expect_err("声明刚好越界 1 字节也必须拒");
@@ -738,7 +750,11 @@ mod tests {
             exists: false,
         };
         assert!(
-            missing.get_bounded("k", 1).await.expect("not-found 不是错误").is_none(),
+            missing
+                .get_bounded("k", 1)
+                .await
+                .expect("not-found 不是错误")
+                .is_none(),
             "不存在的对象必须透传 Ok(None)"
         );
     }

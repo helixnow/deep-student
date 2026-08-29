@@ -1021,10 +1021,7 @@ mod tests {
         for key in test_vectors::STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS {
             let note = note_with_props(Some(serde_json::json!({ (*key): "hit" })));
             assert!(
-                note_matches_prop_filters(
-                    &note,
-                    &[(key.trim().to_lowercase(), "hit".to_string())]
-                ),
+                note_matches_prop_filters(&note, &[(key.trim().to_lowercase(), "hit".to_string())]),
                 "键 {key:?} 经后端过滤（非操作符语法）仍应命中"
             );
         }
