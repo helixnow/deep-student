@@ -36,7 +36,7 @@
 .wb-empty-cta-block {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 10px;
   width: 100%;
   margin-top: 8px;
@@ -72,6 +72,18 @@
 
 .wb-empty-cta:active {
   transform: translateY(0);
+}
+
+/* 次级 CTA（恢复上次桌面）：同尺寸不同权重，主 CTA 仍是视觉重心 */
+.wb-empty-cta-secondary {
+  border-color: color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
+  background: color-mix(in hsl, hsl(var(--card)) 40%, transparent 60%);
+  font-weight: 500;
+}
+
+.wb-empty-cta-secondary:hover {
+  background: color-mix(in hsl, hsl(var(--card)) 62%, transparent 38%);
+  border-color: color-mix(in hsl, hsl(var(--border)) 100%, transparent 0%);
 }
 
 .wb-empty-cta:focus-visible {
@@ -286,5 +298,48 @@
 
   .wb-empty-card-pro .wb-empty-hint {
     font-size: 11px;
+  }
+}
+
+/* ==== 窄工作区（移动 / 分屏）：单列铺开，不再给日程组件让出 404px ====
+   原先 `max-width: calc(100% - 404px)` 会在窄屏把整张卡压到 180px 下限，
+   tour 文案与三个按钮全部挤成不可用的窄条。这里改为单列 + 允许纵向滚动。 */
+@media (width <= 720px) {
+  .wb-empty-card.wb-empty-card-pro {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    /* 卡片自身成为滚动容器时必须能接收指针，否则窄屏根本滚不动 */
+    pointer-events: auto;
+    overscroll-behavior: contain;
+    padding: 16px 16px 14px;
+  }
+
+  .wb-empty-card-pro .wb-empty-hint {
+    font-size: 12px;
+  }
+
+  .wb-empty-tour-actions {
+    gap: 8px;
+  }
+}
+
+/* 触控：主 CTA（~34px）与 tour 胶囊钮（~23px）给足 44px 命中高度；
+   桌面细指针密度不变 */
+@media (pointer: coarse) {
+  .wb-empty-cta {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .wb-empty-tour-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+    font-size: 13px;
   }
 }

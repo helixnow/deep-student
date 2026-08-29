@@ -48,6 +48,8 @@ export type {
   WindowShellPointerResult,
 } from './components/WindowShell';
 export { WindowTitleBar, TITLEBAR_HEIGHT } from './components/WindowTitleBar';
+// 标题栏高度单一来源（TS 常量 + CSS token 名 + 子应用安全区 var() 写法）
+export { TITLEBAR_HEIGHT_CSS_VAR, titlebarHeightCss } from './core/metrics';
 export { TileMenuPopover, TILE_MENU_GRID } from './components/TileMenuPopover';
 export type { TileMenuAction } from './components/TileMenuPopover';
 export { WindowResizeHandles, RESIZE_DIRECTIONS } from './components/WindowResizeHandles';
@@ -174,6 +176,17 @@ export {
   isAppsPanelOpen,
   useAppsPanelOpen,
 } from './components/appsPanelStore';
+
+// ---- 缝一：Workbench 停用事务（模式开关 / 应用退出统一逐窗预检） ----
+export {
+  runWorkbenchDeactivationTransaction,
+  hasDirtyWorkbenchWindows,
+  isWorkbenchDeactivationInFlight,
+} from './core/deactivationTransaction';
+export type {
+  WorkbenchDeactivationReason,
+  WorkbenchDeactivationResult,
+} from './core/deactivationTransaction';
 
 // ---- ACR：Agent Collaborator Runtime（R0.5 脚手架，见 docs/dev/acr/DESIGN.md） ----
 export * from './agent/types';

@@ -141,6 +141,41 @@
 }
 
 /* ==========================================================================
+ * Exposé 停绘占位卡（background 档窗口的俯瞰缩略）
+ * --------------------------------------------------------------------------
+ * background 窗内容 visibility + content-visibility 双隐藏（渲染成本 0），
+ * 俯瞰把这类窗的壳铺进网格时若不补占位，缩略图是一块空玻璃。
+ * 占位卡默认 display:none（俯瞰外零成本），仅当壳挂 data-expose-transform
+ * （Exposé 会话内，含退出飞回）时点亮——纯 CSS 驱动，进出俯瞰不重渲染
+ * 任何 WindowBody；应用内容保持停绘，不为俯瞰唤醒（内存不涨）。
+ * ========================================================================== */
+
+.wb-body-doze {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  text-align: center;
+  pointer-events: none;
+  contain: content;
+}
+
+/* 定位锚仅在俯瞰会话内建立，避免平时改变应用内容的包含块 */
+[data-wb-window-id][data-expose-transform] [data-wb-window-body][data-lifecycle='background'] {
+  position: relative;
+}
+
+[data-wb-window-id][data-expose-transform] [data-wb-window-body][data-lifecycle='background'] .wb-body-doze {
+  display: flex;
+  /* 根 body 处于 visibility:hidden，占位卡显式点亮 */
+  visibility: visible;
+  animation: wb-kf-fade-in var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) both;
+}
+
+/* ==========================================================================
  * 唤醒后内容淡入
  * ========================================================================== */
 
@@ -204,6 +239,14 @@
   overflow: hidden;
 }
 
+/* 连续崩溃冷却提示（30s 内 ≥3 次崩溃时出现，随冷却结束消失） */
+.wb-body-crash-loop-hint {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: hsl(var(--destructive) / 0.82);
+  animation: wb-kf-fade-in var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) both;
+}
+
 .wb-body-crash-reload {
   display: inline-flex;
   align-items: center;
@@ -228,7 +271,21 @@
   transform: scale(0.97);
 }
 
+.wb-body-crash-reload:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .wb-body-crash-reload:focus-visible {
   outline: 2px solid var(--wb-focus-ring-color, hsl(var(--ring)));
   outline-offset: 2px;
+}
+
+/* 触屏：崩溃恢复卡的重载按钮放大到 44px 最小命中（卡片居中排布，不挤布局） */
+@media (pointer: coarse) {
+  .wb-body-crash-reload {
+    min-height: 44px;
+    padding-inline: 1.1rem;
+  }
 }

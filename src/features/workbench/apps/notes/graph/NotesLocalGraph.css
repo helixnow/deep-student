@@ -1,0 +1,242 @@
+/* 局部图谱页（统一右侧栏第三页签） */
+
+.notes-graph-tab {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.notes-graph-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid hsl(var(--border) / 60%);
+}
+
+.notes-graph-depth {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--notes-radius-control, 6px);
+  background: hsl(var(--muted) / 55%);
+}
+
+.notes-graph-depth button {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--notes-radius-control, 6px) - 2px);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-graph-depth button:hover {
+  color: hsl(var(--foreground));
+}
+
+.notes-graph-depth button[data-active='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 8%);
+}
+
+.notes-graph-depth button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-graph-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-graph-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* 画布内节点：小圆点 + 标签，度数越远越淡 */
+.notes-graph-node {
+  position: relative;
+  display: grid;
+  max-width: 132px;
+  justify-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.notes-graph-node-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 18%);
+  transition: box-shadow var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-graph-node[data-degree='0'] .notes-graph-node-dot {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 26%);
+}
+
+.notes-graph-node[data-degree='2'] .notes-graph-node-dot {
+  width: 9px;
+  height: 9px;
+  background: hsl(var(--muted-foreground));
+  box-shadow: 0 0 0 2px hsl(var(--muted-foreground) / 16%);
+}
+
+.notes-graph-node[data-ghost='true'] {
+  cursor: default;
+}
+
+.notes-graph-node[data-ghost='true'] .notes-graph-node-dot {
+  background: transparent;
+  border: 1.5px dashed hsl(var(--muted-foreground) / 75%);
+  box-shadow: none;
+}
+
+.notes-graph-node:hover .notes-graph-node-dot {
+  box-shadow: 0 0 0 5px hsl(var(--primary) / 24%);
+}
+
+.notes-graph-node-label {
+  max-width: 132px;
+  overflow: hidden;
+  color: hsl(var(--foreground) / 88%);
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-graph-node[data-degree='2'] .notes-graph-node-label {
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-graph-node[data-ghost='true'] .notes-graph-node-label {
+  color: hsl(var(--muted-foreground) / 80%);
+  font-style: italic;
+}
+
+/* 边锚点柄不可见（仅供 xyflow 连线定位） */
+.notes-graph-handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
+.notes-graph-canvas .react-flow__edge-path {
+  stroke: hsl(var(--border));
+  stroke-width: 1.25;
+}
+
+/* 引用链接（note://）边分色：颜色 + 虚线双通道，色觉障碍下仍可区分
+   （wikilink / unknown 共用上面的中性实线） */
+/* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
+.notes-graph-canvas .react-flow__edge.notes-graph-edge-noteref .react-flow__edge-path {
+  stroke: hsl(var(--info) / 78%);
+  stroke-dasharray: 5 4;
+}
+
+/* 工具栏图例（仅当图中存在 noteref 边时渲染） */
+.notes-graph-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.notes-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-graph-legend-swatch {
+  width: 14px;
+  height: 0;
+  border-top: 1.5px solid hsl(var(--border));
+}
+
+.notes-graph-legend-swatch.is-noteref {
+  border-top-color: hsl(var(--info) / 78%);
+  border-top-style: dashed;
+}
+
+/* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
+.notes-graph-canvas .react-flow__node:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.notes-graph-hint {
+  margin: 0;
+  padding: 6px 12px;
+  flex: 0 0 auto;
+  border-top: 1px solid hsl(var(--border) / 60%);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+/* 懒加载占位（与导图 pane 骨架同款脉冲条） */
+.notes-graph-lazy-loading {
+  display: grid;
+  flex: 1 1 auto;
+  place-content: center;
+  gap: 6px;
+}
+
+.notes-graph-lazy-loading i {
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  animation: notes-graph-pulse 1.1s ease-in-out infinite alternate;
+}
+
+.notes-graph-lazy-loading i:nth-child(2) {
+  width: 90px;
+  animation-delay: 120ms;
+}
+
+.notes-graph-lazy-loading i:nth-child(3) {
+  width: 60px;
+  animation-delay: 240ms;
+}
+
+@keyframes notes-graph-pulse {
+  from { opacity: 0.4; }
+  to { opacity: 0.95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-graph-lazy-loading i {
+    animation: none;
+  }
+}

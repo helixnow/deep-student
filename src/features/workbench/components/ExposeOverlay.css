@@ -175,10 +175,17 @@
     var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
 }
 
+/*
+ * 键盘焦点环：宽度/颜色走 a11y-cursor.css 统一 token
+ * （--wb-focus-ring-width/-color；prefers-contrast: more 时自动加粗），
+ * 外加一圈背景色衬边提升在任意窗口内容上的可辨识度。
+ */
 .wb-expose-cell:focus-within .wb-expose-cell-hit,
 .wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
   box-shadow:
-    var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65)),
+    0 0 0 1px hsl(var(--background) / 0.9),
+    0 0 0 calc(1px + var(--wb-focus-ring-width, 2px))
+      var(--wb-focus-ring-color, hsl(var(--primary) / 0.85)),
     var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
 }
 
@@ -302,6 +309,23 @@
 }
 
 /*
+ * 俯瞰重窗降级（2026-08）：非焦点重应用窗（memoryWeight ≥ 2）在缩略态下
+ * 关掉 box-shadow 与窗内 backdrop-filter（选择器组与拖拽跟手期
+ * .wb-shell-dragging 同款，见 workbench.css），缓解全窗同屏缩放的合成/
+ * 内存压力。由 TS 打 data-expose-degrade，飞回收尾/卸载时移除。
+ */
+[data-wb-window-id][data-expose-degrade] {
+  box-shadow: none !important;
+}
+
+[data-wb-window-id][data-expose-degrade] .wb-glass,
+[data-wb-window-id][data-expose-degrade] .wb-sys-drawer-handle,
+[data-wb-window-id][data-expose-degrade] [data-wb-blur-surface] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/*
  * P2 GPU 缓解：俯瞰 FLIP 期间窗口内 backdrop-filter 每帧重采样成本高。
  * `.wb-titlebar` 契约本身无 blur；`.wb-glass` 等有。对已 FLIP 的窗临时关掉。
  * 缩略态下玻璃变实色 tint，退出俯瞰即恢复——可接受，无明显闪变。
@@ -310,6 +334,52 @@
 [data-wb-window-id][data-expose-transform] .wb-titlebar {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+/* ==========================================================================
+ * forced-colors（Windows 高对比）：box-shadow 被系统调色板剥除，
+ * 键盘焦点环 / 选中态改用 outline 映射系统 Highlight 色（a11y 清单 §10）。
+ * ========================================================================== */
+
+@media (forced-colors: active) {
+  .wb-expose-cell-pick:focus-visible,
+  .wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .wb-expose-close:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  /* 玻璃标签在 forced-colors 下失去底色，补系统色边框保证可读 */
+  .wb-expose-label {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* ==========================================================================
+ * 触屏（coarse pointer）：无 hover 可用，关闭按钮常显且命中 ≥44px
+ * （细指针桌面保持 22px + hover 浮现的原密度）
+ * ========================================================================== */
+
+@media (pointer: coarse) {
+  .wb-expose-close {
+    min-width: 44px;
+    min-height: 44px;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  /* 入场/退场期间格子整体禁用；子级 auto 会穿透父级 none，需显式关掉 */
+  .wb-expose-root[data-phase='entering'] .wb-expose-close,
+  .wb-expose-root[data-phase='closing'] .wb-expose-close {
+    pointer-events: none;
+  }
 }
 
 /* ==========================================================================

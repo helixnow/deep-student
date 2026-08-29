@@ -158,6 +158,21 @@
   width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
 }
 
+/* 上/下半屏 */
+.wb-tilemenu-glyph-cell.cell-top {
+  left: var(--wb-tilemenu-m);
+  right: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-bottom {
+  left: var(--wb-tilemenu-m);
+  right: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
 /* 四分屏 */
 .wb-tilemenu-glyph-cell.cell-tl {
   left: var(--wb-tilemenu-m);
@@ -263,5 +278,21 @@
     --wb-tilemenu-out-duration: 0ms;
     --wb-tilemenu-hover-duration: 0ms;
     --wb-tilemenu-glyph-bounce: 0ms;
+  }
+}
+
+/* ==== 触屏（coarse pointer）命中区 ======================================= */
+
+/* 平铺菜单格 36px / 沉浸行 30px 触屏偏矮：升到 44px 命中高度。
+ * glyph 装饰尺寸（28×20）不变，桌面 fine 指针仍为 36/30。 */
+@media (pointer: coarse) {
+  .wb-tilemenu-item {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .wb-tilemenu-item.wb-tilemenu-immersive {
+    height: 44px;
+    min-height: 44px;
   }
 }

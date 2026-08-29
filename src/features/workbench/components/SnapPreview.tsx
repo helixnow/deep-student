@@ -21,6 +21,7 @@
  * - 用户中途按下窗口立即取消动画；reduced-motion / minimal 档直接跳过。
  */
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useTranslation } from 'react-i18next';
 import './SnapPreview.css';
 import type { Frame, SnapZone } from '../core/types';
 import {
@@ -170,6 +171,7 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
   margin = DEFAULT_TILE_MARGIN,
   desktopOffset,
 }) => {
+  const { t } = useTranslation('workbench');
   const storeZone = useSyncExternalStore(
     subscribeActiveSnapZone,
     getActiveSnapZone,
@@ -177,6 +179,40 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
   );
   const zone = zoneProp !== undefined ? zoneProp : storeZone;
   const desktopSize = useWindowStore((s) => s.desktopSize);
+
+  // ---- ⌥ 扩热区角标（L5 的 SnapHitOptions.altKey 只改命中，无可视反馈）----
+  // 预览挂载期间跟踪 Alt：keydown/keyup 即时响应；拖拽指针流的 e.altKey
+  // 兜底同步（Alt 先于预览挂载被按下、或 keyup 丢失时也能对齐）；
+  // 窗口失焦一律复位。setState 同值不触发重渲染，pointermove 高频无害。
+  const [altHeld, setAltHeld] = useState(false);
+  const mountedForAlt = zone !== null;
+  useEffect(() => {
+    if (!mountedForAlt) {
+      setAltHeld(false);
+      return undefined;
+    }
+    const sync = (held: boolean) => {
+      setAltHeld((prev) => (prev === held ? prev : held));
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') sync(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') sync(false);
+    };
+    const onPointerMove = (e: PointerEvent) => sync(e.altKey);
+    const onWindowBlur = () => sync(false);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('blur', onWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [mountedForAlt]);
 
   // zone → null 时保留最后一个 frame 做 fade-out
   const [visible, setVisible] = useState(false);
@@ -392,6 +428,12 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
       }}
     >
       <div className="wb-snap-inner" />
+      {altHeld && zone !== null && (
+        <div className="wb-snap-alt-badge" data-wb-snap-alt-badge>
+          <span className="wb-snap-alt-key">⌥</span>
+          <span>{t('workbench:snap.altBadge')}</span>
+        </div>
+      )}
     </div>
   );
 };

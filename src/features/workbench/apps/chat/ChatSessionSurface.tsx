@@ -20,6 +20,7 @@
  *   data-wb-chat-active 状态见 ChatSessionSurface.css。
  */
 import React, { useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SidebarSimple } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -59,6 +60,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
   renderThrottleMs = 0,
   className,
 }) => {
+  const { t } = useTranslation('chatV2');
   const rootRef = useRef<HTMLDivElement>(null);
   const sandboxOwnerKey = createChatSandboxOwnerKey(sessionId);
   const sandboxActiveSession = useSandboxWorkbenchStore(
@@ -114,10 +116,10 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            className="wb-chat-sandbox-expand absolute right-2 top-2 !h-8 !w-8"
+            className="wb-chat-sandbox-expand absolute right-2 top-2 !h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             onClick={() => openSandboxWorkbench(sandboxOwnerKey)}
-            aria-label="展开沙箱工作台"
-            title="展开沙箱工作台"
+            aria-label={t('page.expandSandboxWorkbench')}
+            title={t('page.expandSandboxWorkbench')}
           >
             <SidebarSimple size={18} />
           </DsButton>

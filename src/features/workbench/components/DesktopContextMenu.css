@@ -181,6 +181,71 @@
   background: var(--wb-glass-border);
 }
 
+/* ==== 菜单头（Spaces 命名桌面：品牌菜单顶部的当前桌面名） ================ */
+.wb-desk-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 12px 4px;
+  min-width: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.wb-desk-menu-header-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 自定义名下方的默认品牌名小字（说明这是哪个产品面的桌面） */
+.wb-desk-menu-header-sub {
+  font-size: 10.5px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 内联重命名输入（替换菜单头渲染；Enter 提交 / Esc 取消） */
+.wb-desk-menu-rename {
+  padding: 4px 8px 3px;
+}
+
+.wb-desk-menu-rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--wb-glass-border);
+  border-radius: 6px;
+  background: hsl(var(--background) / 0.6);
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.wb-desk-menu-rename-input:focus {
+  outline: none;
+  border-color: hsl(var(--primary) / 0.7);
+}
+
+/* 触控/笔指针：菜单行放大到 44px 命中高度（Apple HIG 最小可点区），
+   顶栏菜单（StatusBarMenu）与桌面右键菜单共用 .wb-desk-menu-item 契约；
+   桌面细指针保持原密度 */
+@media (pointer: coarse) {
+  .wb-desk-menu-item {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .wb-desk-menu-sep {
+    margin: 6px 8px;
+  }
+}
+
 /* ==== 子菜单 ============================================================= */
 
 .wb-desk-menu-subwrap {

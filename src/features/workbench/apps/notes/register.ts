@@ -28,13 +28,23 @@ export const notesAppDefinition: AppDefinition = {
   icon: React.createElement(AppIconImage, { typeId: 'notes', className: 'h-8 w-8' }),
   instanceMode: 'single',
   memoryWeight: 3,
-  defaultFrame: { w: 1180, h: 760 },
+  // 默认宽度须明显大于 BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH（1120，见
+  // NotesWorkspaceApp）：旧值 1180 与 overlay 阈值 1180 重合，扣掉窗框后
+  // 背链面板在默认尺寸下永远以覆盖层出现，无法并排
+  defaultFrame: { w: 1240, h: 760 },
   minSize: { w: 480, h: 420 },
   render: React.lazy(() => import('./NotesWorkspaceApp')),
   onActivation: handleNotesActivation,
   agentManifest: createNotesAgentManifest(handleNotesActivation),
   canClose: canCloseNotesWorkspace,
+  // suspend 契约：dirty 窗永不 frozen。同步查询各 Notes host 的未保存
+  // 状态（checker 异常按 dirty 处理），有未保存编辑时调度器跳过冻结，
+  // 窗口保持 background，不丢内存中的编辑内容。
+  canSuspend: () => !hasUnsavedNotesWorkspaceChanges(),
   handlesCloseShortcut: true,
+  // Ctrl+Tab / Ctrl+Shift+Tab 循环内部标签（NotesWorkspaceApp onWindowKeyDown
+  // 消费；壳层让位协议见 AppDefinition.handlesTabCycleShortcut）
+  handlesTabCycleShortcut: true,
 };
 
 let registered = false;

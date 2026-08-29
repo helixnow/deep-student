@@ -1,0 +1,106 @@
+/**
+ * QuickLookOverlay — preview 壳提供的快速预览浮层（macOS 空格 Quick Look 同构）
+ * ---------------------------------------------------------------------------
+ * z 对齐模态层（--wb-z-modal）；动画仅 transform / opacity；
+ * reduced-motion / minimal 材质时长归零。
+ */
+
+:where(:root) {
+  --wb-quick-look-duration: var(--wb-motion-spotlight, 180ms);
+  --wb-quick-look-ease: var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    --wb-quick-look-duration: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] {
+  --wb-quick-look-duration: 0ms;
+}
+
+.wb-quick-look-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wb-z-modal, 9700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px 64px;
+}
+
+/* 轻压暗背景：Quick Look 是模态速览，需要与桌面拉开一层 */
+.wb-quick-look-backdrop {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--shadow-base, 0 0% 0%) / 28%);
+}
+
+.wb-quick-look-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 100%);
+  height: min(680px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--wb-radius-xl, 18px);
+  background: hsl(var(--background));
+  box-shadow: var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 30%));
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity var(--wb-quick-look-duration) var(--wb-quick-look-ease),
+    transform var(--wb-quick-look-duration) var(--wb-quick-look-ease);
+  outline: none;
+}
+
+.wb-quick-look-root[data-open='true'] .wb-quick-look-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.wb-quick-look-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 30%);
+}
+
+.wb-quick-look-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.wb-quick-look-hint {
+  flex: none;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-quick-look-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-quick-look-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}

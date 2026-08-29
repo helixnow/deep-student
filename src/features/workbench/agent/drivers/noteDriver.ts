@@ -12,6 +12,7 @@
  * 锚点对齐 R1-03：{ heading?, position: 'end'|'afterHeading' }
  */
 import { editorViewCtx } from '@milkdown/kit/core';
+import i18n from '@/i18n';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import {
   agentHighlightKey,
@@ -493,7 +494,7 @@ export function computeDestructiveMarkdown(
     const searchPattern = payload.search ?? '';
     const replaceWith = payload.replace ?? '';
     if (!searchPattern) {
-      return { content: original, error: '搜索模式为空' };
+      return { content: original, error: i18n.t('forms:note_driver.empty_search_pattern') };
     }
     if (payload.isRegex) {
       try {
@@ -505,21 +506,28 @@ export function computeDestructiveMarkdown(
         });
         return replaceCount > 0
           ? { content }
-          : { content: original, error: '未找到要替换的内容' };
+          : { content: original, error: i18n.t('forms:note_driver.replacement_not_found') };
       } catch (err) {
         return {
           content: original,
-          error: `无效的正则表达式: ${err instanceof Error ? err.message : '语法错误'}`,
+          error: i18n.t('forms:note_driver.invalid_regex', {
+            message: err instanceof Error
+              ? err.message
+              : i18n.t('forms:note_driver.regex_syntax_error'),
+          }),
         };
       }
     }
     if (!original.includes(searchPattern)) {
-      return { content: original, error: '未找到要替换的内容' };
+      return { content: original, error: i18n.t('forms:note_driver.replacement_not_found') };
     }
     return { content: original.split(searchPattern).join(replaceWith) };
   }
 
-  return { content: original, error: `不支持的破坏类 op：${op.kind}` };
+  return {
+    content: original,
+    error: i18n.t('forms:note_driver.unsupported_destructive_op', { kind: op.kind }),
+  };
 }
 
 /** 仅编辑器 DOM 真实持焦时视为 hot；失焦后保留的 selection 快照不算。 */
@@ -971,12 +979,14 @@ function computeWindowedInsertion(
   if (position === 'offset') {
     return {
       content: original,
-      error: '窗口化长笔记不支持 ProseMirror offset 锚点，请使用 end 或 afterHeading',
+      error: i18n.t('forms:note_driver.windowed_offset_unsupported'),
     };
   }
 
   const heading = (anchor?.heading ?? anchor?.section ?? '').trim();
-  if (!heading) return { content: original, error: 'afterHeading 缺少标题' };
+  if (!heading) {
+    return { content: original, error: i18n.t('forms:note_driver.after_heading_missing_title') };
+  }
 
   let offset = 0;
   for (const line of original.split('\n')) {
@@ -992,7 +1002,7 @@ function computeWindowedInsertion(
     }
     offset += line.length + 1;
   }
-  return { content: original, error: `未找到标题「${heading}」` };
+  return { content: original, error: i18n.t('forms:note_driver.heading_not_found', { heading }) };
 }
 
 async function applyWindowedNoteInsert(

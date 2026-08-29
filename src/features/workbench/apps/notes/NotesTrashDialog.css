@@ -364,6 +364,20 @@
   opacity: 0.45;
 }
 
+/* Hit-target wrapper around each row checkbox: hugs the 14px box under fine
+   pointers (no visual change) and grows to >=44px under coarse pointers. */
+.ntd-item-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.ntd-item-check-hit:has(.ntd-item-check:disabled) {
+  cursor: not-allowed;
+}
+
 .ntd-restore-selected {
   height: 26px;
   padding: 0 10px;
@@ -468,6 +482,39 @@
   align-items: center;
   gap: 2px;
   flex: 0 0 auto;
+}
+
+/* ===== Touch (coarse pointer) hit targets =====
+   Grow interactive boxes to >=44px on touch without touching the compact
+   fine-pointer visuals. Checkbox glyphs stay 14px — only the tappable area
+   (label / wrapper) expands. */
+@media (pointer: coarse) {
+  /* Header refresh/close + per-row restore/purge share this class. */
+  .ntd-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ntd-empty-btn,
+  .ntd-restore-selected,
+  .ntd-message button,
+  .ntd-confirm-actions button {
+    min-height: 44px;
+  }
+
+  .ntd-select-bar {
+    min-height: 44px;
+  }
+
+  /* The whole label (checkbox + text) is the tap target for select-all. */
+  .ntd-select-all {
+    min-height: 44px;
+  }
+
+  .ntd-item-check-hit {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
