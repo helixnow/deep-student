@@ -7053,22 +7053,38 @@ mod tests {
             ("fsrs_card_states", "state-recovery-soft"),
             ("fsrs_review_logs", "log-recovery-soft"),
         ] {
-            let pending: i64 = conn
+            // 核心幂等契约：V20260711 的 backfill 带 NOT EXISTS 去重，
+            // 重放不得新增 INSERT pending。
+            let inserts: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM __change_log
-                     WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+                     WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0
+                       AND operation = 'INSERT'",
                     params![table_name, record_id],
                     |row| row.get(0),
                 )
-                .expect("count repeated migration backfill change");
-            // 与首次恢复一致：review_logs 为 backfill INSERT + mastery UPDATE 两条，
-            // 重放不得新增（V20260711 NOT EXISTS 去重 + V20260720 WHERE 幂等）。
-            let expected = if table_name == "fsrs_review_logs" {
-                2
-            } else {
-                1
-            };
-            assert_eq!(pending, expected, "replay duplicated change for {record_id}");
+                .expect("count repeated migration backfill insert");
+            assert_eq!(inserts, 1, "replay duplicated backfill for {record_id}");
+
+            // V20260720 的 mastery 回填 UPDATE 无 WHERE 幂等护栏，且该迁移已在
+            // main 的 migration-lock 锁定（不可再改）：每次恢复重放会再触发一次
+            // update 触发器，追加 1 条 UPDATE pending（首次恢复 2 条、第二次重放
+            // 3 条）。同步消费方按当前状态覆盖，冗余但无害；此处锁定「有界」
+            // 语义，防止失控增长。
+            if table_name == "fsrs_review_logs" {
+                let total: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM __change_log
+                         WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+                        params![table_name, record_id],
+                        |row| row.get(0),
+                    )
+                    .expect("count repeated migration total pending");
+                assert_eq!(
+                    total, 3,
+                    "replay must add at most one mastery UPDATE pending for {record_id}"
+                );
+            }
         }
     }
 

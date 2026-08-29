@@ -3938,6 +3938,9 @@ mod tests {
     }
 
     #[test]
+    // answer_value 是面向用户的题目答案数值（与 π 无关），3.14 配合容差断言
+    // 语义最直观；允许 approx_constant 避免 clippy 误判。
+    #[allow(clippy::approx_constant)]
     fn test_numeric_tolerance_and_lenient_input() {
         let sd = |t: f64, mode: &str| {
             serde_json::json!({
