@@ -239,15 +239,15 @@ fn image_needs_compression_with_conn(
 /// 获取资源类型的大文件限制（字节）
 fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
     match resource_type {
-        VfsResourceType::Image => 10 * 1024 * 1024,       // 10MB
-        VfsResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
-        VfsResourceType::Note => 50 * 1024 * 1024,        // 50MB
-        VfsResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
-        VfsResourceType::Exam => 50 * 1024 * 1024,        // 50MB
-        VfsResourceType::Textbook => 50 * 1024 * 1024,    // 50MB
+        VfsResourceType::Image => 50 * 1024 * 1024, // 50MB（#221：与作文批改图片上限对齐）
+        VfsResourceType::File => 200 * 1024 * 1024, // 200MB（#62：与附件上限对齐）
+        VfsResourceType::Note => 50 * 1024 * 1024,  // 50MB
+        VfsResourceType::Retrieval => 10 * 1024 * 1024, // 10MB
+        VfsResourceType::Exam => 50 * 1024 * 1024,  // 50MB
+        VfsResourceType::Textbook => 50 * 1024 * 1024, // 50MB
         VfsResourceType::Translation => 10 * 1024 * 1024, // 10MB
-        VfsResourceType::Essay => 10 * 1024 * 1024,       // 10MB
-        VfsResourceType::MindMap => 50 * 1024 * 1024,     // 50MB
+        VfsResourceType::Essay => 10 * 1024 * 1024, // 10MB
+        VfsResourceType::MindMap => 50 * 1024 * 1024, // 50MB
     }
 }
 
@@ -1801,9 +1801,15 @@ pub async fn vfs_upload_attachment(
                     let modes = status.progress.ready_modes.clone();
                     let stage = status.progress.stage.clone();
                     // ★ v2.1: 判断是否需要继续处理（未完成且非错误状态）
-                    let needs_resume = stage != "completed"
-                        && stage != "completed_with_issues"
-                        && stage != "error";
+                    // ★ #64: completed_with_issues 不再一律视为稳定终态——
+                    // 若上次留有可重试失败（如图片 OCR 网络错误），重新引用同一文件时
+                    // 自动续跑流水线（已完成阶段幂等跳过），否则 OCR 永久停在「未就绪」，
+                    // 且内容去重会让重新上传同一张图片也命中同一条死状态。
+                    let needs_resume = match stage.as_str() {
+                        "completed" | "error" => false,
+                        "completed_with_issues" => status.progress.has_retriable_failure(),
+                        _ => true,
+                    };
                     (Some(stage), Some(percent), Some(modes), needs_resume)
                 }
                 _ => {
@@ -8100,8 +8106,13 @@ mod tests {
         let small_data = "x".repeat(1024);
         assert!(validate_file_size(&VfsResourceType::Image, &small_data).is_ok());
 
-        let large_data = "x".repeat(11 * 1024 * 1024);
-        assert!(validate_file_size(&VfsResourceType::Image, &large_data).is_err());
+        // #221：Image 上限已放宽到 50MB，10MB 级别的数据应当成功
+        let ten_mb_data = "x".repeat(10 * 1024 * 1024);
+        assert!(validate_file_size(&VfsResourceType::Image, &ten_mb_data).is_ok());
+
+        // 超过 Image 上限（随常量走，避免上限调整时测试失真）
+        let over_image_limit = "x".repeat(get_max_size_bytes(&VfsResourceType::Image) + 1);
+        assert!(validate_file_size(&VfsResourceType::Image, &over_image_limit).is_err());
 
         let medium_data = "x".repeat(20 * 1024 * 1024);
         assert!(validate_file_size(&VfsResourceType::File, &medium_data).is_ok());
@@ -8129,7 +8140,7 @@ mod tests {
     fn test_max_size_bytes() {
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::Image),
-            10 * 1024 * 1024
+            50 * 1024 * 1024
         );
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::File),

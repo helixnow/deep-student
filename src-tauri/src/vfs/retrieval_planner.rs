@@ -1228,7 +1228,9 @@ mod tests {
                 page_index: page,
             },
             embedding_id: format!("{resource}-{chunk}-{:?}", page),
-            text: format!("text-{chunk}"),
+            // text 带 resource 前缀：MMR 的跨资源冗余判定走文本 bigram，
+            // 若不同 resource 文本相同会被误判为完全冗余，多样性失效。
+            text: format!("text-{resource}-{chunk}"),
             title: None,
             resource_type: None,
             source_id: None,
