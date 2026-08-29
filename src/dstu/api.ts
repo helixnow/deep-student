@@ -14,6 +14,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import i18n from '@/i18n';
 import {
   ok,
   err,
@@ -150,7 +151,11 @@ function extractSourceIdFromPath(path: string): string {
     console.error(LOG_PREFIX, `路径长度超限 (${path.length} > ${MAX_PATH_LENGTH}):`, path.substring(0, 100) + '...');
     throw new VfsError(
       VfsErrorCode.VALIDATION,
-      `路径长度超限: ${path.length} 字符（最大 ${MAX_PATH_LENGTH}）`,
+      i18n.t('chat_host:vfs_api.path_too_long', {
+        defaultValue: '路径长度超限: {{length}} 字符（最大 {{max}}）',
+        length: path.length,
+        max: MAX_PATH_LENGTH,
+      }),
       true,
       { pathLength: path.length, maxLength: MAX_PATH_LENGTH }
     );
@@ -167,7 +172,11 @@ function extractSourceIdFromPath(path: string): string {
     console.error(LOG_PREFIX, `sourceId长度超限 (${lastPart.length} > ${MAX_SOURCE_ID_LENGTH}):`, lastPart.substring(0, 50) + '...');
     throw new VfsError(
       VfsErrorCode.VALIDATION,
-      `sourceId长度超限: ${lastPart.length} 字符（最大 ${MAX_SOURCE_ID_LENGTH}）`,
+      i18n.t('chat_host:vfs_api.source_id_too_long', {
+        defaultValue: 'sourceId长度超限: {{length}} 字符（最大 {{max}}）',
+        length: lastPart.length,
+        max: MAX_SOURCE_ID_LENGTH,
+      }),
       true,
       { sourceIdLength: lastPart.length, maxLength: MAX_SOURCE_ID_LENGTH }
     );
@@ -248,7 +257,11 @@ export async function list(path: string, options?: DstuListOptions): Promise<Res
     const result = await invoke<DstuNode[]>('dstu_list', { path, options });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '列出目录内容失败', { path, options });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.list_failed', { defaultValue: '列出目录内容失败' }),
+      { path, options }
+    );
     console.error(LOG_PREFIX, 'list() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -265,7 +278,10 @@ export async function get(path: string): Promise<Result<DstuNode>> {
       return err(
         new VfsError(
           VfsErrorCode.NOT_FOUND,
-          `资源未找到: ${path}`,
+          i18n.t('chat_host:vfs_api.resource_not_found', {
+            defaultValue: '资源未找到: {{path}}',
+            path,
+          }),
           true,
           { path }
         )
@@ -273,7 +289,11 @@ export async function get(path: string): Promise<Result<DstuNode>> {
     }
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '获取资源详情失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.get_failed', { defaultValue: '获取资源详情失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'get() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -297,7 +317,7 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
         const fileName = options.file instanceof File ? options.file.name : 'unknown';
         const vfsError = toVfsError(
           fileError,
-          '文件读取失败',
+          i18n.t('chat_host:vfs_api.file_read_failed', { defaultValue: '文件读取失败' }),
           { path, fileName }
         );
         logger.error('create.FILE_READ_ERROR', vfsError.message, [path, options]);
@@ -351,7 +371,11 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '创建资源失败', { path, options });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.create_failed', { defaultValue: '创建资源失败' }),
+      { path, options }
+    );
     logger.error('create', vfsError.message, [path, options]);
     console.error(LOG_PREFIX, 'create() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
@@ -388,7 +412,11 @@ export async function update(
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '更新资源失败', { path, resourceType });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.update_failed', { defaultValue: '更新资源失败' }),
+      { path, resourceType }
+    );
     console.error(LOG_PREFIX, 'update() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -412,7 +440,11 @@ export async function deleteResource(path: string): Promise<Result<void>> {
 
     return ok(undefined);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '删除资源失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.delete_failed', { defaultValue: '删除资源失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'delete() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -448,7 +480,11 @@ export async function move(srcPath: string, dstPath: string): Promise<Result<Dst
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '移动资源失败', { srcPath, dstPath });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.move_failed', { defaultValue: '移动资源失败' }),
+      { srcPath, dstPath }
+    );
     console.error(LOG_PREFIX, 'move() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -477,7 +513,9 @@ export async function rename(path: string, newName: string): Promise<Result<Dstu
         return err(
           new VfsError(
             VfsErrorCode.VALIDATION,
-            'resourceHash 缺失，无法完成资源重命名',
+            i18n.t('chat_host:vfs_api.rename_missing_resource_hash', {
+              defaultValue: 'resourceHash 缺失，无法完成资源重命名',
+            }),
             false,
             { nodeId: result.id, name: result.name, path: result.path }
           )
@@ -492,7 +530,11 @@ export async function rename(path: string, newName: string): Promise<Result<Dstu
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '重命名资源失败', { path, newName });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.rename_failed', { defaultValue: '重命名资源失败' }),
+      { path, newName }
+    );
     console.error(LOG_PREFIX, 'rename() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -522,7 +564,9 @@ export async function copy(srcPath: string, dstPath: string): Promise<Result<Dst
         return err(
           new VfsError(
             VfsErrorCode.VALIDATION,
-            'resourceHash 缺失，无法完成资源复制',
+            i18n.t('chat_host:vfs_api.copy_missing_resource_hash', {
+              defaultValue: 'resourceHash 缺失，无法完成资源复制',
+            }),
             false,
             { nodeId: result.id, name: result.name, srcPath, dstPath }
           )
@@ -537,7 +581,11 @@ export async function copy(srcPath: string, dstPath: string): Promise<Result<Dst
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '复制资源失败', { srcPath, dstPath });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.copy_failed', { defaultValue: '复制资源失败' }),
+      { srcPath, dstPath }
+    );
     console.error(LOG_PREFIX, 'copy() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -551,7 +599,11 @@ export async function search(query: string, options?: DstuListOptions): Promise<
     const result = await invoke<DstuNode[]>('dstu_search', { query, options });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '搜索资源失败', { query, options });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.search_failed', { defaultValue: '搜索资源失败' }),
+      { query, options }
+    );
     console.error(LOG_PREFIX, 'search() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -565,7 +617,11 @@ export async function getContent(path: string): Promise<Result<string | Blob>> {
     const result = await invoke<string>('dstu_get_content', { path });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '获取资源内容失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.get_content_failed', { defaultValue: '获取资源内容失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'getContent() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -594,7 +650,11 @@ export async function setMetadata(
 
     return ok(undefined);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '设置元数据失败', { path, metadata });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.set_metadata_failed', { defaultValue: '设置元数据失败' }),
+      { path, metadata }
+    );
     console.error(LOG_PREFIX, 'setMetadata() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -620,7 +680,11 @@ export async function setFavorite(path: string, isFavorite: boolean): Promise<Re
 
     return ok(undefined);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '设置收藏状态失败', { path, isFavorite });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.set_favorite_failed', { defaultValue: '设置收藏状态失败' }),
+      { path, isFavorite }
+    );
     console.error(LOG_PREFIX, 'setFavorite() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -698,7 +762,11 @@ export function watch(path: string, callback: (event: DstuWatchEvent) => void): 
         }
       });
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '监听资源变化失败', { path });
+      const vfsError = toVfsError(
+        error,
+        i18n.t('chat_host:vfs_api.watch_failed', { defaultValue: '监听资源变化失败' }),
+        { path }
+      );
       console.error(LOG_PREFIX, 'watch() failed:', vfsError.toDetailedMessage());
     }
   })();
@@ -710,7 +778,11 @@ export function watch(path: string, callback: (event: DstuWatchEvent) => void): 
       unlistenFn = null;
     }
     invoke('dstu_unwatch', { path }).catch((error) => {
-      const vfsError = toVfsError(error, '取消监听失败', { path });
+      const vfsError = toVfsError(
+        error,
+        i18n.t('chat_host:vfs_api.unwatch_failed', { defaultValue: '取消监听失败' }),
+        { path }
+      );
       console.warn(LOG_PREFIX, 'unwatch() failed:', vfsError.toDetailedMessage());
     });
   };
@@ -739,7 +811,11 @@ export async function deleteMany(paths: string[]): Promise<Result<number>> {
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '批量删除资源失败', { paths });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.delete_many_failed', { defaultValue: '批量删除资源失败' }),
+      { paths }
+    );
     console.error(LOG_PREFIX, 'deleteMany() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -768,7 +844,11 @@ export async function restoreMany(paths: string[]): Promise<Result<number>> {
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '批量恢复资源失败', { paths });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.restore_many_failed', { defaultValue: '批量恢复资源失败' }),
+      { paths }
+    );
     console.error(LOG_PREFIX, 'restoreMany() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -803,7 +883,11 @@ export async function moveMany(paths: string[], destFolder: string): Promise<Res
 
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '批量移动资源失败', { paths, destFolder });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.move_many_failed', { defaultValue: '批量移动资源失败' }),
+      { paths, destFolder }
+    );
     console.error(LOG_PREFIX, 'moveMany() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -828,7 +912,11 @@ export async function searchInFolder(
     });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '文件夹内搜索失败', { folderId, query, options });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.search_in_folder_failed', { defaultValue: '文件夹内搜索失败' }),
+      { folderId, query, options }
+    );
     console.error(LOG_PREFIX, 'searchInFolder() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -850,7 +938,11 @@ export async function restore(path: string): Promise<Result<DstuNode>> {
     
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '恢复资源失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.restore_failed', { defaultValue: '恢复资源失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'restore() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -875,7 +967,11 @@ export async function purge(path: string): Promise<Result<void>> {
     
     return ok(undefined);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '永久删除资源失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.purge_failed', { defaultValue: '永久删除资源失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'purge() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -897,7 +993,11 @@ export async function listDeleted(
     });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '列出已删除资源失败', { resourceType, limit, offset });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.list_deleted_failed', { defaultValue: '列出已删除资源失败' }),
+      { resourceType, limit, offset }
+    );
     console.error(LOG_PREFIX, 'listDeleted() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -913,7 +1013,11 @@ export async function purgeAll(resourceType: string): Promise<Result<number>> {
     });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '清空回收站失败', { resourceType });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.purge_all_failed', { defaultValue: '清空回收站失败' }),
+      { resourceType }
+    );
     console.error(LOG_PREFIX, 'purgeAll() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -949,7 +1053,11 @@ export async function exportFormats(path: string): Promise<Result<string[]>> {
     const result = await invoke<string[]>('dstu_export_formats', { path });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '查询导出格式失败', { path });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.export_formats_failed', { defaultValue: '查询导出格式失败' }),
+      { path }
+    );
     console.error(LOG_PREFIX, 'exportFormats() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
@@ -966,7 +1074,11 @@ export async function exportResource(
     const result = await invoke<DstuExportResult>('dstu_export', { path, format });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, '导出资源失败', { path, format });
+    const vfsError = toVfsError(
+      error,
+      i18n.t('chat_host:vfs_api.export_failed', { defaultValue: '导出资源失败' }),
+      { path, format }
+    );
     console.error(LOG_PREFIX, 'exportResource() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }

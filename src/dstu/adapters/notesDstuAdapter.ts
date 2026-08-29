@@ -17,7 +17,7 @@
 
 import i18next from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { isOpaqueDocumentId } from '@/utils/fileManager';
+import { isGenericPlaceholderFileName, isOpaqueDocumentId } from '@/utils/fileManager';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuNodeType, DstuListOptions } from '../types';
@@ -43,7 +43,7 @@ function deriveImportedMarkdownTitle(fileName: string): string {
 
   // ★ 移动端修复：当文件名为通用占位符或不透明 document ID 时返回 null，
   // 让调用方尝试从内容提取标题
-  if (stripped === '文件' || isOpaqueDocumentId(stripped)) {
+  if (isGenericPlaceholderFileName(stripped) || isOpaqueDocumentId(stripped)) {
     return '';
   }
 
@@ -183,21 +183,25 @@ export const notesDstuAdapter = {
    *
    * @param title 标题
    * @param content 内容
-   * @param tags 标签
+   * @param tags 标签（进 metadata.tags）
+   * @param folderId 目标目录 ID（进 metadata.folderId，与 importMarkdownContent 一致；
+   *                 null/缺省 = 根目录）。目录归属由后端 dstu_create 单事务落盘，
+   *                 不再需要创建后二次 moveItem。
    * @returns 新创建的笔记节点
    */
   async createNote(
     title: string,
     content: string = '',
-    tags: string[] = []
+    tags: string[] = [],
+    folderId?: string | null,
   ): Promise<Result<DstuNode, VfsError>> {
     const path = '/';
-    console.log(LOG_PREFIX, 'createNote via DSTU:', path);
+    console.log(LOG_PREFIX, 'createNote via DSTU:', path, 'folderId:', folderId ?? null);
     const result = await dstu.create(path, {
       type: 'note',
       name: title,
       content,
-      metadata: { tags },
+      metadata: folderId ? { tags, folderId } : { tags },
     });
     if (!result.ok) {
       reportError(result.error, 'Create note');
@@ -227,8 +231,9 @@ export const notesDstuAdapter = {
       });
       return ok(node);
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '导入 Markdown 笔记');
-      reportError(vfsError, '导入 Markdown 笔记');
+      const context = i18next.t('sidebar:notes_import.markdown', { defaultValue: '导入 Markdown 笔记' });
+      const vfsError = toVfsError(error, context);
+      reportError(vfsError, context);
       return err(vfsError);
     }
   },
@@ -251,8 +256,9 @@ export const notesDstuAdapter = {
       });
       return ok(response);
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '批量导入 Markdown 笔记');
-      reportError(vfsError, '批量导入 Markdown 笔记');
+      const context = i18next.t('sidebar:notes_import.markdown_batch', { defaultValue: '批量导入 Markdown 笔记' });
+      const vfsError = toVfsError(error, context);
+      reportError(vfsError, context);
       return err(vfsError);
     }
   },
