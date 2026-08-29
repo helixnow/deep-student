@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const noticePath = path.join(repoRoot, 'public', 'legal', 'THIRD_PARTY_NOTICES.txt');
+const noticePath = path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt');
 
 function sha256(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -36,7 +36,7 @@ function hasLegalFile(directory) {
 }
 
 if (!fs.existsSync(noticePath)) {
-  fail('Missing public/legal/THIRD_PARTY_NOTICES.txt. Run npm run licenses:generate.');
+  fail('Missing legal/THIRD_PARTY_NOTICES.txt. Run npm run licenses:generate.');
 } else {
   const notices = fs.readFileSync(noticePath, 'utf8');
   for (const [label, lockPath] of [
@@ -93,7 +93,7 @@ const tauriConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'src-tauri', 
 const resources = tauriConfig.bundle?.resources || {};
 const requiredResources = {
   '../LICENSE': 'licenses/DeepStudent-AGPL-3.0.txt',
-  '../public/legal/THIRD_PARTY_NOTICES.txt': 'licenses/THIRD_PARTY_NOTICES.txt',
+  '../legal/THIRD_PARTY_NOTICES.txt': 'licenses/THIRD_PARTY_NOTICES.txt',
   'vendor/lancedb/LICENSE': 'licenses/lancedb-Apache-2.0.txt',
   'vendor/object_store/LICENSE.txt': 'licenses/object_store-LICENSE.txt',
   'vendor/object_store/NOTICE.txt': 'licenses/object_store-NOTICE.txt',

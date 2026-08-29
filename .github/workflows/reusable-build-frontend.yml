@@ -1,0 +1,122 @@
+# 前端构建（reusable, WI-4）
+#
+# release.yml / rebuild-release.yml 共用的唯一前端 dist 构建实现。
+# 调用方需 `secrets: inherit`（Sentry sourcemap 上传凭据）。
+#
+# 动机：此前 5 个平台构建 job（macOS aarch64/x86_64、Windows、Linux、
+# Android）各自在 tauri build 的 beforeBuildCommand（npm run build →
+# version:generate + licenses:check + typecheck + vite build）里重复构建
+# 同一份纯 Web 前端。dist 产物与目标平台无关（vite base 为相对路径、无
+# 平台条件编译），收敛为一次 ubuntu 构建 + artifact 分发：
+#   - 本 workflow 构建 dist/ 并上传 artifact（默认名 frontend-dist）
+#   - 各 reusable-build-* 通过 frontend_dist_artifact 输入下载复用，并用
+#     `--config` 覆盖 beforeBuildCommand 跳过重复的前端构建
+#
+# 门禁不减：npm run build 的 prebuild（version:generate + licenses:check
+# + typecheck）在这里照常运行一次，等价于原先每个平台各跑一遍。
+#
+# Sentry 前端 sourcemap 上传随之从 Linux 构建 job 收敛到这里（仍然只上传
+# 一次）：SENTRY_UPLOAD_SOURCEMAPS=1 时 vite.config.ts 生成 hidden
+# sourcemap → sentry-cli inject/upload → 无论成败删除 .map（防止源码随
+# 安装包分发，下方另有兜底校验）。SENTRY_RELEASE 命名由
+# scripts/generate-version.mjs 决定（appVersion+buildNumber.gitRevision，
+# 三者全部由 tag commit 推导），与各平台 Rust 侧 build.rs 注入的
+# SENTRY_RELEASE 逐字节一致，无需在 job 之间传递。
+
+name: Build Frontend (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '构建的 tag（如 v0.9.42）'
+        required: true
+        type: string
+      artifact_name:
+        description: '上传的前端 dist artifact 名称'
+        required: false
+        type: string
+        default: frontend-dist
+
+permissions:
+  contents: read
+
+env:
+  # 固定工具版本（升级需显式改这里），与 reusable-build-* 保持一致
+  SENTRY_CLI_VERSION: '2.58.6'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+      SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
+    steps:
+      # fetch-depth: 0：generate-version.mjs 需要从 BUILD_NUMBER_BASE_COMMIT
+      # 计数提交得到稳定 build number / SENTRY_RELEASE。
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Sentry CLI (pinned)
+        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
+        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
+
+      - name: Print build tool manifest
+        run: |
+          echo "=== Frontend build tool manifest ==="
+          echo "node            : $(node --version)"
+          echo "npm             : $(npm --version)"
+          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
+          echo "sourcemap upload: ${SENTRY_UPLOAD_ENABLED}"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / upload-artifact v7.0.1 (all SHA-pinned)"
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      # npm run build = prebuild（version:generate + licenses:check +
+      # typecheck）+ vite build，与各平台 beforeBuildCommand 原先执行的完全
+      # 相同。SENTRY_UPLOAD_SOURCEMAPS=1 时 vite 插件在打包结束后上传
+      # sourcemap 并删除 .map（见 vite.config.ts sentrySourceMapUploadPlugin）。
+      - name: Build frontend (vite)
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: npm run build
+
+      # ── dist 完整性 + sourcemap 泄漏防线（fail-closed）──
+      # 任何 .map 进入 artifact 都会被 5 个平台打进安装包 = 分发源码。
+      - name: Verify dist output (no sourcemap leak)
+        run: |
+          set -euo pipefail
+          test -f dist/index.html || { echo "::error::vite build produced no dist/index.html"; exit 1; }
+          MAP_COUNT=$(find dist -name '*.map' | wc -l | tr -d ' ')
+          if [ "$MAP_COUNT" -ne 0 ]; then
+            echo "::error::dist contains ${MAP_COUNT} .map file(s) — source maps must never ship inside installers"
+            find dist -name '*.map'
+            exit 1
+          fi
+          echo "✅ dist ready: $(du -sh dist | cut -f1), $(find dist -type f | wc -l | tr -d ' ') files, no .map"
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist
+          # dist 为纯构建产物、无机密；带上隐藏文件保证与就地构建完全一致
+          include-hidden-files: true
+          if-no-files-found: error

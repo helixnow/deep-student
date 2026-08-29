@@ -6,6 +6,10 @@
 #   main/nightly   : 本 workflow —— 全量 fixture 升级 + 故障注入 + 规模入口
 #   release/rebuild: reusable-migration-gate.yml（fail-closed）
 #
+# 本 workflow 里跑 cargo 的 Linux job 必须先 prepare pdfium（下载 libpdfium.so），
+# 否则 src-tauri/build.rs 的 Tauri ACL 校验会失败；与 ci.yml /
+# reusable-migration-gate.yml 的同名步骤保持一致。
+#
 # fixture 来自私有归档 secret（MIGRATION_FIXTURE_URL / _SHA256 / _TOKEN）。
 # secret 缺失时本层显式 skip（带 ::warning:: 与 job summary 记录），不视为失败；
 # release 层则 fail-closed，绝不允许无 fixture 出包。
@@ -77,10 +81,30 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
+      # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）：
+      # 同包列表 + 同镜像 ⇒ 与 ci.yml Rust job 在 main 上共享同一缓存条目。
+      # ImageOS/ImageVersion 须经 GITHUB_ENV 中转、execute_install_scripts
+      # 重放 postinst 触发器的动机，见 ci.yml backend job 同名步骤注释。
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
+
+      # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，仓库不入库该
+      # 二进制，任何跑 cargo 的 Linux job 都必须先下载（与 ci.yml 一致）。
+      - name: Prepare target-specific pdfium
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
 
       - name: Production migration tests (non-zero count enforced)
         id: tests
@@ -170,10 +194,27 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
+      # apt 文件快照缓存；作用域与动机见 full-fixture-gate 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
+
+      # scale 层一旦拿到 fixture 就会走 cargo，同样需要 libpdfium.so 通过
+      # build.rs 的 Tauri ACL 校验（与 ci.yml 一致）。
+      - name: Prepare target-specific pdfium
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
 
       - name: Fetch scale fixture tier
         id: fixtures
@@ -214,6 +255,9 @@ jobs:
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 失败通知：nightly 红了自动开 issue（已有未关闭的则追加评论）
+  #
+  # 去重：同一失败签名（两个 gate 的 result 与正文实质一致）不再重复追评，
+  # 否则连续红灯会把同一个 issue 刷成上百条一模一样的噪音。
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   notify-failure:
     name: Notify Failure
@@ -235,19 +279,113 @@ jobs:
         run: |
           LABEL="migration-nightly-failure"
           TITLE="Migration nightly failed"
-          BODY="Migration nightly run failed on \`${GITHUB_REF_NAME}\`.
 
-          - full-fixture-gate: ${FULL_RESULT}
-          - scale-fixture-gate: ${SCALE_RESULT}
-          - run: ${RUN_URL}"
+          FAILED_JOBS=""
+          if [[ "$FULL_RESULT" == "failure" ]]; then
+            FAILED_JOBS="full-fixture-gate"
+          fi
+          if [[ "$SCALE_RESULT" == "failure" ]]; then
+            FAILED_JOBS="${FAILED_JOBS:+${FAILED_JOBS}, }scale-fixture-gate"
+          fi
+          if [[ -z "$FAILED_JOBS" ]]; then
+            FAILED_JOBS="(none)"
+          fi
 
           gh label create "$LABEL" --description "Automated migration nightly failure reports" --color D93F0B 2>/dev/null || true
 
           EXISTING=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+
+          # 首次失败日期取已有 issue 的创建时间，避免每次追评都把日期刷成今天。
           if [[ -n "$EXISTING" ]]; then
-            echo "Commenting on existing issue #${EXISTING}"
-            gh issue comment "$EXISTING" --body "$BODY"
+            FIRST_FAILED=$(gh issue view "$EXISTING" --json createdAt --jq '.createdAt' | cut -d'T' -f1)
           else
+            FIRST_FAILED=$(date -u +%Y-%m-%d)
+          fi
+
+          # SIGNATURE 不含 run URL，用于判断“与上一条 bot 报告实质相同”。
+          SIGNATURE="Migration nightly run failed on \`${GITHUB_REF_NAME}\`.
+
+          - failed job(s): ${FAILED_JOBS}
+          - full-fixture-gate: ${FULL_RESULT}
+          - scale-fixture-gate: ${SCALE_RESULT}
+          - first failure (UTC): ${FIRST_FAILED}
+
+          注意：scale-fixture-gate 的 \`success\` 在 fixtures 不可用时可能只是显式 skip，
+          不代表规模层真绿（该 job 会在 job summary 里记录 SKIPPED）。"
+
+          BODY="${SIGNATURE}
+
+          - run: ${RUN_URL}"
+
+          if [[ -z "$EXISTING" ]]; then
             echo "Creating new failure issue"
             gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+            exit 0
           fi
+
+          # 最近一条 bot 评论；还没有评论时退回到 issue 正文。
+          PREVIOUS=$(gh issue view "$EXISTING" --comments --json comments \
+            --jq '[.comments[] | select(.author.login | test("^github-actions"))] | last | .body // empty')
+          if [[ -z "$PREVIOUS" ]]; then
+            PREVIOUS=$(gh issue view "$EXISTING" --json body --jq '.body // empty')
+          fi
+
+          normalize() {
+            printf '%s' "$1" | tr -d '\r' | sed -e '/^[[:space:]]*- run: /d' -e 's/[[:space:]]*$//'
+          }
+
+          if [[ -n "$PREVIOUS" && "$(normalize "$PREVIOUS")" == "$(normalize "$BODY")" ]]; then
+            echo "Same failure signature as the latest report on #${EXISTING}; skipping duplicate comment."
+            echo "Duplicate failure signature — no new comment on #${EXISTING} (${RUN_URL})" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Commenting on existing issue #${EXISTING}"
+          gh issue comment "$EXISTING" --body "$BODY"
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 恢复通知：两个 gate 都绿时关闭遗留的失败 issue，
+  # 否则红灯修好后 issue 会一直挂着没人关。
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  notify-recovery:
+    name: Notify Recovery
+    needs: [full-fixture-gate, scale-fixture-gate]
+    if: always() && needs.full-fixture-gate.result == 'success' && needs.scale-fixture-gate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close open failure issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          LABEL="migration-nightly-failure"
+
+          OPEN=$(gh issue list --state open --label "$LABEL" --json number --jq '.[].number')
+          if [[ -z "$OPEN" ]]; then
+            echo "No open ${LABEL} issues to close."
+            exit 0
+          fi
+
+          BODY="Migration nightly recovered on \`${GITHUB_REF_NAME}\`.
+
+          - full-fixture-gate: success
+          - scale-fixture-gate: success
+          - run: ${RUN_URL}
+
+          两个 gate 均已通过，自动关闭本 issue。
+          注意：scale-fixture-gate 的 \`success\` 在 fixtures 不可用时可能只是显式 skip，
+          不代表规模层真绿。"
+
+          while read -r NUMBER; do
+            if [[ -z "$NUMBER" ]]; then
+              continue
+            fi
+            echo "Closing recovered failure issue #${NUMBER}"
+            gh issue comment "$NUMBER" --body "$BODY"
+            gh issue close "$NUMBER" --reason completed
+          done <<< "$OPEN"

@@ -70,36 +70,49 @@ jobs:
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 构建 (与 release.yml 共用 reusable workflow)
+  # WI-4: 前端 dist 只构建一次 (build-frontend), 各平台构建 job 下载
+  # frontend-dist artifact 复用; 只依赖 verify, 与迁移门禁并行。
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-frontend:
+    needs: [verify]
+    uses: ./.github/workflows/reusable-build-frontend.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
+
   build-macos:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-macos.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
       allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-windows:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
       allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-linux:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-linux.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-android:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-android.yml
     with:
       ref: ${{ needs.verify.outputs.tag_name }}
       version: ${{ needs.verify.outputs.version }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

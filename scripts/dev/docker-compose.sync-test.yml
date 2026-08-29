@@ -1,8 +1,12 @@
 # 本地 WebDAV + S3 (MinIO) + FTP 同步测试环境
-# 启动: docker compose -f scripts/dev/docker-compose.sync-test.yml up -d
-# 停止: docker compose -f scripts/dev/docker-compose.sync-test.yml down -v
-# 本文件是 provider contract 环境的唯一事实源；
+# 启动: npm run dstu-test:cloud:up   （等价于 CI Cloud Provider Contract Gate 的启动序列）
+# 停止: npm run dstu-test:cloud:down
+# 本文件是 provider contract 环境的唯一事实源，CI 与本地 npm script 都直接使用它；
 # dstu-test/docker/docker-compose.sync-test.yml 仅通过 Compose include 引用本文件。
+
+# 固定 project name，使两个入口共享同一组容器与 volume，
+# 避免 down --volumes 只清理其中一侧。
+name: deep-student-sync-test
 
 services:
   # ============== MinIO (S3 兼容) ==============

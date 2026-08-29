@@ -268,8 +268,8 @@ jobs:
             case "$STATE" in
               published)
                 # 状态机终态: 不重建、不重跑构建
-                echo "release_created=false" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=false" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "ℹ️ Release ${TAG} already published; nothing to do"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -278,8 +278,8 @@ jobs:
                 # 幂等恢复: 上一次 run 失败或被 rerun, 复用同一个 draft,
                 # 继续走构建 + publish (publish 用 --clobber 覆盖旧资产)
                 ensure_tag "${TAG}" "${TARGET_SHA}"
-                echo "release_created=true" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=true" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "🔁 Resuming existing draft Release ${TAG} (idempotent recovery)"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -290,8 +290,8 @@ jobs:
                   --draft \
                   --title "${TAG}" \
                   --generate-notes
-                echo "release_created=true" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=true" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "✅ Created draft GitHub Release ${TAG} (detected via ${SOURCE}; stays hidden until publish gate passes)"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -345,7 +345,7 @@ jobs:
             fi
           done < <(git log --format='%H%x09%s' -n 10)
 
-          echo "release_created=false" >> $GITHUB_OUTPUT
+          echo "release_created=false" >> "$GITHUB_OUTPUT"
           echo "⏭️ No release created this run"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -372,34 +372,48 @@ jobs:
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 阶段三: 构建 (通过版本校验 + 迁移兼容性门禁后并行构建全平台)
+  # WI-4: 前端 dist 只构建一次 (build-frontend), 各平台构建 job 下载
+  # frontend-dist artifact 复用, 不再在每个平台重复 npm run build。
+  # build-frontend 只依赖 verify —— 与迁移门禁并行, 不增加关键路径。
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-frontend:
+    needs: [verify]
+    uses: ./.github/workflows/reusable-build-frontend.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
+
   build-macos:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-macos.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-windows:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-linux:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-linux.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   build-android:
-    needs: [verify, migration-compatibility-gate]
+    needs: [verify, migration-compatibility-gate, build-frontend]
     uses: ./.github/workflows/reusable-build-android.yml
     with:
       ref: ${{ needs.verify.outputs.tag_name }}
       version: ${{ needs.verify.outputs.version }}
+      frontend_dist_artifact: frontend-dist
     secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
