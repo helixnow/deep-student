@@ -3,6 +3,7 @@ mod builtin_vendors;
 mod exam_engine;
 mod model2_pipeline;
 pub(crate) mod parser;
+pub(crate) mod provider_quirks;
 mod rag_extension;
 pub mod routing;
 pub mod utf8_stream;
@@ -952,10 +953,10 @@ mod tests {
     }
 
     #[test]
-    fn official_deepseek_defaults_to_responses_while_non_flash_models_stay_on_chat() {
-        // 2026-07-31 V4-Flash 正式版公测：官方 Responses API 已开放，deepseek
-        // 供应商默认路由切到 responses；模型级门控由 effective_api_protocol_for_config
-        // 执行（仅 v4-flash 系列及 legacy 别名放行，V4-Pro/V3.x 回落 chat_completions）。
+    fn official_deepseek_responses_gating_follows_documented_model_list() {
+        // 2026-08-23 官方文档：Responses API 列名 deepseek-v4-flash / deepseek-v4-pro /
+        // deepseek-v4-flash-vision-exp；模型级门控在显式协议与 api_protocol=None
+        // 的默认路径都必须执行（V3.x 等未列名型号回落 chat_completions）。
         let allowed = provider_allowed_protocols(Some("deepseek"));
         assert!(allowed.contains(&"openai_responses".to_string()));
         assert_eq!(
@@ -974,13 +975,104 @@ mod tests {
         };
         assert!(should_use_openai_responses_for_config(&flash));
 
-        // V4-Pro 正式版发布前即使显式选中 responses 也回落到 chat_completions
-        let pro = ApiConfig {
-            model: "deepseek-v4-pro".to_string(),
-            api_protocol: Some("openai_responses".to_string()),
-            ..flash.clone()
+        // 列名型号：显式与默认（api_protocol=None）均走 Responses
+        for model in ["deepseek-v4-pro", "deepseek-v4-flash-vision-exp"] {
+            let default_route = ApiConfig {
+                model: model.to_string(),
+                ..flash.clone()
+            };
+            assert!(
+                should_use_openai_responses_for_config(&default_route),
+                "model={model} should default to Responses"
+            );
+
+            let explicit = ApiConfig {
+                api_protocol: Some("openai_responses".to_string()),
+                ..default_route
+            };
+            assert!(
+                should_use_openai_responses_for_config(&explicit),
+                "model={model} should honor explicit Responses"
+            );
+        }
+
+        // 未列名型号（V3.x）：显式与默认均回落 chat_completions
+        for model in ["deepseek-v3.2", "deepseek-v3.1"] {
+            let default_route = ApiConfig {
+                model: model.to_string(),
+                ..flash.clone()
+            };
+            assert_eq!(
+                effective_api_protocol_for_config(&default_route),
+                "openai_chat_completions",
+                "model={model} default route must fall back to chat completions"
+            );
+
+            let explicit = ApiConfig {
+                api_protocol: Some("openai_responses".to_string()),
+                ..default_route
+            };
+            assert!(
+                !should_use_openai_responses_for_config(&explicit),
+                "model={model} must stay on chat completions"
+            );
+        }
+    }
+
+    #[test]
+    fn official_deepseek_detection_requires_official_base_url() {
+        let official = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            ..Default::default()
         };
-        assert!(!should_use_openai_responses_for_config(&pro));
+        assert!(is_official_deepseek_config(&official));
+
+        // base_url 为空的 deepseek 供应商回落内置官方端点
+        let empty_base = ApiConfig {
+            base_url: String::new(),
+            ..official.clone()
+        };
+        assert!(is_official_deepseek_config(&empty_base));
+
+        // provider_type=deepseek 的反代/中转端点不当官方
+        let proxy = ApiConfig {
+            base_url: "https://myproxy.example.com/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&proxy));
+        // path 中携带官方域名的中转地址同样不得误判
+        let path_smuggled = ApiConfig {
+            base_url: "https://myproxy.example.com/api.deepseek.com/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&path_smuggled));
+
+        // 第三方托管（SiliconFlow，scope=deepseek）不当官方
+        let hosted = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&hosted));
+
+        // 非官方 deepseek 端点默认路由回落 chat_completions（未显式声明 Responses 支持）
+        assert_eq!(
+            effective_api_protocol_for_config(&proxy),
+            "openai_chat_completions"
+        );
+        // 显式声明 supports_openai_responses=true 时保留 Responses 默认
+        let proxy_with_responses = ApiConfig {
+            supports_openai_responses: Some(true),
+            ..proxy
+        };
+        assert_eq!(
+            effective_api_protocol_for_config(&proxy_with_responses),
+            "openai_responses"
+        );
     }
 
     #[test]
@@ -2792,23 +2884,28 @@ fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
         })
 }
 
+/// 提取 base_url 的 host（去 scheme/path/query/port）。用于官方端点精确匹配，
+/// 避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
+fn base_url_host(base_url: &str) -> String {
+    let normalized = normalize_base_url_for_provider_protocol_registry(base_url);
+    let without_scheme = normalized
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(normalized.as_str());
+    let host_port = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    host_port.split(':').next().unwrap_or_default().to_string()
+}
+
 fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
     let normalized_provider = normalize_provider_protocol_registry_value(provider_type);
     let normalized_base_url = normalize_base_url_for_provider_protocol_registry(base_url);
     if normalized_provider == "openai" && normalized_base_url.is_empty() {
         return true;
     }
-    // host 精确匹配，避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
-    let without_scheme = normalized_base_url
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(normalized_base_url.as_str());
-    let host_port = without_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default();
-    let host = host_port.split(':').next().unwrap_or_default();
-    host == "api.openai.com"
+    base_url_host(base_url) == "api.openai.com"
 }
 
 pub(crate) fn provider_supports_openai_responses(
@@ -2916,11 +3013,12 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
         .unwrap_or_else(|| "openai_chat_completions".to_string())
 }
 
-/// DeepSeek 官方 Responses API 能力判定（2026-07-31 V4-Flash 正式版公测公告）：
-/// - 当前仅 `deepseek-v4-flash` 与 legacy 别名（`deepseek-chat`/`deepseek-reasoner`，
-///   两者映射到 flash 的非思考/思考模式）支持；
-/// - `deepseek-v4-pro` 正式版「尽快发布」，发布前走 Responses 会 404，故门控到
-///   chat_completions；其他 V3.x 系列同样不支持；
+/// DeepSeek 官方 Responses API 能力判定（2026-08-23 官方文档
+/// api-docs.deepseek.com/guides/responses_api 列名 flash / pro / flash-vision-exp）：
+/// - `deepseek-v4-flash` 系列（contains 匹配，含 `deepseek-v4-flash-vision-exp`）、
+///   `deepseek-v4-pro` 系列，以及 legacy 别名（`deepseek-chat`/`deepseek-reasoner`，
+///   映射到 flash 的非思考/思考模式）支持；
+/// - V3.x 等未列名型号不支持，走 Responses 会 404，门控到 chat_completions；
 /// - 空模型名（协议归一化路径构造的临时 config）视为可支持，避免已有配置被误降级。
 fn deepseek_model_supports_openai_responses(model: &str) -> bool {
     let normalized = model.trim().to_lowercase();
@@ -2928,22 +3026,33 @@ fn deepseek_model_supports_openai_responses(model: &str) -> bool {
         return true;
     }
     normalized.contains("deepseek-v4-flash")
+        || normalized.contains("deepseek-v4-pro")
         || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
 }
 
-/// 是否为 DeepSeek 官方端点（provider_type/provider_scope 为 deepseek，或
-/// base_url 指向 api.deepseek.com）。仅官方端点适用 Responses/服务端搜索门控；
-/// SiliconFlow 等第三方托管的 deepseek 模型由各自注册表条目单独裁决。
-pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
-    let provider = normalize_provider_protocol_registry_value(config.provider_type.as_deref());
-    let scope = normalize_provider_protocol_registry_value(config.provider_scope.as_deref());
-    if provider == "deepseek" || scope == "deepseek" {
-        return true;
-    }
-    normalize_base_url_for_provider_protocol_registry(&config.base_url).contains("api.deepseek.com")
+/// provider_type/provider_scope 是否声称 DeepSeek 供应商（不校验端点归属）。
+fn config_claims_deepseek_provider(config: &ApiConfig) -> bool {
+    normalize_provider_protocol_registry_value(config.provider_type.as_deref()) == "deepseek"
+        || normalize_provider_protocol_registry_value(config.provider_scope.as_deref())
+            == "deepseek"
 }
 
-fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
+/// 是否为 DeepSeek 官方端点。仅官方端点适用 Responses/服务端搜索门控；
+/// SiliconFlow 等第三方托管的 deepseek 模型由各自注册表条目单独裁决。
+///
+/// 判定规则：
+/// - base_url 的 host 精确匹配 api.deepseek.com（反代/中转即使 provider_type=deepseek
+///   也不当官方，避免误注入服务端 web_search 或按官方能力表切协议）；
+/// - base_url 为空且 provider/scope 声称 deepseek 时回落内置官方端点，视为官方。
+pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
+    let normalized_base_url = normalize_base_url_for_provider_protocol_registry(&config.base_url);
+    if normalized_base_url.is_empty() {
+        return config_claims_deepseek_provider(config);
+    }
+    base_url_host(&config.base_url) == "api.deepseek.com"
+}
+
+pub(crate) fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
     let explicit_responses = if let Some(protocol) = config.api_protocol.as_deref() {
         let normalized = normalize_provider_protocol_registry_value(Some(protocol));
         match normalized.as_str() {
@@ -2960,15 +3069,15 @@ fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
         None
     };
 
-    // DeepSeek 官方 Responses API 仅对 V4-Flash 系列开放：其他官方模型（V3.x/
-    // V4-Pro 正式版发布前）即使显式选中 openai_responses 也回落到 chat_completions，
-    // 避免命中 404（2026-08 调研：Responses 端点 deepseek-v4-flash 已公测）。
+    // DeepSeek 官方 Responses API 按模型列名开放（2026-08-23 文档：flash / pro /
+    // flash-vision-exp）：V3.x 等未列名型号即使显式选中 openai_responses 也回落到
+    // chat_completions，避免命中 404。
     if let Some(resolved) = explicit_responses {
         if is_official_deepseek_config(config)
             && !deepseek_model_supports_openai_responses(&config.model)
         {
             warn!(
-                "[LLM Manager] deepseek-v4-pro/V3.x 暂不支持官方 Responses API，回落到 openai_chat_completions: model={}, base_url={}",
+                "[LLM Manager] DeepSeek 官方 Responses API 未列名该模型（V3.x 等），回落到 openai_chat_completions: model={}, base_url={}",
                 config.model, config.base_url
             );
             return "openai_chat_completions".to_string();
@@ -2976,12 +3085,36 @@ fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
         return resolved;
     }
 
-    resolve_preferred_protocol_for_provider(
+    // api_protocol=None 的默认路径同样必须跑 DeepSeek 模型门控：注册表
+    // default_protocol=openai_responses 不能把未列名型号（V3.x 等）送进 Responses。
+    let preferred = resolve_preferred_protocol_for_provider(
         config.provider_type.as_deref(),
         Some(config.model_adapter.as_str()),
         &config.base_url,
         config.supports_openai_responses,
-    )
+    );
+    if preferred == "openai_responses" {
+        if is_official_deepseek_config(config) {
+            if !deepseek_model_supports_openai_responses(&config.model) {
+                warn!(
+                    "[LLM Manager] DeepSeek 官方 Responses API 未列名该模型（V3.x 等），默认路由回落到 openai_chat_completions: model={}, base_url={}",
+                    config.model, config.base_url
+                );
+                return "openai_chat_completions".to_string();
+            }
+        } else if config_claims_deepseek_provider(config)
+            && config.supports_openai_responses != Some(true)
+        {
+            // 反代/中转声称 deepseek 但端点非官方：注册表的官方默认（Responses）
+            // 不适用，除非配置显式声明 supports_openai_responses=true。
+            warn!(
+                "[LLM Manager] 非官方 DeepSeek 端点未显式声明 Responses 支持，默认路由回落到 openai_chat_completions: model={}, base_url={}",
+                config.model, config.base_url
+            );
+            return "openai_chat_completions".to_string();
+        }
+    }
+    preferred
 }
 
 pub(crate) fn request_adapter_for_config(
@@ -3122,7 +3255,7 @@ pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdap
         "openai_responses" => Box::new(crate::providers::OpenAIResponsesAdapter::new()),
         "anthropic_messages" => Box::new(crate::providers::AnthropicAdapter::new()),
         "google_generate_content" => Box::new(crate::providers::GeminiAdapter::new()),
-        _ => Box::new(crate::providers::OpenAIAdapter),
+        _ => Box::new(crate::providers::OpenAIAdapter::new()),
     }
 }
 
@@ -6496,6 +6629,28 @@ impl LLMManager {
         Ok(config)
     }
 
+    /// 只读能力探测：Anki Sidekick 模型分层路由的槽位快照（Round 4 #7）。
+    ///
+    /// 仅读取现有模型分配与 API 配置，不发起任何网络调用、不写任何状态。
+    /// 任何读取失败都返回空槽位（调用侧回退单模型旧路径），绝不阻断制卡。
+    pub async fn probe_anki_routing_slots(&self) -> crate::anki_model_routing::AnkiRoutingSlots {
+        let assignments = match self.get_model_assignments().await {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取模型分配失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        let configs = match self.get_api_configs().await {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取 API 配置失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        crate::anki_model_routing::build_slots(&assignments, &configs)
+    }
+
     /// 统一模型选择函数
     ///
     /// 参数：
@@ -7322,44 +7477,81 @@ impl LLMManager {
         }
     }
 
-    fn append_injection_to_system_message(messages: &mut Vec<Value>, inject_content: &str) {
+    /// 把本轮检索/预取注入文本追加到**当前 user 消息**（prompt-cache 安全）。
+    ///
+    /// ## 为什么禁止追加到 system（P1-10 同源约束）
+    /// system 是消息序列第 0 位、位于全部历史之前；注入内容按当前 query
+    /// 生成、逐轮变化，追加到 system 尾部会让每轮请求的 system 字节都不同，
+    /// 从第 0 位起打碎整段 prompt cache。与 chat_v2 prompt_builder 的
+    /// P1-10 设计对齐：turn-volatile 内容一律落在当前 user 消息的
+    /// `<injected_context>` 内，system 保持跨轮字节恒定。
+    ///
+    /// ## 定位规则
+    /// 从尾部向前找第一条**非瞬态**的 user 消息（瞬态技能/锚点消息是
+    /// 字节稳定的合并屏障，改写会破坏其跨轮精确匹配，故跳过）；找不到
+    /// 任何可承载的 user 消息时，在尾部追加独立 user 消息承载注入——
+    /// 任何分支都不触碰 system。
+    ///
+    /// ## XML 转义安全
+    /// 注入载荷（web 检索摘要/图谱片段）为外部内容，整体经
+    /// `escape_xml_content` 转义后再包进 `<injected_context>`，防止载荷
+    /// 伪造 `<injected_context>`/`<skill_instructions>` 等标签（间接
+    /// prompt 注入面）。
+    fn append_injection_to_current_user_message(
+        messages: &mut Vec<Value>,
+        inject_content: &str,
+        transient_user_contents: &std::collections::HashSet<&str>,
+    ) {
         if inject_content.trim().is_empty() {
             warn!("[Inject] 注入内容为空，跳过");
             return;
         }
-        if let Some(first_msg) = messages.get_mut(0) {
-            if first_msg["role"] == "system" {
-                match &first_msg["content"] {
-                    // 字符串格式：直接拼接
-                    Value::String(s) => {
-                        let new_content = format!("{}\n\n{}", s, inject_content.trim());
-                        first_msg["content"] = json!(new_content);
-                    }
-                    // 数组格式（如 OpenAI content array）：追加一个 text block
-                    Value::Array(arr) => {
-                        let mut new_arr = arr.clone();
-                        new_arr.push(json!({
-                            "type": "text",
-                            "text": inject_content.trim()
-                        }));
-                        first_msg["content"] = json!(new_arr);
-                    }
-                    _ => {
-                        first_msg["content"] = json!(inject_content.trim());
-                    }
-                }
-                debug!("[Inject] 已将注入文本追加到现有系统消息");
-                return;
-            }
-        }
-        messages.insert(
-            0,
-            json!({
-                "role": "system",
-                "content": inject_content.trim()
-            }),
+        let block = format!(
+            "<injected_context>\n{}\n</injected_context>",
+            crate::chat_v2::vfs_resolver::escape_xml_content(inject_content.trim())
         );
-        debug!("[Inject] 未找到系统消息，已创建新的系统消息承载注入内容");
+
+        let target = messages.iter_mut().rev().find(|msg| {
+            if msg.get("role").and_then(Value::as_str) != Some("user") {
+                return false;
+            }
+            let is_transient = msg
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| transient_user_contents.contains(text));
+            !is_transient
+        });
+
+        if let Some(user_msg) = target {
+            match &user_msg["content"] {
+                // 字符串格式：user_query 在前、injected_context 尾随
+                Value::String(s) => {
+                    let new_content = format!("{}\n\n{}", s, block);
+                    user_msg["content"] = json!(new_content);
+                }
+                // 数组格式（多模态 content array）：追加一个 text block，
+                // 原有 text/image 块字节不动
+                Value::Array(arr) => {
+                    let mut new_arr = arr.clone();
+                    new_arr.push(json!({
+                        "type": "text",
+                        "text": block
+                    }));
+                    user_msg["content"] = json!(new_arr);
+                }
+                _ => {
+                    user_msg["content"] = json!(block);
+                }
+            }
+            debug!("[Inject] 已将注入文本追加到当前 user 消息（<injected_context>）");
+            return;
+        }
+
+        messages.push(json!({
+            "role": "user",
+            "content": block
+        }));
+        debug!("[Inject] 未找到可承载的 user 消息，已在尾部追加独立 user 消息承载注入内容");
     }
 
     /// 构建图谱检索结果的注入文本

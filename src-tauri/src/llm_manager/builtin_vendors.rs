@@ -192,6 +192,17 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         max_tokens_limit: None,
         website_url: "https://chatgpt.com/codex",
     },
+    // Anthropic (Claude)
+    BuiltinVendor {
+        id: "builtin-anthropic",
+        name: "Anthropic",
+        provider_type: "anthropic",
+        auth_mode: None,
+        base_url: "https://api.anthropic.com/v1",
+        notes: "Anthropic 官方 Claude API（Messages 协议）。可用模型: claude-opus-5(旗舰), claude-sonnet-5(均衡), claude-fable-5(思考 always-on), claude-haiku-4-5(轻量, 官方最新 Haiku 仍为 4.5)。注意: 5 系/4.6+ 新代际思考仅接受 thinking:{type:\"adaptive\"}+output_config.effort，非默认采样参数会 400；Haiku 4.5 走 manual extended thinking(budget_tokens)。",
+        max_tokens_limit: None,
+        website_url: "https://platform.claude.com",
+    },
     // NVIDIA NIM / API Catalog
     BuiltinVendor {
         id: "builtin-nvidia",
@@ -909,6 +920,54 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 128000,
         temperature: 1.0,
     },
+    // ===== Anthropic 模型 =====
+    // 2026-08 官方在售 Claude 系列（对照 anthropic 适配器与 model-capability-registry 已核验条目）。
+    // 注意：官方最新 Haiku 仍为 4.5，不存在 claude-haiku-5。
+    BuiltinModel {
+        id: "builtin-claude-opus-5",
+        vendor_id: "builtin-anthropic",
+        label: "Claude Opus 5 (旗舰)",
+        model: "claude-opus-5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0, // 新代际对非默认采样参数一律 400，保持默认值
+    },
+    BuiltinModel {
+        id: "builtin-claude-sonnet-5",
+        vendor_id: "builtin-anthropic",
+        label: "Claude Sonnet 5 (均衡)",
+        model: "claude-sonnet-5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-claude-fable-5",
+        vendor_id: "builtin-anthropic",
+        label: "Claude Fable 5 (思考 always-on)",
+        model: "claude-fable-5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    // Haiku 4.5：旧代际 manual extended thinking（budget_tokens）
+    BuiltinModel {
+        id: "builtin-claude-haiku-4-5",
+        vendor_id: "builtin-anthropic",
+        label: "Claude Haiku 4.5 (轻量/官方最新 Haiku)",
+        model: "claude-haiku-4-5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 64000,
+        temperature: 1.0,
+    },
     // ===== NVIDIA NIM 模型 =====
     BuiltinModel {
         id: "builtin-nvidia-nemotron-3-nano",
@@ -1030,6 +1089,8 @@ impl BuiltinModel {
             ("general".to_string(), None)
         } else if self.vendor_id == "builtin-mimo" {
             ("mimo".to_string(), None)
+        } else if self.vendor_id == "builtin-anthropic" {
+            ("anthropic".to_string(), None)
         } else {
             ("general".to_string(), None)
         };
@@ -1289,6 +1350,15 @@ pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
         Some(1_000_000)
     } else if normalized == "glm-5.1" {
         Some(200_000)
+    } else if matches!(
+        normalized.as_str(),
+        "claude-opus-5" | "claude-sonnet-5" | "claude-fable-5"
+    ) {
+        // Claude 2026 新代际 1M 上下文（对照 model-capability-registry）
+        Some(1_000_000)
+    } else if normalized.starts_with("claude-haiku-4-5") {
+        // Haiku 4.5 标准 200K 上下文
+        Some(200_000)
     } else {
         None
     }
@@ -1324,6 +1394,13 @@ mod tests {
             .iter()
             .find(|vendor| vendor.id == "builtin-mimo")
             .expect("builtin Xiaomi MiMo vendor should exist")
+    }
+
+    fn anthropic_vendor() -> &'static BuiltinVendor {
+        BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-anthropic")
+            .expect("builtin Anthropic vendor should exist")
     }
 
     #[test]
@@ -1551,6 +1628,71 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_builtin_vendor_uses_official_messages_endpoint() {
+        let vendor = anthropic_vendor();
+
+        assert_eq!(vendor.name, "Anthropic");
+        assert_eq!(vendor.provider_type, "anthropic");
+        assert_eq!(vendor.base_url, "https://api.anthropic.com/v1");
+        assert!(vendor.notes.contains("adaptive"));
+        assert!(vendor.website_url.contains("platform.claude.com"));
+
+        let config = vendor.to_vendor_config();
+        assert_eq!(config.api_protocol.as_deref(), Some("anthropic_messages"));
+        assert!(config.api_key.is_empty());
+    }
+
+    #[test]
+    fn anthropic_builtin_profiles_cover_official_2026_catalog() {
+        // 2026-08 官方已核验 ID：Opus 5 / Sonnet 5 / Fable 5 / Haiku 4.5
+        let opus = builtin_model("builtin-claude-opus-5").to_model_profile();
+        assert_eq!(opus.model, "claude-opus-5");
+        assert_eq!(opus.vendor_id, "builtin-anthropic");
+        assert_eq!(opus.provider_scope.as_deref(), Some("anthropic"));
+        assert_eq!(opus.model_adapter, "anthropic");
+        assert!(opus.is_multimodal);
+        assert!(opus.is_reasoning);
+        assert!(opus.supports_tools);
+        assert!(opus.thinking_enabled);
+        assert!(opus.include_thoughts);
+        assert_eq!(opus.max_output_tokens, 128_000);
+        assert_eq!(opus.context_window, Some(1_000_000));
+
+        let sonnet = builtin_model("builtin-claude-sonnet-5").to_model_profile();
+        assert_eq!(sonnet.model, "claude-sonnet-5");
+        assert_eq!(sonnet.model_adapter, "anthropic");
+        assert_eq!(sonnet.max_output_tokens, 128_000);
+        assert_eq!(sonnet.context_window, Some(1_000_000));
+
+        let fable = builtin_model("builtin-claude-fable-5").to_model_profile();
+        assert_eq!(fable.model, "claude-fable-5");
+        assert!(fable.is_reasoning);
+        assert_eq!(fable.context_window, Some(1_000_000));
+
+        let haiku = builtin_model("builtin-claude-haiku-4-5").to_model_profile();
+        assert_eq!(haiku.model, "claude-haiku-4-5");
+        assert!(haiku.is_multimodal);
+        assert!(haiku.is_reasoning);
+        assert_eq!(haiku.max_output_tokens, 64_000);
+        assert_eq!(haiku.context_window, Some(200_000));
+    }
+
+    #[test]
+    fn builtin_catalog_has_no_fabricated_claude_haiku_5() {
+        // 官方最新 Haiku 仍为 4.5，claude-haiku-5 是编造 ID，禁止进入内置目录
+        assert!(
+            !BUILTIN_MODELS
+                .iter()
+                .any(|m| m.model.contains("claude-haiku-5") || m.id.contains("claude-haiku-5")),
+            "fabricated `claude-haiku-5` must not enter the builtin catalog"
+        );
+        // Mythos 5 是 restricted 限量型号：适配层必须支持，但不进入大众内置目录。
+        assert!(!BUILTIN_MODELS.iter().any(|m| m.model.contains("mythos")));
+        // Haiku 线内置的就是 4.5
+        assert!(BUILTIN_MODELS.iter().any(|m| m.model == "claude-haiku-4-5"));
+    }
+
+    #[test]
     fn openai_builtin_profiles_include_reasoning_effort_and_verbosity_defaults() {
         let flagship = builtin_model("builtin-gpt-5.5").to_model_profile();
         let pro = builtin_model("builtin-gpt-5.5-pro").to_model_profile();
@@ -1574,6 +1716,7 @@ mod tests {
         let vendor = &GEMINI_BUILTIN_REGISTRY.vendor;
 
         assert!(vendor.notes.contains("gemini-3.5-flash"));
+        assert!(vendor.notes.contains("gemini-3.5-flash-lite"));
         assert!(vendor.notes.contains("gemini-3.1-pro-preview"));
         assert!(vendor.notes.contains("gemini-3.1-flash-lite"));
         assert!(vendor.notes.contains("v1beta"));
@@ -1632,15 +1775,24 @@ mod tests {
         let flash_lite = GEMINI_BUILTIN_REGISTRY
             .models
             .iter()
+            .find(|model| model.id == "builtin-gemini-3.5-flash-lite")
+            .expect("gemini 3.5 flash-lite model should exist")
+            .to_model_profile(vendor);
+        let flash_lite_31 = GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
             .find(|model| model.id == "builtin-gemini-3.1-flash-lite")
-            .expect("gemini flash-lite model should exist")
+            .expect("gemini 3.1 flash-lite model should exist")
             .to_model_profile(vendor);
 
         assert_eq!(flash.model, "gemini-3.5-flash");
         assert_eq!(pro.model, "gemini-3.1-pro-preview");
-        assert_eq!(flash_lite.model, "gemini-3.1-flash-lite");
+        assert_eq!(flash_lite.model, "gemini-3.5-flash-lite");
+        assert_eq!(flash_lite.reasoning_effort.as_deref(), Some("minimal"));
+        assert_eq!(flash_lite_31.model, "gemini-3.1-flash-lite");
+        assert_eq!(flash_lite_31.reasoning_effort.as_deref(), Some("minimal"));
 
-        for profile in [&flash, &pro, &flash_lite] {
+        for profile in [&flash, &pro, &flash_lite, &flash_lite_31] {
             assert_eq!(profile.provider_scope.as_deref(), Some("gemini"));
             assert_eq!(profile.model_adapter, "google");
             assert!(profile.is_reasoning);
