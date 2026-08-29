@@ -39,6 +39,11 @@ import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
+import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
+import {
+  buildSelectionLocator,
+  type PdfSelectionPayload,
+} from '@/features/pdf/pdfSelectionActions';
 
 const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
   if (type === 'docx' || type === 'xlsx' || type === 'pptx' || type === 'text') {
@@ -62,8 +67,9 @@ const LoadingSpinner: React.FC = () => {
  */
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
+  isActive,
 }) => {
-  const { t } = useTranslation(['textbook', 'common', 'learningHub']);
+  const { t } = useTranslation(['textbook', 'common', 'learningHub', 'pdf']);
   const {
     zoomScale,
     fontScale,
@@ -96,7 +102,9 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         kind: 'textbook',
         nodeId: node.id,
         nodePath: node.path,
-        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+        // ★ 创建时快照：控制器内部只提取 readingProgress/bookmarks 白名单字段，
+        // dispose flush 不回读活 ref（避免 node 切换后串写新节点数据）
+        metadata: node.metadata as Record<string, unknown> | undefined,
       },
       {
         onBookmarksError: (err) => {
@@ -499,7 +507,23 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     persistControllerRef.current.scheduleBookmarks(newBookmarks);
   }, []);
 
-  // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）
+  // 划词「引用到对话」：selectedText + 页码 locator 随资源引用进入会话上下文
+  const { referenceToChat } = useReferenceToChat();
+  const handleQuoteToChat = useCallback((payload: PdfSelectionPayload) => {
+    void referenceToChat({
+      sourceType: 'textbook',
+      sourceId: node.sourceId || node.id,
+      metadata: {
+        title: node.name,
+        selectedText: payload.text,
+        locator: buildSelectionLocator(payload.page),
+      },
+    });
+  }, [referenceToChat, node.sourceId, node.id, node.name]);
+
+  // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）。
+  // 旧控制器 dispose 用的是它创建时的快照；新控制器在 refs 同步 effect
+  // 之后创建，此时 ref 已指向新 node 的 metadata。
   useEffect(() => {
     persistControllerRef.current.dispose();
     persistControllerRef.current = createPreviewPersistController(
@@ -507,7 +531,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         kind: 'textbook',
         nodeId: nodeIdRef.current,
         nodePath: nodePathRef.current,
-        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+        metadata: nodeMetadataRef.current as Record<string, unknown> | undefined,
       },
       {
         onBookmarksError: (err) => {
@@ -727,7 +751,16 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     if (!fileContent) {
       return contentLoadingView;
     }
-    return <EpubPreview base64Content={fileContent} fileName={node.name} resourceId={node.id} />;
+    return (
+      <EpubPreview
+        base64Content={fileContent}
+        fileName={node.name}
+        resourceId={node.id}
+        metadataProgress={readingProgress}
+        onProgressChange={handleProgressChange}
+        isActive={isActive}
+      />
+    );
   }
 
   // 纯文本预览
@@ -791,6 +824,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         resourcePath={node.path}
         bookmarks={bookmarks}
         onBookmarksChange={handleBookmarksChange}
+        onQuoteToChat={handleQuoteToChat}
       />
     </div>
   );

@@ -13,6 +13,7 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import type { OpenTab, SplitViewState } from '../types/tabs';
 import { useTranslation } from 'react-i18next';
+import { isTabDirty } from '../closeTabGate';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('./UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
@@ -142,6 +143,15 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
       .slice(0, MAX_KEEPALIVE_TABS)
       .map(([id]) => id)
   );
+  // ★ Wave2-B r2（P4-4）：脏标签豁免保活淘汰。被逐出即强制 unmount，
+  // 草稿只剩卸载 flush 兜底（失败即丢）。保活集合可临时超上限，
+  // 待保存落盘（不再 dirty）后的下一次渲染自然回收。
+  // 淘汰只发生在重渲染时，因此渲染期同步查询 registry 即完整覆盖。
+  for (const tab of tabs) {
+    if (!keepAliveIds.has(tab.tabId) && isTabDirty(tab)) {
+      keepAliveIds.add(tab.tabId);
+    }
+  }
 
   // 渲染单个 tab 面板内容（保活逻辑，见 TabPanelItem）
   const loadingLabel = t('loading');
@@ -186,8 +196,13 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
 
       {splitView && (
         <>
-          {/* 分隔条 */}
-          <PanelResizeHandle className="w-1.5 bg-border/50 hover:bg-primary/30 active:bg-primary/50 transition-colors flex items-center justify-center group">
+          {/* 分隔条 — 仅桌面分支（≥768）可达；触屏热区不用 Resizable.tsx 的 ::after 范式：
+              react-resizable-panels 在 document 层用 getBoundingClientRect + hitAreaMargins
+              做命中检测，伪元素不参与。coarse 19px：6px 可视宽 + 2×19 = 44px 热区 */}
+          <PanelResizeHandle
+            hitAreaMargins={{ coarse: 19, fine: 5 }}
+            className="w-1.5 bg-border/50 hover:bg-primary/30 active:bg-primary/50 transition-colors flex items-center justify-center group"
+          >
             <DotsSixVertical size={12} className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
           </PanelResizeHandle>
 
@@ -200,10 +215,11 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
                   <SidebarSimple size={14} />
                   {t('learningHub:splitView.title')}
                 </div>
+                {/* 触屏热区：26px 可视钮 + ::after 四向 -10px ≈ 44px+（同 Resizable.tsx 范式） */}
                 <button
                   type="button"
                   onClick={onCloseSplitView}
-                  className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
+                  className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                   title={t('learningHub:splitView.close')}
                   aria-label={t('learningHub:splitView.close')}
                 >

@@ -13,6 +13,28 @@
  * - ★ 三屏滑动布局：左侧应用入口 ← 中间文件视图 → 右侧应用内容
  * - 手势滑动切换三屏，支持轴向锁定防止与竖直滚动冲突
  * - 打开资源时自动切换到右侧应用视图
+ *
+ * ★ Wave2-B r2（P4）：标签关闭统一走 contentDirtyRegistry 异步 close gate
+ * （gate 本体在 ./closeTabGate.ts）。十四入口对照表（编号沿用
+ * docs/dev/wave2-B-r1-anchor-hub.md §1）：
+ *
+ * | #     | 入口                          | 现落点（本轮后）                                  |
+ * |-------|-------------------------------|---------------------------------------------------|
+ * | 1-4   | TabBar 关钮/中键/键盘/右键关闭 | onClose=closeTabWithSplit → requestCloseTab（gate）|
+ * | 5     | Cmd/Ctrl+W                    | closeTabWithSplit（gate + 分屏清理，不再裸 closeTab）|
+ * | 6     | Finder 工具栏 handleCloseApp   | closeTabWithSplit（同上）                          |
+ * | 7     | 右键「关闭其他」               | closeOtherTabs → requestCloseTabs（脏标签逐个确认，取消后不再弹框且脏标签保留；干净标签互不拖累）|
+ * | 8     | 右键「关闭右侧」               | closeTabsToRight → 同上                            |
+ * | 9     | openTab LRU 淘汰（MAX_TABS）   | 脏标签跳过淘汰（不弹框、不静默丢草稿，可暂超上限） |
+ * | 10    | 保活实例淘汰（Container）      | TabPanelContainer keepAlive 集合豁免脏标签         |
+ * | 11    | dstu deleted/purged 事件       | 豁免 gate（实体已删，保留原直删逻辑）              |
+ * | 12    | 恢复后失效校验                 | r3 P8：按稳定 resourceId 校验，仅 NOT_FOUND 删标签 |
+ * | 13    | 路由切走（Page unmount）       | 无法异步拦截；对注册了 save handler 的脏标签尽力 flush |
+ * | 14    | 窗口关闭（beforeunload）       | 任一脏标签 → preventDefault（补齐非笔记类型）      |
+ *
+ * gate 语义：dirty → 三态确认（保存并关闭 / 丢弃 / 取消）；保存失败或取消
+ * 一律保留标签与草稿（fail-closed）。确认对话框复用 workbench 的
+ * ContentCloseConfirmationHost（本页自行挂载一份，portal 渲染）。
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
@@ -22,6 +44,7 @@ import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/op
 import type { DstuNode } from '@/dstu/types';
 import { createEmpty, dstu, type CreatableResourceType } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { VfsErrorCode } from '@/shared/result';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
@@ -38,7 +61,14 @@ import {
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useUIStore } from '@/stores/uiStore';
-import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
+import {
+  useMobileHeader,
+  MobileSlidingLayout,
+  MobileSubviewChromeProvider,
+  useMobileSubviewChromeHost,
+  DEFAULT_GESTURE_IGNORE_SELECTOR,
+  type ScreenPosition,
+} from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
 import { LEARNING_HUB_MOBILE_RESET_EVENT } from '@/dev/DevMobileRecoveryFab';
@@ -57,12 +87,18 @@ import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useFinderStore } from './stores/finderStore';
+import { useFinderStoreFor, FINDER_HOST_IDS } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import {
+  hasContentSaveHandler,
+  saveContentNow,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { ContentCloseConfirmationHost } from '@/features/workbench/apps/content/ContentCloseConfirmation';
+import { confirmTabClose, isTabDirty, requestCloseTabs } from './closeTabGate';
 import { getCreatableFolderId } from './viewGuards';
 import {
   getQuickAccessTypeFromLauncherType,
@@ -103,14 +139,50 @@ const inferResourceTypeFromFileName = (fileName: string): ResourceType => {
 
 // ============================================================================
 // ★ I10 修复：标签页持久化（localStorage）
+// ★ P8（Wave2-B r3）：payload 版本化 + OpenTab 逐字段白名单解析 + 保存写透缓存
 // ============================================================================
 
+// 沿用 v1 存储 key（避免升级即丢历史标签）；版本号放在 payload 内。
+// v1 payload 无 version 字段，v2 起写入 version=2；两者共用同一逐条
+// 白名单解析（v1 数据缺字段/带脏字段时按下方策略修复或丢弃）。
 const TABS_STORAGE_KEY = 'learning-hub-tabs-v1';
+const TABS_STORAGE_VERSION = 2;
 
 interface PersistedTabsState {
   tabs: OpenTab[];
   activeTabId: string | null;
 }
+
+/** 可持久化标签的资源类型白名单（'all' 是浏览筛选值，不是可打开的资源类型） */
+const PERSISTABLE_TAB_TYPES: readonly string[] = [
+  'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
+];
+
+/**
+ * ★ P8-3：逐字段白名单解析一条持久化标签。策略：
+ * - 整条丢弃（不可修复的键）：tabId（激活/分屏引用键）、resourceId
+ *   （恢复校验与面板加载键）、type（决定面板类型路由）任一损坏即丢弃该条。
+ * - 字段修复（可安全回退）：dstuPath 损坏 → 回退 `/${resourceId}`（面板
+ *   加载本就只用 resourceId，恢复校验还会刷新真实 path）；title 损坏 →
+ *   空串（恢复校验以 node.name 回填）；openedAt 损坏 → Date.now()（仅参与
+ *   LRU 排序，防 NaN/非数值污染排序）；isPinned 非 true → 视为未固定。
+ */
+const parsePersistedTab = (raw: unknown): OpenTab | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.tabId !== 'string' || !t.tabId) return null;
+  if (typeof t.resourceId !== 'string' || !t.resourceId) return null;
+  if (typeof t.type !== 'string' || !PERSISTABLE_TAB_TYPES.includes(t.type)) return null;
+  return {
+    tabId: t.tabId,
+    type: t.type as ResourceType,
+    resourceId: t.resourceId,
+    dstuPath: typeof t.dstuPath === 'string' && t.dstuPath ? t.dstuPath : `/${t.resourceId}`,
+    title: typeof t.title === 'string' ? t.title : '',
+    openedAt: typeof t.openedAt === 'number' && Number.isFinite(t.openedAt) ? t.openedAt : Date.now(),
+    isPinned: t.isPinned === true,
+  };
+};
 
 let persistedTabsCache: PersistedTabsState | null = null;
 
@@ -124,30 +196,52 @@ const loadPersistedTabs = (): PersistedTabsState => {
       persistedTabsCache = fallback;
       return fallback;
     }
-    const parsed = JSON.parse(raw) as Partial<PersistedTabsState>;
-    const tabs = Array.isArray(parsed.tabs)
-      ? parsed.tabs.filter(
-          (t): t is OpenTab =>
-            !!t && typeof t.tabId === 'string' && typeof t.resourceId === 'string' && typeof t.dstuPath === 'string'
-        )
-      : [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      persistedTabsCache = fallback;
+      return fallback;
+    }
+    const payload = parsed as { tabs?: unknown; activeTabId?: unknown };
+    const tabs: OpenTab[] = [];
+    // 去重：tabId 是 React key 与激活/分屏引用键，resourceId 是 openTab
+    // 的去重不变量；损坏数据出现重复时保留先出现的一条
+    const seenTabIds = new Set<string>();
+    const seenResourceIds = new Set<string>();
+    if (Array.isArray(payload.tabs)) {
+      for (const item of payload.tabs) {
+        const tab = parsePersistedTab(item);
+        if (!tab) continue; // 整条损坏 → 丢弃该条，不影响其余标签
+        if (seenTabIds.has(tab.tabId) || seenResourceIds.has(tab.resourceId)) continue;
+        seenTabIds.add(tab.tabId);
+        seenResourceIds.add(tab.resourceId);
+        tabs.push(tab);
+      }
+    }
     const activeTabId =
-      typeof parsed.activeTabId === 'string' && tabs.some(t => t.tabId === parsed.activeTabId)
-        ? parsed.activeTabId
+      typeof payload.activeTabId === 'string' && seenTabIds.has(payload.activeTabId)
+        ? payload.activeTabId
         : tabs[tabs.length - 1]?.tabId ?? null;
     persistedTabsCache = { tabs, activeTabId };
     return persistedTabsCache;
   } catch {
+    // JSON 整体损坏 → 丢弃整份数据回空态，下次保存写入干净的 v2 payload
     persistedTabsCache = fallback;
     return fallback;
   }
 };
 
+// ★ P8-1：保存时同步写透模块级缓存。此前只写 localStorage，同一 renderer
+// 内 Page 卸载重挂时 useState 从过期 cache 初始化，首次持久化 effect 随即
+// 用旧快照覆盖回 localStorage（会话内新开的标签被回滚丢失）。
 const savePersistedTabs = (tabs: OpenTab[], activeTabId: string | null) => {
+  persistedTabsCache = { tabs, activeTabId };
   try {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs, activeTabId }));
+    localStorage.setItem(
+      TABS_STORAGE_KEY,
+      JSON.stringify({ version: TABS_STORAGE_VERSION, tabs, activeTabId })
+    );
   } catch {
-    // localStorage 不可用时静默忽略
+    // localStorage 不可用时静默忽略（缓存已更新，同会话内 remount 恢复不受影响）
   }
 };
 
@@ -189,7 +283,13 @@ export const LearningHubPage: React.FC = () => {
     savePersistedTabs(tabs, activeTabId);
   }, [tabs, activeTabId]);
 
-  // ★ I10 修复：恢复后后台校验资源有效性，关闭已删除/已移动资源的失效标签页
+  // ★ P8-2（Wave2-B r3）：恢复后按稳定 resourceId 后台校验。
+  // dstuPath 是人类可读路径，资源被移动/重命名后即过期，此前用它校验会把
+  // 「已移动」误判为「已失效」而删标签（r1 §2b）。这里与 UnifiedAppPanel
+  // 的加载键对齐，统一请求 `/${resourceId}`：
+  // - 成功 → 标签保留，重绑最新 dstuPath/title（node.path/node.name）
+  // - NOT_FOUND → 实体确认不存在，删标签
+  // - 其他错误（网络/超时/内部等瞬态失败）→ 保留标签，由面板加载自行报错
   const restoredValidationDone = useRef(false);
   useEffect(() => {
     if (restoredValidationDone.current) return;
@@ -199,18 +299,41 @@ export const LearningHubPage: React.FC = () => {
 
     let cancelled = false;
     void (async () => {
-      const invalidIds: string[] = [];
+      const invalidIds = new Set<string>();
+      const rebinds = new Map<string, { dstuPath: string; title: string }>();
       for (const tab of restored) {
-        const result = await dstu.get(tab.dstuPath);
+        const result = await dstu.get(`/${tab.resourceId}`);
         if (cancelled) return;
-        if (!result.ok) {
-          invalidIds.push(tab.tabId);
+        if (result.ok) {
+          const node = result.value;
+          rebinds.set(tab.tabId, {
+            dstuPath: node.path || `/${tab.resourceId}`,
+            // node.name 为空时保留旧 title（避免把标签刷成空白）
+            title: node.name || tab.title,
+          });
+        } else if (result.error.code === VfsErrorCode.NOT_FOUND) {
+          invalidIds.add(tab.tabId);
         }
+        // 非 NOT_FOUND 的失败不做任何处理：不能凭瞬态错误断定实体已死
       }
-      if (invalidIds.length === 0) return;
+      if (invalidIds.size === 0 && rebinds.size === 0) return;
       setTabs(prev => {
-        const next = prev.filter(t => !invalidIds.includes(t.tabId));
-        if (next.length === prev.length) return prev;
+        let changed = false;
+        const next: OpenTab[] = [];
+        for (const tab of prev) {
+          if (invalidIds.has(tab.tabId)) {
+            changed = true;
+            continue;
+          }
+          const rebind = rebinds.get(tab.tabId);
+          if (rebind && (tab.dstuPath !== rebind.dstuPath || tab.title !== rebind.title)) {
+            next.push({ ...tab, ...rebind });
+            changed = true;
+          } else {
+            next.push(tab);
+          }
+        }
+        if (!changed) return prev;
         setActiveTabId(currentId => {
           if (currentId && next.some(t => t.tabId === currentId)) return currentId;
           return next[next.length - 1]?.tabId ?? null;
@@ -230,14 +353,19 @@ export const LearningHubPage: React.FC = () => {
         return prev.map(t => t.tabId === existing.tabId ? { ...t, openedAt: Date.now() } : t);
       }
       // 2. 超出上限时 LRU 淘汰最旧的非固定、非活跃 tab
+      // ★ P4-3：脏标签跳过淘汰——后台淘汰不弹确认框，也绝不静默丢草稿；
+      // 候选全脏时放弃淘汰，允许暂时超出 MAX_TABS
       let next = [...prev];
       if (next.length >= MAX_TABS) {
         const currentActiveId = activeTabIdRef.current;
         const toEvict = [...next]
-          .filter(t => !t.isPinned && t.tabId !== currentActiveId)
+          .filter(t => !t.isPinned && t.tabId !== currentActiveId && !isTabDirty(t))
           .sort((a, b) => a.openedAt - b.openedAt)[0];
         if (toEvict) {
           next = next.filter(t => t.tabId !== toEvict.tabId);
+          // ★ r6-review（关标签）：被淘汰的恰是右侧分屏 tab 时同步退出分屏，
+          // 避免 splitView.rightTabId 悬空、右侧面板留下空白占位
+          setSplitView(prev => (prev?.rightTabId === toEvict.tabId ? null : prev));
         }
       }
       // 3. 新建 tab
@@ -269,6 +397,9 @@ export const LearningHubPage: React.FC = () => {
     []
   );
 
+  // 无 gate 的最终提交步：仅供 requestCloseTab 调用（gate 通过后），
+  // 用户可达入口一律经 closeTabWithSplit → requestCloseTab 过 gate。
+  // （dstu deleted/purged 事件通道走自身 setTabs 直删，豁免 gate——实体已删。）
   const closeTab = useCallback((tabId: string) => {
     setTabs(prev => {
       const idx = prev.findIndex(t => t.tabId === tabId);
@@ -283,6 +414,30 @@ export const LearningHubPage: React.FC = () => {
     });
   }, [pickNextActiveTab]);
 
+  // ★ P4-1：单标签关闭的 gate 通道（含分屏清理）。
+  // pendingCloseGateRef 防止同一标签在确认框未决时重复弹框。
+  const pendingCloseGateRef = useRef<Set<string>>(new Set());
+  const requestCloseTab = useCallback(async (tabId: string) => {
+    const tab = tabsRef.current.find(t => t.tabId === tabId);
+    if (!tab || pendingCloseGateRef.current.has(tabId)) return;
+    pendingCloseGateRef.current.add(tabId);
+    try {
+      if (!(await confirmTabClose(tab))) return; // 取消/保存失败 → 保留标签与草稿
+      // gate 通过后先清分屏（关闭的是右侧分屏 tab 时退出分屏），再提交删除，
+      // 避免 splitView.rightTabId 悬空（r1 §1a 入口 5/6 的现象）
+      setSplitView(prev => (prev?.rightTabId === tabId ? null : prev));
+      closeTab(tabId);
+    } finally {
+      pendingCloseGateRef.current.delete(tabId);
+    }
+  }, [closeTab]);
+
+  // 所有单点关闭入口（TabBar onClose、面板 onClose、Cmd+W、Finder 关钮）的
+  // 同步外壳；保持 (tabId) => void 签名
+  const closeTabWithSplit = useCallback((tabId: string) => {
+    void requestCloseTab(tabId);
+  }, [requestCloseTab]);
+
   const updateTabTitle = useCallback((tabId: string, title: string) => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, title } : t));
   }, []);
@@ -292,10 +447,12 @@ export const LearningHubPage: React.FC = () => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, isPinned: !t.isPinned } : t));
   }, []);
 
-  // ★ 2026-07-08：批量关闭（固定标签页豁免，与 VS Code 行为一致）
-  const closeOtherTabs = useCallback((tabId: string) => {
+  // 批量关闭的提交步：一次性删除已获准的标签，保留原活跃/分屏修正语义
+  const commitCloseTabs = useCallback((tabIds: string[], preferredActiveId: string) => {
+    const toClose = new Set(tabIds);
+    if (toClose.size === 0) return;
     setTabs(prev => {
-      const next = prev.filter(t => t.tabId === tabId || t.isPinned);
+      const next = prev.filter(t => !toClose.has(t.tabId));
       if (next.length === prev.length) return prev;
       setActiveTabId(currentId => {
         const splitRightId = splitViewRef.current?.rightTabId;
@@ -306,7 +463,7 @@ export const LearningHubPage: React.FC = () => {
         ) {
           return currentId;
         }
-        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
+        return pickNextActiveTab([next.find(t => t.tabId === preferredActiveId)], next);
       });
       setSplitView(prevSplit => {
         if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
@@ -316,30 +473,27 @@ export const LearningHubPage: React.FC = () => {
     });
   }, [pickNextActiveTab]);
 
+  // ★ P4-2：批量关闭走 closeTabGate.requestCloseTabs：脏标签逐个确认，
+  // 用户取消（或保存失败）后不再弹后续确认（脏标签一律保留），
+  // 干净标签互不拖累照常关闭
+  const requestCloseTabsBatch = useCallback(async (targets: OpenTab[], preferredActiveId: string) => {
+    const { approved } = await requestCloseTabs(targets);
+    commitCloseTabs(approved, preferredActiveId);
+  }, [commitCloseTabs]);
+
+  // ★ 2026-07-08：批量关闭（固定标签页豁免，与 VS Code 行为一致）
+  const closeOtherTabs = useCallback((tabId: string) => {
+    const targets = tabsRef.current.filter(t => t.tabId !== tabId && !t.isPinned);
+    void requestCloseTabsBatch(targets, tabId);
+  }, [requestCloseTabsBatch]);
+
   const closeTabsToRight = useCallback((tabId: string) => {
-    setTabs(prev => {
-      const idx = prev.findIndex(t => t.tabId === tabId);
-      if (idx === -1) return prev;
-      const next = prev.filter((t, i) => i <= idx || t.isPinned);
-      if (next.length === prev.length) return prev;
-      setActiveTabId(currentId => {
-        const splitRightId = splitViewRef.current?.rightTabId;
-        if (
-          currentId &&
-          currentId !== splitRightId &&
-          next.some(t => t.tabId === currentId)
-        ) {
-          return currentId;
-        }
-        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
-      });
-      setSplitView(prevSplit => {
-        if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
-        return null;
-      });
-      return next;
-    });
-  }, [pickNextActiveTab]);
+    const current = tabsRef.current;
+    const idx = current.findIndex(t => t.tabId === tabId);
+    if (idx === -1) return;
+    const targets = current.filter((t, i) => i > idx && !t.isPinned);
+    void requestCloseTabsBatch(targets, tabId);
+  }, [requestCloseTabsBatch]);
 
   // ★ 标签页切换（同时更新 openedAt 以确保 LRU 正确性）
   const switchTab = useCallback((tabId: string) => {
@@ -409,21 +563,12 @@ export const LearningHubPage: React.FC = () => {
       event.preventDefault();
       const currentId = activeTabIdRef.current;
       if (!currentId) return;
-      closeTab(currentId);
+      // ★ P4-5：走带 gate + 分屏清理的统一通道，不再裸 closeTab
+      closeTabWithSplit(currentId);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isLearningHubViewActive, closeTab]);
-
-  // ★ 关闭 tab 时自动清理分屏状态
-  const closeTabWithSplit = useCallback((tabId: string) => {
-    // 如果关闭的是右侧分屏 tab，先退出分屏
-    setSplitView(prev => {
-      if (prev?.rightTabId === tabId) return null;
-      return prev;
-    });
-    closeTab(tabId);
-  }, [closeTab]);
+  }, [isLearningHubViewActive, closeTabWithSplit]);
 
   useEffect(() => {
     const unwatch = dstu.watch('*', (event) => {
@@ -477,6 +622,30 @@ export const LearningHubPage: React.FC = () => {
     };
   }, [t]);
 
+  // ★ P4-6 入口 14：窗口关闭前任一打开标签 dirty → 原生确认。
+  // 笔记编辑器自带 beforeunload 只覆盖 note，这里按 registry 补齐所有类型。
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (tabsRef.current.some(isTabDirty)) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // ★ P4-6 入口 13：路由切走（Page unmount）无法弹异步确认，对注册了
+  // save handler 的脏标签尽力 flush 落盘（各编辑器自身的卸载 flush 仍是兜底；
+  // 若子树 cleanup 先运行并已注销 handler，这里自然是 no-op）。
+  useEffect(() => () => {
+    for (const tab of tabsRef.current) {
+      if (isTabDirty(tab) && hasContentSaveHandler(tab.type, tab.resourceId)) {
+        void saveContentNow(tab.type, tab.resourceId);
+      }
+    }
+  }, []);
+
   // ========== 三屏滑动布局状态（移动端） ==========
   // A-8 归一：手势/动画/返回键统一由 MobileSlidingLayout 承载，本页只管理屏幕位置状态
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
@@ -487,14 +656,18 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderGoUp = useFinderStore(state => state.goUp);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
-  const finderRefresh = useFinderStore(state => state.refresh);
-  const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
-  const finderEnterFolder = useFinderStore(state => state.enterFolder);
-  const finderSearchQuery = useFinderStore(state => state.searchQuery);
-  const finderSetSearchQuery = useFinderStore(state => state.setSearchQuery);
+  // ★ LH-HOST：页面顶栏/抽屉必须读写与本页访达同一个宿主桶
+  const useHostFinderStore = useFinderStoreFor(
+    isSmallScreen ? FINDER_HOST_IDS.pageMobile : FINDER_HOST_IDS.page,
+  );
+  const finderCurrentPath = useHostFinderStore(state => state.currentPath);
+  const finderGoUp = useHostFinderStore(state => state.goUp);
+  const finderJumpToBreadcrumb = useHostFinderStore(state => state.jumpToBreadcrumb);
+  const finderRefresh = useHostFinderStore(state => state.refresh);
+  const finderQuickAccessNavigate = useHostFinderStore(state => state.quickAccessNavigate);
+  const finderEnterFolder = useHostFinderStore(state => state.enterFolder);
+  const finderSearchQuery = useHostFinderStore(state => state.searchQuery);
+  const finderSetSearchQuery = useHostFinderStore(state => state.setSearchQuery);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
@@ -652,7 +825,6 @@ export const LearningHubPage: React.FC = () => {
         size="icon"
         onClick={() => handleInjectToChatRef.current()}
         disabled={isInjecting}
-        className="h-11 w-11"
         aria-label={t('learningHub:contextMenu.referenceToChat')}
         title={t('learningHub:contextMenu.referenceToChat')}
       >
@@ -668,7 +840,6 @@ export const LearningHubPage: React.FC = () => {
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-11 w-11"
               aria-label={t('common:more')}
               title={t('common:more')}
             >
@@ -701,31 +872,46 @@ export const LearningHubPage: React.FC = () => {
     t,
   ]);
 
+  // 页内全屏内联子屏（右屏：题库导出/历史/裁剪等；中屏：移动到… FolderPicker）
+  // 接管顶栏：子屏通过 useMobileSubviewChrome 推入栈，这里取栈顶并入本视图的
+  // useMobileHeader 配置（保持 'learning-hub' 单一写者）。栈顶 chrome 带屏位标记
+  // （screen，缺省 right），仅当前滑动屏位与之匹配时生效——滑到其他屏位后
+  // 顶栏立即恢复该屏位原语义（面包屑/侧栏），子屏仍保持打开等待返回。
+  const { activeSubviewChrome, subviewChromeHost } = useMobileSubviewChromeHost();
+  const subviewChrome =
+    activeSubviewChrome && (activeSubviewChrome.screen ?? 'right') === screenPosition
+      ? activeSubviewChrome
+      : null;
+
   // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
-    title: screenPosition === 'left'
-      ? rootTitle
-      : screenPosition === 'right' && activeTab
-        ? (activeTab.title || t('common:untitled'))
-        : undefined,
-    titleNode: screenPosition === 'center' ? (
+    title: subviewChrome
+      ? subviewChrome.title
+      : screenPosition === 'left'
+        ? rootTitle
+        : screenPosition === 'right' && activeTab
+          ? (activeTab.title || t('common:untitled'))
+          : undefined,
+    titleNode: !subviewChrome && screenPosition === 'center' ? (
       <MobileBreadcrumb
         rootTitle={centerViewTitle}
         breadcrumbs={finderBreadcrumbs}
         onNavigate={handleBreadcrumbNavigate}
       />
     ) : undefined,
-    showMenu: screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
-    onMenuClick: screenPosition === 'right'
-      ? () => setScreenPosition('center')
-      : screenPosition === 'center' && isInSubfolder
-        ? () => finderGoUp()
-        : screenPosition === 'left'
-          ? () => setScreenPosition('center')
-          : () => setScreenPosition('left'),
-    showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    rightActions: mobileHeaderRightActions,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions]);
+    showMenu: !subviewChrome && screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
+    onMenuClick: subviewChrome
+      ? subviewChrome.onBack
+      : screenPosition === 'right'
+        ? () => setScreenPosition('center')
+        : screenPosition === 'center' && isInSubfolder
+          ? () => finderGoUp()
+          : screenPosition === 'left'
+            ? () => setScreenPosition('center')
+            : () => setScreenPosition('left'),
+    showBackArrow: !!subviewChrome || screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
+    rightActions: subviewChrome ? subviewChrome.rightActions : mobileHeaderRightActions,
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions, subviewChrome]);
 
   // 📱 Android 返回键接入目录层级后退（契约第 4 条）：
   // 中间屏且在子文件夹时，返回键先执行 goUp（与顶栏返回箭头同语义），
@@ -975,10 +1161,11 @@ export const LearningHubPage: React.FC = () => {
   // ========== 关闭应用（关闭当前活跃标签页） ==========
   const handleCloseApp = useCallback(() => {
     if (activeTabId) {
-      closeTab(activeTabId);
+      // ★ P4-5：Finder 关钮与 Cmd+W 同通道（gate + 分屏清理），不再裸 closeTab
+      closeTabWithSplit(activeTabId);
     }
     // 当所有 tab 关闭后展开侧边栏（由 useEffect[tabs.length] 处理）
-  }, [activeTabId, closeTab]);
+  }, [activeTabId, closeTabWithSplit]);
 
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
@@ -1163,6 +1350,9 @@ export const LearningHubPage: React.FC = () => {
   // Android 返回键收回（A-5）与抽屉底部应用导航
   if (isSmallScreen) {
     return (
+      // 子屏 chrome 接管通道只在移动分支提供：桌面分栏无统一顶栏，
+      // 子屏探测不到宿主时保持页内自绘顶栏（useMobileSubviewChrome 返回 false）
+      <MobileSubviewChromeProvider value={subviewChromeHost}>
       <div
         className="study-shell-page relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       >
@@ -1248,7 +1438,7 @@ export const LearningHubPage: React.FC = () => {
           >
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page-mobile"
+              hostId={FINDER_HOST_IDS.pageMobile}
               sessionActive={isLearningHubViewActive && screenPosition === 'center'}
               // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
               // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
@@ -1263,7 +1453,11 @@ export const LearningHubPage: React.FC = () => {
             />
           </div>
         </MobileSlidingLayout>
+        {/* ★ P4：close gate 确认对话框宿主（portal 渲染；workbench 桌面外
+            requestContentCloseDecision 无宿主时恒返回 cancel，故本页自行挂载） */}
+        <ContentCloseConfirmationHost />
       </div>
+      </MobileSubviewChromeProvider>
     );
   }
 
@@ -1287,7 +1481,7 @@ export const LearningHubPage: React.FC = () => {
           <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page"
+              hostId={FINDER_HOST_IDS.page}
               sessionActive={isLearningHubViewActive}
               commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}
@@ -1305,9 +1499,14 @@ export const LearningHubPage: React.FC = () => {
           </div>
         </Panel>
 
-        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度 */}
+        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度。
+            触屏热区走库内建 hitAreaMargins（coarse 19px → 6+2×19=44px），
+            ::after 范式对 react-resizable-panels 的 rect 命中检测不生效 */}
         {hasOpenApp && (
-          <PanelResizeHandle className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50">
+          <PanelResizeHandle
+            hitAreaMargins={{ coarse: 19, fine: 5 }}
+            className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50"
+          >
             <DotsSixVertical size={12} className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </PanelResizeHandle>
         )}
@@ -1354,6 +1553,8 @@ export const LearningHubPage: React.FC = () => {
           )}
         </Panel>
       </PanelGroup>
+      {/* ★ P4：close gate 确认对话框宿主（同移动分支说明） */}
+      <ContentCloseConfirmationHost />
     </div>
   );
 };

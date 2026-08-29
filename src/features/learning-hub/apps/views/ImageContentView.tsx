@@ -32,6 +32,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import {
   MagnifyingGlassPlus,
   MagnifyingGlassMinus,
@@ -47,9 +48,9 @@ import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
-import { base64ToBlob, base64ToUint8Array } from '@/utils/base64FileUtils';
-import { fileManager } from '@/utils/fileManager';
+import { base64ToBlob } from '@/utils/base64FileUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import {
   registerContentAgentSurface,
   type ContentSurfaceActionResult,
@@ -57,6 +58,7 @@ import {
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 import { formatFileSize } from './previewUtils';
 import { PreviewStatus } from './PreviewStatus';
+import { hasShortcutModifier } from './media/mediaShortcuts';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /** 图片大文件确认阈值（后端图片上限 50MB；超过 20MB 先提示再加载） */
@@ -134,6 +136,7 @@ const computeFitZoom = (
  */
 const ImageContentView: React.FC<ContentViewProps> = ({
   node,
+  isActive = true,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -295,35 +298,20 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   }, [node.id, mimeType, t, releaseObjectUrl]);
 
   // ★ 保存到本地（渲染失败/大文件场景的逃生通道）
+  // 共享双通道：优先 saveFromSource（blob 直拷贝，大图不过内存），
+  // legacy 内联附件回退 base64 落盘
   const handleSaveToDevice = useCallback(async () => {
     setIsSaving(true);
     try {
-      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
-        attachmentId: node.id,
-      });
-      if (!result?.found || !result?.content) {
-        showGlobalNotification('error', t('learningHub:error.imageNotFound'));
-        return;
-      }
-      const bytes = base64ToUint8Array(result.content);
-      if (!bytes) {
-        showGlobalNotification('error', t('learningHub:error.imageDecodeFailed'));
-        return;
-      }
-      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
-      const saveResult = await fileManager.saveBinaryFile({
-        data: bytes,
-        defaultFileName: node.name,
-        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
+      const saveResult = await saveResourceToDevice({
+        nodeId: node.id,
+        fileName: node.name,
+        filters: saveFiltersForFileName(node.name),
+        notFoundMessage: t('learningHub:error.imageNotFound'),
+        openAfterSave: true,
       });
       if (!saveResult.canceled && saveResult.path) {
         showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
-        try {
-          const { openPath } = await import('@tauri-apps/plugin-opener');
-          await openPath(saveResult.path);
-        } catch {
-          // 打开失败不阻塞，文件已保存
-        }
       }
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err));
@@ -362,8 +350,27 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         if (gen !== loadGenRef.current) return;
 
         if (!attachment) {
-          setError(t('learningHub:error.imageNotFound'));
-          setLoadingStage('idle');
+          // ★ 附件记录缺失 ≠ 图片不存在：files 表节点只有 blob 文件、没有
+          //   att_ 附件行。回退到 blob 直读（loadImageContent 的优先路径），
+          //   大小检查改用 get_file_size。
+          const blobPath = await invoke<string | null>('vfs_get_file_blob_path', {
+            id: node.id,
+          }).catch(() => null);
+          if (gen !== loadGenRef.current) return;
+          if (!blobPath) {
+            setError(t('learningHub:error.imageNotFound'));
+            setLoadingStage('idle');
+            return;
+          }
+          const blobSize = await invoke<number>('get_file_size', { path: blobPath })
+            .catch(() => 0);
+          if (gen !== loadGenRef.current) return;
+          setFileSize(blobSize);
+          if (blobSize >= IMAGE_LARGE_FILE_THRESHOLD) {
+            setLoadingStage('large_file_warning');
+          } else {
+            await loadImageContent();
+          }
           return;
         }
 
@@ -609,6 +616,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
 
   // ★ 键盘操作：+/- 缩放、0 重置（Fit）、1 实际大小、R 旋转、方向键平移、Esc 重置
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 组合键留给壳层/系统（⌘R 刷新、⌘0/⌘± 全局缩放、⌘方向键等），
+    // 不允许 ⌘R 被劫持成旋转图片
+    if (hasShortcutModifier(e)) return;
     switch (e.key) {
       case '+':
       case '=':
@@ -672,8 +682,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     );
   }, []);
 
-  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）
+  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）。
+  // isActive 守卫（对照 EpubPreview/NoteContentView）：保活隐藏的 tab 不监听
+  // document pointerdown，避免活跃视图里的点击把隐藏 tab 的菜单关掉；
+  // 失活仅注销监听，不动 zoomMenuOpen。
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!zoomMenuWrapRef.current?.contains(e.target as Node)) {
@@ -682,15 +696,17 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
+  // isActive 守卫：隐藏 tab 不注册返回键 handler，避免消费当前活跃视图的返回键
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     return registerBackHandler(() => {
       setZoomMenuOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
   const selectZoomPreset = useCallback((preset: number | 'fit') => {
     setZoomMenuOpen(false);
@@ -748,7 +764,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'ACTION_UNAVAILABLE',
-            hint: '图片尚未加载完成，无法缩放',
+            hint: i18n.t('textbook:image_preview.zoom_not_ready', {
+              defaultValue: '图片尚未加载完成，无法缩放',
+            }),
           };
         }
         const before = { zoomPercent: Math.round(s.effectiveZoom), fitMode: s.fitMode };
@@ -760,7 +778,11 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: `zoom 百分比须在 ${ZOOM_MIN}–${ZOOM_MAX} 之间，或传 'fit'`,
+            hint: i18n.t('textbook:image_preview.zoom_out_of_range', {
+              defaultValue: "zoom 百分比须在 {{min}}–{{max}} 之间，或传 'fit'",
+              min: ZOOM_MIN,
+              max: ZOOM_MAX,
+            }),
           };
         }
         applyZoom(zoom);
@@ -777,14 +799,18 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'ACTION_UNAVAILABLE',
-            hint: '图片尚未加载完成，无法旋转',
+            hint: i18n.t('textbook:image_preview.rotate_not_ready', {
+              defaultValue: '图片尚未加载完成，无法旋转',
+            }),
           };
         }
         if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
           return {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: 'rotate 的 degrees 仅支持 90/180/270（顺时针）',
+            hint: i18n.t('textbook:image_preview.rotate_invalid_degrees', {
+              defaultValue: 'rotate 的 degrees 仅支持 90/180/270（顺时针）',
+            }),
           };
         }
         setRotation((prev) => prev + degrees);
@@ -922,7 +948,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {/* 工具栏（移动端触控目标 ≥44px：max-md:min-h/min-w-11，桌面端不变） */}
+      {/* 工具栏（触控目标 ≥44px：max-md + pointer:coarse 双保险，覆盖 iPad 横屏；桌面鼠标端不变） */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b bg-muted/30"
         role="toolbar"
@@ -936,7 +962,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={effectiveZoom <= minZoom + 0.5}
             title={t('learningHub:image.zoomOut')}
             aria-label={t('learningHub:image.zoomOut')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <MagnifyingGlassMinus size={16} />
           </DsButton>
@@ -959,7 +985,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               aria-label={t('learningHub:image.zoomLevel')}
               aria-haspopup="menu"
               aria-expanded={zoomMenuOpen}
-              className="min-w-[4.5rem] gap-1 tabular-nums text-muted-foreground max-md:min-h-11"
+              className="min-w-[4.5rem] gap-1 tabular-nums text-muted-foreground max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               {displayZoom}%
               <CaretDown size={10} aria-hidden="true" />
@@ -1022,7 +1048,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={effectiveZoom >= ZOOM_MAX - 0.5}
             title={t('learningHub:image.zoomIn')}
             aria-label={t('learningHub:image.zoomIn')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <MagnifyingGlassPlus size={16} />
           </DsButton>
@@ -1034,7 +1060,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             title={t('learningHub:image.fitToWindow')}
             aria-label={t('learningHub:image.fitToWindow')}
             aria-pressed={fitMode}
-            className={`max-md:min-h-11 max-md:min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
+            className={`max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
           >
             <ArrowsIn size={16} />
           </DsButton>
@@ -1045,7 +1071,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             title={t('learningHub:image.actualSize')}
             aria-label={t('learningHub:image.actualSize')}
             aria-pressed={isActualSize}
-            className={`hidden md:inline-flex ${isActualSize ? 'bg-muted text-foreground' : ''}`}
+            className={`hidden md:inline-flex [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${isActualSize ? 'bg-muted text-foreground' : ''}`}
           >
             <FrameCorners size={16} />
           </DsButton>
@@ -1055,7 +1081,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleRotate}
             title={t('learningHub:image.rotate')}
             aria-label={t('learningHub:image.rotate')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowClockwise size={16} />
           </DsButton>
@@ -1065,7 +1091,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleReset}
             title={t('learningHub:image.reset')}
             aria-label={t('learningHub:image.reset')}
-            className="hidden md:inline-flex"
+            className="hidden md:inline-flex [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowCounterClockwise size={16} />
           </DsButton>

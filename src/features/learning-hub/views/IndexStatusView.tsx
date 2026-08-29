@@ -28,6 +28,7 @@ import IndexDiagnosticPanel from './IndexDiagnosticPanel';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useTranslation } from 'react-i18next';
 import {
   Database,
@@ -62,6 +63,7 @@ import {
 // Button 组件已替换为原生 button + Tailwind（简洁风格）
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { IndexStatusGenerativeBriefing } from '../components/IndexStatusGenerativeBriefing';
 import {
   getAllIndexStatus,
   reindexResource,
@@ -1077,6 +1079,19 @@ export const IndexStatusView: React.FC = () => {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [mobileMoreOpen]);
+
+  // Android 系统返回键：菜单打开时先关菜单（overlay 档），不退整个视图
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    return registerBackHandler(() => {
+      // 视图离屏时（MobileSlidingLayout 给非可见屏加 inert / display:none 隐藏保活 tab）
+      // 让行给当前活跃层，避免消费活跃视图的返回键（对照 NoteContentView / ExamContentView 守卫）
+      const el = mobileMoreRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
+      setMobileMoreOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [mobileMoreOpen]);
   
   // 打开/收起重置内联确认条（替代阻塞式对话框）
   const toggleResetConfirm = useCallback(() => {
@@ -1377,9 +1392,9 @@ export const IndexStatusView: React.FC = () => {
 
     return (
       <div key={resource.resourceId} className="group border-b border-black/[0.04] dark:border-white/[0.06] hover:bg-[var(--interactive-hover)] transition-colors">
-        {/* 主行 - 可点击展开 */}
+        {/* 主行 - 可点击展开；触屏：整行是展开命中区，无块数元数据时行高不足 44，coarse 下兜底 */}
         <div
-          className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 cursor-default select-none"
+          className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 cursor-default select-none [@media(pointer:coarse)]:min-h-11"
           onClick={() => toggleResourceExpand(resource.resourceId)}
         >
           {/* 🆕 展开/折叠指示器 */}
@@ -1478,7 +1493,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 操作按钮 - 简洁风格 */}
           <div className="flex-shrink-0 w-8 [@media(pointer:coarse)]:w-11 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
                 {isReindexing ? (
                   <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (
@@ -1710,7 +1725,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectOcr(resource.resourceId); }}
                     className={cn(
-                      'text-xs gap-1.5',
+                      'text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11',
                       inspectingResourceId === resource.resourceId && inspectMode === 'ocr' && 'bg-primary/10 text-primary border-primary/20'
                     )}
                   >
@@ -1723,7 +1738,7 @@ export const IndexStatusView: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
-                    className="text-xs gap-1.5"
+                    className="text-xs gap-1.5 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <Stack className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
@@ -1735,7 +1750,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
                     disabled={clearingOcr}
-                    className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                    className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
                   >
                     {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                     {t('indexStatus.action.clearOcrAndReindex')}
@@ -1810,7 +1825,7 @@ export const IndexStatusView: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6" aria-label={t('common:close')}>
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
                           <X className="h-3.5 w-3.5" />
                         </DsButton>
                       </div>
@@ -1920,7 +1935,7 @@ export const IndexStatusView: React.FC = () => {
                                   size="sm"
                                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
                                   disabled={clearingOcr}
-                                  className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                                  className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
                                 >
                                   {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                                   {t('indexStatus.action.clearOcrAndReindex')}
@@ -1972,7 +1987,7 @@ export const IndexStatusView: React.FC = () => {
         {isDbError && (
           <p className="text-xs text-warning">{t('indexStatus.notification.checkDb')}</p>
         )}
-        <DsButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
           {t('indexStatus.action.retry')}
         </DsButton>
       </div>
@@ -2033,31 +2048,31 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 第三行：操作按钮独占一行 */}
           <div className="flex items-center gap-1.5">
-            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3 [@media(pointer:coarse)]:!min-h-11', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
               {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </DsButton>
-            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
+            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} className="[@media(pointer:coarse)]:!min-h-11">
               <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
             </DsButton>
             {/* 更多操作下拉 */}
             <div className="relative" ref={mobileMoreRef}>
-              <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
+              <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', mobileMoreOpen && 'bg-accent text-accent-foreground')}>
                 <DotsThree className="h-3.5 w-3.5" />
               </DsButton>
               {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
               {mobileMoreOpen && (
                 <div className="absolute right-0 top-full mt-1 z-dropdown min-w-[160px] rounded-md border bg-popover shadow-md py-1 ui-zoom-fade-in">
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
                     onClick={() => { setShowTestPanel(v => !v); setMobileMoreOpen(false); }}
                   >
                     <TestTube className="h-3.5 w-3.5" />
                     {t('indexStatus.action.recallTest')}
                   </button>
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors [@media(pointer:coarse)]:min-h-11"
                     disabled={resetting || batchIndexing || mmIndexing}
                     onClick={() => { toggleResetConfirm(); setMobileMoreOpen(false); }}
                   >
@@ -2301,7 +2316,7 @@ export const IndexStatusView: React.FC = () => {
               onClick={handleUnifiedIndex}
               disabled={batchIndexing || mmIndexing}
               className={cn(
-                '!h-8 !rounded-lg !px-3 text-[12px] font-medium shadow-sm',
+                '!h-8 !rounded-lg !px-3 text-[12px] font-medium shadow-sm [@media(pointer:coarse)]:!h-11',
                 batchIndexing || mmIndexing
                   ? 'bg-muted text-muted-foreground shadow-none'
                   : 'bg-foreground text-background hover:bg-foreground/90 dark:bg-foreground dark:text-background'
@@ -2322,7 +2337,7 @@ export const IndexStatusView: React.FC = () => {
                 onClick={() => { loadData(); }}
                 disabled={isLoading || batchIndexing}
                 title={t('indexStatus.action.refreshTitle')}
-                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06]"
+                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11"
               >
                 <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
@@ -2332,7 +2347,7 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={() => setShowTestPanel(!showTestPanel)}
                 className={cn(
-                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06]',
+                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11',
                   showTestPanel
                     ? 'bg-primary/10 text-primary border-primary/20'
                     : 'bg-muted/60 hover:bg-muted'
@@ -2350,7 +2365,7 @@ export const IndexStatusView: React.FC = () => {
               disabled={resetting || batchIndexing || mmIndexing}
               title={t('indexStatus.action.resetStateTitle')}
               className={cn(
-                '!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5',
+                '!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5 [@media(pointer:coarse)]:!h-11',
                 resetConfirmOpen && 'text-destructive bg-destructive/5'
               )}
             >
@@ -2380,12 +2395,12 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={handleResetAllIndexState}
                 disabled={resetting}
-                className="!h-7 text-[11px]"
+                className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
               >
                 {resetting ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                 {t('indexStatus.confirm.confirmReset')}
               </DsButton>
-              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px]">
+              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                 {t('indexStatus.confirm.cancel')}
               </DsButton>
             </div>
@@ -2420,7 +2435,7 @@ export const IndexStatusView: React.FC = () => {
                       onClick={() => setTestMode(mode)}
                       aria-pressed={testMode === mode}
                       className={cn(
-                        '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                        '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                         testMode === mode
                           ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                           : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2431,7 +2446,7 @@ export const IndexStatusView: React.FC = () => {
                   ))}
                 </div>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:close')}>
                 <X className="h-4 w-4" />
               </DsButton>
             </div>
@@ -2447,11 +2462,13 @@ export const IndexStatusView: React.FC = () => {
                 onChange={(e) => setTestQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
                 placeholder={t('indexStatus.test.placeholder')}
-                className="w-full h-9 pl-9 pr-4 text-ui bg-muted/50 border border-black/[0.04] dark:border-white/[0.06] rounded-lg focus:bg-background focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/60"
+                // 📱 16px 输入契约：.text-ui（typography.css 在 Tailwind 后加载）12px 会压过
+                // 输入外壳的非 important coarse text-base，须带 ! 防 iOS 聚焦缩放（同 FinderToolbar）
+                className="w-full h-9 [@media(pointer:coarse)]:!h-11 pl-9 pr-4 text-ui [@media(pointer:coarse)]:!text-[16px] bg-muted/50 border border-black/[0.04] dark:border-white/[0.06] rounded-lg focus:bg-background focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/60"
                 autoFocus
               />
             </div>
-            <DsButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 !px-6">
+            <DsButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 [@media(pointer:coarse)]:!h-11 !px-6">
               {testLoading ? (
                 <CircleNotch className="h-4 w-4 animate-spin" />
               ) : (
@@ -2533,8 +2550,20 @@ export const IndexStatusView: React.FC = () => {
         </div>
       )}
 
-      {/* 筛选栏 — macOS segmented / capsule 风格 */}
-      <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl sticky top-0 z-10">
+      <IndexStatusGenerativeBriefing
+        summary={{
+          totalResources: summary.totalResources,
+          indexedCount: summary.indexedCount,
+          pendingCount: summary.pendingCount,
+          failedCount: summary.failedCount,
+          indexingCount: summary.indexingCount,
+        }}
+        onBatchIndex={handleUnifiedIndex}
+        onRefresh={loadData}
+      />
+
+      {/* 筛选栏 — macOS segmented / capsule 风格（滚动发生在下方 CustomScrollArea 内，无需 sticky） */}
+      <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl">
         <CustomScrollArea className="min-w-0 flex-1" orientation="horizontal" fullHeight={false}>
           <div className="flex w-max min-w-full items-center gap-2">
             <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
@@ -2549,7 +2578,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={() => setSelectedType(type)}
                     className={cn(
-                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                       isActive
                         ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                         : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2618,7 +2647,7 @@ export const IndexStatusView: React.FC = () => {
                       size="sm"
                       onClick={() => toggleGroup(state)}
                       className={cn(
-                        'flex-1 !h-8 !justify-start !gap-2 !rounded-none !px-3 md:!px-4 !py-0 text-[12px] font-medium !bg-transparent',
+                        'flex-1 !h-8 !justify-start !gap-2 !rounded-none !px-3 md:!px-4 !py-0 text-[12px] font-medium !bg-transparent [@media(pointer:coarse)]:!h-11',
                         'hover:brightness-[0.98] dark:hover:brightness-110'
                       )}
                     >
@@ -2639,7 +2668,7 @@ export const IndexStatusView: React.FC = () => {
                         onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                         disabled={retryingFailed || batchIndexing || mmIndexing}
                         className={cn(
-                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-[11px] shrink-0 text-danger hover:bg-danger/10',
+                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-[11px] shrink-0 text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                           retryFailedConfirmOpen && 'bg-danger/10'
                         )}
                       >
@@ -2659,11 +2688,11 @@ export const IndexStatusView: React.FC = () => {
                           <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                             {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                             {t('indexStatus.confirm.confirmRetry')}
                           </DsButton>
-                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                             {t('indexStatus.confirm.cancel')}
                           </DsButton>
                         </div>
@@ -2694,7 +2723,7 @@ export const IndexStatusView: React.FC = () => {
                     onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                     disabled={retryingFailed || batchIndexing || mmIndexing}
                     className={cn(
-                      '!h-6 !rounded-md !px-2 text-[11px] text-danger hover:bg-danger/10',
+                      '!h-6 !rounded-md !px-2 text-[11px] text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                       retryFailedConfirmOpen && 'bg-danger/10'
                     )}
                   >
@@ -2711,11 +2740,11 @@ export const IndexStatusView: React.FC = () => {
                         <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                           {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                           {t('indexStatus.confirm.confirmRetry')}
                         </DsButton>
-                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                           {t('indexStatus.confirm.cancel')}
                         </DsButton>
                       </div>
@@ -2744,7 +2773,7 @@ export const IndexStatusView: React.FC = () => {
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="!h-7 text-[11px]"
+              className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
             >
               {loadingMore ? (
                 <>

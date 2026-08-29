@@ -26,14 +26,14 @@ import { usePdfLoader } from '@/hooks/usePdfLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 import {
   base64ToBlob,
-  base64ToUint8Array,
   estimateBase64Size,
   LARGE_FILE_THRESHOLD,
   uint8ArrayToBase64,
 } from '@/utils/base64FileUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
+import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 // PDF 预览组件
@@ -56,6 +56,11 @@ import {
 import { PreviewStatus } from './PreviewStatus';
 import { AudioPlayer, VideoPlayer } from './media';
 import { createPreviewPersistController } from './previewPersistence';
+import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
+import {
+  buildSelectionLocator,
+  type PdfSelectionPayload,
+} from '@/features/pdf/pdfSelectionActions';
 
 /** 加载指示延迟：对齐 UnifiedAppPanel 的 150ms 策略，快速加载不闪 spinner */
 const LOADING_INDICATOR_DELAY_MS = 150;
@@ -99,7 +104,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   isActive = true,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
-  const { t } = useTranslation(['learningHub', 'common']);
+  const { t } = useTranslation(['learningHub', 'common', 'pdf']);
   
   // 从 PreviewContext 获取状态和方法
   const {
@@ -187,7 +192,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       kind: 'file',
       nodeId: node.id,
       nodePath: node.path,
-      getMetadata: () => nodeMetadataRef.current,
+      // ★ 创建时快照（白名单提取），dispose flush 不回读活 ref
+      metadata: node.metadata as Record<string, unknown> | undefined,
     }),
   );
 
@@ -228,14 +234,15 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     }
   }, [node.metadata]);
 
-  // node 切换时 flush 旧控制器再换新；unmount 时 dispose
+  // node 切换时 flush 旧控制器再换新；unmount 时 dispose。
+  // 旧控制器 dispose 用创建时快照，不读已指向新 node 的活 ref。
   useEffect(() => {
     persistControllerRef.current.dispose();
     persistControllerRef.current = createPreviewPersistController({
       kind: 'file',
       nodeId: nodeIdRef.current,
       nodePath: nodePathRef.current,
-      getMetadata: () => nodeMetadataRef.current,
+      metadata: nodeMetadataRef.current,
     });
     return () => {
       persistControllerRef.current.dispose();
@@ -250,6 +257,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setBookmarks(newBookmarks);
     persistControllerRef.current.scheduleBookmarks(newBookmarks);
   }, []);
+
+  // 划词「引用到对话」：selectedText + 页码 locator 随资源引用进入会话上下文
+  const { referenceToChat } = useReferenceToChat();
+  const handleQuoteToChat = useCallback((payload: PdfSelectionPayload) => {
+    void referenceToChat({
+      sourceType: 'file',
+      sourceId: node.sourceId || node.id,
+      metadata: {
+        title: node.name,
+        selectedText: payload.text,
+        locator: buildSelectionLocator(payload.page),
+      },
+    });
+  }, [referenceToChat, node.sourceId, node.id, node.name]);
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -344,61 +365,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   }, []);
 
   // ★ L-008 修复：文件过大时提供"保存到本地"操作
+  // 共享双通道（saveResourceToDevice）：blob 直拷贝优先，legacy 内联回退 base64
   const handleSaveFile = useCallback(async () => {
     setIsSaving(true);
     try {
-      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
-      const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
-      if (blobPath) {
-        const saveResult = await fileManager.saveFromSource({
-          sourcePath: blobPath,
-          defaultFileName: node.name,
-          filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
-        });
-        if (!saveResult.canceled && saveResult.path) {
-          showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
-          try {
-            const { openPath } = await import('@tauri-apps/plugin-opener');
-            await openPath(saveResult.path);
-          } catch {
-            // The file was saved successfully; opening it is best-effort.
-          }
-        }
-        return;
-      }
-
-      // Compatibility path for legacy inline resources without a blob file.
-      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
-        attachmentId: node.id,
+      const saveResult = await saveResourceToDevice({
+        nodeId: node.id,
+        fileName: node.name,
+        filters: saveFiltersForFileName(node.name),
+        notFoundMessage: t('learningHub:file.loadFailed'),
+        openAfterSave: true,
       });
-
-      if (!result?.found || !result?.content) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed'));
-        return;
-      }
-
-      const bytes = base64ToUint8Array(result.content);
-      if (!bytes) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed'));
-        return;
-      }
-
-      // 从文件名推断扩展名
-      const saveResult = await fileManager.saveBinaryFile({
-        data: bytes,
-        defaultFileName: node.name,
-        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
-      });
-
       if (!saveResult.canceled && saveResult.path) {
         showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
-        // 保存成功后用系统默认应用打开
-        try {
-          const { openPath } = await import('@tauri-apps/plugin-opener');
-          await openPath(saveResult.path);
-        } catch {
-          // 打开失败不阻塞，文件已保存
-        }
       }
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err));
@@ -561,9 +540,9 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             contentHash,
           });
           if (!isMounted) return;
-          // 仅当返回的是清单文本时展示（区别于 "[文档: xxx]" 等注入占位）
-          if (manifest && manifest.startsWith('[压缩包清单]')) {
-            setTextContent(manifest);
+          // 仅当返回的是清单文本时展示（识别走机器标记，含 legacy 中文前缀兼容）
+          if (manifest && isArchiveManifestText(manifest)) {
+            setTextContent(archiveManifestDisplayText(manifest));
           }
         } catch (archiveErr: unknown) {
           console.warn('[FileContentView] load archive manifest failed:', archiveErr);
@@ -742,6 +721,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             onProgressChange={handleProgressChange}
             bookmarks={bookmarks}
             onBookmarksChange={handleBookmarksChange}
+            onQuoteToChat={handleQuoteToChat}
           />
         );
       }
@@ -768,7 +748,14 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isEpub && base64Content) {
       return (
         <div className="h-full ui-rise-in">
-          <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />
+          <EpubPreview
+            base64Content={base64Content}
+            fileName={node.name}
+            resourceId={node.id}
+            metadataProgress={readingProgress}
+            onProgressChange={handleProgressChange}
+            isActive={isActive}
+          />
         </div>
       );
     }
