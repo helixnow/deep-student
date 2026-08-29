@@ -178,7 +178,7 @@ export const SyncQuarantinePanel: React.FC<{
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <ShieldWarning size={16} className="text-amber-500" />
+            <ShieldWarning size={16} className="text-warning" />
             {t("data:governance.quarantine_title", { count: rows.length })}
           </CardTitle>
           <CardDescription>
@@ -262,7 +262,7 @@ export const SyncQuarantinePanel: React.FC<{
       <CardContent className="space-y-3">
         {rows.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-            <CheckCircle size={16} className="text-emerald-500" />
+            <CheckCircle size={16} className="text-success" />
             {t("data:governance.quarantine_empty")}
           </div>
         )}

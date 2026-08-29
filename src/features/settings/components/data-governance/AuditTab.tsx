@@ -71,28 +71,28 @@ export const AuditTab: React.FC<AuditTabProps> = ({
     switch (status) {
       case 'Completed':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs whitespace-nowrap">
             <CheckCircle size={12} className="shrink-0" />
             {t('data:governance.status_completed')}
           </div>
         );
       case 'Failed':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs whitespace-nowrap">
             <XCircle size={12} className="shrink-0" />
             {t('data:governance.status_failed')}
           </div>
         );
       case 'Started':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-info/10 text-info text-xs whitespace-nowrap">
             <Play size={12} className="shrink-0" />
             {t('data:governance.status_started')}
           </div>
         );
       case 'Partial':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-warning/10 text-warning text-xs whitespace-nowrap">
             <Warning size={12} className="shrink-0" />
             {t('data:governance.status_partial')}
           </div>
