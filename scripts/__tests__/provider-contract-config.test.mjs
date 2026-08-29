@@ -12,17 +12,19 @@ function read(relativePath) {
 }
 
 function yamlTopLevelSection(source, key, indent = 2) {
-  const prefix = `${' '.repeat(indent)}${key}:\n`;
-  const start = source.indexOf(prefix);
-  assert.notEqual(start, -1, `missing YAML section: ${key}`);
-  const remainder = source.slice(start + prefix.length);
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const heading = new RegExp(`^ {${indent}}${escapedKey}:[ \\t]*$`, 'm');
+  const match = heading.exec(source);
+  assert.ok(match, `missing YAML section: ${key}`);
+  const remainder = source.slice(match.index + match[0].length);
   const next = remainder.search(new RegExp(`^ {${indent}}[A-Za-z0-9_-]+:\\s*$`, 'm'));
   return next === -1 ? remainder : remainder.slice(0, next);
 }
 
 test('provider contract is a fixed fail-closed CI job', () => {
   const workflow = read('.github/workflows/ci.yml');
-  const job = yamlTopLevelSection(workflow, 'provider-contract');
+  const jobs = yamlTopLevelSection(workflow, 'jobs', 0);
+  const job = yamlTopLevelSection(jobs, 'provider-contract');
 
   assert.match(job, /^\s{4}name: Cloud Provider Contract Gate$/m);
   assert.doesNotMatch(job, /continue-on-error:/);
@@ -80,4 +82,29 @@ test('compatibility composition delegates to the canonical source', () => {
     /include:\s*\n\s+- path: \.\.\/\.\.\/scripts\/dev\/docker-compose\.sync-test\.yml/,
   );
   assert.doesNotMatch(compatibility, /^services:/m);
+});
+
+// A fixture that only comes up locally is worthless as a pre-CI signal, so the
+// npm scripts must drive the same file and the same startup sequence as the gate.
+test('local cloud fixture scripts match the CI provider contract sequence', () => {
+  const { scripts } = JSON.parse(read('package.json'));
+  const up = scripts['dstu-test:cloud:up'];
+  const down = scripts['dstu-test:cloud:down'];
+
+  for (const script of [up, down]) {
+    assert.match(script, /-f \.\/scripts\/dev\/docker-compose\.sync-test\.yml/);
+    assert.doesNotMatch(script, /dstu-test\/docker\/docker-compose\.sync-test\.yml/);
+  }
+
+  assert.match(up, /up --detach --build --wait --wait-timeout 180 minio webdav ftp/);
+  assert.match(up, /run --rm minio-init/);
+  assert.match(down, /down --volumes --remove-orphans/);
+});
+
+// Both entrypoints must resolve to one project, otherwise each would create its
+// own volumes behind identical container names and `down` would half-clean.
+test('both compositions pin the same compose project name', () => {
+  const projectName = /^name: deep-student-sync-test$/m;
+  assert.match(read('scripts/dev/docker-compose.sync-test.yml'), projectName);
+  assert.match(read('dstu-test/docker/docker-compose.sync-test.yml'), projectName);
 });

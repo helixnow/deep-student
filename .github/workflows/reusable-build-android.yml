@@ -11,6 +11,10 @@
 # 要等 2 小时编译完成才在 Sign APK 步骤炸出来）。本 job 失败不阻塞桌面
 # 发布（release.yml 的既有产品策略），但发布清单会诚实标记 Android 状态,
 # 不会产出错误的更新元数据。
+#
+# WI-6 (R3)：Android 构建 mobile-slim feature 集（非桌面 default 集），
+# release profile 收紧为 opt-level=z / codegen-units=16。详见 Build Android
+# APK 步骤与 job env 的注释。
 
 name: Build Android (reusable)
 
@@ -26,10 +30,15 @@ on:
         required: true
         type: string
       lean_recovery:
-        description: '仅限明确授权的恢复构建：禁用可选 S3 并使用快速 release profile'
+        description: '仅限明确授权的恢复构建：使用快速 release profile（opt-level=0 / cgu=256）；feature 集与正常构建一致（mobile-slim）'
         required: false
         default: false
         type: boolean
+      frontend_dist_artifact:
+        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端（rebuild-android.yml 走此回退路径）'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -43,10 +52,14 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      # v0.9.43 recovery uses a faster profile after repeated hosted-runner
-      # reclamations. Normal callers retain the previous release settings.
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || '1' }}
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '128' }}
+      # WI-6 (R3): 正常发布收紧为 opt-level=z + codegen-units=16 —— .so 体积
+      # 直接决定低内存设备启动时 dlopen/重定位压力（见 Sign APK 的 250MB 守卫）。
+      # 编译时间可控的依据：同轮切换的 mobile-slim 裁掉了 lance/arrow、aws-sdk、
+      # tiktoken 等最重的依赖树，省下的编译时间远大于更紧 profile 的开销。
+      # lean_recovery（v0.9.43 托管 runner 反复被回收后的应急路径）保留
+      # opt-level=0 / cgu=256 快速 profile。
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || 'z' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '16' }}
       CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
@@ -137,9 +150,9 @@ jobs:
 
       - name: Setup Android SDK & NDK
         run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
             "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
@@ -156,7 +169,9 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
-          shared-key: release-android-aarch64
+          # key 随 mobile-slim 切换更名：旧缓存里数百 MB 的 lance/arrow/aws
+          # 编译产物在新 feature 集下永远不会命中，只会拖慢恢复与保存。
+          shared-key: release-android-aarch64-mobile-slim
           cache-on-failure: true
 
       - name: Install dependencies
@@ -183,6 +198,24 @@ jobs:
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
+
+      # ── WI-4: 预构建前端 dist（可选）──
+      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
+      # artifact 分发；传入名称时这里下载复用, tauri android build 用
+      # --config 覆盖 beforeBuildCommand 跳过重复的 vite 构建（见下方
+      # Build Android APK 步骤的说明）。留空时保持原行为。
+      - name: Download prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: dist
+
+      - name: Verify prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        run: |
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
+          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
 
       - name: Initialize Android project
         run: npx tauri android init
@@ -254,7 +287,7 @@ jobs:
           mkdir -p "$JNILIBS_DIR"
           if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
             cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+            echo "✅ Bundled pdfium for arm64: $(du -h --apparent-size "$JNILIBS_DIR/libpdfium.so" | cut -f1)"
           else
             echo "⚠️ Android pdfium .so not found, downloading..."
             bash scripts/download-pdfium.sh android-arm64
@@ -269,10 +302,12 @@ jobs:
             test -x "${NDK_PREBUILT}/bin/${TOOL}" || { echo "::error::missing NDK tool ${TOOL}"; exit 1; }
           done
 
-          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
-          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          {
+            echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
+            echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++"
+            echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
+          } >> "$GITHUB_ENV"
 
           echo "✅ NDK toolchain configured: ${NDK_PREBUILT}"
 
@@ -282,20 +317,34 @@ jobs:
           SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           GRADLE_OPTS: -Dorg.gradle.daemon=false
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
           set +e
           echo "Starting Android build with 120 minute timeout"
+          # WI-4: dist 预构建时不能把 beforeBuildCommand 直接置空 ——
+          # tauri android build 在运行 hook 之前会先用 tauri.conf.json 的
+          # 静态 versionCode 重写 gen/android/app/tauri.properties
+          # (generate_tauri_properties)，原流程靠 hook 里 npm run build 的
+          # prebuild (version:generate) 把生成器的稳定 versionCode 写回。
+          # 这里保留该生成器作为 hook（同一执行时机），只跳过昂贵的
+          # licenses:check + typecheck + vite build。
+          CONFIG_ARGS=()
+          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
+            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":"node scripts/generate-version.mjs"}}')
+          fi
           # The default Tauri command builds both APK and AAB. This release path
           # only signs and publishes the APK, while the redundant AAB task
           # invokes the Rust Android build again and keeps hosted runners alive
           # long enough to be reclaimed during the final link.
-          if [[ "${{ inputs.lean_recovery }}" == "true" ]]; then
-            timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci -- --locked --no-default-features --features android-release
-          else
-            timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci -- --locked
-          fi
+          #
+          # WI-6 (R3): Android 统一构建 mobile-slim feature 集（R2 已修复其编译
+          # 门控，见 progress/R2-WI-6-mobile-slim.md）——相对 default 裁掉
+          # lance / mcp / tokenizer_tiktoken / cloud_storage_s3 这些桌面向、
+          # 编译负担最重的依赖树。lean_recovery 不再切换 feature 集
+          # （此前为 android-release）：应急重建只该改 cargo profile（见 job env），
+          # 不该静默产出功能集不同的 APK。
+          timeout --signal=TERM --kill-after=60s 120m \
+            npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features mobile-slim
           status=$?
           set -e
 
@@ -328,7 +377,7 @@ jobs:
           fi
           echo "找到 APK: $UNSIGNED_APK"
 
-          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+          BUILD_TOOLS=$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
 
           # extractNativeLibs=false 时未压缩 .so 需 16KB 页对齐（AGP 8.x 打包已满足，
           # Android 15+ 16KB 页设备强制要求）。用 -P 16 显式对齐而非旧的 -v 4，

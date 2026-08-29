@@ -55,11 +55,26 @@ jobs:
 
   # ============================================
   # 前端编译检查 + 产物构建
+  #
+  # R3 wall-clock 优化：typecheck / eslint / vite build 三个门禁互不依赖，
+  # 此前在单 job 内串行（关键路径 = 安装 + 全部步骤之和）。现拆为 matrix
+  # 三 leg 并行，每 leg 独立 checkout + npm ci（npm 缓存命中时安装远小于
+  # 省下的串行等待），关键路径降为 max(单 leg)。
+  #
+  # 门禁完整性不变（只并行，不删减）：
+  #   - licenses:check 与 npm audit 只依赖依赖树、不依赖 dist，
+  #     挂在最短的 lint leg 平衡三 leg 时长
+  #   - bundle 体积门禁依赖 vite 产物，跟随 build leg
+  #   - fail-fast: false —— 一个 leg 失败不取消其余门禁的信号
   # ============================================
-  frontend:
-    name: Frontend
+  frontend-checks:
+    name: Frontend · ${{ matrix.task }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [lint, typecheck, build]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -70,28 +85,70 @@ jobs:
 
       - run: npm ci --legacy-peer-deps
 
-      - name: Verify third-party license notices
-        run: npm run licenses:check
-
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      - name: Type check
-        run: npx tsc --noEmit
+      # WI-7/R4：typecheck 双编译器硬门禁 —— tsc 5.6（项目锁定，权威）与
+      # tsgo（@typescript/native-preview，TS7 原生编译器，~8× 快，详见
+      # docs/dev/optimization0824/progress/R4-tsgo-land.md）在同一 leg 内
+      # 并行同跑，任一非零即红。tsgo ~7s 完全被 tsc ~50s 遮蔽，不增加
+      # leg 时长；tsgo 仍是 preview，双跑期保留 tsc 作为权威信号，
+      # 待 TS 7.0 正式发布升级 typescript 依赖后再收敛为单跑。
+      - name: Type check (tsc + tsgo in parallel, both blocking)
+        if: matrix.task == 'typecheck'
+        run: |
+          run_compiler() {
+            local t0=$SECONDS code=0
+            npx "$@" || code=$?
+            echo "--- $1 finished: exit=$code duration=$((SECONDS - t0))s"
+            return "$code"
+          }
+          run_compiler tsc --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsc.log" 2>&1 &
+          TSC_PID=$!
+          run_compiler tsgo --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsgo.log" 2>&1 &
+          TSGO_PID=$!
+          TSC_CODE=0; wait "$TSC_PID" || TSC_CODE=$?
+          TSGO_CODE=0; wait "$TSGO_PID" || TSGO_CODE=$?
+          echo "== tsc (exit $TSC_CODE) =="
+          cat "$RUNNER_TEMP/tsc.log"
+          echo "== tsgo (exit $TSGO_CODE) =="
+          cat "$RUNNER_TEMP/tsgo.log"
+          if [ "$TSC_CODE" -ne 0 ] || [ "$TSGO_CODE" -ne 0 ]; then
+            echo "::error::Type check failed (tsc exit=$TSC_CODE, tsgo exit=$TSGO_CODE)"
+            exit 1
+          fi
 
       - name: Lint (ESLint, errors block merge)
+        if: matrix.task == 'lint'
         run: npm run lint
+
+      - name: Verify third-party license notices
+        if: matrix.task == 'lint'
+        run: npm run licenses:check
 
       # 审查 F13：tsc 通过不代表 vite build 能过（rollup 解析、动态 import、
       # 资源引用、chunk 配置）。此前第一次构建产物发生在合并 Release PR 之后
       # 的全平台发布里 —— 失败即阻塞发布。左移到 PR。
       - name: Build production bundle
+        if: matrix.task == 'build'
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npx vite build
+
+      # WI-8：bundle 体积门禁。阈值 = R3 刷新后的 2026-08-24 基线（commit
+      # 1bf03a24）gzip +3%（R1 引入期为 +5%，SA-R3-06 收紧；阈值唯一事实源是
+      # scripts/check-bundle-size.mjs 的 BUDGETS 表 + HEADROOM）。
+      # 引入期先跑 warn 模式：超限打 ::warning:: 注解 + job summary，
+      # exit 0 不阻塞；观察两周（至 ~2026-09-07）后去掉 --warn-only 转阻塞。
+      - name: Bundle size check (warn mode)
+        if: matrix.task == 'build'
+        run: node scripts/check-bundle-size.mjs --warn-only
 
       # 审查 F11：此前 `npm audit || true` 永远绿灯且无人看日志。
       # 保持非阻塞（npm 无 audit.toml 式忽略清单，深层传递依赖难以升级），
       # 但结果写入 job summary，红字可见。
       - name: Security audit (npm, informational)
+        if: matrix.task == 'lint'
         run: |
           set +e
           npm audit --omit=dev --audit-level=high > "$RUNNER_TEMP/npm-audit.txt" 2>&1
@@ -109,6 +166,26 @@ jobs:
             echo "::warning::npm audit found high+ vulnerabilities (informational, see job summary)"
           fi
 
+  # main-protection ruleset 要求的 required status check context 恰为
+  # "Frontend"（Actions integration）。matrix leg 的 check 名带任务后缀，
+  # 命中不了该 context —— 本聚合 job 以原名收敛三 leg 结果，保住合并门禁。
+  #
+  # if: always() + 显式断言是有意的 fail-closed：若依赖失败时靠隐式
+  # success() 跳过本 job，skipped 的 required check 会被 ruleset 视为
+  # 满足（假绿）。任一 leg failure/cancelled 都必须让本 job 转红。
+  frontend:
+    name: Frontend
+    needs: [frontend-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert every frontend gate passed
+        run: |
+          RESULT="${{ needs.frontend-checks.result }}"
+          echo "frontend-checks combined result: $RESULT"
+          test "$RESULT" = "success"
+
   # ============================================
   # 前端单元测试（Vitest）
   #
@@ -124,6 +201,11 @@ jobs:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # vitest.config.ts 的 poolOptions.forks.execArgv 只作用于 fork 子进程，
+      # 主进程（收集结果、跑 vite transform）走 Node 默认堆，随 runner 内存浮动。
+      # 与各平台 build job 对齐，把上限固定下来。
+      NODE_OPTIONS: '--max-old-space-size=4096'
     strategy:
       fail-fast: false
       matrix:
@@ -141,8 +223,14 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # --logHeapUsage：非 TTY 下默认 reporter 不打印在跑的文件，分片 OOM 时
+      # 日志里没有任何归因线索。带上每个文件的堆占用，下一轮才知道该改谁。
       - name: Run vitest shard
-        run: npx vitest run --shard=${{ matrix.shard }}/4
+        env:
+          # 与 vitest.config.ts 的 CI forks 堆上限一致；父进程也抬高，
+          # 避免编排进程先于 worker 顶到默认 4GB。
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: npx vitest run --shard=${{ matrix.shard }}/4 --logHeapUsage
 
   # ============================================
   # 后端静态检查（fmt + clippy）
@@ -157,6 +245,10 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      # sccache（GHA 后端）与 rust-cache 叠加：rust-cache 命中 registry/target，
+      # sccache 命中单个编译单元（依赖图局部变更时仍省编译时间）。
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -170,22 +262,38 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
           shared-key: clippy
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # ImageOS/ImageVersion 由 runner 镜像注入、不在 ${{ env }} 表达式上下文里
+      # （直接写 ${{ env.ImageOS }} 会静默展开为空），必须经 GITHUB_ENV 中转。
+      # 写进缓存 version 是因为 cache-apt-pkgs 的 key 只含包名列表：快照只含
+      # 新装包的文件，必须与生成它的 base 镜像配套，镜像升级后复用旧快照有
+      # ABI 漂移风险。ImageVersion 每周随镜像滚动，缓存随之自然刷新。
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      # 文件快照级 apt 缓存（含传递依赖）：命中时跳过 apt-get update/install，
+      # 每 job 省 1-2 分钟。execute_install_scripts 让 postinst/触发器
+      # （ldconfig、gdk-pixbuf loaders、glib schemas）在恢复路径同样执行，
+      # 与真实安装行为一致。同包列表 + 同镜像的 5 个 Rust job 共享一份缓存。
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so（2026-08-06
       # 起 Linux 版 PDF/OCR 补齐），CI 工作区未随仓库提交该二进制，必须预先下载。
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -202,15 +310,80 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D clippy::correctness
 
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (backend)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================
+  # PR 路径过滤（provider-contract 降频）
+  #
+  # provider-contract 是本 workflow 最重的 job（~2h 预算：Docker 三 provider
+  # + 全量 ignored 契约测试串行跑）。它验证的唯一信号是 cloud_storage /
+  # data_governance 对真实 provider 的行为契约 —— 与前端或无关后端改动
+  # 的 PR 不需要这个信号（编译回归已由 backend / rust-tests 覆盖）。
+  #
+  # 分层（参照 migration-nightly 的 paths 模式）：
+  #   PR           : 仅下列路径变更时运行（本过滤 job 探测）
+  #   push（main/develop/nightly）: 恒跑全量，不过滤
+  #
+  # 过滤 job 失败时 provider-contract 因隐式 success() 依赖被跳过、
+  # workflow 整体标红 —— fail-closed，不是假绿。
+  # ============================================
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      provider-contract: ${{ steps.filter.outputs.provider-contract }}
+    steps:
+      # pull_request 事件走 GitHub API 比对变更文件，无需 checkout；
+      # push 事件跳过本步骤（output 为空，下游 job 的 if 恒为 true）。
+      - name: Filter provider-contract paths
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            provider-contract:
+              # provider 实现（webdav/s3/ftp/sync_manager/traits/config）
+              - 'src-tauri/src/cloud_storage/**'
+              # 契约测试依赖的同步/迁移框架（data_governance::sync / ::migration）
+              - 'src-tauri/src/data_governance/**'
+              # 备份加密（测试直接调用 crypto::backup_crypto）
+              - 'src-tauri/src/crypto/**'
+              # 契约测试本体
+              - 'src-tauri/tests/sync_provider_contract_tests.rs'
+              # 依赖升级可能改变 provider 客户端行为
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              # provider 环境唯一事实源 + FTP 镜像 build context
+              - 'scripts/dev/docker-compose.sync-test.yml'
+              - 'dstu-test/docker/**'
+              # workflow 自身变更需自证
+              - '.github/workflows/ci.yml'
+
   # Real provider behavior is a required contract, not an optional local check.
   # This job deliberately runs every ignored test in sync_provider_contract_tests.
+  # On PRs it only runs when cloud-storage-related paths change (see `changes`
+  # job above); pushes to main/develop/nightly always run it in full.
   provider-contract:
     name: Cloud Provider Contract Gate
+    needs: [changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: 0
       DS_SYNC_TEST_DOCKER: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -223,20 +396,28 @@ jobs:
         with:
           toolchain: stable
 
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
           shared-key: provider-contract
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -325,18 +506,35 @@ jobs:
         if: always()
         run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
 
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (provider-contract)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   windows-shell-sandbox:
     name: Windows Shell Sandbox
     runs-on: windows-latest
-    timeout-minutes: 30
+    # Cold-sccache runs need ~26m for the test-profile compile alone; 30m
+    # kills the job during post-steps after the tests have already passed.
+    timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
@@ -347,13 +545,26 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Compile Windows backend
-        working-directory: src-tauri
-        run: cargo check --lib
-
+      # 单次 cargo test 同时承担编译与执行：此前先 cargo check --lib 再
+      # cargo test --lib 在 Windows 上等于完整编译两遍（check 的 metadata
+      # 产物无法被 test 的 codegen 复用），30 分钟超时被取消。编译失败
+      # 仍会让本步骤直接红。测试保持默认并行：起进程的 AppContainer 用例
+      # 已被实现内的命名 ACL 互斥锁串行化，无跨线程共享状态冲突。
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
         run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+
+      - name: sccache stats to summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## sccache stats (windows-shell-sandbox)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================
   # Rust 测试：一次编译 + 分片执行（cargo-nextest archive）
@@ -381,17 +592,37 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      # OOM 缓解（R07-archive）：4 路并行链接巨型测试二进制会耗尽 16GB 内存，
+      # 把 runner agent 一起 OOM 杀掉（exit 143 + "runner has received a shutdown signal"）。
+      # 降到 3 路压峰值；不改 RUSTFLAGS/profile，避免打碎与 migration-gate 共享的 tests 缓存。
+      CARGO_BUILD_JOBS: '3'
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
 
+      # OOM 缓解（R07-archive）：把默认 4GB swap 扩到 12GB，
+      # 链接高峰溢出到 swap 而不是触发 OOM killer 打死 runner。
+      - name: Expand swap to survive linker memory peaks
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h /mnt
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # shared-key（而非 key）才是跨 job 共享缓存的正确参数（审查 F8）；
       # 与 migration-gate / migration-nightly 共用同一份编译缓存。
@@ -400,10 +631,16 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b # v2.83.4
         with:
@@ -412,7 +649,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -427,6 +664,17 @@ jobs:
           name: nextest-archive
           path: ${{ runner.temp }}/nextest-archive.tar.zst
           retention-days: 1
+
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (rust-test-build)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   rust-tests:
     name: Rust Tests (${{ matrix.partition }}/8)
@@ -447,11 +695,17 @@ jobs:
         with:
           toolchain: stable
 
-      # 运行期共享库（webkit2gtk 等），无需编译缓存
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # 运行期共享库（webkit2gtk 等），无需编译缓存；
+      # apt 文件快照缓存的镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b # v2.83.4
         with:
@@ -487,6 +741,8 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -517,15 +773,23 @@ jobs:
         with:
           toolchain: stable
 
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       # 生产统一迁移框架测试（src/data_governance/migration*），
       # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
@@ -533,7 +797,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -570,6 +834,17 @@ jobs:
           name: migration-gate-fixture-report
           path: ${{ runner.temp }}/migration-reports/
           retention-days: 14
+
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (migration-gate)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================
   # 供应链安全审计
