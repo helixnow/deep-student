@@ -919,28 +919,35 @@ function App() {
   // pagehide 不可取消，仅作快照兜底落盘（退出时 WorkbenchDesktop 的卸载
   // cleanup 不保证执行）。main.tsx 既有 beforeunload（MCP / ChatV2 紧急保存）
   // 与本钩子互不冲突，无需改 main.tsx。
-  useEffect(() => {
-    if (!workbenchActive) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasDirtyWorkbenchWindows()) return;
-      event.preventDefault();
-      // Chromium 系需要 returnValue 非空才可靠弹出原生确认；自定义文案不会被展示
-      event.returnValue = i18n.t('workbench:deactivation.dirtyBlocked', {
-        defaultValue:
-          '有窗口存在未保存的更改，已阻止直接退出 / Unsaved changes in open windows blocked the exit.',
-      });
-      void runWorkbenchDeactivationTransaction('app-exit');
-    };
-    const onPageHide = () => {
-      void flushSnapshot();
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('pagehide', onPageHide);
-    };
-  }, [workbenchActive, i18n]);
+  useEventRegistry(
+    workbenchActive
+      ? [
+          {
+            target: 'window' as const,
+            type: 'beforeunload',
+            listener: (event: Event) => {
+              const beforeUnload = event as BeforeUnloadEvent;
+              if (!hasDirtyWorkbenchWindows()) return;
+              beforeUnload.preventDefault();
+              // Chromium 系需要 returnValue 非空才可靠弹出原生确认；自定义文案不会被展示
+              beforeUnload.returnValue = i18n.t('workbench:deactivation.dirtyBlocked', {
+                defaultValue:
+                  '有窗口存在未保存的更改，已阻止直接退出 / Unsaved changes in open windows blocked the exit.',
+              });
+              void runWorkbenchDeactivationTransaction('app-exit');
+            },
+          },
+          {
+            target: 'window' as const,
+            type: 'pagehide',
+            listener: () => {
+              void flushSnapshot();
+            },
+          },
+        ]
+      : [],
+    [workbenchActive, i18n],
+  );
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
