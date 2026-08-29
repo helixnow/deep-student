@@ -11,8 +11,8 @@ use serde_json::Value;
 use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType};
 use crate::vfs::{
     VfsDatabase, VfsEssayRepo, VfsEssaySession, VfsExamRepo, VfsFile, VfsFileRepo, VfsFolderRepo,
-    VfsMindMap, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbook, VfsTextbookRepo,
-    VfsTranslationRepo,
+    VfsMindMap, VfsMindMapRepo, VfsNote, VfsNoteRepo, VfsResourceRepo, VfsTextbook,
+    VfsTextbookRepo, VfsTranslationRepo,
 };
 
 use super::{
@@ -74,12 +74,66 @@ fn build_snippet(text: &str, query: &str, max_len: usize) -> Option<String> {
     Some(snippet)
 }
 
+fn normalize_prop_filters(options: &DstuListOptions) -> Vec<(String, String)> {
+    options
+        .prop_filters
+        .as_ref()
+        .map(|filters| {
+            filters
+                .iter()
+                .filter_map(|filter| {
+                    // 键规范化与写侧共用同一模块（trim + 小写；空键丢弃），
+                    // 语法对齐由共享测试向量钉住（vfs::note_props::test_vectors）
+                    crate::vfs::note_props::normalize_prop_key(&filter.key)
+                        .map(|key| (key, filter.value.trim().to_lowercase()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn props_match_filters(props: Option<&Value>, required_props: &[(String, String)]) -> bool {
+    if required_props.is_empty() {
+        return true;
+    }
+    let Some(props) = props.and_then(Value::as_object) else {
+        return false;
+    };
+    let by_key: std::collections::HashMap<String, &Value> = props
+        .iter()
+        .map(|(key, value)| (key.trim().to_lowercase(), value))
+        .collect();
+    required_props.iter().all(|(key, expected)| {
+        let Some(actual) = by_key.get(key) else {
+            return false;
+        };
+        let actual = match actual {
+            Value::String(value) => value.clone(),
+            Value::Number(value) => value.to_string(),
+            Value::Bool(value) => value.to_string(),
+            _ => return false,
+        };
+        actual.to_lowercase().contains(expected)
+    })
+}
+
+fn note_matches_prop_filters(note: &VfsNote, required_props: &[(String, String)]) -> bool {
+    props_match_filters(note.props.as_ref(), required_props)
+}
+
 /// 搜索笔记
 pub fn search_notes(
     vfs_db: &Arc<VfsDatabase>,
     query: &str,
     options: &DstuListOptions,
 ) -> Result<Vec<DstuNode>, String> {
+    if options
+        .types
+        .as_ref()
+        .is_some_and(|types| !types.contains(&DstuNodeType::Note))
+    {
+        return Ok(Vec::new());
+    }
     let required_tags: Vec<String> = options
         .tags
         .as_ref()
@@ -91,13 +145,23 @@ pub fn search_notes(
         })
         .unwrap_or_default();
     let has_tag_filter = !required_tags.is_empty();
+    let required_props = normalize_prop_filters(options);
+    let has_prop_filter = !required_props.is_empty();
+    let folder_item_ids: Option<HashSet<String>> = if let Some(ref folder_id) = options.folder_id {
+        let items = VfsFolderRepo::list_items_by_folder(vfs_db, Some(folder_id))
+            .map_err(|error| format!("list folder items: {error}"))?;
+        Some(items.into_iter().map(|item| item.item_id).collect())
+    } else {
+        None
+    };
+    let has_folder_filter = folder_item_ids.is_some();
 
     let limit = options.get_limit();
     let offset = options.get_offset();
     let mut results = Vec::new();
 
-    // 无标签过滤时保持原有分页逻辑
-    if !has_tag_filter {
+    // 无后置过滤时保持原有分页逻辑
+    if !has_tag_filter && !has_prop_filter && !has_folder_filter {
         let notes = VfsNoteRepo::list_notes(vfs_db, Some(query), limit, offset)
             .map_err(|e| e.to_string())?;
         for note in notes {
@@ -111,17 +175,12 @@ pub fn search_notes(
                     node.metadata = Some(metadata);
                 }
             }
-            if let Some(ref types) = options.types {
-                if !types.contains(&node.node_type) {
-                    continue;
-                }
-            }
             results.push(node);
         }
         return Ok(results);
     }
 
-    // 标签过滤时，确保分页发生在过滤之后
+    // 标签/属性过滤时，确保分页发生在过滤之后，避免先截断候选再漏掉匹配项。
     let page_size = limit.max(50).min(200);
     let mut skipped = 0u32;
     let mut page_offset = 0u32;
@@ -134,9 +193,18 @@ pub fn search_notes(
         }
 
         for note in notes {
+            if folder_item_ids
+                .as_ref()
+                .is_some_and(|ids| !ids.contains(&note.id))
+            {
+                continue;
+            }
             let note_tags: std::collections::HashSet<String> =
                 note.tags.iter().map(|t| t.trim().to_lowercase()).collect();
             if !required_tags.iter().all(|t| note_tags.contains(t)) {
+                continue;
+            }
+            if !note_matches_prop_filters(&note, &required_props) {
                 continue;
             }
             if skipped < offset {
@@ -152,11 +220,6 @@ pub fn search_notes(
                         map.insert("snippet".to_string(), Value::String(snippet));
                     }
                     node.metadata = Some(metadata);
-                }
-            }
-            if let Some(ref types) = options.types {
-                if !types.contains(&node.node_type) {
-                    continue;
                 }
             }
             results.push(node);
@@ -780,6 +843,25 @@ pub fn search_all(
         None
     };
 
+    // Custom props exist only on notes. Route this query directly through the
+    // note search path so type/folder/property filtering all happen before its
+    // offset and limit; filtering a mixed, already-limited result set can miss
+    // a matching note that appears on a later page.
+    let required_props = normalize_prop_filters(options);
+    if !required_props.is_empty() {
+        if options
+            .get_type_filter()
+            .is_some_and(|node_type| node_type != DstuNodeType::Note)
+            || options
+                .types
+                .as_ref()
+                .is_some_and(|types| !types.contains(&DstuNodeType::Note))
+        {
+            return Ok(Vec::new());
+        }
+        return search_notes(vfs_db, query, options);
+    }
+
     if let Some(type_filter) = options.get_type_filter() {
         let mut typed_results = match type_filter {
             DstuNodeType::Note => search_notes(vfs_db, query, options),
@@ -864,4 +946,179 @@ pub fn search_all(
     results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note_with_props(props: Option<Value>) -> VfsNote {
+        VfsNote {
+            id: "note_search_props".to_string(),
+            resource_id: "res_search_props".to_string(),
+            title: "Search props".to_string(),
+            tags: vec![],
+            is_favorite: false,
+            created_at: "2026-08-25T00:00:00.000Z".to_string(),
+            updated_at: "2026-08-25T00:00:00.000Z".to_string(),
+            deleted_at: None,
+            props,
+        }
+    }
+
+    #[test]
+    fn note_prop_filters_match_keys_and_scalar_values_case_insensitively() {
+        let note = note_with_props(Some(serde_json::json!({
+            "状态": "In Progress",
+            "priority": 2,
+            "pinned": true
+        })));
+        assert!(note_matches_prop_filters(
+            &note,
+            &[
+                ("状态".to_string(), "progress".to_string()),
+                ("PRIORITY".to_lowercase(), "2".to_string()),
+                ("pinned".to_string(), "TRUE".to_lowercase()),
+            ]
+        ));
+        assert!(!note_matches_prop_filters(
+            &note,
+            &[("priority".to_string(), "9".to_string())]
+        ));
+        assert!(!note_matches_prop_filters(
+            &note_with_props(None),
+            &[("status".to_string(), "done".to_string())]
+        ));
+    }
+
+    /// 搜索侧过滤与写侧键语法共用同一组测试向量
+    /// （vfs::note_props::test_vectors；前端镜像见 parseTagQuery.test.ts）。
+    #[test]
+    fn note_prop_filters_agree_with_shared_key_vectors() {
+        use crate::dstu::types::DstuPropFilter;
+        use crate::vfs::note_props::test_vectors;
+
+        // 合法键：存进 props 后，用「原样大小写 + 前后空白」的过滤器都能命中
+        for key in test_vectors::VALID_OPERATOR_KEYS {
+            let note = note_with_props(Some(serde_json::json!({ (*key): "hit" })));
+            let options = DstuListOptions {
+                prop_filters: Some(vec![DstuPropFilter {
+                    key: format!("  {key}  "),
+                    value: "HIT".to_string(),
+                }]),
+                ..Default::default()
+            };
+            let normalized = normalize_prop_filters(&options);
+            assert_eq!(normalized.len(), 1, "合法键 {key:?} 不应被规范化丢弃");
+            assert!(
+                note_matches_prop_filters(&note, &normalized),
+                "合法键 {key:?} 的过滤应命中"
+            );
+        }
+
+        // 「可存不可搜（操作符）」键：后端过滤本身仍可命中——缝隙只在前端
+        // 操作符语法层，这里钉住后端语义不额外收紧
+        for key in test_vectors::STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS {
+            let note = note_with_props(Some(serde_json::json!({ (*key): "hit" })));
+            assert!(
+                note_matches_prop_filters(&note, &[(key.trim().to_lowercase(), "hit".to_string())]),
+                "键 {key:?} 经后端过滤（非操作符语法）仍应命中"
+            );
+        }
+
+        // 非法键中的「空键」会被规范化整体丢弃；其余非法键（保留字等）
+        // 规范化保留但永不命中任何合法笔记（写侧根本存不进去）
+        let options = DstuListOptions {
+            prop_filters: Some(
+                test_vectors::INVALID_KEYS
+                    .iter()
+                    .map(|(key, _tag)| DstuPropFilter {
+                        key: (*key).to_string(),
+                        value: "x".to_string(),
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        let normalized = normalize_prop_filters(&options);
+        let empty_key_count = test_vectors::INVALID_KEYS
+            .iter()
+            .filter(|(_key, tag)| *tag == "empty")
+            .count();
+        assert_eq!(
+            normalized.len(),
+            test_vectors::INVALID_KEYS.len() - empty_key_count,
+            "空键应被丢弃，其余非法键保留（宽松过滤，永不命中）"
+        );
+    }
+
+    #[test]
+    fn note_prop_and_folder_filters_are_applied_before_limit() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = Arc::new(db);
+        let folder = crate::vfs::VfsFolder::new("Target folder".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).unwrap();
+
+        let target = VfsNoteRepo::create_note(
+            &db,
+            crate::vfs::VfsCreateNoteParams {
+                title: "Old target".to_string(),
+                content: "body".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+        VfsNoteRepo::set_note_props(&db, &target.id, serde_json::json!({ "status": "done" }))
+            .unwrap();
+        VfsFolderRepo::add_item_to_folder(
+            &db,
+            &crate::vfs::VfsFolderItem::new(
+                Some(folder.id.clone()),
+                "note".to_string(),
+                target.id.clone(),
+            ),
+        )
+        .unwrap();
+
+        // More than one internal page of newer matching notes outside the
+        // folder makes a filter-after-limit implementation return no result.
+        for index in 0..55 {
+            let note = VfsNoteRepo::create_note(
+                &db,
+                crate::vfs::VfsCreateNoteParams {
+                    title: format!("New outside {index:02}"),
+                    content: "body".to_string(),
+                    tags: vec![],
+                },
+            )
+            .unwrap();
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "status": "done" }))
+                .unwrap();
+        }
+        db.get_conn_safe()
+            .unwrap()
+            .execute(
+                "UPDATE notes SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = ?1",
+                [&target.id],
+            )
+            .unwrap();
+
+        let results = search_all(
+            &db,
+            "",
+            &DstuListOptions {
+                folder_id: Some(folder.id),
+                types: Some(vec![DstuNodeType::Note, DstuNodeType::MindMap]),
+                prop_filters: Some(vec![crate::dstu::types::DstuPropFilter {
+                    key: "status".to_string(),
+                    value: "done".to_string(),
+                }]),
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, target.id);
+    }
 }

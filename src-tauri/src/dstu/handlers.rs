@@ -69,8 +69,8 @@ use super::handler_utils::{
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
     VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteMetadataUpdate,
+    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -101,6 +101,66 @@ const MAX_NAME_LENGTH: usize = 256;
 
 /// 批量操作的最大数量限制 (防止 DoS 和超时)
 const MAX_BATCH_SIZE: usize = 100;
+
+fn parse_note_metadata_update(
+    metadata: &Value,
+    expected_updated_at: Option<String>,
+) -> Result<VfsNoteMetadataUpdate, String> {
+    let object = metadata
+        .as_object()
+        .ok_or_else(|| "笔记 metadata 必须是键值对象".to_string())?;
+    let unknown: Vec<&str> = object
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !matches!(*key, "title" | "tags" | "isFavorite" | "props"))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "不支持的笔记 metadata 字段: {}；自定义字段请放入 props",
+            unknown.join(", ")
+        ));
+    }
+
+    let title = match object.get("title") {
+        None => None,
+        Some(Value::String(value)) => Some(value.clone()),
+        Some(_) => return Err("title 必须是字符串".to_string()),
+    };
+    let tags = match object.get("tags") {
+        None => None,
+        Some(Value::Array(values)) => {
+            let mut tags = Vec::with_capacity(values.len());
+            for value in values {
+                let Some(tag) = value.as_str() else {
+                    return Err("tags 必须是字符串数组".to_string());
+                };
+                tags.push(tag.to_string());
+            }
+            Some(tags)
+        }
+        Some(_) => return Err("tags 必须是字符串数组".to_string()),
+    };
+    let is_favorite = match object.get("isFavorite") {
+        None => None,
+        Some(Value::Bool(value)) => Some(*value),
+        Some(_) => return Err("isFavorite 必须是布尔值".to_string()),
+    };
+    let props = match object.get("props") {
+        None => None,
+        Some(Value::Object(_)) => object.get("props").cloned(),
+        // DSTU 边界把 null 与空对象统一解释为“无属性”；数据库规范化为 NULL。
+        Some(Value::Null) => Some(serde_json::json!({})),
+        Some(_) => return Err("props 必须是键值对象或 null".to_string()),
+    };
+
+    Ok(VfsNoteMetadataUpdate {
+        title,
+        tags,
+        is_favorite,
+        props,
+        expected_updated_at,
+    })
+}
 
 // ============================================================================
 // Tauri 命令
@@ -737,12 +797,33 @@ pub async fn dstu_create(
                 options.name,
                 note_title
             );
+            // tags 新契约（fail-closed）：metadata.tags 若存在必须是字符串数组，
+            // 形状非法整单拒绝而非静默丢弃——调用方声明了标签就必须完整落库；
+            // 数量/长度/控制字符限额由 note_repo::validate_tags 在创建事务内兜底。
+            let note_tags: Vec<String> = match metadata.get("tags") {
+                None | Some(serde_json::Value::Null) => Vec::new(),
+                Some(serde_json::Value::Array(values)) => {
+                    let mut tags = Vec::with_capacity(values.len());
+                    for value in values {
+                        let Some(tag) = value.as_str() else {
+                            return Err(
+                                "INVALID_ARGUMENT: metadata.tags 必须是字符串数组".to_string()
+                            );
+                        };
+                        tags.push(tag.to_string());
+                    }
+                    tags
+                }
+                Some(_) => {
+                    return Err("INVALID_ARGUMENT: metadata.tags 必须是字符串数组".to_string());
+                }
+            };
             match VfsNoteRepo::create_note_in_folder(
                 &vfs_db,
                 VfsCreateNoteParams {
                     title: note_title,
                     content: content.clone(),
-                    tags: vec![],
+                    tags: note_tags,
                 },
                 folder_id.as_deref(),
             ) {
@@ -3218,30 +3299,8 @@ pub async fn dstu_set_metadata(
     // 根据类型更新元数据（全类型已覆盖：notes/translations/essays/textbooks/exams/files/images/mindmaps/folders）
     let node = match resource_type.as_str() {
         "notes" => {
-            // 从 metadata 中提取 title 和 tags
-            let title = metadata
-                .get("title")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let tags = metadata.get("tags").and_then(|v| {
-                v.as_array().map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect::<Vec<String>>()
-                })
-            });
-            let favorite = metadata.get("isFavorite").and_then(|v| v.as_bool());
-
-            let mut updated_note = match VfsNoteRepo::update_note(
-                &vfs_db,
-                &id,
-                VfsUpdateNoteParams {
-                    content: None,
-                    title,
-                    tags,
-                    expected_updated_at: None,
-                },
-            ) {
+            let update = parse_note_metadata_update(&metadata, expected_updated_at)?;
+            let updated_note = match VfsNoteRepo::update_note_metadata(&vfs_db, &id, update) {
                 Ok(n) => {
                     log::info!(
                         "[DSTU::handlers] dstu_set_metadata: SUCCESS - type=note, id={}",
@@ -3258,19 +3317,6 @@ pub async fn dstu_set_metadata(
                     return Err(e.to_string());
                 }
             };
-
-            if let Some(favorite) = favorite {
-                if let Err(e) = VfsNoteRepo::set_favorite(&vfs_db, &id, favorite) {
-                    log::error!(
-                        "[DSTU::handlers] dstu_set_metadata: FAILED - set note favorite id={}, error={}",
-                        id,
-                        e
-                    );
-                    return Err(e.to_string());
-                }
-                updated_note.is_favorite = favorite;
-            }
-
             note_to_dstu_node(&updated_note)
         }
         "translations" => {
@@ -3583,15 +3629,47 @@ pub async fn dstu_set_metadata(
                     let bookmarks = bookmarks.as_array().ok_or_else(|| {
                         "INVALID_ARGUMENT: textbook bookmarks must be an array".to_string()
                     })?;
-                    match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
-                        Ok(_) => log::info!(
-                            "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
-                            bookmarks.len(),
-                            id
-                        ),
-                        Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
-                            return Err(e.to_string());
+                    // 书签三态契约（wave2-B r3）：
+                    // 1. 带 expected_updated_at → OCC 原子替换（对齐 highlights）；
+                    // 2. 无版本 + 同请求带 readingProgress → 视为进度更新捎带的陈旧
+                    //    快照，跳过书签写入（修复跨实例翻页清空书签）；
+                    // 3. 无版本 + 纯书签请求 = 显式书签通道，保持旧契约整数组覆盖写
+                    //    （previewPersistence.persistBookmarks 不携带版本，fail-closed
+                    //    会把 textbook/file 的书签保存全部拒绝）。
+                    match expected_updated_at.as_deref() {
+                        Some(expected) => {
+                            match VfsTextbookRepo::replace_bookmarks_if_version(
+                                &vfs_db, &id, bookmarks, expected,
+                            ) {
+                                Ok(_) => log::info!(
+                                    "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
+                                    bookmarks.len(),
+                                    id
+                                ),
+                                Err(e) => {
+                                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                                    return Err(e.to_string());
+                                }
+                            }
+                        }
+                        None if metadata.get("readingProgress").is_some() => {
+                            log::warn!(
+                                "[DSTU::handlers] dstu_set_metadata: skip versionless bookmarks piggybacked on readingProgress, id={}",
+                                id
+                            );
+                        }
+                        None => {
+                            match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                                Ok(_) => log::info!(
+                                    "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={} (versionless explicit channel), id={}",
+                                    bookmarks.len(),
+                                    id
+                                ),
+                                Err(e) => {
+                                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                                    return Err(e.to_string());
+                                }
+                            }
                         }
                     }
                 }
@@ -3736,15 +3814,44 @@ pub async fn dstu_set_metadata(
                 let bookmarks = bookmarks.as_array().ok_or_else(|| {
                     "INVALID_ARGUMENT: file bookmarks must be an array".to_string()
                 })?;
-                match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
-                        bookmarks.len(),
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
-                        return Err(e.to_string());
+                // 书签三态契约与 textbook 分支一致：带版本 OCC 替换；无版本时
+                // 进度捎带的书签跳过；纯书签请求 = 显式书签通道，保持旧契约
+                // 整数组覆盖写（file 书签只有 setMetadata 一条通道且不带版本，
+                // fail-closed 会让 file 书签保存全挂）。
+                match expected_updated_at.as_deref() {
+                    Some(expected) => {
+                        match VfsTextbookRepo::replace_bookmarks_if_version(
+                            &vfs_db, &id, bookmarks, expected,
+                        ) {
+                            Ok(_) => log::info!(
+                                "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
+                                bookmarks.len(),
+                                id
+                            ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
+                    }
+                    None if metadata.get("readingProgress").is_some() => {
+                        log::warn!(
+                            "[DSTU::handlers] dstu_set_metadata: skip versionless bookmarks piggybacked on readingProgress, id={}",
+                            id
+                        );
+                    }
+                    None => {
+                        match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                            Ok(_) => log::info!(
+                                "[DSTU::handlers] dstu_set_metadata: set file bookmarks={} (versionless explicit channel), id={}",
+                                bookmarks.len(),
+                                id
+                            ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -6468,5 +6575,47 @@ mod tests {
 
         let path2 = build_simple_resource_path("tr_456");
         assert_eq!(path2, "/tr_456");
+    }
+
+    #[test]
+    fn test_parse_note_metadata_update_preserves_typed_fields_and_null_clears_props() {
+        let update = parse_note_metadata_update(
+            &serde_json::json!({
+                "title": "renamed",
+                "tags": ["math", "exam"],
+                "isFavorite": true,
+                "props": null
+            }),
+            Some("2026-08-25T00:00:00.000Z".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(update.title.as_deref(), Some("renamed"));
+        assert_eq!(
+            update.tags,
+            Some(vec!["math".to_string(), "exam".to_string()])
+        );
+        assert_eq!(update.is_favorite, Some(true));
+        assert_eq!(update.props, Some(serde_json::json!({})));
+        assert_eq!(
+            update.expected_updated_at.as_deref(),
+            Some("2026-08-25T00:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn test_parse_note_metadata_update_rejects_silent_field_drops() {
+        let unknown =
+            parse_note_metadata_update(&serde_json::json!({ "status": "done" }), None).unwrap_err();
+        assert!(unknown.contains("props"), "{unknown}");
+
+        assert!(
+            parse_note_metadata_update(&serde_json::json!({ "tags": ["math", 3] }), None,).is_err()
+        );
+        assert!(parse_note_metadata_update(
+            &serde_json::json!({ "props": ["not", "an", "object"] }),
+            None,
+        )
+        .is_err());
     }
 }

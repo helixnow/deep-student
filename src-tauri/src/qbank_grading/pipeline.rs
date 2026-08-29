@@ -5,6 +5,20 @@
 /// - ProviderAdapter: 多供应商适配
 /// - S-014 竞态防护
 /// - M-064 不完整流检测
+///
+/// ## 判分落库依赖（Wave2-E r4-02）
+///
+/// Grade 模式的判分落库不再手写 UPDATE（旧实现只处理 NULL→true +1，
+/// false→true 不加、true→false 不减，且不写 mastery 事件），统一改为调用
+/// 共享原语 `QuestionBankService::apply_submission_verdict_in_tx`（r4-01 按
+/// r1-06 §2 从 regrade_submission_in_tx 抽取，`&self` 方法，接受裸
+/// Connection / Transaction 两种调用方）。原语内完成：submission 判定 +
+/// grading_method + RowSync 推进、correct_count 差值（±1 / MAX(0,·) 防负，
+/// 以 submission 旧 is_correct 为基准）、状态 CASE、S-030 同步标记 +
+/// content hash、mastery 事件（幂等键 me_qbank_{submission_id}，本文件不
+/// 重复插）、refresh_stats_with_conn。事务外副作用（SM-2 复习计划、
+/// learner_profile 回流）由本文件按 `VerdictApplyOutcome` 的
+/// needs_review_plan / mastery_state 标记执行。
 use futures_util::StreamExt;
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
@@ -191,128 +205,65 @@ pub async fn run_qbank_grading(
         return Err(err);
     }
 
-    let persist_result = (|| -> Result<(), AppError> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // ① 更新 AI 缓存
-        // Analyze 模式不产生分数，保留已有 ai_score（避免"先评判后解析"把评分缓存清空）
-        let updated = if request.mode == QbankGradingMode::Grade {
-            conn.execute(
-                r#"UPDATE questions SET ai_feedback = ?1, ai_score = ?2, ai_graded_at = ?3, updated_at = ?3
-                   WHERE id = ?4 AND deleted_at IS NULL"#,
-                params![&accumulated, score, &now, &request.question_id],
-            )
-        } else {
-            conn.execute(
-                r#"UPDATE questions SET ai_feedback = ?1, ai_graded_at = ?2, updated_at = ?2
-                   WHERE id = ?3 AND deleted_at IS NULL"#,
-                params![&accumulated, &now, &request.question_id],
-            )
-        }
-        .map_err(|e| AppError::database(format!("保存 AI 反馈失败: {}", e)))?;
-        if updated == 0 {
-            return Err(AppError::not_found(format!(
-                "题目不存在或已删除: {}",
-                request.question_id
-            )));
-        }
-
-        // Grade 模式：② 更新 submission 正误 + ③ 更新 question 正误
-        if request.mode == QbankGradingMode::Grade {
-            let v = verdict
-                .as_ref()
-                .ok_or_else(|| AppError::llm("缺少评判 verdict".to_string()))?;
-            let is_correct_val: i32 = if v.is_correct() { 1 } else { 0 };
-
-            // ② 更新 submission（严格绑定 question_id，防止串题写入）
-            let submission_updated = conn
-                .execute(
-                    "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'ai' WHERE id = ?2 AND question_id = ?3",
-                    params![is_correct_val, &request.submission_id, &request.question_id],
-                )
-                .map_err(|e| AppError::database(format!("更新 submission 正误失败: {}", e)))?;
-            if submission_updated == 0 {
-                return Err(AppError::not_found(format!(
-                    "作答记录不存在或不属于该题目: {}",
-                    request.submission_id
-                )));
-            }
-
-            // ③ 更新 question（仅当 is_correct 为 NULL 时递增 correct_count，防止重复计数）
-            let question_updated = conn
-                .execute(
-                    r#"
-                    UPDATE questions SET
-                        is_correct = ?1,
-                        correct_count = CASE
-                            WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1
-                            ELSE correct_count
-                        END,
-                        status = CASE
-                            WHEN ?1 = 0 THEN 'review'
-                            WHEN (CASE WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1 ELSE correct_count END) >= 2 THEN 'mastered'
-                            ELSE 'in_progress'
-                        END,
-                        updated_at = ?2
-                    WHERE id = ?3 AND deleted_at IS NULL
-                    "#,
-                    params![is_correct_val, &now, &request.question_id],
-                )
-                .map_err(|e| AppError::database(format!("更新题目正误失败: {}", e)))?;
-            if question_updated == 0 {
-                return Err(AppError::not_found(format!(
-                    "题目不存在或已删除: {}",
-                    request.question_id
-                )));
-            }
-        }
-
-        // ④ S-030 口径：AI 评判写入了 ai_feedback/is_correct，与 submit_answer 一样
-        // 需标记同步状态并重算 content hash，否则云同步会用远端旧值覆盖本次评判结果。
-        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
-            &conn,
-            &request.question_id,
-        )
-        .map_err(|e| AppError::database(format!("标记同步状态失败: {}", e)))?;
-        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
-            &conn,
-            &request.question_id,
-        )
-        .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
-
+    let persist_result = persist_grading_result(
+        &conn,
+        &deps.vfs_db,
+        &question,
+        &request.mode,
+        &request.submission_id,
+        &accumulated,
+        verdict.as_ref(),
+        score,
+    )
+    .and_then(|outcome| {
         conn.execute("RELEASE qbank_grading_persist", [])
             .map_err(|e| AppError::database(format!("提交评判事务失败: {}", e)))?;
-        Ok(())
-    })();
+        Ok(outcome)
+    });
 
-    if let Err(e) = persist_result {
-        let _ = conn.execute("ROLLBACK TO qbank_grading_persist", []);
-        let _ = conn.execute("RELEASE qbank_grading_persist", []);
-        deps.emitter
-            .emit_error(&request.stream_session_id, e.message.clone());
-        return Err(e);
-    }
-
-    // 刷新统计缓存（事务外执行，非关键）
-    if request.mode == QbankGradingMode::Grade && verdict.is_some() {
-        if let Err(e) = VfsQuestionRepo::refresh_stats(&deps.vfs_db, &question.exam_id) {
-            log::warn!("[QbankGrading] 刷新统计失败: {}", e);
+    let verdict_outcome = match persist_result {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO qbank_grading_persist", []);
+            let _ = conn.execute("RELEASE qbank_grading_persist", []);
+            deps.emitter
+                .emit_error(&request.stream_session_id, e.message.clone());
+            return Err(e);
         }
-    }
+    };
+    drop(conn);
 
-    // AI 判错时自动创建（或复用）SM-2 复习计划，与 question_bank_service.rs
-    // submit_answer 自动判分路径的 I1 修复对称：此前 AI 判错的题只置 status='review'
-    // 而不进复习计划，错题永远不会出现在间隔复习队列里。失败不阻塞评判流程。
-    if request.mode == QbankGradingMode::Grade && verdict.as_ref().is_some_and(|v| !v.is_correct())
-    {
-        let review_service =
-            crate::review_plan_service::ReviewPlanService::new(Arc::clone(&deps.vfs_db));
-        if let Err(e) = review_service.get_or_create_plan(&request.question_id, &question.exam_id) {
-            log::warn!(
-                "[QbankGrading] AI 判错后创建复习计划失败: question_id={}, err={}",
-                request.question_id,
-                e
-            );
+    // 统计刷新已由原语在事务内完成（refresh_stats_with_conn），
+    // 此处不再做事务外二次刷新。
+
+    if let Some(outcome) = &verdict_outcome {
+        // AI 判错时自动创建（或复用）SM-2 复习计划，与人工改判路径对称
+        // （needs_review_plan 由原语按新判定给出）。失败不阻塞评判流程。
+        if outcome.needs_review_plan {
+            let review_service =
+                crate::review_plan_service::ReviewPlanService::new(Arc::clone(&deps.vfs_db));
+            if let Err(e) =
+                review_service.get_or_create_plan(&request.question_id, &question.exam_id)
+            {
+                log::warn!(
+                    "[QbankGrading] AI 判错后创建复习计划失败: question_id={}, err={}",
+                    request.question_id,
+                    e
+                );
+            }
+        }
+
+        // mastery 状态回流 learner_profile（与 regrade_submission_in_tx 同口径，
+        // 事务外执行，失败不阻塞）。
+        if let Some(state) = &outcome.mastery_state {
+            let mastery = crate::mastery::MasteryService::new(Arc::clone(&deps.vfs_db));
+            if let Err(e) = mastery.sync_learner_profile(state) {
+                log::warn!(
+                    "[QbankGrading] mastery profile 回流失败: question_id={}, err={}",
+                    request.question_id,
+                    e
+                );
+            }
         }
     }
 
@@ -337,6 +288,94 @@ pub async fn run_qbank_grading(
         score,
         feedback: accumulated,
     }))
+}
+
+/// 持久化评判结果（在调用方开启的 SAVEPOINT/事务内执行，可单测）。
+///
+/// - 两种模式都写 AI 缓存（ai_feedback / ai_score / ai_graded_at）；
+/// - Grade 模式的判分落库（submission 判定 + grading_method='ai'、
+///   correct_count 差值 ±1 / MAX(0,·) 防负、状态 CASE、S-030 同步标记、
+///   content hash、mastery 事件、统计刷新）统一复用
+///   `QuestionBankService::apply_submission_verdict_in_tx`，与人工改判同口径；
+///   mastery 事件由原语写入（幂等键），本函数不重复插；
+/// - Analyze 模式只写 ai_feedback，自行补 S-030 同步标记 + content hash。
+///
+/// 返回 Grade 模式下原语给出的 `VerdictApplyOutcome`（Analyze 为 None），
+/// 供调用方在事务外接 SM-2 复习计划与 learner_profile 回流。
+fn persist_grading_result(
+    conn: &rusqlite::Connection,
+    vfs_db: &Arc<VfsDatabase>,
+    question: &Question,
+    mode: &QbankGradingMode,
+    submission_id: &str,
+    feedback: &str,
+    verdict: Option<&Verdict>,
+    score: Option<i32>,
+) -> Result<Option<crate::question_bank_service::VerdictApplyOutcome>, AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // ① 更新 AI 缓存
+    // Analyze 模式不产生分数，保留已有 ai_score（避免"先评判后解析"把评分缓存清空）
+    let updated = if *mode == QbankGradingMode::Grade {
+        conn.execute(
+            r#"UPDATE questions SET ai_feedback = ?1, ai_score = ?2, ai_graded_at = ?3, updated_at = ?3
+               WHERE id = ?4 AND deleted_at IS NULL"#,
+            params![feedback, score, &now, &question.id],
+        )
+    } else {
+        conn.execute(
+            r#"UPDATE questions SET ai_feedback = ?1, ai_graded_at = ?2, updated_at = ?2
+               WHERE id = ?3 AND deleted_at IS NULL"#,
+            params![feedback, &now, &question.id],
+        )
+    }
+    .map_err(|e| AppError::database(format!("保存 AI 反馈失败: {}", e)))?;
+    if updated == 0 {
+        return Err(AppError::not_found(format!(
+            "题目不存在或已删除: {}",
+            question.id
+        )));
+    }
+
+    if *mode != QbankGradingMode::Grade {
+        // Analyze 只改了 ai_feedback：S-030 口径需标记同步并重算 content hash，
+        // 否则云同步会用远端旧值覆盖本次解析结果。
+        // （Grade 模式下这两步由判分原语在同一事务内完成，不重复调用。）
+        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
+            conn,
+            &question.id,
+        )
+        .map_err(|e| AppError::database(format!("标记同步状态失败: {}", e)))?;
+        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+            conn,
+            &question.id,
+        )
+        .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
+        return Ok(None);
+    }
+
+    let v = verdict.ok_or_else(|| AppError::llm("缺少评判 verdict".to_string()))?;
+
+    // 事务内重读 submission，以其"旧 is_correct"为差值基准（r1-06 §2）：
+    // 流式评判耗时较长，期间用户可能已自评/再提交；沿用评判开始前的旧快照
+    // 或题目级 is_correct 都会算错差值方向。同时校验归属，防止串题写入。
+    let submission = get_submission_by_id_with_conn(conn, submission_id)?
+        .ok_or_else(|| AppError::not_found(format!("作答记录不存在: {}", submission_id)))?;
+    if submission.question_id != question.id {
+        return Err(AppError::validation(format!(
+            "作答记录 {} 不属于题目 {}",
+            submission_id, question.id
+        )));
+    }
+
+    // ②③④ 判分落库统一走共享原语（替换旧的"仅 NULL→true +1"手写 UPDATE）：
+    // false→true +1、true→false -1（MAX(0,·) 防负）、状态 CASE、
+    // mark_as_modified + content hash、mastery 事件（幂等键，原语已写，此处
+    // 不重复插）、refresh_stats 全部由原语在同一事务内完成，
+    // 保证 AI 判分与人工改判计数完全一致。
+    let outcome = crate::question_bank_service::QuestionBankService::new(Arc::clone(vfs_db))
+        .apply_submission_verdict_in_tx(conn, question, &submission, v.is_correct(), "ai", &now)?;
+    Ok(Some(outcome))
 }
 
 /// 解析评判使用的模型配置
@@ -485,7 +524,13 @@ fn get_submission_by_id(
     let conn = db
         .get_conn_safe()
         .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+    get_submission_by_id_with_conn(&conn, submission_id)
+}
 
+fn get_submission_by_id_with_conn(
+    conn: &rusqlite::Connection,
+    submission_id: &str,
+) -> Result<Option<AnswerSubmission>, AppError> {
     conn.query_row(
         r#"
         SELECT id, question_id, user_answer, is_correct, grading_method, submitted_at
@@ -826,5 +871,278 @@ mod tests {
         let (_, score) =
             parse_verdict_and_score("<verdict>correct</verdict> <score value=\"150\"/>");
         assert_eq!(score, Some(100));
+    }
+
+    // ========================================================================
+    // persist_grading_result：判分落库统一走共享原语
+    // `QuestionBankService::apply_submission_verdict_in_tx`（r4-02）。
+    //
+    // 旧实现的单向守卫（"仅 is_correct IS NULL 时 +1"）已删除，其防重复语义
+    // 由原语的同向幂等短路承接（见 first_verdict_null_to_true 的二次调用断言）；
+    // false→true / true→false 两个此前被判丢的方向在下面分别补测。
+    // ========================================================================
+
+    fn setup_persist_db() -> (tempfile::TempDir, Arc<VfsDatabase>) {
+        let (tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        (tmp, Arc::new(db))
+    }
+
+    /// 造一道带标签的题目并落下首次作答基线。
+    ///
+    /// - `first_verdict = Some(_)`：走 `submit_answer` 自评 override，
+    ///   真实写入基线计数与首判 mastery 事件（幂等键 me_qbank_{submission_id}）；
+    /// - `first_verdict = None`：直接插一条待判定 submission（is_correct IS NULL）。
+    ///
+    /// 返回重新加载后的 Question（携带最新计数）与 submission_id。
+    fn seed_question_with_submission(
+        db: &Arc<VfsDatabase>,
+        first_verdict: Option<bool>,
+    ) -> (Question, String) {
+        let conn = db.get_conn_safe().expect("conn");
+        let exam_id = format!("exam_{}", nanoid::nanoid!(6));
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES (?1, 'pipeline persist test', 'completed', ?2, '{}', '{}', ?3, ?3)",
+            params![exam_id, format!("temp_{exam_id}"), "2020-01-01T00:00:00Z"],
+        )
+        .expect("seed exam");
+        drop(conn);
+
+        let question = VfsQuestionRepo::create_question(
+            db,
+            &crate::vfs::repos::question_repo::CreateQuestionParams {
+                exam_id,
+                card_id: None,
+                question_label: Some("1".into()),
+                content: "简述牛顿第二定律".into(),
+                options: None,
+                answer: Some("F = ma".into()),
+                explanation: None,
+                structured_data: None,
+                question_type: None,
+                difficulty: None,
+                tags: Some(vec!["牛顿定律".into()]),
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question");
+
+        let submission_id = match first_verdict {
+            Some(v) => {
+                crate::question_bank_service::QuestionBankService::new(Arc::clone(db))
+                    .submit_answer(&question.id, "学生答案", Some(v), None)
+                    .expect("submit baseline answer")
+                    .submission_id
+            }
+            None => {
+                let conn = db.get_conn_safe().expect("conn");
+                VfsQuestionRepo::insert_submission_with_conn(
+                    &conn,
+                    &question.id,
+                    "学生答案",
+                    None,
+                    "auto",
+                    None,
+                )
+                .expect("insert pending submission")
+            }
+        };
+
+        let question = VfsQuestionRepo::get_question(db, &question.id)
+            .expect("reload question")
+            .expect("question exists");
+        (question, submission_id)
+    }
+
+    fn question_counters(
+        conn: &rusqlite::Connection,
+        question_id: &str,
+    ) -> (i64, Option<i64>, String, i64) {
+        conn.query_row(
+            "SELECT correct_count, is_correct, status, attempt_count FROM questions WHERE id = ?1",
+            params![question_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .expect("query question counters")
+    }
+
+    fn submission_state(conn: &rusqlite::Connection, submission_id: &str) -> (Option<i64>, String) {
+        conn.query_row(
+            "SELECT is_correct, grading_method FROM answer_submissions WHERE id = ?1",
+            params![submission_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("query submission state")
+    }
+
+    /// 未删除 mastery 事件按 outcome 计数（幂等键前缀 me_qbank_{submission_id}；
+    /// 换判纠正的修订事件带 _rN 后缀，同属该前缀）。
+    fn live_mastery_events(conn: &rusqlite::Connection, submission_id: &str, outcome: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM mastery_events
+             WHERE id LIKE ?1 AND outcome = ?2 AND deleted_at IS NULL",
+            params![format!("me_qbank_{}%", submission_id), outcome],
+            |r| r.get(0),
+        )
+        .expect("count mastery events")
+    }
+
+    /// NULL→true 首判：+1、状态推进、mastery 事件由原语写入；
+    /// 同一 submission 重跑 AI 评判不重复计数（旧 NULL 守卫语义由原语幂等承接）。
+    #[test]
+    fn persist_grade_first_verdict_null_to_true_counts_once() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().expect("conn");
+
+        let outcome = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Grade,
+            &submission_id,
+            "解析…<verdict>correct</verdict><score value=\"90\"/>",
+            Some(&Verdict::Correct),
+            Some(90),
+        )
+        .expect("persist should succeed")
+        .expect("grade mode returns outcome");
+
+        let (correct_count, is_correct, status, _) = question_counters(&conn, &question.id);
+        assert_eq!(correct_count, 1, "首判答对 correct_count +1");
+        assert_eq!(is_correct, Some(1));
+        assert_eq!(status, "in_progress");
+
+        let (sub_correct, method) = submission_state(&conn, &submission_id);
+        assert_eq!(sub_correct, Some(1));
+        assert_eq!(method, "ai");
+
+        // mastery 事件由原语写入，pipeline 不重复插 → 恰好 1 条
+        assert_eq!(live_mastery_events(&conn, &submission_id, "correct"), 1);
+        assert!(!outcome.needs_review_plan, "判对不需要复习计划");
+
+        // 同向重跑（同一 submission 再评一次 correct）不得再 +1
+        let question = VfsQuestionRepo::get_question(&db, &question.id)
+            .expect("reload")
+            .expect("exists");
+        persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Grade,
+            &submission_id,
+            "重评…<verdict>correct</verdict><score value=\"92\"/>",
+            Some(&Verdict::Correct),
+            Some(92),
+        )
+        .expect("re-run persist");
+        let (correct_count, _, _, _) = question_counters(&conn, &question.id);
+        assert_eq!(correct_count, 1, "重复评判不得重复计数");
+        assert_eq!(live_mastery_events(&conn, &submission_id, "correct"), 1);
+    }
+
+    /// false→true 换判：旧实现漏掉的 +1 方向（is_correct=0 非 NULL 时不加）。
+    #[test]
+    fn persist_grade_false_to_true_increments_correct_count() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, Some(false));
+        assert_eq!(question.correct_count, 0);
+        assert_eq!(question.is_correct, Some(false));
+        let baseline_attempts = question.attempt_count as i64;
+        let conn = db.get_conn_safe().expect("conn");
+
+        let outcome = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Grade,
+            &submission_id,
+            "其实答对了…<verdict>correct</verdict><score value=\"85\"/>",
+            Some(&Verdict::Correct),
+            Some(85),
+        )
+        .expect("persist should succeed")
+        .expect("grade mode returns outcome");
+
+        let (correct_count, is_correct, status, attempt_count) =
+            question_counters(&conn, &question.id);
+        assert_eq!(correct_count, 1, "false→true 必须 +1（与人工改判同口径）");
+        assert_eq!(is_correct, Some(1));
+        assert_eq!(status, "in_progress");
+        assert_eq!(attempt_count, baseline_attempts, "换判不新增作答次数");
+
+        let (sub_correct, method) = submission_state(&conn, &submission_id);
+        assert_eq!(sub_correct, Some(1));
+        assert_eq!(method, "ai");
+
+        // 换判走原语的纠正分路（record_qbank_verdict_correction_with_conn）：
+        // 首判 wrong 信号被 tombstone，存活事件恰 1 条 _rN correct 修订，
+        // 方向跟随最新判定而非被 ON CONFLICT DO NOTHING 锁死在首判。
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "correct"),
+            1,
+            "换判后存活信号必须是 correct 修订事件"
+        );
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "wrong"),
+            0,
+            "首判 wrong 信号必须被 tombstone"
+        );
+        assert!(!outcome.needs_review_plan);
+    }
+
+    /// true→false 换判：旧实现漏掉的 -1 方向（correct_count 残留）。
+    #[test]
+    fn persist_grade_true_to_false_decrements_correct_count() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, Some(true));
+        assert_eq!(question.correct_count, 1);
+        assert_eq!(question.is_correct, Some(true));
+        let baseline_attempts = question.attempt_count as i64;
+        let conn = db.get_conn_safe().expect("conn");
+
+        let outcome = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Grade,
+            &submission_id,
+            "其实答错了…<verdict>incorrect</verdict><score value=\"20\"/>",
+            Some(&Verdict::Incorrect),
+            Some(20),
+        )
+        .expect("persist should succeed")
+        .expect("grade mode returns outcome");
+
+        let (correct_count, is_correct, status, attempt_count) =
+            question_counters(&conn, &question.id);
+        assert_eq!(correct_count, 0, "true→false 必须 -1（MAX(0,·) 防负）");
+        assert_eq!(is_correct, Some(0));
+        assert_eq!(status, "review", "判错必须进入 review 状态");
+        assert_eq!(attempt_count, baseline_attempts, "换判不新增作答次数");
+
+        let (sub_correct, method) = submission_state(&conn, &submission_id);
+        assert_eq!(sub_correct, Some(0));
+        assert_eq!(method, "ai");
+
+        // 同上：换判纠正分路——首判 correct 被 tombstone，存活信号翻到 wrong。
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "wrong"),
+            1,
+            "换判后存活信号必须是 wrong 修订事件"
+        );
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "correct"),
+            0,
+            "首判 correct 信号必须被 tombstone"
+        );
+        assert!(
+            outcome.needs_review_plan,
+            "判错需在事务外接 SM-2 复习计划（与人工改判对称）"
+        );
     }
 }

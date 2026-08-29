@@ -1151,6 +1151,18 @@ where
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        // R4 #3：GLM/Qwen 协议包装 token 过滤，与 chat 主链路
+        // （ChatV2LLMAdapter.wrap_token_filter）同源同策略。本函数是翻译域
+        // 唯一的内容出口咽喉（run_translation 分段 / candidates / chat_popover
+        // 三个调用方全部经由此处），挂一处即全覆盖。非 GLM/Qwen 路由
+        // policy 为 Disabled，process() 恒等直通，不改变现有语义。
+        let mut wrap_filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                config.provider_type.as_deref(),
+                config.provider_scope.as_deref(),
+                &config.model,
+            ),
+        );
         // 供应商流内错误（内容安全拦截 / 配额不足等）：不可被后续 Done 掩盖
         let mut terminal_failure: Option<StreamFailure> = None;
         let mut handle_sse_block = |block: &str| -> bool {
@@ -1159,7 +1171,12 @@ where
             }
             for event in adapter.parse_stream(block) {
                 match event {
-                    crate::providers::StreamEvent::ContentChunk(content) => on_chunk(content),
+                    crate::providers::StreamEvent::ContentChunk(content) => {
+                        let filtered = wrap_filter.process(&content);
+                        if !filtered.is_empty() {
+                            on_chunk(filtered);
+                        }
+                    }
                     // 适配器已把 finish_reason 归一化为 Done（详见 providers::should_finish_*），
                     // 因此仅发送 finish_reason、不发 [DONE] 的服务端也能正确判定完成
                     crate::providers::StreamEvent::Done => return true,
@@ -1248,6 +1265,14 @@ where
         // 供应商流内错误优先：即使收到 Done 也不能把被拦截/出错的流当成正常完成
         if let Some(failure) = terminal_failure {
             return Err(failure);
+        }
+
+        // 结束态冲刷：释放过滤器暂扣的尾部（不完整 token 前缀 / 行首候选），
+        // 粘在流尾的 close token 按停符失败伪影剥除（与 chat 主链路 flush 一致）。
+        // Incomplete 也冲刷：部分结果仍会被调用方使用/展示。
+        let wrap_tail = wrap_filter.flush();
+        if !wrap_tail.is_empty() {
+            on_chunk(wrap_tail);
         }
 
         // ★ A6-02：区分正常完成（收到完成标记）与流意外中断

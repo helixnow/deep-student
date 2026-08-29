@@ -7,8 +7,8 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, FtpConfig, S3Config,
-    StorageProvider, WebDavConfig,
+    create_storage, device_id_short_hash, CloudStorage, CloudStorageConfig, CloudSyncManager,
+    FtpConfig, S3Config, StorageProvider, WebDavConfig,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
@@ -30,6 +30,20 @@ fn docker_contract_enabled() -> bool {
 
 fn unique_root(provider: &str) -> String {
     format!("deep-student-sync-contract/{provider}/{}", Uuid::new_v4())
+}
+
+fn record_change_prefix(device_id: &str) -> String {
+    format!(
+        "data_governance/changes/{}/",
+        device_id_short_hash(device_id)
+    )
+}
+
+fn record_manifest_key(device_id: &str) -> String {
+    format!(
+        "data_governance/manifests/{}.json",
+        device_id_short_hash(device_id)
+    )
 }
 
 async fn run_basic_object_contract(storage: Box<dyn CloudStorage>) {
@@ -221,6 +235,14 @@ async fn run_object_semantics_contract(storage: Box<dyn CloudStorage>) {
             .is_none(),
         "deleted key stat should be None"
     );
+
+    // 删除位于从未创建过的目录下的 key 也必须幂等成功：tombstone 应用会对
+    // 遗留路径（新格式下从不存在）做删除，任何 provider 都不得报硬错误。
+    let missing_dir_key = format!("{base}never-created/deep/nested/ghost.bin");
+    storage
+        .delete(&missing_dir_key)
+        .await
+        .expect("delete under a never-created directory should be idempotent");
 }
 
 async fn run_file_checksum_contract(storage: Box<dyn CloudStorage>) {
@@ -723,7 +745,7 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
 
     upload_vfs_changes_and_manifest(storage.as_ref(), &source_manager, &source_vfs).await;
 
-    let manifest_key = format!("data_governance/manifests/{source_device_id}.json");
+    let manifest_key = record_manifest_key(&source_device_id);
     let manifest_bytes = storage
         .get(&manifest_key)
         .await
@@ -738,7 +760,7 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
     }
 
     let change_files = storage
-        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .list(&record_change_prefix(&source_device_id))
         .await
         .expect("list encrypted data governance changes");
     assert_eq!(
@@ -838,7 +860,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     clear_change_log(&encrypted_vfs);
     clear_change_log(&target_vfs);
 
-    let (_plain_res_id, plain_note_id, _plain_hash, plain_title) =
+    let (_plain_res_id, plain_note_id, _plain_hash, _plain_title) =
         insert_vfs_note_bundle(&plaintext_vfs, "mixed_plaintext");
     let (_encrypted_res_id, encrypted_note_id, encrypted_hash, encrypted_title) =
         insert_vfs_note_bundle(&encrypted_vfs, "mixed_encrypted");
@@ -867,7 +889,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
         .expect("upload encrypted compatibility changes");
 
     let plain_files = storage
-        .list(&format!("data_governance/changes/{plaintext_device_id}/"))
+        .list(&record_change_prefix(&plaintext_device_id))
         .await
         .expect("list plaintext compatibility changes");
     assert_eq!(plain_files.len(), 1);
@@ -882,7 +904,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     );
 
     let encrypted_files = storage
-        .list(&format!("data_governance/changes/{encrypted_device_id}/"))
+        .list(&record_change_prefix(&encrypted_device_id))
         .await
         .expect("list encrypted compatibility changes");
     assert_eq!(encrypted_files.len(), 1);
@@ -900,44 +922,40 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
         assert_bytes_do_not_contain(&encrypted_bytes, marker);
     }
 
-    let authenticated_download = target_manager
+    // [R04-sync-e2ee] 新契约：本端启用加密后，云端明文 payload 必须 fail-closed，
+    // 防止端到端加密被静默降级。带密码的目标不再解码混合状态，而是停在明文
+    // 变更文件的安全点，报错需指认具体文件并解释缺少 DSBK 加密头。
+    let plain_key = plain_files[0].key.clone();
+    let downgrade_error = target_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download mixed plaintext and encrypted changes with password");
+        .expect_err("password-equipped clients must fail closed on plaintext changes");
+    let downgrade_message = downgrade_error.to_string();
     assert!(
-        authenticated_download.decode_failures.is_empty(),
-        "password-equipped clients should decode both plaintext and encrypted changes"
+        downgrade_message.contains(&plain_key),
+        "anti-downgrade error should identify the plaintext change file {plain_key}: {downgrade_message}"
     );
-    assert_eq!(
-        authenticated_download.changes.len(),
-        plain_changes.len() + encrypted_changes.len(),
-        "authenticated target should receive every mixed-format change"
+    assert!(
+        downgrade_message.contains("DSBK"),
+        "anti-downgrade error should explain the missing DSBK header: {downgrade_message}"
     );
-    let applied =
-        SyncManager::apply_downloaded_changes(&target_vfs, &authenticated_download.changes, None)
-            .expect("apply mixed-format provider changes");
-    assert_eq!(
-        applied.failure_count, 0,
-        "mixed-format apply failures: {:?}",
-        applied.failures
-    );
-    for (note_id, expected_title) in [
-        (plain_note_id.as_str(), plain_title.as_str()),
-        (encrypted_note_id.as_str(), encrypted_title.as_str()),
-    ] {
-        let actual_title: String = target_vfs
+    for note_id in [plain_note_id.as_str(), encrypted_note_id.as_str()] {
+        let existing: i64 = target_vfs
             .query_row(
-                "SELECT title FROM notes WHERE id = ?1",
+                "SELECT COUNT(*) FROM notes WHERE id = ?1",
                 params![note_id],
                 |row| row.get(0),
             )
-            .unwrap_or_else(|e| panic!("target note {note_id} should exist: {e}"));
-        assert_eq!(actual_title, expected_title);
+            .expect("count target notes after fail-closed download");
+        assert_eq!(
+            existing, 0,
+            "fail-closed mixed download must not apply note {note_id} to the target"
+        );
     }
     assert_eq!(
         pending_count(&target_vfs),
         0,
-        "mixed-format replay must not create echo changes"
+        "fail-closed mixed download must not create local changes"
     );
 
     let unauthenticated_manager = SyncManager::new(unauthenticated_device_id);
@@ -982,7 +1000,7 @@ async fn run_duplicate_enriched_change_files_are_idempotent_contract(
         .expect("upload second retry copy");
 
     let retry_files = storage
-        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .list(&record_change_prefix(&source_device_id))
         .await
         .expect("list duplicate retry change files");
     assert_eq!(
@@ -1605,10 +1623,91 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         !target_active_asset.exists(),
         "target active asset should be deleted after tombstone propagation"
     );
-    // Content-addressed objects are immutable retention units. Tombstones remove
-    // logical visibility; object garbage collection is deliberately separate.
-    assert_remote_file_present(storage.as_ref(), &active_remote_key).await;
+    // The deleted asset had no remaining manifest reference, so its immutable
+    // object must be reclaimed instead of leaking indefinitely.
+    assert_remote_file_missing(storage.as_ref(), &active_remote_key).await;
     assert_file_bytes(&target_app_asset, app_payload);
+}
+
+/// 同内容双 key 的删除传播不得打断另一 key。
+///
+/// tombstone 必须在未过滤的清单上解析 `object_key`，否则只能回退到 legacy 逻辑路径
+/// `data_governance/assets/{key}`——该父目录在新布局下根本不存在，FTP 会因 cwd 550
+/// 硬失败。解析成功后，内容寻址对象是共享 retention unit：仍有活跃清单条目引用时
+/// 只摘清单条目、保留对象；最后一个引用消失时才物理删除（见 unreferenced 契约）。
+async fn run_asset_shared_object_tombstone_contract(storage: Box<dyn CloudStorage>) {
+    storage
+        .check_connection()
+        .await
+        .expect("provider connection should work");
+
+    let source_active = TempDir::new().expect("create source active dir");
+    let source_app_data = TempDir::new().expect("create source app data dir");
+    let target_active = TempDir::new().expect("create target active dir");
+    let target_app_data = TempDir::new().expect("create target app data dir");
+
+    let shared_payload = deterministic_payload(9 * 1024 + 7);
+    let shared_object_key = format!(
+        "data_governance/asset_objects/{}",
+        sha256_hex(&shared_payload)
+    );
+    let deleted_key = "active/images/shared/deleted.bin";
+    let deleted_rel = Path::new("images").join("shared").join("deleted.bin");
+    let kept_rel = Path::new("images").join("shared").join("kept.bin");
+
+    let source_deleted = source_active.path().join(&deleted_rel);
+    let source_kept = source_active.path().join(&kept_rel);
+    std::fs::create_dir_all(source_deleted.parent().expect("shared asset parent"))
+        .expect("create source shared asset dir");
+    std::fs::write(&source_deleted, &shared_payload).expect("write source deleted asset");
+    std::fs::write(&source_kept, &shared_payload).expect("write source kept asset");
+
+    let source_manager = SyncManager::new(format!("device-shared-src-{}", Uuid::new_v4()));
+    let target_manager = SyncManager::new(format!("device-shared-dst-{}", Uuid::new_v4()));
+
+    let upload = source_manager
+        .sync_asset_directories(
+            storage.as_ref(),
+            source_active.path(),
+            source_app_data.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .expect("upload shared-content assets");
+    assert_eq!(upload.uploaded, 2);
+    assert!(!upload.has_failures(), "asset upload failures: {upload:?}");
+    assert_remote_file_present(storage.as_ref(), &shared_object_key).await;
+
+    std::fs::remove_file(&source_deleted).expect("delete source asset before tombstone");
+    source_manager
+        .mark_asset_deleted(
+            storage.as_ref(),
+            deleted_key,
+            Some(shared_payload.len() as u64),
+        )
+        .await
+        .expect("upload asset tombstone");
+
+    let tombstone_sync = target_manager
+        .sync_asset_directories_with_tombstones(
+            storage.as_ref(),
+            target_active.path(),
+            target_app_data.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .expect("apply asset tombstone on target");
+    assert!(
+        !tombstone_sync.has_failures(),
+        "shared-object tombstone sync failures: {tombstone_sync:?}"
+    );
+
+    assert_remote_file_present(storage.as_ref(), &shared_object_key).await;
+    assert_file_bytes(&target_active.path().join(&kept_rel), &shared_payload);
+    assert!(
+        !target_active.path().join(&deleted_rel).exists(),
+        "tombstoned key {deleted_key} must not be rehydrated"
+    );
 }
 
 async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dyn CloudStorage>) {
@@ -2016,6 +2115,13 @@ async fn webdav_asset_directories_file_sync_and_tombstone_contract() {
 
 #[tokio::test]
 #[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn webdav_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(webdav_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
 async fn webdav_asset_remote_same_size_corruption_rejected_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_remote_same_size_corruption_rejected_contract(webdav_storage().await).await;
@@ -2171,6 +2277,14 @@ async fn s3_asset_directories_file_sync_and_tombstone_contract() {
 #[cfg(feature = "cloud_storage_s3")]
 #[tokio::test]
 #[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn s3_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(s3_storage().await).await;
+}
+
+#[cfg(feature = "cloud_storage_s3")]
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
 async fn s3_asset_remote_same_size_corruption_rejected_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_remote_same_size_corruption_rejected_contract(s3_storage().await).await;
@@ -2321,6 +2435,13 @@ async fn ftp_vfs_blob_remote_same_size_corruption_rejected_contract() {
 async fn ftp_asset_directories_file_sync_and_tombstone_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_directories_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(ftp_storage().await).await;
 }
 
 #[tokio::test]

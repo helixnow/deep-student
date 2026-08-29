@@ -240,23 +240,34 @@ fn build_existing_message_map(row: &rusqlite::Row<'_>) -> rusqlite::Result<(Stri
 }
 
 fn map_anki_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiCard> {
-    let tags_json: String = row.get(5)?;
-    let images_json: String = row.get(6)?;
-    let extra_fields_json: String = row.get(11)?;
+    // Historical/imported/synced rows may contain NULL in these optional
+    // columns even though current writers always emit JSON text.
+    let tags_json: Option<String> = row.get(5)?;
+    let images_json: Option<String> = row.get(6)?;
+    let extra_fields_json: Option<String> = row.get(11)?;
 
     Ok(AnkiCard {
         id: row.get(0)?,
         task_id: row.get(1)?,
-        front: row.get(2)?,
-        back: row.get(3)?,
+        front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
         text: row.get(4)?,
-        tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-        images: serde_json::from_str(&images_json).unwrap_or_default(),
+        tags: tags_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default(),
+        images: images_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default(),
         is_error_card: row.get::<_, i32>(7)? != 0,
         error_content: row.get(8)?,
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
-        extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+        extra_fields: extra_fields_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default(),
         template_id: row.get(12)?,
     })
 }
@@ -265,30 +276,39 @@ fn map_anki_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiCard> {
 /// outcomes. Columns 0..=20 intentionally match the existing UI library row;
 /// columns 21..=22 add the stable source locator.
 fn map_anki_library_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiLibraryCardRecord> {
-    let tags_json: String = row.get(5)?;
-    let images_json: String = row.get(6)?;
-    let extra_fields_json: String = row.get(11)?;
-    let raw_source_type: String = row.get(13)?;
-    let raw_source_id: String = row.get(14)?;
+    let tags_json: Option<String> = row.get(5)?;
+    let images_json: Option<String> = row.get(6)?;
+    let extra_fields_json: Option<String> = row.get(11)?;
+    let raw_source_type: Option<String> = row.get(13)?;
+    let raw_source_id: Option<String> = row.get(14)?;
     Ok(AnkiLibraryCardRecord {
         library_card: AnkiLibraryCard {
             card: AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
-                tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                images: serde_json::from_str(&images_json).unwrap_or_default(),
+                tags: tags_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok())
+                    .unwrap_or_default(),
+                images: images_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok())
+                    .unwrap_or_default(),
                 is_error_card: row.get::<_, i32>(7)? != 0,
                 error_content: row.get(8)?,
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
-                extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+                extra_fields: extra_fields_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok())
+                    .unwrap_or_default(),
                 template_id: row.get(12)?,
             },
-            source_type: (!raw_source_type.trim().is_empty()).then_some(raw_source_type),
-            source_id: (!raw_source_id.trim().is_empty()).then_some(raw_source_id),
+            source_type: raw_source_type.filter(|value| !value.trim().is_empty()),
+            source_id: raw_source_id.filter(|value| !value.trim().is_empty()),
             state_id: row.get(15)?,
             state: row.get(16)?,
             due_ms: row.get(17)?,
@@ -2550,7 +2570,9 @@ impl Database {
             Ok(crate::models::CustomAnkiTemplate {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                description: row.get(2)?,
+                // description 列可空（schema 无 NOT NULL；同步/旧库插入可省略），
+                // NULL 兜底空串，避免整批模板读取失败。
+                description: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                 author: row.get(3)?,
                 version: row.get(4)?,
                 preview_front: row.get(5)?,
@@ -2625,7 +2647,8 @@ impl Database {
                 Ok(crate::models::CustomAnkiTemplate {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    description: row.get(2)?,
+                    // description 列可空（同 get_all_custom_templates），NULL 兜底空串。
+                    description: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                     author: row.get(3)?,
                     version: row.get(4)?,
                     preview_front: row.get(5)?,
@@ -4859,21 +4882,30 @@ impl Database {
         )?;
 
         let card_iter = stmt.query_map(params![task_id], |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -4911,21 +4943,30 @@ impl Database {
         )?;
 
         let card_iter = stmt.query_map(params![document_id], |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -5019,21 +5060,30 @@ impl Database {
 
         let mut stmt = conn.prepare(&sql)?;
         let card_iter = stmt.query_map(rusqlite::params_from_iter(card_ids), |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -7457,26 +7507,36 @@ impl Database {
 
         let cards = stmt
             .query_map([limit], |row| {
-                let tags_json: String = row.get(5)?;
-                let images_json: String = row.get(6)?;
+                // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+                let tags_json: Option<String> = row.get(5)?;
+                let images_json: Option<String> = row.get(6)?;
                 // 修复列索引错位：SELECT 共 13 列（索引 0-12），
                 // extra_fields_json 位于索引 11，template_id 位于索引 12。
                 // 旧代码取 12/13 会把 template_id 当 extra_fields 解析并越界读取 template_id。
-                let extra_fields_json: String = row.get(11)?;
+                let extra_fields_json: Option<String> = row.get(11)?;
 
                 Ok(AnkiCard {
                     id: row.get(0)?,
                     task_id: row.get(1)?,
-                    front: row.get(2)?,
-                    back: row.get(3)?,
+                    front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                     text: row.get(4)?,
-                    tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                    images: serde_json::from_str(&images_json).unwrap_or_default(),
+                    tags: tags_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
+                    images: images_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
                     is_error_card: row.get::<_, i32>(7)? != 0,
                     error_content: row.get(8)?,
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
-                    extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+                    extra_fields: extra_fields_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
                     template_id: row.get(12)?,
                 })
             })?
@@ -7684,10 +7744,11 @@ impl Database {
 
         let data_sql = format!(
             "SELECT
-                ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                ac.id, ac.task_id, ac.front, ac.back, ac.text,
+                COALESCE(ac.tags_json, '[]'), COALESCE(ac.images_json, '[]'),
                 ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
                 COALESCE(ac.extra_fields_json, '{{}}') as extra_fields_json,
-                ac.template_id, ac.source_type, ac.source_id,
+                ac.template_id, COALESCE(ac.source_type, ''), COALESCE(ac.source_id, ''),
                 fs.id, fs.state, fs.due_ms, COALESCE(fs.suspended, 0),
                 CASE WHEN fs.id IS NULL THEN 0 ELSE 1 END,
                 CASE
@@ -7708,19 +7769,27 @@ impl Database {
 
         let mut stmt = conn.prepare(&data_sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(data_params.iter()), |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             let card = AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -7732,18 +7801,10 @@ impl Database {
                 template_id: row.get(12)?,
             };
 
-            let raw_source_type: String = row.get(13)?;
-            let source_type = if raw_source_type.trim().is_empty() {
-                None
-            } else {
-                Some(raw_source_type)
-            };
-            let raw_source_id: String = row.get(14)?;
-            let source_id = if raw_source_id.trim().is_empty() {
-                None
-            } else {
-                Some(raw_source_id)
-            };
+            let raw_source_type: Option<String> = row.get(13)?;
+            let source_type = raw_source_type.filter(|value| !value.trim().is_empty());
+            let raw_source_id: Option<String> = row.get(14)?;
+            let source_id = raw_source_id.filter(|value| !value.trim().is_empty());
             Ok(AnkiLibraryCard {
                 card,
                 source_type,
@@ -8679,6 +8740,82 @@ mod tests {
         assert_eq!(serialized["dueMs"], json!(past_due));
         assert_eq!(serialized["isDue"], json!(true));
         assert!(serialized.get("state_id").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_null_anki_json_fields_do_not_break_library_reads_or_enqueue() -> anyhow::Result<()> {
+        use crate::fsrs_review_service::FsrsReviewService;
+        use std::sync::Arc;
+
+        let dir = tempdir()?;
+        let db = Arc::new(setup_migrated_db(dir.path())?);
+        let now = Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-library-legacy-null".to_string(),
+            document_id: "doc-library-legacy-null".to_string(),
+            original_document_name: "v0.9.44 library".to_string(),
+            segment_index: 0,
+            content_segment: "legacy fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let card = AnkiCard {
+            id: "card-library-legacy-null".to_string(),
+            task_id: task.id.clone(),
+            front: "legacy front".to_string(),
+            back: "legacy back".to_string(),
+            text: None,
+            tags: vec!["will-be-null".to_string()],
+            images: vec!["will-be-null.png".to_string()],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: std::collections::HashMap::from([(
+                "will-be-null".to_string(),
+                "value".to_string(),
+            )]),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(&task, &[card])?;
+        db.get_conn_safe()?.execute(
+            "UPDATE anki_cards
+             SET tags_json = NULL, images_json = NULL, extra_fields_json = NULL
+             WHERE id = ?1",
+            params!["card-library-legacy-null"],
+        )?;
+
+        let (library, total) = db.list_anki_library_cards(None, None, None, 1, 20)?;
+        assert_eq!(total, 1);
+        assert_eq!(library.len(), 1);
+        assert!(library[0].card.tags.is_empty());
+        assert!(library[0].card.images.is_empty());
+        assert!(library[0].card.extra_fields.is_empty());
+
+        let agent_page = db.list_anki_agent_library_cards(
+            AnkiLibraryScope::agent(),
+            None,
+            None,
+            AnkiLibraryScheduleFilter::All,
+            AnkiLibraryDiagnosticFilter::All,
+            1,
+            20,
+        )?;
+        assert_eq!(agent_page.total, 1);
+        assert!(agent_page.items[0].library_card.card.tags.is_empty());
+        assert!(agent_page.items[0].library_card.card.images.is_empty());
+
+        let enqueue =
+            FsrsReviewService::new(db).enqueue_cards(&["card-library-legacy-null".to_string()])?;
+        assert_eq!(enqueue.enqueued, 1);
+        assert_eq!(enqueue.review_cards.len(), 1);
+        assert!(enqueue.review_cards[0].tags.is_empty());
+        assert!(enqueue.review_cards[0].images.is_empty());
+        assert!(enqueue.review_cards[0].extra_fields.is_empty());
         Ok(())
     }
 

@@ -59,7 +59,7 @@
     "category": "Education",
     "resources": {
       "../LICENSE": "licenses/DeepStudent-AGPL-3.0.txt",
-      "../public/legal/THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt",
+      "../legal/THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt",
       "vendor/lancedb/LICENSE": "licenses/lancedb-Apache-2.0.txt",
       "vendor/object_store/LICENSE.txt": "licenses/object_store-LICENSE.txt",
       "vendor/object_store/NOTICE.txt": "licenses/object_store-NOTICE.txt",

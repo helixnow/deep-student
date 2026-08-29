@@ -7,7 +7,9 @@ use crate::models::AppError;
 use std::collections::HashMap;
 #[cfg(feature = "mcp")]
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter, State, Window};
+#[cfg(feature = "mcp")]
+use tauri::Emitter;
+use tauri::{AppHandle, State, Window};
 
 #[cfg(feature = "mcp")]
 use crate::mcp::stdio_proxy::{
@@ -736,6 +738,7 @@ pub async fn preheat_mcp_tools(
     let count = state.llm_manager.preheat_mcp_tools_public(&window).await;
     Ok(serde_json::json!({ "ok": true, "count": count }))
 }
+#[cfg(feature = "mcp")]
 pub mod mcp_test_helpers {
     use crate::mcp::{
         client::{DefaultNotificationHandler, McpClient, RootsCapability, SamplingCapability},

@@ -32,6 +32,10 @@ const DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY: &str = "deepStudentCollapseClozeOrds
 /// 单文件内 decks / cards.did / model.did 均引用该 id；dconf 仍为 id 1，deck.conf 指向它。
 const APKG_EXPORT_DECK_ID: i64 = 1746000000000;
 
+/// 导出侧单媒体文件上限：与导入侧 `MAX_ENTRY_BYTES` 对齐（256 MiB）。
+/// 超限文件不阻断导出，进入 missing_media 清单并写入告警。
+pub const MAX_EXPORT_MEDIA_FILE_BYTES: u64 = 256 * 1024 * 1024;
+
 /// 导入时由 apkg_importer_service 注入的元数据保留字段。
 /// 再导出时必须过滤，避免这些键污染 Anki model 字段表。
 /// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致。
@@ -55,6 +59,163 @@ fn is_reserved_import_metadata_field(name: &str) -> bool {
     RESERVED_IMPORT_METADATA_FIELDS
         .iter()
         .any(|reserved| reserved.eq_ignore_ascii_case(name))
+}
+
+/// 统一的内部协议字段谓词（wave2-E r2）：
+/// - 所有 `_` 前缀键默认是机器协议字段（`_occlusion`/`_qa_flags`/
+///   `_original_generation`/`_content_provenance` 等），一律不得进入
+///   导出 note/model 字段表；确需导出的信息由专用转换器消费后移除原键；
+/// - 叠加既有 13 个 `Anki*` 导入元数据保留键。
+///
+/// 消费点：导出入口规范化（normalize_cards_for_export）、两条路径的
+/// extra_keys 字段表追加、resolve_card_field_value 兜底取值。
+fn is_internal_protocol_field(name: &str) -> bool {
+    name.starts_with('_') || is_reserved_import_metadata_field(name)
+}
+
+// ============================================================================
+// 遮挡卡导出转换器（wave2-E r2：`_occlusion` → 可复习标准 Cloze）
+// ============================================================================
+
+/// 从 `_occlusion.imageRef` 解析 APKG 包内媒体文件名（basename）。
+///
+/// 返回 `None` 的情况：引用为空/纯空白、`vlm://pending-image` 之类的
+/// 内部占位引用（VLM 块不选图，转换时视为无图降级）、或路径无有效文件名。
+/// `vfs://images/diagram.png` 这类引用取末段 `diagram.png`，与
+/// `collect_media_entries` 的文件名口径一致。
+fn occlusion_media_file_name(image_ref: &str) -> Option<String> {
+    let trimmed = image_ref.trim();
+    if trimmed.is_empty() || trimmed.starts_with("vlm://") {
+        return None;
+    }
+    std::path::Path::new(trimmed)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+}
+
+/// cloze 标签内 `}}` 会破坏 cloze 语法，`::` 会被 Anki 解析为 hint 分隔符。
+/// 与 anki_image_occlusion::escape_cloze_label 同口径（该函数未 pub，本地复刻）。
+fn escape_occlusion_cloze_label(label: &str) -> String {
+    label.replace("}}", "} }").replace("::", "：：")
+}
+
+fn escape_occlusion_html_attr(s: &str) -> String {
+    s.replace('&', "&amp;").replace('"', "&quot;")
+}
+
+/// 用遮挡盒 labels 现拼标准 Cloze 正文（与
+/// anki_image_occlusion::build_card_fields 的 `{{cN::label}}` 协议一致，
+/// 不发明新协议）。缺失 cloze 序号的盒按出现顺序补 1-based 序号。
+fn build_occlusion_cloze_text(spec: &crate::anki_image_occlusion::OcclusionSpec) -> String {
+    spec.boxes
+        .iter()
+        .enumerate()
+        .map(|(idx, b)| {
+            let ord = b.cloze_index.filter(|n| *n > 0).unwrap_or(idx as u32 + 1);
+            let label = b.label.trim();
+            let label = if label.is_empty() {
+                format!("区域 {}", ord)
+            } else {
+                label.to_string()
+            };
+            format!("{{{{c{}::{}}}}}", ord, escape_occlusion_cloze_label(&label))
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 把遮挡盒渲染为 IO 矩形 cloze 语法（0–1 归一化小数，对齐官方 to-cloze.ts）。
+///
+/// 直接复用 `anki_image_occlusion::format_anki_io_cloze`（已落地的官方
+/// IO 语法构造器，形如
+/// `{{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.15}}`；
+/// 禁止 ×100 百分数——百分数会让 Anki 遮罩放大 100 倍）。
+/// 该函数只接受 `ValidatedOcclusionSpec`，因此先过 `validate_spec`；
+/// spec 非法（外部伪造/退化数据）时返回空串——不产 IO 语法，
+/// 可复习主路径（标准 Cloze Text）不受影响。
+///
+/// wave2-E r3 起默认 Cloze 导出路径**不再**把该结果写入 Extra（机器语法
+/// 不得在揭底时暴露给用户）；本函数保留给后续官方 Image Occlusion
+/// notetype 导出路径（IO 语法届时写入 IO notetype 的专用 Occlusion 字段，
+/// 而非用户可见的 Extra）。
+#[allow(dead_code)]
+fn format_io_rects(spec: &crate::anki_image_occlusion::OcclusionSpec) -> String {
+    crate::anki_image_occlusion::validate_spec(
+        spec,
+        &crate::anki_image_occlusion::OcclusionConfig::default(),
+    )
+    .map(|validated| crate::anki_image_occlusion::format_anki_io_cloze(&validated))
+    .unwrap_or_default()
+}
+
+/// 遮挡卡导出转换器：把 `_occlusion` spec 转成可复习的标准 Cloze note。
+///
+/// - Text：`card.text` 已有内容则沿用，否则用盒 labels 现拼 `{{cN::label}}`；
+///   两种来源都确保带 `<img src="包内文件名">`（imageRef 可解析出文件名时）；
+/// - 媒体：`card.images` 为空时把 imageRef 原样补进去，由
+///   `collect_media_entries` 统一解析为包内文件名；文件缺失/不可读时该函数
+///   已有跳过 + missing 报告语义，note 本身（Text 仍在）照常导出，不 panic；
+/// - Extra：**不写入任何 IO 矩形语法**（wave2-E r3 字段泄漏修正）。
+///   `{{cN::image-occlusion:rect:...}}` 是机器语法，默认 Cloze notetype 揭底时
+///   Extra 会原样展示，用户会看到一串坐标乱码；因此 Extra 只保留人类补充
+///   内容，无 Extra 键时由 `resolve_card_field_value` 的 "extra" 分支
+///   回退 `card.back`，本函数不再插入 Extra 键。
+///
+/// 本函数只读 `_occlusion`，删除动作统一在 `normalize_cards_for_export` 的
+/// `_` 前缀 retain 中完成。
+fn convert_occlusion_card_for_export(card: &mut AnkiCard) {
+    let Some(spec) = crate::anki_image_occlusion::parse_occlusion_field(&card.extra_fields) else {
+        return;
+    };
+
+    let image_file_name = occlusion_media_file_name(&spec.image_ref);
+
+    // 媒体补收集（必须发生在 `_occlusion` 被删除前）：
+    // 只在 images 为空时补，避免与调用方已解析好的媒体路径重复。
+    if card.images.is_empty() && image_file_name.is_some() {
+        card.images.push(spec.image_ref.trim().to_string());
+    }
+
+    // 可复习 Cloze Text：card.text 优先，否则用 labels 现拼。
+    let existing_text = card
+        .text
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    let cloze_body = existing_text.unwrap_or_else(|| build_occlusion_cloze_text(&spec));
+    if !cloze_body.is_empty() {
+        let text = match &image_file_name {
+            Some(name) if !cloze_body.contains("<img") => format!(
+                "<img src=\"{}\"><br>{}",
+                escape_occlusion_html_attr(name),
+                cloze_body
+            ),
+            _ => cloze_body,
+        };
+        card.text = Some(text);
+    }
+    // 注意：IO 矩形语法（format_io_rects）刻意不写入 Extra——
+    // 默认 Cloze notetype 揭底会把 Extra 原样渲染给用户，机器语法必须不可见。
+}
+
+/// 导出入口统一规范化（唯一权威层）：只作用于导出流水线内的数据副本，
+/// 不写回卡片库——`_original_generation` 是 critic 修正对挖掘的数据源，
+/// 库内必须保留。
+///
+/// 1. 遮挡转换器：消费 `_occlusion` 生成可复习 Cloze Text + 媒体
+///    （IO 矩形语法不再写入 Extra，见 convert_occlusion_card_for_export）；
+/// 2. 删除所有 `_` 前缀机器协议字段。注意此处不删 `Anki*` 保留键：
+///    card_sched_restore 仍需读取它们回写复习进度，字段表层
+///    （is_internal_protocol_field 过滤）已单独保证它们不进 model。
+fn normalize_cards_for_export(cards: &mut [AnkiCard]) {
+    for card in cards.iter_mut() {
+        convert_occlusion_card_for_export(card);
+        card.extra_fields.retain(|key, _| !key.starts_with('_'));
+    }
 }
 
 /// 清理卡片内容中的无效模板占位符
@@ -429,6 +590,12 @@ fn resolve_card_field_value(card: &AnkiCard, field_name: &str) -> String {
             }
         }
         _ => {
+            // 兜底闸门：内部协议字段绝不作为 note 字段值输出。
+            // 正常流程中这些键已在导出入口规范化与字段表构建两层被过滤，
+            // 此处防未来新入口/自定义模板字段名绕过前两层。
+            if is_internal_protocol_field(field_name) {
+                return String::new();
+            }
             // -------- 通用字段提取逻辑（大小写无关 + Alias） --------
             let field_key_lower = field_name.to_lowercase();
             let raw_value = card
@@ -1136,7 +1303,23 @@ fn collect_media_entries(
             }
             seen_media_sources.insert(fname.to_string(), image_path.clone());
             match fs::File::open(image_path) {
-                Ok(file) => entries.push((fname.to_string(), file)),
+                Ok(file) => {
+                    // 超大文件保护：与导入侧单条目上限对齐，超限跳过并告警。
+                    match file.metadata() {
+                        Ok(metadata) if metadata.len() > MAX_EXPORT_MEDIA_FILE_BYTES => {
+                            let message = format!(
+                                "媒体文件超过 {} 字节导出上限，已跳过: {} ({} 字节)",
+                                MAX_EXPORT_MEDIA_FILE_BYTES,
+                                image_path,
+                                metadata.len()
+                            );
+                            warn!("{}", message);
+                            warnings.push(message);
+                            missing.push(image_path.clone());
+                        }
+                        _ => entries.push((fname.to_string(), file)),
+                    }
+                }
                 Err(e) => {
                     warn!("读取媒体文件失败，跳过并继续导出 {}: {}", image_path, e);
                     missing.push(image_path.clone());
@@ -1244,6 +1427,10 @@ pub async fn export_cards_to_apkg_with_full_template_report(
         return Err("没有卡片可以导出".to_string());
     }
 
+    // 导出入口规范化（必须先于媒体克隆）：遮挡转换 + 剥离 `_` 协议字段。
+    let mut cards = cards;
+    normalize_cards_for_export(&mut cards);
+
     // 创建临时目录
     // 注意必须带随机后缀：仅用秒级时间戳时，同一秒内的并发导出会
     // 共享同一 collection.anki2，第二次初始化报 "table col already exists"
@@ -1287,11 +1474,12 @@ pub async fn export_cards_to_apkg_with_full_template_report(
             });
 
         // Append extra_fields keys in a deterministic order.
-        // 过滤导入时注入的 Anki* 元数据保留字段，避免再导出时污染 model 字段表。
+        // 过滤内部协议字段（`_` 前缀机器字段 + 导入注入的 Anki* 保留字段），
+        // 避免再导出时污染 model 字段表。
         let mut extra_keys: Vec<String> = cards
             .iter()
             .flat_map(|c| c.extra_fields.keys().cloned())
-            .filter(|key| !is_reserved_import_metadata_field(key))
+            .filter(|key| !is_internal_protocol_field(key))
             .collect();
         extra_keys.sort_by_key(|a| a.to_lowercase());
         extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
@@ -1500,6 +1688,10 @@ pub async fn export_multi_template_apkg_report(
         return Err("没有卡片可以导出".to_string());
     }
 
+    // 导出入口规范化（必须先于媒体克隆）：遮挡转换 + 剥离 `_` 协议字段。
+    let mut cards = cards;
+    normalize_cards_for_export(&mut cards);
+
     // 同上：带随机后缀防止同一秒并发导出共用临时库
     let temp_dir = std::env::temp_dir().join(format!(
         "anki_export_{}_{}",
@@ -1590,10 +1782,10 @@ pub async fn export_multi_template_apkg_report(
                 // 构建该模板的字段列表
                 let mut fields = tmpl.fields.clone();
                 // 追加该组卡片的 extra_fields keys（不在 fields 中的），
-                // 并过滤导入时注入的 Anki* 元数据保留字段
+                // 并过滤内部协议字段（`_` 前缀机器字段 + Anki* 保留字段）
                 let mut extra_keys: Vec<String> = group_cards.iter()
                     .flat_map(|c| c.extra_fields.keys().cloned())
-                    .filter(|key| !is_reserved_import_metadata_field(key))
+                    .filter(|key| !is_internal_protocol_field(key))
                     .collect();
                 extra_keys.sort_by_key(|a| a.to_lowercase());
                 extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
@@ -2611,5 +2803,414 @@ mod tests {
         assert_eq!(report.warnings.len(), 1);
         assert!(report.warnings[0].contains("same.png"));
         assert!(report.warnings[0].contains("媒体同名冲突"));
+    }
+
+    // ------------------------------------------------------------------
+    // wave2-E r2：内部协议字段过滤 + `_occlusion` 遮挡卡导出闭环
+    // ------------------------------------------------------------------
+
+    /// 构造一个 2 盒遮挡 spec 的 `_occlusion` JSON（camelCase 序列化契约）。
+    fn occlusion_spec_json(image_ref: &str) -> String {
+        serde_json::json!({
+            "imageRef": image_ref,
+            "boxes": [
+                { "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.1, "label": "左心房", "clozeIndex": 1 },
+                { "x": 0.5, "y": 0.6, "w": 0.2, "h": 0.1, "label": "右心室", "clozeIndex": 2 }
+            ]
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn internal_protocol_field_predicate_covers_underscore_and_reserved_keys() {
+        // `_` 前缀机器协议字段一律命中
+        assert!(is_internal_protocol_field("_occlusion"));
+        assert!(is_internal_protocol_field("_qa_flags"));
+        assert!(is_internal_protocol_field("_original_generation"));
+        assert!(is_internal_protocol_field("_content_provenance"));
+        // 既有 13 个 Anki* 保留键（大小写不敏感）同样命中
+        assert!(is_internal_protocol_field("AnkiNoteId"));
+        assert!(is_internal_protocol_field("ankiivl"));
+        // 用户可见的非 `_` 字段绝不过滤
+        assert!(!is_internal_protocol_field("Subject"));
+        assert!(!is_internal_protocol_field("Extra"));
+        assert!(!is_internal_protocol_field("Occlusion"));
+    }
+
+    #[test]
+    fn resolve_card_field_value_refuses_internal_protocol_fields() {
+        let mut card = test_card("guard", "Q", "A");
+        card.extra_fields = HashMap::from([
+            ("_occlusion".to_string(), "{\"imageRef\":\"x\"}".to_string()),
+            ("_qa_flags".to_string(), "[]".to_string()),
+            ("Subject".to_string(), "Physics".to_string()),
+        ]);
+        // 兜底闸门：即使字段表构建层被绕过，内部键也解析为空值
+        assert_eq!(resolve_card_field_value(&card, "_occlusion"), "");
+        assert_eq!(resolve_card_field_value(&card, "_qa_flags"), "");
+        // 用户可见字段不受影响
+        assert_eq!(resolve_card_field_value(&card, "Subject"), "Physics");
+    }
+
+    #[test]
+    fn format_io_rects_delegates_to_validated_anki_io_syntax() {
+        // 合法 spec → 经 validate_spec 后调用 format_anki_io_cloze，
+        // 输出官方 IO rect 0–1 归一化小数（前导点风格、去尾零、盒间无分隔符）。
+        let spec = crate::anki_image_occlusion::OcclusionSpec {
+            image_ref: "diagram.png".to_string(),
+            boxes: vec![
+                crate::anki_image_occlusion::OcclusionBox {
+                    x: 0.1,
+                    y: 0.2,
+                    w: 0.3,
+                    h: 0.1,
+                    label: "左心房".to_string(),
+                    cloze_index: Some(1),
+                },
+                crate::anki_image_occlusion::OcclusionBox {
+                    x: 0.5,
+                    y: 0.625,
+                    w: 0.125,
+                    h: 0.25,
+                    label: "右心室".to_string(),
+                    cloze_index: Some(2),
+                },
+            ],
+        };
+        assert_eq!(
+            format_io_rects(&spec),
+            "{{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.1}}\
+             {{c2::image-occlusion:rect:left=.5:top=.625:width=.125:height=.25}}"
+        );
+
+        // 非法 spec（空盒列表）→ 空串，不产 IO 语法、不阻断导出
+        let invalid = crate::anki_image_occlusion::OcclusionSpec {
+            image_ref: "diagram.png".to_string(),
+            boxes: vec![],
+        };
+        assert_eq!(format_io_rects(&invalid), "");
+    }
+
+    #[test]
+    fn occlusion_media_file_name_resolves_basename_and_rejects_placeholders() {
+        assert_eq!(
+            occlusion_media_file_name("/tmp/media/diagram.png").as_deref(),
+            Some("diagram.png")
+        );
+        assert_eq!(
+            occlusion_media_file_name("vfs://images/diagram.png").as_deref(),
+            Some("diagram.png")
+        );
+        assert_eq!(occlusion_media_file_name("vlm://pending-image"), None);
+        assert_eq!(occlusion_media_file_name("   "), None);
+    }
+
+    #[test]
+    fn normalize_keeps_cards_without_occlusion_unchanged() {
+        // 旧卡（无 `_occlusion`、无 `_` 键）：规范化必须是恒等变换，
+        // 含 Anki* 调度键（card_sched_restore 仍要读）与业务字段。
+        let mut plain = test_card("plain", "Q", "A");
+        plain.text = Some("{{c1::kept}}".to_string());
+        plain.images = vec!["/tmp/img.png".to_string()];
+        plain.extra_fields = HashMap::from([
+            ("Subject".to_string(), "Physics".to_string()),
+            ("AnkiIvl".to_string(), "21".to_string()),
+        ]);
+        let before = plain.clone();
+        let mut cards = vec![plain];
+        normalize_cards_for_export(&mut cards);
+        assert_eq!(cards[0].text, before.text);
+        assert_eq!(cards[0].images, before.images);
+        assert_eq!(cards[0].extra_fields, before.extra_fields);
+        assert_eq!(cards[0].front, before.front);
+        assert_eq!(cards[0].back, before.back);
+    }
+
+    #[test]
+    fn normalize_strips_underscore_fields_but_keeps_anki_sched_keys() {
+        let mut card = test_card("strip", "Q", "A");
+        card.extra_fields = HashMap::from([
+            ("_qa_flags".to_string(), "[]".to_string()),
+            ("_original_generation".to_string(), "{}".to_string()),
+            ("_content_provenance".to_string(), "{}".to_string()),
+            ("AnkiIvl".to_string(), "21".to_string()),
+            ("Subject".to_string(), "Physics".to_string()),
+        ]);
+        let mut cards = vec![card];
+        normalize_cards_for_export(&mut cards);
+        let extras = &cards[0].extra_fields;
+        assert!(!extras.keys().any(|k| k.starts_with('_')));
+        // Anki* 调度键保留给 card_sched_restore；字段表层单独过滤它们
+        assert_eq!(extras.get("AnkiIvl").map(String::as_str), Some("21"));
+        assert_eq!(extras.get("Subject").map(String::as_str), Some("Physics"));
+    }
+
+    #[test]
+    fn occlusion_conversion_builds_cloze_text_media_without_io_extra() {
+        let mut card = test_card("occ", "front", "揭底说明");
+        card.extra_fields = HashMap::from([(
+            "_occlusion".to_string(),
+            occlusion_spec_json("/tmp/media/diagram.png"),
+        )]);
+        let mut cards = vec![card];
+        normalize_cards_for_export(&mut cards);
+        let converted = &cards[0];
+
+        // Text = img + 标准 Cloze（labels 现拼路径）
+        let text = converted.text.as_deref().expect("occlusion text");
+        assert!(text.starts_with("<img src=\"diagram.png\"><br>"));
+        assert!(text.contains("{{c1::左心房}}"));
+        assert!(text.contains("{{c2::右心室}}"));
+        // images 为空时从 imageRef 补收集
+        assert_eq!(converted.images, vec!["/tmp/media/diagram.png".to_string()]);
+        // wave2-E r3：转换器不再插入 Extra 键（机器 IO 语法不得进入用户可见
+        // 的揭底区）；Extra 取值由 resolve_card_field_value 回退 card.back。
+        assert!(!converted
+            .extra_fields
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("Extra")));
+        let resolved_extra = resolve_card_field_value(converted, "Extra");
+        assert_eq!(resolved_extra, "揭底说明", "Extra 必须回退人类可读的 back");
+        assert!(
+            !resolved_extra.contains("image-occlusion:rect"),
+            "导出 Extra 不得含 IO 机器语法"
+        );
+        // 转换后 `_occlusion` 必须被删除
+        assert!(!converted.extra_fields.contains_key("_occlusion"));
+    }
+
+    #[test]
+    fn occlusion_conversion_leaves_human_extra_untouched() {
+        // 用户已有 Extra（人类补充）：转换器不得改写、不得追加 IO 语法。
+        let mut card = test_card("occ-extra", "front", "back");
+        card.extra_fields = HashMap::from([
+            (
+                "_occlusion".to_string(),
+                occlusion_spec_json("/tmp/media/diagram.png"),
+            ),
+            ("Extra".to_string(), "人工笔记：注意瓣膜方向".to_string()),
+        ]);
+        let mut cards = vec![card];
+        normalize_cards_for_export(&mut cards);
+        let converted = &cards[0];
+        assert_eq!(
+            converted.extra_fields.get("Extra").map(String::as_str),
+            Some("人工笔记：注意瓣膜方向")
+        );
+        let resolved_extra = resolve_card_field_value(converted, "Extra");
+        assert!(!resolved_extra.contains("image-occlusion:rect"));
+    }
+
+    #[test]
+    fn occlusion_conversion_prefers_existing_card_text() {
+        let mut card = test_card("occ-text", "front", "");
+        card.text = Some("{{c1::既有挖空}}".to_string());
+        card.extra_fields = HashMap::from([(
+            "_occlusion".to_string(),
+            occlusion_spec_json("vfs://images/diagram.png"),
+        )]);
+        let mut cards = vec![card];
+        normalize_cards_for_export(&mut cards);
+        let text = cards[0].text.as_deref().expect("text");
+        // card.text 优先，但仍补 <img>（包内文件名口径）
+        assert_eq!(text, "<img src=\"diagram.png\"><br>{{c1::既有挖空}}");
+    }
+
+    #[tokio::test]
+    async fn internal_protocol_fields_do_not_enter_model_field_table() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("internal-filter.apkg");
+
+        let mut card = test_card("internal", "Q", "A");
+        card.extra_fields = HashMap::from([
+            ("_qa_flags".to_string(), "[{\"code\":\"x\"}]".to_string()),
+            (
+                "_original_generation".to_string(),
+                "{\"front\":\"Q\"}".to_string(),
+            ),
+            (
+                "_content_provenance".to_string(),
+                "{\"actor\":\"llm\"}".to_string(),
+            ),
+            ("Subject".to_string(), "Physics".to_string()),
+        ]);
+
+        export_cards_to_apkg_with_full_template(
+            vec![card],
+            "InternalFilter".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg");
+
+        let db_path = tmp.path().join("internal-filter.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let models_json: String = conn
+            .query_row("SELECT models FROM col LIMIT 1", [], |row| row.get(0))
+            .expect("load models");
+        let models: serde_json::Value =
+            serde_json::from_str(&models_json).expect("parse models json");
+        let model = models
+            .as_object()
+            .and_then(|o| o.values().next())
+            .expect("model object");
+        let field_names: Vec<String> = model["flds"]
+            .as_array()
+            .expect("model flds")
+            .iter()
+            .filter_map(|f| f["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            field_names.iter().any(|name| name == "Subject"),
+            "用户可见业务字段必须保留"
+        );
+        assert!(
+            !field_names.iter().any(|name| name.starts_with('_')),
+            "`_` 前缀内部协议字段不得进入 model 字段表: {:?}",
+            field_names
+        );
+        // note 内容也不得残留协议 JSON
+        let note_flds: String = conn
+            .query_row("SELECT flds FROM notes LIMIT 1", [], |row| row.get(0))
+            .expect("load note flds");
+        assert!(!note_flds.contains("_original_generation"));
+        assert!(!note_flds.contains("llm"));
+        assert_eq!(note_flds.split('\u{1f}').count(), field_names.len());
+    }
+
+    #[tokio::test]
+    async fn occlusion_card_exports_reviewable_cloze_note_with_media() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("occlusion.apkg");
+
+        let img_path = tmp.path().join("diagram.png");
+        std::fs::write(&img_path, b"\x89PNG\r\n\x1a\n").expect("write img");
+
+        let mut card = test_card("occ-export", "front", "back");
+        card.extra_fields = HashMap::from([
+            (
+                "_occlusion".to_string(),
+                occlusion_spec_json(&img_path.to_string_lossy()),
+            ),
+            ("_qa_flags".to_string(), "[]".to_string()),
+        ]);
+
+        let report = export_cards_to_apkg_with_full_template_report(
+            vec![card],
+            "OcclusionDeck".to_string(),
+            "Cloze".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export occlusion apkg");
+        assert_eq!(report.exported_media, 1, "imageRef 媒体必须打包");
+        assert!(report.missing_media.is_empty());
+
+        let db_path = tmp.path().join("occlusion.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+
+        // Text 字段含 img + 标准 Cloze，可复习
+        let note_flds: String = conn
+            .query_row("SELECT flds FROM notes LIMIT 1", [], |row| row.get(0))
+            .expect("load note flds");
+        assert!(note_flds.contains("<img src=\"diagram.png\">"));
+        assert!(note_flds.contains("{{c1::左心房}}"));
+        assert!(note_flds.contains("{{c2::右心室}}"));
+        assert!(
+            !note_flds.contains("_occlusion"),
+            "`_occlusion` spec JSON 不得进入 note 字段值"
+        );
+        // wave2-E r3 泄漏回归闸：包括 Extra 在内的任何 note 字段
+        // 都不得含 IO 机器语法（揭底时用户不应看见坐标乱码）
+        assert!(
+            !note_flds.contains("image-occlusion:rect"),
+            "导出 note 字段（含 Extra）不得含 IO 语法: {}",
+            note_flds
+        );
+
+        // 两个 cloze 序号 → 两张卡
+        let card_ords = conn
+            .prepare("SELECT ord FROM cards ORDER BY ord")
+            .expect("prepare card ords")
+            .query_map([], |row| row.get::<_, i64>(0))
+            .expect("query card ords")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect card ords");
+        assert_eq!(card_ords, vec![0, 1]);
+
+        // model 字段表无 `_` 键
+        let models_json: String = conn
+            .query_row("SELECT models FROM col LIMIT 1", [], |row| row.get(0))
+            .expect("load models");
+        let models: serde_json::Value =
+            serde_json::from_str(&models_json).expect("parse models json");
+        let model = models
+            .as_object()
+            .and_then(|o| o.values().next())
+            .expect("model object");
+        assert!(model["flds"]
+            .as_array()
+            .expect("model flds")
+            .iter()
+            .filter_map(|f| f["name"].as_str())
+            .all(|name| !name.starts_with('_')));
+
+        // 媒体清单登记包内文件名
+        let f = std::fs::File::open(&out).expect("open apkg");
+        let mut zip = zip::ZipArchive::new(f).expect("zip open");
+        let mut media_file = zip.by_name("media").expect("media manifest");
+        let mut media_json = String::new();
+        media_file
+            .read_to_string(&mut media_json)
+            .expect("read media manifest");
+        let media_map: serde_json::Value =
+            serde_json::from_str(&media_json).expect("parse media manifest");
+        assert_eq!(
+            media_map.get("0").and_then(|v| v.as_str()),
+            Some("diagram.png")
+        );
+    }
+
+    #[tokio::test]
+    async fn occlusion_card_with_missing_image_still_exports_text() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("occlusion-missing.apkg");
+        let ghost = tmp.path().join("ghost.png");
+
+        let mut card = test_card("occ-missing", "front", "back");
+        card.extra_fields = HashMap::from([(
+            "_occlusion".to_string(),
+            occlusion_spec_json(&ghost.to_string_lossy()),
+        )]);
+
+        let report = export_cards_to_apkg_with_full_template_report(
+            vec![card],
+            "OcclusionMissing".to_string(),
+            "Cloze".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("缺失图片不得让导出失败");
+        assert_eq!(report.exported_media, 0);
+        assert_eq!(report.missing_media.len(), 1);
+
+        // note 仍可导出：Text（img 引用 + cloze）完整保留
+        let db_path = tmp.path().join("occlusion-missing.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let note_flds: String = conn
+            .query_row("SELECT flds FROM notes LIMIT 1", [], |row| row.get(0))
+            .expect("load note flds");
+        assert!(note_flds.contains("<img src=\"ghost.png\">"));
+        assert!(note_flds.contains("{{c1::左心房}}"));
     }
 }

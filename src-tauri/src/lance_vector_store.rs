@@ -1,20 +1,31 @@
 use crate::database::Database;
-use crate::models::{
-    AppError, DocumentChunk, DocumentChunkWithEmbedding, RetrievedChunk, VectorStoreStats,
-};
+use crate::models::AppError;
+#[cfg(feature = "lance")]
+use crate::models::{DocumentChunk, DocumentChunkWithEmbedding, RetrievedChunk, VectorStoreStats};
+#[cfg(feature = "lance")]
 use crate::vector_store::VectorStore;
+#[cfg(feature = "lance")]
 use async_trait::async_trait;
+#[cfg(feature = "lance")]
 use std::cmp::Ordering;
+#[cfg(feature = "lance")]
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "lance")]
 use std::fs;
+#[cfg(feature = "lance")]
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, warn};
+#[cfg(feature = "lance")]
+use tracing::{error, info};
 
+#[cfg(feature = "lance")]
 use rusqlite::OptionalExtension;
 
-#[cfg(not(feature = "lance"))]
-compile_error!("LanceVectorStore 现已不再提供 SQLite 回退，请开启 `lance` feature");
+// ★ WI-6（mobile-slim）：移除此前的 `compile_error!` 硬门槛。
+// 未启用 lance 时：SQLite 元数据方法（new / ensure_base_rag_schema 等）保持可用，
+// 向量维护方法（optimize_* / delete_chat_embeddings_by_ids）降级为 no-op stub，
+// 向量检索/迁移能力整体不可用（相关 impl 均已 #[cfg(feature = "lance")] 门控）。
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: std::result::Result<T, E>) -> Option<T> {
@@ -76,7 +87,6 @@ use lancedb::DistanceType;
 use lancedb::{Connection, Table};
 #[cfg(feature = "lance")]
 use std::time::Instant;
-#[cfg(feature = "lance")]
 type Result<T> = std::result::Result<T, AppError>;
 
 #[cfg(feature = "lance")]
@@ -162,7 +172,8 @@ pub fn ensure_mobile_tmpdir_within(_sandbox_root: &Path) -> Result<PathBuf> {
 /// - 请勿在新代码中引入对本类型 KB 检索 API 的依赖。
 ///
 /// 其它说明：
-/// - 仅在启用 feature "lance" 时可用；否则编译报错（见顶部 compile_error!）。
+/// - 向量能力仅在启用 feature "lance" 时可用；未启用时（如 mobile-slim）
+///   SQLite 元数据方法可用，向量维护方法降级为 no-op stub。
 /// - 文档/分块元数据仍存 SQLite；向量数据写入 LanceDB。
 pub struct LanceVectorStore {
     database: Arc<Database>,
@@ -2883,7 +2894,7 @@ impl LanceVectorStore {
         Ok(())
     }
 
-    #[cfg(feature = "lance")]
+    // 纯 SQLite 元数据表结构，无 lance 依赖；`new()` 在所有 feature 组合下都会调用
     fn ensure_base_rag_schema(&self) -> Result<()> {
         use rusqlite::params;
         let conn = self
@@ -3026,6 +3037,37 @@ impl LanceVectorStore {
         Ok(())
     }
 }
+
+// 未启用 lance 时的外部调用面 stub（commands.rs / lib.rs 启动优化仍可编译运行）
+#[cfg(not(feature = "lance"))]
+impl LanceVectorStore {
+    pub async fn optimize_chat_tables(
+        &self,
+        _older_than_days: Option<u64>,
+        _delete_unverified: Option<bool>,
+        _force: bool,
+    ) -> Result<usize> {
+        debug!("[LanceVectorStore] optimize_chat_tables skipped: lance feature disabled");
+        Ok(0)
+    }
+
+    pub async fn optimize_kb_tables(
+        &self,
+        _older_than_days: Option<u64>,
+        _delete_unverified: Option<bool>,
+        _force: bool,
+    ) -> Result<usize> {
+        debug!("[LanceVectorStore] optimize_kb_tables skipped: lance feature disabled");
+        Ok(0)
+    }
+
+    pub async fn delete_chat_embeddings_by_ids(&self, _ids: &[String]) -> Result<()> {
+        debug!("[LanceVectorStore] delete_chat_embeddings_by_ids skipped: lance feature disabled");
+        Ok(())
+    }
+}
+
+#[cfg(feature = "lance")]
 #[async_trait]
 impl VectorStore for LanceVectorStore {
     async fn add_chunks(&self, chunks: Vec<DocumentChunkWithEmbedding>) -> Result<()> {

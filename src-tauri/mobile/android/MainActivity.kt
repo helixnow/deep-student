@@ -1,11 +1,17 @@
 package com.deepstudent.app
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import java.io.File
 
 // NOTE: 此文件有受控副本 src-tauri/mobile/android/MainActivity.kt。
 // 重新执行 `tauri android init` 后请从受控副本同步本文件。
@@ -14,6 +20,21 @@ class MainActivity : TauriActivity() {
 
   /** 最近一次系统栏 + 刘海 inset（CSS px：物理 px / density），等 WebView 就绪后注入 */
   private var lastSafeAreaCssPx: IntArray? = null
+
+  /**
+   * Tauri dialog 走 Activity Result API，[onActivityResult] 拦截不到授权回调。
+   * Rust 把待 persist 的 `content://` 原子写入 [filesDir]/pending_saf_persist/*.uri，
+   * 并双读旧单文件 pending_saf_persist.uri。前台立刻尝试并每 400ms 轮询。
+   * `ACTION_GET_CONTENT` 常常不可 persist：SecurityException 必须删队列并 warn，
+   * 不得假装已授权。
+   */
+  private val persistHandler = Handler(Looper.getMainLooper())
+  private val persistPoll = object : Runnable {
+    override fun run() {
+      persistPendingSafUri()
+      persistHandler.postDelayed(this, PERSIST_POLL_MS)
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -78,6 +99,77 @@ class MainActivity : TauriActivity() {
     super.onResume()
     // 页面若发生过重载，JS 端会退回 fallback 值；恢复前台时重新注入真实值。
     applySafeAreaToWebView()
+    persistPendingSafUri()
+    persistHandler.removeCallbacks(persistPoll)
+    persistHandler.postDelayed(persistPoll, PERSIST_POLL_MS)
+  }
+
+  override fun onPause() {
+    persistHandler.removeCallbacks(persistPoll)
+    super.onPause()
+  }
+
+  private fun persistPendingSafUri() {
+    val queued = mutableListOf<File>()
+    val legacy = File(filesDir, PENDING_SAF_PERSIST_FILE)
+    if (legacy.isFile) {
+      queued.add(legacy)
+    }
+    val directory = File(filesDir, PENDING_SAF_PERSIST_DIR)
+    if (directory.isDirectory) {
+      directory.listFiles()
+        ?.filter { it.isFile && it.name.endsWith(".uri") }
+        ?.let { queued.addAll(it) }
+    }
+    for (pending in queued) {
+      persistQueuedSafFile(pending)
+    }
+  }
+
+  private fun persistQueuedSafFile(pending: File) {
+    val raw = try {
+      pending.readText().trim()
+    } catch (error: Exception) {
+      Log.w(TAG, "read pending SAF persist queue failed", error)
+      return
+    }
+    if (raw.isEmpty() || !raw.startsWith("content://", ignoreCase = true)) {
+      if (!pending.delete()) {
+        Log.w(TAG, "invalid pending SAF persist queue could not be deleted")
+      }
+      return
+    }
+    val uri = Uri.parse(raw)
+    if (!"content".equals(uri.scheme, ignoreCase = true)) {
+      Log.w(TAG, "pending SAF persist queue is not a content URI")
+      pending.delete()
+      return
+    }
+    val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+    try {
+      contentResolver.takePersistableUriPermission(uri, readWrite)
+      if (!pending.delete()) {
+        Log.w(TAG, "SAF persist succeeded but queue file remains")
+      }
+      return
+    } catch (writeDenied: SecurityException) {
+      try {
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        Log.w(
+          TAG,
+          "SAF persist write refused; kept read-only. Async export after process death is not promised. uri=$uri",
+        )
+        pending.delete()
+        return
+      } catch (readDenied: SecurityException) {
+        Log.w(
+          TAG,
+          "takePersistableUriPermission refused (likely ACTION_GET_CONTENT). Current-process grant only. uri=$uri",
+          readDenied,
+        )
+        pending.delete()
+      }
+    }
   }
 
   private fun applySafeAreaToWebView() {
@@ -93,5 +185,12 @@ class MainActivity : TauriActivity() {
         "else{window.__DEEP_STUDENT_PENDING_SAFE_AREA__=[$top,$bottom,$left,$right];}" +
         "}catch(e){}})()"
     webView.post { webView.evaluateJavascript(js, null) }
+  }
+
+  private companion object {
+    private const val TAG = "DeepStudentSaf"
+    private const val PENDING_SAF_PERSIST_FILE = "pending_saf_persist.uri"
+    private const val PENDING_SAF_PERSIST_DIR = "pending_saf_persist"
+    private const val PERSIST_POLL_MS = 400L
   }
 }

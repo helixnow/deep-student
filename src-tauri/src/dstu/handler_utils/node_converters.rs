@@ -180,6 +180,9 @@ pub fn note_to_dstu_node(note: &VfsNote) -> DstuNode {
     .with_metadata(serde_json::json!({
         "isFavorite": note.is_favorite,
         "tags": note.tags,
+        // 存储层用 NULL 规范化“无属性”，DSTU 边界始终暴露对象，避免调用方
+        // 在 null / {} 两种等价表示之间分叉。
+        "props": note.props.clone().unwrap_or_else(|| serde_json::json!({})),
     }))
 }
 
@@ -671,6 +674,29 @@ mod tests {
         let id1 = generate_resource_id(&DstuNodeType::Note);
         let id2 = generate_resource_id(&DstuNodeType::Note);
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_note_to_dstu_node_normalizes_absent_props_to_object() {
+        let note = VfsNote {
+            id: "note_props".to_string(),
+            resource_id: "res_props".to_string(),
+            title: "Props".to_string(),
+            tags: vec![],
+            is_favorite: false,
+            created_at: "2026-08-25T00:00:00.000Z".to_string(),
+            updated_at: "2026-08-25T00:00:00.000Z".to_string(),
+            deleted_at: None,
+            props: None,
+        };
+
+        let node = note_to_dstu_node(&note);
+        assert_eq!(
+            node.metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("props")),
+            Some(&serde_json::json!({}))
+        );
     }
 
     // ------------------------------------------------------------------------

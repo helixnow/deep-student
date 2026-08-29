@@ -83,12 +83,12 @@ fn classify_path(raw: &str) -> Result<PathKind, AppError> {
         return Ok(PathKind::Virtual(trimmed.to_string()));
     }
 
-    let decoded_for_check = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
+    // 整段再编码的 content:// 不能当虚拟路径：一次解码会拆掉 document ID
+    // 的 %3A/%2F，ContentResolver 可能 SecurityException。公开 is_virtual_uri
+    // 也不认这类输入。拒绝并给可读错误，命令层不得误路由到本地半包。
+    reject_double_encoded_virtual_uri(trimmed)?;
 
-    // 双重编码兜底：原始路径不匹配但解码后匹配 special scheme（如 content%3A%2F%2F...）
-    if is_special_scheme(&decoded_for_check) {
-        return Ok(PathKind::Virtual(decoded_for_check));
-    }
+    let decoded_for_check = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
 
     if is_android_saf_path(&decoded_for_check) {
         return Ok(PathKind::Virtual(decoded_for_check));
@@ -256,21 +256,110 @@ pub fn copy_file(window: &Window, source: &str, target: &str) -> Result<u64, App
 
     let mut reader = open_reader(window, &source_path)?;
     let mut writer = open_writer(window, &target_path, true)?;
-
-    let bytes_copied = std::io::copy(&mut reader, &mut writer).map_err(|e| {
-        AppError::file_system(format!(
-            "复制文件失败 ({} -> {}): {}",
-            source_path.display(),
-            target_path.display(),
-            e
-        ))
-    })?;
+    let copy_label = format!("{} -> {}", source_path.display(), target_path.display());
+    let (bytes_copied, source_digest) = digest_copy(&mut reader, &mut writer, &copy_label)?;
 
     writer.flush().map_err(|e| {
         AppError::file_system(format!("刷新文件失败: {} ({})", target_path.display(), e))
     })?;
+    drop(writer);
+    drop(reader);
+
+    // [R12-saf-verify] 不能只凭 copy+flush 报成功：部分 DocumentsProvider 延迟提交，
+    // 必须重新打开目标核对长度与 SHA-256。回读失败或内容不一致一律 fail-closed。
+    let mut verify_reader = open_reader(window, &target_path).map_err(|e| {
+        AppError::file_system(format!(
+            "目标回读失败，已停止并不得报成功: {} ({})",
+            target_path.display(),
+            e
+        ))
+    })?;
+    let (verified, target_digest) = digest_read(&mut verify_reader, &target_path.display())?;
+    ensure_identical_copy(
+        bytes_copied,
+        source_digest,
+        verified,
+        target_digest,
+        &target_path.display(),
+    )?;
 
     Ok(bytes_copied)
+}
+
+fn digest_copy(
+    reader: &mut impl Read,
+    writer: &mut impl Write,
+    label: &str,
+) -> Result<(u64, [u8; 32]), AppError> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buffer)
+            .map_err(|e| AppError::file_system(format!("复制文件失败 ({label}): {e}")))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+        writer
+            .write_all(&buffer[..n])
+            .map_err(|e| AppError::file_system(format!("复制文件失败 ({label}): {e}")))?;
+        total += n as u64;
+    }
+    Ok((total, hasher.finalize().into()))
+}
+
+fn digest_read(reader: &mut impl Read, label: &str) -> Result<(u64, [u8; 32]), AppError> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buffer)
+            .map_err(|e| AppError::file_system(format!("回读文件失败 ({label}): {e}")))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+        total += n as u64;
+    }
+    Ok((total, hasher.finalize().into()))
+}
+
+fn ensure_identical_copy(
+    copied: u64,
+    source_digest: [u8; 32],
+    verified: u64,
+    target_digest: [u8; 32],
+    target_label: &str,
+) -> Result<(), AppError> {
+    if copied != verified || source_digest != target_digest {
+        return Err(AppError::file_system(format!(
+            "目标回读校验失败: {target_label}（已写 {copied} 字节，回读 {verified} 字节，内容不一致则拒绝报成功）"
+        )));
+    }
+    Ok(())
+}
+
+fn required_temp_copy_bytes(source_bytes: u64) -> u64 {
+    source_bytes.saturating_mul(2)
+}
+
+fn ensure_enough_temp_space(
+    available: u64,
+    source_bytes: u64,
+    label: &str,
+) -> Result<(), AppError> {
+    let required = required_temp_copy_bytes(source_bytes);
+    if available < required {
+        return Err(AppError::file_system(format!(
+            "临时物化空间不足，已停止以免半包: {label}（源 {source_bytes} 字节，需要约 {required} 字节，可用 {available} 字节）"
+        )));
+    }
+    Ok(())
 }
 
 pub fn write_text_file(window: &Window, raw_path: &str, content: &str) -> Result<(), AppError> {
@@ -308,9 +397,91 @@ pub fn sanitize_for_legacy(input: &str) -> String {
 }
 
 /// 判断路径是否为移动端虚拟 URI（content://, ph://, asset:// 等）或 Android SAF 路径。
+///
+/// 不解码：`content%3A%2F%2F...` 这类双重编码保持 false，避免命令层
+/// 把拆坏的 URI 交给 ContentResolver。配合 [`reject_double_encoded_virtual_uri`]。
 pub fn is_virtual_uri(path: &str) -> bool {
     let trimmed = path.trim();
     is_special_scheme(trimmed) || is_android_saf_path(trimmed)
+}
+
+/// 双重编码安全 URI 的稳定拒绝文案（命令层与锁定测共用）。
+pub const DOUBLE_ENCODED_VIRTUAL_URI_REJECTED: &str =
+    "路径像是双重编码的安全 URI，已拒绝以免破坏授权。请传入原始 content:// 地址";
+
+/// 原始路径不是 special scheme，但整段 URL 解码后是，则 fail-closed。
+pub fn reject_double_encoded_virtual_uri(path: &str) -> Result<(), AppError> {
+    let trimmed = path.trim();
+    if is_special_scheme(trimmed) {
+        return Ok(());
+    }
+    let decoded = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
+    if is_special_scheme(&decoded) {
+        return Err(AppError::validation(DOUBLE_ENCODED_VIRTUAL_URI_REJECTED));
+    }
+    Ok(())
+}
+
+/// 旧版单文件队列名。MainActivity 仍双读，避免升级窗口丢掉已入队 URI。
+pub const PENDING_SAF_PERSIST_FILE: &str = "pending_saf_persist.uri";
+
+/// 新队列目录：每个 `content://` 一个 `*.uri`，原子 rename 落盘。
+/// 并发导入/导出不得互相覆盖。
+pub const PENDING_SAF_PERSIST_DIR: &str = "pending_saf_persist";
+
+fn persistable_saf_entry_name(uri: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(uri.as_bytes());
+    format!("{}.uri", hex::encode(&digest[..8]))
+}
+
+/// 新队列中某条 `content://` 的落盘路径（测试与 MainActivity 目录约定共用）。
+pub fn persistable_saf_queue_file(app_data_dir: &Path, uri: &str) -> PathBuf {
+    app_data_dir
+        .join(PENDING_SAF_PERSIST_DIR)
+        .join(persistable_saf_entry_name(uri))
+}
+
+/// 异步 ZIP/同步在虚拟 `content://` 上依赖当前进程 URI grant。
+/// 把 URI 原子写入应用私有队列目录，交给 MainActivity 调用
+/// `takePersistableUriPermission`。选择器若是 `ACTION_GET_CONTENT`，
+/// 系统可能拒绝 persist——不得假装已授权。
+pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), AppError> {
+    reject_double_encoded_virtual_uri(uri)?;
+    let trimmed = uri.trim();
+    if !trimmed.to_ascii_lowercase().starts_with("content://") {
+        return Ok(());
+    }
+    if trimmed.len() > 8 * 1024 || trimmed.bytes().any(|b| b == b'\n' || b == b'\r') {
+        return Err(AppError::validation(
+            "SAF persist 队列拒绝过长或含换行的 URI",
+        ));
+    }
+    let queue_dir = app_data_dir.join(PENDING_SAF_PERSIST_DIR);
+    std::fs::create_dir_all(&queue_dir).map_err(|e| {
+        AppError::file_system(format!(
+            "创建 SAF persist 队列目录失败: {} ({})",
+            queue_dir.display(),
+            e
+        ))
+    })?;
+    let dest = persistable_saf_queue_file(app_data_dir, trimmed);
+    let tmp = dest.with_extension("uri.tmp");
+    std::fs::write(&tmp, trimmed).map_err(|e| {
+        AppError::file_system(format!(
+            "写入 SAF persist 队列失败: {} ({})",
+            tmp.display(),
+            e
+        ))
+    })?;
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        AppError::file_system(format!(
+            "提交 SAF persist 队列失败: {} ({})",
+            dest.display(),
+            e
+        ))
+    })
 }
 
 /// 从任意路径（本地路径、Windows 反斜杠路径或 content:// URI）中安全提取文件名。
@@ -753,11 +924,141 @@ pub fn ensure_local_path(
             };
             let dest_path = temp_dir.join(file_name);
             let dest_str = dest_path.to_string_lossy().to_string();
+            // [R12-saf-space] 物化前按源大小 2 倍预检临时卷；不足不得开拷，以免半包。
+            // SAF 目标卷空间仍不可见，这里只守应用私有临时目录。
+            let source_bytes = get_file_size(window, raw_path)?;
+            let available = crate::backup_common::get_available_disk_space(temp_dir)?;
+            ensure_enough_temp_space(available, source_bytes, raw_path)?;
             copy_file(window, raw_path, &dest_str)?;
             Ok(MaterializedPath {
                 path: dest_path.clone(),
                 cleanup: Some(dest_path),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
+        persistable_saf_queue_file, queue_persistable_saf_uri, reject_double_encoded_virtual_uri,
+        required_temp_copy_bytes, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_DIR,
+        PENDING_SAF_PERSIST_FILE,
+    };
+    use std::io::Cursor;
+
+    #[test]
+    fn digest_copy_roundtrip_matches_reread() {
+        let payload = b"saf-export-verify-payload";
+        let mut source = Cursor::new(payload.as_slice());
+        let mut dest = Cursor::new(Vec::new());
+        let (copied, source_digest) = digest_copy(&mut source, &mut dest, "roundtrip").unwrap();
+        assert_eq!(copied, payload.len() as u64);
+        dest.set_position(0);
+        let (verified, target_digest) = digest_read(&mut dest, "roundtrip").unwrap();
+        ensure_identical_copy(copied, source_digest, verified, target_digest, "roundtrip")
+            .expect("相同内容必须通过回读校验");
+    }
+
+    #[test]
+    fn ensure_identical_copy_rejects_size_or_hash_mismatch() {
+        let mut source = Cursor::new(b"abc");
+        let mut dest = Cursor::new(Vec::new());
+        let (copied, source_digest) = digest_copy(&mut source, &mut dest, "mismatch").unwrap();
+        let err = ensure_identical_copy(copied, source_digest, copied + 1, source_digest, "short")
+            .expect_err("长度不一致必须 fail-closed");
+        assert!(err.to_string().contains("目标回读校验失败"));
+
+        let other = [0u8; 32];
+        let err = ensure_identical_copy(copied, source_digest, copied, other, "tampered")
+            .expect_err("哈希不一致必须 fail-closed");
+        assert!(err.to_string().contains("目标回读校验失败"));
+    }
+
+    #[test]
+    fn ensure_enough_temp_space_requires_double_source_size() {
+        assert_eq!(required_temp_copy_bytes(80), 160);
+        ensure_enough_temp_space(160, 80, "enough").expect("恰好 2 倍必须通过");
+        let err =
+            ensure_enough_temp_space(159, 80, "short").expect_err("不足 2 倍必须 fail-closed");
+        assert!(err.to_string().contains("临时物化空间不足，已停止以免半包"));
+    }
+
+    #[test]
+    fn reject_double_encoded_virtual_uri_keeps_raw_content_ok() {
+        reject_double_encoded_virtual_uri(
+            "content://com.android.externalstorage.documents/document/primary%3Abackup.zip",
+        )
+        .expect("原始 content:// 必须放行");
+        reject_double_encoded_virtual_uri("/tmp/backup.zip").expect("本地路径必须放行");
+        let err = reject_double_encoded_virtual_uri(
+            "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip",
+        )
+        .expect_err("双重编码必须 fail-closed");
+        assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
+    }
+
+    #[test]
+    fn queue_persistable_saf_uri_writes_content_only() {
+        let dir = tempfile::tempdir().expect("persist queue dir");
+        let content =
+            "content://com.android.externalstorage.documents/document/primary%3Abackup.zip";
+        queue_persistable_saf_uri(dir.path(), &format!("  {content}  "))
+            .expect("原始 content:// 必须入队");
+        let pending = persistable_saf_queue_file(dir.path(), content);
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("read queue"),
+            content,
+            "入队必须写入 trim 后的原始 content://，不得改编码"
+        );
+        assert!(
+            pending.starts_with(dir.path().join(PENDING_SAF_PERSIST_DIR)),
+            "新队列必须落在 pending_saf_persist/ 目录"
+        );
+        assert!(
+            !dir.path().join(PENDING_SAF_PERSIST_FILE).exists(),
+            "新写入不得再覆盖旧单文件队列"
+        );
+
+        let other = "content://com.android.providers.downloads.documents/document/446";
+        queue_persistable_saf_uri(dir.path(), other).expect("第二条 content:// 必须并列入队");
+        assert_eq!(
+            std::fs::read_to_string(persistable_saf_queue_file(dir.path(), other))
+                .expect("read second"),
+            other
+        );
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("first survives"),
+            content,
+            "并发入队不得互相覆盖"
+        );
+
+        queue_persistable_saf_uri(dir.path(), "/tmp/backup.zip").expect("本地路径必须静默跳过");
+        queue_persistable_saf_uri(dir.path(), "primary:Download/backup.zip")
+            .expect("SAF 树路径不是 content://，不得入队");
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("queue unchanged"),
+            content,
+            "非 content:// 不得改写或清空已有队列"
+        );
+
+        let err = queue_persistable_saf_uri(
+            dir.path(),
+            "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip",
+        )
+        .expect_err("双重编码必须在入队前可读拒绝");
+        assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("queue survives reject"),
+            content,
+            "入队失败不得改写已有队列"
+        );
+
+        let err = queue_persistable_saf_uri(dir.path(), "content://authority/document/1\nextra")
+            .expect_err("含换行必须拒绝");
+        assert!(err
+            .to_string()
+            .contains("SAF persist 队列拒绝过长或含换行的 URI"));
     }
 }
