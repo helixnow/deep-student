@@ -89,7 +89,8 @@ pub fn plan_binding_satisfies_tool_approval(
 /// Full Access / Danger Full Access bypass ordinary tool approval and no longer
 /// elevate on immutable shell-guard Ask. Privilege-escalation tools (skill trust,
 /// MCP install, runtime root, …) always require a one-shot confirmation.
-/// Catastrophic Deny remains hard-blocked elsewhere in `tool_loop`.
+/// Catastrophic Deny remains hard-blocked by `ApprovalGateHook` and is checked
+/// again by the local shell executor immediately before spawn.
 pub fn requires_tool_approval(
     state: &SessionAuthorityState,
     base_sensitivity: Option<ToolSensitivity>,

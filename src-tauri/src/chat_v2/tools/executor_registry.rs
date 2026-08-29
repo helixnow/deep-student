@@ -35,6 +35,19 @@ fn executor_may_delegate_to_acr(executor_name: &str) -> bool {
     )
 }
 
+/// 裸名 `mcp_server_update` / `mcp_server_set_enabled` / `mcp_server_remove`
+/// 是后端自有的 MCP 管理工具，与外部 MCP 的 `mcp_` 前缀撞名。它们必须由
+/// McpManageExecutor 拦截（High/Medium 敏感度 + 审批），绝不能被当作外部
+/// MCP 调用转发到 GeneralToolExecutor（见 pipeline.rs 注册顺序测试）。
+fn is_builtin_mcp_management_tool_name(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        super::mcp_manage_executor::tool_names::MCP_SERVER_UPDATE
+            | super::mcp_manage_executor::tool_names::MCP_SERVER_SET_ENABLED
+            | super::mcp_manage_executor::tool_names::MCP_SERVER_REMOVE
+    )
+}
+
 fn get_executor_timeout_secs(tool_name: &str, executor_name: &str) -> u64 {
     let configured = get_tool_timeout_secs(tool_name);
     if configured == NO_TOOL_TIMEOUT_SECS {
@@ -235,7 +248,7 @@ impl ToolExecutorRegistry {
     /// - `Some(executor)`: 找到的执行器
     /// - `None`: 没有执行器能处理此工具
     pub fn get_executor(&self, tool_name: &str) -> Option<Arc<dyn ToolExecutor>> {
-        if is_external_mcp_tool_name(tool_name) {
+        if is_external_mcp_tool_name(tool_name) && !is_builtin_mcp_management_tool_name(tool_name) {
             // External MCP names must never be normalized into a builtin
             // executor. GeneralToolExecutor forwards them to ToolRegistry,
             // which preserves the MCP bridge/source routing.

@@ -469,6 +469,9 @@ impl ChatV2Pipeline {
                     skill_runtime_before: build_replay_skill_payload_snapshot(&options),
                     skill_runtime_after: build_replay_skill_payload_snapshot(&options),
                     replay_source: None,
+                    response_reasoning_items: None,
+                    skill_injection_anchors: None,
+                    response_web_search_items: None,
                 }),
                 attachments: None,
                 active_variant_id: first_variant_id,
@@ -499,6 +502,11 @@ impl ChatV2Pipeline {
         let session_id_arc = Arc::new(session_id.clone());
         // ★ 2026-03 修复：共享 user_context_refs 给所有变体，确保多模态内容不丢失
         let context_refs_arc = Arc::new(request.user_context_refs.clone().unwrap_or_default());
+        // P1 tools 前缀代际（方案 A）：spawn 之前一次性快照 (g, B_g)，Arc
+        // 分发给所有变体 —— 消除变体内独立 load 的轮内竞态，同一扇出内
+        // 所有变体从同一字节基线出发。环内只推进本地副本，join 之后在
+        // converge_session_tool_face_prefix 收敛点统一写回。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
 
         // 🔧 P1修复：使用任务追踪器追踪并行任务
         // 创建并行任务
@@ -513,6 +521,7 @@ impl ChatV2Pipeline {
             let context_refs_clone = Arc::clone(&context_refs_arc);
             let state_clone = chat_v2_state.clone();
             let variant_meta_clone = ctx.get_meta();
+            let tool_face_baseline_clone = Arc::clone(&tool_face_baseline_arc);
 
             let future = async move {
                 self_ref.execute_single_variant_with_config(
@@ -525,6 +534,7 @@ impl ChatV2Pipeline {
                     shared_ctx,
                     Vec::new(),
                     (*context_refs_clone).clone(),
+                    tool_face_baseline_clone,
                 ).await
             };
 
@@ -567,6 +577,31 @@ impl ChatV2Pipeline {
                     // 标记为错误
                     ctx.fail(&format!("Task panicked: {}", e));
                 }
+            }
+        }
+
+        // P1 tools 前缀代际（方案 A）：join 收敛点。所有变体的工具环与其
+        // hook 生命周期已经结束，这里按**变体索引序**（不是完成竞态序）
+        // 收集各变体本地快照（VariantMeta.tool_face_prefix，含 order 与
+        // 窗口 digest；变体环内只推本地、不写共享），确定性合并回会话
+        // 基线；检出真分叉（互异且不可 append-only 对齐的尾部）时
+        // generation += 1，digest 按共识规则采纳。锁内合并克隆、
+        // 放锁后写库（advance 失败仅 warn，不阻断）。
+        {
+            let variant_local_prefixes: Vec<(
+                usize,
+                crate::chat_v2::types::ToolFacePrefixSnapshot,
+            )> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix))
+                })
+                .collect();
+            if !variant_local_prefixes.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }
         }
 
@@ -776,10 +811,12 @@ impl ChatV2Pipeline {
             return Ok(());
         }
 
-        // 构建系统提示（包含共享的检索结果）
-        let system_prompt = self
+        // 构建系统提示（P1-10 拆分：稳定 system + turn-volatile 块，
+        // 共享检索结果随 turn-volatile 进入当前 user 的 <injected_context>）
+        let prompt_parts = self
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
+        let system_prompt = prompt_parts.stable_system;
 
         // 加载聊天历史
         let mut chat_history = self
@@ -792,17 +829,33 @@ impl ChatV2Pipeline {
         let max_tokens = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
-        // 构建当前用户消息
-        let current_user_message =
-            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        // 构建当前用户消息（turn-volatile 块编入 <injected_context>）
+        let current_user_message = self.build_variant_user_message(
+            &user_content,
+            &attachments,
+            &user_context_refs,
+            prompt_parts.turn_volatile.as_deref(),
+        );
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let emitter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
 
         // Each concrete variant attempt gets a unique hook key. Variant IDs are reused by retry,
@@ -834,7 +887,9 @@ impl ChatV2Pipeline {
             .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
         let empty_skill_contents = std::collections::HashMap::new();
-        let transient_skill_messages = build_transient_skill_messages(
+        // P1-8 技能锚定：历史中已锚定的技能不重复注入（注入点冻结），本轮只注入差集。
+        let anchored_skill_ids = anchored_skill_ids_in_history(&messages);
+        let turn_skill_injection = build_transient_skill_messages_with_audit_excluding(
             &variant_skill_state,
             options
                 .replay_skill_contents
@@ -844,8 +899,13 @@ impl ChatV2Pipeline {
             options.skill_dependencies.as_ref(),
             // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
             options.context_limit.map(|v| v as usize),
+            &anchored_skill_ids,
         );
-        insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
+        insert_transient_skill_messages(
+            &mut messages,
+            base_history_len,
+            turn_skill_injection.messages,
+        );
 
         // 构建 LLM 上下文
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -910,7 +970,7 @@ impl ChatV2Pipeline {
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
-                let mcp_tool_values: Vec<Value> = tool_schemas
+                let mut mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
                         is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
@@ -928,11 +988,15 @@ impl ChatV2Pipeline {
                     .collect();
 
                 if !mcp_tool_values.is_empty() {
-                    llm_context.insert("tools".into(), Value::Array(mcp_tool_values.clone()));
+                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键；
+                    // 排序保证 prompt cache 前缀稳定。
+                    super::tool_loop::sort_tool_schemas_for_prompt_cache(&mut mcp_tool_values);
+                    let injected_count = mcp_tool_values.len();
+                    llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
                         "[ChatV2::VariantPipeline] execute_single_variant: variant={} injected {} tools",
                         ctx.variant_id(),
-                        mcp_tool_values.len()
+                        injected_count
                     );
                 }
             }
@@ -1035,6 +1099,10 @@ impl ChatV2Pipeline {
         shared_context: Arc<SharedContext>,
         attachments: Vec<AttachmentInput>,
         user_context_refs: Vec<SendContextRef>,
+        // P1 tools 前缀代际（方案 A）：fan-out 入口统一快照 (g, B_g)。
+        // 变体环内只推进本地 order 克隆、不写共享态；generation 写入口
+        // 代际（变体内不自增），join 收敛点统一合并 + 切代判定。
+        tool_face_baseline: Arc<ToolFaceBaseline>,
     ) -> ChatV2Result<()> {
         // 🔧 2026-07: 变体工具循环上限与单变体路径统一。
         // 之前硬编码 `MAX_TOOL_ROUNDS = 10`，与单变体路径「用户可配 1-100、
@@ -1091,6 +1159,14 @@ impl ChatV2Pipeline {
         self.freeze_execution_context(&mut compile_ctx).await?;
         options = compile_ctx.options.clone();
 
+        // P1-10：先拆分系统提示——稳定 system 留给 LLM 调用，
+        // turn-volatile 块（共享检索/画像/待办/Canvas）写入 compile_ctx，
+        // 使其随 compile_frozen_context 编入当前 user 的 <injected_context>
+        let prompt_parts = self
+            .build_system_prompt_with_shared_context(&options, &shared_context)
+            .await;
+        compile_ctx.turn_volatile_context = prompt_parts.turn_volatile.clone();
+
         let mut chat_history = self
             .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
             .await?;
@@ -1118,14 +1194,18 @@ impl ChatV2Pipeline {
 
         ctx.start_streaming();
 
-        let system_prompt = self
-            .build_system_prompt_with_shared_context(&options, &shared_context)
-            .await;
+        let system_prompt = prompt_parts.stable_system;
+        let turn_volatile = prompt_parts.turn_volatile;
         let chat_history = compile_ctx.chat_history;
         let current_user_message = compile_ctx
             .compiled_current_user_message
             .unwrap_or_else(|| {
-                self.build_variant_user_message(&user_content, &attachments, &user_context_refs)
+                self.build_variant_user_message(
+                    &user_content,
+                    &attachments,
+                    &user_context_refs,
+                    turn_volatile.as_deref(),
+                )
             });
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -1141,11 +1221,23 @@ impl ChatV2Pipeline {
         let mut messages = chat_history;
         messages.push(current_user_message);
 
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let adapter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
         let stream_event = super::tool_loop::build_run_scoped_stream_event(
             &session_id,
@@ -1211,9 +1303,27 @@ impl ChatV2Pipeline {
             HashMap::new();
         let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
+        // P0（DESIGN「tools 会话内冻结」）+ P1 代际（方案 A）：tools 顺序
+        // 基线（append-only 首见序）来自 fan-out 入口统一快照的克隆 ——
+        // 同一扇出内所有变体从同一字节基线出发（消除旧「变体内独立 load」
+        // 的轮内竞态）。环内 load_skills 刷新全量重建时按基线还原顺序，
+        // 新工具只追加末尾、只推进本**地**副本；不再中途写回共享态，
+        // 收敛统一在 join 之后的 converge_session_tool_face_prefix。
+        let mut frozen_tool_schema_order: Vec<String> = tool_face_baseline.order.clone();
+        // P0 字节级冻结（与单变体 execute_with_tools 同语义）：本变体工具环
+        // = 一个稳定窗口，已发出工具的 schema 序列化字节窗口内冻结（同名
+        // 变更延迟到下一稳定窗口），新工具只追加末尾。窗口级本地持有，
+        // 不写共享态、不中途写回。
+        let mut frozen_tool_schemas: HashMap<String, Value> = HashMap::new();
+        // 本变体窗口冻结快照 digest：从 fan-out 入口基线 digest 起步，每次
+        // 统一冻结原语返回 Some 时推进；空窗口保持基线值（None 不抹掉已有
+        // digest）。变体结束时随 VariantMeta.tool_face_prefix 交 join 收敛
+        // 点评估，变体内不切代。
+        let mut variant_schema_digest: Option<String> = tool_face_baseline.schema_digest.clone();
+
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
-                let mcp_tool_values: Vec<Value> = tool_schemas
+                let mut mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
                         is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
@@ -1248,11 +1358,24 @@ impl ChatV2Pipeline {
                     .collect();
 
                 if !mcp_tool_values.is_empty() {
-                    llm_context.insert("tools".into(), Value::Array(mcp_tool_values.clone()));
+                    // G6 + P0 冻结：LLM 管线只读 `custom_tools`，写 `tools` 是
+                    // 死键；首轮按名字排序建立基线并冻结（统一冻结原语 =
+                    // 名字序 + 字节冻结 + digest），供环内刷新复用。
+                    // P1 代际：只推进本地 order/digest，不中途写回共享态
+                    // （写回统一在 join 收敛点）。
+                    if let Some(digest) = super::tool_loop::freeze_tool_face_for_prompt_cache(
+                        &mut mcp_tool_values,
+                        &mut frozen_tool_schema_order,
+                        &mut frozen_tool_schemas,
+                    ) {
+                        variant_schema_digest = Some(digest);
+                    }
+                    let injected_count = mcp_tool_values.len();
+                    llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
                         "[ChatV2::VariantPipeline] variant={} injected {} tools",
                         ctx.variant_id(),
-                        mcp_tool_values.len()
+                        injected_count
                     );
                 }
             }
@@ -1268,19 +1391,16 @@ impl ChatV2Pipeline {
             .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
 
-        let mut tool_round = 0u32;
-        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
-        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
-        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
-        loop {
-            if ctx.is_cancelled() {
-                ctx.cancel();
-                break;
-            }
-
-            messages.retain(|msg| !is_transient_llm_only_message(msg));
+        // ============================================================
+        // P1-8 技能锚定：本轮注入只在进入工具环前构建并插入一次（位置 =
+        // 历史末尾、当前 user 之前），之后冻结 —— 禁止每轮删光后整包重插
+        // 到当前 user 之前（那会改写同轮内存前缀）。环内 load_skills 新
+        // 加载的技能按 tool_call_id 追加到对应 tool result 之后。
+        // ============================================================
+        let mut injected_skill_ids = anchored_skill_ids_in_history(&messages);
+        let turn_skill_injection = {
             let empty_skill_contents = std::collections::HashMap::new();
-            let transient_skill_messages = build_transient_skill_messages_with_audit(
+            build_transient_skill_messages_with_audit_excluding(
                 &variant_skill_state,
                 options
                     .replay_skill_contents
@@ -1291,13 +1411,34 @@ impl ChatV2Pipeline {
                 // 🔧 P1-2 修复（对齐单变体 tool_loop）：context_limit 显式配置时为权威值，
                 // 不再被 32K 常量 min() 钳制，消除多变体/单变体双路径漂移
                 options.context_limit.map(|v| v as usize),
-            );
-            let skill_audit = transient_skill_messages.audit.clone();
-            insert_transient_skill_messages(
-                &mut messages,
-                base_history_len,
-                transient_skill_messages.messages,
-            );
+                &injected_skill_ids,
+            )
+        };
+        injected_skill_ids.extend(
+            turn_skill_injection
+                .audit
+                .injected_skill_ids
+                .iter()
+                .cloned(),
+        );
+        let mut cumulative_skill_audit = turn_skill_injection.audit.clone();
+        insert_transient_skill_messages(
+            &mut messages,
+            base_history_len,
+            turn_skill_injection.messages,
+        );
+
+        let mut tool_round = 0u32;
+        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
+        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
+        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
+        loop {
+            if ctx.is_cancelled() {
+                ctx.cancel();
+                break;
+            }
+
+            let skill_audit = cumulative_skill_audit.clone();
             let audit_round_id = format!("variant-tool-round-{}", tool_round);
             emitter_arc.emit_skill_injection_audit(
                 ctx.message_id(),
@@ -1505,6 +1646,10 @@ impl ChatV2Pipeline {
                 tool_results.len()
             );
 
+            // P1-8：本轮环内新加载的技能批次（tool_call_id → 消息），
+            // 在工具结果消息 push 完成后插到对应 tool result 之后
+            let mut pending_round_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+
             // 🔧 渐进披露：load_skills 执行后动态追加工具
             for tool_result in &tool_results {
                 if super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_result.tool_name)
@@ -1546,7 +1691,7 @@ impl ChatV2Pipeline {
                                         added_count,
                                         loaded_skill_ids,
                                     );
-                                    let refreshed_tools: Vec<Value> = mcp_schemas
+                                    let mut refreshed_tools: Vec<Value> = mcp_schemas
                                         .iter()
                                         .filter(|tool| {
                                             is_mcp_tool_allowed_by_policy(
@@ -1576,13 +1721,71 @@ impl ChatV2Pipeline {
                                             Some(prepared.schema)
                                         })
                                         .collect();
-                                    llm_context
-                                        .insert("tools".into(), Value::Array(refreshed_tools));
+                                    // G6 + P0 冻结：LLM 管线只读 `custom_tools`，
+                                    // 写 `tools` 是死键。全量重建后按冻结基线还原
+                                    // 已发出顺序（统一冻结原语：名字序 + 已发出
+                                    // schema 字节窗口内回写），新技能工具只追加
+                                    // 末尾，禁止字母序插入中段。
+                                    // P1 代际：只推进本地 order/digest，不中途写
+                                    // 回共享态（写回统一在 join 收敛点）。
+                                    if let Some(digest) =
+                                        super::tool_loop::freeze_tool_face_for_prompt_cache(
+                                            &mut refreshed_tools,
+                                            &mut frozen_tool_schema_order,
+                                            &mut frozen_tool_schemas,
+                                        )
+                                    {
+                                        variant_schema_digest = Some(digest);
+                                    }
+                                    llm_context.insert(
+                                        "custom_tools".into(),
+                                        Value::Array(refreshed_tools),
+                                    );
                                 }
                             }
                             variant_skill_state = variant_skill_state
                                 .with_added_branch_local_skills(&loaded_skill_ids);
                             options.skill_state_version = Some(variant_skill_state.version);
+
+                            // P1-8 环内技能锚定：新加载技能（差集）锚到本次
+                            // load_skills 的 tool result 之后，禁止整包重插到
+                            // 当前 user 之前
+                            if let Some(anchor_call_id) =
+                                tool_result.tool_call_id.clone().filter(|id| !id.is_empty())
+                            {
+                                let empty_skill_contents = std::collections::HashMap::new();
+                                let batch = build_in_loop_skill_messages(
+                                    &loaded_skill_ids,
+                                    options
+                                        .replay_skill_contents
+                                        .as_ref()
+                                        .or(options.skill_contents.as_ref())
+                                        .unwrap_or(&empty_skill_contents),
+                                    options.skill_dependencies.as_ref(),
+                                    options.context_limit.map(|v| v as usize),
+                                    &injected_skill_ids,
+                                    variant_skill_state.version,
+                                );
+                                cumulative_skill_audit
+                                    .missing_skill_ids
+                                    .extend(batch.audit.missing_skill_ids.clone());
+                                cumulative_skill_audit
+                                    .dropped_skill_ids
+                                    .extend(batch.audit.dropped_skill_ids.clone());
+                                if !batch.audit.injected_skill_ids.is_empty() {
+                                    injected_skill_ids
+                                        .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                    cumulative_skill_audit
+                                        .injected_skill_ids
+                                        .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                    cumulative_skill_audit.estimated_tokens +=
+                                        batch.audit.estimated_tokens;
+                                    cumulative_skill_audit.skill_state_version =
+                                        variant_skill_state.version;
+                                    pending_round_skill_batches
+                                        .push((anchor_call_id, batch.messages));
+                                }
+                            }
                         }
                     }
                 }
@@ -1661,6 +1864,12 @@ impl ChatV2Pipeline {
                 ctx.add_tool_result(result.clone());
             }
 
+            // P1-8：环内新加载的技能插到对应 load_skills tool result 之后，
+            // 当前 user 之前的内存前缀保持逐字节不变
+            for (anchor_call_id, batch) in pending_round_skill_batches {
+                insert_skill_messages_after_tool_result(&mut messages, &anchor_call_id, batch);
+            }
+
             let task_completed = tool_results.iter().any(|r| {
                 r.output
                     .get("task_completed")
@@ -1704,6 +1913,22 @@ impl ChatV2Pipeline {
             adapter.reset_for_new_round();
         }
 
+        // P1 tools 前缀代际：变体结束时把本地 (generation_in, order_local,
+        // digest_local) 写入 VariantMeta.tool_face_prefix —— generation 写
+        // 入口代际（变体内不自增，切代判定只属于 join 收敛点），order 是
+        // 该变体当轮实际发出的完整工具面序列（入口快照基线 + 本地
+        // append-only 尾部），digest 是本变体窗口冻结快照摘要（空窗口保持
+        // 入口基线值），供 join 收敛按索引序合并、也供重放逐字节还原。
+        {
+            let mut meta = ctx.get_meta().unwrap_or_default();
+            meta.tool_face_prefix = Some(crate::chat_v2::types::ToolFacePrefixSnapshot {
+                generation: tool_face_baseline.generation,
+                order: frozen_tool_schema_order.clone(),
+                schema_digest: variant_schema_digest.clone(),
+            });
+            ctx.set_meta(meta);
+        }
+
         hooks_guard.cleanup().await;
         Ok(())
     }
@@ -1744,16 +1969,20 @@ impl ChatV2Pipeline {
         Ok(SharedContext::default())
     }
 
-    /// 构建带共享上下文的系统提示
+    /// 构建带共享上下文的系统提示（P1-10 拆分形态）
     ///
-    /// 使用 prompt_builder 模块统一格式化，用于多变体并行执行场景，
-    /// 共享检索结果注入到所有变体的 system prompt 中。
-    /// 如果有 Canvas 笔记，也会一并注入。
+    /// 使用 prompt_builder 模块统一格式化，用于多变体并行执行场景。
+    /// 返回 `SystemPromptParts`：
+    /// - `stable_system`：跨轮字节稳定的 system（LaTeX / instructions /
+    ///   preferences / 固定引用规则），作为各变体的 system prompt；
+    /// - `turn_volatile`：共享检索结果、Canvas 笔记、画像、待办等本轮动态块，
+    ///   注入当前 user 消息的 `<injected_context>`（compile 前写入
+    ///   `PipelineContext::turn_volatile_context`），避免打碎历史 prompt cache。
     async fn build_system_prompt_with_shared_context(
         &self,
         options: &SendOptions,
         shared_context: &SharedContext,
-    ) -> String {
+    ) -> prompt_builder::SystemPromptParts {
         let canvas_note = self.build_canvas_note_info_from_options(options).await;
 
         let user_profile = self.load_user_profile_for_variant(options).await;
@@ -1766,7 +1995,7 @@ impl ChatV2Pipeline {
             .with_canvas_note(canvas_note)
             .with_user_profile(user_profile)
             .with_active_todos(active_todos)
-            .build()
+            .build_split()
     }
 
     async fn load_user_profile_for_variant(&self, options: &SendOptions) -> Option<String> {
@@ -2001,8 +2230,25 @@ impl ChatV2Pipeline {
         );
 
         let mut chat_history = Vec::new();
+        // 对齐主路径 load_chat_history：最近一条 user 消息在 chat_history 中的
+        // 下标，workspace_injection 还原的 user 消息要插到这条消息之前
+        let mut last_user_message_index: Option<usize> = None;
         for message in messages_to_load {
             let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id)?;
+            // V20260806 B 层：重放旁路三列（无列/NULL 时空表，回退旧重建）
+            let replay_map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id)?;
+            // 🔧 ROUND-01-pipeline #1：只重放 active variant 的块
+            let blocks = super::history::filter_blocks_for_active_variant(&message, blocks);
+
+            // 🔧 对齐主路径：workspace_injection 块按 live 还原为 user 消息
+            // （live 注入位置 = 上轮历史之后、本轮 user 消息之前）
+            if message.role == MessageRole::Assistant {
+                super::history::restore_workspace_injection_messages(
+                    &blocks,
+                    &mut chat_history,
+                    &mut last_user_message_index,
+                );
+            }
 
             // 🔧 提取所有 content 类型块的内容并拼接（不只是第一个）
             let content: String = blocks
@@ -2036,14 +2282,33 @@ impl ChatV2Pipeline {
                 .collect();
             tool_blocks.sort_by_key(|b| b.block_index);
 
+            // V20260806 B 层：用户消息优先取 live 发送的完整包装（llm_content 列）
+            let llm_content_override = (message.role == MessageRole::User)
+                .then(|| {
+                    blocks
+                        .iter()
+                        .filter(|b| b.block_type == block_types::CONTENT)
+                        .find_map(|b| {
+                            replay_map
+                                .get(b.id.as_str())
+                                .and_then(|r| r.llm_content.clone())
+                        })
+                })
+                .flatten()
+                .filter(|text| !text.is_empty());
+
             // 🆕 对于用户消息，解析 context_snapshot.user_refs 并将内容追加到 content
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
-                    self.resolve_history_context_snapshot_v2(
+                    let (resolved_content, images) = self.resolve_history_context_snapshot_v2(
                         &content, &message, vfs_conn, blobs_dir,
-                    )
+                    );
+                    match llm_content_override {
+                        Some(llm_content) => (llm_content, images),
+                        None => (resolved_content, images),
+                    }
                 } else {
-                    (content, Vec::new())
+                    (llm_content_override.unwrap_or(content), Vec::new())
                 }
             } else {
                 (content, Vec::new())
@@ -2057,87 +2322,23 @@ impl ChatV2Pipeline {
             // 🆕 如果是 assistant 消息且有工具调用，先添加工具调用消息
             if role == "assistant" && !tool_blocks.is_empty() {
                 for (idx, tool_block) in tool_blocks.iter().enumerate() {
-                    // 生成 tool_call_id（使用块 ID 或生成新的）
-                    let tool_call_id = format!("tc_{}", tool_block.id.replace("blk_", ""));
-
-                    // 提取工具名称和输入
-                    let tool_name = tool_block.tool_name.clone().unwrap_or_default();
-                    let tool_input = tool_block
-                        .tool_input
-                        .clone()
-                        .unwrap_or(serde_json::Value::Null);
-                    let tool_output = tool_block
-                        .tool_output
-                        .clone()
-                        .unwrap_or(serde_json::Value::Null);
-                    let tool_success = tool_block.status == block_status::SUCCESS;
-                    let tool_error = tool_block.error.clone();
-
-                    // 1. 添加 assistant 消息（包含 tool_call）
-                    let tool_call = crate::models::ToolCall {
-                        id: tool_call_id.clone(),
-                        tool_name: tool_name.clone(),
-                        args_json: tool_input,
-                    };
-                    let assistant_tool_msg = LegacyChatMessage {
-                        role: "assistant".to_string(),
-                        content: String::new(),
-                        timestamp: chrono::Utc::now(),
-                        thinking_content: None,
-                        thought_signature: None,
-                        rag_sources: None,
-                        memory_sources: None,
-                        graph_sources: None,
-                        web_search_sources: None,
-                        image_paths: None,
-                        image_base64: None,
-                        doc_attachments: None,
-                        multimodal_content: None,
-                        tool_call: Some(tool_call),
-                        tool_result: None,
-                        overrides: None,
-                        relations: None,
-                        persistent_stable_id: None,
-                        metadata: None,
-                    };
+                    let replay = replay_map.get(tool_block.id.as_str());
+                    // 🔧 对齐主路径：复用 history::build_tool_round_messages —
+                    // tool_call_id / round_text / meta 回填（thought_signature、
+                    // reasoning_content、Responses reasoning item）/ 检索脱敏
+                    // 与单变体 load_chat_history 字节一致
+                    let (assistant_tool_msg, tool_msg) = super::history::build_tool_round_messages(
+                        message.meta.as_ref(),
+                        replay,
+                        tool_block,
+                        None,
+                    );
                     chat_history.push(assistant_tool_msg);
-
-                    // 2. 添加 tool 消息（包含 tool_result）
-                    let tool_result = crate::models::ToolResult {
-                        call_id: tool_call_id,
-                        ok: tool_success,
-                        error: tool_error,
-                        error_details: None,
-                        data_json: Some(tool_output.clone()),
-                        usage: None,
-                        citations: None,
-                    };
-                    let tool_msg = LegacyChatMessage {
-                        role: "tool".to_string(),
-                        content: serde_json::to_string(&tool_output).unwrap_or_default(),
-                        timestamp: chrono::Utc::now(),
-                        thinking_content: None,
-                        thought_signature: None,
-                        rag_sources: None,
-                        memory_sources: None,
-                        graph_sources: None,
-                        web_search_sources: None,
-                        image_paths: None,
-                        image_base64: None,
-                        doc_attachments: None,
-                        multimodal_content: None,
-                        tool_call: None,
-                        tool_result: Some(tool_result),
-                        overrides: None,
-                        relations: None,
-                        persistent_stable_id: None,
-                        metadata: None,
-                    };
                     chat_history.push(tool_msg);
 
                     log::debug!(
                         "[ChatV2::pipeline] Loaded variant tool call from history: tool={}, block_id={}, index={}",
-                        tool_name,
+                        tool_block.tool_name.as_deref().unwrap_or_default(),
                         tool_block.id,
                         idx
                     );
@@ -2272,6 +2473,9 @@ impl ChatV2Pipeline {
                 .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
+            if role == "user" {
+                last_user_message_index = Some(chat_history.len());
+            }
             chat_history.push(legacy_message);
         }
 
@@ -2300,11 +2504,14 @@ impl ChatV2Pipeline {
     /// ★ 2026-03 修复：支持 user_context_refs 多模态内容注入
     /// 优先使用 user_context_refs 中的 formattedBlocks（与单变体路径 build_current_user_message 对齐），
     /// 回退到旧版 attachments 路径（兼容 retry 恢复场景）。
+    /// ★ P1-10：`turn_volatile` 为 prompt_builder 拆分出的本轮动态块
+    /// （共享检索/画像/待办/Canvas），编入 `<injected_context>` 而非 system。
     fn build_variant_user_message(
         &self,
         user_content: &str,
         attachments: &[AttachmentInput],
         user_context_refs: &[SendContextRef],
+        turn_volatile: Option<&str>,
     ) -> LegacyChatMessage {
         let runtime_facts = PipelineContext::build_runtime_facts_block(user_content);
 
@@ -2316,8 +2523,11 @@ impl ChatV2Pipeline {
         });
 
         if has_context_images {
-            let ordered_blocks =
-                PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+            let ordered_blocks = PipelineContext::build_injected_context_blocks(
+                &runtime_facts,
+                user_context_refs,
+                turn_volatile,
+            );
             let (injected_text, _) =
                 PipelineContext::collect_injected_context_text_and_images(&ordered_blocks);
             let combined =
@@ -2373,8 +2583,11 @@ impl ChatV2Pipeline {
             };
         }
 
-        let injected_blocks =
-            PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+        let injected_blocks = PipelineContext::build_injected_context_blocks(
+            &runtime_facts,
+            user_context_refs,
+            turn_volatile,
+        );
         let (injected_text, _) =
             PipelineContext::collect_injected_context_text_and_images(&injected_blocks);
         let combined =
@@ -2563,6 +2776,9 @@ impl ChatV2Pipeline {
         let user_content_arc = Arc::new(user_content.clone());
         let session_id_arc = Arc::new(session_id.clone());
         let attachments_arc = Arc::new(user_attachments.clone());
+        // P1 tools 前缀代际（方案 A）：重试批与主 fan-out 同构 —— spawn
+        // 之前统一快照，join 之后收敛，变体内禁止中途写回共享态。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
 
         let futures: Vec<_> = variant_contexts
             .iter()
@@ -2577,6 +2793,7 @@ impl ChatV2Pipeline {
                 let attachments_clone = Arc::clone(&attachments_arc);
                 let shared_ctx = Arc::clone(&shared_context_arc);
                 let state_clone = chat_v2_state.clone();
+                let tool_face_baseline_clone = Arc::clone(&tool_face_baseline_arc);
 
                 let future = async move {
                     self_ref
@@ -2590,6 +2807,7 @@ impl ChatV2Pipeline {
                             shared_ctx,
                             (*attachments_clone).clone(),
                             Vec::new(),
+                            tool_face_baseline_clone,
                         )
                         .await
                 };
@@ -2631,6 +2849,27 @@ impl ChatV2Pipeline {
                     );
                     ctx.fail(&format!("Task panicked: {}", e));
                 }
+            }
+        }
+
+        // P1 tools 前缀代际：重试批 join 之后按变体索引序收敛（与主
+        // fan-out 同一收敛原语，快照含 order 与窗口 digest；单变体重试
+        // = 纯扩展不切代由 converge 的前缀检查构造保证）。
+        {
+            let variant_local_prefixes: Vec<(
+                usize,
+                crate::chat_v2::types::ToolFacePrefixSnapshot,
+            )> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix))
+                })
+                .collect();
+            if !variant_local_prefixes.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }
         }
 
@@ -2753,6 +2992,10 @@ impl ChatV2Pipeline {
             Arc::clone(&emitter),
         );
 
+        // P1 tools 前缀代际（方案 A）：单变体重试同样入口统一快照、结束
+        // 后收敛 —— 单变体输入对 converge 是纯前缀扩展，构造上永不切代。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
+
         // 执行变体（使用完整工具循环路径，与多变体主流程保持一致）
         // 注意：model_id（原始 config_id）传递给 execute_single_variant_with_config 用于 LLM 调用
         // retry 路径通过 user_attachments 传递图片（旧版兼容），context_refs 为空
@@ -2767,8 +3010,16 @@ impl ChatV2Pipeline {
                 shared_context_arc,
                 user_attachments,
                 Vec::new(),
+                tool_face_baseline_arc,
             )
             .await;
+
+        // P1 tools 前缀代际：变体环结束后收敛（禁止变体内中途 store）。
+        // 快照整体传入：单变体输入构造上不切代，窗口 digest 经共识规则
+        // 采纳（单变体本地 order 恒等于收敛结果，digest 直接生效）。
+        if let Some(prefix) = ctx.get_meta().and_then(|meta| meta.tool_face_prefix) {
+            self.converge_session_tool_face_prefix(&session_id, &[(0, prefix)]);
+        }
 
         // 处理结果并更新变体状态
         // 🔧 P0修复：无论成功还是失败，都需要持久化变体状态
@@ -3232,6 +3483,9 @@ impl ChatV2Pipeline {
                     skill_runtime_before: build_replay_skill_payload_snapshot(options),
                     skill_runtime_after: build_replay_skill_payload_snapshot(options),
                     replay_source: None,
+                    response_reasoning_items: None,
+                    skill_injection_anchors: None,
+                    response_web_search_items: None,
                 }),
                 attachments: None,
                 active_variant_id: active_variant_id.map(|s| s.to_string()),
@@ -3371,5 +3625,302 @@ mod canonical_retry_tests {
             source_user_canonical_before_assistant(&messages, "assistant"),
             Some(original)
         );
+    }
+}
+
+// ============================================================
+// multi_variant 历史重建回放一致性测试
+// （对齐主路径 load_chat_history：检索脱敏 / reasoning item 回填 /
+//  thought_signature / workspace_injection 还原）
+// ============================================================
+
+#[cfg(test)]
+mod variant_replay_tests {
+    use super::*;
+    use crate::chat_v2::pipeline::history::replay_test_support::*;
+    use crate::chat_v2::repo::BlockReplayData;
+    use crate::chat_v2::types::{ChatSession, MessageMeta};
+    use std::collections::HashMap;
+
+    /// 变体路径回放缺口回归：workspace_injection 还原为 user 消息插到该轮
+    /// user 之前；工具轮 thought_signature / reasoning_content / Responses
+    /// reasoning item 经 meta 回填；成功检索工具输出走同一份 LLM 视图脱敏。
+    /// 全部与 live 的 `all_tool_results_to_messages` 形态字节对齐。
+    #[tokio::test]
+    async fn variant_replay_aligns_with_live_tool_round_bytes() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_variant_replay";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        // ---- 上一轮用户消息：llm_content 列存 live 完整包装 ----
+        insert_user_turn(&conn, session_id, "msg_mv_u1", "blk_mv_u1", "查资料", 1_000);
+        let live_user_content = "<user_query>\n查资料\n</user_query>";
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_mv_u1",
+            &BlockReplayData {
+                llm_content: Some(live_user_content.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // ---- 上一轮助手消息：workspace_injection + 检索工具 + 正文 ----
+        // 检索输出带本地路径/诊断字段，回放必须走 sanitize（禁止 to_string 裸回灌）
+        let raw_tool_output = serde_json::json!({
+            "sources": [{
+                "title": "资料 A",
+                "imageUrl": "/local/blobs/a.png",
+                "blob_hash": "hash-a",
+                "url": "file:///local/a.md",
+                "content": "正文片段"
+            }],
+            "retrievalPlan": { "steps": 2 }
+        });
+        let reasoning_item = serde_json::json!({"type": "reasoning", "id": "rs_mv_1"});
+        let live_tool_result = ToolResultInfo {
+            tool_call_id: Some("call_mv_1".to_string()),
+            block_id: Some("blk_mv_tool".to_string()),
+            tool_name: "builtin-rag_search".to_string(),
+            input: serde_json::json!({"query": "资料"}),
+            output: raw_tool_output.clone(),
+            success: true,
+            error: None,
+            duration_ms: Some(7),
+            reasoning_content: Some("先检索资料".to_string()),
+            thought_signature: Some("sig-mv-1".to_string()),
+        };
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_mv_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec![
+            "blk_mv_inject".to_string(),
+            "blk_mv_tool".to_string(),
+            "blk_mv_c1".to_string(),
+        ];
+        assistant_msg.meta = Some(MessageMeta {
+            tool_results: Some(vec![live_tool_result.clone()]),
+            response_reasoning_items: Some(HashMap::from([(
+                "call_mv_1".to_string(),
+                reasoning_item.clone(),
+            )])),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        let mut injection_block =
+            MessageBlock::new("msg_mv_a1".to_string(), block_types::WORKSPACE_INJECTION, 0);
+        injection_block.id = "blk_mv_inject".to_string();
+        injection_block.status = block_status::SUCCESS.to_string();
+        injection_block.content = Some("[来自工作区] 主代理插话：先查 A".to_string());
+        injection_block.tool_output = Some(serde_json::json!({
+            "workspace_id": "ws_mv_1",
+            "message_count": 1,
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &injection_block).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            "msg_mv_a1".to_string(),
+            "builtin-rag_search",
+            live_tool_result.input.clone(),
+            1,
+        );
+        tool_block.id = "blk_mv_tool".to_string();
+        tool_block.status = block_status::SUCCESS.to_string();
+        tool_block.tool_output = Some(raw_tool_output.clone());
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_mv_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_mv_1".to_string()),
+                round_text: Some("我先检索资料。".to_string()),
+            },
+        )
+        .unwrap();
+
+        let mut content = MessageBlock::new_content("msg_mv_a1".to_string(), 2);
+        content.id = "blk_mv_c1".to_string();
+        content.content = Some("根据资料……".to_string());
+        content.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &content).unwrap();
+
+        // ---- 本轮（变体重生成目标）：user + assistant 会被排除 ----
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_mv_u2",
+            "blk_mv_u2",
+            "再来一次",
+            3_000,
+        );
+        let mut variant_assistant = ChatMessage::new_assistant(session_id.to_string());
+        variant_assistant.id = "msg_mv_a2".to_string();
+        variant_assistant.timestamp = 4_000;
+        ChatV2Repo::create_message_with_conn(&conn, &variant_assistant).unwrap();
+        drop(conn);
+
+        // ---- 变体路径重放 ----
+        let history = pipeline
+            .load_variant_chat_history(session_id, Some("msg_mv_a2"), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            history.len(),
+            5,
+            "injection + user + tool_call + tool + final"
+        );
+
+        // 1) workspace_injection 还原为 user 消息，插在该轮 user 之前
+        assert_eq!(history[0].role, "user");
+        assert_eq!(history[0].content, "[来自工作区] 主代理插话：先查 A");
+        let injection_meta = history[0].metadata.as_ref().unwrap();
+        assert_eq!(
+            injection_meta.get("workspace_injection"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        assert_eq!(
+            injection_meta.get("workspace_id"),
+            Some(&serde_json::json!("ws_mv_1"))
+        );
+        assert_eq!(history[1].role, "user");
+        assert_eq!(history[1].content, live_user_content);
+
+        // 2) 工具轮与 live 形态字节对齐（同一数据走 live 的
+        //    all_tool_results_to_messages 构建作为基准）
+        let mut live_ctx = next_turn_ctx(session_id);
+        live_ctx.tool_results = vec![live_tool_result];
+        live_ctx
+            .round_text_by_tool_call_id
+            .insert("call_mv_1".to_string(), "我先检索资料。".to_string());
+        live_ctx
+            .response_reasoning_by_tool_call_id
+            .insert("call_mv_1".to_string(), reasoning_item.clone());
+        let live_msgs = live_ctx.all_tool_results_to_messages();
+        assert_eq!(live_msgs.len(), 2);
+
+        let replayed_call = &history[2];
+        let live_call = &live_msgs[0];
+        assert_eq!(replayed_call.role, live_call.role);
+        assert_eq!(replayed_call.content, live_call.content);
+        assert_eq!(replayed_call.thinking_content, live_call.thinking_content);
+        assert_eq!(
+            replayed_call.thought_signature, live_call.thought_signature,
+            "thought_signature 必须经 meta.tool_results 回填，禁止恒 None"
+        );
+        assert_eq!(
+            replayed_call.thought_signature,
+            Some("sig-mv-1".to_string())
+        );
+        assert_eq!(
+            replayed_call.metadata, live_call.metadata,
+            "Responses reasoning item 必须回填到出站 metadata"
+        );
+        assert_eq!(
+            replayed_call
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("openai_responses_reasoning_item")),
+            Some(&reasoning_item)
+        );
+        assert_eq!(
+            replayed_call.tool_call.as_ref().unwrap().id,
+            "call_mv_1",
+            "禁止 tc_{{block_id}} 派生"
+        );
+
+        // 3) 成功检索工具输出走 LLM 视图脱敏（与 live 字节一致），
+        //    禁止 to_string 裸回灌本地路径/诊断字段
+        let replayed_tool = &history[3];
+        let live_tool = &live_msgs[1];
+        assert_eq!(replayed_tool.role, live_tool.role);
+        assert_eq!(replayed_tool.content, live_tool.content);
+        assert_ne!(
+            replayed_tool.content,
+            serde_json::to_string(&raw_tool_output).unwrap(),
+            "回放的 tool 消息不得等于未脱敏的原始 output"
+        );
+        assert!(!replayed_tool.content.contains("imageUrl"));
+        assert!(!replayed_tool.content.contains("retrievalPlan"));
+        assert!(!replayed_tool.content.contains("file:///local/a.md"));
+        // 持久化视图（data_json）保持原始 output 完整
+        assert_eq!(
+            replayed_tool.tool_result.as_ref().unwrap().data_json,
+            Some(raw_tool_output)
+        );
+
+        // 4) 末尾正文
+        assert_eq!(history[4].role, "assistant");
+        assert_eq!(history[4].content, "根据资料……");
+    }
+
+    /// 回退回归：旁路三列为 NULL 且 meta 缺失（老数据）时，变体路径保持
+    /// 旧重建（tc_{block_id} 派生 / 空 round_text / 无签名与 reasoning item），
+    /// 不 panic 不丢消息
+    #[tokio::test]
+    async fn variant_replay_falls_back_without_sidecar_and_meta() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_variant_fallback";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(&conn, session_id, "msg_mf_u1", "blk_mf_u1", "老问题", 1_000);
+
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_mf_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_mf_tool".to_string(), "blk_mf_c1".to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            "msg_mf_a1".to_string(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n1"}),
+            0,
+        );
+        tool_block.id = "blk_mf_tool".to_string();
+        tool_block.status = block_status::SUCCESS.to_string();
+        tool_block.tool_output = Some(serde_json::json!({"ok": true}));
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+
+        let mut content = MessageBlock::new_content("msg_mf_a1".to_string(), 1);
+        content.id = "blk_mf_c1".to_string();
+        content.content = Some("老回答".to_string());
+        content.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &content).unwrap();
+
+        insert_user_turn(&conn, session_id, "msg_mf_u2", "blk_mf_u2", "重试", 3_000);
+        let mut variant_assistant = ChatMessage::new_assistant(session_id.to_string());
+        variant_assistant.id = "msg_mf_a2".to_string();
+        variant_assistant.timestamp = 4_000;
+        ChatV2Repo::create_message_with_conn(&conn, &variant_assistant).unwrap();
+        drop(conn);
+
+        let history = pipeline
+            .load_variant_chat_history(session_id, Some("msg_mf_a2"), None)
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 4, "user + tool_call + tool + final");
+        assert_eq!(history[0].content, "老问题");
+        let tool_call_msg = &history[1];
+        assert_eq!(tool_call_msg.tool_call.as_ref().unwrap().id, "tc_mf_tool");
+        assert_eq!(tool_call_msg.content, "");
+        assert_eq!(tool_call_msg.thought_signature, None);
+        assert!(tool_call_msg.metadata.is_none());
+        assert_eq!(
+            history[2].tool_result.as_ref().unwrap().call_id,
+            "tc_mf_tool"
+        );
+        assert_eq!(history[3].content, "老回答");
     }
 }

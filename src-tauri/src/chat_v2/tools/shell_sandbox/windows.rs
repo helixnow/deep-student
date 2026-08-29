@@ -18,7 +18,7 @@ use windows_sys::Win32::Foundation::{
     WAIT_ABANDONED_0, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
-    GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, DENY_ACCESS, EXPLICIT_ACCESS_W,
+    GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
     GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
     TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
@@ -26,8 +26,11 @@ use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile,
 };
 use windows_sys::Win32::Security::{
-    DeriveCapabilitySidsFromName, FreeSid, ACL, DACL_SECURITY_INFORMATION, PSID,
-    SECURITY_CAPABILITIES, SID_AND_ATTRIBUTES, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+    AddAccessAllowedAceEx, AddAccessDeniedAceEx, AddAce, DeriveCapabilitySidsFromName, EqualSid,
+    FreeSid, GetAce, GetLengthSid, GetSecurityDescriptorControl, InitializeAcl, ACCESS_DENIED_ACE,
+    ACE_HEADER, ACL, ACL_REVISION, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+    PSID, SECURITY_CAPABILITIES, SE_DACL_PROTECTED, SID_AND_ATTRIBUTES,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT, UNPROTECTED_DACL_SECURITY_INFORMATION,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_DELETE_CHILD, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
@@ -560,6 +563,234 @@ fn trustee(sid: PSID) -> TRUSTEE_W {
     }
 }
 
+/// A protected root whose DACL was rewritten by [`protect_path`]; restored by
+/// [`unprotect_path`].
+struct ProtectedPath {
+    path: PathBuf,
+    was_protected: bool,
+}
+
+/// Cut a protected root out of the sandbox SID's granted namespace.
+///
+/// Granting a writable/readable root propagates an inheritable allow ACE for
+/// the sandbox SID onto every existing descendant, and the AppContainer
+/// access check honors that allow even when an explicit deny ACE for the same
+/// SID is present (observed on Windows Server runners: a canonical,
+/// first-position deny did not stop writes while an inherited allow existed).
+/// Protection therefore cannot rely on deny ACEs alone — the protected
+/// subtree must carry *no* allow for the sandbox SID at all.
+///
+/// This rewrites the root's DACL to [deny `deny_rights`] (+ [allow read] when
+/// `preserve_read`) + [old ACEs except the sandbox SID's], and sets
+/// SE_DACL_PROTECTED so the later parent grants cannot propagate in. Setting
+/// the DACL also propagates these ACEs to existing descendants, so the whole
+/// subtree is covered with one call. [`unprotect_path`] restores the exact
+/// original DACL and inheritance state after the sandboxed run.
+fn protect_path(
+    path: &Path,
+    sid: PSID,
+    deny_rights: u32,
+    preserve_read: bool,
+) -> Result<ProtectedPath, String> {
+    let mut path_wide = wide_os(path.as_os_str());
+    let mut old_acl: *mut ACL = null_mut();
+    let mut security_descriptor: *mut c_void = null_mut();
+    let get_result = unsafe {
+        GetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut old_acl,
+            null_mut(),
+            &mut security_descriptor,
+        )
+    };
+    if get_result != 0 {
+        return Err(format!(
+            "Failed to read ACL for '{}': Win32 error {get_result}",
+            path.display()
+        ));
+    }
+
+    let result = (|| {
+        if old_acl.is_null() {
+            // A null DACL grants full control to everyone. Replacing it with a
+            // partial DACL would lock out legitimate users, while an allow for
+            // Everyone would still satisfy the AppContainer check. Fail closed.
+            return Err(format!(
+                "Refusing to protect '{}' which has a null DACL",
+                path.display()
+            ));
+        }
+        let mut control: u16 = 0;
+        let mut revision: u32 = 0;
+        if unsafe { GetSecurityDescriptorControl(security_descriptor, &mut control, &mut revision) }
+            == 0
+        {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to read security descriptor control for '{}': {error}",
+                path.display()
+            ));
+        }
+        let was_protected = control & SE_DACL_PROTECTED != 0;
+
+        let sid_len = unsafe { GetLengthSid(sid) } as usize;
+        let deny_ace_len = size_of::<ACCESS_DENIED_ACE>() - size_of::<u32>() + sid_len;
+        let old_len = unsafe { (*old_acl).AclSize as usize };
+        // usize storage keeps the buffer DWORD-aligned; slack covers padding
+        // for the deny ACE plus the optional read-preservation ACE.
+        let new_len = old_len + 2 * deny_ace_len + 64;
+        let mut storage = vec![0usize; new_len.div_ceil(size_of::<usize>())];
+        let new_acl = storage.as_mut_ptr() as *mut ACL;
+        if unsafe { InitializeAcl(new_acl, new_len as u32, ACL_REVISION) } == 0 {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to initialize ACL for '{}': {error}",
+                path.display()
+            ));
+        }
+        if unsafe {
+            AddAccessDeniedAceEx(
+                new_acl,
+                ACL_REVISION,
+                SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+                deny_rights,
+                sid,
+            )
+        } == 0
+        {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to add deny ACE for '{}': {error}",
+                path.display()
+            ));
+        }
+        if preserve_read
+            && unsafe {
+                AddAccessAllowedAceEx(
+                    new_acl,
+                    ACL_REVISION,
+                    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+                    FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+                    sid,
+                )
+            } == 0
+        {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to add read-preservation ACE for '{}': {error}",
+                path.display()
+            ));
+        }
+        let ace_count = unsafe { (*old_acl).AceCount } as u32;
+        for index in 0..ace_count {
+            let mut ace: *mut c_void = null_mut();
+            if unsafe { GetAce(old_acl, index, &mut ace) } == 0 {
+                let error = std::io::Error::last_os_error();
+                return Err(format!(
+                    "Failed to read existing ACE {index} for '{}': {error}",
+                    path.display()
+                ));
+            }
+            let header = unsafe { *(ace as *const ACE_HEADER) };
+            // Strip any allow/deny the sandbox SID already has here (e.g.
+            // propagated by a grant on an overlapping root): one matching
+            // allow is enough for the AppContainer check to regain access.
+            // AceType 0 = access-allowed, 1 = access-denied; both share the
+            // ACCESS_DENIED_ACE layout.
+            if header.AceType <= 1 {
+                let ace_sid =
+                    unsafe { &(*(ace as *const ACCESS_DENIED_ACE)).SidStart as *const u32 as PSID };
+                if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                    continue;
+                }
+            }
+            if unsafe { AddAce(new_acl, ACL_REVISION, u32::MAX, ace, header.AceSize as u32) } == 0 {
+                let error = std::io::Error::last_os_error();
+                return Err(format!(
+                    "Failed to copy existing ACE {index} for '{}': {error}",
+                    path.display()
+                ));
+            }
+        }
+        let set_result = unsafe {
+            SetNamedSecurityInfoW(
+                path_wide.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                new_acl,
+                null_mut(),
+            )
+        };
+        if set_result != 0 {
+            return Err(format!(
+                "Failed to apply ACL for '{}': Win32 error {set_result}",
+                path.display()
+            ));
+        }
+        Ok(ProtectedPath {
+            path: path.to_path_buf(),
+            was_protected,
+        })
+    })();
+    unsafe {
+        LocalFree(security_descriptor);
+    }
+    result
+}
+
+/// Restore a protected root to its original DACL and inheritance state.
+///
+/// Revoking the sandbox SID's ACEs and writing the DACL back propagates the
+/// removal through the subtree, and re-specifying the original protection
+/// state re-enables (or keeps) inheritance exactly as before.
+fn unprotect_path(protected: &ProtectedPath, sid: PSID) {
+    if !protected.path.exists() {
+        return;
+    }
+    let _ = change_path_acl(&protected.path, sid, REVOKE_ACCESS, 0);
+    if protected.was_protected {
+        return;
+    }
+    let mut path_wide = wide_os(protected.path.as_os_str());
+    let mut current_acl: *mut ACL = null_mut();
+    let mut security_descriptor: *mut c_void = null_mut();
+    let get_result = unsafe {
+        GetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut current_acl,
+            null_mut(),
+            &mut security_descriptor,
+        )
+    };
+    if get_result != 0 {
+        return;
+    }
+    let _ = unsafe {
+        SetNamedSecurityInfoW(
+            path_wide.as_mut_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            current_acl,
+            null_mut(),
+        )
+    };
+    unsafe {
+        LocalFree(security_descriptor);
+    }
+}
+
 fn change_path_acl(path: &Path, sid: PSID, mode: i32, rights: u32) -> Result<(), String> {
     let mut path_wide = wide_os(path.as_os_str());
     let mut old_acl: *mut ACL = null_mut();
@@ -624,20 +855,16 @@ fn change_path_acl(path: &Path, sid: PSID, mode: i32, rights: u32) -> Result<(),
     Ok(())
 }
 
-fn grant_policy(policy: &SandboxPolicy, sid: PSID) -> Result<Vec<PathBuf>, String> {
+fn grant_policy(
+    policy: &SandboxPolicy,
+    sid: PSID,
+) -> Result<(Vec<PathBuf>, Vec<ProtectedPath>), String> {
     let read = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
     let write = read | FILE_GENERIC_WRITE | FILE_DELETE_CHILD | DELETE;
-    let mut changed = Vec::new();
-    let mut seen = BTreeSet::new();
-
-    let mut apply = |path: &Path, mode: i32, rights: u32| -> Result<(), String> {
-        if !path.exists() || !seen.insert((path.to_path_buf(), mode, rights)) {
-            return Ok(());
-        }
-        change_path_acl(path, sid, mode, rights)?;
-        changed.push(path.to_path_buf());
-        Ok(())
-    };
+    let mut granted = Vec::new();
+    let mut protected = Vec::new();
+    let mut seen_grants = BTreeSet::new();
+    let mut seen_protected = BTreeSet::new();
 
     let is_exposed = |path: &Path| {
         policy
@@ -648,52 +875,71 @@ fn grant_policy(policy: &SandboxPolicy, sid: PSID) -> Result<Vec<PathBuf>, Strin
     };
 
     let result = (|| {
+        // Seal exposed protected roots BEFORE granting anything. A grant on a
+        // parent root propagates an inheritable allow for the sandbox SID onto
+        // every existing descendant, and the AppContainer access check honors
+        // such an allow even when an explicit deny ACE for the same SID is
+        // present — so the protected subtree must be cut out of the sandbox
+        // SID's granted namespace before any grant happens. Read protection
+        // is the stricter rule and wins when a path sits in both lists.
+        for path in &policy.protected_read_roots {
+            if is_exposed(path) && path.exists() && seen_protected.insert(path.to_path_buf()) {
+                protected.push(protect_path(path, sid, write, false)?);
+            }
+        }
+        for path in &policy.protected_write_roots {
+            if is_exposed(path) && path.exists() && seen_protected.insert(path.to_path_buf()) {
+                protected.push(protect_path(
+                    path,
+                    sid,
+                    FILE_GENERIC_WRITE | FILE_DELETE_CHILD | DELETE,
+                    true,
+                )?);
+            }
+        }
         for path in &policy.readable_roots {
             // Windows and Program Files roots commonly already grant
             // AppContainer read/execute through inherited package ACLs while
             // denying WRITE_DAC to a normal desktop user. A failed redundant
             // read grant must not make every shell command unavailable. Keep
-            // write grants and all deny rules fail-closed below.
-            if let Err(error) = apply(path, GRANT_ACCESS, read) {
-                log::warn!(
+            // write grants and all protection rules fail-closed.
+            if !path.exists() || !seen_grants.insert((path.to_path_buf(), read)) {
+                continue;
+            }
+            match change_path_acl(path, sid, GRANT_ACCESS, read) {
+                Ok(()) => granted.push(path.to_path_buf()),
+                Err(error) => log::warn!(
                     "[WindowsSandbox] Continuing after optional read ACL grant failed: {}",
                     error
-                );
+                ),
             }
         }
         for path in &policy.writable_roots {
-            apply(path, GRANT_ACCESS, write)?;
-        }
-        for path in &policy.protected_write_roots {
-            if is_exposed(path) {
-                apply(
-                    path,
-                    DENY_ACCESS,
-                    FILE_GENERIC_WRITE | FILE_DELETE_CHILD | DELETE,
-                )?;
+            if !path.exists() || !seen_grants.insert((path.to_path_buf(), write)) {
+                continue;
             }
-        }
-        for path in &policy.protected_read_roots {
-            if is_exposed(path) {
-                apply(path, DENY_ACCESS, write)?;
-            }
+            change_path_acl(path, sid, GRANT_ACCESS, write)?;
+            granted.push(path.to_path_buf());
         }
         Ok(())
     })();
 
     if let Err(error) = result {
-        revoke_policy(&changed, sid);
+        revoke_policy(&granted, &protected, sid);
         return Err(error);
     }
-    Ok(changed)
+    Ok((granted, protected))
 }
 
-fn revoke_policy(paths: &[PathBuf], sid: PSID) {
+fn revoke_policy(granted: &[PathBuf], protected: &[ProtectedPath], sid: PSID) {
     let mut unique = BTreeSet::new();
-    for path in paths.iter().rev() {
+    for path in granted.iter().rev() {
         if unique.insert(path) && path.exists() {
             let _ = change_path_acl(path, sid, REVOKE_ACCESS, 0);
         }
+    }
+    for entry in protected.iter().rev() {
+        unprotect_path(entry, sid);
     }
 }
 
@@ -847,13 +1093,13 @@ fn run_payload(
         .map(CapabilityAllocation::attributes)
         .unwrap_or_default();
     let profile = create_profile(&payload.profile_name, &capabilities)?;
-    let changed_paths = grant_policy(&payload.policy, profile.sid)?;
+    let (granted_paths, protected_paths) = grant_policy(&payload.policy, profile.sid)?;
     let result = if is_cancelled(cancellation_event) {
         Ok(124)
     } else {
         run_appcontainer_process(&payload, profile.sid, &capabilities, cancellation_event)
     };
-    revoke_policy(&changed_paths, profile.sid);
+    revoke_policy(&granted_paths, &protected_paths, profile.sid);
     result
 }
 
@@ -1212,6 +1458,7 @@ mod tests {
             writable_roots: vec![writable.to_path_buf()],
             protected_read_roots: Vec::new(),
             protected_write_roots: Vec::new(),
+            restrict_read_to_roots: false,
             allow_network: false,
         }
     }
@@ -1331,12 +1578,19 @@ mod tests {
         let protected = writable.path().join(".git");
         fs::create_dir(&protected).unwrap();
         let blocked_file = protected.join("config");
+        // Discriminator: a write outside every granted root must be denied by
+        // the AppContainer default-deny. If this file appears, the process was
+        // not sandboxed at all; if only `blocked_file` appears, the protected
+        // root was not sealed out of the sandbox SID's granted namespace.
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("outside.txt");
         let mut sandbox_policy = policy(writable.path(), writable.path());
         sandbox_policy.protected_write_roots.push(protected);
         let payload = WindowsSandboxPayload {
             command: format!(
-                "Set-Content -LiteralPath '{}' -Value blocked",
-                blocked_file.display()
+                "Set-Content -LiteralPath '{}' -Value blocked; Set-Content -LiteralPath '{}' -Value outside",
+                blocked_file.display(),
+                outside_file.display()
             ),
             cwd: writable.path().to_path_buf(),
             policy: sandbox_policy,
@@ -1344,6 +1598,7 @@ mod tests {
         };
         let _ = run_payload(payload, None).unwrap();
         assert!(!blocked_file.exists());
+        assert!(!outside_file.exists());
     }
 
     #[test]

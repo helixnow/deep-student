@@ -689,6 +689,7 @@ impl LocalShellExecuteExecutor {
             writable_roots,
             protected_read_roots,
             protected_write_roots,
+            restrict_read_to_roots: false,
             allow_network,
         })
     }
@@ -1545,6 +1546,7 @@ impl LocalShellExecuteExecutor {
                 writable_roots: Vec::new(),
                 protected_read_roots: Vec::new(),
                 protected_write_roots: Vec::new(),
+                restrict_read_to_roots: false,
                 allow_network: true,
             }
         } else {
@@ -2136,6 +2138,7 @@ mod tests {
             writable_roots: vec![root.to_path_buf()],
             protected_read_roots: Vec::new(),
             protected_write_roots: Vec::new(),
+            restrict_read_to_roots: false,
             allow_network: false,
         }
     }

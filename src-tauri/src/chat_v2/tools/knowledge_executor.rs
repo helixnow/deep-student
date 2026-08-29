@@ -77,9 +77,23 @@ impl KnowledgeExecutor {
             .await
             .map_err(|e| format!("AI 提取失败: {}", e))?;
 
+        // R4 #3：非流式出口的 GLM 泄漏清理。failover 在 call_unified_model_2
+        // 内部换模型，调用点无法按 for_provider_model 门控最终路由；本出口
+        // 为机器解析的 JSON（parse_extraction_response），泄漏的
+        // <|begin_of_box|> 类包装会破坏解析，而合法 JSON 不含会被误删的
+        // token 形态，故始终启用保守过滤。对无泄漏输出过滤为恒等。
+        let cleaned = {
+            let mut filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
+            );
+            let mut output = filter.process(&response.assistant_message);
+            output.push_str(&filter.flush());
+            output
+        };
+
         // 解析响应
-        let candidates = parse_extraction_response(&response.assistant_message)
-            .map_err(|e| format!("解析提取结果失败: {}", e))?;
+        let candidates =
+            parse_extraction_response(&cleaned).map_err(|e| format!("解析提取结果失败: {}", e))?;
 
         // 规范化 conversation_id
         let normalized_id = conversation_id
