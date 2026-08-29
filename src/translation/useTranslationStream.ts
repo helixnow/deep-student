@@ -117,7 +117,7 @@ const INITIAL_STATE: TranslationStreamState = {
  * 翻译流式管理 Hook
  */
 export interface UseTranslationStreamOptions {
-  /** DSTU resourceId — 发布快照供 TranslationGenerativeBriefing 订阅 */
+  /** DSTU resourceId — 发布快照到 translationStreamBridge 供外部订阅 */
   publishKey?: string | null;
 }
 

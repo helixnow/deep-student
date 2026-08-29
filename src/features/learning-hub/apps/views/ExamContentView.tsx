@@ -45,7 +45,6 @@ import { collectDomainEntityIds } from '@/features/workbench/agent/domainEvents'
 import { agentFlash, agentFlashMany } from '@/features/workbench/agent/visuals/agentFlash';
 import type { DomainChangePayload } from '@/features/workbench/agent/types';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
-import { ExamGenerativeBriefing } from '../../components/ExamGenerativeBriefing';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
@@ -1091,10 +1090,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       navigate(getNextQuestionIndex(questions, currentIndex, 'review_first'));
     });
   }, [currentIndex, navigate, questions, requestViewMode, setStorePracticeMode]);
-
-  const handleOpenPracticeFromBriefing = useCallback(() => {
-    requestViewMode('launcher');
-  }, [requestViewMode]);
 
   // 点击题目进入做题模式（必须在条件返回之前定义）
   const handleQuestionClick = useCallback((index: number) => {
@@ -2397,15 +2392,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </DsButton>
           </div>
         </div>
-      )}
-
-      {hasQuestions && stats && (viewMode === 'list' || viewMode === 'launcher') && (
-        <ExamGenerativeBriefing
-          stats={stats}
-          examName={sessionDetail?.summary?.exam_name || node.name}
-          onStartReview={handleStartReview}
-          onOpenPractice={handleOpenPracticeFromBriefing}
-        />
       )}
 
       {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡（懒加载 chunk 未就绪时

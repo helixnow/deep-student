@@ -1,7 +1,7 @@
 /**
- * 翻译流式状态桥 — 供 TranslationGenerativeBriefing 订阅工作台内 useTranslationStream
+ * 翻译流式状态桥 — 工作台内 useTranslationStream 的对外订阅通道
  *
- * TranslateWorkbench 通过 publishKey 发布快照；ContentView 简报通过 streamKey 订阅。
+ * TranslateWorkbench 通过 publishKey 发布快照；外部视图通过 streamKey 订阅。
  */
 
 import { create } from 'zustand';

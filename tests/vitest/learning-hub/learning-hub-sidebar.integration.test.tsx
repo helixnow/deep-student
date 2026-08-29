@@ -44,7 +44,7 @@ vi.mock('react-i18next', async () => {
     ...actual,
     useTranslation: () => ({
       // 真实 i18next 支持 t(key, 'fallback') 与 t(key, { defaultValue })
-      // 两种签名；Sidebar 挂载的 GenerativeBriefing（0824 genui）走后者。
+      // 两种签名；Sidebar 内组件两种都会用到。
       t: (key: string, fallback?: string | { defaultValue?: string }) => {
         if (typeof fallback === 'string') return fallback;
         if (fallback && typeof fallback === 'object' && typeof fallback.defaultValue === 'string') {

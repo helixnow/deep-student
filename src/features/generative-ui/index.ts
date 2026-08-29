@@ -99,12 +99,6 @@ export { buildNoteSummaryIntent } from './utils/buildNoteSummaryIntent';
 export { buildLearningBriefingIntent } from './utils/buildLearningBriefingIntent';
 export { buildAiDashboardIntent } from './utils/buildAiDashboardIntent';
 export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
-export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
-export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
-export { buildTranslationBriefingIntent } from './utils/buildTranslationBriefingIntent';
-export { mergeTranslationBriefingMetrics } from './utils/mergeTranslationBriefingMetrics';
-export { buildIndexStatusBriefingIntent } from './utils/buildIndexStatusBriefingIntent';
-export { buildMemoryBriefingIntent } from './utils/buildMemoryBriefingIntent';
 export { buildNoteEditSuggestionIntent } from './utils/buildNoteEditSuggestionIntent';
 export {
   dispatchCanvasAIEditRequest,
@@ -114,10 +108,6 @@ export type {
   CanvasAIEditDispatchPayload,
   CanvasAIEditDispatchResult,
 } from './utils/dispatchCanvasAIEditRequest';
-export { createExamBriefingActionHandlers } from './handlers/examBriefingActionHandlers';
-export { createTranslationBriefingActionHandlers } from './handlers/translationBriefingActionHandlers';
-export { createIndexStatusBriefingActionHandlers } from './handlers/indexStatusBriefingActionHandlers';
-export { createMemoryBriefingActionHandlers } from './handlers/memoryBriefingActionHandlers';
 export { createNotesEditActionHandlers } from './handlers/notesEditActionHandlers';
 export type {
   NoteEditSuggestionPayload,
