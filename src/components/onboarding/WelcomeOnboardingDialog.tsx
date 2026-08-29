@@ -252,6 +252,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         role="dialog"
         aria-modal="true"
         aria-labelledby="welcome-onboarding-title"
+        aria-describedby="welcome-onboarding-subtitle"
         tabIndex={-1}
         className={cn(
           'outline-none',
@@ -276,7 +277,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
                 {t('welcome_onboarding.title')}
               </h1>
-              <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">
+              <p
+                id="welcome-onboarding-subtitle"
+                className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed"
+              >
                 {t('welcome_onboarding.subtitle')}
               </p>
             </div>
@@ -292,8 +296,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               }}
               size="compact"
               stretch
-              // 触屏：compact 档 28px 行高不满足 ≥40px 触控基线，仅 coarse 放大
-              itemClassName="[@media(pointer:coarse)]:h-10"
+              // 触屏：compact 档 28px 行高不满足 ≥44px 触控基线，仅 coarse 放大
+              // ！必须带 important：app.css .study-shell-segmented-button { min-height: 0 }
+              // 会压掉基元里非 important 的同名工具类
+              itemClassName="[@media(pointer:coarse)]:!min-h-11"
               options={[
                 { value: 'zh-CN', label: t('welcome_onboarding.lang_zh') },
                 { value: 'en-US', label: t('welcome_onboarding.lang_en') },
@@ -348,7 +354,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <DsButton
             variant="primary"
             size="lg"
-            className="w-full justify-center text-[13px] font-medium"
+            className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
             onClick={onConfigure}
           >
             {t('welcome_onboarding.cta_configure')}
@@ -356,7 +362,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <DsButton
             variant="ghost"
             size="lg"
-            className="w-full justify-center text-[13px] text-foreground/55"
+            className="w-full justify-center text-[13px] text-foreground/55 [@media(pointer:coarse)]:!min-h-11"
             onClick={onSkip}
           >
             {t('welcome_onboarding.cta_skip')}

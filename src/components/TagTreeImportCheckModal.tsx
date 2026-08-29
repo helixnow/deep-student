@@ -73,10 +73,10 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
         </div>
 
         <div className="actions">
-          <DsButton variant="default" size="sm" onClick={onCancel}>{t('actions.cancel')}</DsButton>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>{t('actions.cancel')}</DsButton>
           <DsButton
             variant="primary" size="sm"
-            className="confirm-btn"
+            className="confirm-btn [@media(pointer:coarse)]:!min-h-11"
             onClick={onConfirm}
             disabled={!canImport}
             title={canImport ? '' : t('tag_tree.import_blocked_hint')}

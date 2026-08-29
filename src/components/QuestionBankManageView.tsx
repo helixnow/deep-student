@@ -486,7 +486,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               className={cn(
-                'pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+                'pl-9 h-8 [@media(pointer:coarse)]:!h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
                 '[&::-webkit-search-cancel-button]:hidden',
                 filters.search && 'pr-8'
               )}
@@ -510,13 +510,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <DsButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
                   <Upload size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title')}</span>
                 </DsButton>
               )}
               {onCsvExport && (
-                <DsButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
                   <Download size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title')}</span>
                 </DsButton>
@@ -524,7 +524,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </div>
           )}
           
-          <DsButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             <Funnel size={14} />
             {t('common:actions.filter')}
           </DsButton>
@@ -610,7 +610,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="mt-3"
+                  className="mt-3 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     if (searchTimerRef.current != null) {
                       window.clearTimeout(searchTimerRef.current);
@@ -629,7 +629,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <>
                 <p>{t('exam_sheet:questionBank.empty')}</p>
                 {showCsvActions && onCsvImport && (
-                  <DsButton variant="ghost" size="sm" className="mt-3" onClick={onCsvImport}>
+                  <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={onCsvImport}>
                     <Upload size={14} />
                     {t('exam_sheet:questionBank.import')}
                   </DsButton>
@@ -648,7 +648,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             }}
           >
             {/* 全选行 */}
-            <label className="flex min-h-[40px] items-center gap-2.5 px-1">
+            <label className="flex min-h-[40px] [@media(pointer:coarse)]:min-h-[44px] items-center gap-2.5 px-1">
               <Checkbox
                 checked={allSelected || (someSelected ? 'indeterminate' : false)}
                 onCheckedChange={handleSelectAll}
@@ -682,6 +682,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       onClickCapture={(e) => { shiftKeyRef.current = e.shiftKey; }}
                     >
+                      {/* coarse 热区由 Checkbox 基元（Checkbox.css ::after）保证，勿再手抄扩区 */}
                       <Checkbox
                         checked={selectedIds.has(q.id)}
                         onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
@@ -884,7 +885,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <AppMenu>
                       <AppMenuTrigger asChild>
-                        <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8" >
+                        <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-1.5" aria-label={t('common:more')}>
                           <DotsThree size={16} />
                         </DsButton>
                       </AppMenuTrigger>
@@ -961,7 +962,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-8 px-3 text-xs"
+                className="!h-8 px-3 [@media(pointer:coarse)]:!min-h-[44px] text-xs"
                 onClick={() => {
                   if (deleteConfirmOpen) {
                     setDeleteConfirmOpen(false);
@@ -977,7 +978,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <DsButton
                 variant={deleteConfirmOpen ? 'danger' : 'warning'}
                 size="sm"
-                className="!h-8 px-3 text-xs"
+                className="!h-8 px-3 [@media(pointer:coarse)]:!min-h-[44px] text-xs"
                 disabled={
                   actionLoading === 'delete'
                   || actionLoading === 'reset'
@@ -1053,7 +1054,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   }
                 }}
                 placeholder={t('learningHub:exam.library.batchAddTagPlaceholder')}
-                className="h-8 w-40 flex-1 min-w-[8rem] bg-background text-sm"
+                className="h-8 [@media(pointer:coarse)]:!h-11 w-40 flex-1 min-w-[8rem] bg-background text-sm [@media(pointer:coarse)]:text-base"
               />
               <DsButton
                 variant="ghost"
@@ -1102,6 +1103,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* 吸底条图标钮：<sm 时文案 hidden 不进可访问树、title 触屏不可达，须显式 aria-label 命名 */}
             {onBatchUpdateDifficulty && (
               <DsButton
                 variant="ghost"
@@ -1113,6 +1115,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'difficulty' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'difficulty'}
+                aria-label={t('learningHub:exam.library.batchSetDifficulty')}
                 title={t('learningHub:exam.library.batchSetDifficulty')}
               >
                 <Gauge size={14} />
@@ -1130,6 +1133,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'tags' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'tags'}
+                aria-label={t('learningHub:exam.library.batchEditTags')}
                 title={t('learningHub:exam.library.batchEditTags')}
               >
                 <Tag size={14} />
@@ -1137,11 +1141,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               </DsButton>
             )}
             {(onBatchUpdateDifficulty || onBatchUpdateTags) && <div className="w-px h-3 bg-border/60 mx-1" />}
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10" title={t('practice:questionBank.reset')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10" aria-label={t('practice:questionBank.reset')} title={t('practice:questionBank.reset')}>
               <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
             </DsButton>
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10" title={t('common:delete')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10" aria-label={t('common:delete')} title={t('common:delete')}>
               <Trash size={12} />
               <span className="hidden sm:inline">{t('common:delete')}</span>
             </DsButton>
@@ -1151,6 +1155,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               size="sm"
               onClick={() => { setSelectedIds(new Set()); onSelect?.([]); lastSelectedIndexRef.current = null; setBatchPanel(null); }}
               className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              aria-label={t('common:cancel')}
               title={t('common:cancel')}
             >
               <X size={12} />

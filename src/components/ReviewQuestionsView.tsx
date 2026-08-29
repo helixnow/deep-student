@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import {
+  Cards,
   Check,
   X,
   CaretRight as CaretRight,
@@ -19,6 +20,7 @@ import {
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
 
@@ -56,6 +58,32 @@ const getErrorCauses = (question: Question): ErrorCause[] => {
   }
   return causes;
 };
+
+/** 把选中的错题整理成制卡素材：题干 + 我的答案 + 正确答案 + 解析 */
+function buildCardSourceFromQuestions(
+  questions: Question[],
+  labels: {
+    question: string;
+    myAnswer: string;
+    correctAnswer: string;
+    explanation: string;
+    noAnswer: string;
+  },
+): string {
+  return questions
+    .map((question, index) => {
+      const lines = [
+        `${index + 1}. ${labels.question}: ${question.content || question.ocrText || ''}`.trim(),
+        `${labels.myAnswer}: ${question.userAnswer?.trim() || labels.noAnswer}`,
+        `${labels.correctAnswer}: ${question.answer?.trim() || ''}`.trim(),
+      ];
+      if (question.explanation?.trim()) {
+        lines.push(`${labels.explanation}: ${question.explanation.trim()}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
+}
 
 const ERROR_CAUSE_STYLE: Record<ErrorCause, string> = {
   neverCorrect: 'bg-destructive/10 text-destructive',
@@ -243,14 +271,14 @@ const ReviewQuestionCard: React.FC<{
         !isSelected && !isExpanded && 'hover:bg-accent'
       )}
     >
-      <div className="group flex min-h-11 items-center gap-2 px-2 py-1.5 sm:min-h-0">
-        {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
+      <div className="group flex items-center gap-2 px-2 py-1.5 [@media(pointer:coarse)]:min-h-11">
+        {/* 复选框：触控命中区 ≥44px（coarse 指针，含平板），视觉盒保持 16px */}
         <button
           type="button"
           role="checkbox"
           aria-checked={isSelected}
           aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
-          className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+          className="flex h-6 w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-2 [@media(pointer:coarse)]:-ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
           onClick={(e) => {
             e.stopPropagation();
             onSelect(!isSelected);
@@ -324,7 +352,7 @@ const ReviewQuestionCard: React.FC<{
               'shrink-0 transition-transform duration-200 ease-standard',
               isExpanded
                 ? 'rotate-90 text-muted-foreground/60'
-                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60'
+                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40'
             )}
           />
         </button>
@@ -404,7 +432,7 @@ const ReviewQuestionCard: React.FC<{
                     variant="warning"
                     size="sm"
                     onClick={onRedo}
-                    className="gap-1.5 !h-auto min-h-8 !px-2.5 !py-1 text-xs"
+                    className="gap-1.5 !h-auto min-h-8 [@media(pointer:coarse)]:!min-h-[44px] !px-2.5 !py-1 text-xs"
                   >
                     <ArrowClockwise size={13} />
                     {t('review:questions.redo')}
@@ -499,6 +527,44 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     }
     return list;
   }, [reviewQuestions, sortBy]);
+
+  // 生成卡片：把选中的错题送进现有制卡链路（CardForge 批次任务）
+  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
+  const selectedQuestions = useMemo(
+    () => reviewQuestions.filter((q) => selectedIds.has(q.id)),
+    [reviewQuestions, selectedIds],
+  );
+  const generateCardsDisabledReason = selectedQuestions.length === 0
+    ? t('review:questions.generateCardsNeedSelection')
+    : null;
+
+  const handleGenerateCards = useCallback(async () => {
+    if (selectedQuestions.length === 0 || isGeneratingCards) return;
+    setIsGeneratingCards(true);
+    try {
+      const content = buildCardSourceFromQuestions(selectedQuestions, {
+        question: t('review:questions.cardSource.question'),
+        myAnswer: t('review:questions.myAnswer'),
+        correctAnswer: t('review:questions.correctAnswer'),
+        explanation: t('review:questions.explanation'),
+        noAnswer: t('review:questions.noAnswerRecorded'),
+      });
+      await generateCardsFromText({
+        content,
+        deckName: t('review:questions.cardSource.deckName'),
+        requirements: t('review:questions.cardSource.requirements'),
+        maxCards: Math.max(selectedQuestions.length, 5),
+        messages: {
+          tooShort: t('review:questions.generateCardsTooShort'),
+          started: t('review:questions.generateCardsStarted'),
+          failed: t('review:questions.generateCardsFailed'),
+          openTaskDashboard: t('review:questions.openTaskDashboard'),
+        },
+      });
+    } finally {
+      setIsGeneratingCards(false);
+    }
+  }, [selectedQuestions, isGeneratingCards, t]);
 
   // 获取原始索引映射
   const originalIndexMap = useMemo(() => {
@@ -596,14 +662,44 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
       {/* 操作栏 - 更紧凑 */}
       <div className="flex-shrink-0 px-4 py-2">
-        <div className="flex items-center justify-between gap-3">
-          {/* 左侧：开始复习按钮 */}
-          {onStartReview && (
-            <DsButton variant="warning" size="sm" onClick={onStartReview}>
-              <Lightning size={14} />
-              {t('review:questions.startReview', { count: reviewQuestions.length })}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          {/* 左侧：开始复习 + 生成卡片（触屏下各自占满一行，命中区 ≥44px） */}
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {onStartReview && (
+              <DsButton
+                variant="warning"
+                size="sm"
+                onClick={onStartReview}
+                className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+              >
+                <Lightning size={14} />
+                {t('review:questions.startReview', { count: reviewQuestions.length })}
+              </DsButton>
+            )}
+            {/* 常显次级动作：不藏在 hover 菜单里，未选中时 disabled 并说明原因 */}
+            <DsButton
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleGenerateCards()}
+              disabled={Boolean(generateCardsDisabledReason) || isGeneratingCards}
+              title={generateCardsDisabledReason ?? undefined}
+              aria-describedby={generateCardsDisabledReason ? 'review-generate-cards-reason' : undefined}
+              className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+            >
+              <Cards size={14} />
+              {isGeneratingCards
+                ? t('review:questions.generateCardsRunning')
+                : t('review:questions.generateCards', { count: selectedQuestions.length })}
             </DsButton>
-          )}
+            {generateCardsDisabledReason && (
+              <span
+                id="review-generate-cards-reason"
+                className="w-full text-xs text-muted-foreground sm:w-auto"
+              >
+                {generateCardsDisabledReason}
+              </span>
+            )}
+          </div>
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
@@ -676,6 +772,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <SegmentedControl<ReviewSortBy>
           ariaLabel={t('review:questions.sortLabel')}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           value={sortBy}
           onValueChange={setSortBy}
           options={[

@@ -319,13 +319,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
               className="search-input"
 />
             {searchQuery && (
-              <DsButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
+              <DsButton variant="ghost" size="icon" iconOnly className="clear-search [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => setSearchQuery('')} aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                 <X size={14} />
               </DsButton>
             )}
           </div>
           
-          <DsButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
+          <DsButton variant="ghost" size="sm" className="filter-button [@media(pointer:coarse)]:!min-h-11" onClick={() => setShowFilterBuilder(true)}>
             <Funnel size={18} />
             {t('filter')}
             {activeFilters.length > 0 && (
@@ -336,13 +336,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
         
         {/* 快速筛选 */}
         <div className="toolbar-section quick-filters">
-          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
+          <DsButton variant="ghost" size="sm" className="filter-chip [@media(pointer:coarse)]:!min-h-11" onClick={() => addQuickFilter('has_image')}>
             {t('has_image')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
+          <DsButton variant="ghost" size="sm" className="filter-chip [@media(pointer:coarse)]:!min-h-11" onClick={() => addQuickFilter('no_tags')}>
             {t('no_tags')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
+          <DsButton variant="ghost" size="sm" className="filter-chip [@media(pointer:coarse)]:!min-h-11" onClick={() => addQuickFilter('created_today')}>
             {t('created_today')}
           </DsButton>
         </div>
@@ -352,7 +352,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           <span className="selection-count">
             {selectedIds.size} / {filteredCards.length} {t('selected')}
           </span>
-          <DsButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
+          <DsButton variant="ghost" size="sm" className="select-all-btn [@media(pointer:coarse)]:!min-h-11" onClick={toggleSelectAll}>
             {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
               <>
                 <Square size={16} />
@@ -396,19 +396,19 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           </DsButton>
           
           <div className="dropdown-container" ref={moreMenuRef}>
-            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
+            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more [@media(pointer:coarse)]:!min-w-11" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label={t('common:more', { defaultValue: 'More' })} aria-expanded={showMoreMenu}>
               <DotsThreeVertical size={18} />
             </DsButton>
             
             {showMoreMenu && (
               <div className="dropdown-menu">
-                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
                   {t('export_as_csv')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
                   {t('export_as_json')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
                   {t('export_as_markdown')}
                 </DsButton>
               </div>
@@ -514,7 +514,7 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
         variant="ghost"
         size="icon"
         iconOnly
-        className="card-checkbox"
+        className="card-checkbox [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         role="checkbox"
         aria-checked={isSelected}
         aria-label={t('select_all')}

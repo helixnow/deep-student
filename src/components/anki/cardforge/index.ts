@@ -20,52 +20,27 @@
  * - 智能层 (Intelligence): LLM 定界分段、模板选择、卡片生成
  * - 基础设施层 (Infrastructure): LLM API 调用、数据持久化、事件通信
  *
+ * ## 生产链路现状（2026-08）
+ *
+ * - 聊天内制卡由后端 ChatAnki（builtin-chatanki_* 工具）全权处理，不经过本模块；
+ * - 划词制卡（selectionCardGeneration）使用 `cardAgent.startGeneration` 直启
+ *   后端 `start_enhanced_document_processing`，进度由任务台跟踪；
+ * - 历史上的 Chat V2 工具桥（ChatV2AnkiAdapter / useChatV2Anki /
+ *   anki_tool_call 事件监听）已随后端 AnkiToolExecutor 退役而整体删除。
+ *
  * ## 快速开始
  *
- * ### 基本用法
- *
  * ```typescript
- * import { generateCards, controlTask } from '@/components/anki/cardforge';
+ * import { cardAgent } from '@/components/anki/cardforge';
  *
- * // 生成卡片
- * const result = await generateCards({
+ * // 非阻塞启动制卡（生产路径，进度走任务台）
+ * const { ok, documentId } = await cardAgent.startGeneration({
  *   content: '学习材料内容...',
  *   options: { deckName: 'My Deck' }
  * });
  *
  * // 暂停生成
- * await controlTask({
- *   action: 'pause',
- *   documentId: result.documentId
- * });
- * ```
- *
- * ### 与 Chat V2 集成
- *
- * ```typescript
- * import { useChatV2Anki } from '@/components/anki/cardforge';
- *
- * function ChatComponent() {
- *   const { cards, isGenerating, onCardGenerated } = useChatV2Anki();
- *
- *   // 自动监听 Chat V2 的卡片生成事件
- *   // 卡片会实时更新到 cards 数组中
- * }
- * ```
- *
- * ## 迁移指南
- *
- * 从旧版 ResumableTaskService 迁移：
- *
- * ```typescript
- * // 旧代码
- * import { ResumableTaskService } from '@/services/ResumableTaskService';
- * const service = ResumableTaskService.getInstance();
- * await service.startTask(...);
- *
- * // 新代码
- * import { cardAgent } from '@/components/anki/cardforge';
- * await cardAgent.generateCards({ content, templates });
+ * await controlTask({ action: 'pause', documentId });
  * ```
  */
 
@@ -131,7 +106,6 @@ export {
 // ============================================================================
 
 export {
-  normalizeToolExportCards,
   validateCardsForExport,
   filterExportableCards,
 } from './engines';
@@ -140,30 +114,20 @@ export type { ExportableCardLike } from './engines';
 // ============================================================================
 // PromptKit 导出
 // ============================================================================
+// 仅保留仍被引用的 prompt：
+// - buildCardGenerationSystemPrompt：经 options.custom_anki_prompt 送入后端
+//   system 消息（协议中立：输出协议由后端单点生成，见 prompts/index.ts）
+// - buildContentAnalysisPrompt：analyzeContent 的 LLM 内容预分析
+// 历史上的 buildBoundaryPrompt / buildCardGenerationUserPrompt /
+// buildErrorRepairPrompt / buildQualityAssessmentPrompt 无任何调用方，已删除；
+// CARD_JSON_END 常量已随输出协议后端单点化一并删除
+// （后端唯一定义：anki_protocol::CARD_DELIMITER）。
 
 export {
   PromptKit,
-  CARD_JSON_START,
-  CARD_JSON_END,
-  buildBoundaryPrompt,
   buildCardGenerationSystemPrompt,
-  buildCardGenerationUserPrompt,
   buildContentAnalysisPrompt,
-  buildErrorRepairPrompt,
-  buildQualityAssessmentPrompt,
 } from './prompts';
-
-// ============================================================================
-// Chat V2 适配器导出
-// ============================================================================
-
-export {
-  ChatV2AnkiAdapter,
-  useChatV2Anki,
-  chatV2CardToCardForgeCard,
-  cardForgeCardToChatV2Card,
-  type ChatV2AnkiCard,
-} from './adapters';
 
 // ============================================================================
 // 类型导出
@@ -191,8 +155,6 @@ export type {
   SegmentConfig,
   DocumentSegment,
   HardSplitPoint,
-  BoundaryDetectionRequest,
-  BoundaryDetectionResult,
 
   // 制卡相关
   CardGenerationTask,

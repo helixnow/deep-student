@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowSquareOut,
   Atom,
   Archive,
   BookOpen,
@@ -65,6 +66,7 @@ import {
   persistWorkbenchModeEnabled,
   readWorkbenchModeEnabled,
 } from '@/features/settings/components/workbenchMode';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import {
@@ -306,7 +308,7 @@ function SidebarSessionOverflowToggle({
     <button
       type="button"
       aria-label={label}
-      className="sidebar-session-toggle block w-full cursor-default appearance-none border-0 bg-transparent py-1 pl-9 pr-2.5 text-left text-[12px] font-normal leading-none text-[color:var(--shell-navigation-muted)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="sidebar-session-toggle block w-full cursor-default appearance-none border-0 bg-transparent py-1 pl-9 pr-2.5 text-left text-[12px] font-normal leading-none text-[color:var(--shell-navigation-muted)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
       onClick={onClick}
     >
       {label}
@@ -1061,7 +1063,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             onBlur={() => {
               if (!isRenaming) void saveRecentSessionRename(session.id);
             }}
-            className="h-7 w-full rounded-[10px] border-[color:var(--ring)]/45 bg-[color:var(--surface-elevated)] px-2 text-[13px] leading-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-7 w-full rounded-[10px] border-[color:var(--ring)]/45 bg-[color:var(--surface-elevated)] px-2 text-[13px] leading-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
           />
           {recentRenameError ? (
             <p className="mt-1 px-1 text-[11px] leading-tight text-destructive" role="alert">
@@ -1121,7 +1123,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               tabIndex={collapsed ? -1 : undefined}
               isActive={isActive}
               hideLeadingSlot={pinned}
-              className={pinned ? '!pl-3' : undefined}
+              className={cn(
+                // coarse 下行高容纳 44px 操作钮；右侧为 44+4+44px 操作簇留位，
+                // 避免常显按钮跨行命中或盖住会话标题。
+                '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!pr-[4.25rem]',
+                pinned && '!pl-3',
+              )}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
               ) : hasBlockingInteraction ? (
@@ -1130,7 +1137,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 <SidebarUnreadReplyDot />
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
-                  <span className={pinned ? 'mr-12 inline-block' : undefined}>{relativeTime}</span>
+                  {/* 触屏（coarse pointer）没有 hover：操作簇在所有行常显，时间戳同步让位 */}
+                  <span className={cn(pinned && 'mr-12 inline-block', '[@media(pointer:coarse)]:opacity-0')}>{relativeTime}</span>
                 </span>
               )}
             >
@@ -1139,6 +1147,25 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </AppMenuTrigger>
           <AppMenuContent align="end" width={180}>
             <AppMenuGroup>
+              {/* 在新窗口打开：chat-session multi 实例（仅 workbench 模式；legacy 隐藏） */}
+              {workbenchBus.isEnabled() && (
+                <AppMenuItem
+                  icon={<ArrowSquareOut size={16} />}
+                  onClick={() => {
+                    setOpenRecentSessionMenuId(null);
+                    // 动态引入，避免把 workbench chat 注册链拽进 legacy 首包
+                    void import('@/features/workbench/apps/chat/newSession')
+                      .then(({ openChatSessionInNewWindow }) => {
+                        openChatSessionInNewWindow(session.id);
+                      })
+                      .catch((error) => {
+                        console.warn('[ModernSidebar] open session in new window failed:', error);
+                      });
+                  }}
+                >
+                  {t('chatV2:page.openInNewWindow')}
+                </AppMenuItem>
+              )}
               <AppMenuItem
                 icon={<PencilSimple size={16} />}
                 onClick={() => {
@@ -1187,7 +1214,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px]"
+                className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={resetDeleteConfirmation}
               >
                 {t('common:cancel')}
@@ -1195,7 +1222,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive"
+                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={() => void handleRecentSessionDelete(session.id)}
               >
                 {t('common:delete')}
@@ -1204,16 +1231,20 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </div>
         )}
 
-        {/* 行内快捷操作：置顶与归档组成右侧操作簇，hover 或 focus 时可见。 */}
+        {/* 行内快捷操作：置顶与归档组成右侧操作簇，细指针 hover 或 focus 时渐显；
+            触屏（coarse pointer）没有 hover，所有行常显保证可达——
+            仅活动行常显会让非活动会话在 iPad 上无法置顶/归档。 */}
         {!collapsed && (
-          <div className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100">
+          <div
+            className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100"
+          >
             {/* eslint-disable-next-line ds-components/no-native-button */}
             <button
               type="button"
               data-testid="recent-session-pin-icon"
               aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
               className={cn(
-                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 pinned && 'text-[color:var(--shell-navigation-foreground)]'
               )}
               onClick={(event) => {
@@ -1232,7 +1263,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   type="button"
                   aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
                   className={cn(
-                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                     isConfirmingArchive
                       ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
                       : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
@@ -1529,7 +1560,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const conversationHeaderAction = (
     <span
       data-sidebar-section-action="create-conversation"
-      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)] opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none"
+      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)] opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 [@media(pointer:coarse)]:opacity-100 motion-reduce:transition-none"
     >
       <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <DsButton
@@ -1537,7 +1568,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           size="icon"
           iconOnly
           aria-label={newConversationLabel}
-          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           onClick={(event) => {
             event.stopPropagation();
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
@@ -1571,7 +1602,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               size="icon"
               iconOnly
               aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
-              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]"
+              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={openSessionSearch}
             >
               <MagnifyingGlass size={16} weight="bold" />
@@ -1631,7 +1662,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={handleToggleAllTopicGroups}
                       >
                         {areAllTopicGroupsExpanded ? (
@@ -1647,7 +1678,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={createTopicLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={handleCreateRecentGroup}
                       >
                         <FolderPlus className="size-3.5" strokeWidth={2} />
@@ -1744,8 +1775,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   onClick={handleWorkbenchModeAction}
                 >
                   {workbenchModeEnabled
-                    ? t('sidebar:actions.hide_workbench_mode', '隐藏学习桌面')
-                    : t('sidebar:actions.show_workbench_mode', '显示学习桌面')}
+                    ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Learning Desktop' })
+                    : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Learning Desktop' })}
                 </AppMenuItem>
               </AppMenuGroup>
             </AppMenuContent>
@@ -1755,7 +1786,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             <button
               type="button"
               data-slot="sidebar-update-badge"
-              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
               onClick={(event) => {
                 event.stopPropagation();
                 void updater.performUpdateAction();

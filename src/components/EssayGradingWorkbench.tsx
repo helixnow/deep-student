@@ -13,10 +13,27 @@ import {
   type EssayDstuModeConfig,
 } from '@/dstu/adapters/essayDstuAdapter';
 import { useEssayGradingStream } from '../essay-grading/useEssayGradingStream';
+import {
+  applyAnchoredReplacement,
+  type SuggestionChange,
+} from '../essay-grading/suggestionAnchors';
+import {
+  essayDirtySnapshot,
+  essayGradedSnapshot,
+  essaySessionContextKey,
+  evaluateRoundSwitch,
+  fromPersistedImages,
+  parseSessionContext,
+  serializeSessionContext,
+  type EssayContentState,
+  type EssayGradingConfig,
+} from '../essay-grading/essayContentState';
+import { appendOcrPlaceholders, fillOcrPlaceholder } from '../essay-grading/ocrPlaceholders';
 import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
+import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -25,9 +42,13 @@ import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ESSAY_MAX_CHARS } from './essay-grading/InputPanel';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  registerContentDirtyChecker,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -55,51 +76,24 @@ export interface UploadedImage {
   ocrRetryCount?: number;
 }
 
-function essayDirtySnapshot(input: {
-  inputText: string;
+/** 批改配置上下文（内容之外影响批改结果的参数 + 题目/图片） */
+interface GradingContext extends EssayGradingConfig {
   topicText: string;
   uploadedImages: UploadedImage[];
   topicImages: UploadedImage[];
-}): string {
-  const imageKey = (image: UploadedImage) => `${image.id}:${image.fileName}:${image.base64.length}`;
-  return JSON.stringify([
-    input.inputText,
-    input.topicText,
-    input.uploadedImages.map(imageKey),
-    input.topicImages.map(imageKey),
-  ]);
 }
 
-/** 批改配置上下文（内容之外影响批改结果的参数） */
-interface GradingContext {
-  topicText: string;
-  uploadedImages: UploadedImage[];
-  topicImages: UploadedImage[];
-  modeId: string;
-  modelId: string;
-  essayType: string;
-  gradeLevel: string;
-  customPrompt: string;
-}
-
-/**
- * "已批改内容"快照：内容（正文/题目/图片）+ 批改配置（模式/模型/文体/学段/Prompt）。
- * 任一变化都允许发起新一轮批改（例如同一篇作文换模式重新批阅是合法操作）。
- */
-function essayGradedSnapshot(inputText: string, context: GradingContext): string {
-  return JSON.stringify([
-    essayDirtySnapshot({
+/** "已批改内容"快照的便捷封装（内容 + 批改配置） */
+function gradedSnapshotOf(inputText: string, context: GradingContext): string {
+  return essayGradedSnapshot(
+    {
       inputText,
       topicText: context.topicText,
       uploadedImages: context.uploadedImages,
       topicImages: context.topicImages,
-    }),
-    context.modeId,
-    context.modelId,
-    context.essayType,
-    context.gradeLevel,
-    context.customPrompt,
-  ]);
+    },
+    context
+  );
 }
 
 interface EssayGradingWorkbenchProps {
@@ -205,12 +199,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const [topicText, setTopicText] = useState('');
   const [topicImages, setTopicImages] = useState<UploadedImage[]>([]);
 
-  const persistedDirtySnapshotRef = useRef(essayDirtySnapshot({
+  // ★ 已持久化内容基准（正文 + 题目 + 图片）。保存为结构化对象而非快照字符串，
+  // 使回看轮次时可以只修正正文基准，而不吞掉题目/图片的未保存修改。
+  const persistedBaselineRef = useRef<EssayContentState>({
     inputText: initialSession?.inputText ?? '',
     topicText: '',
     uploadedImages: [],
     topicImages: [],
-  }));
+  });
+  const persistedDirtySnapshotRef = useRef(essayDirtySnapshot(persistedBaselineRef.current));
+  const patchPersistedBaseline = useCallback((patch: Partial<EssayContentState>) => {
+    persistedBaselineRef.current = { ...persistedBaselineRef.current, ...patch };
+    persistedDirtySnapshotRef.current = essayDirtySnapshot(persistedBaselineRef.current);
+  }, []);
+
   const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
   currentDirtySnapshotRef.current = essayDirtySnapshot({
     inputText,
@@ -219,14 +221,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     topicImages,
   });
 
+  // ★ 仅在会话 id 变化（真正换会话）时重置脏基准。父级刷新 initialSession 对象
+  // （如保存回写后）身份变化不应把基准重置回空题目/空图片，否则已批改落盘的
+  // 题目/图片会被误判为未保存修改（restoreFromDstu 会按恢复结果再修正基准）。
   useEffect(() => {
-    persistedDirtySnapshotRef.current = essayDirtySnapshot({
+    patchPersistedBaseline({
       inputText: initialSession?.inputText ?? '',
       topicText: '',
       uploadedImages: [],
       topicImages: [],
     });
-  }, [initialSession]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSession?.id, patchPersistedBaseline]);
 
   useEffect(() => {
     const resourceId = dstuMode.resourceId ?? initialSession?.id;
@@ -296,6 +302,29 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const gradingResult = gradingStream.gradingResult ?? '';
   const isGrading = gradingStream.isGrading ?? false;
   const isPartialResult = gradingStream.isPartialResult ?? false;
+
+  // ★ 当前批改配置上下文的实时镜像（每次渲染同步），供异步回调同步读取，
+  // 避免恢复/轮次加载/批改收尾直接依赖大量状态导致回调不稳定
+  const gradingContextRef = useRef<GradingContext>({
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  });
+  gradingContextRef.current = {
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  };
 
   // ★ 最新状态的同步镜像：供全局事件监听器/异步回调读取，
   // 避免监听器闭包依赖 inputText/gradingResult/isGrading 导致每次击键都重建并重挂监听
@@ -419,14 +448,51 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           if (session) {
             setCurrentSession(session);
             const restoredText = await loadSessionRounds(session.id);
-            // ★ 修正脏检查基准：恢复后的正文以最新轮次为准（可能与 initialSession.inputText 不同），
+
+            // ★ 恢复题目与图片（批改完成时随会话持久化到 settings KV，重开可恢复）
+            let restoredContext: ReturnType<typeof parseSessionContext> = null;
+            try {
+              restoredContext = parseSessionContext(
+                await TauriAPI.getSetting(essaySessionContextKey(session.id))
+              );
+            } catch {
+              // 读取失败按无持久化上下文处理
+            }
+            const restoredTopic = restoredContext?.topicText ?? '';
+            const restoredUploaded = fromPersistedImages(restoredContext?.uploadedImages);
+            const restoredTopicImages = fromPersistedImages(restoredContext?.topicImages);
+            if (restoredTopic) {
+              // 草稿里的题目是更新的未保存编辑，优先于会话持久化值
+              setTopicText(prev => prev || restoredTopic);
+            }
+            if (restoredUploaded.length > 0 && uploadedImagesRef.current.length === 0) {
+              // 恢复的图片登记为活跃：数量上限判定与删除/重试回调依赖该集合
+              restoredUploaded.forEach(img => activeImageIdsRef.current.add(img.id));
+              setUploadedImages(restoredUploaded);
+            }
+            if (restoredTopicImages.length > 0) {
+              setTopicImages(prev => (prev.length > 0 ? prev : restoredTopicImages));
+            }
+
+            // ★ 修正脏检查基准：恢复后的持久化状态 = 最新轮次正文 + 已保存的题目/图片，
             // 否则从会话恢复后会被误判为"有未保存修改"
-            persistedDirtySnapshotRef.current = essayDirtySnapshot({
+            patchPersistedBaseline({
               inputText: restoredText ?? (initialSession.inputText ?? ''),
-              topicText: '',
-              uploadedImages: [],
-              topicImages: [],
+              topicText: restoredTopic,
+              uploadedImages: restoredUploaded,
+              topicImages: restoredTopicImages,
             });
+            // loadSessionRounds 先于会话上下文恢复完成；此处用已恢复的题目/图片
+            // 重建“上一轮已批改”快照，避免重开后未改内容也能误提交重复轮次。
+            if (restoredText !== null) {
+              lastGradedInputRef.current = restoredText;
+              lastGradedSnapshotRef.current = gradedSnapshotOf(restoredText, {
+                ...gradingContextRef.current,
+                topicText: restoredTopic,
+                uploadedImages: restoredUploaded,
+                topicImages: restoredTopicImages,
+              });
+            }
             // ★ 草稿优先：挂载时恢复的草稿是比最后一轮更新的未保存编辑，
             // 不应被 loadSessionRounds 回填的轮次正文覆盖
             const draft = restoredDraftRef.current;
@@ -450,15 +516,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // ★ S-012: debounce 保存草稿到 localStorage（1s）
   // 草稿为 JSON 结构 {inputText, topicText}（图片 base64 体积过大，不进草稿）
   // 恢复完成前不写入/删除，避免挂载初期把待恢复的草稿冲掉
+  // ★ 回看轮次时正文等于已批改轮次文本，不属于未保存编辑：不把旧轮次正文写进
+  // 草稿（否则下次打开会被当作「未保存修改」覆盖最新轮次正文）
   useEffect(() => {
     if (!draftRestoredRef.current) return;
     const timer = setTimeout(() => {
+      const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
       try {
-        if (!inputText && !topicText) {
-          // 用户主动清空后移除草稿，防止下次进入被"恢复"回已删除内容
+        if (!draftInputText && !topicText) {
+          // 无未保存内容（用户主动清空 / 正文与轮次一致）时移除草稿，
+          // 防止下次进入被"恢复"回已删除或已批改的内容
           localStorage.removeItem(draftKey);
         } else {
-          localStorage.setItem(draftKey, JSON.stringify({ inputText, topicText }));
+          localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
         }
       } catch (e: unknown) {
         console.warn('[EssayGrading] S-012: Failed to save draft', e);
@@ -509,40 +579,62 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     }
   }, [currentSession?.id, initialSession?.id]);
 
-  // ★ 当前批改配置上下文的实时镜像（每次渲染同步），供异步回调同步读取，
-  // 避免 loadSessionRounds / markInputAsGraded 直接依赖大量状态导致回调不稳定
-  const gradingContextRef = useRef<GradingContext>({
-    topicText,
-    uploadedImages,
-    topicImages,
-    modeId,
-    modelId,
-    essayType,
-    gradeLevel,
-    customPrompt,
-  });
-  gradingContextRef.current = {
-    topicText,
-    uploadedImages,
-    topicImages,
-    modeId,
-    modelId,
-    essayType,
-    gradeLevel,
-    customPrompt,
+  // 「保存并关闭」挂点（照抄翻译 saveCurrentSessionRef 范式：闭包经 ref 每帧更新，
+  // 注册保持稳定）。作文正文没有轮次之外的落盘 API（正文只随批改轮次持久化，
+  // dstuMode.onSessionSave 也只写元数据，不自造第二套 DSTU 写入），故复用两条
+  // 现有等价落盘路径：
+  //  1) 题目/图片 → 会话上下文 KV（与批改收尾同一路径，restoreFromDstu 可恢复）
+  //  2) 正文/题目 → S-012 草稿同步写入（跳过 debounce；重开时草稿优先于轮次正文恢复）
+  // 正文仅有草稿级持久化，基准只回写已真正落盘的题目/图片；正文继续如实呈 dirty。
+  const saveCurrentContentRef = useRef<() => Promise<void>>(async () => undefined);
+  saveCurrentContentRef.current = async () => {
+    const sessionId = currentSession?.id || initialSession?.id;
+    if (sessionId) {
+      await TauriAPI.saveSetting(
+        essaySessionContextKey(sessionId),
+        serializeSessionContext({ topicText, uploadedImages, topicImages })
+      );
+      patchPersistedBaseline({ topicText, uploadedImages, topicImages });
+    } else if (uploadedImages.length > 0 || topicImages.length > 0) {
+      // 无会话 id 时图片没有任何落盘路径：抛错让 saveContentNow 报失败、窗口保持打开
+      throw new Error('[EssayGrading] cannot persist images without a session id');
+    }
+    // 与 S-012 debounce 写入同一格式/同一键；回看已批改轮次的正文不算未保存编辑。
+    // localStorage 写入失败（配额等）向上抛出：保存失败不放行关闭。
+    const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+    if (!draftInputText && !topicText) {
+      localStorage.removeItem(draftKey);
+    } else {
+      localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
+    }
   };
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId) return;
+    return registerContentSaveHandler('essay', resourceId, () =>
+      saveCurrentContentRef.current()
+    );
+  }, [dstuMode.resourceId, initialSession?.id]);
 
   // 标记"某段正文已被批改过"：同时更新文本基准与完整快照（内容 + 批改配置）
   const markInputAsGraded = useCallback((text: string) => {
     lastGradedInputRef.current = text;
-    lastGradedSnapshotRef.current = essayGradedSnapshot(text, gradingContextRef.current);
+    lastGradedSnapshotRef.current = gradedSnapshotOf(text, gradingContextRef.current);
   }, []);
+
+  // ★ 已采纳建议的稳定 key 集合（轮次内 marker 下标 + 内容）；
+  // 换轮次 / 加载新轮次 / 清空时重置
+  const [appliedSuggestionKeys, setAppliedSuggestionKeys] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
 
   // 加载会话轮次；返回恢复到输入框的最新轮次正文（无轮次时返回 null）
   const loadSessionRounds = useCallback(async (sessionId: string): Promise<string | null> => {
     try {
       const sessionRounds = await EssayGradingAPI.getRounds(sessionId);
       setRounds(sessionRounds);
+      setAppliedSuggestionKeys(new Set());
       if (sessionRounds.length > 0) {
         // 显示最新轮次
         setCurrentRoundIndex(sessionRounds.length - 1);
@@ -559,16 +651,44 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     }
   }, [setGradingResult, markInputAsGraded]);
 
-  // 切换轮次（批改中禁止切换，避免覆盖流式结果）
-  const handleSelectRound = useCallback((index: number) => {
-    if (isGrading) return;
-    if (index < 0 || index >= rounds.length || index === currentRoundIndex) return;
+  // ★ 待确认的轮次切换目标（null = 无待确认）：脏正文时经对话框确认后再切换
+  const [pendingRoundIndex, setPendingRoundIndex] = useState<number | null>(null);
+
+  // 真正执行轮次切换（handleSelectRound 已完成边界/脏检查）
+  const applyRoundSelection = useCallback((index: number) => {
     setCurrentRoundIndex(index);
     const round = rounds[index];
     setInputText(round.input_text);
     setGradingResult(round.grading_result);
     markInputAsGraded(round.input_text);
-  }, [isGrading, currentRoundIndex, rounds, setGradingResult, markInputAsGraded]);
+    // ★ 回看轮次不误报脏：正文基准跟随所选轮次的正文（题目/图片基准不动，
+    // 它们不会被轮次切换覆盖，若有未保存修改应跨轮次保持脏态）。
+    // markInputAsGraded 同步了 lastGradedInputRef，因此草稿自动保存 effect
+    // 会把「正文 == 当前轮次正文」视为无未保存编辑，不把旧轮次正文写入草稿。
+    patchPersistedBaseline({ inputText: round.input_text });
+    // 展示的批改结果换了轮次，已采纳状态随之重置
+    setAppliedSuggestionKeys(new Set());
+  }, [rounds, setGradingResult, markInputAsGraded, patchPersistedBaseline]);
+
+  // 切换轮次（批改中禁止切换，避免覆盖流式结果）
+  // ★ 正文相对当前展示轮次有未保存编辑时先确认——切换会用目标轮次正文覆盖输入区。
+  // 用 DsAlertDialog 而非 window.confirm（Tauri WebView 可能不弹窗直接返回 false）
+  const handleSelectRound = useCallback((index: number) => {
+    const decision = evaluateRoundSwitch({
+      targetIndex: index,
+      currentIndex: currentRoundIndex,
+      roundCount: rounds.length,
+      isGrading,
+      hasUnsavedBody: inputText !== lastGradedInputRef.current,
+    });
+    if (decision === 'needs-confirm') {
+      setPendingRoundIndex(index);
+      return;
+    }
+    if (decision === 'apply') {
+      applyRoundSelection(index);
+    }
+  }, [isGrading, currentRoundIndex, rounds.length, inputText, applyRoundSelection]);
 
   const handlePrevRound = useCallback(() => {
     handleSelectRound(currentRoundIndex - 1);
@@ -589,6 +709,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const imageBatchGenerationRef = useRef(0);
   // ★ OCR 重试 setTimeout 句柄集合：卸载时统一清理，防止卸载后 setState 泄漏
   const ocrRetryTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+  // ★ 图片 id → 正文中的 OCR 占位符文本。上传时按顺序插入「第 x/y 张」占位符，
+  // 识别完成后原位回填，保证最终文本顺序 = 上传顺序（并发 OCR 会乱序完成）
+  const ocrPlaceholdersRef = useRef(new Map<string, string>());
 
   useEffect(() => {
     const retryTimers = ocrRetryTimersRef.current;
@@ -667,7 +790,25 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     pendingImages.forEach(img => activeImageIdsRef.current.add(img.id));
     pendingImageReadsRef.current -= limitedFiles.length;
     setUploadedImages(prev => [...prev, ...pendingImages]);
-    showGlobalNotification('info', t('essay_grading:toast.ocr_processing'));
+
+    // ★ 按上传顺序把「第 x/y 张」占位符插入正文，识别完成后原位回填
+    const batchTotal = pendingImages.length;
+    const batchPlaceholders = pendingImages.map((img, i) => {
+      const placeholder = t('essay_grading:toast.ocr_placeholder', {
+        current: i + 1,
+        total: batchTotal,
+        fileName: img.fileName,
+      });
+      ocrPlaceholdersRef.current.set(img.id, placeholder);
+      return placeholder;
+    });
+    setInputText(prev => appendOcrPlaceholders(prev, batchPlaceholders));
+    showGlobalNotification(
+      'info',
+      batchTotal > 1
+        ? t('essay_grading:toast.ocr_processing_multi', { count: batchTotal })
+        : t('essay_grading:toast.ocr_processing')
+    );
 
     // ── 阶段 2：异步 OCR（并发限制 = 2，逐张完成立即回填，超时/失败自动重试 1 次） ──
     const OCR_CONCURRENCY = 2;
@@ -700,16 +841,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
               p.id === img.id ? { ...p, ocrText: text, ocrStatus: 'done' as OcrStatus } : p
             );
           });
-          if (text.trim()) {
-            // ★ 修复：OCR 回填同样受作文字符上限约束（此前仅手动输入路径限流）
-            const prevChars = Array.from(inputTextRef.current ?? '').length;
-            if (prevChars + Array.from(text).length + 2 > ESSAY_MAX_CHARS) {
+          // ★ 原位回填占位符（占位符缺失时退回末尾追加），维持上传顺序
+          const placeholder = ocrPlaceholdersRef.current.get(img.id) ?? '';
+          ocrPlaceholdersRef.current.delete(img.id);
+          const recognized = text.trim();
+          if (recognized || placeholder) {
+            // ★ OCR 回填同样受作文字符上限约束（此前仅手动输入路径限流）
+            const merged = fillOcrPlaceholder(inputTextRef.current ?? '', placeholder, recognized);
+            if (Array.from(merged).length > ESSAY_MAX_CHARS) {
               showGlobalNotification('warning', t('essay_grading:char_limit.truncated', { max: ESSAY_MAX_CHARS.toLocaleString() }));
             }
             setInputText(prev => {
-              const merged = prev ? `${prev}\n\n${text}` : text;
-              const chars = Array.from(merged);
-              return chars.length > ESSAY_MAX_CHARS ? chars.slice(0, ESSAY_MAX_CHARS).join('') : merged;
+              const next = fillOcrPlaceholder(prev, placeholder, recognized);
+              const chars = Array.from(next);
+              return chars.length > ESSAY_MAX_CHARS ? chars.slice(0, ESSAY_MAX_CHARS).join('') : next;
             });
           }
         })
@@ -750,6 +895,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
                 : p
             );
           });
+          // ★ 识别失败：移除正文中的占位符，避免残留「识别中」文案被提交批改
+          const failedPlaceholder = ocrPlaceholdersRef.current.get(img.id);
+          ocrPlaceholdersRef.current.delete(img.id);
+          if (failedPlaceholder) {
+            setInputText(prev => fillOcrPlaceholder(prev, failedPlaceholder, ''));
+          }
           if (isTimeout) {
             showGlobalNotification('warning', t('essay_grading:toast.ocr_timeout', { fileName: img.fileName }));
           } else {
@@ -777,6 +928,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // 删除单张上传图片
   const handleRemoveImage = useCallback((imageId: string) => {
     activeImageIdsRef.current.delete(imageId); // ★ 同步标记删除，OCR 回调可立即感知
+    // 识别尚未完成的图片：连同正文中的占位符一起移除
+    const placeholder = ocrPlaceholdersRef.current.get(imageId);
+    if (placeholder) {
+      ocrPlaceholdersRef.current.delete(imageId);
+      setInputText(prev => fillOcrPlaceholder(prev, placeholder, ''));
+    }
     setUploadedImages(prev => prev.filter(img => img.id !== imageId));
   }, []);
 
@@ -897,13 +1054,37 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // ★ 抽取为独立回调：首次批改与"重试成功"共用（此前重试成功不会触发任何持久化收尾）
   const finalizeCompletedGrading = useCallback(async (sessionId: string) => {
     showGlobalNotification('success', t('essay_grading:toast.grading_success'));
-    // ★ S-012: 批改完成后清除草稿
+    // ★ 题目与图片随会话持久化（settings KV），重开会话可恢复；
+    // 轮次表只落正文与批改结果，题目/原图属于会话级上下文
+    const gradedContext = gradingContextRef.current;
+    let contextPersisted = false;
     try {
-      localStorage.removeItem(`essay_draft_${sessionId}`);
-      localStorage.removeItem('essay_draft_new');
-    } catch {}
+      await TauriAPI.saveSetting(
+        essaySessionContextKey(sessionId),
+        serializeSessionContext({
+          topicText: gradedContext.topicText,
+          uploadedImages: gradedContext.uploadedImages,
+          topicImages: gradedContext.topicImages,
+        })
+      );
+      contextPersisted = true;
+    } catch (error: unknown) {
+      console.warn('[EssayGrading] Failed to persist session topic/images context');
+      showGlobalNotification(
+        'error',
+        t('essay_grading:toast.save_failed', { error: getErrorMessage(error) })
+      );
+    }
+    // ★ S-012: 仅在会话上下文也落盘后清除草稿。保存失败时保留正文/题目草稿，
+    // 与 dirty 基准一起防止“批改轮次成功、上下文失败”后静默丢题目。
+    if (contextPersisted) {
+      try {
+        localStorage.removeItem(`essay_draft_${sessionId}`);
+        localStorage.removeItem('essay_draft_new');
+      } catch {}
+    }
     // 刷新轮次
-    await loadSessionRounds(sessionId);
+    const latestText = await loadSessionRounds(sessionId);
 
     // DSTU 模式：通知 Learning Hub 新轮次已添加
     if (dstuMode.onRoundAdd) {
@@ -933,8 +1114,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         });
       }
     }
-    persistedDirtySnapshotRef.current = currentDirtySnapshotRef.current;
-  }, [t, loadSessionRounds, dstuMode]);
+    // ★ 基准更新为本轮已持久化的内容（最新轮次正文 + 已保存的题目/图片）
+    patchPersistedBaseline({
+      inputText: latestText ?? (inputTextRef.current ?? ''),
+      // 上下文保存失败时保留旧基准，使题目/图片继续呈 dirty；
+      // 不能把未落盘内容误标为已保存后允许无提示关窗。
+      ...(contextPersisted ? {
+        topicText: gradedContext.topicText,
+        uploadedImages: gradedContext.uploadedImages,
+        topicImages: gradedContext.topicImages,
+      } : {}),
+    });
+  }, [t, loadSessionRounds, dstuMode, patchPersistedBaseline]);
 
   // 开始批改
   const handleGrade = useCallback(async () => {
@@ -960,7 +1151,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
     // 内容或批改配置未修改时阻止重复提交
     // （正文 / 题目 / 作文图 / 题目图 / 模式 / 模型 / 文体 / 学段 / Prompt 任一变化即放行）
-    const submitSnapshot = essayGradedSnapshot(safeInputText, {
+    const submitSnapshot = gradedSnapshotOf(safeInputText, {
       topicText,
       uploadedImages,
       topicImages,
@@ -1256,6 +1447,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     // 同步失活所有图片，在途 OCR 回调据此丢弃结果；代数自增使读取中的批次一并作废
     activeImageIdsRef.current.clear();
     imageBatchGenerationRef.current++;
+    ocrPlaceholdersRef.current.clear();
+    setAppliedSuggestionKeys(new Set());
     setInputText('');
     setUploadedImages([]);
     setTopicText('');
@@ -1268,24 +1461,121 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     showGlobalNotification('success', t('essay_grading:toast.cleared'));
   }, [isGrading, inputText, gradingResult, topicText, uploadedImages.length, topicImages.length, resetGradingState, draftKey, t]);
 
-  // ★ 应用批改建议：在正文中查找 original 首次出现并替换为 replacement
-  const handleApplySuggestion = useCallback((change: { original: string; replacement: string }) => {
+  // ★ 应用批改建议：前后文锚定定位（同一片段多次出现时选上下文匹配度最高的一处），
+  // 替代此前的全局 indexOf；成功后记录已采纳 key，支持撤销
+  const handleApplySuggestion = useCallback((change: SuggestionChange) => {
     if (isGrading) {
       showGlobalNotification('warning', t('essay_grading:toast.suggestion_blocked_grading'));
       return;
     }
-    const original = change.original ?? '';
-    const currentText = inputText ?? '';
-    const index = original ? currentText.indexOf(original) : -1;
-    if (index === -1) {
+    const applied = applyAnchoredReplacement(
+      inputText ?? '',
+      change.original ?? '',
+      change.replacement ?? '',
+      change.before,
+      change.after
+    );
+    if (!applied) {
       showGlobalNotification('warning', t('essay_grading:toast.suggestion_not_found'));
       return;
     }
-    setInputText(
-      currentText.slice(0, index) + (change.replacement ?? '') + currentText.slice(index + original.length)
-    );
+    setInputText(applied.text);
+    if (change.key) {
+      setAppliedSuggestionKeys(prev => new Set(prev).add(change.key!));
+    }
     showGlobalNotification('success', t('essay_grading:toast.suggestion_applied'));
   }, [isGrading, inputText, t]);
+
+  // ★ 撤销已采纳的建议：反向锚定替换（replacement → original）；
+  // del 类建议撤销时 replacement 为空，按前后文接缝重插被删除的原文
+  const handleUndoSuggestion = useCallback((change: SuggestionChange) => {
+    if (isGrading) {
+      showGlobalNotification('warning', t('essay_grading:toast.suggestion_blocked_grading'));
+      return;
+    }
+    const undone = applyAnchoredReplacement(
+      inputText ?? '',
+      change.replacement ?? '',
+      change.original ?? '',
+      change.before,
+      change.after
+    );
+    if (!undone) {
+      showGlobalNotification('warning', t('essay_grading:toast.suggestion_undo_failed'));
+      return;
+    }
+    setInputText(undone.text);
+    if (change.key) {
+      setAppliedSuggestionKeys(prev => {
+        const next = new Set(prev);
+        next.delete(change.key!);
+        return next;
+      });
+    }
+    showGlobalNotification('success', t('essay_grading:toast.suggestion_undone'));
+  }, [isGrading, inputText, t]);
+
+  // ★ 批改结果「存为笔记」：整理题目/正文/批改结果为 Markdown，改走共享
+  // saveTextAsNote 流程（先选目录，成功 toast 带「打开笔记」动作），与聊天消息 /
+  // PDF 划词的落点行为一致，不再 createNote 直落资源库根目录
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'essay-grading' });
+  const startSaveAsNote = saveAsNoteFlow.start;
+  const handleSaveAsNote = useCallback(async () => {
+    const safeResult = gradingResult ?? '';
+    if (!safeResult) return;
+    try {
+      // 动态导入：导出格式化器不在批改主路径上
+      const { formatGradingResultForExport } = await import('../essay-grading/exportFormatter');
+      const safeInput = inputText ?? '';
+      const baseTitle =
+        currentSession?.title?.trim() ||
+        safeInput.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 20) ||
+        t('essay_grading:page_title');
+      const title = t('essay_grading:notes.note_title', {
+        title: baseTitle,
+        round: currentRoundNumber,
+      });
+      let content = '';
+      if (topicText.trim()) {
+        content += `## ${t('essay_grading:topic.toggle_label')}\n\n${topicText.trim()}\n\n`;
+      }
+      content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
+      content += `## ${t('essay_grading:result_section.title')}\n\n`;
+      content += formatGradingResultForExport(safeResult, safeInput);
+      // 打开目录选择器；确认后由共享流程写入并弹出结果 toast
+      startSaveAsNote({ content, title });
+    } catch (error: unknown) {
+      console.error('[EssayGrading] Save as note failed:', error);
+      showGlobalNotification('error', t('essay_grading:errors.save_note_failed'));
+    }
+  }, [gradingResult, inputText, topicText, currentSession?.title, currentRoundNumber, startSaveAsNote, t]);
+
+  // ★ 生成卡片：把「原文 + 批改结果」交给既有制卡链路（CardForge 批次任务）
+  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
+  const handleGenerateCards = useCallback(async () => {
+    if (isGrading || !gradingResult || isGeneratingCards) return;
+    setIsGeneratingCards(true);
+    try {
+      const { generateCardsFromText } = await import('@/features/anki/generateCardsFromText');
+      const sections = [
+        `## ${t('essay_grading:input_section.title')}\n${inputText ?? ''}`.trim(),
+        `## ${t('essay_grading:result_section.title')}\n${gradingResult}`.trim(),
+      ];
+      await generateCardsFromText({
+        content: sections.join('\n\n'),
+        deckName: t('essay_grading:make_cards.deck_name'),
+        requirements: t('essay_grading:make_cards.requirements'),
+        messages: {
+          tooShort: t('essay_grading:make_cards.too_short'),
+          started: t('essay_grading:make_cards.started'),
+          failed: t('essay_grading:make_cards.failed'),
+          openTaskDashboard: t('essay_grading:make_cards.open_task_dashboard'),
+        },
+      });
+    } finally {
+      setIsGeneratingCards(false);
+    }
+  }, [isGrading, gradingResult, isGeneratingCards, inputText, t]);
 
   // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
   // ★ 性能：统计基于 deferred 值计算——超长文本快速键入时统计滞后渲染，不阻塞输入本身
@@ -1346,7 +1636,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onRemoveTopicImage={handleRemoveTopicImage}
           onModesChange={loadModes}
           onApplySuggestion={handleApplySuggestion}
+          onUndoSuggestion={handleUndoSuggestion}
+          appliedSuggestionKeys={appliedSuggestionKeys}
+          onSaveAsNote={handleSaveAsNote}
+          onGenerateCards={() => { void handleGenerateCards(); }}
+          isGeneratingCards={isGeneratingCards}
           settingsAsPage={externalSettingsNavigation}
+          isActive={isActive}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
             total: totalRounds,
@@ -1356,6 +1652,25 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           } : undefined}
         />
       </div>
+
+      {/* 切换轮次前的未保存修改确认（脏正文会被目标轮次正文覆盖） */}
+      <DsAlertDialog
+        open={pendingRoundIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRoundIndex(null);
+        }}
+        title={t('essay_grading:round.switch_confirm_title')}
+        description={t('essay_grading:round.switch_unsaved_confirm')}
+        onConfirm={() => {
+          if (pendingRoundIndex === null) return;
+          const index = pendingRoundIndex;
+          setPendingRoundIndex(null);
+          applyRoundSelection(index);
+        }}
+      />
+
+      {/* 「存为笔记」目录选择器（窄屏走全屏子屏，见 useSaveAsNoteFlow） */}
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
     </div>
   );
 };
