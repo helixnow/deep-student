@@ -581,9 +581,14 @@ export const WorkbenchDesktop: React.FC = () => {
         onKeyDown={gestures.onDesktopKeyDown}
         onDoubleClick={gestures.onDesktopDoubleClick}
       >
-        {/* 桌面组件可关：关掉后窄工作区不再被日程与 AI 简报组件挤占 */}
-        {hydrated && desktopWidgets && <DesktopAgendaWidget />}
-        {hydrated && desktopWidgets && <DesktopAiBriefingWidget />}
+        {/* 桌面组件可关：关掉后窄工作区不再被日程与 AI 简报组件挤占。
+            两组件收进右上角纵列（.wb-desktop-widget-column），简报不再与桌面图标重叠 */}
+        {hydrated && desktopWidgets && (
+          <div className="wb-desktop-widget-column">
+            <DesktopAgendaWidget />
+            <DesktopAiBriefingWidget />
+          </div>
+        )}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
         {hydrated && <DesktopShortcutsLayer />}
         {hydrated && orderedWindows.length === 0 && (

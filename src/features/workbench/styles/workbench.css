@@ -566,6 +566,31 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
 }
 
 /* ==========================================================================
+ * 桌面小组件栏（日程 + AI 简报）：右上角纵向堆叠。
+ * 图标层 padding-right: 380px 已为本栏让位；简报排在日程下方随其高度
+ * 自然下移，不再压住左上角桌面图标。栏体指针穿透，组件自身恢复交互。
+ * ========================================================================== */
+
+.wb-desktop-widget-column {
+  position: absolute;
+  z-index: var(--wb-z-desktop-ui, 1);
+  top: 18px;
+  right: 24px;
+  display: flex;
+  width: min(340px, calc(100% - 48px));
+  max-height: calc(100% - 36px);
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+@media (height <= 720px) {
+  .wb-desktop-widget-column {
+    top: 10px;
+  }
+}
+
+/* ==========================================================================
  * 空桌面引导卡（EmptyDesktop.tsx 消费）
  * ========================================================================== */
 

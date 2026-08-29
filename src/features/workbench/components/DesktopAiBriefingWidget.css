@@ -1,10 +1,9 @@
 .wb-ai-briefing-widget {
-  position: absolute;
-  z-index: var(--wb-z-desktop-ui);
-  top: 18px;
-  left: 24px;
-  width: min(360px, calc(100% - 48px));
-  max-height: min(420px, calc(100vh - var(--wb-workarea-top, 0px) - 48px));
+  /* 定位由父容器 .wb-desktop-widget-column 承担（右上角纵列，日程下方）；
+     空间不足时本组件收缩滚动，日程保持定高 */
+  width: 100%;
+  min-height: 96px;
+  flex: 0 1 auto;
   padding: 12px 14px;
   overflow: auto;
   border-radius: var(--wb-radius-xl, 18px);

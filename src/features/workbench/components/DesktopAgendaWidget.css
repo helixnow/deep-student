@@ -1,11 +1,9 @@
 .wb-agenda-widget {
-  position: absolute;
-  z-index: var(--wb-z-desktop-ui);
-  top: 18px;
-  right: 24px;
+  /* 定位由父容器 .wb-desktop-widget-column 承担（右上角纵列） */
   display: flex;
-  width: min(340px, calc(100% - 48px));
+  width: 100%;
   height: 424px;
+  flex: 0 0 auto;
   flex-direction: column;
   padding: 16px;
   overflow: hidden;
@@ -481,7 +479,6 @@
 
 @media (height <= 720px) {
   .wb-agenda-widget {
-    top: 10px;
     height: 398px;
   }
 
@@ -515,10 +512,10 @@
  * （与 MiniCalendar 同类）。
  */
 @media (pointer: coarse) {
-  /* 44px 命中会自然增高内容；定高 424px 必然剪掉待办列表，改为随内容自适应 */
+  /* 44px 命中会自然增高内容；定高 424px 必然剪掉待办列表，改为随内容自适应。
+     纵列空间不足时由下方简报收缩兜底（其 min-height + overflow:auto） */
   .wb-agenda-widget {
     height: auto;
-    max-height: calc(100% - 36px);
   }
 
   .wb-agenda-icon-button {
