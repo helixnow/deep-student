@@ -382,6 +382,43 @@
   background: hsl(var(--accent));
 }
 
+/* 「加载更多」：结果列表末尾的整行按钮（突破首屏 24 条预算） */
+.notes-search-overlay-more {
+  padding: 4px 8px 8px;
+}
+
+.notes-search-overlay-load-more {
+  width: 100%;
+  height: 28px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-load-more:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  border-color: hsl(var(--accent));
+}
+
+.notes-search-overlay-load-more:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-search-overlay-load-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .notes-search-overlay-footer {
   min-height: 30px;
   padding: 0 14px;
@@ -395,14 +432,32 @@
   font-size: 11px;
 }
 
-/* 触屏：结果行 / 模式切换放大到 ≥44px 触控目标 */
+/* 触屏：结果行 / 模式切换 / 图标按钮放大到 ≥44px 触控目标 */
 @media (pointer: coarse) {
+  /* <16px 输入框在 iOS 聚焦时触发页面自动缩放（输入行本身已 46px 高） */
+  .notes-search-overlay-input-wrap input {
+    font-size: 16px;
+  }
+
   .notes-search-overlay-result {
     min-height: 52px;
   }
 
+  /* 44×44 命中区，负 margin 抵消占位（同 tab 关闭钮范式），视觉图标保持小 */
+  .notes-search-overlay-clear,
+  .notes-search-overlay-close {
+    width: 44px;
+    height: 44px;
+    margin: -8px;
+  }
+
   .notes-search-overlay-modes button {
-    height: 36px;
+    height: 44px;
+  }
+
+  .notes-search-overlay-message button {
+    min-height: 44px;
+    height: auto;
   }
 
   /* 键盘提示对触屏无意义 */

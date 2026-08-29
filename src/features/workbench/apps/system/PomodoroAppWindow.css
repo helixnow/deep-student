@@ -355,6 +355,36 @@
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
 }
 
+/* ==== 休息期闪卡复习入口 ================================================ */
+
+.wb-sys-pomo-break-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--wb-sys-pomo-accent);
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 12%, transparent 88%);
+  border: 1px solid color-mix(in hsl, var(--wb-sys-pomo-accent) 22%, transparent 78%);
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.wb-sys-pomo-break-review:hover {
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 20%, transparent 80%);
+  border-color: color-mix(in hsl, var(--wb-sys-pomo-accent) 34%, transparent 66%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo-break-review {
+    transition: none;
+  }
+}
+
 /* ==== 长休息周期圆点 =================================================== */
 
 .wb-sys-pomo-cycles {
@@ -662,22 +692,22 @@
 /* 触屏：返回按钮（24px）与「统计」入口（11px + 3px padding）放大触控目标 */
 @media (pointer: coarse) {
   .wb-sys-pomo-view-back {
-    width: 40px;
-    height: 40px;
+    min-width: 44px !important;
+    min-height: 44px !important;
   }
 
   .wb-sys-pomo-today-stats {
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
     font-size: 12px;
   }
 
-  /* 传输控制行：28px（!h-7）图标钮 / 32px 主钮统一放大到 ≥40px 命中区。
+  /* 传输控制行：28px（!h-7）图标钮 / 32px 主钮统一放大到 ≥44px 命中区。
      !important 对冲 Tailwind !h-7/!w-7；特异性 (0,1,1) 高于工具类 */
   .wb-sys-pomo-controls button {
     height: auto !important;
-    min-height: 40px !important;
-    min-width: 40px !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
   }
 }
 

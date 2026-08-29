@@ -11,6 +11,12 @@
  * focused / visible 永不冻结；聚焦唤醒（focus）后窗口立即离开 background，
  * 下一轮重算即解冻。
  *
+ * suspend 契约（2026-08 Wave2）：**dirty 窗永不 frozen**。冻结候选若
+ * isWindowDirty(windowId) 为真、或应用 AppDefinition.canSuspend(instanceKey)
+ * 同步返回 false，则跳过且不计入预算回收（脏窗仍占预算，超限时多冻
+ * 干净窗）。canSuspend 的 dirty 查询必须同步；prepareSuspend 仅供
+ * 非热路径显式调用，调度器绝不自动 prepare+冻。
+ *
  * O10 新增（全部为叠加能力，不改变四档语义）：
  * 1. 遮挡增量化：内部走 computeOcclusionIncremental（只重算受影响窗口），
  *    并产出 visibleRatio 供 visible 细分档。
@@ -38,6 +44,7 @@ import {
   type OcclusionEntry,
 } from './occlusion';
 import { recordSchedulerSample } from './perfMonitor';
+import { isWindowDirty } from './windowCloseGuard';
 import type { WindowLifecycle, WorkbenchWindow } from './types';
 import { computeTiledFrame, getTilingRatioForWindow } from './tiling';
 
@@ -120,6 +127,24 @@ function memoryWeightOf(win: WorkbenchWindow): number {
 
 function keepsAliveWhenOccluded(win: WorkbenchWindow): boolean {
   return appRegistry.get(win.typeId)?.keepAliveWhenOccluded === true;
+}
+
+/**
+ * suspend 契约（AppDefinition.canSuspend）的热路径同步判定。
+ *
+ * 约定：canSuspend 的 dirty 类查询必须同步（isContentDirty / isWindowDirty
+ * 已是同步）。这里绝不 await——返回 Promise 时按「可冻」处理，异步结果
+ * 只供非热路径调用方使用；回调抛异常按「不可冻」处理，坏掉的检查器
+ * 不能反过来吞掉用户未保存的内存态。
+ */
+function canSuspendNow(win: WorkbenchWindow): boolean {
+  const canSuspend = appRegistry.get(win.typeId)?.canSuspend;
+  if (!canSuspend) return true;
+  try {
+    return canSuspend(win.instanceKey) !== false;
+  } catch {
+    return false;
+  }
 }
 
 function sameLifecycles(
@@ -542,6 +567,11 @@ export function recomputeLifecycles(): void {
     // 预算冻结：超预算时从 background 里按 lastFocusedAt 最旧优先冻结。
     // O10：候选先进入「即将冻结」宽限（graceMs），宽限内解除压力/被聚焦即取消；
     // 唤醒预取豁免期内的窗口跳过（保持 background，DOM 可重建）。
+    // suspend 契约：dirty 窗永不 frozen——frozen 会卸载 React 子树，未保存的
+    // 内存态会随之丢失。脏窗（isWindowDirty 或应用 canSuspend 返回 false）
+    // 直接跳过且【不扣 used 预算】：它仍占着内存，超限压力顺延到更旧的
+    // 干净窗身上（宁可多冻干净窗，绝不冻脏窗）。本轮不自动 prepareSuspend，
+    // 脏窗一律保持 background。
     const graceMs = getFreezeGraceMs();
     let used = wins.reduce((sum, win) => sum + memoryWeightOf(win), 0);
     if (used > budget) {
@@ -552,6 +582,7 @@ export function recomputeLifecycles(): void {
       for (const win of candidates) {
         if (used <= budget) break;
         if ((wakePrefetchUntil.get(win.id) ?? 0) > nowMs) continue; // 预取豁免
+        if (isWindowDirty(win.id) || !canSuspendNow(win)) continue; // 脏窗不冻、不扣预算
         selected.add(win.id);
         const since = freezeCandidateSince.get(win.id);
         if (since == null) freezeCandidateSince.set(win.id, nowMs);

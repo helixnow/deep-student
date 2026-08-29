@@ -13,6 +13,7 @@ import {
   WORKBENCH_SHORTCUT_FEEDBACK_EVENT,
 } from '../../core/shortcuts';
 import { ShortcutCheatsheet, CHEATSHEET_EXIT_MS } from '../ShortcutCheatsheet';
+import { EMPTY_DESKTOP_ONBOARDING_KEY } from '../EmptyDesktop';
 
 function resetOverlay() {
   useWorkbenchOverlay.setState({
@@ -60,14 +61,47 @@ describe('渲染与 aria', () => {
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('键盘快捷键');
   });
 
-  it('渲染全部分组标题（顺序 = 平铺/移动/导航/管理/帮助）', () => {
+  it('渲染全部分组标题（顺序 = 平铺/移动/导航/管理/帮助 + 修饰键技巧）', () => {
     render(<ShortcutCheatsheet />);
     openSheet();
 
     const titles = Array.from(
       document.querySelectorAll('.wb-cheat-group-title'),
     ).map((el) => el.textContent);
-    expect(titles).toEqual(['平铺与布局', '移动与贴边', '切换与导航', '窗口管理', '帮助']);
+    expect(titles).toEqual([
+      '平铺与布局',
+      '移动与贴边',
+      '切换与导航',
+      '窗口管理',
+      '帮助',
+      '修饰键技巧',
+    ]);
+  });
+
+  it('修饰键技巧区块：⌥ 扩热区等隐藏行为成行展示，键帽跟随平台符号', () => {
+    setWorkbenchShortcutPlatformOverride(true);
+    render(<ShortcutCheatsheet />);
+    openSheet();
+
+    const dragRow = document.querySelector('[data-wb-cheat-trick="drag"]')!;
+    expect(dragRow.querySelector('.wb-cheat-desc')?.textContent).toContain('热区');
+    const caps = Array.from(
+      dragRow.querySelectorAll('kbd.wb-cheat-key'),
+    ).map((el) => el.textContent);
+    expect(caps[0]).toBe('⌥');
+
+    // 非 macOS：修饰键帽显示 Alt
+    setWorkbenchShortcutPlatformOverride(false);
+    act(() => {
+      useWorkbenchOverlay.getState().closeCheatsheet();
+    });
+    openSheet();
+    const altCaps = Array.from(
+      document.querySelectorAll('[data-wb-cheat-trick="zoom"] kbd.wb-cheat-key'),
+    ).map((el) => el.textContent);
+    expect(altCaps[0]).toBe('Alt');
+
+    expect(document.querySelectorAll('[data-wb-cheat-trick]').length).toBe(5);
   });
 
   it('macOS 平台：键帽输出 ⌘ 符号（顺序 ⌃⌥⇧⌘）、底部提示为 ⌘⌥ 文案', () => {
@@ -127,6 +161,16 @@ describe('关闭路径', () => {
     openSheet();
 
     fireEvent.click(screen.getByLabelText('关闭'));
+    expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(false);
+  });
+
+  it('底部「重新播放快速上手」：清 tour 消隐位并关闭速查表', () => {
+    localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
+    render(<ShortcutCheatsheet />);
+    openSheet();
+
+    fireEvent.click(screen.getByTestId('wb-cheat-replay-tour'));
+    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
     expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(false);
   });
 

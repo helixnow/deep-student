@@ -154,7 +154,7 @@ export function AgentCapabilitySummary({
             type="button"
             variant="ghost"
             size="sm"
-            className="wb-agent-capabilities-toggle"
+            className="wb-agent-capabilities-toggle [@media(pointer:coarse)]:!min-h-11"
             aria-expanded={expanded}
             onClick={() => setExpanded((current) => !current)}
           >
@@ -527,6 +527,7 @@ export function AgentControlDockEntry({
                       onValueChange={(next) => void changeMode(next as AgentControlMode)}
                       size="compact"
                       className={cn('wb-agent-control-segmented', loading && 'opacity-50')}
+                      itemClassName="[@media(pointer:coarse)]:!min-h-11"
                       options={([
                         { value: 'off', label: t('settings.agentControl.off') },
                         { value: 'background', label: t('settings.agentControl.background') },
@@ -609,6 +610,7 @@ export function AgentControlDockEntry({
                             type="button"
                             size="sm"
                             variant="shell"
+                            className="[@media(pointer:coarse)]:!min-h-11"
                             disabled={killSwitchBusy}
                             data-testid="wb-agent-resume-agents"
                             onClick={() => void runResumeAgents()}
@@ -621,6 +623,7 @@ export function AgentControlDockEntry({
                               type="button"
                               size="sm"
                               variant="shell"
+                              className="[@media(pointer:coarse)]:!min-h-11"
                               disabled={killSwitchBusy}
                               data-testid="wb-agent-resume-automations-confirm"
                               onClick={() => void runResumeAutomations()}
@@ -633,6 +636,7 @@ export function AgentControlDockEntry({
                               type="button"
                               size="sm"
                               variant="ghost"
+                              className="[@media(pointer:coarse)]:!min-h-11"
                               disabled={killSwitchBusy}
                               onClick={() => setConfirmResumeAutomations(false)}
                             >
@@ -644,6 +648,7 @@ export function AgentControlDockEntry({
                             type="button"
                             size="sm"
                             variant="ghost"
+                            className="[@media(pointer:coarse)]:!min-h-11"
                             disabled={killSwitchBusy}
                             data-testid="wb-agent-resume-automations"
                             onClick={() => setConfirmResumeAutomations(true)}
@@ -678,7 +683,7 @@ export function AgentControlDockEntry({
                         <DsButton
                           type="button"
                           size="sm"
-                          className="wb-agent-emergency-stop"
+                          className="wb-agent-emergency-stop [@media(pointer:coarse)]:!min-h-11"
                           disabled={killSwitchBusy}
                           data-testid="wb-agent-emergency-stop-confirm"
                           onClick={() => void runEmergencyStop()}
@@ -690,6 +695,7 @@ export function AgentControlDockEntry({
                           type="button"
                           size="sm"
                           variant="ghost"
+                          className="[@media(pointer:coarse)]:!min-h-11"
                           disabled={killSwitchBusy}
                           onClick={() => setConfirmStop(false)}
                         >
@@ -701,7 +707,7 @@ export function AgentControlDockEntry({
                     <DsButton
                       type="button"
                       size="sm"
-                      className="wb-agent-emergency-stop"
+                      className="wb-agent-emergency-stop [@media(pointer:coarse)]:!min-h-11"
                       disabled={killSwitchBusy || killSwitch.tripped}
                       data-testid="wb-agent-emergency-stop"
                       onClick={() => setConfirmStop(true)}
@@ -724,7 +730,7 @@ export function AgentControlDockEntry({
                 <DsButton
                   size="sm"
                   variant="shell"
-                  className="wb-agent-control-open-chat"
+                  className="wb-agent-control-open-chat [@media(pointer:coarse)]:!min-h-11"
                   onClick={openChat}
                 >
                   <ChatCircleDots size={16} weight="duotone" aria-hidden="true" />
@@ -734,6 +740,7 @@ export function AgentControlDockEntry({
                   size="icon"
                   variant="ghost"
                   iconOnly
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   aria-label={t('agentControlCenter.openSettings')}
                   title={t('agentControlCenter.openSettings')}
                   onClick={openControlSettings}

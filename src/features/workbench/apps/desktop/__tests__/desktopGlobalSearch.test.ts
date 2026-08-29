@@ -19,6 +19,14 @@ vi.mock('i18next', () => ({
     t: (key: string, options?: { defaultValue?: string }) =>
       options?.defaultValue ?? key,
     language: 'en-US',
+    isInitialized: true,
+  },
+}));
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? key,
+    language: 'en-US',
   },
 }));
 vi.mock('@/components/UnifiedNotification', () => ({

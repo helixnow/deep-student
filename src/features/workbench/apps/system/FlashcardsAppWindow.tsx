@@ -12,7 +12,11 @@ import { FlashcardsApp } from '@/features/flashcards/FlashcardsApp';
 import '@/features/flashcards/flashcards.css';
 import '@/features/flashcards/flashcards-dashboard.css';
 
-const FlashcardsAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange }) => {
+const FlashcardsAppWindow: React.FC<AppWindowProps> = ({
+  launchPayload,
+  isActive,
+  onTitleChange,
+}) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
 
@@ -27,7 +31,7 @@ const FlashcardsAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleC
       data-wb-sys-app="flashcards"
     >
       <WbSysFade>
-        <FlashcardsApp launchPayload={launchPayload} />
+        <FlashcardsApp launchPayload={launchPayload} isActive={isActive} />
       </WbSysFade>
     </div>
   );

@@ -5,6 +5,7 @@
  * 投射源为 badge-only（projectWindows=false），驱动 Dock 角标。
  */
 import { invoke } from '@tauri-apps/api/core';
+import { notifyAppBadgeChanged } from '../../core/badgeBus';
 import type { ProjectionInstance, ProjectionSource } from '../../core/projection';
 import type { AppBadge } from '../../core/types';
 import { subscribeFlashcardsDueRefresh } from '@/features/flashcards/events';
@@ -29,6 +30,8 @@ function setCount(count: number): void {
   if (count === dueCount) return;
   dueCount = count;
   for (const fn of Array.from(listeners)) fn(count);
+  // 推送 Dock 角标即时重读 badgeSource（typeId 见 register.tsx flashcards）
+  notifyAppBadgeChanged('flashcards');
 }
 
 function pollDelayMs(): number {

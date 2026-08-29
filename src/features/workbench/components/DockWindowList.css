@@ -68,6 +68,21 @@
   pointer-events: none;
 }
 
+/* 应用名头部：触屏长按开列表时的应用名可见途径（tooltip 触屏等价） */
+.wb-docklist-header {
+  padding: 2px 8px 5px;
+  border-bottom: 1px solid var(--wb-glass-border);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--wb-titlebar-fg, inherit);
+  opacity: 0.78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .wb-docklist-items-scroll {
   max-height: calc(100vh - 48px);
   min-height: 0;
@@ -273,12 +288,22 @@
   outline: none;
 }
 
-/* 触屏（无 hover）：关闭按钮常显，否则触控用户无法浮现 */
-@media (hover: none) and (pointer: coarse) {
+/* 粗指针（触屏，含 iPad 触控板+触屏并存场景）：关闭按钮常显并放大命中区到 44px；
+   不再要求 hover:none，避免 hover 能力误伤触屏用户 */
+@media (pointer: coarse) {
   .wb-docklist-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     opacity: 1;
     transform: scale(1);
     pointer-events: auto;
+  }
+
+  /* 「显示全部窗口」整行入口 ~28px 偏矮：升到 44px 命中高度 */
+  .wb-docklist-showall {
+    min-height: 44px;
   }
 }
 

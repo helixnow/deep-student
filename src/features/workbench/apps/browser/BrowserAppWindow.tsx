@@ -24,6 +24,7 @@ import {
   LockOpen,
   Robot,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 import { useBrowserSession } from '@/features/browser/hooks/useBrowserSession';
 import { browserApi } from '@/features/browser/browserApi';
@@ -66,14 +67,16 @@ const NavControls: React.FC<{
   onBack: () => void;
   onForward: () => void;
   onReload: () => void;
-}> = ({ canGoBack, canGoForward, loading, onBack, onForward, onReload }) => {
+  onStop: () => void;
+}> = ({ canGoBack, canGoForward, loading, onBack, onForward, onReload, onStop }) => {
   const { t } = useTranslation('workbench');
   return (
     <div className="wb-browser-nav" role="group" aria-label={t('browser.nav')}>
+      {/* loading 期不锁后退/前进：点击会先停止当前加载再导航（对齐常规浏览器） */}
       <button
         type="button"
         className="wb-browser-icon-btn"
-        disabled={!canGoBack || loading}
+        disabled={!canGoBack}
         onClick={onBack}
         aria-label={t('browser.back')}
         title={t('browser.back')}
@@ -83,23 +86,35 @@ const NavControls: React.FC<{
       <button
         type="button"
         className="wb-browser-icon-btn"
-        disabled={!canGoForward || loading}
+        disabled={!canGoForward}
         onClick={onForward}
         aria-label={t('browser.forward')}
         title={t('browser.forward')}
       >
         <ArrowRight size={16} weight="bold" />
       </button>
-      <button
-        type="button"
-        className="wb-browser-icon-btn"
-        disabled={loading}
-        onClick={onReload}
-        aria-label={t('browser.reload')}
-        title={t('browser.reload')}
-      >
-        <ArrowClockwise size={16} weight="bold" />
-      </button>
+      {/* 加载中 刷新 ↔ 停止 复用同一格位（Chrome/Safari 惯例） */}
+      {loading ? (
+        <button
+          type="button"
+          className="wb-browser-icon-btn"
+          onClick={onStop}
+          aria-label={t('browser.stop')}
+          title={t('browser.stop')}
+        >
+          <X size={16} weight="bold" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="wb-browser-icon-btn"
+          onClick={onReload}
+          aria-label={t('browser.reload')}
+          title={t('browser.reload')}
+        >
+          <ArrowClockwise size={16} weight="bold" />
+        </button>
+      )}
     </div>
   );
 };
@@ -939,12 +954,28 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
 
   const handleNavigate = useCallback(
     (url: string) => {
+      // loading 期允许直接改道：先停止在途导航，再发起新导航（Chrome 语义）
+      if (session.loading) session.stopLoading();
       void session.navigate(url).catch(() => {
         // Store 已记录 lastError；用户路径无需制造 unhandled rejection。
       });
     },
     [session],
   );
+
+  const handleBack = useCallback(() => {
+    if (session.loading) session.stopLoading();
+    void session.back().catch(() => {});
+  }, [session]);
+
+  const handleForward = useCallback(() => {
+    if (session.loading) session.stopLoading();
+    void session.forward().catch(() => {});
+  }, [session]);
+
+  const handleStop = useCallback(() => {
+    session.stopLoading();
+  }, [session]);
 
   const handleTakeOver = useCallback(() => {
     void session.takeOver().catch(() => {
@@ -970,9 +1001,10 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
           canGoBack={session.canGoBack}
           canGoForward={session.canGoForward}
           loading={session.loading}
-          onBack={() => void session.back().catch(() => {})}
-          onForward={() => void session.forward().catch(() => {})}
+          onBack={handleBack}
+          onForward={handleForward}
           onReload={() => void session.reload().catch(() => {})}
+          onStop={handleStop}
         />
         <AddressBar
           draft={session.addressDraft}

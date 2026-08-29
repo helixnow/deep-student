@@ -4,6 +4,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CrepeEditorApi } from '@/components/crepe/types';
+
+// error 文案走 i18n（forms:note_driver.*）：key-echo mock 让断言与语言无关
+vi.mock('@/i18n', () => ({ default: { t: (key: string) => key } }));
+
 import {
   __resetContentDirtyRegistry,
   registerContentDirtyChecker,
@@ -242,12 +246,12 @@ describe('computeDestructiveMarkdown', () => {
     ).toEqual({ content: 'hi world hi' });
   });
 
-  it('note_replace 空 search → error', () => {
+  it('note_replace 空 search → error（forms key，非硬编码文案）', () => {
     const r = computeDestructiveMarkdown('x', {
       kind: 'note_replace',
       payload: { search: '', replace: 'y' },
     });
-    expect(r.error).toBeTruthy();
+    expect(r.error).toBe('forms:note_driver.empty_search_pattern');
   });
 
   it('note_replace 零命中 → error，不伪造 applied', () => {
@@ -255,13 +259,19 @@ describe('computeDestructiveMarkdown', () => {
       kind: 'note_replace',
       payload: { search: 'missing', replace: 'new' },
     });
-    expect(literal).toEqual({ content: 'hello', error: '未找到要替换的内容' });
+    expect(literal).toEqual({
+      content: 'hello',
+      error: 'forms:note_driver.replacement_not_found',
+    });
 
     const regex = computeDestructiveMarkdown('hello', {
       kind: 'note_replace',
       payload: { search: 'z+', replace: 'new', isRegex: true },
     });
-    expect(regex).toEqual({ content: 'hello', error: '未找到要替换的内容' });
+    expect(regex).toEqual({
+      content: 'hello',
+      error: 'forms:note_driver.replacement_not_found',
+    });
   });
 });
 
@@ -757,6 +767,47 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(receipt.status).toBe('completed');
     expect(api.getFullMarkdown()).toBe(`${visible}${hidden}\ntrue-end`);
     expect(api.getFullMarkdown()).toContain('hidden-602');
+  });
+
+  it('窗口化长笔记 offset / 缺标题锚点 → 上报 forms key 而非硬编码文案', async () => {
+    const visible = 'visible prefix';
+    const full = `${visible}\nhidden tail`;
+    const api = makeEditorApi({ markdown: visible, windowedFullMarkdown: full });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const run = makeRun();
+
+    const receipt = await noteDriver.apply(run, [
+      {
+        kind: 'note_insert',
+        destructive: false,
+        label: 'offset 插入',
+        anchor: { position: 'offset', offset: 3 },
+        payload: { content: 'x' },
+      },
+      {
+        kind: 'note_insert',
+        destructive: false,
+        label: '缺标题插入',
+        anchor: { position: 'afterHeading' },
+        payload: { content: 'y' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('failed');
+    expect(receipt.undone).toEqual(['offset 插入', '缺标题插入']);
+    expect(run.reportProgress).toHaveBeenCalledWith(
+      1,
+      2,
+      'forms:note_driver.windowed_offset_unsupported',
+      NOTE_ID,
+    );
+    expect(run.reportProgress).toHaveBeenCalledWith(
+      2,
+      2,
+      'forms:note_driver.after_heading_missing_title',
+      NOTE_ID,
+    );
+    expect(api.getFullMarkdown()).toBe(full);
   });
 
   it('用户在 Agent 写入后继续编辑时，inverse 以 OCC 冲突拒绝且不覆盖用户内容', async () => {

@@ -144,6 +144,82 @@
   height: 25px;
 }
 
+/* ============================================================
+ * 探索器工具栏「更多」折叠菜单（中窗 240px 侧栏放不下整排图标）
+ * ============================================================ */
+
+.notes-explorer-overflow {
+  position: relative;
+  display: inline-flex;
+}
+
+.notes-explorer-overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 12%);
+}
+
+.notes-explorer-overflow-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--notes-radius-control) - 2px);
+  font-size: 12px;
+  text-align: left;
+  color: hsl(var(--foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.notes-explorer-overflow-menu > button:hover,
+.notes-explorer-overflow-menu > button:focus-visible {
+  background: hsl(var(--accent));
+  outline: none;
+}
+
+.notes-explorer-overflow-menu > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notes-explorer-overflow-menu > button[aria-checked='true'] {
+  color: hsl(var(--primary));
+}
+
+.notes-explorer-overflow-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-explorer-overflow-menu > button[aria-checked='true'] .notes-explorer-overflow-icon {
+  color: hsl(var(--primary));
+}
+
+/* 触屏：25px 目标过小，扩到 44px，负 margin 抵消占位（每边 -9.5px，横向仍占 25px） */
+@media (pointer: coarse) {
+  .notes-explorer header .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -9.5px;
+  }
+}
+
 .notes-search {
   height: 30px;
   margin: 0 8px 6px;
@@ -177,6 +253,25 @@
 .notes-search .notes-icon-button {
   width: 20px;
   height: 20px;
+}
+
+/* 触屏：20px 目标过小，扩到 44px，负 margin 抵消占位；搜索栏本身也升到 ≥44px 触控高度
+   （min-height 优先于桌面 height: 30px，桌面密度不受影响） */
+@media (pointer: coarse) {
+  .notes-search {
+    min-height: 44px;
+  }
+
+  /* font: inherit 继承工作区 13px，低于 iOS Safari 16px 阈值会触发聚焦自动缩放 */
+  .notes-search input {
+    font-size: 16px;
+  }
+
+  .notes-search .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -12px;
+  }
 }
 
 .notes-explorer-tag-filter {
@@ -325,6 +420,14 @@
   outline-offset: 1px;
 }
 
+/* 触屏：树加载失败重试按钮固定 26px 压死触控目标，改 auto 并升到 ≥44px（桌面 26px 密度不变） */
+@media (pointer: coarse) {
+  .notes-tree-message button {
+    min-height: 44px;
+    height: auto;
+  }
+}
+
 .notes-tree-loading {
   padding: 8px 6px;
   display: grid;
@@ -426,19 +529,11 @@
   transition: background-color var(--notes-hover-transition);
 }
 
-.notes-pane-resize::after {
-  position: absolute;
-  inset: 0;
-  content: '';
-}
-
-/* 触屏：6px 视觉拖拽条命中区过窄，伪元素横向外扩到 ~22px（compact 竖排改纵向外扩），
-   并常显加深底色作视觉指示（hover 不可达） */
+/* 触屏：常显加深底色作视觉指示（hover 不可达）。
+   命中区不走 ::after 外扩——react-resizable-panels 在 document 层用
+   getBoundingClientRect + hitAreaMargins 做命中检测，伪元素不参与；
+   触控热区由 TSX 侧 hitAreaMargins={{ coarse: 19 }} 扩到 44px */
 @media (pointer: coarse) {
-  .notes-pane-resize::after {
-    inset: 0 -8px;
-  }
-
   .notes-pane-resize {
     background: hsl(var(--border) / 88%);
   }
@@ -507,6 +602,16 @@
   pointer-events: auto;
 }
 
+/* 触屏：溢出触发按钮 28px 目标过小，扩到 44px，负 margin 抵消占位
+   （每边 -8px，槽位仍占 32px，视觉图标不变） */
+@media (pointer: coarse) {
+  .notes-tabs-overflow .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -8px;
+  }
+}
+
 .notes-tabs-overflow-menu {
   position: fixed;
   z-index: 2200;
@@ -565,6 +670,13 @@
 
 .notes-tabs-overflow-menu button[data-save-state='saving'] .notes-tab-state {
   animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
+}
+
+/* 触屏：溢出菜单行 30px 目标过小，升到 ≥44px（桌面 30px 密度不变） */
+@media (pointer: coarse) {
+  .notes-tabs-overflow-menu button {
+    min-height: 44px;
+  }
 }
 
 .notes-titlebar-tabs .notes-tab {
@@ -689,6 +801,29 @@
   opacity: 1;
 }
 
+/* 触屏（仿 NotesWorkspaceTree .nwt-row-more）：hover 不可达，关闭按钮常显；
+   扩到 44px 触控目标，负 margin 抵消占位（视觉图标不变，横向仍占 24px + 4px 右距） */
+@media (pointer: coarse) {
+  .notes-tab .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -10px -6px -10px -10px;
+    opacity: 1;
+  }
+
+  /* 标签选择钮受 36/40px 标签条（含标题栏内嵌模式）约束，不硬叠 44 视觉：
+     伪元素纵向外扩到 ≥44px 命中；关闭钮在 DOM 后位，重叠区命中不受影响 */
+  .notes-tab > button:first-child {
+    position: relative;
+  }
+
+  .notes-tab > button:first-child::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
+  }
+}
+
 .notes-pane-content, .notes-document-host {
   position: relative;
   min-width: 0;
@@ -801,6 +936,14 @@
   color: hsl(var(--destructive));
 }
 
+/* 触屏：菜单项固定 28px 压死触控目标，改 auto 并升到 ≥44px（桌面 28px 密度不变） */
+@media (pointer: coarse) {
+  .notes-context-menu button {
+    min-height: 44px;
+    height: auto;
+  }
+}
+
 .notes-tab-context-menu {
   width: 184px;
 }
@@ -850,6 +993,19 @@
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
+}
+
+/* 触屏：输入行固定 30px 压死触控目标，改 auto 并升到 ≥44px；
+   input 提到 16px 防 iOS Safari 聚焦自动放大（桌面 30px 密度不变） */
+@media (pointer: coarse) {
+  .notes-inline-create-row {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .notes-inline-create-row input {
+    font-size: 16px;
+  }
 }
 
 .notes-inline-confirm {
@@ -910,6 +1066,14 @@
 .notes-inline-confirm-actions button.is-danger:hover {
   border-color: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
   background: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+}
+
+/* 触屏：删除确认条按钮固定 26px 压死触控目标，改 auto 并升到 ≥44px（桌面 26px 密度不变） */
+@media (pointer: coarse) {
+  .notes-inline-confirm-actions button {
+    min-height: 44px;
+    height: auto;
+  }
 }
 
 .notes-inline-error {
@@ -1032,20 +1196,9 @@
   box-shadow: -8px 0 24px hsl(var(--shadow-base) / 0.14);
 }
 
-.notes-workspace[data-compact='true'] .notes-pane-resize {
-  flex-basis: 6px;
-  width: 100%;
-  min-width: 0;
-  height: 6px;
-  min-height: 6px;
-  cursor: row-resize;
-}
-
-/* compact 竖排时拖拽条为横条，命中区改纵向外扩 */
-@media (pointer: coarse) {
-  .notes-workspace[data-compact='true'] .notes-pane-resize::after {
-    inset: -8px 0;
-  }
+/* compact 分屏固定 50/50、不渲染拖拽手柄（对照 VerticalResizable fixed），仅留 1px 静态分隔线 */
+.notes-workspace[data-compact='true'] .notes-pane-panel + .notes-pane-panel {
+  border-top: 1px solid hsl(var(--border) / 88%);
 }
 
 .notes-workspace[data-compact='true'] .notes-statusbar span:first-child {
@@ -1171,8 +1324,7 @@
 }
 
 /* 子屏内树行 / 收藏行放大到触控目标（行高 ≥44px） */
-.notes-files-subscreen .notes-tree-row,
-.notes-files-subscreen .rct-tree-item-button {
+.notes-files-subscreen .notes-tree-row {
   min-height: 44px;
 }
 

@@ -1,0 +1,31 @@
+.wb-ai-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+
+.wb-ai-dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 16px 20px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-ai-dashboard-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 20px 20px;
+}
+
+.wb-ai-dashboard-body .generative-ui-root,
+.wb-ai-dashboard-body .generative-ui-panel {
+  gap: 10px;
+}

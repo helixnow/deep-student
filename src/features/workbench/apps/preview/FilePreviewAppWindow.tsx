@@ -27,7 +27,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { fileManager } from '@/utils/fileManager';
+import { saveResourceToDevice } from '@/features/learning-hub/apps/views/saveResourceToDevice';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { AppWindowProps } from '../../core/types';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
@@ -329,19 +329,38 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   // 节点未加载完成前先按可用处理，加载后再按类型收紧
   const canSearch = node === null || isTextSearchablePreview(previewMode);
   const canPrint = node !== null && isPrintablePreview(previewMode);
+  // EPUB / PDF 自带结构化全文搜索（EPUB 侧栏、PDF 文本层扫描+高亮）。
+  // 壳层 Cmd+F 只做转发：DOM 扫描对 iframe 化的 EPUB 够不着内容，
+  // 对虚拟化 PDF 只能命中已渲染的少数页，都不能作为回退。
+  const usesEmbeddedSearch = previewMode === 'epub' || previewMode === 'pdf';
 
-  const openSearchPanel = useCallback(() => {
-    const epubTarget = previewRootRef.current?.querySelector('[data-epub-preview]');
+  // 把打开搜索的请求转发给内嵌阅读器（EPUB 侧栏 / PDF 搜索条）。
+  // 阅读器尚未挂载（加载中）时为 no-op，返回 false。
+  const forwardSearchToEmbedded = useCallback((): boolean => {
+    const root = previewRootRef.current;
+    if (!root) return false;
+    const epubTarget = root.querySelector('[data-epub-preview]');
     if (epubTarget) {
       epubTarget.dispatchEvent(new CustomEvent('epub-preview-open-search'));
-      return;
+      return true;
     }
+    const pdfTarget = root.querySelector('[data-pdf-preview]');
+    if (pdfTarget) {
+      pdfTarget.dispatchEvent(new CustomEvent('pdf-preview-open-search'));
+      return true;
+    }
+    return false;
+  }, []);
+
+  const openSearchPanel = useCallback(() => {
+    if (forwardSearchToEmbedded()) return;
+    if (usesEmbeddedSearch) return;
     setSearchOpen(true);
     requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, []);
+  }, [forwardSearchToEmbedded, usesEmbeddedSearch]);
 
   const closeSearch = useCallback(() => {
     // Keep the query so reopening restores the last search (Chrome parity).
@@ -350,23 +369,21 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   }, []);
 
   // 加载期（node === null）先按可搜索放行；节点随后解析为图片/音视频等
-  // 不可搜索类型时，收起可能已被 Cmd+F 打开的搜索条，避免停留在无效状态
+  // 不可搜索类型时，收起可能已被 Cmd+F 打开的搜索条，避免停留在无效状态。
+  // EPUB / PDF 同理收起：它们的搜索由内嵌阅读器负责，壳层搜索条对其无效。
   useEffect(() => {
-    if (!canSearch) setSearchOpen(false);
-  }, [canSearch]);
+    if (!canSearch || usesEmbeddedSearch) setSearchOpen(false);
+  }, [canSearch, usesEmbeddedSearch]);
 
   const toggleSearchPanel = useCallback(() => {
-    const epubTarget = previewRootRef.current?.querySelector('[data-epub-preview]');
-    if (epubTarget) {
-      epubTarget.dispatchEvent(new CustomEvent('epub-preview-open-search'));
-      return;
-    }
+    if (forwardSearchToEmbedded()) return;
+    if (usesEmbeddedSearch) return;
     if (searchOpen) {
       closeSearch();
     } else {
       openSearchPanel();
     }
-  }, [closeSearch, openSearchPanel, searchOpen]);
+  }, [closeSearch, forwardSearchToEmbedded, openSearchPanel, searchOpen, usesEmbeddedSearch]);
 
   useEffect(() => {
     if (!node) return;
@@ -493,12 +510,15 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   }, []);
 
   const handleSave = useCallback(() => runAction('save', async () => {
-    if (!node || !sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
-    const result = await fileManager.saveFromSource({
+    if (!node) throw new Error(t('filePreview.downloadUnavailable'));
+    // 共享双通道：blob 直拷贝优先，legacy 内联资源回退 base64 落盘
+    const result = await saveResourceToDevice({
+      nodeId: node.id,
+      fileName: node.name,
       sourcePath,
-      defaultFileName: node.name,
       filters: fileFilters,
       title: t('filePreview.saveAs'),
+      notFoundMessage: t('filePreview.downloadUnavailable'),
     });
     if (!result.canceled) showGlobalNotification('success', t('filePreview.downloadSuccess'));
   }), [fileFilters, node, runAction, sourcePath, t]);
@@ -574,8 +594,12 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
       if (!mod || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key === 'f' && !event.shiftKey) {
-        event.preventDefault();
-        if (canSearch) openSearchPanel();
+        // 不可搜索类型不 preventDefault：让 Cmd+F 继续冒泡给其他消费者
+        // （如 WebView / 全局命令），而不是被壳层空吞。
+        if (canSearch) {
+          event.preventDefault();
+          openSearchPanel();
+        }
       } else if (key === 'g' && searchOpen) {
         event.preventDefault();
         navigateSearch(event.shiftKey ? -1 : 1);
@@ -583,14 +607,15 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         // 与工具栏打印钮的禁用条件对齐：文件对话框等忙碌期不弹打印
         event.preventDefault();
         handlePrint();
-      } else if (key === 's' && !event.shiftKey && sourcePath && !busyAction) {
+      } else if (key === 's' && !event.shiftKey && node && !busyAction) {
+        // 保存走双通道（blob → base64 回退），无 blob 路径也可用
         event.preventDefault();
         void handleSave();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [busyAction, canSearch, closeSearch, handlePrint, handleSave, isActive, navigateSearch, openSearchPanel, searchOpen, sourcePath]);
+  }, [busyAction, canSearch, closeSearch, handlePrint, handleSave, isActive, navigateSearch, node, openSearchPanel, searchOpen]);
 
   const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     // 中文等 IME 组词中的 Enter 是确认候选词，不应触发跳转
@@ -615,6 +640,8 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   }
 
   const actionsDisabled = !sourcePath || busyAction !== null;
+  // 保存有 base64 回退通道，不依赖 blob 路径；打开/定位必须有真实文件路径
+  const saveDisabled = !node || busyAction !== null;
   const collapseActions = toolbarWidth < (searchOpen ? 560 : 300);
   const truncated = searchState.ranges.length >= MAX_SEARCH_MATCHES;
   const hasQuery = Boolean(searchQuery.trim());
@@ -658,7 +685,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
             <ToolbarAction
               label={t('filePreview.saveAs')}
               shortcut={shortcutLabel('S')}
-              disabled={actionsDisabled}
+              disabled={saveDisabled}
               busy={busyAction === 'save'}
               onClick={() => { void handleSave(); }}
             >
@@ -778,6 +805,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 aria-label={t('filePreview.moreActions')}
               >
                 <DotsThree size={16} weight="bold" />
@@ -787,7 +815,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
               <AppMenuItem
                 icon={<FloppyDisk size={16} />}
                 shortcut={shortcutLabel('S')}
-                disabled={actionsDisabled}
+                disabled={saveDisabled}
                 onClick={() => { void handleSave(); }}
               >
                 {t('filePreview.saveAs')}

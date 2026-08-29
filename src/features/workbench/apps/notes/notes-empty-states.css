@@ -235,3 +235,12 @@
     background: hsl(var(--muted) / 56%);
   }
 }
+
+/* Touch devices: enlarge empty-state action hit targets (44px minimum).
+   min-height wins over the compact tree-empty height override too. */
+@media (pointer: coarse) {
+  .nes-action {
+    min-height: 44px;
+    height: auto;
+  }
+}

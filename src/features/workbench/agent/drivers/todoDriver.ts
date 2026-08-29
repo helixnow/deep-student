@@ -6,6 +6,7 @@
  * 见 docs/dev/acr/DESIGN.md §5.3。
  */
 
+import i18n from '@/i18n';
 import { useTodoStore } from '@/features/todo/stores/useTodoStore';
 import type {
   AcrProbeState,
@@ -24,8 +25,14 @@ import { agentFlashMany } from '../visuals/agentFlash';
 
 const TYPE_ID = 'todo';
 
-const UNSUPPORTED_HINT =
-  '请用 user_todo 领域工具修改待办数据；本驱动仅支持导航类 op（todo_show_list）';
+// 用户/agent 可见文案统一走 i18n（todo:agent.*）；defaultValue 兜底
+// todo namespace 尚未完成异步加载的窗口期。语言可运行时切换，故用函数而非模块级常量。
+function unsupportedHint(): string {
+  return i18n.t('todo:agent.unsupported_hint', {
+    defaultValue:
+      '请用 user_todo 领域工具修改待办数据；本驱动仅支持导航类 op（todo_show_list）',
+  });
+}
 
 interface ActiveRun {
   runId: string;
@@ -37,6 +44,8 @@ interface ActiveRun {
   applied: number;
   totalOps: number;
   nextOpIndex: number;
+  /** 出现过非导航 op（message 文案已本地化，不能再靠字符串嗅探回执内容判断） */
+  sawUnsupported: boolean;
   inversesCommitted: boolean;
   pendingInverses: Array<{ invert: () => Promise<void>; label: string }>;
   ledger: AcrRunContext['ledger'];
@@ -87,7 +96,9 @@ async function applyShowList(listId: string): Promise<void> {
   }
   const after = useTodoStore.getState();
   if ('activeListId' in after && after.activeListId !== listId) {
-    throw new Error('目标清单未激活');
+    throw new Error(
+      i18n.t('todo:agent.list_not_activated', { defaultValue: '目标清单未激活' }),
+    );
   }
   if ('error' in after && after.error) {
     throw new Error(after.error);
@@ -101,10 +112,19 @@ async function restoreList(listId: string | null): Promise<void> {
   if (typeof store.reloadCurrentView === 'function') await store.reloadCurrentView();
   const after = useTodoStore.getState();
   if ('activeListId' in after && after.activeListId !== listId) {
-    throw new Error('撤销失败：原清单未恢复');
+    throw new Error(
+      i18n.t('todo:agent.undo_list_not_restored', {
+        defaultValue: '撤销失败：原清单未恢复',
+      }),
+    );
   }
   if ('error' in after && after.error) {
-    throw new Error(`撤销失败：${after.error}`);
+    throw new Error(
+      i18n.t('todo:agent.undo_failed', {
+        error: after.error,
+        defaultValue: '撤销失败：{{error}}',
+      }),
+    );
   }
 }
 
@@ -163,6 +183,7 @@ export const todoDriver: CollabDriver & {
       applied: 0,
       totalOps: ops.length,
       nextOpIndex: 0,
+      sawUnsupported: false,
       inversesCommitted: false,
       pendingInverses: [],
       ledger: run.ledger,
@@ -181,7 +202,10 @@ export const todoDriver: CollabDriver & {
         pause = await run.checkPaused();
       } catch (err) {
         state.aborted = true;
-        state.errorMessage = `暂停检查失败：${err instanceof Error ? err.message : String(err)}`;
+        state.errorMessage = i18n.t('todo:agent.pause_check_failed', {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: '暂停检查失败：{{error}}',
+        });
         markRemaining(state);
         break;
       }
@@ -197,7 +221,12 @@ export const todoDriver: CollabDriver & {
       if (isNavShowList(op)) {
         const listId = payloadListId(op.payload);
         if (!listId) {
-          state.undone.push(`${op.label || op.kind}（缺少 listId）`);
+          state.undone.push(
+            i18n.t('todo:agent.op_missing_list_id', {
+              label: op.label || op.kind,
+              defaultValue: '{{label}}（缺少 listId）',
+            }),
+          );
         } else {
           try {
             const { useTodoStore } = await import(
@@ -220,18 +249,26 @@ export const todoDriver: CollabDriver & {
               await run.pacing.tick(listTickCost(run.pacing.profile));
             } catch (err) {
               state.aborted = true;
-              state.errorMessage = `节奏控制失败：${err instanceof Error ? err.message : String(err)}`;
+              state.errorMessage = i18n.t('todo:agent.pacing_failed', {
+                error: err instanceof Error ? err.message : String(err),
+                defaultValue: '节奏控制失败：{{error}}',
+              });
               markRemaining(state);
               break;
             }
           } catch (err) {
             state.undone.push(
-              `${op.label || op.kind}（失败: ${err instanceof Error ? err.message : String(err)}）`,
+              i18n.t('todo:agent.op_failed', {
+                label: op.label || op.kind,
+                error: err instanceof Error ? err.message : String(err),
+                defaultValue: '{{label}}（失败: {{error}}）',
+              }),
             );
           }
         }
       } else {
-        state.undone.push(`${op.label || op.kind} — ${UNSUPPORTED_HINT}`);
+        state.sawUnsupported = true;
+        state.undone.push(`${op.label || op.kind} — ${unsupportedHint()}`);
       }
       state.nextOpIndex = i + 1;
     }
@@ -257,9 +294,9 @@ export const todoDriver: CollabDriver & {
         undone: state.undone,
         message:
           state.errorMessage ?? (state.undone.length > 0 && state.applied === 0
-            ? UNSUPPORTED_HINT
-            : state.undone.some((u) => u.includes('user_todo'))
-              ? UNSUPPORTED_HINT
+            ? unsupportedHint()
+            : state.sawUnsupported
+              ? unsupportedHint()
               : undefined),
       }),
       TYPE_ID,
@@ -280,7 +317,9 @@ export const todoDriver: CollabDriver & {
           entityIds: state.entityIds,
           done: [...state.done],
           undone: [...state.undone],
-          message: 'todo 导航已中止',
+          message: i18n.t('todo:agent.nav_aborted', {
+            defaultValue: 'todo 导航已中止',
+          }),
         }),
         TYPE_ID,
       );
@@ -288,8 +327,10 @@ export const todoDriver: CollabDriver & {
     return withUserPatch(
       emptyReceipt({
         status: 'cancelled',
-        message: 'todo run 不存在或已结束',
-        undone: ['run 已结束'],
+        message: i18n.t('todo:agent.run_not_found', {
+          defaultValue: 'todo run 不存在或已结束',
+        }),
+        undone: [i18n.t('todo:agent.run_ended', { defaultValue: 'run 已结束' })],
       }),
       TYPE_ID,
     );

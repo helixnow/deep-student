@@ -345,6 +345,66 @@ describe('重内容暂停', () => {
   });
 });
 
+describe('重窗降级（memoryWeight ≥ 2）', () => {
+  beforeAll(() => {
+    appRegistry.register({ ...makeApp('heavy'), memoryWeight: 2 });
+  });
+
+  it('非焦点重窗打 data-expose-degrade；焦点重窗与轻窗不打', () => {
+    const h1 = openWin('heavy', 'h1', '重窗一');
+    const light = openWin('chat', 'l1', '轻窗');
+    const h2 = openWin('heavy', 'h2', '重窗二'); // 最后打开 → 焦点
+    const shellH1 = mountWindowShell(h1);
+    const shellLight = mountWindowShell(light);
+    const shellH2 = mountWindowShell(h2);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    expect(shellH1).toHaveAttribute('data-expose-degrade', 'true');
+    expect(shellH2).not.toHaveAttribute('data-expose-degrade');
+    expect(shellLight).not.toHaveAttribute('data-expose-degrade');
+    // 降级窗仍在网格内正常缩略（降级只关滤镜/阴影，不影响 FLIP）
+    expect(shellH1).toHaveAttribute('data-expose-transform', 'true');
+  });
+
+  it('退出俯瞰（飞回完成后）清除降级标记', async () => {
+    const h1 = openWin('heavy', 'h1', '重窗一');
+    openWin('heavy', 'h2', '重窗二');
+    const shellH1 = mountWindowShell(h1);
+    render(<ExposeOverlay />);
+    openExpose();
+    expect(shellH1).toHaveAttribute('data-expose-degrade', 'true');
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(shellH1).not.toHaveAttribute('data-expose-degrade');
+    expect(shellH1).not.toHaveAttribute('data-expose-transform');
+  });
+
+  it('会话中焦点窗被关闭：重排后新焦点重窗即时解除降级', async () => {
+    const h1 = openWin('heavy', 'h1', '重窗一');
+    const h2 = openWin('heavy', 'h2', '重窗二'); // 焦点
+    const shellH1 = mountWindowShell(h1);
+    mountWindowShell(h2);
+    render(<ExposeOverlay />);
+    openExpose();
+    expect(shellH1).toHaveAttribute('data-expose-degrade', 'true');
+
+    // 关掉焦点窗 h2 → h1 成为焦点栈顶，重排后不再命中降级条件
+    act(() => {
+      useWindowStore.getState().closeWindow(h2);
+    });
+    await vi.waitFor(() => {
+      expect(shellH1).not.toHaveAttribute('data-expose-degrade');
+    });
+    expect(shellH1).toHaveAttribute('data-expose-transform', 'true');
+  });
+});
+
 describe('退出恢复', () => {
   it('卸载遮罩前强制清理由中断更新遗留的缩略 transform', async () => {
     const id = openWin('chat', 'restore-orphan', '恢复测试');

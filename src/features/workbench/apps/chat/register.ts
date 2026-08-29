@@ -26,6 +26,7 @@ import type { StoreApi } from 'zustand';
 import { createChatAgentManifest } from './agentManifest';
 
 export const CHAT_APP_TYPE_ID = 'chat';
+export const CHAT_SESSION_APP_TYPE_ID = 'chat-session';
 
 // ============================================================================
 // onActivation 动作实现
@@ -251,18 +252,18 @@ async function scrollToMessage(
   return failure;
 }
 
-export async function handleChatActivation(ctx: ActivationContext): Promise<ActivationResult> {
-  const payloadSessionId = ctx.payload && typeof ctx.payload === 'object'
-    ? (ctx.payload as { sessionId?: unknown }).sessionId
+function extractPayloadSessionId(payload: unknown): string | null {
+  const value = payload && typeof payload === 'object'
+    ? (payload as { sessionId?: unknown }).sessionId
     : undefined;
-  const manager = await getSessionManager();
-  const sessionId = typeof payloadSessionId === 'string' && payloadSessionId
-    ? payloadSessionId
-    : manager.getCurrentSessionId() ?? ctx.instanceKey;
-  if (!sessionId) {
-    console.warn('[workbench:chat] activation ignored: no active session');
-    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: 'Chat 当前没有活动会话' };
-  }
+  return typeof value === 'string' && value ? value : null;
+}
+
+/** 会话已确定后的动作分发（chat 单例与 chat-session multi 实例共用） */
+async function dispatchChatAction(
+  sessionId: string,
+  ctx: ActivationContext,
+): Promise<ActivationResult> {
   let delivered = false;
   switch (ctx.action) {
     case 'setInput':
@@ -281,6 +282,32 @@ export async function handleChatActivation(ctx: ActivationContext): Promise<Acti
   return delivered
     ? { handled: true, acknowledged: true }
     : { handled: false, code: 'DELIVERY_FAILED', hint: 'Chat 指令未投递到目标会话' };
+}
+
+export async function handleChatActivation(ctx: ActivationContext): Promise<ActivationResult> {
+  const payloadSessionId = extractPayloadSessionId(ctx.payload);
+  const manager = await getSessionManager();
+  const sessionId = payloadSessionId ?? manager.getCurrentSessionId() ?? ctx.instanceKey;
+  if (!sessionId) {
+    console.warn('[workbench:chat] activation ignored: no active session');
+    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: 'Chat 当前没有活动会话' };
+  }
+  return dispatchChatAction(sessionId, ctx);
+}
+
+/**
+ * chat-session multi 实例窗的激活：会话身份就是 instanceKey
+ * （不回落全局 currentSessionId，保证多窗隔离）；payload.sessionId 仅作显式覆盖。
+ */
+export async function handleChatSessionActivation(
+  ctx: ActivationContext,
+): Promise<ActivationResult> {
+  const sessionId = extractPayloadSessionId(ctx.payload) ?? ctx.instanceKey;
+  if (!sessionId) {
+    console.warn('[workbench:chat-session] activation ignored: no session instance');
+    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: '该窗口未绑定会话' };
+  }
+  return dispatchChatAction(sessionId, ctx);
 }
 
 // ============================================================================
@@ -302,6 +329,27 @@ export const chatAppDefinition: AppDefinition = {
   agentManifest: createChatAgentManifest(handleChatActivation),
 };
 
+/**
+ * chat-session — 单会话 multi 实例窗口（会话右键「在新窗口打开」）。
+ *
+ * ChatSessionSurface 本就为多窗设计（store 按 sessionId 隔离、adapter
+ * 引用计数），这里补上正式的应用外壳：instanceKey = sessionId，
+ * 同一会话重复打开时 workbenchBus 按 instanceKey 去重聚焦已有窗口。
+ * showInLauncher: false —— 没有会话上下文无法独立启动，入口只在会话列表。
+ */
+export const chatSessionAppDefinition: AppDefinition = {
+  typeId: CHAT_SESSION_APP_TYPE_ID,
+  nameKey: 'apps.chatSession.name',
+  icon: React.createElement(AppIconImage, { typeId: 'chat', className: 'h-8 w-8' }),
+  showInLauncher: false,
+  instanceMode: 'multi',
+  memoryWeight: 2,
+  defaultFrame: { w: 860, h: 640 },
+  minSize: { w: 480, h: 400 },
+  render: React.lazy(() => import('./ChatSessionWindowFrame')),
+  onActivation: handleChatSessionActivation,
+};
+
 let registered = false;
 
 /** 幂等注册；模块被 import 时自动执行一次（P11 registerAll 直接 import 本模块即可） */
@@ -309,6 +357,7 @@ export function registerChatApp(): void {
   if (registered) return;
   registered = true;
   appRegistry.register(chatAppDefinition);
+  appRegistry.register(chatSessionAppDefinition);
 }
 
 registerChatApp();

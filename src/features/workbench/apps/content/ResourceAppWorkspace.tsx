@@ -455,7 +455,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <div className="wb-resource-workspace-message" role="alert">
               <WarningCircle size={22} />
               <span>{error}</span>
-              <DsButton variant="outline" size="sm" onClick={() => void loadItems()}>
+              <DsButton
+                variant="outline"
+                size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
+                onClick={() => void loadItems()}
+              >
                 {t('resourceHome.retry')}
               </DsButton>
             </div>
@@ -542,7 +547,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ResourceIcon size={38} weight="thin" />
             <strong>{t('workbench:resourceWorkspace.selectTitle')}</strong>
             <span>{t('workbench:resourceWorkspace.selectHint')}</span>
-            <DsButton size="sm" onClick={createResource} disabled={creating}>
+            <DsButton
+              size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
+              onClick={createResource}
+              disabled={creating}
+            >
               <Plus size={15} />
               {newLabel}
             </DsButton>

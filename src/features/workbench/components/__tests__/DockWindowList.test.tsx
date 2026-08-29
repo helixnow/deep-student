@@ -245,8 +245,6 @@ describe('DockWindowList', () => {
       await Promise.resolve();
     });
     ownerRef.current.focus();
-    const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
-    rafSpy.mockClear();
 
     rerender(
       <DockWindowList
@@ -259,9 +257,14 @@ describe('DockWindowList', () => {
       />,
     );
 
-    expect(rafSpy).not.toHaveBeenCalled();
+    // 不能断言"rAF 未被调用"：OverlayScrollbars 等库内部也会在重渲染时排队 rAF。
+    // 行为口径：等一帧让已排队回调（含潜在的 refocus rAF）执行完，焦点不应被列表抢回。
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
     expect(document.activeElement).toBe(ownerRef.current);
-    rafSpy.mockRestore();
   });
 
   it('role=menu 与 aria-label', () => {

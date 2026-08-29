@@ -5,12 +5,16 @@ export { ChatSessionSurface, type ChatSessionSurfaceProps } from './ChatSessionS
 export {
   registerChatApp,
   handleChatActivation,
+  handleChatSessionActivation,
   chatAppDefinition,
+  chatSessionAppDefinition,
   CHAT_APP_TYPE_ID,
+  CHAT_SESSION_APP_TYPE_ID,
 } from './register';
 export {
   launchNewChatSession,
   openChatSession,
+  openChatSessionInNewWindow,
   type LaunchNewChatSessionOptions,
   type LaunchNewChatSessionResult,
 } from './newSession';

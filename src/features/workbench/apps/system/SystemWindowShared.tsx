@@ -18,6 +18,7 @@ import { SidebarSimple, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { WbSysSizeClass } from './useWbSysSize';
 import './SystemWindowShared.css';
 
@@ -171,6 +172,16 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   const handleRef = useRef<HTMLButtonElement>(null);
   const compact = sizeClass === 'compact';
   const wasCompactRef = useRef(compact);
+  // 焦点陷阱（aria-modal 契约缺口修补）：抽屉开着时 Tab 不得穿透到遮罩后内容。
+  // 初始聚焦 / 关闭归还由下方既有 effect 负责，这里只补 Tab 循环。
+  const drawerTrapRef = useFocusTrap<HTMLDivElement>(compact && drawerOpen, {
+    initialFocus: false,
+    restoreFocus: false,
+  });
+  const setDrawerRefs = useCallback((el: HTMLDivElement | null) => {
+    drawerRef.current = el;
+    drawerTrapRef.current = el;
+  }, [drawerTrapRef]);
 
   // 离开 compact 档时收起抽屉，避免回宽窗后残留状态
   useEffect(() => {
@@ -269,7 +280,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
 
           {/* 抽屉（常驻挂载，visibility 切换） */}
           <div
-            ref={drawerRef}
+            ref={setDrawerRefs}
             className="wb-sys-drawer"
             data-open={drawerOpen ? 'true' : 'false'}
             tabIndex={-1}

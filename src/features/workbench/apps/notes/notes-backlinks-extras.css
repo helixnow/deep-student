@@ -227,12 +227,30 @@
   outline-offset: 1px;
 }
 
-/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标 */
+/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标。
+   44px 触控目标，负 margin 抵消占位（实际占用仍 36px） */
 @media (pointer: coarse) {
   .notes-backlinks-panel-create-button {
     opacity: 1;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    margin: -4px;
+  }
+
+  /* 「展开上下文」文字链同样补足 44px 触控高度，保持文字链视觉 */
+  .notes-backlinks-panel-more-context {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* 分区折叠开关、「加载更多」按钮同样补足 44px 触控高度 */
+  .notes-backlinks-panel-section-toggle {
+    min-height: 44px;
+  }
+
+  .notes-backlinks-panel-load-more {
+    min-height: 44px;
   }
 }
 

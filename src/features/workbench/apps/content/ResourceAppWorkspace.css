@@ -254,6 +254,11 @@
     min-height: 44px;
   }
 
+  /* font: inherit 继承 13px，低于 iOS Safari 16px 阈值会触发聚焦自动缩放 */
+  .wb-resource-workspace-search input {
+    font-size: 16px;
+  }
+
   .wb-resource-workspace-sidebar-footer {
     height: auto;
     min-height: 52px;

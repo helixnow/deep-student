@@ -174,6 +174,51 @@
   color: currentColor;
 }
 
+/* ==== automation 状态项（2026-08：自 StatusBarItems 内联 <style> 迁入） ====
+   running 呼吸脉冲 + failed 红点角标；prefers-reduced-motion 下取消动画。 */
+
+@keyframes wb-menubar-automation-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.wb-menubar-automation-iconwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
+  animation: wb-menubar-automation-pulse 1.6s ease-in-out infinite;
+}
+
+.wb-menubar-automation-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--destructive));
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
+    animation: none;
+  }
+}
+
+/* 番茄状态项：暂停态数字压暗，与「已暂停」文案呼应（data-status 由 TSX 提供） */
+.wb-menubar-item[data-wb-status-item='pomodoro'][data-status='paused'] .wb-menubar-item-value {
+  opacity: 0.55;
+}
+
 .wb-menubar-item-icon {
   display: inline-flex;
   flex-shrink: 0;
@@ -607,5 +652,47 @@
   .wb-menubar-settings,
   .wb-menubar-clock {
     display: none;
+  }
+}
+
+/* ==== 触屏命中区（pointer: coarse） ====================================== */
+
+/* 菜单栏项受 26px 桌面壳顶栏约束，不硬叠 44 视觉：伪元素纵向外扩到 40px
+   顶栏满高（再高会盖到其下窗口内容）；横向不扩，避免相邻项命中互相重叠 */
+@media (pointer: coarse) {
+  .wb-menubar-item {
+    position: relative;
+  }
+
+  .wb-menubar-item::after {
+    content: '';
+    position: absolute;
+    inset: -7px 0;
+  }
+
+  /* Windows 窗控三键同款伪元素外扩（26px 视觉不变） */
+  .wb-menubar-window-controls [data-shell-window-button] {
+    position: relative;
+  }
+
+  .wb-menubar-window-controls [data-shell-window-button]::after {
+    content: '';
+    position: absolute;
+    inset: -7px 0;
+  }
+
+  /* 时钟 flyout：议程行（~31px）与「打开待办」（~29px）升到 44px 命中高度
+     （弹层无高度约束，桌面细指针密度不变） */
+  .wb-menubar-agenda-item {
+    min-height: 44px;
+  }
+
+  .wb-menubar-agenda-open {
+    min-height: 44px;
+  }
+
+  /* 空态「创建待办」钮 14px padding + 单行文字约 43px 边缘值，补稳到 44px */
+  .wb-menubar-agenda-empty-action {
+    min-height: 44px;
   }
 }

@@ -48,7 +48,11 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => {
     return selector(state);
   };
   useFinderStore.getState = () => state;
-  return { useFinderStore, ViewMode: undefined };
+  return {
+    useFinderStore,
+    ViewMode: undefined,
+    FINDER_HOST_IDS: { files: 'files' },
+  };
 });
 
 import FilesAppWindow, { launchResourceItem } from '../FilesAppWindow';

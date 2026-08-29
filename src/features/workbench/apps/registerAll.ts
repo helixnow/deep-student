@@ -22,6 +22,7 @@ import { registerSystemApps } from './system/register';
 import { registerSandboxApp } from './sandbox/register';
 import { registerBrowserApp } from './browser/register';
 import { registerDesktopAgentTarget } from './desktop/register';
+import './ai-dashboard/register';
 
 /** Dock 固定区默认值（编排文档 P11：chat/files/settings/todo）
  * 保持短 Dock 4 钉；全部应用发现走 L4 AppsPanel（Dock 右侧 `__apps__` 入口），勿钉满。 */

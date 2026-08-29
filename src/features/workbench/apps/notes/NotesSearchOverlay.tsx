@@ -13,11 +13,15 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { setWorkbenchDragData } from '../../hooks/useDesktopDrop';
 import { highlightRanges } from './highlightRanges';
 import {
+  nodeMatchesProps,
   nodeMatchesTags,
-  parseTagQuery,
-  removeTagFromQuery,
+  parseSearchOperators,
+  pathMatchesFilters,
+  removeOperatorFromQuery,
+  type ParsedPropFilter,
 } from './parseTagQuery';
 import './NotesSearchOverlay.css';
 import './NotesSearchHighlight.css';
@@ -105,12 +109,36 @@ function matchesQuickOpen(resource: DstuNode, query: string): number | null {
   return null;
 }
 
-function getQuickOpenResults(
+/** `path:` 匹配的干草堆：文件夹路径 + 资源名（用户视角的完整路径）。 */
+function resourcePathHaystack(resource: DstuNode): string {
+  return [...pathSegments(resource), resource.name].join('/');
+}
+
+interface OperatorFilters {
+  tags: readonly string[];
+  paths: readonly string[];
+  props: readonly ParsedPropFilter[];
+}
+
+function resourceMatchesOperators(resource: DstuNode, filters: OperatorFilters): boolean {
+  return nodeMatchesTags(resource.metadata, filters.tags)
+    && pathMatchesFilters(resourcePathHaystack(resource), filters.paths)
+    && nodeMatchesProps(resource.metadata, filters.props);
+}
+
+interface LimitedResults {
+  results: DstuNode[];
+  /** True when matches beyond `maxResults` were dropped by the visible cap. */
+  hasMore: boolean;
+}
+
+export function getQuickOpenResults(
   resources: readonly DstuNode[],
   allowedTypes: ReadonlySet<DstuNodeType>,
   query: string,
   maxResults: number,
-): DstuNode[] {
+  filters: OperatorFilters = { tags: [], paths: [], props: [] },
+): LimitedResults {
   const seen = new Set<string>();
   const ranked: RankedResource[] = [];
   const normalizedQuery = normalized(query);
@@ -118,39 +146,47 @@ function getQuickOpenResults(
   for (const resource of resources) {
     if (!allowedTypes.has(resource.type)) continue;
     if (seen.has(resourceKey(resource))) continue;
+    if (!resourceMatchesOperators(resource, filters)) continue;
     const rank = matchesQuickOpen(resource, normalizedQuery);
     if (rank === null) continue;
     seen.add(resourceKey(resource));
     ranked.push({ resource, rank });
   }
 
-  return ranked
+  const sorted = ranked
     .sort((left, right) => (
       left.rank - right.rank
       || right.resource.updatedAt - left.resource.updatedAt
       || left.resource.name.localeCompare(right.resource.name)
     ))
-    .slice(0, maxResults)
     .map(({ resource }) => resource);
+  return {
+    results: sorted.slice(0, maxResults),
+    hasMore: sorted.length > maxResults,
+  };
 }
 
-function getAllowedFullTextResults(
+export function getAllowedFullTextResults(
   resources: readonly DstuNode[],
   allowedTypes: ReadonlySet<DstuNodeType>,
   maxResults: number,
-  requiredTags: readonly string[] = [],
-): DstuNode[] {
+  filters: OperatorFilters = { tags: [], paths: [], props: [] },
+): LimitedResults {
   const seen = new Set<string>();
-  const result: DstuNode[] = [];
+  const results: DstuNode[] = [];
+  let hasMore = false;
   for (const resource of resources) {
     if (!allowedTypes.has(resource.type)) continue;
     if (seen.has(resourceKey(resource))) continue;
-    if (!nodeMatchesTags(resource.metadata, requiredTags)) continue;
+    if (!resourceMatchesOperators(resource, filters)) continue;
     seen.add(resourceKey(resource));
-    result.push(resource);
-    if (result.length >= maxResults) break;
+    if (results.length >= maxResults) {
+      hasMore = true;
+      break;
+    }
+    results.push(resource);
   }
-  return result;
+  return { results, hasMore };
 }
 
 /** Remove optional FTS highlight markup before rendering a result snippet as text. */
@@ -220,6 +256,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const [uncontrolledMode, setUncontrolledMode] = useState<NotesSearchMode>(initialMode);
   const [query, setQuery] = useState(initialQuery);
   const [fullTextResults, setFullTextResults] = useState<DstuNode[]>([]);
+  const [fullTextHasMore, setFullTextHasMore] = useState(false);
+  const [pageCount, setPageCount] = useState(1);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -234,20 +272,38 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const overlayId = useId();
 
   const activeMode = mode ?? uncontrolledMode;
-  const visibleResultLimit = Math.max(1, Math.floor(maxResults));
+  // 「加载更多」逐页抬高可见上限：24 条只是首屏预算而非硬顶
+  const pageSize = Math.max(1, Math.floor(maxResults));
+  const visibleResultLimit = pageSize * pageCount;
   const allowedTypes = useMemo(() => new Set(resourceTypes), [resourceTypes]);
 
-  const parsedQuery = useMemo(() => parseTagQuery(query), [query]);
+  const parsedQuery = useMemo(() => parseSearchOperators(query), [query]);
   const highlightQuery = parsedQuery.textQuery;
   const activeFilterTags = parsedQuery.tags;
+  const activeFilterPaths = parsedQuery.paths;
+  const activeFilterProps = parsedQuery.props;
+  const hasOperatorFilters = activeFilterTags.length > 0
+    || activeFilterPaths.length > 0
+    || activeFilterProps.length > 0;
   const quickOpenFilterText = highlightQuery;
 
   // Empty-query quick open leads with the recently opened group; a typed
   // query switches back to pure relevance ranking over the whole library.
-  const { results: quickOpenResults, recentCount } = useMemo(() => {
-    const base = getQuickOpenResults(resources, allowedTypes, quickOpenFilterText, visibleResultLimit);
-    if (quickOpenFilterText || !recentResources?.length) {
-      return { results: base, recentCount: 0 };
+  const { results: quickOpenResults, recentCount, hasMore: quickOpenHasMore } = useMemo(() => {
+    const filters: OperatorFilters = {
+      tags: activeFilterTags,
+      paths: activeFilterPaths,
+      props: activeFilterProps,
+    };
+    const base = getQuickOpenResults(
+      resources,
+      allowedTypes,
+      quickOpenFilterText,
+      visibleResultLimit,
+      filters,
+    );
+    if (quickOpenFilterText || hasOperatorFilters || !recentResources?.length) {
+      return { results: base.results, recentCount: 0, hasMore: base.hasMore };
     }
     const seen = new Set<string>();
     const recents: DstuNode[] = [];
@@ -259,14 +315,27 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       recents.push(resource);
       if (recents.length >= QUICK_OPEN_RECENT_LIMIT) break;
     }
-    if (recents.length === 0) return { results: base, recentCount: 0 };
-    const rest = base.filter((resource) => !seen.has(resourceKey(resource)));
+    if (recents.length === 0) return { results: base.results, recentCount: 0, hasMore: base.hasMore };
+    const rest = base.results.filter((resource) => !seen.has(resourceKey(resource)));
+    const combined = [...recents, ...rest];
     return {
-      results: [...recents, ...rest].slice(0, visibleResultLimit),
+      results: combined.slice(0, visibleResultLimit),
       recentCount: Math.min(recents.length, visibleResultLimit),
+      hasMore: base.hasMore || combined.length > visibleResultLimit,
     };
-  }, [allowedTypes, quickOpenFilterText, recentResources, resources, visibleResultLimit]);
+  }, [
+    activeFilterPaths,
+    activeFilterProps,
+    activeFilterTags,
+    allowedTypes,
+    hasOperatorFilters,
+    quickOpenFilterText,
+    recentResources,
+    resources,
+    visibleResultLimit,
+  ]);
   const displayedResults = activeMode === 'quick-open' ? quickOpenResults : fullTextResults;
+  const hasMoreResults = activeMode === 'quick-open' ? quickOpenHasMore : fullTextHasMore;
   const showRecentGroups = activeMode === 'quick-open' && recentCount > 0;
   const hasResultList = displayedResults.length > 0 && !searchError && !openError;
   const listId = `${overlayId}-notes-search-results`;
@@ -280,9 +349,13 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     onModeChange?.(nextMode);
   }, [mode, onModeChange]);
 
-  const removeActiveTag = useCallback((tag: string) => {
-    setQuery((current) => removeTagFromQuery(current, tag));
+  const removeActiveOperator = useCallback((key: string, value: string) => {
+    setQuery((current) => removeOperatorFromQuery(current, key, value));
     setOpenError(null);
+  }, []);
+
+  const loadMoreResults = useCallback(() => {
+    setPageCount((current) => current + 1);
   }, []);
 
   useEffect(() => {
@@ -291,6 +364,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       if (mode === undefined) setUncontrolledMode(initialMode);
       setQuery(initialQuery);
       setFullTextResults([]);
+      setFullTextHasMore(false);
+      setPageCount(1);
       setSearchError(null);
       setOpenError(null);
       setIsOpening(false);
@@ -324,26 +399,34 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
 
   useEffect(() => {
     setActiveIndex(0);
+    setPageCount(1);
   }, [activeMode, query]);
 
   useEffect(() => {
     setActiveIndex((current) => Math.min(current, Math.max(0, displayedResults.length - 1)));
   }, [displayedResults.length]);
 
+  const lastFullTextKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!open || activeMode !== 'full-text') {
       searchSequenceRef.current += 1;
+      lastFullTextKeyRef.current = null;
       setFullTextResults([]);
+      setFullTextHasMore(false);
       setSearchError(null);
       setIsSearching(false);
       return undefined;
     }
 
-    const { textQuery, tags: queryTags } = parseTagQuery(query);
-    const hasSearchIntent = Boolean(textQuery.trim() || queryTags.length > 0);
+    const { textQuery, tags: queryTags, paths: queryPaths, props: queryProps } = parseSearchOperators(query);
+    const hasSearchIntent = Boolean(
+      textQuery.trim() || queryTags.length > 0 || queryPaths.length > 0 || queryProps.length > 0,
+    );
     const sequence = ++searchSequenceRef.current;
     if (!hasSearchIntent) {
+      lastFullTextKeyRef.current = null;
       setFullTextResults([]);
+      setFullTextHasMore(false);
       setSearchError(null);
       setIsSearching(false);
       return undefined;
@@ -352,7 +435,13 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     setIsSearching(true);
     setSearchError(null);
     // Do not leave an old query actionable while the next request is pending.
-    setFullTextResults([]);
+    // 「加载更多」（仅可见页数变化）保留现有结果，避免列表闪空。
+    const queryKey = query;
+    if (lastFullTextKeyRef.current !== queryKey) {
+      lastFullTextKeyRef.current = queryKey;
+      setFullTextResults([]);
+      setFullTextHasMore(false);
+    }
     const fetchLimit = Math.max(visibleResultLimit * 3, 30);
     const searchText = textQuery.trim();
     const timer = window.setTimeout(() => {
@@ -375,27 +464,33 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           const result = await dstu.search(searchText, {
             ...searchOptions,
             ...(filterTags.length > 0 ? { tags: filterTags } : {}),
+            ...(queryProps.length > 0 ? { propFilters: queryProps } : {}),
             types: [...resourceTypes],
             limit: fetchLimit,
           });
           if (sequence !== searchSequenceRef.current) return;
           if (!result.ok) {
             setFullTextResults([]);
+            setFullTextHasMore(false);
             setSearchError(getErrorMessage(
               result.error,
               t('notesWorkspace.searchOverlay.searchFailed', 'Could not search notes.'),
             ));
             return;
           }
-          setFullTextResults(getAllowedFullTextResults(
+          const limited = getAllowedFullTextResults(
             result.value,
             allowedTypes,
             visibleResultLimit,
-            filterTags,
-          ));
+            { tags: filterTags, paths: queryPaths, props: queryProps },
+          );
+          setFullTextResults(limited.results);
+          // 后端可能还有未取回的匹配：取满 fetchLimit 也视为「可能有更多」
+          setFullTextHasMore(limited.hasMore || result.value.length >= fetchLimit);
         } catch (error) {
           if (sequence !== searchSequenceRef.current) return;
           setFullTextResults([]);
+          setFullTextHasMore(false);
           setSearchError(getErrorMessage(
             error,
             t('notesWorkspace.searchOverlay.searchFailed', 'Could not search notes.'),
@@ -489,6 +584,32 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Obsidian 1.12「Quick switcher: dragging results」对位：结果行可拖出
+  // 面板（拖到桌面开窗等），负载复用 O19 的 WB_RESOURCE_MIME 协议，
+  // 与 files 列表拖源、桌面落点桥（desktopDragBridge）同构。
+  const onResultDragStart = useCallback((
+    event: React.DragEvent<HTMLButtonElement>,
+    resource: DstuNode,
+  ) => {
+    try {
+      setWorkbenchDragData(event.dataTransfer, {
+        resourceId: resource.id,
+        resourceType: resource.type,
+        title: resource.name,
+      });
+    } catch {
+      // 异常负载（如空标题）：取消本次拖拽，点击打开路径不受影响
+      event.preventDefault();
+    }
+  }, []);
+
+  const onResultDragEnd = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
+    // 落点接收（dropEffect 非 none）说明资源已在别处打开，随手关掉面板；
+    // 拖拽被取消（Esc / 拖回面板）时保持面板打开，用户可继续检索
+    const effect = event.dataTransfer?.dropEffect;
+    if (effect && effect !== 'none') onCloseRef.current();
+  }, []);
+
   // 点击面板外任意位置关闭（无遮罩形态下的轻量 dismiss）
   const onOutsidePointerDown = useCallback((event: Event) => {
     const root = rootRef.current;
@@ -507,6 +628,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，open 态也随之滞留——
+      // 此时不消费返回键、不误关搜索面板，交还给当前活跃视图
+      // （对照 NotesWorkspaceApp explorer handler 的同款守卫）
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -520,8 +647,13 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const placeholder = activeMode === 'quick-open'
     ? t('notesWorkspace.searchOverlay.quickOpenPlaceholder', 'Filter openable files...')
     : t('notesWorkspace.searchOverlay.fullTextPlaceholder', 'Search note contents...');
-  const hasSearchIntent = Boolean(highlightQuery.trim() || activeFilterTags.length > 0);
-  const tagHint = t('notesWorkspace.searchOverlay.tagHint', 'tag:name filters by tag');
+  const hasSearchIntent = Boolean(highlightQuery.trim() || hasOperatorFilters);
+  const tagHint = t('notesWorkspace.searchOverlay.tagHint', 'tag: path: key:value filter results');
+  const activeOperatorChips: Array<{ key: string; value: string; label: string }> = [
+    ...activeFilterTags.map((tag) => ({ key: 'tag', value: tag, label: `tag:${tag}` })),
+    ...activeFilterPaths.map((path) => ({ key: 'path', value: path, label: `path:${path}` })),
+    ...activeFilterProps.map(({ key, value }) => ({ key, value, label: `${key}:${value}` })),
+  ];
 
   return (
     // 顶部居中悬浮命令条（无 backdrop / 无 aria-modal；点击外部、Esc、关闭按钮均可退出）
@@ -575,7 +707,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
         </button>
       </div>
 
-      {activeFilterTags.length > 0 && (
+      {activeOperatorChips.length > 0 && (
         <div
           className="notes-search-overlay-active-tags"
           data-notes-search-active-tags
@@ -584,15 +716,21 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           <span className="notes-search-overlay-active-tags-label">
             {t('workbench:notesWorkspace.searchOverlay.activeTags')}
           </span>
-          {activeFilterTags.map((tag) => (
-            <span key={tag} className="notes-search-overlay-active-tag">
-              <span className="notes-search-overlay-active-tag-name">{tag}</span>
+          {activeOperatorChips.map((chip) => (
+            <span key={chip.label} className="notes-search-overlay-active-tag">
+              <span className="notes-search-overlay-active-tag-name">
+                {chip.key === 'tag' ? chip.value : chip.label}
+              </span>
               <button
                 type="button"
                 className="notes-search-overlay-active-tag-remove"
-                onClick={() => removeActiveTag(tag)}
-                aria-label={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
-                title={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
+                onClick={() => removeActiveOperator(chip.key, chip.value)}
+                aria-label={t('workbench:notesWorkspace.searchOverlay.removeTag', {
+                  tag: chip.key === 'tag' ? chip.value : chip.label,
+                })}
+                title={t('workbench:notesWorkspace.searchOverlay.removeTag', {
+                  tag: chip.key === 'tag' ? chip.value : chip.label,
+                })}
               >
                 <X size={12} aria-hidden="true" />
               </button>
@@ -690,6 +828,9 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                     data-active={selected ? 'true' : undefined}
                     data-notes-search-index={index}
                     disabled={isOpening}
+                    draggable={!isOpening}
+                    onDragStart={(event) => onResultDragStart(event, resource)}
+                    onDragEnd={onResultDragEnd}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => void openResult(resource)}
                   >
@@ -733,6 +874,21 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                 );
               })}
             </ul>
+            {hasMoreResults && (
+              <div className="notes-search-overlay-more">
+                <button
+                  type="button"
+                  className="notes-search-overlay-load-more"
+                  data-notes-search-load-more
+                  disabled={isSearching}
+                  onClick={loadMoreResults}
+                >
+                  {isSearching
+                    ? t('notesWorkspace.searchOverlay.loadingMore', 'Loading more...')
+                    : t('notesWorkspace.searchOverlay.loadMore', 'Load more results')}
+                </button>
+              </div>
+            )}
           </CustomScrollArea>
         ) : isSearching ? (
           <div className="notes-search-overlay-skeleton" aria-hidden="true">
@@ -762,10 +918,15 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
         <span>{t('notesWorkspace.searchOverlay.keyboardHint', 'Up/Down to select, Enter to open, Esc to close')}</span>
         {hasResultList && (
           <span>
-            {t('notesWorkspace.searchOverlay.resultCount', {
-              count: displayedResults.length,
-              defaultValue: '{{count}} results',
-            })}
+            {hasMoreResults
+              ? t('notesWorkspace.searchOverlay.resultCountMore', {
+                count: displayedResults.length,
+                defaultValue: '{{count}}+ results',
+              })
+              : t('notesWorkspace.searchOverlay.resultCount', {
+                count: displayedResults.length,
+                defaultValue: '{{count}} results',
+              })}
           </span>
         )}
       </div>

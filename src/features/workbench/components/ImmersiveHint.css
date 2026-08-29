@@ -1,0 +1,100 @@
+/**
+ * ImmersiveHint 专属样式（全部 wb-immersive- 前缀，不重定义契约类）
+ * ---------------------------------------------------------------------------
+ * - 顶缘胶囊提示：玻璃底 + 弱边，压在沉浸窗口之上（--wb-z-hud）；
+ * - 淡出后 pointer-events:none，绝不挡住窗口顶部内容；
+ * - 动画仅 transform / opacity；reduced-motion 与 minimal 材质档下时长归零。
+ */
+
+.wb-immersive-hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: var(--wb-z-hud, 9800);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  padding: 7px 8px 7px 14px;
+  border: 1px solid var(--wb-glass-border);
+  border-radius: 999px;
+  background-color: var(--wb-glass-bg-strong);
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  color: var(--text-primary, hsl(var(--foreground)));
+  font-size: 12.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition:
+    opacity var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out),
+    transform var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out);
+}
+
+.wb-immersive-hint[data-visible='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.wb-immersive-hint[data-visible='false'] {
+  opacity: 0;
+  transform: translate(-50%, -12px);
+  pointer-events: none;
+}
+
+.wb-immersive-hint-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-immersive-hint-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in hsl, hsl(var(--primary)) 42%, hsl(var(--border)) 58%);
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--primary)) 16%, transparent 84%);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wb-immersive-hint-exit:hover {
+  background: color-mix(in hsl, hsl(var(--primary)) 26%, transparent 74%);
+}
+
+.wb-immersive-hint-exit:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 70%);
+  outline-offset: 1px;
+}
+
+/* 触控：退出按钮给足 44px 命中高度，提示条整体加大 */
+@media (pointer: coarse) {
+  .wb-immersive-hint {
+    padding: 8px 8px 8px 16px;
+    font-size: 14px;
+    white-space: normal;
+  }
+
+  .wb-immersive-hint-exit {
+    min-height: 44px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-immersive-hint {
+    transition-duration: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-immersive-hint {
+  transition-duration: 0ms;
+}

@@ -95,6 +95,107 @@ describe('DockPinnedStore', () => {
     expect(result.current).toEqual({});
   });
 
+  it('拖拽启动阈值按指针类型差异化：触屏 10px 不启动 / 15px 启动；鼠标 6px 即启动', () => {
+    setDockPinned(['a', 'b']);
+
+    // 队列式 rAF：flushFrame 开头会清 rafId，同步执行的 stub 会把返回值
+    // 写回 rafId 卡死后续 move 的合帧调度，必须事后手动冲刷
+    const rafQueue: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const flushRaf = () => {
+      while (rafQueue.length) rafQueue.shift()!(0);
+    };
+    // jsdom 无 WAAPI：finish 路径的 cancelElementAnimations 需要 getAnimations
+    HTMLElement.prototype.getAnimations = function () {
+      return [];
+    };
+
+    const listeners = new Map<string, EventListener>();
+    const origAdd = window.addEventListener.bind(window);
+    const origRemove = window.removeEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (
+        typeof listener === 'function' &&
+        (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')
+      ) {
+        listeners.set(String(type), listener as EventListener);
+      }
+      return origAdd(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | AddEventListenerOptions,
+      );
+    });
+    vi.spyOn(window, 'removeEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel') {
+        listeners.delete(String(type));
+      }
+      return origRemove(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | EventListenerOptions,
+      );
+    });
+
+    let bindA: { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void } | null = null;
+
+    function Harness() {
+      const a = useDockPinnedDragReorder('a');
+      const b = useDockPinnedDragReorder('b');
+      if ('onPointerDown' in a) bindA = a as { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void };
+      return (
+        <div className="wb-dock">
+          <div data-testid="pin-a" {...(a as React.HTMLAttributes<HTMLDivElement>)} />
+          <div data-testid="pin-b" {...(b as React.HTMLAttributes<HTMLDivElement>)} />
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<Harness />);
+    const elA = getByTestId('pin-a');
+    expect(bindA).toBeTruthy();
+
+    const down = (pointerId: number, clientX: number, pointerType: string) => {
+      act(() => {
+        bindA!.onPointerDown({
+          button: 0,
+          pointerId,
+          clientX,
+          pointerType,
+          currentTarget: elA,
+          target: elA,
+        } as unknown as React.PointerEvent<HTMLElement>);
+      });
+    };
+    const call = (type: 'pointermove' | 'pointerup', pointerId: number, clientX: number) => {
+      act(() => {
+        listeners.get(type)!({ pointerId, clientX } as unknown as Event);
+        if (type === 'pointermove') flushRaf();
+      });
+    };
+
+    // 触屏：10px（≤ 长按容差）不启动重排
+    down(11, 100, 'touch');
+    call('pointermove', 11, 110);
+    expect(elA).not.toHaveAttribute('data-wb-dock-pinned-dragging');
+    // 15px（> 14px 阈值）才启动
+    call('pointermove', 11, 115);
+    expect(elA).toHaveAttribute('data-wb-dock-pinned-dragging');
+    call('pointerup', 11, 115);
+    expect(elA).not.toHaveAttribute('data-wb-dock-pinned-dragging');
+
+    // 鼠标：6px（> 5px 阈值）即启动，灵敏手感不变
+    down(12, 100, 'mouse');
+    call('pointermove', 12, 106);
+    expect(elA).toHaveAttribute('data-wb-dock-pinned-dragging');
+    call('pointerup', 12, 106);
+    expect(getDockPinned()).toEqual(['a', 'b']); // 未跨槽，不重排
+  });
+
   it('兄弟让位：fill none；跨槽 cancel 旧动画；drop 后清残留', () => {
     setDockPinned(['a', 'b', 'c']);
 

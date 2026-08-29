@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { Trash, UploadSimple, X } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 import {
   CUSTOM_WALLPAPER_LIBRARY_LIMIT,
@@ -125,7 +126,8 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [adjust, setAdjust] = useState<ImageAdjust>(() => adjustFromConfig(wallpaper));
 
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  // 焦点陷阱（aria-modal 契约）：Tab 在面板内循环；关闭后焦点归还打开前元素
+  const panelRef = useFocusTrap<HTMLDivElement>(open);
   const adjustTimerRef = useRef<number | null>(null);
 
   const applyWallpaper = useCallback((next: WallpaperConfig) => {
@@ -162,10 +164,7 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  // 打开时聚焦面板（Esc / 键盘可达）
-  useEffect(() => {
-    if (open) panelRef.current?.focus({ preventScroll: true });
-  }, [open]);
+  // 打开时的初始聚焦 / Tab 循环 / 关闭归还统一由 useFocusTrap 提供
 
   // 卸载 / 关闭兜底：取消进行中的调节防抖计时器
   useEffect(() => {
@@ -431,7 +430,8 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
                   <span className="wb-wpm-adjust-label">{t('wallpaperManager.blur')}</span>
                   <input
                     type="range"
-                    className="wb-wpm-slider"
+                    // 触屏命中区 ≥44px：原生 appearance 轨道垂直居中渲染，加高盒不改轨道视觉
+                    className="wb-wpm-slider [@media(pointer:coarse)]:!min-h-11"
                     min={0}
                     max={40}
                     step={1}
@@ -451,7 +451,8 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
                   <span className="wb-wpm-adjust-label">{t('wallpaperManager.dim')}</span>
                   <input
                     type="range"
-                    className="wb-wpm-slider"
+                    // 触屏命中区 ≥44px：原生 appearance 轨道垂直居中渲染，加高盒不改轨道视觉
+                    className="wb-wpm-slider [@media(pointer:coarse)]:!min-h-11"
                     min={0}
                     max={0.6}
                     step={0.05}
