@@ -158,6 +158,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     mergeWithPrevious,
     mergeNextIntoCurrent,
     revealBlank,
+    markBlanksPresented,
     addBlankRange,
     removeBlankRange,
     removeNodeRef,
@@ -1222,6 +1223,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             revealedIndices={revealedForNode}
             reciteMode={reciteMode}
             onRevealBlank={(rangeIndex) => revealBlank(node.id, rangeIndex)}
+            onBlanksPresented={(rangeIndices) => markBlanksPresented(node.id, rangeIndices)}
             onAddBlank={(range) => addBlankRange(node.id, range)}
             onRemoveBlank={(rangeIndex) => removeBlankRange(node.id, rangeIndex)}
             className={cn(
@@ -1377,6 +1379,21 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             placeholder={t('placeholder.note')}
             minRows={1}
           />
+        )}
+        {node.images && node.images.length > 0 && (
+          <div className="flex flex-wrap gap-1 px-[6px] pb-1" data-testid="outline-node-images">
+            {node.images.map((image, index) => (
+              <img
+                key={index}
+                src={image.src}
+                alt={image.name || t('node.imageAlt', { defaultValue: '节点图片' })}
+                title={image.name}
+                loading="lazy"
+                draggable={false}
+                className="max-h-12 max-w-[96px] rounded border border-[var(--mm-border)] object-contain select-none"
+              />
+            ))}
+          </div>
         )}
         {node.refs && node.refs.length > 0 && (
           <NodeRefList

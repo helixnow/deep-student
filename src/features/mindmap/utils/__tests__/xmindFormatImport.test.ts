@@ -1,7 +1,11 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createXmindImportReport,
   importFromXmindZip,
+  MAX_IMPORT_IMAGE_COUNT,
+  MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES,
+  MAX_INLINE_IMAGE_BYTES,
   MAX_XMIND_ARCHIVE_BYTES,
   MAX_XMIND_CONTENT_BYTES,
 } from '../importers';
@@ -274,5 +278,96 @@ describe('importFromXmindZip', () => {
   it('rejects archives without required content', async () => {
     const data = await zipEntry('metadata.json', '{}');
     await expect(importFromXmindZip(data)).rejects.toThrow('content.json or content.xml not found');
+  });
+
+  // ==========================================================================
+  // 图片内联预算（单图上限 + 整次导入的数量/累计解压/累计内联预算）
+  // ==========================================================================
+
+  /** 生成含 n 个引用同一图片资源的 topic 的 .xmind zip */
+  async function zipWithImageTopics(
+    topicCount: number,
+    imageBytes: Uint8Array,
+  ): Promise<Uint8Array> {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{
+      rootTopic: {
+        id: 'r',
+        title: 'Root',
+        children: {
+          attached: Array.from({ length: topicCount }, (_, i) => ({
+            id: `t${i}`,
+            title: `Topic ${i}`,
+            image: { src: 'xap:resources/img.png' },
+          })),
+        },
+      },
+    }]));
+    zip.file('resources/img.png', imageBytes);
+    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  }
+
+  it('embeds a small referenced image as a data URL', async () => {
+    const data = await zipWithImageTopics(1, new Uint8Array([137, 80, 78, 71, 13, 10]));
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(document.root.children[0].images?.[0]?.src).toMatch(/^data:image\/png;base64,/);
+    expect(report.embeddedImages).toBe(1);
+    expect(report.droppedImages).toBe(0);
+  });
+
+  it('rejects a single image above the per-image cap before inlining it', async () => {
+    // advertised uncompressed size 已超单图上限：解压前即被前置拒绝；
+    // 即使头部被伪造，readZipEntryWithLimit 的流式累计也会在超限的第一个
+    // chunk 处硬中断（该路径由 content.json 的超限测试共同覆盖）。
+    const data = await zipWithImageTopics(1, new Uint8Array(MAX_INLINE_IMAGE_BYTES + 1));
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(document.root.children[0].images).toBeUndefined();
+    expect(document.root.children[0].note).toContain('imagePlaceholderNote');
+    expect(report.embeddedImages).toBe(0);
+    expect(report.droppedImages).toBe(1);
+  });
+
+  it('caps the number of inlined images per import', async () => {
+    const extra = 5;
+    const data = await zipWithImageTopics(
+      MAX_IMPORT_IMAGE_COUNT + extra,
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(report.embeddedImages).toBe(MAX_IMPORT_IMAGE_COUNT);
+    expect(report.droppedImages).toBe(extra);
+    // 超出数量预算的引用仍保留备注占位（不是静默消失）
+    const dropped = document.root.children.filter((node) => !node.images?.length);
+    expect(dropped).toHaveLength(extra);
+    expect(dropped[0].note).toContain('imagePlaceholderNote');
+  });
+
+  it('stops inlining once the cumulative inline budget is exhausted', async () => {
+    // 每张 200 KiB（单图限内），但累计 data URL 字符量会先耗尽内联预算
+    const imageBytes = 200 * 1024;
+    const dataUrlLength = 'data:image/png;base64,'.length + Math.ceil(imageBytes / 3) * 4;
+    const expectedEmbedded = Math.floor(MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES / dataUrlLength);
+    const topicCount = expectedEmbedded + 10;
+    const data = await zipWithImageTopics(topicCount, new Uint8Array(imageBytes));
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(expectedEmbedded).toBeGreaterThan(0);
+    expect(report.embeddedImages).toBe(expectedEmbedded);
+    expect(report.droppedImages).toBe(topicCount - expectedEmbedded);
+    const totalInlineChars = document.root.children
+      .flatMap((node) => node.images ?? [])
+      .reduce((sum, image) => sum + image.src.length, 0);
+    expect(totalInlineChars).toBeLessThanOrEqual(MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES);
   });
 });

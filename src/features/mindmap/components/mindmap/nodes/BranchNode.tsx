@@ -17,6 +17,7 @@ import {
   selectNodeDecorationKey,
   parseNodeDecorations,
 } from '../../../utils/nodeDecorations';
+import { selectNodeImages } from '../../../utils/nodeImages';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 import './nodes.css';
 
@@ -69,6 +70,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   );
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
+  const markBlanksPresented = useMindMapStore(state => state.markBlanksPresented);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
   const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
@@ -77,6 +79,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     selectNodeDecorationKey(state.document.root, data.nodeId),
   );
   const decorations = parseNodeDecorations(decorationKey);
+  // 内嵌图片：同样经索引直接读 store（数组引用稳定，无图不触发重渲染）
+  const images = useMindMapStore(state => selectNodeImages(state.document.root, data.nodeId));
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const isEditing = editingNodeId === data.nodeId;
@@ -387,6 +391,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           text={data.label}
           note={data.note}
           refs={data.refs}
+          images={images}
           bgColor={data.style?.bgColor || (nodeTheme?.background || 'var(--mm-bg-elevated)')}
           icon={data.style?.icon}
           isCompleted={data.completed}
@@ -409,6 +414,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
           isBold={data.style?.fontWeight === 'bold'}
           onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
+          onBlanksPresented={(rangeIndices) => markBlanksPresented(data.nodeId, rangeIndices)}
           onAddBlank={(range) => addBlankRange(data.nodeId, range)}
           onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
           onToggleBold={() =>

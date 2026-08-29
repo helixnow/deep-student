@@ -46,6 +46,25 @@ export interface NodeStyle {
 // 兼容别名
 export type MindMapNodeStyle = NodeStyle;
 
+/**
+ * 节点内嵌图片（导入时从 .xmind/.mmap 压缩包提取的小图，以 data URL 内联存储）。
+ * 超过大小阈值的图片不内联，仍走备注占位文案；见 importers 中的 resource 提取逻辑。
+ */
+export interface MindMapImage {
+  /**
+   * data URL（data:image/png;base64,...）或 https 地址。
+   * 外部入口（JSON 导入 / 剪贴板结构化载荷）经 utils/imageSanitize 运行时清洗：
+   * data URL 限白名单 MIME + 体积预算，远程地址仅放行 https。
+   */
+  src: string;
+  /** 原始文件名（可选，悬停提示用） */
+  name?: string;
+  /** 原始宽度（px，可选） */
+  width?: number;
+  /** 原始高度（px，可选） */
+  height?: number;
+}
+
 /** 节点关联的 VFS 资源引用（轻量级，只存引用信息） */
 export interface MindMapNodeRef {
   /** 稳定的业务 ID（note_abc, tb_xyz, mm_xxx 等） */
@@ -85,6 +104,8 @@ export interface MindMapNode {
    * 节点超链接（http/https/mailto）。渲染为正文后的链接图标，点击经安全白名单打开。
    */
   href?: string;
+  /** 内嵌图片列表（导入内联小图；画布渲染缩略图，大纲渲染角标） */
+  images?: MindMapImage[];
   // 运行时注入属性
   branchColor?: string;
 }
@@ -115,6 +136,8 @@ export interface UpdateNodeParams {
   progress?: number;
   /** 超链接（显式 undefined 移除） */
   href?: string;
+  /** 内嵌图片列表（显式 undefined 移除） */
+  images?: MindMapImage[];
 }
 
 /** 节点路径（从根到当前节点的 ID 数组） */
@@ -133,6 +156,22 @@ export interface NodeWithParent {
 // 文档相关类型
 // ============================================================================
 
+/**
+ * 多画布（sheet）元数据 —— 多 sheet 数据模型第一步。
+ *
+ * 当前运行时仍是单树模型：多 sheet 文件导入时合并为「虚拟根 + 每 sheet 一个
+ * 一级子节点」。本结构把「哪个一级子节点来自哪个 sheet」显式记录进 meta，
+ * 供未来的多画布 UI 直接升格使用；所有现有读取方可安全忽略此字段。
+ */
+export interface MindMapSheetMeta {
+  /** sheet 标识（导入时生成，文档内唯一） */
+  id: string;
+  /** sheet 标题（源文件 sheet 名，缺省回退根主题标题） */
+  title: string;
+  /** 该 sheet 对应的节点 id（虚拟根的直接子节点） */
+  rootNodeId: string;
+}
+
 export interface MindMapMeta {
   createdAt: string;
   updatedAt?: string;
@@ -140,6 +179,8 @@ export interface MindMapMeta {
   theme?: string;
   /** 渲染配置 */
   renderConfig?: MindMapRenderConfig;
+  /** 多 sheet 导入来源记录（单树模型不消费；见 MindMapSheetMeta） */
+  sheets?: MindMapSheetMeta[];
 }
 
 // 兼容别名

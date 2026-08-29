@@ -41,6 +41,14 @@ import {
   type SearchOptions,
 } from '../utils/searchFilter';
 import { mergeMindMapViewport } from '../utils/viewport';
+import {
+  buildReviewQueue,
+  commitReciteSession,
+  loadReciteStats,
+  saveReciteStats,
+  type ReciteReviewItem,
+  type ReciteSessionLog,
+} from '../utils/reciteStats';
 
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
 enableMapSet();
@@ -366,13 +374,43 @@ export interface MindMapStoreState {
   // 背诵模式
   reciteMode: boolean;
   revealedBlanks: Record<string, Record<number, boolean>>;
+  /**
+   * 本会话背诵事件日志（粘性，只置位）：翻开 = miss、遮盖态呈现、显示全部。
+   * 退出背诵时据此提交统计——只有实际呈现/作答的空才进入历史，
+   * 重新遮盖不会抹掉已发生的 miss（记录的是会话事件，不是退出瞬间的 UI 状态）。
+   */
+  reciteSessionLog: ReciteSessionLog;
   setReciteMode: (enabled: boolean) => void;
   revealBlank: (nodeId: string, rangeIndex: number) => void;
+  /** 遮盖态挖空实际渲染进视口时上报（BlankedText 的 IntersectionObserver 驻留信号） */
+  markBlanksPresented: (nodeId: string, rangeIndices: number[]) => void;
   revealAllBlanks: () => void;
   resetAllBlanks: () => void;
+  /**
+   * 难点优先复习队列（按历史错误率排序，非 SRS——无 due/间隔调度）：
+   * 带挖空节点列表；null = 未在复习流程中。退出背诵模式自动清空。
+   */
+  reciteReviewQueue: ReciteReviewItem[] | null;
+  reciteReviewIndex: number;
+  /**
+   * 开始难点优先复习：从持久化统计构建队列（专注分支时限定 viewRoot 子树），
+   * 聚焦第一个节点并进入背诵模式。返回队列长度（0 = 范围内无挖空）。
+   */
+  startReciteReview: () => number;
+  /** 复习队列前进/后退（越界钳制），并聚焦目标节点 */
+  stepReciteReview: (delta: number) => void;
+  /** 退出复习流程（保留背诵模式本身） */
+  stopReciteReview: () => void;
   addBlankRange: (nodeId: string, range: BlankRange) => void;
   removeBlankRange: (nodeId: string, rangeIndex: number) => void;
   clearNodeBlanks: (nodeId: string) => void;
+  /**
+   * 按分支批量挖空：对 nodeId 子树内所有非空文本节点整行挖空（含自身），
+   * 已有挖空区间的节点合并为整行。返回受影响节点数（单次 undo 还原整批）。
+   */
+  blankBranchNodes: (nodeId: string) => number;
+  /** 清除 nodeId 子树（含自身）的全部挖空与揭示状态。返回受影响节点数。 */
+  clearBranchBlanks: (nodeId: string) => number;
 
   /** 大纲/画布：隐藏已完成且无未完成后代的节点（内存 UI 状态） */
   hideCompleted: boolean;
@@ -1097,6 +1135,9 @@ export function createMindMapStore(): MindMapStoreApi {
       conflictSnapshot: null,
       reciteMode: false,
       revealedBlanks: {},
+      reciteSessionLog: {},
+      reciteReviewQueue: null,
+      reciteReviewIndex: 0,
       hideCompleted: false,
       viewRootId: null,
       searchQuery: '',
@@ -1201,6 +1242,9 @@ export function createMindMapStore(): MindMapStoreApi {
             // 修复: 重置背诵模式状态
             state.reciteMode = false;
             state.revealedBlanks = {};
+            state.reciteSessionLog = {};
+            state.reciteReviewQueue = null;
+            state.reciteReviewIndex = 0;
             // ACR 瞬态入场/退场/更新标记随文档重载清除
             state.agentEnteringIds = new Set();
             state.agentExitingIds = new Set();
@@ -1272,6 +1316,9 @@ export function createMindMapStore(): MindMapStoreApi {
           state.viewports = {};
           state.reciteMode = false;
           state.revealedBlanks = {};
+          state.reciteSessionLog = {};
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
           state.searchQuery = '';
           state.searchOptions = {};
           state.searchResults = [];
@@ -1338,6 +1385,9 @@ export function createMindMapStore(): MindMapStoreApi {
           // 修复: 重置背诵模式状态
           state.reciteMode = false;
           state.revealedBlanks = {};
+          state.reciteSessionLog = {};
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
           state.viewRootId = null;
           // hideCompleted / searchFilterMode 为会话级 UI 偏好，reset 时保留
           state.viewports = {};
@@ -3043,16 +3093,85 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 背诵模式
       setReciteMode: (enabled: boolean) => {
+        // 退出背诵 = 一次会话结束：把会话事件日志（呈现/翻开/显示全部）
+        // 提交进持久化学习记录。只有实际呈现或作答的空进入统计；
+        // 零可提交样本时 commitReciteSession 原样返回引用，跳过写盘。
+        if (!enabled) {
+          const current = get();
+          if (current.reciteMode && current.mindmapId) {
+            const scopeRoot = current.viewRootId
+              ? findNodeById(current.document.root, current.viewRootId) ?? current.document.root
+              : current.document.root;
+            const loaded = loadReciteStats(current.mindmapId);
+            const committed = commitReciteSession(
+              loaded,
+              scopeRoot,
+              current.reciteSessionLog,
+            );
+            if (committed !== loaded) {
+              saveReciteStats(current.mindmapId, committed);
+            }
+          }
+        }
         set((state) => {
           state.reciteMode = enabled;
           if (!enabled) {
             state.revealedBlanks = {};
+            state.reciteReviewQueue = null;
+            state.reciteReviewIndex = 0;
           }
+          // 每次进入/退出都从空日志开始新会话
+          state.reciteSessionLog = {};
           // 进入背诵模式时退出编辑状态
           if (enabled) {
             state.editingNodeId = null;
             state.editingNoteNodeId = null;
           }
+        });
+      },
+
+      startReciteReview: () => {
+        const current = get();
+        const scopeRoot = current.viewRootId
+          ? findNodeById(current.document.root, current.viewRootId) ?? current.document.root
+          : current.document.root;
+        const stats = current.mindmapId ? loadReciteStats(current.mindmapId) : {};
+        const queue = buildReviewQueue(scopeRoot, stats);
+        if (queue.length === 0) return 0;
+        set((state) => {
+          state.reciteReviewQueue = queue;
+          state.reciteReviewIndex = 0;
+          if (!state.reciteMode) {
+            state.reciteMode = true;
+            state.editingNodeId = null;
+            state.editingNoteNodeId = null;
+          }
+        });
+        get().expandToNode(queue[0].nodeId, { silent: true });
+        get().setFocusedNodeId(queue[0].nodeId);
+        return queue.length;
+      },
+
+      stepReciteReview: (delta: number) => {
+        const { reciteReviewQueue, reciteReviewIndex } = get();
+        if (!reciteReviewQueue || reciteReviewQueue.length === 0) return;
+        const next = Math.min(
+          Math.max(reciteReviewIndex + delta, 0),
+          reciteReviewQueue.length - 1,
+        );
+        if (next === reciteReviewIndex) return;
+        set((state) => {
+          state.reciteReviewIndex = next;
+        });
+        const nodeId = reciteReviewQueue[next].nodeId;
+        get().expandToNode(nodeId, { silent: true });
+        get().setFocusedNodeId(nodeId);
+      },
+
+      stopReciteReview: () => {
+        set((state) => {
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
         });
       },
 
@@ -3069,6 +3188,28 @@ export function createMindMapStore(): MindMapStoreApi {
             state.revealedBlanks[nodeId] = {};
           }
           state.revealedBlanks[nodeId][rangeIndex] = true;
+          // 会话事件：单独翻开 = 没背出来（粘性；之后重新遮盖不清除）
+          if (state.reciteMode) {
+            const log = (state.reciteSessionLog[nodeId] ??= {});
+            const events = (log[rangeIndex] ??= {});
+            events.presented = true;
+            events.missed = true;
+          }
+        });
+      },
+
+      markBlanksPresented: (nodeId: string, rangeIndices: number[]) => {
+        const current = get();
+        if (!current.reciteMode || rangeIndices.length === 0) return;
+        // 滚动中反复可见很常见：全部已标记时跳过 set，避免无意义的状态更新
+        const existing = current.reciteSessionLog[nodeId];
+        if (existing && rangeIndices.every((index) => existing[index]?.presented)) return;
+        set((state) => {
+          const log = (state.reciteSessionLog[nodeId] ??= {});
+          for (const index of rangeIndices) {
+            const events = (log[index] ??= {});
+            events.presented = true;
+          }
         });
       },
 
@@ -3088,11 +3229,23 @@ export function createMindMapStore(): MindMapStoreApi {
           };
           collect(state.document.root);
           state.revealedBlanks = allBlanks;
+          // 「显示全部」是核对动作而非逐空作答：被亮出的空标记 bulkRevealed，
+          // 提交时既不算 miss 也不算成功样本（此前单独翻开过的 miss 保留）
+          if (state.reciteMode) {
+            for (const [nodeId, revealed] of Object.entries(allBlanks)) {
+              const log = (state.reciteSessionLog[nodeId] ??= {});
+              for (const key of Object.keys(revealed)) {
+                const events = (log[Number(key)] ??= {});
+                events.bulkRevealed = true;
+              }
+            }
+          }
         });
       },
 
       resetAllBlanks: () => {
         set((state) => {
+          // 只重置遮盖 UI；会话事件日志是粘性的，已产生的 miss 不因重盖消失
           state.revealedBlanks = {};
         });
       },
@@ -3136,6 +3289,28 @@ export function createMindMapStore(): MindMapStoreApi {
               }
             }
           }
+          // 会话事件日志按同一规则迁移索引（背诵中允许经弹层取消挖空）
+          const oldLog = state.reciteSessionLog[nodeId];
+          if (oldLog) {
+            if (merged.length === 0) {
+              delete state.reciteSessionLog[nodeId];
+            } else {
+              const newLog: (typeof state.reciteSessionLog)[string] = {};
+              for (const [key, events] of Object.entries(oldLog)) {
+                const oldIdx = Number(key);
+                if (oldIdx < rangeIndex) {
+                  newLog[oldIdx] = events;
+                } else if (oldIdx > rangeIndex) {
+                  newLog[oldIdx - 1] = events;
+                }
+              }
+              if (Object.keys(newLog).length > 0) {
+                state.reciteSessionLog[nodeId] = newLog;
+              } else {
+                delete state.reciteSessionLog[nodeId];
+              }
+            }
+          }
         });
       },
 
@@ -3146,7 +3321,65 @@ export function createMindMapStore(): MindMapStoreApi {
             delete node.blankedRanges;
           }
           delete state.revealedBlanks[nodeId];
+          delete state.reciteSessionLog[nodeId];
         });
+      },
+
+      // 按分支批量挖空（背诵）：子树内所有非空文本节点整行挖空，单次 undo 还原
+      blankBranchNodes: (nodeId: string) => {
+        // 前置校验：目标不存在或子树全为空文本时不进 mutation（不产生历史/脏位）
+        const target = findNodeById(get().document.root, nodeId);
+        if (!target) return 0;
+        const hasText = (node: MindMapNode): boolean =>
+          node.text.length > 0 || node.children.some(hasText);
+        if (!hasText(target)) return 0;
+
+        let affected = 0;
+        applyMutation((state) => {
+          const branchRoot = findNodeById(state.document.root, nodeId);
+          if (!branchRoot) return;
+          const visit = (node: MindMapNode) => {
+            const textLength = node.text.length;
+            if (textLength > 0) {
+              const merged = mergeRanges(validateRanges(
+                [...(node.blankedRanges || []), { start: 0, end: textLength }],
+                textLength,
+              ));
+              node.blankedRanges = merged;
+              // 新遮挡的内容重置揭示状态，避免刚挖空就已「揭示」
+              delete state.revealedBlanks[node.id];
+              affected += 1;
+            }
+            node.children.forEach(visit);
+          };
+          visit(branchRoot);
+        });
+        return affected;
+      },
+
+      clearBranchBlanks: (nodeId: string) => {
+        // 前置校验：目标不存在或子树没有任何挖空时不进 mutation
+        const target = findNodeById(get().document.root, nodeId);
+        if (!target) return 0;
+        const hasBlanks = (node: MindMapNode): boolean =>
+          (node.blankedRanges?.length ?? 0) > 0 || node.children.some(hasBlanks);
+        if (!hasBlanks(target)) return 0;
+
+        let affected = 0;
+        applyMutation((state) => {
+          const branchRoot = findNodeById(state.document.root, nodeId);
+          if (!branchRoot) return;
+          const visit = (node: MindMapNode) => {
+            if (node.blankedRanges && node.blankedRanges.length > 0) {
+              delete node.blankedRanges;
+              affected += 1;
+            }
+            delete state.revealedBlanks[node.id];
+            node.children.forEach(visit);
+          };
+          visit(branchRoot);
+        });
+        return affected;
       },
 
       // 搜索节点

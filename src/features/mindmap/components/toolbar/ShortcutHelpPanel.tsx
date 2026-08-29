@@ -237,7 +237,7 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
         {!mobile && (
           <DsButton
             variant="ghost"
-            className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
+            className="p-1 hover:bg-[var(--mm-bg-hover)] rounded [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={onClose}
             aria-label={t('mindmap:toolbar.closeShortcuts')}
           >
