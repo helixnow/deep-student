@@ -1,0 +1,18 @@
+{
+  "$comment": "pdfjs 本地子集清单（R2 裁剪 / R4 运行时化共用）。keptCMapGlobs 决定 viteStaticCopy 拷入 dist/cmaps 的文件（vite.config.ts）；tests/vitest/pdf/ 用同一清单做守卫与 CJK fallback 模拟。子集外的 cmap 走运行时三级 fallback（src/utils/pdfAssets.ts）。",
+  "keptCMapGlobs": [
+    "UniGB-*",
+    "Adobe-GB1-*",
+    "GB*",
+    "UniCNS-UCS2-*",
+    "UniCNS-UTF16-*",
+    "UniJIS-UCS2-*",
+    "UniJIS-UTF16-*",
+    "UniKS-UCS2-*",
+    "UniKS-UTF16-*",
+    "Adobe-CNS1-*",
+    "Adobe-Japan1-*",
+    "Adobe-Korea1-*",
+    "LICENSE"
+  ]
+}

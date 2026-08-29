@@ -110,6 +110,12 @@ src-tauri/.target-local/
 *.apk
 *.aab
 
+# Downloaded PDFium runtime binaries (scripts/download-pdfium.sh)
+src-tauri/resources/pdfium/libpdfium.so
+src-tauri/resources/pdfium/libpdfium.dylib
+src-tauri/resources/pdfium/pdfium.dll
+src-tauri/resources/pdfium/libpdfium_android_*.so
+
 # Cargo build logs and outputs (should not be versioned)
 /cargo-full.txt
 /cargo-check.txt
@@ -157,6 +163,8 @@ deepstudent-refactored/
 
 # 忽略 Tauri 构建过程中解压的临时库
 src-tauri/*_temp/
+# Linux PDFium 由 CI/本地下载脚本按需获取，不提交仓库
+src-tauri/resources/pdfium/libpdfium.so
 
 # Additional temporary files
 
