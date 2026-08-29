@@ -15,11 +15,13 @@ import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
 
 /**
- * 触屏面包屑命中区扩展：padding 撑出 ≥40px 高的点击热区，
- * 负 margin 抵消占位，标题行排版与桌面完全一致（r3 建议后续#5）。
+ * 触屏面包屑命中区扩展：min-h 让按钮真正占出 44px（--touch-target-size，
+ * 不随根字号缩放）高的点击热区——负 margin 方案会被本容器与顶栏标题槽的
+ * overflow-hidden 裁掉，有效点击高度只剩 ≈24px；px-1.5 同时提供真实的
+ * 横向热区。仅 pointer:coarse 生效，桌面排版不变。
  */
 const CRUMB_TOUCH_HIT_CLASS =
-  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!-mx-1.5 [@media(pointer:coarse)]:!-my-2.5';
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]';
 
 export interface MobileBreadcrumbProps {
   /** 根目录标题 */
@@ -106,8 +108,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
   // 当前文件夹名称（最后一个面包屑）
   const currentFolder = breadcrumbs[breadcrumbs.length - 1];
 
+  // overflow-hidden 只为裁横向溢出；触屏下容器与按钮用 min-h 真实占位，纵向热区不会被裁
   return (
-    <div ref={containerRef} className={cn("w-full overflow-hidden", className)}>
+    <div ref={containerRef} className={cn("flex w-full flex-col justify-center overflow-hidden [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]", className)}>
       {/* 完整路径（用于测量，displayMode !== 'full' 时隐藏） */}
       <div
         ref={fullPathRef}
@@ -117,7 +120,7 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
         )}
         aria-hidden={displayMode !== 'full'}
       >
-        {/* 根目录（触屏用 padding+负 margin 扩大命中区，视觉排版不变） */}
+        {/* 根目录（触屏用 min-h 真实占位扩大命中区，桌面排版不变） */}
         <DsButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[120px]', CRUMB_TOUCH_HIT_CLASS)}>
           {rootTitle}
         </DsButton>

@@ -106,7 +106,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   // 放大触控目标（契约第 6 条）；桌面保持原紧凑尺寸。
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   const smallIconBtnClass = isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-6 !w-6 !p-1';
-  const actionIconBtnClass = isTouchPrimary ? 'h-11 w-11' : 'h-7 w-7';
+  const actionIconBtnClass = isTouchPrimary ? '!h-11 !w-11' : 'h-7 w-7';
 
   // 📱 Android 返回键：排序菜单（AppMenu 自绘浮层）打开时先关闭菜单（契约第 4 条）
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -293,7 +293,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             onClick={onCloseApp}
             className={cn(
               'gap-1.5 text-xs text-muted-foreground hover:text-foreground',
-              isTouchPrimary ? 'h-11' : 'h-7',
+              isTouchPrimary ? '!h-11' : 'h-7',
             )}
           >
             <X size={14} />

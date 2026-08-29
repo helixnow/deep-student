@@ -32,6 +32,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
+import { TranslationGenerativeBriefing } from '../../components/TranslationGenerativeBriefing';
 
 /** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
 function countParagraphs(text: string): number {
@@ -132,7 +133,7 @@ const CopyButton: React.FC<{
       aria-label={ariaLabel}
       disabled={!text}
       onClick={() => void handleCopy()}
-      className="[@media(pointer:coarse)]:min-h-11"
+      className="[@media(pointer:coarse)]:!min-h-11"
     >
       <IconSwap
         active={copied}
@@ -505,11 +506,11 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
         <div className="flex gap-2">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:back')}
             </DsButton>
           )}
@@ -541,12 +542,12 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0 max-sm:w-full max-sm:justify-end">
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={reloadWorkbench}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={reloadWorkbench}>
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('translation:contentView.workbench_error_retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:back')}
             </DsButton>
           )}
@@ -581,7 +582,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
             onClick={retrySave}
           >
             {/* 着色放在子 span：直接类优先于按钮继承色，svg 再从 span 继承 */}
@@ -593,7 +594,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('translation:contentView.save_error_dismiss')}
             onClick={() => setSaveState({ status: 'idle' })}
           >
@@ -612,7 +613,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('translation:contentView.empty_hint_dismiss')}
             onClick={() => setEmptyHintDismissed(true)}
           >
@@ -620,6 +621,10 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </DsButton>
         </div>
       )}
+
+      {!externalSettingsOpen && session && (session.sourceText || session.translatedText) ? (
+        <TranslationGenerativeBriefing session={session} streamKey={node.id} />
+      ) : null}
 
       <div className="relative flex-1 min-h-0">
         <WorkbenchErrorBoundary key={`${node.id}:${workbenchEpoch}`} fallback={workbenchFallback}>

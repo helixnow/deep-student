@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
+import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -29,6 +29,7 @@ import {
   LIST_ITEM_HEIGHT_TOUCH,
   LIST_PADDING_TOP,
   GRID_ITEM_WIDTH,
+  GRID_ITEM_HEIGHT,
   GRID_GAP,
   GRID_ROW_HEIGHT,
   hitTestListSelection,
@@ -148,6 +149,7 @@ function FinderDragDropBar({
   parentTargets?: Array<{ id: string | null; label: string }>;
   specialTargets?: Array<{ id: 'favorites' | 'trash'; label: string }>;
 }) {
+  const { t } = useTranslation('learningHub');
   const hasParent = Boolean(parentTargets?.length);
   const hasSpecial = Boolean(specialTargets?.length);
   if (!hasParent && !hasSpecial) return null;
@@ -162,7 +164,7 @@ function FinderDragDropBar({
         className="flex w-max min-w-full items-center gap-1.5 px-2 py-1.5"
         data-finder-drag-drop-bar
         role="toolbar"
-        aria-label="Drop targets"
+        aria-label={t('finder.dragDrop.overlayText')}
       >
         {hasParent && (
           <>
@@ -339,6 +341,12 @@ interface FinderFileListProps {
   onNavigateUp?: () => void;
   /** ★ 多选模式（触屏单击只切换选中，不打开） */
   multiSelectMode?: boolean;
+  /** ★ 多选 + Enter：打开全部选中项（对标访达；由宿主决定文件夹如何处理） */
+  onOpenMany?: (items: DstuNode[]) => void;
+  /** ★ 当前搜索词（非空时空态渲染为「无结果 + 清除搜索」） */
+  searchQuery?: string;
+  /** ★ 清除搜索回调（搜索空态按钮） */
+  onClearSearch?: () => void;
 }
 
 export function FinderFileList({
@@ -373,6 +381,9 @@ export function FinderFileList({
   onSpecialDrop,
   onNavigateUp,
   multiSelectMode = false,
+  onOpenMany,
+  searchQuery,
+  onClearSearch,
 }: FinderFileListProps) {
   // columns（Finder 分栏视图）的专属 UI 尚未落地：在本组件内统一回退为 grid 渲染，
   // 保证持久化的 viewMode='columns' 不会落入既非 list 也非 grid 的悬空分支
@@ -468,11 +479,18 @@ export function FinderFileList({
     const padLeft = Number.parseFloat(styles.paddingLeft) || GRID_PADDING;
     const padTop = Number.parseFloat(styles.paddingTop) || GRID_PADDING;
 
+    // ★ 卡片实高用 DOM 实测校准（h-[100px] 与常量漂移时以实际渲染为准）；
+    // 行步距/列步距仍由虚拟滚动与 gridTemplateColumns 的常量决定，不参与实测
+    const sampleItem = viewport.querySelector<HTMLElement>('[data-finder-item]');
+    const measuredHeight = sampleItem?.getBoundingClientRect().height ?? 0;
+    const gridItemHeight = measuredHeight > 0 ? measuredHeight : GRID_ITEM_HEIGHT;
+
     const indices = hitTestGridSelection(clientBox, {
       itemCount: items.length,
       columns: gridColumns,
       itemWidth: GRID_ITEM_WIDTH,
       rowHeight: GRID_ROW_HEIGHT,
+      itemHeight: gridItemHeight,
       gap: GRID_GAP,
       padLeft,
       padTop,
@@ -974,7 +992,14 @@ export function FinderFileList({
         moveFocus(-getPageDelta());
         break;
       case 'Enter': {
-        if (anchorIndex >= 0 && selectedIds.size === 1) {
+        if (selectedIds.size > 1 && onOpenMany) {
+          // ★ 多选 Enter：打开全部选中项（访达语义）
+          const selectedItems = items.filter(item => selectedIds.has(item.id));
+          if (selectedItems.length > 0) {
+            e.preventDefault();
+            onOpenMany(selectedItems);
+          }
+        } else if (anchorIndex >= 0 && selectedIds.size === 1) {
           e.preventDefault();
           onOpen(items[anchorIndex]);
         }
@@ -1027,7 +1052,7 @@ export function FinderFileList({
         break;
       }
     }
-  }, [editingId, items, selectedIds, viewMode, gridColumns, listItemHeight, onSelect, onSelectionChange, onOpen, onRequestRename, onNavigateUp, scrollItemIntoView]);
+  }, [editingId, items, selectedIds, viewMode, gridColumns, listItemHeight, onSelect, onSelectionChange, onOpen, onOpenMany, onRequestRename, onNavigateUp, scrollItemIntoView]);
 
   // Finder-style loading state
   if (isLoading) {
@@ -1053,7 +1078,7 @@ export function FinderFileList({
             variant="default"
             size="sm"
             onClick={onRetry}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowClockwise size={14} className="mr-1.5" />
             {t('finder.error.retry')}
@@ -1065,6 +1090,38 @@ export function FinderFileList({
 
   // Finder-style empty state
   if (items.length === 0) {
+    // ★ 搜索无结果空态：展示搜索词 + 清除搜索按钮（不显示新建/拖放提示）
+    if (searchQuery && searchQuery.trim()) {
+      return (
+        <div
+          className="flex-1 flex flex-col items-center justify-center bg-background select-none px-4"
+          data-testid="finder-search-empty"
+        >
+          <div className="mb-5">
+            <MagnifyingGlass size={40} className="text-muted-foreground/40" strokeWidth={1.2} />
+          </div>
+          <p className="text-md font-medium text-foreground/80 mb-1">
+            {t('finder.empty.searchNoResults', { query: searchQuery.trim() })}
+          </p>
+          <p className="text-ui text-muted-foreground/60 text-center max-w-[260px]">
+            {t('finder.empty.searchHint')}
+          </p>
+          {onClearSearch && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              className="mt-4 [@media(pointer:coarse)]:min-h-11"
+              onClick={onClearSearch}
+              data-testid="finder-clear-search"
+            >
+              <X size={14} className="mr-1.5" />
+              {t('finder.empty.clearSearch')}
+            </DsButton>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div 
         className="flex-1 flex flex-col items-center justify-center bg-background select-none px-4"
@@ -1092,7 +1149,7 @@ export function FinderFileList({
           <DsButton
             variant="default"
             size="sm"
-            className="mt-4 [@media(pointer:coarse)]:min-h-11"
+            className="mt-4 [@media(pointer:coarse)]:!min-h-11"
             onClick={(e) => {
               e.stopPropagation();
               onContainerContextMenu(e);

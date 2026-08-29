@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { useStore } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useSyncExternalStore } from 'react';
 import type { DstuNode, DstuNodeType, DstuListOptions } from '@/dstu/types';
 import { dstu } from '@/dstu/api';
 import { folderApi, trashApi } from '@/dstu';
@@ -362,7 +364,170 @@ function getDstuListOptionsForPath(
 /** 历史记录最大条数，防止内存无限增长 */
 const MAX_HISTORY_SIZE = 100;
 
-export const useFinderStore = create<FinderState>()(
+// ============================================================================
+// LH-HOST：按宿主分桶
+// ============================================================================
+
+/**
+ * 默认桶标识。
+ *
+ * 旧实现只有一个全局单例，持久化键为 `learning-hub-finder`；default 桶沿用该键，
+ * 因此升级后旧数据自动落在 default 桶（无需额外迁移步骤）。
+ */
+export const DEFAULT_FINDER_HOST_ID = 'default';
+
+/** 持久化键前缀（default 桶不带后缀，等于旧单例键） */
+export const FINDER_PERSIST_KEY_PREFIX = 'learning-hub-finder';
+
+/**
+ * 全部访达宿主标识。
+ *
+ * 宿主方（渲染 `LearningHubSidebar` 的页面）与读取方（顶栏面包屑等）必须引用同一
+ * 个常量，否则会重新退化成「读到别人桶」的串台问题。
+ */
+export const FINDER_HOST_IDS = {
+  /** workbench Files 窗口 */
+  files: 'files',
+  /** 学习中心页（桌面） */
+  page: 'page',
+  /** 学习中心页（移动端） */
+  pageMobile: 'page-mobile',
+  /** Chat 画布侧的资源库（桌面） */
+  canvas: 'canvas',
+  /** Chat 画布侧的资源库（移动端右屏） */
+  canvasMobile: 'canvas-mobile',
+  /** 分组编辑器里的资源选择器 */
+  groupPicker: 'group-picker',
+} as const;
+
+export type FinderHostId = (typeof FINDER_HOST_IDS)[keyof typeof FINDER_HOST_IDS];
+
+/**
+ * 与 default 桶共享状态的宿主。
+ *
+ * workbench Files 窗口的 activation / agent driver / 拖拽与悬浮预览 hook 直接引用
+ * `useFinderStore`（即 default 桶），它们不在本次改动范围内，所以 files 宿主继续
+ * 落在 default 桶；page / page-mobile / canvas / group-picker 等宿主各自独立。
+ */
+const HOSTS_SHARING_DEFAULT_BUCKET = new Set<string>([FINDER_HOST_IDS.files]);
+
+/** 把宿主标识解析为实际的桶标识 */
+export function resolveFinderHostId(hostId?: string | null): string {
+  if (!hostId || HOSTS_SHARING_DEFAULT_BUCKET.has(hostId)) return DEFAULT_FINDER_HOST_ID;
+  return hostId;
+}
+
+/** 桶对应的持久化键 */
+export function finderPersistKey(bucketId: string): string {
+  return bucketId === DEFAULT_FINDER_HOST_ID
+    ? FINDER_PERSIST_KEY_PREFIX
+    : `${FINDER_PERSIST_KEY_PREFIX}:${bucketId}`;
+}
+
+/** 持久化的视图偏好（partialize 的形状） */
+export interface FinderViewPreferences {
+  viewMode: ViewMode;
+  sortBy: SortBy;
+  sortOrder: SortOrder;
+  quickAccessCollapsed: boolean;
+}
+
+export const DEFAULT_FINDER_VIEW_PREFERENCES: FinderViewPreferences = {
+  viewMode: 'grid',
+  sortBy: 'updatedAt',
+  sortOrder: 'desc',
+  quickAccessCollapsed: false,
+};
+
+type PersistStorageLike = Pick<Storage, 'getItem'>;
+
+const FINDER_VIEW_MODES = new Set<ViewMode>(['grid', 'list', 'columns']);
+const FINDER_SORT_FIELDS = new Set<SortBy>(['name', 'updatedAt', 'createdAt', 'type', 'size']);
+const FINDER_SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whitelist persisted Finder preferences at the storage boundary.
+ *
+ * Zustand's default merge trusts structurally valid JSON. A stale/corrupt value
+ * such as `{ viewMode: {} }` would therefore replace the typed initial state
+ * after our first read and later crash render/sort paths.
+ */
+export function sanitizeFinderViewPreferences(input: unknown): Partial<FinderViewPreferences> {
+  if (!isRecord(input)) return {};
+  const result: Partial<FinderViewPreferences> = {};
+  if (FINDER_VIEW_MODES.has(input.viewMode as ViewMode)) {
+    result.viewMode = input.viewMode as ViewMode;
+  }
+  if (FINDER_SORT_FIELDS.has(input.sortBy as SortBy)) {
+    result.sortBy = input.sortBy as SortBy;
+  }
+  if (FINDER_SORT_ORDERS.has(input.sortOrder as SortOrder)) {
+    result.sortOrder = input.sortOrder as SortOrder;
+  }
+  if (typeof input.quickAccessCollapsed === 'boolean') {
+    result.quickAccessCollapsed = input.quickAccessCollapsed;
+  }
+  return result;
+}
+
+function readPersistedPreferences(
+  storage: PersistStorageLike,
+  key: string,
+): Partial<FinderViewPreferences> | null {
+  let raw: string | null;
+  try {
+    raw = storage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) return null;
+    const preferences = sanitizeFinderViewPreferences(parsed.state);
+    return Object.keys(preferences).length > 0 ? preferences : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析某个桶的初始视图偏好。
+ *
+ * 本桶尚无数据时回落到旧单例（= default 桶）的偏好，让新分桶的宿主继承用户
+ * 已有的视图模式/排序，而不是突然回到出厂默认。
+ */
+export function resolveInitialViewPreferences(
+  bucketId: string,
+  storage?: PersistStorageLike | null,
+): FinderViewPreferences {
+  if (!storage) return { ...DEFAULT_FINDER_VIEW_PREFERENCES };
+  const own = readPersistedPreferences(storage, finderPersistKey(bucketId));
+  if (own) return { ...DEFAULT_FINDER_VIEW_PREFERENCES, ...own };
+  const legacy = bucketId === DEFAULT_FINDER_HOST_ID
+    ? null
+    : readPersistedPreferences(storage, FINDER_PERSIST_KEY_PREFIX);
+  return { ...DEFAULT_FINDER_VIEW_PREFERENCES, ...(legacy ?? {}) };
+}
+
+function getDefaultStorage(): PersistStorageLike | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+export type FinderStoreApi = ReturnType<typeof createFinderStore>;
+
+export function createFinderStore(bucketId: string) {
+  const initialPreferences = resolveInitialViewPreferences(bucketId, getDefaultStorage());
+
+  return create<FinderState>()(
   persist(
     (set, get) => ({
       // 导航状态
@@ -370,11 +535,11 @@ export const useFinderStore = create<FinderState>()(
       history: [DEFAULT_PATH],
       historyIndex: 0,
       
-      // 视图状态
-      viewMode: 'grid',
-      sortBy: 'updatedAt',
-      sortOrder: 'desc',
-      quickAccessCollapsed: false,
+      // 视图状态（本桶无持久化数据时继承旧单例偏好）
+      viewMode: initialPreferences.viewMode,
+      sortBy: initialPreferences.sortBy,
+      sortOrder: initialPreferences.sortOrder,
+      quickAccessCollapsed: initialPreferences.quickAccessCollapsed,
       
       // 选择状态
       selectedIds: new Set(),
@@ -426,18 +591,60 @@ export const useFinderStore = create<FinderState>()(
       },
       
       enterFolder: async (folderId: string, folderName?: string, folderPath?: string) => {
-        // ★ 2025-12-27 修复：从后端获取真实的面包屑 ID 链
-        const newBreadcrumbs = await fetchBreadcrumbs(folderId);
-
+        // ★ 先乐观导航再回填面包屑：
+        // 旧实现先 await fetchBreadcrumbs 再 navigateTo，慢网络下点击文件夹
+        // 会卡在旧目录数百毫秒，且迟到的导航还可能把过期路径压进历史栈。
+        // 现在进入立即生效（乐观面包屑 = 当前面包屑 + 该文件夹），
+        // 后端真实 ID 链到达后原地回填；期间用户再次导航则丢弃回填。
         const { currentPath } = get();
+        const parentCrumbs = currentPath.viewKind === 'folder' ? currentPath.breadcrumbs : [];
+        const optimisticName = folderName || folderId;
+        const optimisticCrumbs: BreadcrumbItem[] = isSpecialViewFolderId(folderId)
+          ? []
+          : [
+              ...parentCrumbs,
+              {
+                id: folderId,
+                name: optimisticName,
+                dstuPath:
+                  folderPath ||
+                  `${parentCrumbs[parentCrumbs.length - 1]?.dstuPath ?? ''}/${optimisticName}`,
+              },
+            ];
+
         const newPath: FinderPath = createFinderPath({
           ...currentPath,
           viewKind: 'folder',
-          breadcrumbs: newBreadcrumbs,
+          breadcrumbs: optimisticCrumbs,
           folderId,
           typeFilter: null,
         });
         get().navigateTo(newPath);
+
+        // navigateTo 已递增 _currentRequestId，以此作为本次导航的请求票据
+        const requestId = get()._currentRequestId;
+
+        const realBreadcrumbs = await fetchBreadcrumbs(folderId);
+
+        // 过期判定：票据未变 → 期间无任何新导航/加载，直接回填；
+        // 票据已变时（同文件夹的 loadItems / 刷新也会递增 ID），退化为
+        // 路径判定 —— 仅当用户已离开该文件夹才丢弃回填。
+        const { currentPath: pathNow, _currentRequestId: latestRequestId } = get();
+        const isStale =
+          latestRequestId !== requestId &&
+          (pathNow.viewKind !== 'folder' || pathNow.folderId !== folderId);
+        if (isStale) return;
+        // 后端失败（fetchBreadcrumbs 返回空）时保留乐观面包屑，避免标题闪回根目录
+        if (realBreadcrumbs.length === 0) return;
+
+        set((state) => {
+          const updatedPath: FinderPath = { ...state.currentPath, breadcrumbs: realBreadcrumbs };
+          const history = [...state.history];
+          if (history[state.historyIndex]) {
+            history[state.historyIndex] = updatedPath;
+          }
+          return { currentPath: updatedPath, history };
+        });
       },
       
       goUp: () => {
@@ -630,7 +837,7 @@ export const useFinderStore = create<FinderState>()(
       }),
       
       executeSearch: async (opts) => {
-        const { searchQuery, getDstuListOptions, currentPath } = get();
+        const { searchQuery, getDstuListOptions, currentPath, sortBy, sortOrder } = get();
         const options = getDstuListOptions();
         const silent = opts?.silent === true;
 
@@ -728,6 +935,9 @@ export const useFinderStore = create<FinderState>()(
         }
 
         if (result.ok) {
+          // type / size 会在后端查询参数中降级为 name，且 recent / trash
+          // 也不保证返回当前排序；所有搜索结果统一在前端按 Finder 规则重排。
+          const sortedItems = sortItems(result.value, sortBy, sortOrder);
           const { selectedIds, lastSelectedId, items: previousItems } = get();
           const truncated = currentPath.viewKind === 'trash'
             ? resultsTruncated
@@ -735,7 +945,7 @@ export const useFinderStore = create<FinderState>()(
           const searchMeta = { truncated, limit: effectiveLimit };
 
           // 列表无差异时尽量跳过写入；仅同步 searchMeta / loading 收尾
-          if (areFinderItemsEquivalent(previousItems, result.value)) {
+          if (areFinderItemsEquivalent(previousItems, sortedItems)) {
             const prevMeta = get().searchMeta;
             const metaUnchanged =
               prevMeta?.truncated === searchMeta.truncated &&
@@ -750,11 +960,11 @@ export const useFinderStore = create<FinderState>()(
             return;
           }
 
-          const pruned = pruneSelectionAgainstItems(selectedIds, result.value, lastSelectedId, {
+          const pruned = pruneSelectionAgainstItems(selectedIds, sortedItems, lastSelectedId, {
             preserveLastSelectedIfWasSelected: true,
           });
           set({
-            items: result.value,
+            items: sortedItems,
             isSearching: true,
             isLoading: false,
             selectedIds: pruned.selectedIds,
@@ -882,18 +1092,20 @@ export const useFinderStore = create<FinderState>()(
 
         const { currentPath, queryItemsForPath } = get();
         const result = await queryItemsForPath(currentPath);
+
+        // 查询期间若已有更新请求，成功和失败结果都必须丢弃。旧实现只在成功
+        // 分支检查，导致迟到的失败会清空新视图列表并覆盖其 loading / error。
+        if (get()._currentRequestId !== requestId) {
+          console.log('[finderStore] loadItems 请求已过期，丢弃结果', { requestId, current: get()._currentRequestId });
+          return;
+        }
+
         if (!result.ok && 'error' in result) {
           reportError(result.error, '加载列表');
           failLoad(result.error.message);
           return;
         }
         let items = result.value;
-
-        // ★ 检查请求是否已过期（有更新的请求发起）
-        if (get()._currentRequestId !== requestId) {
-          console.log('[finderStore] loadItems 请求已过期，丢弃结果', { requestId, current: get()._currentRequestId });
-          return;
-        }
 
         // 应用前端排序
         const { sortBy, sortOrder, selectedIds, lastSelectedId, items: previousItems } = get();
@@ -1021,13 +1233,101 @@ export const useFinderStore = create<FinderState>()(
       },
     }),
     {
-      name: 'learning-hub-finder',
+      name: finderPersistKey(bucketId),
       partialize: (state) => ({
         viewMode: state.viewMode,
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
         quickAccessCollapsed: state.quickAccessCollapsed,
       }),
+      // The eager seed above and Zustand's hydration both read the same
+      // payload. Keep the second read behind the same whitelist; otherwise the
+      // default shallow merge can re-introduce values rejected by migration.
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...sanitizeFinderViewPreferences(persistedState),
+      }),
     }
   )
-);
+  );
+}
+
+const finderStoreRegistry = new Map<string, FinderStoreApi>();
+
+/**
+ * 取得某个宿主的 Finder store 实例。
+ *
+ * 同一宿主永远返回同一实例；不同宿主之间 currentPath / searchQuery /
+ * selectedIds / viewMode 完全隔离。
+ */
+export function getFinderStore(hostId?: string | null): FinderStoreApi {
+  const bucketId = resolveFinderHostId(hostId);
+  let store = finderStoreRegistry.get(bucketId);
+  if (!store) {
+    store = createFinderStore(bucketId);
+    finderStoreRegistry.set(bucketId, store);
+  }
+  return store;
+}
+
+/** 仅供测试：清空已创建的宿主桶，并把活跃宿主复位到 default */
+export function resetFinderStoreRegistryForTests(): void {
+  for (const [bucketId, store] of finderStoreRegistry) {
+    store.getState().reset();
+    if (bucketId !== DEFAULT_FINDER_HOST_ID) finderStoreRegistry.delete(bucketId);
+  }
+  setActiveFinderHostId(DEFAULT_FINDER_HOST_ID);
+}
+
+/** default 桶：保持旧的模块级单例语义，外部（agent driver / Files 窗口）继续直接引用 */
+export const useFinderStore = getFinderStore(DEFAULT_FINDER_HOST_ID);
+
+/** 在组件中按宿主取 store（hostId 在一次挂载内通常是常量） */
+export function useFinderStoreFor(hostId?: string | null): FinderStoreApi {
+  return getFinderStore(hostId);
+}
+
+// ============================================================================
+// LH-HOST：活跃宿主（供 App 级导航壳层跟随当前可见的访达）
+// ============================================================================
+
+let activeFinderHostId = DEFAULT_FINDER_HOST_ID;
+const activeFinderHostListeners = new Set<() => void>();
+
+export function getActiveFinderHostId(): string {
+  return activeFinderHostId;
+}
+
+export function setActiveFinderHostId(hostId?: string | null): void {
+  const next = resolveFinderHostId(hostId);
+  if (next === activeFinderHostId) return;
+  activeFinderHostId = next;
+  activeFinderHostListeners.forEach((listener) => listener());
+}
+
+function subscribeActiveFinderHost(listener: () => void): () => void {
+  activeFinderHostListeners.add(listener);
+  return () => {
+    activeFinderHostListeners.delete(listener);
+  };
+}
+
+/**
+ * 当前活跃宿主的 store。
+ *
+ * 全局壳层（如 LearningHubNavigationContext 的前进/后退）没有 hostId 上下文，
+ * 跟随最近一次注册为活跃的全屏访达宿主；无人注册时回落 default 桶。
+ */
+export function useActiveFinderStore(): FinderStoreApi {
+  const hostId = useSyncExternalStore(
+    subscribeActiveFinderHost,
+    getActiveFinderHostId,
+    getActiveFinderHostId,
+  );
+  return getFinderStore(hostId);
+}
+
+/** 便捷读取：在活跃宿主 store 上做 selector 订阅 */
+export function useActiveFinderState<T>(selector: (state: FinderState) => T): T {
+  return useStore(useActiveFinderStore(), selector);
+}

@@ -177,6 +177,7 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
       aria-label={label}
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-none transition-colors',
+        '[@media(pointer:coarse)]:!min-h-11',
         'hover:bg-[var(--interactive-hover)]',
         collapsed && 'justify-center px-2',
         toneClass
