@@ -63,7 +63,6 @@ import {
 // Button 组件已替换为原生 button + Tailwind（简洁风格）
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { IndexStatusGenerativeBriefing } from '../components/IndexStatusGenerativeBriefing';
 import {
   getAllIndexStatus,
   reindexResource,
@@ -2549,18 +2548,6 @@ export const IndexStatusView: React.FC = () => {
           )}
         </div>
       )}
-
-      <IndexStatusGenerativeBriefing
-        summary={{
-          totalResources: summary.totalResources,
-          indexedCount: summary.indexedCount,
-          pendingCount: summary.pendingCount,
-          failedCount: summary.failedCount,
-          indexingCount: summary.indexingCount,
-        }}
-        onBatchIndex={handleUnifiedIndex}
-        onRefresh={loadData}
-      />
 
       {/* 筛选栏 — macOS segmented / capsule 风格（滚动发生在下方 CustomScrollArea 内，无需 sticky） */}
       <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl">

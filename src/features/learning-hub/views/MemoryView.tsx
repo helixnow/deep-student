@@ -66,7 +66,6 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
-import { MemoryGenerativeBriefing } from '../components/MemoryGenerativeBriefing';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useDisclosureMotion } from '@/features/chat/hooks/useDisclosureMotion';
 import {
@@ -1287,25 +1286,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           </>
         )}
       </div>
-
-      {config && (
-        <MemoryGenerativeBriefing
-          memoryCount={memories.length}
-          rootFolderTitle={config.memoryRootFolderTitle || t('memory.defaultRootTitle')}
-          autoExtractFrequency={config.autoExtractFrequency}
-          recentItems={memories.slice(0, 8).map((memory) => ({
-            label: memory.title,
-            badge: memory.memoryType,
-          }))}
-          onRefresh={loadMemories}
-          onCreateMemory={handleOpenCreate}
-          onOpenMemory={
-            memories[0]
-              ? () => handleOpenInEditor(memories[0].id, memories[0].title)
-              : undefined
-          }
-        />
-      )}
 
       {/* 当前根文件夹 + 提取频率设置 */}
       <div className="px-4 py-2 text-xs text-muted-foreground space-y-1.5 border-b border-border/30">

@@ -32,7 +32,6 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
-import { TranslationGenerativeBriefing } from '../../components/TranslationGenerativeBriefing';
 
 /** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
 function countParagraphs(text: string): number {
@@ -621,10 +620,6 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </DsButton>
         </div>
       )}
-
-      {!externalSettingsOpen && session && (session.sourceText || session.translatedText) ? (
-        <TranslationGenerativeBriefing session={session} streamKey={node.id} />
-      ) : null}
 
       <div className="relative flex-1 min-h-0">
         <WorkbenchErrorBoundary key={`${node.id}:${workbenchEpoch}`} fallback={workbenchFallback}>

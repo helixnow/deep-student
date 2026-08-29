@@ -1,21 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { buildLearningBriefingIntent } from '@/features/generative-ui/utils/buildLearningBriefingIntent';
 import { buildAiDashboardIntent } from '@/features/generative-ui/utils/buildAiDashboardIntent';
-import { buildLearningHubBriefingIntent } from '@/features/generative-ui/utils/buildLearningHubBriefingIntent';
-import { buildExamBriefingIntent } from '@/features/generative-ui/utils/buildExamBriefingIntent';
 import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
-import { learningHubActionHandlers } from '@/features/generative-ui/handlers/learningHubActionHandlers';
-import { createExamBriefingActionHandlers } from '@/features/generative-ui/handlers/examBriefingActionHandlers';
-import { createIndexStatusBriefingActionHandlers } from '@/features/generative-ui/handlers/indexStatusBriefingActionHandlers';
-import { createMemoryBriefingActionHandlers } from '@/features/generative-ui/handlers/memoryBriefingActionHandlers';
-import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/buildIndexStatusBriefingIntent';
-import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildMemoryBriefingIntent';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
-import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
 import { buildHpiasResearchDashboardIntent } from '@/features/generative-ui/utils/buildHpiasResearchDashboardIntent';
 import { createResearchBriefingActionHandlers } from '@/features/generative-ui/handlers/researchBriefingActionHandlers';
-import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
 import {
   COPY_INTENT_ACTION_ID,
   createCopyIntentActionHandlers,
@@ -75,104 +65,6 @@ describe('generativeUI actionHandlerSync contract', () => {
     expectActionIdsRegistered(intent, workbenchLearningHandlers, 'buildAiDashboardIntent');
   });
 
-  it('learning hub briefing action ids exist in learningHubActionHandlers', () => {
-    const intent = buildLearningHubBriefingIntent({
-      resourceCount: 3,
-      folderLabel: 'Notes',
-      labels: {
-        statTitle: 'Resources',
-        emptyTrend: 'Empty',
-        activeTrend: 'Active',
-        startReview: 'Review',
-        openQbank: 'QBank',
-      },
-    });
-    expectActionIdsRegistered(intent, learningHubActionHandlers, 'buildLearningHubBriefingIntent');
-  });
-
-  it('exam briefing action ids exist in createExamBriefingActionHandlers', () => {
-    const intent = buildExamBriefingIntent({
-      stats: {
-        total: 10,
-        mastered: 4,
-        review: 2,
-        inProgress: 2,
-        newCount: 2,
-        correctRate: 0.6,
-      },
-      labels: {
-        totalTitle: 'Total',
-        masteryTrend: '{{percent}}%',
-        emptyTrend: 'Empty',
-        progressTitle: 'Progress',
-        masteredRow: '{{count}}',
-        reviewRow: 'Review',
-        correctRateRow: 'Correct',
-        startReview: 'Review',
-        openPractice: 'Practice',
-      },
-    });
-    const handlers = createExamBriefingActionHandlers(
-      { onStartReview: () => {}, onOpenPractice: () => {} },
-      { startReview: 'Review', openPractice: 'Practice' },
-    );
-    expectActionIdsRegistered(intent, handlers, 'buildExamBriefingIntent');
-  });
-
-  it('index status briefing action ids exist in createIndexStatusBriefingActionHandlers', () => {
-    const intent = buildIndexStatusBriefingIntent({
-      summary: {
-        totalResources: 5,
-        indexedCount: 2,
-        pendingCount: 2,
-        failedCount: 1,
-        indexingCount: 0,
-      },
-      labels: {
-        totalTitle: 'Total',
-        progressTitle: 'Progress',
-        indexedRow: '{{count}}',
-        pendingRow: 'Pending',
-        failedRow: 'Failed',
-        indexingRow: 'Indexing',
-        allIndexedTrend: 'Ready',
-        needsAttentionTrend: 'Attention',
-        batchIndex: 'Index',
-        refresh: 'Refresh',
-      },
-    });
-    const handlers = createIndexStatusBriefingActionHandlers(
-      { onBatchIndex: () => {}, onRefresh: () => {} },
-      { batchIndex: 'Index', refresh: 'Refresh' },
-    );
-    expectActionIdsRegistered(intent, handlers, 'buildIndexStatusBriefingIntent');
-  });
-
-  it('memory briefing action ids exist in createMemoryBriefingActionHandlers', () => {
-    const intent = buildMemoryBriefingIntent({
-      memoryCount: 3,
-      labels: {
-        countTitle: 'Count',
-        activeTrend: 'Active',
-        emptyTrend: 'Empty',
-        overviewTitle: 'Overview',
-        rootFolderRow: 'Root',
-        autoExtractRow: 'Auto',
-        freqOff: 'Off',
-        freqBalanced: 'Balanced',
-        freqAggressive: 'Aggressive',
-        refresh: 'Refresh',
-        createMemory: 'Create',
-        openMemory: 'Open',
-      },
-    });
-    const handlers = createMemoryBriefingActionHandlers(
-      { onRefresh: () => {}, onCreateMemory: () => {}, onOpenMemory: () => {} },
-      { refresh: 'Refresh', createMemory: 'Create', openMemory: 'Open' },
-    );
-    expectActionIdsRegistered(intent, handlers, 'buildMemoryBriefingIntent');
-  });
-
   it('LEARNING_DASHBOARD_EXAMPLE action ids exist in workbenchLearningHandlers', () => {
     expectActionIdsRegistered(LEARNING_DASHBOARD_EXAMPLE, workbenchLearningHandlers, 'LEARNING_DASHBOARD_EXAMPLE');
   });
@@ -196,33 +88,6 @@ describe('generativeUI actionHandlerSync contract', () => {
       { applyEdit: 'Apply', dismissSuggestion: 'Dismiss' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildNoteEditSuggestionIntent');
-  });
-
-  it('translation briefing action ids exist in createTranslationBriefingActionHandlers', () => {
-    const intent = buildTranslationBriefingIntent({
-      sourceChars: 10,
-      translatedChars: 5,
-      srcLangLabel: 'EN',
-      tgtLangLabel: 'ZH',
-      labels: {
-        sourceStatTitle: 'Source',
-        translatedStatTitle: 'Translated',
-        emptyTrend: 'Empty',
-        progressTitle: 'Progress',
-        translatedRow: '{{count}}',
-        languagePairRow: 'Pair',
-        formalityRow: 'Tone',
-        domainRow: 'Domain',
-        glossaryRow: 'Glossary',
-        openSettings: 'Settings',
-        copyTranslation: 'Copy',
-      },
-    });
-    const handlers = createTranslationBriefingActionHandlers(
-      { onOpenSettings: () => {}, getTranslatedText: () => 'text' },
-      { openSettings: 'Settings', copyTranslation: 'Copy' },
-    );
-    expectActionIdsRegistered(intent, handlers, 'buildTranslationBriefingIntent');
   });
 
   it('hpias research dashboard action ids exist in createResearchBriefingActionHandlers', () => {

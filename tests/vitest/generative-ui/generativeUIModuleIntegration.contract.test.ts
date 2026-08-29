@@ -51,23 +51,17 @@ const BRIDGE_FILES = [
 const HANDLER_FILES = [
   'handlers/workbenchLearningHandlers.ts',
   'handlers/notesEditActionHandlers.ts',
-  'handlers/translationBriefingActionHandlers.ts',
   'handlers/researchBriefingActionHandlers.ts',
-  'handlers/examBriefingActionHandlers.ts',
-  'handlers/indexStatusBriefingActionHandlers.ts',
-  'handlers/memoryBriefingActionHandlers.ts',
 ] as const;
 
 const BUILDER_UTILS = [
   'utils/buildLearningBriefingIntent.ts',
   'utils/buildAiDashboardIntent.ts',
   'utils/buildFlashcardPreviewIntent.ts',
-  'utils/buildTranslationBriefingIntent.ts',
   'utils/buildHpiasResearchDashboardIntent.ts',
   'utils/buildResearchPlanIntent.ts',
   'utils/buildResearchReportIntent.ts',
   'utils/buildPaperDigestIntent.ts',
-  'utils/mergeTranslationBriefingMetrics.ts',
   'utils/buildResearchExportMarkdown.ts',
   'utils/buildIntentExportMarkdown.ts',
   'utils/extractResearchContentFromIntent.ts',
@@ -95,14 +89,6 @@ const MOUNT_POINTS: Array<{ file: string; mustContain: string[] }> = [
     mustContain: ['GENERATIVE_UI_BLOCK_TYPE', 'normalizeGenerativeUIEndIntent'],
   },
   {
-    file: 'src/features/learning-hub/apps/views/TranslationContentView.tsx',
-    mustContain: ['TranslationGenerativeBriefing', 'streamKey={node.id}'],
-  },
-  {
-    file: 'src/features/learning-hub/components/TranslationGenerativeBriefing.tsx',
-    mustContain: ['useTranslationStreamSnapshot', 'mergeTranslationBriefingMetrics'],
-  },
-  {
     file: 'src/components/TranslateWorkbench.tsx',
     mustContain: ['useTranslationStream({ publishKey'],
   },
@@ -119,7 +105,6 @@ describe('generativeUIModuleIntegration contract', () => {
     const requiredExports = [
       'HPIAS_EVENT_CHANNEL',
       'useHpiasEventBridge',
-      'mergeTranslationBriefingMetrics',
       'createResearchBriefingActionHandlers',
       'buildResearchExportMarkdownFromSnapshot',
       'RESEARCH_ACTION_IDS',

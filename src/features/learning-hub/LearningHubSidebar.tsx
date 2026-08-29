@@ -12,8 +12,6 @@ import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fi
 import { exportResourceById } from './utils/exportResource';
 import { getMemoryConfig } from '@/api/memoryApi';
 import { MemoryFolderBanner } from './components/MemoryFolderBanner';
-import { LearningHubGenerativeBriefing } from './components/LearningHubGenerativeBriefing';
-import { MemoryFolderGenerativeBriefing } from './components/MemoryFolderGenerativeBriefing';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -3710,12 +3708,6 @@ export function LearningHubSidebar({
           />
         ) : (
           <>
-          {!isInMemoryFolder && mode === 'fullscreen' && effectivePath.viewKind === 'folder' && (
-            <LearningHubGenerativeBriefing />
-          )}
-          {isInMemoryFolder && mode !== 'canvas' && (
-            <MemoryFolderGenerativeBriefing onRefresh={handleRefresh} />
-          )}
           {/* ★ 记忆系统改造：记忆文件夹内显示专属工具栏 */}
           {isInMemoryFolder && mode !== 'canvas' && (
             <MemoryFolderBanner
