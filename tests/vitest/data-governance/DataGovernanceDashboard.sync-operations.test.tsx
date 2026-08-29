@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, act } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, act, within } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -73,9 +73,15 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
 const mockLoadStoredCloudStorageConfigSafe = vi.hoisted(() => vi.fn());
 const mockLoadStoredCloudStorageConfigWithCredentials = vi.hoisted(() => vi.fn());
 
-vi.mock('@/utils/cloudStorageApi', () => ({
+vi.mock('@/utils/cloudStorageApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/cloudStorageApi')>()),
   loadStoredCloudStorageConfigSafe: mockLoadStoredCloudStorageConfigSafe,
   loadStoredCloudStorageConfigWithCredentials: mockLoadStoredCloudStorageConfigWithCredentials,
+  // CloudStorageSection 模块加载时读取的常量（缺失会导致整个测试文件加载失败）
+  CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY: 'cloud_storage_config_v2',
+  CLOUD_STORAGE_LEGACY_STORAGE_KEY: 'cloud_storage_config',
+  CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY: 'cloud_storage_ssot_migrated_v1',
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/api/dataGovernance', () => ({
@@ -244,7 +250,7 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
 /** 导航到同步 Tab 的辅助函数 */
 async function navigateToSyncTab() {
   const syncTab = await screen.findByRole('button', {
-    name: /同步|data:governance\.tab_sync/i,
+    name: /^(?:同步|data:governance\.tab_sync)$/i,
   });
   fireEvent.click(syncTab);
   await waitFor(() => {
@@ -523,7 +529,78 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     useSystemStatusStore.getState().exitMaintenanceMode();
   });
 
-  it('clicking resolve strategy button calls resolveConflicts with selected strategy', async () => {
+  /** 检测冲突并点击 SyncTab 冲突解决区域的策略按钮（打开确认弹窗） */
+  async function detectAndClickStrategy(strategyKey: string) {
+    const detectBtn = screen.getByRole('button', {
+      name: /检测冲突|data:governance\.detect_conflicts/i,
+    });
+    await act(async () => {
+      fireEvent.click(detectBtn);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/检测到冲突|data:governance\.conflicts_detected/i),
+      ).toBeInTheDocument();
+    });
+
+    // 精确匹配 i18n key，避免误点 RecordConflictsPanel 的「全部保留本地」
+    const strategyBtn = screen.getByRole('button', {
+      name: new RegExp(`^data:governance\\.${strategyKey}$`, 'i'),
+    });
+    await act(async () => {
+      fireEvent.click(strategyBtn);
+    });
+  }
+
+  it('clicking resolve strategy button opens confirmation and does NOT call resolveConflicts before confirm', async () => {
+    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
+    await detectAndClickStrategy('keep_local');
+
+    // 确认弹窗应出现
+    await waitFor(() => {
+      expect(
+        screen.getByText(/确认解决冲突|sync:confirmConflictResolveTitle/i),
+      ).toBeInTheDocument();
+    });
+
+    // 描述应存在（覆盖另一版本 + 建议先备份的文案 key）
+    expect(
+      screen.getByText(/sync:confirmConflictResolveDescription|建议先创建本地备份/i),
+    ).toBeInTheDocument();
+
+    // 未确认前不应调用 resolveConflicts
+    expect(mockDataGovernanceApi.resolveConflicts).not.toHaveBeenCalled();
+  });
+
+  it('cancelling the confirmation dialog does not call resolveConflicts', async () => {
+    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
+    await detectAndClickStrategy('use_cloud');
+
+    const dialog = await screen.findByRole('alertdialog');
+    const cancelBtn = within(dialog).getByRole('button', {
+      name: /^取消$|^common:actions\.cancel$/i,
+    });
+    await act(async () => {
+      fireEvent.click(cancelBtn);
+    });
+
+    // 取消后弹窗关闭且不调用 resolveConflicts
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
+    expect(mockDataGovernanceApi.resolveConflicts).not.toHaveBeenCalled();
+  });
+
+  it('confirming the dialog calls resolveConflicts with selected strategy', async () => {
     mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
     mockDataGovernanceApi.resolveConflicts.mockResolvedValue({
       success: true,
@@ -540,27 +617,15 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToSyncTab();
 
-    // 先检测冲突
-    const detectBtn = screen.getByRole('button', {
-      name: /检测冲突|data:governance\.detect_conflicts/i,
+    await detectAndClickStrategy('keep_local');
+
+    // 在确认弹窗中点击确认
+    const dialog = await screen.findByRole('alertdialog');
+    const confirmBtn = within(dialog).getByRole('button', {
+      name: /^确认$|^common:actions\.confirm$/i,
     });
     await act(async () => {
-      fireEvent.click(detectBtn);
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/检测到冲突|data:governance\.conflicts_detected/i),
-      ).toBeInTheDocument();
-    });
-
-    // 点击 SyncTab 冲突解决区域的策略按钮（精确匹配 i18n key，避免误点 RecordConflictsPanel 的「全部保留本地」）
-    const conflictKeepLocalBtn = screen.getByRole('button', {
-      name: /^data:governance\.keep_local$/i,
-    });
-
-    await act(async () => {
-      fireEvent.click(conflictKeepLocalBtn);
+      fireEvent.click(confirmBtn);
     });
 
     // 验证调用了 resolveConflicts(strategy, cloudManifestJson)
@@ -575,7 +640,7 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     expect(call[1]).toBe('{}');
   });
 
-  it('prevents duplicate resolve requests on rapid double click', async () => {
+  it('prevents duplicate resolve requests on rapid double click of confirm button', async () => {
     mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
     let resolveRequest: ((value: unknown) => void) | undefined;
     mockDataGovernanceApi.resolveConflicts.mockImplementation(
@@ -588,20 +653,17 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToSyncTab();
 
-    const detectBtn = screen.getByRole('button', {
-      name: /检测冲突|data:governance\.detect_conflicts/i,
-    });
-    await act(async () => {
-      fireEvent.click(detectBtn);
+    await detectAndClickStrategy('keep_local');
+
+    const dialog = await screen.findByRole('alertdialog');
+    const confirmBtn = within(dialog).getByRole('button', {
+      name: /^确认$|^common:actions\.confirm$/i,
     });
 
-    const conflictKeepLocalBtn = screen.getByRole('button', {
-      name: /^data:governance\.keep_local$/i,
-    });
-
+    // 快速双击确认按钮：第一次点击后弹窗关闭，第二次点击不应重复触发
     await act(async () => {
-      fireEvent.click(conflictKeepLocalBtn);
-      fireEvent.click(conflictKeepLocalBtn);
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
     });
 
     await waitFor(() => {
@@ -1089,13 +1151,9 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
       screen.getByText(/数据库同步状态|data:governance\.database_sync_status/i),
     ).toBeInTheDocument();
 
-    // 验证每个数据库的待同步变更数显示
-    // chat_v2: 8 待同步
-    expect(screen.getByText('8')).toBeInTheDocument();
-    // vfs: 5 待同步
-    expect(screen.getByText('5')).toBeInTheDocument();
-    // mistakes: 2 待同步
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getAllByText('8')).toHaveLength(2);
+    expect(screen.getAllByText('5')).toHaveLength(2);
+    expect(screen.getAllByText('2')).toHaveLength(2);
   });
 
   it('shows empty state when no sync databases are returned', async () => {
@@ -1104,10 +1162,9 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToSyncTab();
 
-    // 应显示"暂无数据"空状态
     expect(
-      screen.getByText(/暂无数据|data:governance\.no_data/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/暂无数据|data:governance\.no_data/i),
+    ).toHaveLength(2);
   });
 
   it('renders correct number of database rows in sync status table', async () => {

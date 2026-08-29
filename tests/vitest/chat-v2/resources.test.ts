@@ -144,7 +144,7 @@ describe('Validation Functions', () => {
 
   describe('getFileSizeLimitText', () => {
     it('should return correct limit text', () => {
-      expect(getFileSizeLimitText('image')).toBe('10MB');
+      expect(getFileSizeLimitText('image')).toBe('50MB');
       expect(getFileSizeLimitText('file')).toBe('200MB');
     });
   });
@@ -509,8 +509,8 @@ describe('Convenience Functions', () => {
 // ============================================================================
 
 describe('Constants', () => {
-  it('IMAGE_SIZE_LIMIT should be 10MB', () => {
-    expect(IMAGE_SIZE_LIMIT).toBe(10 * 1024 * 1024);
+  it('IMAGE_SIZE_LIMIT should be 50MB (#221)', () => {
+    expect(IMAGE_SIZE_LIMIT).toBe(50 * 1024 * 1024);
   });
 
   it('FILE_SIZE_LIMIT should be 200MB (#62)', () => {

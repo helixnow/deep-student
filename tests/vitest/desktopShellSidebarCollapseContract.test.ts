@@ -16,7 +16,10 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain(": !isSmallScreen && leftPanelCollapsed ? 0 : desktopSidebarPresentationWidth;");
     expect(appSource).not.toContain("currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth");
     expect(appSource).toContain("'--shell-navigation-width': `${desktopNavigationWidth}px`");
-    expect(appSource).toContain("workbenchActive && 'desktop-shell-titlebar--workbench-chrome'");
+    // 工作台模式不再渲染 desktop-shell-titlebar（窗口拖拽/Win 三键由 Workbench
+    // StatusBar 接管），因此不存在 workbench-chrome 变体类
+    expect(appSource).toContain('{!isSmallScreen && !workbenchActive && (');
+    expect(appSource).not.toContain('desktop-shell-titlebar--workbench-chrome');
     expect(appSource).toContain("width: 'var(--shell-navigation-width)'");
     expect(appCssSource).toContain('.desktop-shell-sidebar-track');
     expect(appCssSource).toContain('transform: translateX(var(--shell-sidebar-translate-x));');
@@ -37,19 +40,20 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toContain('transition: padding-left var(--resize-dur) var(--resize-ease)');
   });
 
-  it('keeps the collapse affordance alive as a floating titlebar accessory instead of letting it disappear with the sidebar column', () => {
-    expect(appSource).toContain('const shouldUseDesktopFloatingAccessory = !isSmallScreen;');
-    expect(appSource).not.toContain("const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';");
-    expect(appSource).toContain('const desktopCollapsedLeadingWidth = 148;');
-    expect(appSource).toContain('const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;');
-    expect(appSource).not.toContain('const desktopFloatingAccessoryWidth = leftPanelCollapsed');
-    expect(appSource).toContain('const desktopSidebarExpandedAccessoryContent = (');
-    expect(appSource).toContain('const desktopSidebarCollapsedAccessoryContent = (');
+  it('keeps the collapse affordance alive as a fixed titlebar accessory instead of letting it disappear with the sidebar column', () => {
+    // 顶部控制组现挂载在固定的 desktop-shell-sidebar-top-accessory 锚点，
+    // 不再区分 expanded/collapsed 两套浮动 accessory 内容
+    expect(appSource).toContain('const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;');
+    expect(appSource).toContain('const desktopCollapsedLeadingWidth =');
+    expect(appSource).toContain('desktopHeaderIconButtonSize * desktopCollapsedControlCount');
+    expect(appSource).not.toContain('shouldUseDesktopFloatingAccessory');
+    expect(appSource).not.toContain('desktopSidebarExpandedAccessoryContent');
+    expect(appSource).not.toContain('desktopSidebarCollapsedAccessoryContent');
+    expect(appSource).toContain('const desktopSidebarTopAccessoryContent = (');
     expect(appSource).toContain('<DesktopSidebarAccessory');
-    expect(appSource).toContain('className="desktop-shell-sidebar-expanded-accessory"');
-    expect(appSource).toContain('className="desktop-shell-sidebar-collapsed-accessory"');
-    expect(appSource).toContain('width: `${desktopFloatingAccessoryWidth}px`');
-    expect(appSource).toContain('pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5');
+    expect(appSource).toContain('className="desktop-shell-sidebar-top-accessory"');
+    expect(appSource).toContain('left: `${desktopFloatingAccessoryOffset}px`');
+    expect(appSource).toContain('pointer-events-auto inline-flex h-full items-center');
     expect(appSource).toContain('{shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
@@ -87,10 +91,14 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toContain('width var(--resize-dur) var(--resize-ease)');
   });
 
-  it('animates the accessory internals and back-forward rhythm with the same motion vocabulary as study-ui', () => {
-    expect(appCssSource).toContain('.desktop-shell-sidebar-expanded-accessory');
-    expect(appCssSource).toContain('transition: transform var(--resize-dur) var(--resize-ease)');
-    expect(appSource).toContain('transition-[transform,opacity,margin-right] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
+  it('keeps the fixed top accessory static while the motion surface owns the sidebar rhythm', () => {
+    // 顶部控制组固定在标题栏锚点上（transition: none），滑动动画全部由
+    // desktop-shell-sidebar-motion-surface 以统一的 resize 节奏承担
+    expect(appCssSource).toContain('.desktop-shell-sidebar-top-accessory');
+    expect(appCssSource).toContain('transition: none !important;');
+    expect(appCssSource).not.toContain('.desktop-shell-sidebar-expanded-accessory');
+    expect(appCssSource).toContain('.desktop-shell-sidebar-motion-surface');
+    expect(appCssSource).toContain('transform var(--resize-dur) var(--resize-ease)');
   });
 
   it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
@@ -120,11 +128,20 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('rounds the visible desktop workspace edge across the fixed titlebar and body', () => {
-    expect(appSource).toContain("const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;");
+    // 侧栏折叠滑出期间（desktopSidebarMotionWidth 非空）左侧表面保持可见，
+    // 避免 360ms 位移动画中露出底色
+    expect(appSource).toContain(
+      'const isDesktopSidebarSurfaceVisible =\n'
+      + '    !isSmallScreen\n'
+      + '    && !workbenchActive\n'
+      + '    && (!leftPanelCollapsed || desktopSidebarMotionWidth !== null);'
+    );
     expect(appSource).toContain('data-sidebar-visible={isDesktopSidebarSurfaceVisible ? \'true\' : \'false\'}');
     expect(appCssSource).toContain('--shell-workspace-edge-radius: 24px;');
     expect(appCssSource).toMatch(/\[data-shell-role="app-shell"\]\[data-sidebar-visible="true"\]\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
-    expect(appCssSource).toMatch(/\.desktop-shell-sidebar-titlebar-surface\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
+    // 独立的 sidebar-titlebar-surface 层已移除：标题栏自身用渐变直接铺出左列导航面
+    expect(appCssSource).not.toContain('.desktop-shell-sidebar-titlebar-surface');
+    expect(appCssSource).toMatch(/\.desktop-shell-titlebar\[data-sidebar-visible="true"\]\s*\{[\s\S]*?var\(--shell-navigation-surface\) 0,/);
     expect(appCssSource).toMatch(/\.desktop-shell-workspace\[data-sidebar-visible="true"\]\s*\{[\s\S]*overflow:\s*hidden;/);
     expect(appCssSource).toContain('background: var(--shell-workspace-panel);');
   });

@@ -13,18 +13,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('i18next', () => {
+  // 实现不再携带 defaultValue，直接使用 chatV2 命名空间 key；
+  // 这里按 zh-CN/chatV2.json 提供模板，保证插值断言确定性。
+  const templates: Record<string, string> = {
+    'chatV2:browser.exportSession': '导出会话',
+    'chatV2:browser.exportSuccess': '已导出 {{messageCount}} 条消息到 {{path}}',
+    'chatV2:browser.exportFailed': '导出失败：{{error}}',
+  };
   const t = (_key: string, arg?: unknown) => {
     if (typeof arg === 'string') return arg;
     if (arg && typeof arg === 'object') {
       const opts = arg as Record<string, unknown>;
-      let text = String(opts.defaultValue ?? _key);
+      let text = String(opts.defaultValue ?? templates[_key] ?? _key);
       for (const [k, v] of Object.entries(opts)) {
         if (k === 'defaultValue') continue;
         text = text.replace(`{{${k}}}`, String(v));
       }
       return text;
     }
-    return _key;
+    return templates[_key] ?? _key;
   };
   // src/i18n.ts 会对 i18next 实例做 use().use().init() 链式初始化，
   // mock 需保持链式接口可用（errorUtils → src/i18n.ts 传递依赖）

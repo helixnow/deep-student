@@ -185,12 +185,11 @@ describe('Edge case: empty databases list', () => {
     // 刷新按钮应可用
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
 
-    // 空数据库列表应显示"暂无数据"
-    expect(screen.getByText(/暂无数据|data:governance\.no_data/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/暂无数据|data:governance\.no_data/i)).toHaveLength(2);
 
     // Tab 按钮仍然可用
     expect(
-      screen.getByRole('button', { name: /备份|data:governance\.tab_backup/i }),
+      screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i }),
     ).toBeInTheDocument();
   });
 
@@ -231,7 +230,7 @@ describe('Edge case: large backup list (100 items)', () => {
 
     // 导航到备份 Tab
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -261,7 +260,7 @@ describe('Edge case: large backup list (100 items)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -269,9 +268,8 @@ describe('Edge case: large backup list (100 items)', () => {
       expect(mockDataGovernanceApi.getBackupList).toHaveBeenCalled();
     });
 
-    // 验证所有备份条目都被渲染（通过唯一的 size 文本判断）
     for (const backup of backups) {
-      expect(screen.getByText(formatBytes(backup.size))).toBeInTheDocument();
+      expect(screen.getAllByText(formatBytes(backup.size))).toHaveLength(2);
     }
   });
 });
@@ -313,7 +311,7 @@ describe('Edge case: concurrent operation conflict', () => {
 
     // 导航到备份 Tab
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -356,7 +354,7 @@ describe('Edge case: concurrent operation conflict', () => {
     render(<DataGovernanceDashboard embedded />);
 
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -460,7 +458,7 @@ describe('Edge case: empty audit logs', () => {
 
     // 切换到审计 Tab
     const auditTab = await screen.findByRole('button', {
-      name: /审计|data:governance\.tab_audit/i,
+      name: /^(?:审计|data:governance\.tab_audit)$/i,
     });
     fireEvent.click(auditTab);
 
@@ -468,15 +466,14 @@ describe('Edge case: empty audit logs', () => {
       expect(mockDataGovernanceApi.getAuditLogs).toHaveBeenCalled();
     });
 
-    // 应显示"暂无日志"空状态消息
-    expect(screen.getByText(/暂无日志|data:governance\.no_logs/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/暂无日志|data:governance\.no_logs/i)).toHaveLength(2);
   });
 
   it('does not show any log table rows when audit logs are empty', async () => {
     render(<DataGovernanceDashboard embedded />);
 
     const auditTab = await screen.findByRole('button', {
-      name: /审计|data:governance\.tab_audit/i,
+      name: /^(?:审计|data:governance\.tab_audit)$/i,
     });
     fireEvent.click(auditTab);
 
@@ -516,7 +513,7 @@ describe('Edge case: maintenance mode UI state', () => {
     render(<DataGovernanceDashboard embedded />);
 
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -557,7 +554,7 @@ describe('Edge case: maintenance mode UI state', () => {
     expect(container.firstChild).not.toBeNull();
     // 刷新按钮和 Tab 导航应存在
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
     // 维护模式状态应保持
     expect(useSystemStatusStore.getState().maintenanceMode).toBe(true);
   });
@@ -573,7 +570,7 @@ describe('Edge case: maintenance mode UI state', () => {
     render(<DataGovernanceDashboard embedded />);
 
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -647,7 +644,7 @@ describe('Edge case: unmount cleanup', () => {
 
     // 导航到备份 Tab
     const backupTab = await screen.findByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -724,7 +721,7 @@ describe('Edge case: tab switching data loading', () => {
 
     // 切换到备份 Tab
     const backupTab = screen.getByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -748,7 +745,7 @@ describe('Edge case: tab switching data loading', () => {
 
     // 切换到同步 Tab
     const syncTab = screen.getByRole('button', {
-      name: /同步|data:governance\.tab_sync/i,
+      name: /^(?:同步|data:governance\.tab_sync)$/i,
     });
     fireEvent.click(syncTab);
 
@@ -772,7 +769,7 @@ describe('Edge case: tab switching data loading', () => {
 
     // 切换到备份 Tab
     const backupTab = screen.getByRole('button', {
-      name: /备份|data:governance\.tab_backup/i,
+      name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
 
@@ -782,7 +779,7 @@ describe('Edge case: tab switching data loading', () => {
 
     // 切换回概览 Tab
     const overviewTab = screen.getByRole('button', {
-      name: /概览|data:governance\.tab_overview/i,
+      name: /^(?:概览|data:governance\.tab_overview)$/i,
     });
     fireEvent.click(overviewTab);
 

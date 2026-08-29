@@ -39,7 +39,8 @@ describe('pointer cursor preference contract', () => {
 
     expect(appSource).toContain("const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor'");
     expect(appSource).toContain('document.documentElement.dataset.pointerCursor = enabled ? \'true\' : \'false\'');
-    expect(appSource).toContain("event?.detail?.settingKey === POINTER_CURSOR_SETTING_KEY");
+    // 设置变更监听已迁移到 addAppEventListener（回调直接拿 detail）
+    expect(appSource).toContain("detail?.settingKey === POINTER_CURSOR_SETTING_KEY");
     expect(appSource).toContain('const loadPointerCursorSetting = async () => {');
     expect(appSource).toContain("applyPointerCursorPreference(String(val ?? '').trim() !== 'false')");
 

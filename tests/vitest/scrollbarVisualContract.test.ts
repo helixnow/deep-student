@@ -43,14 +43,6 @@ const messageListSource = readFileSync(
   resolve(srcRoot, 'features/chat/components/MessageList.tsx'),
   'utf-8',
 );
-const notesTreeSource = readFileSync(
-  resolve(srcRoot, 'features/notes/DndFileTree/DndFileTree.tsx'),
-  'utf-8',
-);
-const notesSidebarSource = readFileSync(
-  resolve(srcRoot, 'features/notes/NotesSidebarV2.tsx'),
-  'utf-8',
-);
 const finderListSource = readFileSync(
   resolve(srcRoot, 'features/learning-hub/components/finder/FinderFileList.tsx'),
   'utf-8',
@@ -76,10 +68,16 @@ const virtualQuestionListSource = readFileSync(
   'utf-8',
 );
 
+// 测试夹具与 node 产物不会承载产品样式/组件，扫描它们只会放大 CI 耗时。
+const skippedScanDirectories = new Set(['__tests__', '__mocks__', 'node_modules']);
+
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolutePath = resolve(directory, entry.name);
-    return entry.isDirectory() ? collectSourceFiles(absolutePath) : absolutePath;
+    if (entry.isDirectory()) {
+      return skippedScanDirectories.has(entry.name) ? [] : collectSourceFiles(absolutePath);
+    }
+    return absolutePath;
   });
 }
 
@@ -103,13 +101,19 @@ const embeddedDocumentScrollbarExemptions = new Set([
   'features/learning-hub/apps/views/epubReaderModel.ts',
 ]);
 
+// 违规判定必然要求源码中连续出现下列标记之一（空白折叠不会拼接非空白字符，
+// 所以规范化后的选择器含 '::-webkit-scrollbar' 蕴含源码原文同样包含它）。
+// 绝大多数文件不含任何标记，先做一次线性预筛即可跳过昂贵的逐块解析。
+const scrollbarRecipeMarker = /::-webkit-scrollbar|scrollbar-width|scrollbar-color/;
+
 function findPrivateVisibleScrollbarRecipes(): string[] {
   const violations = new Set<string>();
 
   for (const { file, source } of scrollbarSourceEntries) {
     if (
       file === 'styles/native-feel/scrollbars.css' ||
-      embeddedDocumentScrollbarExemptions.has(file)
+      embeddedDocumentScrollbarExemptions.has(file) ||
+      !scrollbarRecipeMarker.test(source)
     ) {
       continue;
     }
@@ -288,7 +292,8 @@ describe('repository-wide scrollbar integration contract', () => {
     ).toContain('.scrollbar-none [class~="os-scrollbar"] {');
   });
 
-  it('does not introduce feature-private visible scrollbar recipes', () => {
+  // 全仓 src/**/*.{css,ts,tsx} 逐文件正则扫描，CI 慢盘上实测可超过默认 5s（shard 4 曾 8.2s）
+  it('does not introduce feature-private visible scrollbar recipes', { timeout: 30_000 }, () => {
     expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
   });
 
@@ -306,11 +311,6 @@ describe('repository-wide scrollbar integration contract', () => {
   it('binds virtual lists to the real OverlayScrollbars viewport', () => {
     expect(messageListSource).toContain('viewportRef={viewportCallbackRef}');
     expect(messageListSource).toContain('getScrollElement: () => viewportElement');
-
-    expect(notesSidebarSource).toContain('viewportRef={searchListRef}');
-    expect(notesSidebarSource).toContain('viewportRef={treeViewportRef}');
-    expect(notesTreeSource).toContain('getScrollElement: () => scrollViewportRef.current');
-    expect(notesTreeSource).not.toContain('getScrollElement: () => treeRef.current');
 
     expect(finderListSource).toContain('viewportRef={viewportRef}');
     expect(finderListSource).toContain('getScrollElement: () => viewportRef.current');

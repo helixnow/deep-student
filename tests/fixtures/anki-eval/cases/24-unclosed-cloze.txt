@@ -1,0 +1,2 @@
+{"text": "水在标准大气压下的沸点是 {{c1::100 摄氏度", "template_id": "cloze", "tags": ["化学"]}
+<<<ANKI_CARD_JSON_END>>>

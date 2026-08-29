@@ -27,6 +27,10 @@ describe('hidden draft session lifecycle contract', () => {
     resolve(process.cwd(), 'src/features/chat/core/store/restoreActions.ts'),
     'utf-8'
   );
+  const composerMigrationSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/core/store/composerStateMigration.ts'),
+    'utf-8'
+  );
 
   it('creates or reuses one hidden draft instead of inserting a blank session into the page list', () => {
     expect(lifecycleSource).toContain('getOrCreateHiddenDraftSession');
@@ -51,7 +55,9 @@ describe('hidden draft session lifecycle contract', () => {
     expect(sessionActionsSource).toContain('setInputValue: (value: string)');
     expect(sessionActionsSource).toContain('scheduleAutoSaveIfReady()');
     expect(tauriAdapterSource).toContain('inputValue: state.inputValue || null');
-    expect(restoreActionsSource).toContain("const inputValue = state?.inputValue ?? ''");
+    // inputValue 恢复逻辑已抽出为 composerStateMigration 纯函数
+    expect(restoreActionsSource).toContain('normalizeRestoredComposerState(state)');
+    expect(composerMigrationSource).toContain("record.inputValue === 'string' ? record.inputValue : ''");
   });
 
   it('routes left-sidebar ungrouped create actions into an ungrouped draft session', () => {

@@ -36,22 +36,22 @@ describe('style debug component inventory contract', () => {
   ].map((file) => readFileSync(resolve(process.cwd(), file), 'utf-8')).join('\n');
 
   it('shows the current scan scope and refreshed inventory metrics on the style lab page', () => {
-    expect(source).toContain('"totalFiles": 1293');
-    expect(source).toContain('"tsxFiles": 521');
-    expect(source).toContain('"cssFiles": 75');
-    expect(source).toContain('"refs": 3772');
-    expect(source).toContain('"files": 310');
+    expect(source).toContain('"totalFiles": 2037');
+    expect(source).toContain('"tsxFiles": 726');
+    expect(source).toContain('"cssFiles": 153');
+    expect(source).toContain('"refs": 5004');
+    expect(source).toContain('"files": 381');
     expect(source).toContain('"label": "CSS !important"');
-    expect(source).toContain('"count": 1061');
+    expect(source).toContain('"count": 1062');
   });
 
   it('removes deleted CardForge files from the native button inventory', () => {
     const nativeButton = scanData.components.NativeButton;
     const buttonProgress = scanData.migrationProgress.find(({ id }) => id === 'button');
 
-    expect(nativeButton.refs).toBe(191);
-    expect(nativeButton.files).toBe(70);
-    expect(nativeButton.totalFileCount).toBe(70);
+    expect(nativeButton.refs).toBe(574);
+    expect(nativeButton.files).toBe(194);
+    expect(nativeButton.totalFileCount).toBe(194);
     expect(nativeButton.topFiles).toHaveLength(20);
     expect(nativeButton.topFiles).not.toContain(
       'src/components/anki/cardforge/engines/TaskController.examples.ts',

@@ -31,7 +31,9 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
@@ -46,12 +48,23 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   scanAssets: vi.fn(),
   checkDiskSpaceForRestore: vi.fn(),
 }));
+const mockGetBackupConfig = vi.hoisted(() => vi.fn());
+const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
+  getBackupConfig: mockGetBackupConfig,
+  setBackupConfig: mockSetBackupConfig,
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+// 保持 key-echo 语义：断言直接匹配 i18n key（与 restore-operations 测试一致）
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -79,7 +92,29 @@ vi.mock('@/utils/tauriApi', () => ({
   },
 }));
 
-import { DataGovernanceDashboard } from '@/features/settings';
+vi.mock('@/utils/cloudStorageApi', () => ({
+  loadStoredCloudStorageConfigSafe: () => null,
+  loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
+}));
+
+vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({
+  OverviewTab: () => <div data-testid="overview-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/SyncTab', () => ({
+  SyncTab: () => <div data-testid="sync-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/AuditTab', () => ({
+  AuditTab: () => <div data-testid="audit-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/ChatSessionArchiveTab', () => ({
+  ChatSessionArchiveTab: () => <div data-testid="archive-tab" />,
+}));
+
+// ⚠️ 从组件路径直接导入而非 '@/features/settings' barrel：
+// barrel 会拉入整个设置树（AboutTab/@/version、ReactMarkdown 等），
+// 在 vitest 中导致转换图爆炸并卡死 worker（CI 分片超时的根因之一）。
+import { DataGovernanceDashboard } from '@/features/settings/components/DataGovernanceDashboard';
 
 const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
 
@@ -122,10 +157,26 @@ const sampleBackupList = [
   },
 ];
 
+// 文件级默认 mock：外层 beforeEach 先于各 describe 的 beforeEach 执行，
+// vi.clearAllMocks 只清调用记录，不会清除这里设置的实现。
+beforeEach(() => {
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
+  mockGetBackupConfig.mockResolvedValue({
+    backupDirectory: null,
+    autoBackupEnabled: false,
+    autoBackupIntervalHours: 24,
+    maxBackupCount: null,
+  });
+});
+
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
   const backupTab = await screen.findByRole('button', {
-    name: /备份|data:governance\.tab_backup/i,
+    name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);
   await waitFor(() => {
@@ -156,13 +207,13 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     const tieredToggle = screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     });
     fireEvent.click(tieredToggle);
 
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.core_label/i)).toBeInTheDocument();
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.important_label/i)).toBeInTheDocument();
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.rebuildable_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/核心数据|settings:data_governance\.backup_tiers\.core_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/重要数据|settings:data_governance\.backup_tiers\.important_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/可重建数据|settings:data_governance\.backup_tiers\.rebuildable_label/i)).toBeInTheDocument();
 
     const exportBtn = screen.getByRole('button', {
       name: /导出备份|data:governance\.export_backup/i,
@@ -170,7 +221,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     expect(exportBtn).toBeEnabled();
   });
 
-  it('clicking "导出备份" with tiered mode calls backupAndExportZip with default core tier', async () => {
+  it('clicking "导出备份" with tiered mode calls backupAndExportZip with default core+important tiers and assets', async () => {
     mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-job-001',
       kind: 'export',
@@ -182,7 +233,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const exportBtn = screen.getByRole('button', {
@@ -199,9 +250,11 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
     expect(callArgs[3]).toBe(true);
-    expect(callArgs[4]).toEqual(expect.arrayContaining(['core']));
-    // includeAssets 默认 false
-    expect(callArgs[5]).toBe(false);
+    // R04-backup-defaults：默认 core + important，保证默认导出覆盖 vfs_blobs
+    expect(callArgs[4]).toEqual(expect.arrayContaining(['core', 'important']));
+    expect(callArgs[4]).toHaveLength(2);
+    // includeAssets 默认 true（important 层的 vfs_blobs 等资产目录默认纳入）
+    expect(callArgs[5]).toBe(true);
   });
 
   it('toggling tier checkboxes changes selection state', async () => {
@@ -216,19 +269,15 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
-    // 找到各层级的可点击区域（通过层级标签文本）
-    const importantTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.important_label/i,
-    );
+    // 找到 rebuildable 层级的可点击区域（core + important 已默认选中）
     const rebuildableTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.rebuildable_label/i,
+      /可重建数据|settings:data_governance\.backup_tiers\.rebuildable_label/i,
     );
 
-    // 点击 important 和 rebuildable 层级的包裹 div
-    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+    // 追加勾选 rebuildable 层级
     fireEvent.click(rebuildableTier.closest('[class*="cursor-pointer"]')!);
 
     const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -243,7 +292,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
     const tiers = callArgs[4] as string[];
-    // 应包含 core（默认）+ important + rebuildable
+    // 应包含 core + important（默认）+ rebuildable（新勾选）
     expect(tiers).toContain('core');
     expect(tiers).toContain('important');
     expect(tiers).toContain('rebuildable');
@@ -262,20 +311,14 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
-    // 取消 core 层级选择
+    // 取消 core 层级选择（important 仍保持默认选中）
     const coreTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.core_label/i,
+      /核心数据|settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
-
-    // 选择 important 层级
-    const importantTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.important_label/i,
-    );
-    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
 
     const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
 
@@ -291,6 +334,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     // core 被取消，只包含 important
     expect(tiers).not.toContain('core');
     expect(tiers).toContain('important');
+    expect(tiers).toHaveLength(1);
   });
 
   it('does not export when tiered mode has no tiers selected', async () => {
@@ -298,20 +342,82 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
-    // 取消 core 层级选择（默认唯一选中项）
+    // 取消默认选中的 core 与 important 层级
     const coreTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.core_label/i,
+      /核心数据|settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
+    const importantTier = screen.getByText(
+      /settings:data_governance\.backup_tiers\.important_label/i,
+    );
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: exportBackupButtonName }));
     });
 
     expect(mockDataGovernanceApi.backupAndExportZip).not.toHaveBeenCalled();
+  });
+
+  // ==========================================================================
+  // R04-backup-defaults：vfs_blobs 覆盖警告
+  // ==========================================================================
+
+  const vfsBlobsWarningPattern = /data:governance\.tiered_backup_vfs_blobs_missing_warning/i;
+
+  it('hides the vfs_blobs coverage warning with default tiers (core+important) and assets on', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 默认 core+important + 包含资产 → 覆盖 vfs_blobs，无警告
+    expect(screen.queryByText(vfsBlobsWarningPattern)).not.toBeInTheDocument();
+    // R02 的部分归档诚实提示保持展示
+    expect(screen.getByText(/data:governance\.tiered_backup_honest_note/i)).toBeInTheDocument();
+  });
+
+  it('shows an explicit not-restorable/vfs_blobs warning when only core tier is selected', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 取消 important 层，只剩 core → 不再覆盖 vfs_blobs
+    const importantTier = screen.getByText(
+      /settings:data_governance\.backup_tiers\.important_label/i,
+    );
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+
+    expect(screen.getByText(vfsBlobsWarningPattern)).toBeInTheDocument();
+
+    // 重新勾选 important → 警告消失
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+    expect(screen.queryByText(vfsBlobsWarningPattern)).not.toBeInTheDocument();
+  });
+
+  it('shows the vfs_blobs warning when include-assets is switched off', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 关闭“包含资产文件”开关
+    const includeAssetsSwitch = screen.getByRole('switch', {
+      name: /data:governance\.include_assets/i,
+    });
+    fireEvent.click(includeAssetsSwitch);
+
+    expect(screen.getByText(vfsBlobsWarningPattern)).toBeInTheDocument();
   });
 });
 
@@ -517,7 +623,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -602,7 +708,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -827,7 +933,7 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
     expect(fullBackupBtn).toBeDisabled();
     expect(
       screen.getByRole('checkbox', {
-        name: /data:governance\.use_tiered_backup/i,
+        name: /使用分层备份|data:governance\.use_tiered_backup/i,
       }),
     ).toBeDisabled();
 

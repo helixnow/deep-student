@@ -50,7 +50,7 @@ describe('fileDefinition (PDF multimodal)', () => {
     expect((imageBlocks[0] as any).base64).toBe('base64_png');
   });
 
-  it('keeps native text and page images for TM while leaving OCR opt-in', () => {
+  it('keeps explicitly selected native text and page images while leaving OCR opt-in', () => {
     const resource: Resource = {
       id: 'res_test_pdf_tm',
       hash: 'hash_pdf_tm',
@@ -74,7 +74,12 @@ describe('fileDefinition (PDF multimodal)', () => {
       }],
     };
 
-    const blocks = fileDefinition.formatToBlocks(resource, { isMultimodal: false } as any);
+    // injectModes is explicit: the default is text-only, while this case opts
+    // into text + page images and verifies OCR remains opt-in.
+    const blocks = fileDefinition.formatToBlocks(resource, {
+      isMultimodal: false,
+      injectModes: { pdf: ['text', 'image'] },
+    });
     expect(blocks.filter(isImageContentBlock)).toHaveLength(1);
     const text = blocks.filter(isTextContentBlock).map((block: any) => block.text).join('\n');
     expect(text).toContain('native extracted text');

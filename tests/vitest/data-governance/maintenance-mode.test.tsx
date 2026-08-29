@@ -71,9 +71,11 @@ vi.mock('react-i18next', async (importOriginal) => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
 
-vi.mock('@/utils/cloudStorageApi', () => ({
+vi.mock('@/utils/cloudStorageApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/cloudStorageApi')>()),
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -177,7 +179,7 @@ function MaintenanceBannerTestHarness() {
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
   const backupTab = await screen.findByRole('button', {
-    name: /备份|data:governance\.tab_backup/i,
+    name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);
   await waitFor(() => {

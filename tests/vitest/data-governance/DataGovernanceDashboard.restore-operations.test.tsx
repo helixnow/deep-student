@@ -98,6 +98,10 @@ vi.mock('@/features/settings/components/MediaCacheSection', () => ({
 vi.mock('@/utils/cloudStorageApi', () => ({
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
+  isImportedArchiveSlotRestorable: (
+    stats?: { recovery_kind?: unknown; restorable?: unknown } | null,
+  ) => stats?.recovery_kind !== 'partial_archive' && stats?.restorable !== false,
 }));
 
 vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({
@@ -184,12 +188,30 @@ beforeEach(() => {
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
   const backupTab = await screen.findByRole('button', {
-    name: /备份|data:governance\.tab_backup/i,
+    name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);
   await waitFor(() => {
     expect(mockDataGovernanceApi.getBackupList).toHaveBeenCalled();
   });
+}
+
+/** 导入入口先打开可选密码对话框；空密码表示便携包，确认后才选文件。 */
+async function confirmImportWithoutPassword() {
+  const importBtn = screen.getByRole('button', {
+    name: importButtonName,
+  });
+  await act(async () => {
+    fireEvent.click(importBtn);
+  });
+  const dialog = await screen.findByRole('dialog');
+  const confirmBtn = within(dialog).getByRole('button', {
+    name: importButtonName,
+  });
+  await act(async () => {
+    fireEvent.click(confirmBtn);
+  });
+  return importBtn;
 }
 
 // ============================================================================
@@ -628,13 +650,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     // open dialog 应被调用
     await waitFor(() => {
@@ -643,7 +659,11 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
 
     // importZip API 应被调用
     await waitFor(() => {
-      expect(mockDataGovernanceApi.importZip).toHaveBeenCalledWith('/path/to/backup.zip');
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalledWith(
+        '/path/to/backup.zip',
+        undefined,
+        undefined,
+      );
     });
 
     // startListening 应被调用来监听导入进度
@@ -659,13 +679,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockOpenDialog).toHaveBeenCalled();
@@ -685,13 +699,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockOpenDialog).toHaveBeenCalled();
@@ -726,13 +734,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -765,6 +767,95 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     });
   });
 
+  it('does not offer immediate slot restore after importing a partial archive', async () => {
+    mockOpenDialog.mockResolvedValue('/path/to/v0.9.44-portable.zip');
+    mockDataGovernanceApi.importZip.mockResolvedValue({
+      job_id: 'import-partial-001',
+      kind: 'import',
+      status: 'queued',
+      message: 'started',
+    });
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+    await confirmImportWithoutPassword();
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      capturedListenerCallbacks.onComplete!({
+        job_id: 'import-partial-001',
+        kind: 'import',
+        status: 'completed',
+        phase: 'done',
+        progress: 100,
+        processed_items: 10,
+        total_items: 10,
+        cancellable: false,
+        created_at: '2026-08-25T00:00:00Z',
+        result: {
+          success: true,
+          requires_restart: false,
+          stats: {
+            backup_id: 'v0944-portable',
+            recovery_kind: 'partial_archive',
+            restorable: false,
+          },
+        },
+      });
+    });
+
+    expect(
+      screen.queryByText('data:governance.import_complete_title'),
+    ).not.toBeInTheDocument();
+    expect(mockDataGovernanceApi.restoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('offers immediate slot restore after importing a disaster-recovery archive', async () => {
+    mockOpenDialog.mockResolvedValue('/path/to/full-fidelity.zip');
+    mockDataGovernanceApi.importZip.mockResolvedValue({
+      job_id: 'import-full-001',
+      kind: 'import',
+      status: 'queued',
+      message: 'started',
+    });
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+    await confirmImportWithoutPassword();
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      capturedListenerCallbacks.onComplete!({
+        job_id: 'import-full-001',
+        kind: 'import',
+        status: 'completed',
+        phase: 'done',
+        progress: 100,
+        processed_items: 10,
+        total_items: 10,
+        cancellable: false,
+        created_at: '2026-08-25T00:00:00Z',
+        result: {
+          success: true,
+          requires_restart: false,
+          stats: {
+            backup_id: 'full-fidelity',
+            recovery_kind: 'disaster_recovery',
+            restorable: true,
+          },
+        },
+      });
+    });
+
+    expect(
+      await screen.findByText('data:governance.import_complete_title'),
+    ).toBeInTheDocument();
+  });
+
   it('shows import progress with correct operation text', async () => {
     mockOpenDialog.mockResolvedValue('/path/to/backup.zip');
     mockDataGovernanceApi.importZip.mockResolvedValue({
@@ -777,13 +868,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -821,13 +906,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -910,6 +989,7 @@ describe('DataGovernanceDashboard export ZIP flow', () => {
         '/path/to/output.zip',
         6, // 默认压缩级别
         true, // includeChecksums
+        undefined, // 未填备份密码：便携归档
       );
     });
   });
