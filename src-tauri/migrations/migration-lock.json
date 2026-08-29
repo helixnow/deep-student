@@ -266,6 +266,22 @@
       "dangers": []
     },
     {
+      "database": "llm_usage",
+      "version": 20260824,
+      "name": "add_cache_write_tokens",
+      "path": "llm_usage/V20260824__add_cache_write_tokens.sql",
+      "sha256": "dc7fc74c894296bb9d95d65975608104e7ca2c238e5c141b9bd757367cee6bc2",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260826,
+      "name": "add_stream_identity",
+      "path": "llm_usage/V20260826__add_stream_identity.sql",
+      "sha256": "b3d1239a6e664a140c772afb2fc6d211c5a91c89b1689dfb42798e417d781f81",
+      "dangers": []
+    },
+    {
       "database": "mistakes",
       "version": 20260130,
       "name": "init",
@@ -447,6 +463,14 @@
       "dangers": [
         "unique_constraint"
       ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260824,
+      "name": "normalize_anki_card_optional_json",
+      "path": "mistakes/V20260824__normalize_anki_card_optional_json.sql",
+      "sha256": "5469e1d0b4aea80f2ed86df7aa8383ef1a15a52bd4ab36504dadb20ea900dfb1",
+      "dangers": []
     },
     {
       "database": "vfs",
@@ -919,6 +943,14 @@
       "name": "file_deletion_intent_journal",
       "path": "vfs/V20260808__file_deletion_intent_journal.sql",
       "sha256": "6f3aed34ac12166a5bd0540383e8e3a366a2442b0adae51464031557aec65dff",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260824,
+      "name": "note_props",
+      "path": "vfs/V20260824__note_props.sql",
+      "sha256": "6607400be7282ab39ad24edfd8d49caba3d6eee212e38926ff6f968d8fd49cb9",
       "dangers": []
     }
   ]

@@ -9,7 +9,7 @@
 //! LWW/conflict handling.
 //!
 //! - `set_union`: union of tag sets (JSON string arrays)
-//! - `max_value`: max of concurrent values (attempt_count, correct_count)
+//! - `max_value`: max of concurrent values (review_plans.total_reviews / total_correct)
 //! - `or_merge`: boolean OR (is_favorite, is_bookmarked)
 //!
 //! ## TD-02: `todo_items.completed_pomodoros` 不参与字段级合并
@@ -62,29 +62,22 @@ const NOTES_NUMERIC_VALUE_TAG_PREFIXES: &[&str] =
 const NOTES_ENUM_VALUE_TAG_PREFIXES: &[&str] = &["_type:", "_purpose:", "_daily_log_date:"];
 
 const FIELD_MERGE_REGISTRY: &[(&str, &[&str])] = &[
-    (
-        "questions",
-        &[
-            "attempt_count",
-            "correct_count",
-            "is_favorite",
-            "is_bookmarked",
-            "tags",
-        ],
-    ),
+    // [R04] attempt_count / correct_count 故意缺席（对照 interval_days 的先例）：
+    // 1. 二者不是严格单调——重置/清空做题统计是合法下降，MaxValue 会用旧的大值回弹；
+    // 2. 二者是每次作答原子更新的关联对（attempt+1，答对时 correct+1），逐列独立取
+    //    max 会撕裂配对（A 设备 5/2、B 设备 4/4 → max 得 5/4，对应不存在的做题历史，
+    //    虚增正确率）。冲突时走行级 LWW，整对以同一侧为准。
+    ("questions", &["is_favorite", "is_bookmarked", "tags"]),
     ("notes", &["tags", "is_favorite"]),
     ("files", &["tags_json", "is_favorite"]),
-    (
-        "review_plans",
-        &[
-            "total_reviews",
-            "total_correct",
-            "interval_days",
-            "consecutive_failures",
-        ],
-    ),
+    // [R02] interval_days / consecutive_failures 故意缺席：二者都不是单调计数——
+    // 复习失败会把 interval_days 缩短、复习成功会把 consecutive_failures 清零，
+    // MaxValue 会把这些合法的"下降"用旧的大值回弹掉，冲突时走行级 LWW。
+    ("review_plans", &["total_reviews", "total_correct"]),
     // completed_pomodoros 故意缺席：派生缓存，由 pomodoro_counts 重算（TD-02）
-    ("todo_items", &["estimated_pomodoros", "tags_json"]),
+    // [R02] estimated_pomodoros 故意缺席：用户手输预估值可以合法调低，
+    // MaxValue 会让"5 改成 3"被另一台设备的旧值 5 回弹，冲突时走行级 LWW。
+    ("todo_items", &["tags_json"]),
     ("essays", &["is_favorite"]),
     ("translations", &["is_favorite"]),
     ("todo_lists", &["is_favorite"]),
@@ -169,15 +162,15 @@ fn field_merge_strategy(table_name: &str, column_name: &str) -> Option<FieldMerg
     match (table_name, column_name) {
         (_, "tags") | (_, "tags_json") => Some(FieldMergeStrategy::TagSetUnion),
 
-        ("questions", "attempt_count")
-        | ("questions", "correct_count")
-        | ("review_plans", "total_reviews")
-        | ("review_plans", "total_correct")
-        | ("review_plans", "interval_days")
-        | ("review_plans", "consecutive_failures") => Some(FieldMergeStrategy::MaxValue),
-
-        // TD-02: completed_pomodoros 不在此列——派生缓存走行级 LWW + apply 后重算
-        ("todo_items", "estimated_pomodoros") => Some(FieldMergeStrategy::MaxValue),
+        // MaxValue 只允许真正单调递增的计数。
+        // [R02] review_plans.interval_days / consecutive_failures 与
+        // todo_items.estimated_pomodoros 均可合法下降，不得用 MaxValue 回弹；
+        // TD-02: completed_pomodoros 是派生缓存，走行级 LWW + apply 后重算；
+        // [R04] questions.attempt_count / correct_count 是关联对且可合法重置，
+        // 逐列独立 max 会撕裂配对、回弹重置，冲突时走行级 LWW（见 registry 注释）。
+        ("review_plans", "total_reviews") | ("review_plans", "total_correct") => {
+            Some(FieldMergeStrategy::MaxValue)
+        }
 
         ("questions", "is_favorite")
         | ("questions", "is_bookmarked")
@@ -421,16 +414,76 @@ mod tests {
         assert!(!changed);
         assert!(conflict);
 
-        // estimated_pomodoros（用户手输预估值）仍保留 max 合并
+        // [R02] estimated_pomodoros（用户手输预估值）也不再 max 合并：
+        // 用户把预估从 5 调低到 3 时，MaxValue 会用旧值 5 回弹，因此走行级 LWW。
         let (est, est_changed, est_conflict) = merge_field(
             "todo_items",
             "estimated_pomodoros",
             Some(&json!(3)),
             Some(&json!(5)),
         );
-        assert_eq!(est, json!(5));
-        assert!(est_changed);
-        assert!(!est_conflict);
+        assert_eq!(est, json!(5), "行级 LWW：远端值直落");
+        assert!(!est_changed);
+        assert!(est_conflict);
+    }
+
+    #[test]
+    fn regression_r02_non_monotonic_fields_are_not_max_merged() {
+        // interval_days（复习失败会缩短）、consecutive_failures（成功会清零）、
+        // estimated_pomodoros（用户可调低）都可合法下降，MaxValue 会回弹这些下降。
+        for (table, column) in [
+            ("review_plans", "interval_days"),
+            ("review_plans", "consecutive_failures"),
+            ("todo_items", "estimated_pomodoros"),
+        ] {
+            assert!(
+                !field_merge_columns_for_table(table).contains(&column),
+                "{}.{} must not be in the auto field-merge picklist",
+                table,
+                column
+            );
+            // 远端把值合法调低（10 -> 2）：必须按行级 LWW 直落，不得 max 回弹成 10
+            let (result, changed, conflict) =
+                merge_field(table, column, Some(&json!(10)), Some(&json!(2)));
+            assert_eq!(result, json!(2), "{}.{} 不得 MaxValue 回弹", table, column);
+            assert!(!changed);
+            assert!(conflict);
+        }
+
+        // 真正单调的计数仍保留 max 合并
+        let (result, changed, conflict) = merge_field(
+            "review_plans",
+            "total_reviews",
+            Some(&json!(10)),
+            Some(&json!(7)),
+        );
+        assert_eq!(result, json!(10));
+        assert!(changed);
+        assert!(!conflict);
+    }
+
+    #[test]
+    fn regression_r04_question_counters_are_not_max_merged() {
+        // [R04] attempt_count / correct_count 是每次作答原子更新的关联对，且统计
+        // 可合法重置归零：
+        // - 逐列独立 MaxValue 会撕裂配对：A 设备 5/2、B 设备 4/4 → max 得 5/4，
+        //   对应不存在的做题历史并虚增正确率；
+        // - 重置（10 → 0）会被另一台设备的旧值回弹。
+        // 因此二者移出 MaxValue（对照 interval_days 先例），冲突时走行级 LWW，
+        // 整对以同一侧为准。
+        for column in ["attempt_count", "correct_count"] {
+            assert!(
+                !field_merge_columns_for_table("questions").contains(&column),
+                "questions.{} must not be in the auto field-merge picklist",
+                column
+            );
+            // 远端把统计合法重置（10 -> 0）：必须按行级 LWW 直落，不得 max 回弹成 10
+            let (result, changed, conflict) =
+                merge_field("questions", column, Some(&json!(10)), Some(&json!(0)));
+            assert_eq!(result, json!(0), "questions.{} 不得 MaxValue 回弹", column);
+            assert!(!changed);
+            assert!(conflict);
+        }
     }
 
     #[test]
@@ -474,13 +527,7 @@ mod tests {
     fn regression_m22_picklist_only_exposes_convergent_strategies() {
         assert_eq!(
             field_merge_columns_for_table("questions"),
-            vec![
-                "attempt_count",
-                "correct_count",
-                "is_favorite",
-                "is_bookmarked",
-                "tags",
-            ]
+            vec!["is_favorite", "is_bookmarked", "tags"]
         );
         assert!(!field_merge_columns_for_table("resources").contains(&"ref_count"));
         assert!(!field_merge_columns_for_table("questions").contains(&"images_json"));
@@ -516,6 +563,21 @@ mod tests {
                 entry.table_name
             );
         }
+    }
+
+    #[test]
+    fn note_props_uses_whole_object_lww_not_unsafe_deep_merge() {
+        assert!(
+            !field_merge_columns_for_table("notes").contains(&"props"),
+            "arbitrary props objects have no generally commutative deep-merge strategy"
+        );
+        let local = json!({ "status": "draft", "localOnly": true });
+        let remote = json!({ "status": "done" });
+        let (result, was_merged, conflict) =
+            merge_field("notes", "props", Some(&local), Some(&remote));
+        assert_eq!(result, remote);
+        assert!(!was_merged);
+        assert!(conflict);
     }
 
     #[test]

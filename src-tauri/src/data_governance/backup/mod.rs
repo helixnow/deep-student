@@ -33,6 +33,12 @@
 
 pub mod assets;
 
+pub mod delta_inventory;
+
+pub mod portable_precheck;
+
+pub mod restore_plan;
+
 pub mod zip_export;
 
 use rusqlite::backup::Backup;
@@ -56,10 +62,29 @@ pub const INCREMENTAL_BACKUP_REMOVED_MESSAGE: &str =
 pub const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE: &str =
     "Legacy incremental backup cannot be restored; use a full backup or cloud sync";
 
+/// 便携/部分归档拒绝整槽恢复的稳定 code（文案仍可改语言）。
+pub const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE: &str = "E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE";
+
+/// A/B 数据空间管理器不可用时拒绝整槽恢复的稳定 code。
+pub const ATOMIC_RESTORE_UNAVAILABLE_CODE: &str = "E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE";
+
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
 
-pub use zip_export::{export_backup_to_zip, ZipExportError, ZipExportOptions, ZipExportResult};
+pub use zip_export::{
+    export_backup_to_zip, export_backup_to_zip_with_progress, ZipExportError, ZipExportOptions,
+    ZipExportPhase, ZipExportProgress, ZipExportResult,
+};
+
+// 恢复编排的域消费契约（DomainRestorePlan 消费 + 未消费断言）。
+pub use restore_plan::{
+    assert_no_unconsumed_complete_domains, DomainRestoreOutcome, DomainRestoreOutcomeState,
+    DomainRestoreReport, RESTORE_PENDING_TRUST_DIR_NAME,
+};
+// 稳定错误码由 restore_codes 单点定义；此处再导出供恢复编排/前端契约使用。
+pub use super::restore_codes::{
+    RESTORE_DOMAIN_FAILED_CODE, RESTORE_DOMAIN_UNCONSUMED_CODE, RESTORE_UNTRUSTED_ISOLATED_CODE,
+};
 
 // 重新导出资产模块的公共类型
 pub use assets::{
@@ -336,6 +361,40 @@ fn remove_crypto_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
+fn rollback_published_crypto(
+    target_master: &Path,
+    target_secure: &Path,
+    rollback_master: &Path,
+    rollback_secure: &Path,
+    installed_master: bool,
+    installed_secure: bool,
+    moved_master: bool,
+    moved_secure: bool,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    if installed_master {
+        if let Err(error) = remove_crypto_path(target_master) {
+            errors.push(format!("删除新主密钥失败: {}", error));
+        }
+    }
+    if installed_secure {
+        if let Err(error) = remove_crypto_path(target_secure) {
+            errors.push(format!("删除新安全目录失败: {}", error));
+        }
+    }
+    if moved_master {
+        if let Err(error) = fs::rename(rollback_master, target_master) {
+            errors.push(format!("恢复旧主密钥失败: {}", error));
+        }
+    }
+    if moved_secure {
+        if let Err(error) = fs::rename(rollback_secure, target_secure) {
+            errors.push(format!("恢复旧安全目录失败: {}", error));
+        }
+    }
+    errors
+}
+
 /// 生成安全且高概率唯一的备份 ID（目录名）
 ///
 /// 约束：
@@ -411,6 +470,12 @@ impl SnapshotKind {
 #[serde(rename_all = "snake_case")]
 pub enum BackupKeyPolicy {
     IncludedLocal,
+    /// Sensitive material (crypto keys, audit database, export-isolated
+    /// domains) is present but sealed inside a password-encrypted payload of a
+    /// portable archive. The package must be unsealed at import time (which
+    /// restores the original `IncludedLocal`/`NotPresent` manifest) before it
+    /// can be considered for slot replacement.
+    IncludedEncrypted,
     ExcludedPortable,
     NotPresent,
     LegacyUnknown,
@@ -1058,6 +1123,14 @@ impl BackupManifest {
         if self.is_incremental {
             return Err(BackupError::IncrementalRestoreNotSupported(
                 INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE.to_string(),
+            ));
+        }
+        // 加密全保真 ZIP 的外层清单：在 snapshot_kind 检查之前先给出
+        // 可操作指引（提供备份密码解封），而不是笼统的"不是完整快照"。
+        if self.key_policy == BackupKeyPolicy::IncludedEncrypted {
+            return Err(BackupError::Manifest(
+                "备份的敏感数据仍处于密码加密封存状态；请在导入 ZIP 时提供备份密码完成解封，再执行整槽恢复"
+                    .to_string(),
             ));
         }
         if self.snapshot_kind != SnapshotKind::Full {
@@ -3496,12 +3569,35 @@ impl BackupManager {
         manifest: &BackupManifest,
         backup_subdir: &Path,
     ) -> Result<usize, BackupError> {
+        self.restore_crypto_keys_from_manifest_transactional(manifest, backup_subdir, None, |_| {
+            Ok(())
+        })
+    }
+
+    /// Publish manifest-verified crypto material and keep the previous global
+    /// generation available until `after_publish` durably commits the matching
+    /// restore cutover. If that commit fails, both `.master_key` and `.secure`
+    /// are restored to their exact pre-publication state.
+    ///
+    /// `cutover` 为 `(backup_id, target_slot)`，写入持久化 journal；进程在发布
+    /// 中途崩溃时，启动侧据其与 restore cutover lease 的匹配结果前滚或回滚。
+    pub(crate) fn restore_crypto_keys_from_manifest_transactional<F>(
+        &self,
+        manifest: &BackupManifest,
+        backup_subdir: &Path,
+        cutover: Option<(&str, &str)>,
+        after_publish: F,
+    ) -> Result<usize, BackupError>
+    where
+        F: FnOnce(usize) -> Result<(), BackupError>,
+    {
         let plan = manifest
             .crypto_restore_plan()
             .ok_or_else(|| BackupError::Manifest("备份缺少 crypto restore plan".to_string()))?;
         let actual_files = Self::collect_backup_files_under(backup_subdir, "crypto")?;
         if matches!(plan.status, CoverageStatus::Absent | CoverageStatus::Empty) {
             if actual_files.is_empty() {
+                after_publish(0)?;
                 return Ok(0);
             }
             return Err(BackupError::Manifest(
@@ -3534,7 +3630,7 @@ impl BackupManager {
             }
         }
         Self::verify_crypto_material(manifest, backup_subdir)?;
-        self.restore_crypto_keys(backup_subdir)
+        self.restore_crypto_keys_transactional(backup_subdir, cutover, after_publish)
     }
 
     /// 从备份目录恢复加密密钥文件到应用数据目录
@@ -3542,6 +3638,18 @@ impl BackupManager {
     /// 恢复 `.master_key` 和 `.secure/` 目录，使跨设备恢复后 API 密钥可正常解密。
     /// 仅在备份中包含 crypto/ 子目录时执行。
     pub fn restore_crypto_keys(&self, backup_subdir: &Path) -> Result<usize, BackupError> {
+        self.restore_crypto_keys_transactional(backup_subdir, None, |_| Ok(()))
+    }
+
+    fn restore_crypto_keys_transactional<F>(
+        &self,
+        backup_subdir: &Path,
+        cutover: Option<(&str, &str)>,
+        after_publish: F,
+    ) -> Result<usize, BackupError>
+    where
+        F: FnOnce(usize) -> Result<(), BackupError>,
+    {
         let backup_metadata = fs::symlink_metadata(backup_subdir).map_err(|e| {
             BackupError::RestoreFailed(format!("无法检查备份目录，目标密钥保持不变: {}", e))
         })?;
@@ -3553,7 +3661,10 @@ impl BackupManager {
 
         let crypto_src = backup_subdir.join("crypto");
         match fs::symlink_metadata(&crypto_src) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                after_publish(0)?;
+                return Ok(0);
+            }
             Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
             Ok(_) => {
                 return Err(BackupError::RestoreFailed(
@@ -3704,6 +3815,7 @@ impl BackupManager {
             })?;
         }
         if !has_master && !has_secure {
+            after_publish(0)?;
             return Ok(0);
         }
 
@@ -3723,25 +3835,57 @@ impl BackupManager {
         }
 
         let app_data_root = self.application_data_root();
-        let rollback = tempfile::Builder::new()
-            .prefix("crypto-restore-rollback-")
-            .tempdir_in(&app_data_root)
-            .map_err(|e| BackupError::RestoreFailed(format!("创建密钥回滚目录失败: {}", e)))?;
+        if crate::crypto_publication::journal_path(&app_data_root).exists() {
+            return Err(BackupError::RestoreFailed(
+                "检测到未决的密钥发布 journal，请先重启应用完成恢复后重试".to_string(),
+            ));
+        }
+        let rollback_dir = crate::crypto_publication::rollback_dir(&app_data_root);
+        // 无 journal 的残留回滚目录来自已解决的发布，重建为本次发布的空回滚点。
+        remove_crypto_path(&rollback_dir).map_err(|e| {
+            BackupError::RestoreFailed(format!("清理残留密钥回滚目录失败，目标密钥保持不变: {}", e))
+        })?;
+        fs::create_dir(&rollback_dir)?;
+        crate::secure_store::SecureStore::restrict_permissions(&rollback_dir, true);
         let target_master = app_data_root.join(".master_key");
         let target_secure = app_data_root.join(".secure");
-        let rollback_master = rollback.path().join(".master_key");
-        let rollback_secure = rollback.path().join(".secure");
+        let rollback_master = rollback_dir.join(".master_key");
+        let rollback_secure = rollback_dir.join(".secure");
+        let had_old_master = fs::symlink_metadata(&target_master).is_ok();
+        let had_old_secure = fs::symlink_metadata(&target_secure).is_ok();
+
+        // 发布是「旧密钥移出 → 新密钥装入 → cutover lease 落盘」的多步过程，
+        // 任一步之间崩溃都可能留下密钥/槽位代际错位。journal 先于任何 rename
+        // 落盘，使启动侧能确定性地前滚（lease 已持久化）或回滚（lease 缺失）。
+        let journal = crate::crypto_publication::CryptoPublicationJournal {
+            version: 1,
+            backup_id: cutover.map(|(backup_id, _)| backup_id.to_string()),
+            target_slot: cutover.map(|(_, slot)| slot.to_string()),
+            had_old_master,
+            had_old_secure,
+            installs_master: has_master,
+            installs_secure: has_secure,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = crate::crypto_publication::write_journal(&app_data_root, &journal) {
+            let _ = remove_crypto_path(&rollback_dir);
+            return Err(BackupError::RestoreFailed(format!(
+                "写入密钥发布 journal 失败，目标密钥保持不变: {}",
+                e
+            )));
+        }
+
         let mut moved_master = false;
         let mut moved_secure = false;
         let mut installed_master = false;
         let mut installed_secure = false;
 
         let commit_result: Result<(), BackupError> = (|| {
-            if has_master && fs::symlink_metadata(&target_master).is_ok() {
+            if has_master && had_old_master {
                 fs::rename(&target_master, &rollback_master)?;
                 moved_master = true;
             }
-            if has_secure && fs::symlink_metadata(&target_secure).is_ok() {
+            if has_secure && had_old_secure {
                 fs::rename(&target_secure, &rollback_secure)?;
                 moved_secure = true;
             }
@@ -3757,52 +3901,135 @@ impl BackupManager {
         })();
 
         if let Err(commit_error) = commit_result {
-            let mut rollback_errors = Vec::new();
-            if installed_master {
-                if let Err(e) = remove_crypto_path(&target_master) {
-                    rollback_errors.push(format!("删除新主密钥失败: {}", e));
+            let rollback_errors = rollback_published_crypto(
+                &target_master,
+                &target_secure,
+                &rollback_master,
+                &rollback_secure,
+                installed_master,
+                installed_secure,
+                moved_master,
+                moved_secure,
+            );
+            // 回滚干净时事务已就地解决；否则保留 journal 供下次启动继续修复。
+            if rollback_errors.is_empty() {
+                if let Err(e) = crate::crypto_publication::remove_journal(&app_data_root) {
+                    warn!(
+                        "[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}",
+                        e
+                    );
                 }
-            }
-            if installed_secure {
-                if let Err(e) = remove_crypto_path(&target_secure) {
-                    rollback_errors.push(format!("删除新安全目录失败: {}", e));
-                }
-            }
-            if moved_master {
-                if let Err(e) = fs::rename(&rollback_master, &target_master) {
-                    rollback_errors.push(format!("恢复旧主密钥失败: {}", e));
-                }
-            }
-            if moved_secure {
-                if let Err(e) = fs::rename(&rollback_secure, &target_secure) {
-                    rollback_errors.push(format!("恢复旧安全目录失败: {}", e));
-                }
+                let _ = remove_crypto_path(&rollback_dir);
             }
             return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
                 format!("密钥原子提交失败，已恢复原目标: {}", commit_error)
             } else {
                 format!(
-                    "密钥原子提交失败且回滚不完整: {}; {}",
+                    "密钥原子提交失败且回滚不完整（journal 已保留，重启后自动修复）: {}; {}",
                     commit_error,
                     rollback_errors.join("; ")
                 )
             }));
         }
 
-        if has_master {
-            crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
-        }
-        if has_secure {
-            crate::secure_store::SecureStore::restrict_permissions(&target_secure, true);
-            for entry in fs::read_dir(&target_secure)? {
-                let entry = entry?;
-                if entry.file_type()?.is_file() {
-                    crate::secure_store::SecureStore::restrict_permissions(&entry.path(), false);
+        let restored = usize::from(has_master) + secure_file_count;
+        let publish_result = (|| -> Result<(), BackupError> {
+            // 在登记 cutover lease 之前把密钥 rename 落盘：崩溃后不允许出现
+            // 「lease 已持久化但密钥安装未持久化」的组合。
+            crate::crypto_publication::sync_directory(&app_data_root)
+                .map_err(|e| BackupError::RestoreFailed(format!("密钥发布落盘失败: {}", e)))?;
+            if has_master {
+                crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
+            }
+            if has_secure {
+                crate::secure_store::SecureStore::restrict_permissions(&target_secure, true);
+                for entry in fs::read_dir(&target_secure)? {
+                    let entry = entry?;
+                    if entry.file_type()?.is_file() {
+                        crate::secure_store::SecureStore::restrict_permissions(
+                            &entry.path(),
+                            false,
+                        );
+                    }
                 }
             }
+            after_publish(restored)
+        })();
+
+        if let Err(cutover_error) = publish_result {
+            let rollback_errors = rollback_published_crypto(
+                &target_master,
+                &target_secure,
+                &rollback_master,
+                &rollback_secure,
+                installed_master,
+                installed_secure,
+                moved_master,
+                moved_secure,
+            );
+            if rollback_errors.is_empty() {
+                if let Err(e) = crate::crypto_publication::remove_journal(&app_data_root) {
+                    warn!(
+                        "[Restore] 清理密钥发布 journal 失败（启动侧回滚为幂等空操作）: {}",
+                        e
+                    );
+                }
+                let _ = remove_crypto_path(&rollback_dir);
+            }
+            return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
+                format!(
+                    "密钥发布后的恢复切槽提交失败，已恢复旧密钥: {}",
+                    cutover_error
+                )
+            } else {
+                format!(
+                    "密钥发布后的恢复切槽提交失败且旧密钥回滚不完整（journal 已保留，重启后自动修复）: {}; {}",
+                    cutover_error,
+                    rollback_errors.join("; ")
+                )
+            }));
         }
 
-        let restored = usize::from(has_master) + secure_file_count;
+        match crate::crypto_publication::remove_journal(&app_data_root) {
+            Ok(()) => {
+                if let Err(e) = remove_crypto_path(&rollback_dir) {
+                    warn!(
+                        "[Restore] 清理密钥回滚目录失败（残留将在下次启动清理）: {}",
+                        e
+                    );
+                }
+            }
+            Err(journal_error) if cutover.is_some() => {
+                // lease 已持久化，启动侧会按前滚清理残留的 journal 与回滚目录。
+                warn!(
+                    "[Restore] 清理密钥发布 journal 失败，下次启动将按已登记切槽前滚清理: {}",
+                    journal_error
+                );
+            }
+            Err(journal_error) => {
+                // 非切槽调用没有 lease 供前滚判定，残留 journal 会在下次启动
+                // 回滚本次发布；就地撤销并如实报告失败。
+                let rollback_errors = rollback_published_crypto(
+                    &target_master,
+                    &target_secure,
+                    &rollback_master,
+                    &rollback_secure,
+                    installed_master,
+                    installed_secure,
+                    moved_master,
+                    moved_secure,
+                );
+                return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
+                    format!("密钥发布 journal 清理失败，已恢复旧密钥: {}", journal_error)
+                } else {
+                    format!(
+                        "密钥发布 journal 清理失败且旧密钥回滚不完整（journal 已保留，重启后自动修复）: {}; {}",
+                        journal_error,
+                        rollback_errors.join("; ")
+                    )
+                }));
+            }
+        }
         info!("[Restore] 加密密钥原子恢复完成: {} 个文件", restored);
         Ok(restored)
     }
@@ -4101,6 +4328,41 @@ impl BackupManager {
             restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
         }
 
+        // 5.5 DomainRestorePlan 消费与未消费断言：webview-settings /
+        // custom-grading-modes 落 restore_target，agents / user-skills 隔离
+        // 待信任，audit 经 manifest 计划恢复，coverage 中任何 Complete 域
+        // 未被消费即拒绝成功。restore_assets=false 的旧部分恢复路径保持
+        // 既有行为，不参与该契约。
+        if restore_assets && restore_errors.is_empty() {
+            match self.consume_complete_domains(manifest, &backup_subdir, &active_dir_for_ws) {
+                Ok(reports) => {
+                    for report in &reports {
+                        if report.state == DomainRestoreOutcome::Failed {
+                            restore_errors.push(format!(
+                                "{}: {}",
+                                report.domain_id,
+                                report.detail.clone().unwrap_or_default()
+                            ));
+                        }
+                    }
+                    if restore_errors.is_empty() {
+                        let consumed: Vec<String> = reports
+                            .iter()
+                            .map(|report| report.domain_id.clone())
+                            .collect();
+                        if let Err(error) =
+                            assert_no_unconsumed_complete_domains(manifest, &consumed)
+                        {
+                            restore_errors.push(format!("未消费域断言: {}", error));
+                        }
+                    }
+                }
+                Err(error) => {
+                    restore_errors.push(format!("域恢复计划消费: {}", error));
+                }
+            }
+        }
+
         // 6. 检查是否有错误
         if !restore_errors.is_empty() {
             error!("恢复失败，尝试自动回滚到预恢复备份: {:?}", pre_restore_dir);
@@ -4265,6 +4527,40 @@ impl BackupManager {
         if let Err(error) = Self::finalize_vfs_index_restore(manifest, target_dir, restore_assets) {
             error!("恢复后校验 VFS 派生索引失败: {}", error);
             restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
+        }
+
+        // 5.5 DomainRestorePlan 消费与未消费断言（与 restore_with_assets
+        // 一致）：Data 域落候选槽 restore_target，可执行域隔离待信任，
+        // Complete 域未被消费即拒绝成功。crypto 在候选槽路径不触盘——密钥
+        // 由槽编排的事务发布路径在切槽提交时消费。
+        if restore_assets && restore_errors.is_empty() {
+            match self.consume_complete_domains(manifest, &backup_subdir, target_dir) {
+                Ok(reports) => {
+                    for report in &reports {
+                        if report.state == DomainRestoreOutcome::Failed {
+                            restore_errors.push(format!(
+                                "{}: {}",
+                                report.domain_id,
+                                report.detail.clone().unwrap_or_default()
+                            ));
+                        }
+                    }
+                    if restore_errors.is_empty() {
+                        let consumed: Vec<String> = reports
+                            .iter()
+                            .map(|report| report.domain_id.clone())
+                            .collect();
+                        if let Err(error) =
+                            assert_no_unconsumed_complete_domains(manifest, &consumed)
+                        {
+                            restore_errors.push(format!("未消费域断言: {}", error));
+                        }
+                    }
+                }
+                Err(error) => {
+                    restore_errors.push(format!("域恢复计划消费: {}", error));
+                }
+            }
         }
 
         // 6. 检查是否有错误（非活跃插槽恢复失败不回滚，直接报错）
@@ -5350,7 +5646,8 @@ impl BackupManager {
                 continue;
             }
             if archive_path_requires_explicit_trust(&backup_file.path) {
-                // Executable domains are restored only after an explicit UI
+                // Executable domains are never auto-restored here:
+                // `consume_complete_domains` isolates them pending an explicit
                 // trust decision via their DomainRestorePlan.
                 continue;
             }
@@ -5362,8 +5659,13 @@ impl BackupManager {
                     if root == std::ffi::OsStr::new("crypto")
                         || root == std::ffi::OsStr::new("persistent")
             ) {
-                // Explicit restore plans own these domains. Executable user
-                // skills in particular must never be auto-trusted here.
+                // Domain restore plans own these roots, and skipping here
+                // avoids double writes: crypto is published transactionally by
+                // the cutover path, persistent/ domains (webview-settings /
+                // custom-grading-modes / user-skills) are dispatched by
+                // `consume_complete_domains`. The
+                // `assert_no_unconsumed_complete_domains` gate guarantees this
+                // skip can no longer silently swallow a Complete domain.
                 continue;
             }
             let src = resolve_existing_backup_file(backup_dir, rel)?;
@@ -6088,7 +6390,8 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn setup_test_env() -> (BackupManager, TempDir, TempDir) {
+    // 供子模块（restore_plan::tests）复用的标准测试环境。
+    pub(crate) fn setup_test_env() -> (BackupManager, TempDir, TempDir) {
         let backup_dir = TempDir::new().unwrap();
         let app_data_dir = TempDir::new().unwrap();
 
