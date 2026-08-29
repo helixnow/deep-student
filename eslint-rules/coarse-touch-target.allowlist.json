@@ -1,0 +1,40 @@
+{
+  "note": "ds-components/coarse-touch-target 白名单：mobile-uiux-unify 收尾文档（docs/dev/mobile-uiux-unify/WRAP-UP.md、ROUND-81~90-FIXES.md）登记的有意折衷。按文件整体豁免；新增条目必须写明 reason 与 source。体系层 src/components/ui/** 不在此登记——它在 eslint.config.js 里按目录关闭（那里是这些模式的集中实现处）。",
+  "files": [
+    {
+      "path": "src/features/learning-hub/components/TabBar.tsx",
+      "reason": "标签宽 28 有意折衷；before/after 3px 扩条与「更多/关闭」before:-inset-y 热区受层叠约束（z-[1] 压过切换热区），勿重做",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md / ROUND-90-FIXES.md"
+    },
+    {
+      "path": "src/features/learning-hub/components/finder/FinderToolbar.tsx",
+      "reason": "六枚图标视觉 40 + after:-inset 伪元素命中 48：标题栏高度约束，勿再硬叠 44 视觉",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-25-FIXES.md / ROUND-81-FIXES.md"
+    },
+    {
+      "path": "src/components/translation/TranslationMain.tsx",
+      "reason": "COARSE_HIT 常量（relative + after:-inset-1.5）已凑满 ≥44 命中且视觉不变，收尾文档明确勿重做视觉",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md"
+    },
+    {
+      "path": "src/components/translation/SourcePanel.tsx",
+      "reason": "COARSE_HIT 同款范式（含 coarse !h-9 视觉微调），勿重做视觉",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md"
+    },
+    {
+      "path": "src/components/translation/TargetPanel.tsx",
+      "reason": "COARSE_HIT 同款范式，勿重做视觉",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md"
+    },
+    {
+      "path": "src/components/translation/ComparisonView.tsx",
+      "reason": "COARSE_HIT 同款范式（按钮更小，inset 相应加大），勿重做视觉",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md"
+    },
+    {
+      "path": "src/components/essay-grading/InputPanel.tsx",
+      "reason": "COARSE_HIT / COARSE_HIT_SM / COARSE_HIT_BADGE：28px/24px/16px 三档小钮伪元素扩区，与翻译面板同款范式（『翻译 COARSE_HIT 等』的『等』）",
+      "source": "docs/dev/mobile-uiux-unify/ROUND-81-FIXES.md"
+    }
+  ]
+}
