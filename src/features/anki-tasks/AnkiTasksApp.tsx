@@ -527,17 +527,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
-              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7 [@media(pointer:coarse)]:!h-11">
+              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
                 <ArrowsDownUp size={14} />
-                <span className="text-[11px]">{sortLabel}</span>
+                <span className="text-xs">{sortLabel}</span>
               </DsButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7 [@media(pointer:coarse)]:!h-11" aria-label={t('taskDashboard.recoverStuck')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -555,7 +555,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.propTotalCards')}>
               <AnimatedNumber value={metrics.totalCards} className="font-semibold" />
               {metrics.avgCards > 0 && (
-                <span className="text-muted-foreground/50 ml-1 text-[12px]">
+                <span className="text-muted-foreground/50 ml-1 text-sm">
                   ({t('taskDashboard.avgCardsPerDoc')} {metrics.avgCards})
                 </span>
               )}
@@ -566,29 +566,29 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             <PropRow icon={<TrendUp size={14} />} label={t('taskDashboard.propActiveJobs')}>
               {groups.active.length > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <CircleNotch size={12} className="text-[color:hsl(var(--info))] animate-spin" />
-                  <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
+                  <CircleNotch size={12} className="text-info animate-spin" />
+                  <span className="text-info font-medium">{groups.active.length}</span>
                   <CommonTooltip content={preventSleep ? t('taskDashboard.preventSleepOn') : t('taskDashboard.preventSleepOff')}>
                     <DsButton
                       size="sm"
                       variant={preventSleep ? 'secondary' : 'ghost'}
                       onClick={togglePreventSleep}
-                      className="ml-1 h-6 text-[12px] [@media(pointer:coarse)]:!h-11"
+                      className="ml-1 h-6 text-sm"
                     >
-                      <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
+                      <Coffee size={12} className={preventSleep ? 'text-warning' : ''} />
                       {t('taskDashboard.preventSleep')}
                     </DsButton>
                   </CommonTooltip>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle size={12} className="text-[color:hsl(var(--success))]" />
-                  <span className="text-[color:hsl(var(--success))]">{t('taskDashboard.allDone')}</span>
+                  <CheckCircle size={12} className="text-success" />
+                  <span className="text-success">{t('taskDashboard.allDone')}</span>
                 </span>
               )}
             </PropRow>
             <PropRow icon={<Warning size={14} />} label={t('taskDashboard.propErrorRate')}>
-              <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-[color:hsl(var(--warning))]' : ''}`}>
+              <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-warning' : ''}`}>
                 {metrics.errorRate}%
               </span>
               {metrics.failedTasks > 0 && (
@@ -607,7 +607,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
-                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px] [@media(pointer:coarse)]:!min-h-11">
+                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-sm">
                   {t('taskDashboard.openTemplateLib')}
                 </DsButton>
               )}
@@ -649,8 +649,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                     {donutData.map((d, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="text-[12px] text-muted-foreground">{d.label}</span>
-                        <span className="text-[12px] text-foreground/70 tabular-nums ml-auto">{d.value}</span>
+                        <span className="text-sm text-muted-foreground">{d.label}</span>
+                        <span className="text-sm text-foreground/70 tabular-nums ml-auto">{d.value}</span>
                       </div>
                     ))}
                   </div>
@@ -685,9 +685,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <div
             role="status"
             data-testid="anki-tasks-stats-error"
-            className="flex flex-wrap items-center gap-2 rounded-md border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/10 px-3 py-2 text-xs"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs"
           >
-            <Warning size={14} className="text-[color:hsl(var(--warning))]" />
+            <Warning size={14} className="text-warning" />
             <span className="min-w-0 break-words text-muted-foreground">
               {t('taskDashboard.statsLoadFailed', {
                 defaultValue: '统计数据加载失败，任务列表不受影响',
@@ -706,9 +706,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <div
             role="status"
             data-testid="anki-tasks-stale-banner"
-            className="flex flex-wrap items-center gap-2 rounded-md border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/10 px-3 py-2 text-xs"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs"
           >
-            <Warning size={14} className="text-[color:hsl(var(--warning))]" />
+            <Warning size={14} className="text-warning" />
             <span className="min-w-0 break-words text-muted-foreground">
               {t('taskDashboard.refreshFailedStale')}
             </span>
@@ -735,8 +735,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 // 不能只靠 isSmallScreen）。!min-h-11 带 important：app.css 的
                 // .study-shell-segmented-button { min-height: 0 } 会盖掉基元里
                 // 非 important 的 coarse min-h-11
-                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
-                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
+                ? '!h-auto !px-3 !py-2 text-sm whitespace-nowrap'
+                : '!h-auto !px-2.5 !py-1 text-sm whitespace-nowrap [@media(pointer:coarse)]:!px-3'}
               options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
                 const labelText =
                   tab === 'all'
@@ -752,7 +752,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                     <>
                       <span>{labelText}</span>
                       {tabCounts[tab] > 0 && (
-                        <span className="ml-1 text-[10px] text-muted-foreground/40 tabular-nums">
+                        <span className="ml-1 text-2xs text-muted-foreground/40 tabular-nums">
                           {tabCounts[tab]}
                         </span>
                       )}
@@ -772,10 +772,10 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px] [@media(pointer:coarse)]:!h-11"
+                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)]"
               />
               {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                   <X size={12} />
                 </DsButton>
               )}
@@ -784,19 +784,19 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <DsButton size="sm" variant="utility" onClick={cycleSort} className="[@media(pointer:coarse)]:!min-h-11" aria-label={sortLabel} title={sortLabel}>
+                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
-                  <span className="text-[11px]">{sortLabel}</span>
+                  <span className="text-xs">{sortLabel}</span>
                 </DsButton>
-                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="[@media(pointer:coarse)]:!min-h-11" aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
-                  <span className="text-[11px]">{t('taskDashboard.recoverStuck')}</span>
+                  <span className="text-xs">{t('taskDashboard.recoverStuck')}</span>
                 </DsButton>
               </div>
             )}
@@ -805,8 +805,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           {loadError && sessions.length === 0 ? (
             /* 加载失败 ≠ 没有任务：显式错误态 + 重试 */
             <div className="wb-at-empty" role="alert" data-testid="anki-tasks-load-error">
-              <Warning size={28} className="text-[color:hsl(var(--warning))]" />
-              <p className="font-medium text-foreground text-[13px]">
+              <Warning size={28} className="text-warning" />
+              <p className="font-medium text-foreground text-ui">
                 {t('taskDashboard.loadFailed')}
               </p>
               <p className="max-w-md break-words text-xs text-muted-foreground/70">
@@ -821,7 +821,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             /* 空状态 + 双引导：去聊天发起制卡（主）/ 打开模板库先备好模板（次） */
             <div className="wb-at-empty">
               <FileText size={28} className="text-muted-foreground/30" />
-              <p className="font-medium text-foreground text-[13px]">
+              <p className="font-medium text-foreground text-ui">
                 {t('taskDashboard.empty')}
               </p>
               <p className="text-xs text-muted-foreground/70">
@@ -831,7 +831,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 <DsButton
                   size="sm"
                   variant="primary"
-                  className="[@media(pointer:coarse)]:!min-h-11"
+                 
                   onClick={() => {
                     // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
                     // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
@@ -846,7 +846,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                   <DsButton
                     size="sm"
                     variant="default"
-                    className="[@media(pointer:coarse)]:!min-h-11"
+                   
                     onClick={onOpenTemplateManagement}
                   >
                     <Palette size={14} />
@@ -857,7 +857,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             </div>
           ) : sortedAndFiltered.length === 0 ? (
             <div className="wb-at-empty">
-              <p className="text-[13px] text-muted-foreground/50">
+              <p className="text-ui text-muted-foreground/50">
                 {t('taskDashboard.noMatchFilter')}
               </p>
             </div>

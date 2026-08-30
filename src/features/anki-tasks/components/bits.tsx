@@ -16,11 +16,11 @@ export const PropRow: React.FC<{
       <span className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0">
         {icon}
       </span>
-      <span className="text-[13px] text-muted-foreground truncate">
+      <span className="text-ui text-muted-foreground truncate">
         {label}
       </span>
     </div>
-    <div className="flex items-center gap-1 text-[13px] text-foreground min-w-0 flex-wrap">
+    <div className="flex items-center gap-1 text-ui text-foreground min-w-0 flex-wrap">
       {children}
     </div>
   </div>
@@ -31,14 +31,14 @@ export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean }> = ({
   const config = {
     active: {
       text: paused ? t('taskDashboard.statusPaused') : t('taskDashboard.statusActive'),
-      cls: 'text-[color:hsl(var(--info))] bg-[color:hsl(var(--info)/0.12)]',
+      cls: 'text-info bg-info/10',
     },
-    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-[color:hsl(var(--warning))] bg-[color:hsl(var(--warning)/0.14)]' },
-    completed: { text: t('taskDashboard.statusDone'), cls: 'text-[color:hsl(var(--success))] bg-[color:hsl(var(--success)/0.14)]' },
+    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-warning bg-warning/15' },
+    completed: { text: t('taskDashboard.statusDone'), cls: 'text-success bg-success/15' },
   }[group];
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded-sm ${config.cls}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-sm ${config.cls}`}>
       {group === 'active' && !paused && <span aria-hidden className="wb-at-pulse-dot" />}
       {config.text}
     </span>
@@ -60,11 +60,11 @@ export const InlineProgress: React.FC<{
     <div className="flex items-center gap-2.5">
       <div className={`wb-at-progress-track w-[80px] h-1.5 bg-muted/30 rounded-full overflow-hidden flex flex-shrink-0${active ? ' wb-at-progress-active' : ''}`}>
         <div
-          className={`h-full ${active ? 'bg-[color:hsl(var(--info)/0.75)]' : 'bg-[color:hsl(var(--success)/0.6)]'} wb-at-progress-fill`}
+          className={`h-full ${active ? 'bg-info/75' : 'bg-success/60'} wb-at-progress-fill`}
           style={{ width: `${pctDone}%` }}
         />
         {pctFail > 0 && (
-          <div className="h-full bg-[color:hsl(var(--warning)/0.6)] wb-at-progress-fill" style={{ width: `${pctFail}%` }} />
+          <div className="h-full bg-warning/60 wb-at-progress-fill" style={{ width: `${pctFail}%` }} />
         )}
       </div>
       <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">

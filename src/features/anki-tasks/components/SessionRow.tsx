@@ -265,7 +265,7 @@ export const SessionRow: React.FC<{
     >
       {/* ---- 主行 ---- */}
       <div
-        className={`wb-at-row-main [@media(pointer:coarse)]:min-h-[44px]${isSmallScreen ? ' min-h-[44px]' : ''}`}
+        className={`wb-at-row-main [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]${isSmallScreen ? ' min-h-[44px]' : ''}`}
         onClick={onToggle}
       >
         {/* 展开箭头 */}
@@ -277,7 +277,7 @@ export const SessionRow: React.FC<{
 
         {/* 文档名 */}
         <FileText className="h-[15px] w-[15px] text-muted-foreground/50 flex-shrink-0" />
-        <span className="text-[13px] text-foreground truncate min-w-0 flex-1">
+        <span className="text-ui text-foreground truncate min-w-0 flex-1">
           {session.documentName || session.documentId.slice(0, 12)}
         </span>
 
@@ -289,7 +289,7 @@ export const SessionRow: React.FC<{
             title={t('taskDashboard.sessionWarningsHint', {
               defaultValue: '存在失败或警告分段（不阻断运行与完成）',
             })}
-            className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-sm px-1 py-0.5 text-[10px] font-medium text-[color:hsl(var(--warning))] bg-[color:hsl(var(--warning)/0.12)]"
+            className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-sm px-1 py-0.5 text-2xs font-medium text-warning bg-warning/10"
           >
             <Warning size={11} />
             {warningCount > 0 && <span className="tabular-nums">{warningCount}</span>}
@@ -335,21 +335,21 @@ export const SessionRow: React.FC<{
               （且仅悬停可见时），不构成可访问名称——读屏用户会听到空按钮 */}
           {group === 'active' && session.activeTasks > 0 && (
             <CommonTooltip content={t('pause')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('pause')}>
+              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0" aria-label={t('pause')}>
                 <Pause size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.pausedTasks > 0 && (
             <CommonTooltip content={t('resume')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('resume')}>
+              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0" aria-label={t('resume')}>
                 <Play size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {group === 'active' && (
             <CommonTooltip content={t('tasks.cancelTask')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('tasks.cancelTask')}>
+              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0" aria-label={t('tasks.cancelTask')}>
                 <XCircle size={12} />
               </DsButton>
             </CommonTooltip>
@@ -358,21 +358,21 @@ export const SessionRow: React.FC<{
               条件：失败 + 暂停并存的会话在行内找不到重试，只能展开后再找） */}
           {session.failedTasks > 0 && (
             <CommonTooltip content={t('taskDashboard.retryFailed')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.retryFailed')}>
+              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0" aria-label={t('taskDashboard.retryFailed')}>
                 <ArrowCounterClockwise size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.totalCards > 0 && (
             <CommonTooltip content={t('taskDashboard.quickExport')}>
-              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.quickExport')}>
+              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0" aria-label={t('taskDashboard.quickExport')}>
                 <DownloadSimple size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.sourceSessionId && (
             <CommonTooltip content={t('taskDashboard.jumpToChat')}>
-              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.jumpToChat')}>
+              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0" aria-label={t('taskDashboard.jumpToChat')}>
                 <ArrowSquareOut size={12} />
               </DsButton>
             </CommonTooltip>
@@ -384,12 +384,12 @@ export const SessionRow: React.FC<{
               variant={deleteConfirm ? 'danger' : 'ghost'}
               onClick={handleDelete}
               disabled={!!busy}
-              className={`h-6 p-0 [@media(pointer:coarse)]:!h-11 ${deleteConfirm ? 'px-2 gap-1' : 'w-6 [@media(pointer:coarse)]:!w-11'}`}
+              className={`h-6 p-0 ${deleteConfirm ? 'px-2 gap-1' : 'w-6'}`}
               aria-label={deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
             >
               <Trash size={12} />
               {deleteConfirm && (
-                <span className="text-[10px]">{t('taskDashboard.confirmDeleteHint')}</span>
+                <span className="text-2xs">{t('taskDashboard.confirmDeleteHint')}</span>
               )}
             </DsButton>
           </CommonTooltip>
@@ -409,7 +409,7 @@ export const SessionRow: React.FC<{
                   {session.activeTasks} {t('taskDashboard.statusActive')} / {session.pausedTasks} {t('taskDashboard.statusPaused')}
                   {/* 混合态：运行组里失败分段不静默，明示计数（重试入口在下方常显） */}
                   {session.failedTasks > 0 && (
-                    <span className="ml-1 text-[color:hsl(var(--warning))]">
+                    <span className="ml-1 text-warning">
                       / {session.failedTasks} {t('taskDashboard.statusFailed')}
                     </span>
                   )}
@@ -433,32 +433,32 @@ export const SessionRow: React.FC<{
           {/* 操作按钮（移动端为唯一操作入口，补齐暂停/恢复/跳转聊天） */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {session.totalCards > 0 && (
-              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
                 <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
               </DsButton>
             )}
             {session.failedTasks > 0 && (
-              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
                 <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
               </DsButton>
             )}
             {isSmallScreen && group === 'active' && session.activeTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
                 <Pause size={14} />{t('pause')}
               </DsButton>
             )}
             {isSmallScreen && session.pausedTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
                 <Play size={14} />{t('resume')}
               </DsButton>
             )}
             {isSmallScreen && group === 'active' && (
-              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
                 <XCircle size={14} />{t('tasks.cancelTask')}
               </DsButton>
             )}
             {isSmallScreen && session.sourceSessionId && (
-              <DsButton size="sm" variant="default" onClick={onJump} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton size="sm" variant="default" onClick={onJump}>
                 <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
               </DsButton>
             )}
@@ -467,7 +467,7 @@ export const SessionRow: React.FC<{
               variant={deleteConfirm ? 'danger' : 'default'}
               onClick={handleDelete}
               disabled={!!busy}
-              className="[@media(pointer:coarse)]:!min-h-11"
+             
             >
               <Trash size={14} />
               {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
@@ -486,7 +486,7 @@ export const SessionRow: React.FC<{
           {/* 错误卡片详情（从已加载卡片中提取） */}
           {errorCards.length > 0 && (
             <div className="py-1 space-y-1">
-              <div className="text-xs font-medium text-[color:hsl(var(--warning))]">
+              <div className="text-xs font-medium text-warning">
                 {t('taskDashboard.errorCardsFound', { count: errorCards.length })}
               </div>
               {errorCards.slice(0, 3).map((c, i) => (
@@ -495,14 +495,14 @@ export const SessionRow: React.FC<{
                     {c.front || '—'}
                   </span>
                   {c.error_content && (
-                    <span className="text-[color:hsl(var(--warning)/0.7)] ml-2">
+                    <span className="text-warning/70 ml-2">
                       {t('taskDashboard.errorReason')}: {c.error_content}
                     </span>
                   )}
                 </div>
               ))}
               {errorCards.length > 3 && (
-                <div className="text-[11px] text-muted-foreground/30 pl-4">
+                <div className="text-xs text-muted-foreground/30 pl-4">
                   +{errorCards.length - 3} ...
                 </div>
               )}
@@ -518,7 +518,7 @@ export const SessionRow: React.FC<{
             <div>
               {/* 模板标签 */}
               {templateName && (
-                <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px]">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs">
                   <span className="text-muted-foreground/50">{t('taskDashboard.templateLabel')}</span>
                   <span className="text-foreground/70 font-medium">{templateName}</span>
                 </div>
@@ -527,7 +527,7 @@ export const SessionRow: React.FC<{
               <CustomScrollArea className="min-w-0" orientation="horizontal" fullHeight={false}>
                 <div style={!isFallback && columns.length > 2 ? { minWidth: `${columns.length * 120 + 36}px` } : undefined}>
                   {/* 表头 — 根据模板字段动态生成列 */}
-                  <div className="flex items-center gap-3 px-2 py-1.5 text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                  <div className="flex items-center gap-3 px-2 py-1.5 text-xs font-medium text-muted-foreground/50 uppercase tracking-wider">
                     <span className="w-6 text-right flex-shrink-0">#</span>
                     {isFallback ? (
                       <>
@@ -547,15 +547,15 @@ export const SessionRow: React.FC<{
                   >
                     {visibleCards.map((c, i) => (
                       <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-[var(--interactive-hover)] transition-colors">
-                        <span className="text-[10px] text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
+                        <span className="text-2xs text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
                           {i + 1}
                         </span>
                         {isFallback ? (
                           <>
-                            <div className="flex-1 min-w-[100px] text-[13px] text-foreground/90 truncate">
+                            <div className="flex-1 min-w-[100px] text-ui text-foreground/90 truncate">
                               {c.front || '—'}
                             </div>
-                            <div className="flex-1 min-w-[100px] text-[13px] text-muted-foreground truncate">
+                            <div className="flex-1 min-w-[100px] text-ui text-muted-foreground truncate">
                               {c.back || '—'}
                             </div>
                           </>
@@ -563,7 +563,7 @@ export const SessionRow: React.FC<{
                           columns.map((col, ci) => (
                             <div
                               key={col}
-                              className={`flex-1 min-w-[100px] text-[13px] truncate ${ci === 0 ? 'text-foreground/90' : 'text-muted-foreground'}`}
+                              className={`flex-1 min-w-[100px] text-ui truncate ${ci === 0 ? 'text-foreground/90' : 'text-muted-foreground'}`}
                             >
                               {getCardFieldValue(c, col)}
                             </div>
@@ -575,7 +575,7 @@ export const SessionRow: React.FC<{
                 </div>
               </CustomScrollArea>
               {hasMoreCards && (
-                <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-sm text-muted-foreground/50 hover:text-muted-foreground">
                   {showAllCards
                     ? t('taskDashboard.showLessCards')
                     : t('taskDashboard.showMoreCards', { remaining: normalCards.length - CARDS_PAGE_SIZE })}
@@ -583,7 +583,7 @@ export const SessionRow: React.FC<{
               )}
             </div>
           ) : session.totalCards === 0 ? (
-            <p className="text-[13px] text-muted-foreground/40 py-3">{t('taskDashboard.noCards')}</p>
+            <p className="text-ui text-muted-foreground/40 py-3">{t('taskDashboard.noCards')}</p>
           ) : null}
         </div>
       )}

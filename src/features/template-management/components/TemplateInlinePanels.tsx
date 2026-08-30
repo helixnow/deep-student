@@ -65,7 +65,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           disabled={isImporting}
           aria-label={t('templateMgmt.panel_close')}
           title={t('templateMgmt.panel_close')}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+         
         >
           <X size={14} />
         </DsButton>
@@ -103,7 +103,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
-            className="[@media(pointer:coarse)]:!min-h-11"
+           
           >
             <FileArrowUp size={14} />
             {selectedFile ? t('templateMgmt.import_change_file') : t('templateMgmt.import_choose_file')}
@@ -156,7 +156,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           size="sm"
           onClick={onClose}
           disabled={isImporting}
-          className="[@media(pointer:coarse)]:!min-h-11"
+         
         >
           {t('cancel_button')}
         </DsButton>
@@ -165,7 +165,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           size="sm"
           onClick={onConfirm}
           disabled={!selectedFile || isImporting}
-          className="[@media(pointer:coarse)]:!min-h-11"
+         
         >
           {isImporting ? t('importing') : t('start_import_button')}
         </DsButton>
@@ -214,7 +214,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             size="sm"
             onClick={onSelectAll}
             disabled={isExporting || templates.length === 0}
-            className="[@media(pointer:coarse)]:!min-h-11"
+           
           >
             {t('select_all_button')}
           </DsButton>
@@ -223,7 +223,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             size="sm"
             onClick={onClearSelection}
             disabled={isExporting || selection.size === 0}
-            className="[@media(pointer:coarse)]:!min-h-11"
+           
           >
             {t('clear_selection_button')}
           </DsButton>
@@ -235,7 +235,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             disabled={isExporting}
             aria-label={t('templateMgmt.panel_close')}
             title={t('templateMgmt.panel_close')}
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+           
           >
             <X size={14} />
           </DsButton>
@@ -291,7 +291,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             size="sm"
             onClick={onClose}
             disabled={isExporting}
-            className="[@media(pointer:coarse)]:!min-h-11"
+           
           >
             {t('cancel_button')}
           </DsButton>
@@ -300,7 +300,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             size="sm"
             onClick={onConfirm}
             disabled={isExporting || selection.size === 0}
-            className="[@media(pointer:coarse)]:!min-h-11"
+           
           >
             {isExporting ? t('exporting') : t('export_count_button', { count: selection.size })}
           </DsButton>

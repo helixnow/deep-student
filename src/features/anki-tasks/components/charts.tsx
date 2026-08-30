@@ -81,10 +81,10 @@ export const HBarChart: React.FC<{
         <div key={i} className="group">
           <div className="flex items-center justify-between mb-1 gap-2">
             <span className="flex items-baseline gap-1.5 min-w-0">
-              <span className="text-[10px] text-muted-foreground/40 tabular-nums flex-shrink-0 w-3">
+              <span className="text-2xs text-muted-foreground/40 tabular-nums flex-shrink-0 w-3">
                 {i + 1}
               </span>
-              <span className="text-[13px] text-foreground/80 truncate">
+              <span className="text-ui text-foreground/80 truncate">
                 {item.label}
               </span>
             </span>
