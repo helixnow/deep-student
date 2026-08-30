@@ -85,7 +85,7 @@ function Chip({
     <span
       title={title}
       className={cn(
-        'study-shell-badge study-shell-badge--borderless inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-[10px]',
+        'study-shell-badge study-shell-badge--borderless inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-2xs',
         tone === 'primary' && 'study-shell-badge--primary',
         tone === 'warning' && 'study-shell-badge--warning',
       )}
@@ -199,7 +199,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_trusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-[10px] text-primary hover:underline"
+            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-2xs text-primary hover:underline"
           >
             {t('skills:package.trust_enable')}
           </DsButton>
@@ -210,7 +210,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_untrusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-[10px] text-muted-foreground hover:underline"
+            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-2xs text-muted-foreground hover:underline"
           >
             {t('skills:package.trust_revoke')}
           </DsButton>
@@ -253,14 +253,14 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
 
       {toolLabels.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/70">
             {t('skills:package.tools_heading')}
           </div>
           <div className="flex flex-wrap gap-1">
             {toolLabels.map((label) => (
               <span
                 key={label}
-                className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
               >
                 {label}
               </span>
@@ -270,7 +270,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
       )}
 
       {skill.packageRoot && (
-        <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground/70">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground/70">
           <FolderOpen size={12} className="flex-shrink-0" />
           <span className="truncate font-mono">{skill.packageRoot}</span>
         </div>
@@ -279,7 +279,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
       {visibleFiles.length > 0 && (
         <div className="space-y-1.5">
           {visibleFiles.map((file) => (
-            <div key={file.path} className="flex min-w-0 items-center gap-2 text-[11px]">
+            <div key={file.path} className="flex min-w-0 items-center gap-2 text-xs">
               <FileText size={12} className="flex-shrink-0 text-muted-foreground/60" />
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground/80">
                 {file.path}
@@ -290,7 +290,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             </div>
           ))}
           {remainingFiles > 0 && (
-            <div className="text-[11px] text-muted-foreground/60">
+            <div className="text-xs text-muted-foreground/60">
               {t('skills:package.more_files', { count: remainingFiles })}
             </div>
           )}

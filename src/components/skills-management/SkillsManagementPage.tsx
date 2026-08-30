@@ -1530,8 +1530,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               // 移动端加大纵向点击区，接近触控目标标准（对齐制卡任务页做法）
               // 粗指针设备（如 iPad 横屏走桌面分支）用 !min-h-11 兜底触控高度，
               // 需带 ! 以覆盖 .study-shell-segmented-button 的 min-height: 0
-              ? '!h-auto !px-3 !py-2 text-[12px] font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
-              : '!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
+              ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+              : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
             options={locationTabs
               .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
               .map((tab) => {
@@ -1547,7 +1547,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                       <span>{tab.label}</span>
                       <span
                         className={cn(
-                          'ml-0.5 text-[10px] opacity-60',
+                          'ml-0.5 text-2xs opacity-60',
                           isActiveTab && 'opacity-100 font-bold',
                         )}
                       >
@@ -1632,10 +1632,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }}
         className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
       >
-        <div className="text-[13px] font-medium text-foreground">
+        <div className="text-ui font-medium text-foreground">
           {t('skills:management.update_confirm_title')}
         </div>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t('skills:management.update_confirm_desc', { count: pendingUpdates.length })}
         </p>
         <div className="space-y-2">
@@ -1649,22 +1649,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               <div className="flex flex-wrap items-center gap-1.5">
                 <div className="text-xs font-medium text-foreground">{item.skillId}</div>
                 <span
-                  className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]"
+                  className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-2xs"
                   data-testid={`skill-outdated-badge-${item.skillId}`}
                   title={t('skills:management.update_outdated_hint')}
                 >
                   {t('skills:management.update_outdated_badge')}
                 </span>
               </div>
-              <div className="font-mono text-[10px] text-muted-foreground">
+              <div className="font-mono text-2xs text-muted-foreground">
                 {formatSkillUpdateDrift(item)}
               </div>
-              <div className="truncate text-[10px] text-muted-foreground/70">{item.sourceSummary}</div>
+              <div className="truncate text-2xs text-muted-foreground/70">{item.sourceSummary}</div>
             </div>
           ))}
         </div>
         <p
-          className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400"
+          className="text-xs leading-relaxed text-amber-600 dark:text-amber-400"
           data-testid="skill-update-retrust-hint"
         >
           {t('skills:management.update_retrust_hint')}
@@ -1713,28 +1713,28 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             : 'border-border/60 bg-[color:var(--surface-muted)]',
         )}
       >
-        <div className="text-[13px] font-medium text-foreground">
+        <div className="text-ui font-medium text-foreground">
           {overwrite
             ? t('skills:management.import_confirm_overwrite_title')
             : t('skills:management.import_confirm_title')}
         </div>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t('skills:management.import_confirm_source', { name: scan.skill_id, file: fileName })}
         </p>
         <div className="space-y-3">
           {/* 包扫描摘要：文件 / 脚本 / 兼容工具声明 / sha256 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:package.permission_files', { count: scan.files_extracted })}
             </span>
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:management.import_scan_scripts', { count: scan.scripts_count })}
             </span>
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:management.import_scan_tools', { count: scan.allowed_tools_count })}
             </span>
             {scan.package_sha256 && (
-              <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]">
+              <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs">
                 sha256:{scan.package_sha256.slice(0, 12)}
               </span>
             )}
@@ -1745,7 +1745,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               scan.requires.env.length > 0 ||
               (scan.requires.python_packages?.length ?? 0) > 0) && (
             <div className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {t('skills:management.requires_heading')}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1753,7 +1753,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`bin-${bin.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs',
                       !bin.found && 'study-shell-badge--warning',
                     )}
                   >
@@ -1769,7 +1769,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`env-${env.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs',
                       !env.set && 'study-shell-badge--warning',
                     )}
                   >
@@ -1785,7 +1785,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`py-${pkg.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs',
                       !pkg.found && 'study-shell-badge--warning',
                     )}
                   >
@@ -1804,12 +1804,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {/* 风险分级 + 信号列表（只提示不拦截） */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {t('skills:management.risk_heading')}
               </span>
               <span
                 className={cn(
-                  'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                  'rounded-full px-1.5 py-0.5 text-2xs font-medium',
                   RISK_BADGE_CLASSES[riskLevel]
                 )}
               >
@@ -1819,19 +1819,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {riskLevel !== 'low' && scan.risk_signals.length > 0 && (
               <ul className="space-y-0.5">
                 {scan.risk_signals.map((signal) => (
-                  <li key={signal} className="text-[11px] leading-relaxed text-muted-foreground">
+                  <li key={signal} className="text-xs leading-relaxed text-muted-foreground">
                     · {t(`skills:management.risk_signal_${signal}`, signal)}
                   </li>
                 ))}
               </ul>
             )}
             {isHighRisk && (
-              <p className="text-[11px] leading-relaxed text-red-600 dark:text-red-400">
+              <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">
                 {t('skills:management.risk_high_warning')}
               </p>
             )}
             {overwrite && (
-              <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+              <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
                 {t('skills:management.import_confirm_overwrite_hint')}
               </p>
             )}
@@ -1878,11 +1878,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             }}
             className="mb-4 space-y-2.5 rounded-lg border border-red-300/50 bg-red-50/50 p-3 dark:border-red-700/40 dark:bg-red-900/10"
           >
-            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+            <div className="flex items-center gap-2 text-ui font-medium text-foreground">
               <Warning size={16} className="text-destructive" />
               {t('skills:management.delete')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.delete_confirm', {
                 name: getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t),
               })}
@@ -1893,10 +1893,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 <span className="min-w-0 truncate font-medium">
                   {getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t)}
                 </span>
-                <span className="flex-shrink-0 text-[10px] text-muted-foreground">({skillToDelete.id})</span>
+                <span className="flex-shrink-0 text-2xs text-muted-foreground">({skillToDelete.id})</span>
               </div>
               {skillToDelete.description && (
-                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                   {getLocalizedSkillDescription(skillToDelete.id, skillToDelete.description, t)}
                 </p>
               )}
@@ -1932,11 +1932,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             }}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
-            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+            <div className="flex items-center gap-2 text-ui font-medium text-foreground">
               <ArrowCounterClockwise size={16} className="text-amber-600 dark:text-amber-400" />
               {t('skills:management.reset_confirm_title')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.reset_confirm_desc', {
                 name: getLocalizedSkillName(skillToReset.id, skillToReset.name, t),
               })}
@@ -1972,10 +1972,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={handleCancelOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
-            <div className="text-[13px] font-medium text-foreground">
+            <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_overwrite_title')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.import_overwrite_confirm', { name: pendingImport.skill.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
@@ -2005,10 +2005,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={handleCancelZipOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
-            <div className="text-[13px] font-medium text-foreground">
+            <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_zip_overwrite_title')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.import_zip_overwrite_confirm', { name: pendingZipImport.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
