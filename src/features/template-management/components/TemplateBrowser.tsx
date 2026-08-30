@@ -111,10 +111,10 @@ const InlineDeleteConfirm: React.FC<InlineDeleteConfirmProps> = ({ template, onC
         </span>
       </div>
       <div className="wb-tm-delete-confirm-actions">
-        <DsButton variant="ghost" size="sm" onClick={onCancel} autoFocus className="[@media(pointer:coarse)]:!min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={onCancel} autoFocus>
           {t('cancel_button')}
         </DsButton>
-        <DsButton variant="danger" size="sm" onClick={onConfirm} className="[@media(pointer:coarse)]:!min-h-11">
+        <DsButton variant="danger" size="sm" onClick={onConfirm}>
           {t('templateMgmt.delete_confirm_button')}
         </DsButton>
       </div>
@@ -171,7 +171,7 @@ const CardActions: React.FC<CardActionsProps> = ({
   if (isSelectingMode) {
     return (
       <div className="wb-tm-card-actions" onClick={(e) => e.stopPropagation()}>
-        <DsButton variant="primary" size="sm" className="w-full [@media(pointer:coarse)]:!min-h-11" onClick={() => onTemplateSelected?.(template)}>
+        <DsButton variant="primary" size="sm" className="w-full" onClick={() => onTemplateSelected?.(template)}>
           {t('use_template')}
         </DsButton>
       </div>
@@ -188,20 +188,20 @@ const CardActions: React.FC<CardActionsProps> = ({
         disabled={isDefault}
         aria-label={isDefault ? t('default_template') : t('set_default')}
         title={isDefault ? t('default_template') : t('set_default')}
-        className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isDefault && 'wb-tm-star--active')}
+        className={cn(isDefault && 'wb-tm-star--active')}
       >
         <Star size={16} weight={isDefault ? 'fill' : 'regular'} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+      <DsButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
         <PencilSimple size={16} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+      <DsButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
         <Copy size={16} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+      <DsButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
         <Download size={16} />
       </DsButton>
-      <DsButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+      <DsButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
         <Trash size={16} />
       </DsButton>
     </div>
@@ -658,7 +658,7 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('empty_title')}</h3>
           <p>{t('empty_description')}</p>
           {!isSelectingMode && onCreateTemplate && (
-            <DsButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1 [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1">
               <Plus size={14} />
               {t('tab_create')}
             </DsButton>
@@ -670,7 +670,7 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('templateMgmt.no_results_title')}</h3>
           <p>{t('templateMgmt.no_results_desc')}</p>
           {onResetFilters && hasFilters && (
-            <DsButton variant="default" size="sm" onClick={onResetFilters} className="mt-1 [@media(pointer:coarse)]:!min-h-11">
+            <DsButton variant="default" size="sm" onClick={onResetFilters} className="mt-1">
               {t('templateMgmt.clear_filters')}
             </DsButton>
           )}

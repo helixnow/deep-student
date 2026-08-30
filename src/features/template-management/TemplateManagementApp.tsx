@@ -162,7 +162,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             if (!leaveEditorGuardRef.current()) return;
             onBackToAnki?.();
           }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary [@media(pointer:coarse)]:!min-h-11"
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
         >
           {tAnki('page_title')}
         </DsButton>
@@ -770,7 +770,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             title={t('template_code')}
             aria-pressed={screenPosition === 'right'}
             onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+           
           >
             <Code size={18} />
           </DsButton>
@@ -782,7 +782,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           aria-label={t('manager_title')}
           title={t('manager_title')}
           onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+         
         >
           <Gear size={18} />
         </DsButton>
@@ -966,7 +966,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             onClick={() => {
               onCancel();
             }}
-            className="w-full justify-start gap-2 [@media(pointer:coarse)]:!min-h-11"
+            className="w-full justify-start gap-2"
           >
             <ArrowLeft size={16} />
             {t('back_button')}
@@ -1008,7 +1008,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         >
           <BookOpen size={16} weight="duotone" />
           {isSelectingMode ? t('page_title_select') : t('tab_browse')}
-          <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+          <span className="text-xs text-muted-foreground/60 tabular-nums">
             {filteredTemplates.length}
           </span>
         </button>
@@ -1018,17 +1018,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7">
                 <Plus size={14} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('refresh')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7">
                 <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7">
                 <Download size={14} />
               </DsButton>
             </CommonTooltip>
@@ -1041,7 +1041,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('import_external_templates')}
                 aria-pressed={activePanel === 'import'}
                 data-active={activePanel === 'import' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                className="h-7 w-7 wb-tm-nav-toggle"
               >
                 <Upload size={14} />
               </DsButton>
@@ -1055,7 +1055,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('export_templates_sidebar')}
                 aria-pressed={activePanel === 'export'}
                 data-active={activePanel === 'export' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                className="h-7 w-7 wb-tm-nav-toggle"
               >
                 <Download size={14} weight="bold" />
               </DsButton>
@@ -1068,7 +1068,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                   iconOnly
                   onClick={onOpenJsonPreview}
                   aria-label={t('json_preview.open_button')}
-                  className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                  className="h-7 w-7"
                 >
                   <Code size={14} />
                 </DsButton>
@@ -1081,7 +1081,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             variant="default"
             size="sm"
             onClick={onCancel}
-            className="h-7 [@media(pointer:coarse)]:!min-h-11"
+            className="h-7"
           >
             <ArrowLeft size={14} />
             {t('back_button')}
@@ -1169,7 +1169,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <Warning size={16} className="flex-shrink-0" />
             <span className="truncate">{error}</span>
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current" aria-label={t('common:a11y.close')}>
             <X size={14} />
           </DsButton>
         </div>
@@ -1277,7 +1277,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           iconOnly
           onClick={loadTemplates}
           disabled={isLoading}
-          className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          className="shrink-0"
           title={t('refresh')}
           aria-label={t('refresh')}
         >
@@ -1290,7 +1290,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={t('search_placeholder')}
-            className="sidebar-shell-search h-9 w-full pl-9 text-sm [@media(pointer:coarse)]:!h-11"
+            className="sidebar-shell-search h-9 w-full pl-9 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)]"
           />
         </div>
         {!isSelectingMode && (
@@ -1302,7 +1302,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               startCreateTemplate();
               closeMobileDrawer();
             }}
-            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            className="shrink-0"
             title={t('tab_create')}
             aria-label={t('tab_create')}
           >

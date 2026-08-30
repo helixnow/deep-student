@@ -28,7 +28,7 @@
   padding: 2px 2px 4px;
   overflow: hidden;
   color: var(--shell-navigation-section-label);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   font-weight: 400;
   line-height: 18px;
   text-overflow: ellipsis;
@@ -59,7 +59,7 @@
 
 .wb-tm-sidebar .sidebar-shell-item.desktop-shell-nav-row p {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 16px;
 }
 
@@ -85,7 +85,7 @@
   border-radius: 6px 6px 0 0;
   background: transparent;
   color: hsl(var(--muted-foreground));
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.25;
   white-space: nowrap;
   cursor: pointer;
@@ -155,7 +155,7 @@
   padding: 1px 6px;
   border-radius: 3px;
   background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 500;
   line-height: 1.5;
   color: hsl(var(--muted-foreground));
@@ -199,7 +199,7 @@
   border: 1px solid hsl(var(--destructive) / 0.3);
   border-radius: 6px;
   background: hsl(var(--destructive) / 0.08);
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   color: hsl(var(--destructive));
 }
 
@@ -231,7 +231,7 @@
   border-radius: 6px;
   background: color-mix(in hsl, hsl(var(--warning)) 8%, transparent 92%);
   color: hsl(var(--warning));
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   line-height: 1.4;
 }
 
@@ -287,7 +287,7 @@
   border: none;
   background: transparent;
   outline: none;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: hsl(var(--foreground));
 }
 
@@ -318,7 +318,7 @@
 }
 
 .wb-tm-toolbar-count {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -332,7 +332,7 @@
 }
 
 .wb-tm-sort-label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
 }
@@ -351,7 +351,7 @@
   border-radius: var(--radius-shell-control, 8px);
   background: color-mix(in hsl, hsl(var(--foreground)) 4%, transparent 96%);
   color: hsl(var(--foreground));
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -427,7 +427,7 @@
   border-radius: 999px;
   background: transparent;
   color: hsl(var(--muted-foreground));
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -548,7 +548,7 @@
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   font-weight: 600;
   line-height: 1.4;
   color: hsl(var(--foreground));
@@ -590,7 +590,7 @@
 }
 
 .wb-tm-preview-meta {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 500;
   color: hsl(var(--muted-foreground) / 0.8);
   font-variant-numeric: tabular-nums;
@@ -608,7 +608,7 @@
   padding: 2px 8px;
   border-radius: 999px;
   background: transparent;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   color: hsl(var(--muted-foreground));
@@ -663,7 +663,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: hsl(var(--muted-foreground));
 }
@@ -672,7 +672,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--muted-foreground));
 }
 
@@ -693,7 +693,7 @@
   padding: 1px 6px;
   border-radius: 3px;
   background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   line-height: 1.4;
   color: hsl(var(--muted-foreground));
 }
@@ -758,7 +758,7 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   color: hsl(var(--destructive));
 }
@@ -835,7 +835,7 @@
 }
 
 .wb-tm-row-name {
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   font-weight: 600;
   color: hsl(var(--foreground));
   overflow: hidden;
@@ -846,7 +846,7 @@
 
 .wb-tm-row-description {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
   color: hsl(var(--muted-foreground));
   display: -webkit-box;
@@ -859,7 +859,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
@@ -905,7 +905,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   font-weight: 600;
   color: hsl(var(--foreground));
 }
@@ -919,20 +919,20 @@
 .wb-tm-panel-desc {
   margin: 6px 0 0;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: hsl(var(--muted-foreground));
 }
 
 .wb-tm-panel-details {
   margin: 8px 12px 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: hsl(var(--muted-foreground));
 }
 
 .wb-tm-panel-details summary {
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--primary));
   user-select: none;
 }
@@ -976,7 +976,7 @@
   padding: 3px 8px;
   border-radius: 5px;
   background: color-mix(in hsl, hsl(var(--muted)) 45%, transparent 55%);
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--foreground));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1010,7 +1010,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--font-size-ui);
   color: hsl(var(--foreground));
   user-select: none;
   cursor: pointer;
@@ -1025,7 +1025,7 @@
   margin: 0 12px;
   padding: 8px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -1064,7 +1064,7 @@
 
 .wb-tm-panel-count {
   margin-right: auto;
-  font-size: 11.5px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
 }
@@ -1111,7 +1111,7 @@
 }
 
 .wb-tm-export-item-name {
-  font-size: 12.5px;
+  font-size: var(--font-size-ui);
   font-weight: 500;
   color: hsl(var(--foreground));
   overflow: hidden;
@@ -1120,7 +1120,7 @@
 }
 
 .wb-tm-export-item-meta {
-  font-size: 10.5px;
+  font-size: var(--font-size-xs);
   color: hsl(var(--muted-foreground));
 }
 
@@ -1136,13 +1136,13 @@
   min-height: 12rem;
   padding: 32px 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-ui);
   color: hsl(var(--muted-foreground));
 }
 
 .wb-tm-empty-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   color: hsl(var(--foreground));
 }
@@ -1282,13 +1282,13 @@
   .wb-tm-chip {
     min-height: 44px;
     padding: 0 14px;
-    font-size: 12.5px;
+    font-size: var(--font-size-ui);
   }
 
   .wb-tm-sort-select {
     height: 44px;
     /* iOS 聚焦 <16px 的 select 会触发页面自动放大 */
-    font-size: 16px;
+    font-size: var(--font-size-lg);
   }
 
   .wb-tm-view-toggle-btn {
@@ -1299,7 +1299,7 @@
   .wb-tm-side-toggle-btn {
     min-height: 44px;
     padding: 7px 12px;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
 
   .wb-tm-toolbar-search {
@@ -1308,7 +1308,7 @@
 
   .wb-tm-toolbar-search-input {
     /* iOS 聚焦 <16px 的输入框会触发页面自动放大 */
-    font-size: 16px;
+    font-size: var(--font-size-lg);
   }
 
   .wb-tm-toolbar-search-clear {
@@ -1335,7 +1335,7 @@
   .wb-tm-badge,
   .wb-tm-preview-meta,
   .wb-tm-side-toggle-btn {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
 
   .wb-tm-card-badges {

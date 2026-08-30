@@ -71,7 +71,7 @@ const RenderIssueNotice: React.FC<{ issues: TemplateRenderIssue[] }> = ({ issues
   return (
     <div
       data-anki-render-issues={issues.length}
-      className="mt-1 rounded border border-warning/50 bg-warning/10 px-2 py-1 text-[11px] leading-snug text-warning"
+      className="mt-1 rounded border border-warning/50 bg-warning/10 px-2 py-1 text-xs leading-snug text-warning"
     >
       {t('card.renderIssue', { message: primary.message })}
       {extra > 0 ? t('card.renderIssueMore', { count: extra }) : ''}

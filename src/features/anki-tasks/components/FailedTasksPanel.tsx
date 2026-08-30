@@ -119,8 +119,8 @@ export const FailedTasksPanel: React.FC<{
   return (
     <div className="wb-at-failed-panel" role="alert">
       <div className="flex items-center gap-2">
-        <WarningCircle size={15} weight="fill" className="text-[color:hsl(var(--warning))] flex-shrink-0" />
-        <span className="text-xs font-medium text-[color:hsl(var(--warning))] flex-1 min-w-0">
+        <WarningCircle size={15} weight="fill" className="text-warning flex-shrink-0" />
+        <span className="text-xs font-medium text-warning flex-1 min-w-0">
           {t('tasks.failedPanelTitle', { count: tasks.length })}
         </span>
         <DsButton
@@ -128,7 +128,7 @@ export const FailedTasksPanel: React.FC<{
           variant="ghost"
           onClick={retryAll}
           disabled={retryingAll || !!retryingId}
-          className="h-6 text-[11px] flex-shrink-0 [@media(pointer:coarse)]:!h-11"
+          className="h-6 text-xs flex-shrink-0"
         >
           {retryingAll
             ? <CircleNotch size={12} className="animate-spin" />
@@ -152,7 +152,7 @@ export const FailedTasksPanel: React.FC<{
               variant="ghost"
               onClick={() => retryOne(task.id)}
               disabled={retryingAll || !!retryingId}
-              className="h-5 w-5 p-0 flex-shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="h-5 w-5 p-0 flex-shrink-0"
               aria-label={t('taskDashboard.retryFailed')}
             >
               {retryingId === task.id
@@ -168,7 +168,7 @@ export const FailedTasksPanel: React.FC<{
           size="sm"
           variant="ghost"
           onClick={() => setShowAll(true)}
-          className="mt-1 h-6 w-full justify-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground [@media(pointer:coarse)]:!h-11"
+          className="mt-1 h-6 w-full justify-center text-xs text-muted-foreground/60 hover:text-muted-foreground"
         >
           {t('tasks.showMoreFailures', { count: hiddenCount })}
         </DsButton>
