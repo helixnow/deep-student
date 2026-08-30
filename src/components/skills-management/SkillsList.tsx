@@ -207,7 +207,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 </div>
                 
                 {/* 元信息行：版本与作者 */}
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 h-4">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/60 h-4">
                   {skill.version && <span>v{skill.version}</span>}
                   {skill.author && (
                      <>
@@ -228,7 +228,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       onToggleDefault(skill);
                     }}
                     className={cn(
-                      "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
+                      "flex items-center justify-center px-2 py-0.5 rounded-full text-2xs font-medium transition-colors cursor-pointer border select-none",
                       // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
                       "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
                       // 触屏（含 ≥lg 触屏平板）补足 44px 触控目标；!important 压过 max-lg:min-h-9
@@ -260,7 +260,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 {/* 停用标记 */}
                 {isDisabledSkill && (
                   <div
-                    className="study-shell-badge study-shell-badge--borderless text-[10px]"
+                    className="study-shell-badge study-shell-badge--borderless text-2xs"
                     title={t('skills:package.disabled_hint')}
                   >
                     {t('skills:package.disabled_badge')}
@@ -269,7 +269,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
-                  <div className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]">
+                  <div className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-2xs">
                     {t('skills:management.customized')}
                   </div>
                 )}
@@ -281,7 +281,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-xs text-muted-foreground/60 hover:text-foreground"
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
                   title={
                     isDisabledSkill

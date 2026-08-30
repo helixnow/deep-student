@@ -407,7 +407,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         {errors.id && (
                           <p className="text-xs text-destructive">{errors.id}</p>
                         )}
-                        <p className="text-[10px] text-muted-foreground/60">
+                        <p className="text-2xs text-muted-foreground/60">
                           {t('skills:editor.id_hint')}
                         </p>
                       </div>
@@ -454,7 +454,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       {errors.description && (
                         <p className="text-xs text-destructive">{errors.description}</p>
                       )}
-                      <p className="text-[10px] text-muted-foreground/60 text-right">
+                      <p className="text-2xs text-muted-foreground/60 text-right">
                         {formData.description.length}/1024
                       </p>
                     </div>
@@ -504,7 +504,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           }}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10 w-24"
 />
-                        <p className="text-[10px] text-muted-foreground/60">
+                        <p className="text-2xs text-muted-foreground/60">
                           {t('skills:editor.priority_hint')}
                         </p>
                       </div>
@@ -530,7 +530,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             {t('skills:editor.skill_type_composite')}
                           </DsButton>
                         </div>
-                        <p className="text-[10px] text-muted-foreground/60">
+                        <p className="text-2xs text-muted-foreground/60">
                           {t('skills:editor.skill_type_hint')}
                         </p>
                       </div>
@@ -546,7 +546,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         onChange={(next) => updateField('dependencies', next)}
                         placeholder={t('skills:editor.skill_list_placeholder')}
 />
-                      <p className="text-[10px] text-muted-foreground/60">
+                      <p className="text-2xs text-muted-foreground/60">
                         {t('skills:editor.dependencies_hint')}
                       </p>
                     </div>
@@ -560,7 +560,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         onChange={(next) => updateField('relatedSkills', next)}
                         placeholder={t('skills:editor.skill_list_placeholder')}
 />
-                      <p className="text-[10px] text-muted-foreground/60">
+                      <p className="text-2xs text-muted-foreground/60">
                         {t('skills:editor.related_skills_hint')}
                       </p>
                     </div>

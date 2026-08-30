@@ -376,7 +376,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="sm"
                                   onClick={() => toggleRequired(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-[10px] px-2"
+                                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-2xs px-2"
                                   title={isRequired ? t('skills:editor.required') : t('skills:editor.optional')}
                                 >
                                   {isRequired ? '*' : '?'}
@@ -405,7 +405,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
         </div>
       )}
 
-      <p className="text-[10px] text-muted-foreground/60">
+      <p className="text-2xs text-muted-foreground/60">
         {t('skills:editor.embedded_tools_hint')}
       </p>
     </div>
