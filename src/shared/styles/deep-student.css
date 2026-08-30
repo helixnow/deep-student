@@ -261,14 +261,21 @@ html.is-android-webview [contenteditable="true"] {
  * [@media(pointer:coarse)]:!min-h-11（(0,1,0)），令同时携带尺寸类与
  * coarse !min 的可点元素在触屏塌回 20–24px。这里用三重类名把 coarse
  * 契约抬到 (0,3,0)，保证 !min-h-11 / !min-w-11 在 coarse 指针下恒 ≥44px。
+ *
+ * 2026-08-30 修正：本应用 rem 锚点为 14px × font-scale（typography.css 把
+ * html font-size 设为 var(--font-size-base)），2.75rem 实际渲染 38.5px——
+ * 本规则此前写 2.75rem 并未真正达到 44px。改用 px 固定的
+ * var(--touch-target-size)，并补非 ! 变体的同等覆盖。
  */
 @media (pointer: coarse) {
-  .\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11 {
-    min-height: 2.75rem !important;
+  .\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11,
+  .\[\@media\(pointer\:coarse\)\]\:min-h-11.\[\@media\(pointer\:coarse\)\]\:min-h-11.\[\@media\(pointer\:coarse\)\]\:min-h-11 {
+    min-height: var(--touch-target-size, 44px) !important;
   }
 
-  .\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11 {
-    min-width: 2.75rem !important;
+  .\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11,
+  .\[\@media\(pointer\:coarse\)\]\:min-w-11.\[\@media\(pointer\:coarse\)\]\:min-w-11.\[\@media\(pointer\:coarse\)\]\:min-w-11 {
+    min-width: var(--touch-target-size, 44px) !important;
   }
 }
 
