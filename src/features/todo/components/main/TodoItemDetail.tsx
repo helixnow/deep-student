@@ -1000,7 +1000,8 @@ export const TodoItemDetail: React.FC<{
         )}
       </CustomScrollArea>
 
-      <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-default)] px-4 py-3 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]">
+      {/* 底部安全区由 MobileDetailOverlay 容器统一兜底，此处不再重复叠加 */}
+      <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-default)] px-4 py-3">
         <span className="min-w-0 flex-shrink truncate text-xs text-muted-foreground">
           {item.updatedAt
             ? t('todo:detail.updatedAt', {

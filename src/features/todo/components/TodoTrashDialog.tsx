@@ -474,7 +474,8 @@ export const TodoTrashScreen: React.FC<{ className?: string }> = ({ className })
         <TrashSections />
       </CustomScrollArea>
 
-      <div className="flex flex-shrink-0 items-center justify-end px-4 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+      {/* 底部安全区由 MobileDetailOverlay 容器统一兜底，此处不再重复叠加 */}
+      <div className="flex flex-shrink-0 items-center justify-end px-4 py-2">
         <TrashEmptyAllButton />
       </div>
     </div>
