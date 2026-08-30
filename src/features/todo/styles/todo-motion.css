@@ -110,8 +110,13 @@
 .todo-empty-decor::after {
   content: '';
   position: absolute;
-  inset: 0;
-  margin: auto;
+  /* 居中不用 inset:0 + margin:auto：圆环大于图标盒（200%/290%）时属于
+     过约束绝对定位，各引擎对负自由空间的 auto margin 解析不一致
+     （Blink/WebKit 横向解析为 0，圆环向右偏 24px）。改用 50% + translate
+     显式居中，全引擎一致；呼吸 scale 并入同一 transform */
+  top: 50%;
+  left: 50%;
+  margin: 0;
   border-radius: 9999px;
   border: 1px solid currentColor;
   opacity: 0.12;
@@ -134,10 +139,10 @@
 @keyframes todo-empty-breathe {
   0%,
   100% {
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
   }
   50% {
-    transform: scale(1.06);
+    transform: translate(-50%, -50%) scale(1.06);
   }
 }
 
