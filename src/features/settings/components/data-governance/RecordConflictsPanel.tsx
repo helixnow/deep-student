@@ -584,7 +584,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               size="sm"
               onClick={() => void refreshSnapshots()}
               disabled={rollingBackBatch !== null}
-              className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+              className="h-7 text-xs"
             >
               <ArrowClockwise size={12} className="mr-1" />
               {t('common:actions.refresh')}
@@ -624,7 +624,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   size="sm"
                   onClick={() => void handleRollbackBatch(batch)}
                   disabled={rolledBack || rollingBackBatch !== null || loading}
-                  className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                  className="h-7 text-xs"
                   title={t('data:governance.snapshot_rollback_confirm', { count: batch.record_count })}
                 >
                   {isRollingBack && <CircleNotch size={12} className="mr-1 animate-spin" />}

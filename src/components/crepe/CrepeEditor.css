@@ -917,7 +917,9 @@
   /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
   z-index: var(--z-popover, 1200);
   width: 216px;
+  /* dvh 优先 + vh 兜底：iOS 地址栏显示时 100vh 大于可视高，菜单底部会被遮挡 */
   max-height: min(380px, calc(100vh - 16px));
+  max-height: min(380px, calc(100dvh - 16px));
   overflow-y: auto;
   padding: 5px;
   border: 1px solid hsl(var(--border));

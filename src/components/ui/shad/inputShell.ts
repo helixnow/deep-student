@@ -18,8 +18,11 @@
 export const inputShellClass = [
   // 形状 / 字色 / 过渡
   'rounded-[var(--radius-shell-control)]',
-  // 触屏（coarse）下 16px：iOS 对 <16px 输入聚焦时会强制放大页面
-  'text-sm [@media(pointer:coarse)]:text-base text-foreground transition-colors',
+  // 触屏（coarse）下 16px：iOS 对 <16px 输入聚焦时会强制放大页面。
+  // 注意本设计系统 text-base=14px，16px 对应 text-lg（--font-size-lg）。
+  // 全局 16px 兜底规则（deep-student.css）仅覆盖 ≤1024px 且 hover:none，
+  // iPad 横屏 / coarse+hover 设备由本类兜底。
+  'text-sm [@media(pointer:coarse)]:text-lg text-foreground transition-colors',
   // 边框 / 底色（默认态）
   'border border-[color:var(--input-shell-border)]',
   'bg-[color:var(--input-shell-surface)]',

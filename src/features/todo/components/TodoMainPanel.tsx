@@ -225,8 +225,9 @@ export const MobileDetailOverlay: React.FC<{
       )}
       style={{
         touchAction: 'pan-y',
-        // 键盘弹出时收缩内容区（padding 变化无需过渡：键盘弹出本身就是瞬时事件）
-        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
+        // 键盘弹出时收缩内容区（padding 变化无需过渡：键盘弹出本身就是瞬时事件）；
+        // 底部安全区由 overlay 统一兜底（与键盘 inset 取大），子屏不再各自记得补
+        paddingBottom: `max(${keyboardInset}px, var(--mobile-safe-area-bottom, 0px))`,
         ...(edgeDragX > 0
           ? { transform: `translateX(${edgeDragX}px)`, transition: 'none' as const }
           : null),
