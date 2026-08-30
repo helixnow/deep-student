@@ -45,7 +45,7 @@ const GESTURE_OPT_OUT_SELECTOR =
  * 优先布局手势,保证"随时可滑回"。调用方可通过 gestureIgnoreSelector 覆盖。
  */
 export const DEFAULT_GESTURE_IGNORE_SELECTOR =
-  '[data-no-screen-swipe], .ds-pdf-viewer, .react-pdf__Page, .mindmap-container, .react-flow, .ProseMirror';
+  '[data-no-screen-swipe], [role="slider"], .ds-pdf-viewer, .react-pdf__Page, .mindmap-container, .react-flow, .ProseMirror';
 
 const isGestureOptOutTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof Element)) return false;
