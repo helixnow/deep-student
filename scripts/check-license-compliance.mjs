@@ -12,6 +12,16 @@ function sha256(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+// release-please 的版本 bump 只改写 package-lock.json 的根 version 与
+// packages[""].version，依赖闭包并未变化；哈希前剔除这两个字段，
+// 否则每个发布提交都会因版本号变化而无法通过本校验。
+function sha256PackageLock(filePath) {
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  delete data.version;
+  if (data.packages && data.packages['']) delete data.packages[''].version;
+  return createHash('sha256').update(JSON.stringify(data)).digest('hex');
+}
+
 function fail(message) {
   console.error(`[license-compliance] ${message}`);
   process.exitCode = 1;
@@ -43,7 +53,7 @@ if (!fs.existsSync(noticePath)) {
     ['Cargo.lock', path.join(repoRoot, 'src-tauri', 'Cargo.lock')],
     ['package-lock.json', path.join(repoRoot, 'package-lock.json')],
   ]) {
-    const expected = sha256(lockPath);
+    const expected = label === 'package-lock.json' ? sha256PackageLock(lockPath) : sha256(lockPath);
     if (!notices.includes(`${label} SHA256: ${expected}`)) {
       fail(`${label} changed without regenerating third-party notices.`);
     }
