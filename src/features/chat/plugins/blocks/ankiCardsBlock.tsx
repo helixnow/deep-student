@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { isMobilePlatform } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   CircleNotch,
@@ -1583,7 +1584,8 @@ const ActionButtons: React.FC<{
             )}
           </DsButton>
 
-          {/* 复习这批 → workbench 闪卡会话 */}
+          {/* 复习这批 → workbench 闪卡会话（OS 模式专属；移动端隐藏避免死路动作） */}
+          {!isMobilePlatform() && (
           <DsButton
             type="button"
             onClick={handleReviewBatch}
@@ -1595,6 +1597,7 @@ const ActionButtons: React.FC<{
             <Stack size={16} />
             {t('blocks.ankiCards.reviewBatch')}
           </DsButton>
+          )}
 
           {/* 牌组名选择：保存/导出/同步共用（默认取生成 options，会话内记住上次输入） */}
           <Popover>
