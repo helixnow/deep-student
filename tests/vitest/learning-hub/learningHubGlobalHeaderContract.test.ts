@@ -8,7 +8,9 @@ describe('learning hub desktop header ownership', () => {
   const filesAppSource = readFileSync(resolve(process.cwd(), 'src/features/workbench/apps/files/FilesAppWindow.tsx'), 'utf-8');
 
   it('portals the normal-mode Finder toolbar into the global shell header', () => {
-    expect(appSource).toContain('data-shell-slot="learning-hub-toolbar"');
+    // 槽位为多页面共享（learning-hub / todo / skills-management 按 currentView 切换 data-shell-slot）
+    expect(appSource).toContain("currentView === 'learning-hub'");
+    expect(appSource).toContain("'learning-hub-toolbar'");
     expect(appSource).toContain('<DesktopShellHeaderPortalProvider value={desktopShellHeaderPortalValue}>');
     expect(pageSource).toContain("useDesktopShellHeaderPortal('learning-hub')");
     expect(pageSource).toContain('toolbarPortalTarget={desktopShellHeaderTarget}');
