@@ -22,7 +22,7 @@ import { PriorityIcon } from './TodoItemRow';
 
 const PRIORITY_ORDER: TodoPriority[] = ['urgent', 'high', 'medium', 'low', 'none'];
 
-export const PriorityFilterMenu: React.FC = () => {
+export const PriorityFilterMenu: React.FC<{ triggerClassName?: string }> = ({ triggerClassName }) => {
   const { t } = useTranslation(['todo']);
   const priorityFilter = useTodoStore((s) => s.filter.priorityFilter);
   const setPriorityFilter = useTodoStore((s) => s.setPriorityFilter);
@@ -51,7 +51,7 @@ export const PriorityFilterMenu: React.FC = () => {
           size="sm"
           data-selected={Boolean(priorityFilter)}
           className={cn(
-            'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+            triggerClassName ?? 'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
             priorityFilter &&
               '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
           )}

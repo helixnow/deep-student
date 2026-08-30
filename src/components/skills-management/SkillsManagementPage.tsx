@@ -29,6 +29,11 @@ import {
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
@@ -231,6 +236,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   // legacy 壳标题栏槽位；与 workbench 窗口槽位互斥
   const shellHeaderTarget = useDesktopShellHeaderPortal('skills-management');
   const toolbarPortalTarget = windowTitlebarSlot ?? shellHeaderTarget;
+  const inTitlebar = Boolean(toolbarPortalTarget);
+  // 顶栏模式统一控件规格（28px / coarse 40px / text-xs，对齐 chat 与 learning-hub 既有件）
+  const titlebarSecondaryBtnCls = cn(TITLEBAR_CONTROL_CLASS, 'text-muted-foreground');
+  const inlineSecondaryBtnCls = 'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground';
+  const secondaryBtnCls = inTitlebar ? titlebarSecondaryBtnCls : inlineSecondaryBtnCls;
   // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
   const collapseToolbarActions =
     isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
@@ -1355,8 +1365,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     // 页内不再重复渲染；第二行（搜索 + 位置筛选）始终页内保留
     const toolbarPrimaryRow = (
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-            <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
+          <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
+            <span className={inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate'}>{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="flex-shrink-0">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
           </div>
@@ -1378,7 +1388,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
+                  className={inTitlebar
+                    ? cn(TITLEBAR_CONTROL_CLASS, 'border-transparent bg-[color:var(--button-tonal-bg)]')
+                    : 'h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs'}
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create')}
@@ -1394,7 +1406,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleRefresh()}
                   disabled={isLoading}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                   aria-label={t('skills:selector.refresh')}
                 >
                   <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
@@ -1407,7 +1419,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   onClick={() => setTapBrowserOpen((v) => !v)}
                   aria-expanded={tapBrowserOpen}
                   className={cn(
-                    'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground',
+                    secondaryBtnCls,
                     tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
                   )}
                 >
@@ -1420,7 +1432,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleCheckUpdates()}
                   disabled={updateChecking}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
                   {t('skills:management.check_updates')}
@@ -1430,7 +1442,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportZipClick}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Package size={14} className="mr-1" />
                   {t('skills:management.import_zip')}
@@ -1440,7 +1452,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportClick}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Upload size={14} className="mr-1" />
                   {t('skills:management.import')}
@@ -1451,7 +1463,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={handleExportAll}
                   disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Download size={14} className="mr-1" />
                   {t('skills:management.export_all_short')}
@@ -1462,7 +1474,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleExportTap()}
                   disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <UploadSimple size={14} className="mr-1" />
                   {t('skills:management.export_tap')}
@@ -1477,7 +1489,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className={cn('text-muted-foreground', isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
+                    className={cn('text-muted-foreground', inTitlebar ? TITLEBAR_ICON_CONTROL_CLASS : isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
                     aria-label={t('common:more')}
                     title={t('common:more')}
                   >

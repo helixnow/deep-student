@@ -46,6 +46,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_INPUT_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 import { useTodoStore } from '../stores/useTodoStore';
 import { PomodoroPanel } from '@/features/pomodoro';
 import '../styles/todo-motion.css';
@@ -317,6 +322,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const { isSmallScreen } = useBreakpoint();
   // workbench 窗口标题栏槽位优先；其次 legacy 壳标题栏。两者互斥（壳模式二选一）
   const toolbarPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
+  const inTitlebar = Boolean(toolbarPortalTarget);
 
   // 细粒度订阅：只在各自切片变化时重渲染（zustand action 引用稳定）
   const items = useTodoStore((s) => s.items);
@@ -861,7 +867,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     <>
       <div className={cn('flex min-w-0 flex-1 items-baseline gap-3', toolbarPortalTarget && 'pointer-events-auto')}>
             {!isSmallScreen && (
-              <h2 className="truncate text-[15px] font-semibold text-foreground">
+              <h2 className={inTitlebar ? TITLEBAR_TITLE_CLASS : 'truncate text-[15px] font-semibold text-foreground'}>
                 {viewTitle}
               </h2>
             )}
@@ -929,17 +935,21 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11"
+                  className={inTitlebar
+                    ? cn(TITLEBAR_INPUT_CLASS, 'w-36 pl-8 pr-3')
+                    : 'h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11'}
                 />
               </div>
             )}
 
-            <PriorityFilterMenu />
+            <PriorityFilterMenu triggerClassName={inTitlebar ? TITLEBAR_CONTROL_CLASS : undefined} />
 
             <Select value={filter.sortBy} onValueChange={(v) => setSortBy(v as TodoSortBy)}>
               <SelectTrigger
                 aria-label={t('todo:sort.label')}
-                className="!h-8 !min-h-0 !w-auto gap-1 !px-2.5 !py-0 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-[2.75rem]"
+                className={inTitlebar
+                  ? cn(TITLEBAR_CONTROL_CLASS, '!w-auto')
+                  : '!h-8 !min-h-0 !w-auto gap-1 !px-2.5 !py-0 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-[2.75rem]'}
               >
                 <SortAscending size={14} className="text-muted-foreground" />
                 {/* !hidden：对抗 SelectTrigger 基类的 [&>span]:line-clamp-1（会把 span 重置为 -webkit-box） */}
@@ -963,7 +973,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               disabled={filter.view === 'completed'}
               data-selected={filter.showCompleted}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                inTitlebar
+                  ? TITLEBAR_CONTROL_CLASS
+                  : 'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 filter.showCompleted &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -982,7 +994,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               aria-label={t('todo:bulk.selectMode', '选择')}
               title={t('todo:bulk.selectMode', '选择')}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                inTitlebar
+                  ? TITLEBAR_CONTROL_CLASS
+                  : 'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 checkMode &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
