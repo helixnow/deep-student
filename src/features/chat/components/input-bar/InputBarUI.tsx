@@ -2259,6 +2259,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         background: `var(--shell-workspace-panel)`,
         // 🎨 移动端底部安全区 + 导航栏间距（使用 bottomGapValue 同时包含安全区域和导航栏高度）
         paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
+        // 横屏刘海/手势条：左右安全区（竖屏两值为 0，等价原 px-4）
+        paddingLeft: isMobile ? 'calc(1rem + var(--mobile-safe-area-left, 0px))' : undefined,
+        paddingRight: isMobile ? 'calc(1rem + var(--mobile-safe-area-right, 0px))' : undefined,
         ['--unified-input-docked-height' as any]: dockedHeightVarValue,
         ['--unified-input-bottom-gap' as any]: bottomGapValue,
         ['--unified-input-keyboard-inset' as any]: `${keyboardInsetPx}px`,

@@ -1243,7 +1243,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {message.timestamp && (
                       <span
-                        className="text-2xs leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
+                        className="text-caption leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
                         title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
@@ -1385,7 +1385,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {/* 移动端用户消息的时间显示 */}
                     {isUser && message.timestamp && (
                       <span
-                        className="text-2xs leading-none text-muted-foreground/45 flex items-center"
+                        className="text-caption leading-none text-muted-foreground/45 flex items-center"
                         title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
@@ -1423,7 +1423,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   onClick={() => requestChatSessionNavigation(target.sessionId)}
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40',
-                    'px-2 py-1 text-[11px] leading-none text-muted-foreground transition-colors',
+                    'px-2 py-1 text-xs leading-none text-muted-foreground transition-colors',
+                    '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:px-3',
                     'hover:border-border hover:bg-muted/70 hover:text-foreground',
                     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
                   )}
