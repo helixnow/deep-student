@@ -2813,12 +2813,12 @@ function App() {
                 className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
                 style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
               >
-                {currentView === 'learning-hub' ? (
+                {currentView === 'learning-hub' || currentView === 'todo' || currentView === 'skills-management' ? (
                   <div
                     ref={setDesktopPageHeaderTarget}
                     className="h-full min-w-0 flex-1"
                     data-no-drag
-                    data-shell-slot="learning-hub-toolbar"
+                    data-shell-slot={currentView === 'learning-hub' ? 'learning-hub-toolbar' : currentView === 'todo' ? 'todo-toolbar' : 'skills-toolbar'}
                   />
                 ) : currentView === 'chat-v2' && currentChatHeaderSessionId && currentChatHeaderTitle ? (
                   <div className="flex min-w-0 flex-1 items-center gap-3">

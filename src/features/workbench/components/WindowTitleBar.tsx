@@ -414,7 +414,9 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       ? t('a11y.immersiveExit')
       : t('a11y.immersiveEnter');
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
-  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat';
+  // todo/skills 工具栏整体 portal 进窗口标题栏（应用名已由菜单栏承接，居中标题冗余）
+  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat' || appTypeId === 'todo' || appTypeId === 'skills';
+  const suppressCenteredTitle = hostsAppTabs || appTypeId === 'todo' || appTypeId === 'skills';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
 
@@ -560,7 +562,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         />
       ) : null}
       {/* 标题绝对居中（不受左侧三键宽度影响）；溢出时 mask 渐隐 */}
-      {!hostsAppTabs ? (
+      {!suppressCenteredTitle ? (
         <div
           className="pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
           aria-hidden={title === ''}

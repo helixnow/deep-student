@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
@@ -17,6 +18,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -240,11 +242,15 @@ interface TodoAutomationWorkspaceProps {
    * 第二条顶栏。桌面端与 Workbench 窗口承载（无统一顶栏）保持默认 false。
    */
   hideHeader?: boolean;
+  /** 桌面端：全局顶栏 portal 目标（workbench 窗口标题栏槽位 / legacy 壳标题栏） */
+  titlebarPortalTarget?: HTMLElement | null;
 }
 
-export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = ({ hideHeader = false }) => {
+export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = ({ hideHeader = false, titlebarPortalTarget }) => {
   const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
+  // 桌面端：标题栏迁入全局顶栏（hideHeader 的移动壳场景不参与）
+  const headerPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
 
   const automations = useAutomationStore((state) => state.automations);
   const count = useAutomationStore((state) => state.count);
@@ -573,54 +579,69 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
     ? localizeAutomationError(error)
     : null;
 
+  // 标题栏内容（页内内联 / portal 进全局顶栏两种承载共用）
+  const headerClusters = (
+    <>
+      <div className={cn('flex min-w-0 items-center gap-2.5', headerPortalTarget && 'pointer-events-auto')}>
+        <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold text-foreground">
+            {t('todo:automation.title')}
+          </h1>
+          <p className="truncate text-xs text-muted-foreground">
+            {t('todo:automation.subtitle')}
+          </p>
+        </div>
+      </div>
+      <div className={cn('flex shrink-0 items-center gap-1.5', headerPortalTarget && 'pointer-events-auto')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          aria-label={t('common:actions.refresh')}
+          title={t('common:actions.refresh')}
+          disabled={refreshing}
+          onClick={handleRefresh}
+        >
+          <ArrowsClockwise size={16} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
+        </DsButton>
+        {/* 容量门禁：与 AutomationSettingsSection 的新建按钮同一判定与提示文案 */}
+        <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
+          <DsButton
+            ref={newTaskButtonRef}
+            variant="primary"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            aria-expanded={createOpen}
+            aria-controls={CREATE_PANEL_ID}
+            disabled={capacityFull && !createOpen}
+            onClick={() => (createOpen ? closeCreate() : openCreate())}
+          >
+            <Plus size={15} />
+            {t('todo:automation.new')}
+          </DsButton>
+        </span>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
       {/* 页内标题栏：移动/桌面分界由 TodoContentView 按 isSmallScreen(<768)
           经 hideHeader 决定，不再用 sm(640) 断点自行分界（640–767 曾与
-          统一顶栏叠出双标题，<640 残留纯动作条）。渲染时标题块恒显示。 */}
-      {hideHeader ? null : (
+          统一顶栏叠出双标题，<640 残留纯动作条）。渲染时标题块恒显示。
+          桌面端有全局顶栏槽位时整体 portal 上移，页内不再重复渲染。 */}
+      {hideHeader ? null : headerPortalTarget ? (
+        createPortal(
+          <div className="pointer-events-none flex h-full min-w-0 items-center justify-between gap-3 px-2">
+            {headerClusters}
+          </div>,
+          headerPortalTarget,
+        )
+      ) : (
       <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-foreground">
-              {t('todo:automation.title')}
-            </h1>
-            <p className="truncate text-xs text-muted-foreground">
-              {t('todo:automation.subtitle')}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-            aria-label={t('common:actions.refresh')}
-            title={t('common:actions.refresh')}
-            disabled={refreshing}
-            onClick={handleRefresh}
-          >
-            <ArrowsClockwise size={16} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
-          </DsButton>
-          {/* 容量门禁：与 AutomationSettingsSection 的新建按钮同一判定与提示文案 */}
-          <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
-            <DsButton
-              ref={newTaskButtonRef}
-              variant="primary"
-              size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
-              aria-expanded={createOpen}
-              aria-controls={CREATE_PANEL_ID}
-              disabled={capacityFull && !createOpen}
-              onClick={() => (createOpen ? closeCreate() : openCreate())}
-            >
-              <Plus size={15} />
-              {t('todo:automation.new')}
-            </DsButton>
-          </span>
-        </div>
+        {headerClusters}
       </header>
       )}
 

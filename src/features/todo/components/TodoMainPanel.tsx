@@ -13,6 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Calendar,
@@ -44,6 +45,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/shad/Select';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
 import { useTodoStore } from '../stores/useTodoStore';
 import { PomodoroPanel } from '@/features/pomodoro';
 import '../styles/todo-motion.css';
@@ -303,11 +305,18 @@ interface TodoMainPanelProps {
    * 联动统一顶栏返回箭头与 Android 返回键）。未提供时番茄钟按钮走桌面锚定弹层。
    */
   onOpenPomodoroSubView?: (view: PomodoroSubView) => void;
+  /**
+   * 桌面端：窗口标题栏 portal 目标（workbench 窗口的 wb-titlebar-slot）。
+   * 提供时工具栏整体迁入窗口标题栏，页内不再重复渲染一条顶栏。
+   */
+  titlebarPortalTarget?: HTMLElement | null;
 }
 
-export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubView }) => {
+export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubView, titlebarPortalTarget }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  // workbench 窗口标题栏槽位优先；其次 legacy 壳标题栏。两者互斥（壳模式二选一）
+  const toolbarPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
 
   // 细粒度订阅：只在各自切片变化时重渲染（zustand action 引用稳定）
   const items = useTodoStore((s) => s.items);
@@ -846,15 +855,11 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
-  return (
-    // h-full：MobileSlidingLayout 的内容窗格是普通块级容器（非 flex），flex-1 在其中不生效，
-    // 高度会塌缩成内容高度，导致移动端详情覆盖层（absolute inset-0）跟着变矮
-    <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
-      {/* 主列 */}
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* 顶部工具栏 */}
-        <div className="study-shell-toolbar flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+  // 桌面端：工具栏整体 portal 进全局顶栏（workbench 窗口标题栏槽位 / legacy 壳标题栏），
+  // 页内不再重复渲染一条顶栏；移动端保持页内内联
+  const toolbarClusters = (
+    <>
+      <div className={cn('flex min-w-0 flex-1 items-baseline gap-3', toolbarPortalTarget && 'pointer-events-auto')}>
             {!isSmallScreen && (
               <h2 className="truncate text-[15px] font-semibold text-foreground">
                 {viewTitle}
@@ -896,7 +901,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             )}
           </div>
 
-          <div className="flex flex-shrink-0 items-center gap-2">
+      <div className={cn('flex flex-shrink-0 items-center gap-2', toolbarPortalTarget && 'pointer-events-auto')}>
             {isSmallScreen ? (
               // 窄屏：搜索折叠为图标（≥44px 触控），点击展开下方内联输入行
               <DsButton
@@ -985,9 +990,28 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               <ListChecks size={14} />
               <span className="hidden sm:inline">{t('todo:bulk.selectMode', '选择')}</span>
             </DsButton>
-          </div>
+      </div>
+    </>
+  );
 
-          {/* 窄屏内联搜索行（flex-wrap 下换行占满整行；关闭时清空搜索词） */}
+  return (
+    // h-full：MobileSlidingLayout 的内容窗格是普通块级容器（非 flex），flex-1 在其中不生效，
+    // 高度会塌缩成内容高度，导致移动端详情覆盖层（absolute inset-0）跟着变矮
+    <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
+      {/* 主列 */}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* 顶部工具栏：桌面端 portal 进全局顶栏；移动端页内内联 */}
+        {toolbarPortalTarget ? (
+          createPortal(
+            <div className="pointer-events-none flex h-full min-w-0 items-center gap-3 px-2">
+              {toolbarClusters}
+            </div>,
+            toolbarPortalTarget,
+          )
+        ) : (
+          <div className="study-shell-toolbar flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+            {toolbarClusters}
+            {/* 窄屏内联搜索行（flex-wrap 下换行占满整行；关闭时清空搜索词） */}
           {isSmallScreen && mobileSearchOpen && (
             <div className="ui-rise-in flex w-full items-center gap-2 pb-1">
               <div className="relative min-w-0 flex-1">
@@ -1023,7 +1047,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               </DsButton>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         {/* 批量多选操作条（内联，非弹窗）：Cmd/Ctrl/Shift 点选行或多选模式勾选后出现 */}
         {checkedIds.size > 0 && (
