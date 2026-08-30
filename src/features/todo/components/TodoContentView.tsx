@@ -323,7 +323,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           <div className="flex h-full w-full flex-col bg-[color:var(--surface-root)]">
             <CustomScrollArea
               className="min-h-0 flex-1"
-              viewportClassName="px-5 py-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+              viewportClassName="px-5 py-4"
             >
               {pomodoroSubView === 'stats' ? (
                 <PomodoroStatsContent showTitle={false} />
