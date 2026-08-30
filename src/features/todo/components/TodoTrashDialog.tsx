@@ -37,6 +37,11 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useTodoStore } from '../stores/useTodoStore';
 import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 
 // ============================================================================
 // 回收站视图开关（侧栏与内容区分属不同挂载点，经模块级 store 协调）
@@ -426,13 +431,17 @@ export const TodoTrashWorkspace: React.FC<{ className?: string; titlebarPortalTa
           onClick={close}
           aria-label={t('todo:trash.back')}
           title={t('todo:trash.back')}
-          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          className={headerPortalTarget
+            ? TITLEBAR_ICON_CONTROL_CLASS
+            : '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'}
         >
           <ArrowLeft size={16} />
         </DsButton>
         <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">
+          <h2 className={headerPortalTarget
+            ? TITLEBAR_TITLE_CLASS
+            : 'truncate text-[15px] font-semibold leading-tight text-foreground'}>
             {t('todo:trash.title')}
           </h2>
           <p className="hidden truncate text-sm text-muted-foreground md:block">
@@ -440,7 +449,7 @@ export const TodoTrashWorkspace: React.FC<{ className?: string; titlebarPortalTa
           </p>
         </div>
       </div>
-      <TrashEmptyAllButton className={cn('shrink-0', headerPortalTarget && 'pointer-events-auto')} />
+      <TrashEmptyAllButton className={cn('shrink-0', headerPortalTarget && `pointer-events-auto ${TITLEBAR_CONTROL_CLASS}`)} />
     </>
   );
 

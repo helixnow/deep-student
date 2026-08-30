@@ -19,6 +19,11 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -585,7 +590,9 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
       <div className={cn('flex min-w-0 items-center gap-2.5', headerPortalTarget && 'pointer-events-auto')}>
         <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
         <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold text-foreground">
+          <h1 className={headerPortalTarget
+            ? TITLEBAR_TITLE_CLASS
+            : 'truncate text-base font-semibold text-foreground'}>
             {t('todo:automation.title')}
           </h1>
           <p className="truncate text-xs text-muted-foreground">
@@ -598,7 +605,9 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
           variant="ghost"
           size="icon"
           iconOnly
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          className={headerPortalTarget
+            ? TITLEBAR_ICON_CONTROL_CLASS
+            : '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11'}
           aria-label={t('common:actions.refresh')}
           title={t('common:actions.refresh')}
           disabled={refreshing}
@@ -612,7 +621,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
             ref={newTaskButtonRef}
             variant="primary"
             size="sm"
-            className="[@media(pointer:coarse)]:!min-h-11"
+            className={headerPortalTarget ? TITLEBAR_CONTROL_CLASS : '[@media(pointer:coarse)]:!min-h-11'}
             aria-expanded={createOpen}
             aria-controls={CREATE_PANEL_ID}
             disabled={capacityFull && !createOpen}
