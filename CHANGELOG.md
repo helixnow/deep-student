@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.46](https://github.com/helixnow/deep-student/compare/v0.9.45...v0.9.46) (2026-08-30)
+
+
+### Bug Fixes
+
+* **license:** 门禁哈希剔除 package-lock.json 版本字段 ([419d213](https://github.com/helixnow/deep-student/commit/419d2130883e9e11510cc5d015be378f9e74a86e))
+
 ## [0.9.45](https://github.com/helixnow/deep-student/compare/v0.9.44...v0.9.45) (2026-08-30)
 
 
