@@ -619,7 +619,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-9"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-[36px]"
                             >
                                 {canEditTags && editingTag === tag ? (
                                     <span className="flex items-center gap-1">
