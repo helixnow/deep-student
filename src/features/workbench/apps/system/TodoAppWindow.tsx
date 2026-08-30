@@ -15,7 +15,7 @@
  *   自行在「完整侧栏 / 图标栏」间切换；useWbSysSize 的测量元素改为
  *   兄弟节点，绕开 `[data-wb-sys-size='compact'] .wb-sys-aside` 的 CSS 隐藏。
  */
-import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TodoContentView, TodoShellSidebar } from '@/features/todo';
 import { TodoIconRail } from '@/features/todo/components/TodoIconRail';
@@ -143,13 +143,39 @@ const SidebarResizeHandle: React.FC<{
 // TodoAppWindow
 // ============================================================================
 
-const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange }) => {
+const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange, windowId }) => {
   const { t } = useTranslation('workbench');
   const { ref: sizeRef, sizeClass } = useWbSysSize();
   const compact = sizeClass === 'compact';
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
+
+  // 窗口标题栏 app 槽位查找（与 ChatAppWindow 同款：壳内查询 + MutationObserver 兜底，
+  // 命中后断开——槽位与窗口同生命周期）
+  useLayoutEffect(() => {
+    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
+    const queryRoot: ParentNode = shell ?? document;
+    let currentTarget: HTMLElement | null = null;
+    let observer: MutationObserver | null = null;
+    const findTarget = () => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      if (!target) return;
+      currentTarget = target;
+      setTitlebarTarget((current) => (current === target ? current : target));
+      observer?.disconnect();
+      observer = null;
+    };
+    findTarget();
+    if (!currentTarget) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
+  }, [windowId]);
   const sizeClassRef = useRef(sizeClass);
   sizeClassRef.current = sizeClass;
 
@@ -225,7 +251,7 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
             navLabel={t('workbench:apps.system.todoNav')}
             sidebar={sidebarSlot}
           >
-            <TodoContentView todoListId={todoListId} initialView={initialView} className="h-full" />
+            <TodoContentView todoListId={todoListId} initialView={initialView} className="h-full" titlebarPortalTarget={titlebarTarget} />
           </WorkbenchSidebarLayout>
         </WbSysFade>
       </Suspense>

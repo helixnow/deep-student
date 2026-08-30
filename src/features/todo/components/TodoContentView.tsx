@@ -36,6 +36,8 @@ interface TodoContentViewProps {
   todoListId?: string;
   initialView?: 'todos' | 'automations';
   className?: string;
+  /** workbench 窗口标题栏槽位（TodoAppWindow 传入）；提供时主面板工具栏迁入窗口标题栏 */
+  titlebarPortalTarget?: HTMLElement | null;
 }
 
 /** 详情面板内焦点守卫：activeElement 落在 data-todo-detail-panel 内则延迟 reload */
@@ -72,6 +74,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   todoListId,
   initialView,
   className,
+  titlebarPortalTarget,
 }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
@@ -364,11 +367,11 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           exit={{ opacity: 0, y: -4, transition: motionSafe({ ...tweenFast, duration: 0.1 }) }}
         >
           {desktopMode === 'trash' ? (
-            <TodoTrashWorkspace />
+            <TodoTrashWorkspace titlebarPortalTarget={titlebarPortalTarget} />
           ) : desktopMode === 'automations' ? (
-            <TodoAutomationWorkspace />
+            <TodoAutomationWorkspace titlebarPortalTarget={titlebarPortalTarget} />
           ) : (
-            <TodoMainPanel />
+            <TodoMainPanel titlebarPortalTarget={titlebarPortalTarget} />
           )}
         </motion.div>
       </AnimatePresence>

@@ -19,6 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { create } from 'zustand';
 import { AnimatePresence } from 'framer-motion';
@@ -35,6 +36,7 @@ import { AnimatedListRow } from '@/components/ui/AnimatedListRow';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useTodoStore } from '../stores/useTodoStore';
+import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
 
 // ============================================================================
 // 回收站视图开关（侧栏与内容区分属不同挂载点，经模块级 store 协调）
@@ -384,10 +386,12 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
 // TodoTrashWorkspace — 桌面端主内容区内联回收站视图（带返回）
 // ============================================================================
 
-export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className }) => {
+export const TodoTrashWorkspace: React.FC<{ className?: string; titlebarPortalTarget?: HTMLElement | null }> = ({ className, titlebarPortalTarget }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { loadTrash } = useTodoStore();
   const close = useTodoTrashView((s) => s.close);
+  // 桌面端：头部迁入全局顶栏（workbench 窗口标题栏槽位 / legacy 壳标题栏）
+  const headerPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
 
   useEffect(() => {
     void loadTrash();
@@ -412,6 +416,34 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [close]);
 
+  const headerClusters = (
+    <>
+      <div className={cn('flex min-w-0 items-center gap-2', headerPortalTarget && 'pointer-events-auto')}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={close}
+          aria-label={t('todo:trash.back')}
+          title={t('todo:trash.back')}
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <ArrowLeft size={16} />
+        </DsButton>
+        <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">
+            {t('todo:trash.title')}
+          </h2>
+          <p className="hidden truncate text-sm text-muted-foreground md:block">
+            {t('todo:trash.description')}
+          </p>
+        </div>
+      </div>
+      <TrashEmptyAllButton className={cn('shrink-0', headerPortalTarget && 'pointer-events-auto')} />
+    </>
+  );
+
   return (
     <div
       ref={workspaceRef}
@@ -420,31 +452,18 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
         className,
       )}
     >
-      <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={close}
-            aria-label={t('todo:trash.back')}
-            title={t('todo:trash.back')}
-            className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-          >
-            <ArrowLeft size={16} />
-          </DsButton>
-          <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">
-              {t('todo:trash.title')}
-            </h2>
-            <p className="hidden truncate text-sm text-muted-foreground md:block">
-              {t('todo:trash.description')}
-            </p>
-          </div>
-        </div>
-        <TrashEmptyAllButton className="shrink-0" />
-      </header>
+      {headerPortalTarget ? (
+        createPortal(
+          <div className="pointer-events-none flex h-full min-w-0 items-center justify-between gap-3 px-2">
+            {headerClusters}
+          </div>,
+          headerPortalTarget,
+        )
+      ) : (
+        <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-6">
+          {headerClusters}
+        </header>
+      )}
 
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 pb-4 sm:px-4">
         <TrashSections />

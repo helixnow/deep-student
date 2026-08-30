@@ -4,7 +4,8 @@
  * 卡片网格布局，顶部工具栏包含搜索和筛选功能
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { LayoutGroup } from 'framer-motion';
@@ -27,6 +28,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
@@ -201,6 +203,34 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
+  // workbench 窗口标题栏 app 槽位查找（与 ChatAppWindow 同款：壳内查询 + 观察兜底）
+  const [windowTitlebarSlot, setWindowTitlebarSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!workbenchWindowId) return;
+    const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(workbenchWindowId) : workbenchWindowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedId}"]`);
+    const queryRoot: ParentNode = shell ?? document;
+    let currentTarget: HTMLElement | null = null;
+    let observer: MutationObserver | null = null;
+    const findTarget = () => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === workbenchWindowId) ?? null;
+      if (!target) return;
+      currentTarget = target;
+      setWindowTitlebarSlot((current) => (current === target ? current : target));
+      observer?.disconnect();
+      observer = null;
+    };
+    findTarget();
+    if (!currentTarget) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
+  }, [workbenchWindowId]);
+  // legacy 壳标题栏槽位；与 workbench 窗口槽位互斥
+  const shellHeaderTarget = useDesktopShellHeaderPortal('skills-management');
+  const toolbarPortalTarget = windowTitlebarSlot ?? shellHeaderTarget;
   // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
   const collapseToolbarActions =
     isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
@@ -1320,10 +1350,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   }, [workbenchWindowId]);
 
   // ========== 渲染主内容 ==========
-  const renderMainContent = () => (
-    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <div className="study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10 py-3 space-y-3">
-        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
+  const renderMainContent = () => {
+    // 工具栏第一行（面包屑/计数 + 动作条）：桌面端有全局顶栏槽位时 portal 上移，
+    // 页内不再重复渲染；第二行（搜索 + 位置筛选）始终页内保留
+    const toolbarPrimaryRow = (
+        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
@@ -1499,7 +1530,18 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
           </div>
         </div>
+    );
 
+    return (
+    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      {toolbarPortalTarget
+        ? createPortal(
+            <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{toolbarPrimaryRow}</div>,
+            toolbarPortalTarget,
+          )
+        : null}
+      <div className={cn('study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10', toolbarPortalTarget ? 'py-2' : 'py-3 space-y-3')}>
+        {!toolbarPortalTarget && toolbarPrimaryRow}
         <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
             <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -1590,7 +1632,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </div>
       </CustomScrollArea>
     </div>
-  );
+    );
+  };
 
   // ========== 渲染右侧面板（移动端编辑器） ==========
   const renderRightPanel = () => (
