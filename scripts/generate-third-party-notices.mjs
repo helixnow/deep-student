@@ -20,6 +20,16 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+// release-please 的版本 bump 只改写 package-lock.json 的根 version 与
+// packages[""].version，依赖闭包并未变化；哈希前剔除这两个字段，
+// 与 scripts/check-license-compliance.mjs 的校验口径保持一致。
+function sha256PackageLock(filePath) {
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  delete data.version;
+  if (data.packages && data.packages['']) delete data.packages[''].version;
+  return sha256(JSON.stringify(data));
+}
+
 // Shrinks a legal text without touching its wording: strips trailing
 // whitespace, collapses blank-line runs, and removes common indentation.
 function compactWhitespace(text) {
@@ -395,13 +405,12 @@ function render(records, cargoLockHash, npmLockHash) {
 
 function main() {
   const cargoLock = fs.readFileSync(cargoLockPath);
-  const npmLock = fs.readFileSync(npmLockPath);
   const records = [
     ...collectCargoRecords(),
     ...collectNpmRecords(),
     ...collectBundledAssetRecords(),
   ];
-  const output = render(records, sha256(cargoLock), sha256(npmLock));
+  const output = render(records, sha256(cargoLock), sha256PackageLock(npmLockPath));
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');
   console.log(`Wrote ${path.relative(repoRoot, outputPath)} (${records.length} components).`);
