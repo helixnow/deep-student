@@ -590,6 +590,15 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   }
 }
 
+/* 窄桌面（<768px，对齐全局 md 断点）：日程+简报组件栏整体隐藏，
+   把全宽还给桌面图标与窗口（图标层 padding 同步收回，见 DesktopShortcuts.css）。
+   组件本就可在设置中关闭；窄窗下 340px 栏宽会压没图标区。 */
+@media (max-width: 767.98px) {
+  .wb-desktop-widget-column {
+    display: none;
+  }
+}
+
 /* ==========================================================================
  * 空桌面引导卡（EmptyDesktop.tsx 消费）
  * ========================================================================== */

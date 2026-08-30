@@ -634,7 +634,9 @@
   /* RM 下 wb-kf-overshoot-in 已被 motion.css 重定义为纯淡入，无需额外处理 */
 }
 
-@media (max-width: 760px) {
+/* 断点对齐全局 md=768 / sm=640（src/config/breakpoints.ts），
+   避免 760-768px 区间菜单栏已降级而壳层其余部分仍按桌面的跳变 */
+@media (max-width: 767.98px) {
   .wb-menubar {
     gap: 6px;
     padding-right: 8px;
@@ -647,7 +649,7 @@
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 639.98px) {
   .wb-menubar-command,
   .wb-menubar-settings,
   .wb-menubar-clock {
