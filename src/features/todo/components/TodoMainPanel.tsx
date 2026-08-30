@@ -1086,8 +1086,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 <div
                   className={cn(
                     'study-shell-empty-state__icon',
-                    // 纯 CSS 同心圆装饰（缓慢呼吸），替代插画资源
-                    'todo-empty-decor',
                     // 清零类空态：一次性亮色 scale 弹跳（无 confetti，reduced-motion 下退化）
                     emptyState.celebratory &&
                       '!text-[color:hsl(var(--success))] todo-celebrate-pop',

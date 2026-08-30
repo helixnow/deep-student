@@ -5,7 +5,6 @@
  * - .todo-check-burst：勾选圈外圈扩散光环（配合 todo-check-pop，Things 式满足感）
  * - .todo-row-completing：完成提交期间行内容轻微右移淡出
  * - .todo-celebrate-pop：清零空态图标一次性 scale 亮色反馈（无 confetti）
- * - .todo-empty-decor：空态图标外的纯 CSS 同心圆装饰（缓慢呼吸）
  * - .todo-quickadd-pop：快速添加成功时加号图标弹跳转绿
  * - .todo-matrix-drag-ghost：四象限拖拽拖影（轻微倾斜 + 阴影）
  * - .todo-swipe-hint-content：触屏首次使用提示——首行内容左移露出「完成」
@@ -101,50 +100,7 @@
   animation: todo-quickadd-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-/* 空态图标外的同心圆装饰：两圈细边框缓慢呼吸（纯 CSS，无图片资源） */
-.todo-empty-decor {
-  position: relative;
-}
-
-.todo-empty-decor::before,
-.todo-empty-decor::after {
-  content: '';
-  position: absolute;
-  /* 居中不用 inset:0 + margin:auto：圆环大于图标盒（200%/290%）时属于
-     过约束绝对定位，各引擎对负自由空间的 auto margin 解析不一致
-     （Blink/WebKit 横向解析为 0，圆环向右偏 24px）。改用 50% + translate
-     显式居中，全引擎一致；呼吸 scale 并入同一 transform */
-  top: 50%;
-  left: 50%;
-  margin: 0;
-  border-radius: 9999px;
-  border: 1px solid currentColor;
-  opacity: 0.12;
-  pointer-events: none;
-}
-
-.todo-empty-decor::before {
-  width: 200%;
-  height: 200%;
-  animation: todo-empty-breathe 4s ease-in-out infinite;
-}
-
-.todo-empty-decor::after {
-  width: 290%;
-  height: 290%;
-  opacity: 0.06;
-  animation: todo-empty-breathe 4s ease-in-out 0.6s infinite;
-}
-
-@keyframes todo-empty-breathe {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.06);
-  }
-}
+/* 空态同心圆装饰已按产品决策移除（用户反馈观感不佳），不再保留 .todo-empty-decor 规则 */
 
 /* 四象限拖拽拖影：轻微放大 + 倾斜 + 浮起阴影（DragOverlay 内容用） */
 .todo-matrix-drag-ghost {
@@ -198,9 +154,7 @@
   .todo-row-completing,
   .todo-celebrate-pop,
   .todo-quickadd-pop,
-  .todo-swipe-hint-content,
-  .todo-empty-decor::before,
-  .todo-empty-decor::after {
+  .todo-swipe-hint-content {
     animation: none;
   }
 
