@@ -1127,7 +1127,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             title={t('page.welcome')}
             brandIcon={<Chat size={26} weight="duotone" />}
             description={t('page.emptyPage.subtitle')}
-            hint={t('page.emptyPage.hint')}
+            hint={isSmallScreen ? undefined : t('page.emptyPage.hint')}
             actions={
               <>
                 <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void createSession()}>
