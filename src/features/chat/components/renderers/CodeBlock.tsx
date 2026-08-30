@@ -824,6 +824,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           <div
             className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
             ref={previewRef}
+            data-no-screen-swipe
             onPointerDown={onPanPointerDown}
             onPointerMove={onPanPointerMove}
             onPointerUp={onPanPointerUp}

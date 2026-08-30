@@ -197,6 +197,21 @@ export function useSwipeGesture<T extends HTMLElement = HTMLElement>(
     stateRef.current = { ...INITIAL_STATE };
   }, []);
 
+  // 系统中断（通知栏下拉/来电/系统手势抢占）走取消路径：回弹归位，
+  // 不做阈值/fling 提交——与 MobileSlidingLayout 的 touchcancel 语义对齐
+  const handleCancel = useCallback(() => {
+    const s = stateRef.current;
+    const wasSwiping = s.axisLocked !== null && s.axisLocked !== 'rejected';
+    const opts = optionsRef.current;
+
+    if (wasSwiping) {
+      opts.onSwipeEnd?.({ delta: 0, velocity: 0, isFling: false, direction: 0, passed: false });
+      setIsSwiping(false);
+    }
+
+    stateRef.current = { ...INITIAL_STATE };
+  }, []);
+
   const ref = useCallback(
     (node: T | null) => {
       cleanupRef.current?.();
@@ -215,6 +230,7 @@ export function useSwipeGesture<T extends HTMLElement = HTMLElement>(
         });
       };
       const onTouchEnd = () => handleEnd();
+      const onTouchCancel = () => handleCancel();
 
       // 鼠标路径（桌面调试）：down 在容器，move/up 在 window，拖出容器不丢事件
       const onMouseMove = (e: MouseEvent) => {
@@ -235,20 +251,20 @@ export function useSwipeGesture<T extends HTMLElement = HTMLElement>(
       node.addEventListener('touchstart', onTouchStart, { passive: true });
       node.addEventListener('touchmove', onTouchMove, { passive: false });
       node.addEventListener('touchend', onTouchEnd);
-      node.addEventListener('touchcancel', onTouchEnd);
+      node.addEventListener('touchcancel', onTouchCancel);
       node.addEventListener('mousedown', onMouseDown);
 
       cleanupRef.current = () => {
         node.removeEventListener('touchstart', onTouchStart);
         node.removeEventListener('touchmove', onTouchMove);
         node.removeEventListener('touchend', onTouchEnd);
-        node.removeEventListener('touchcancel', onTouchEnd);
+        node.removeEventListener('touchcancel', onTouchCancel);
         node.removeEventListener('mousedown', onMouseDown);
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
       };
     },
-    [handleStart, handleMove, handleEnd],
+    [handleStart, handleMove, handleEnd, handleCancel],
   );
 
   return { ref, isSwiping };

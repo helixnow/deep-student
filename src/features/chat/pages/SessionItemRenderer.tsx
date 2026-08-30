@@ -200,7 +200,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
     'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden whitespace-nowrap text-[11px] font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
   return (
-    <div ref={setRefs} className="relative overflow-hidden rounded-2xl">
+    <div ref={setRefs} className="relative overflow-hidden rounded-2xl" data-no-screen-swipe>
       {/* 滑出的操作色块：宽度跟随位移渐进展开 */}
       <div
         className="absolute inset-y-0 right-0 flex items-stretch overflow-hidden rounded-r-2xl"
