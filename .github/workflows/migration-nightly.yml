@@ -47,7 +47,7 @@ concurrency:
 
 env:
   CARGO_INCREMENTAL: 0
-  DEEP_STUDENT_BUILD_NUMBER: '14637'
+  DEEP_STUDENT_BUILD_NUMBER: '14638'
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
