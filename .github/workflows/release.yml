@@ -390,6 +390,9 @@ jobs:
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
       frontend_dist_artifact: frontend-dist
+      # ⚠️ 临时启用 (2026-08-31): APPLE_* 签名 secrets 已从仓库丢失，
+      # 本次 release 出未签名包（Gatekeeper 需右键打开）。找回证书后移除。
+      allow_unsigned: true
     secrets: inherit
 
   build-windows:
@@ -398,6 +401,9 @@ jobs:
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
       frontend_dist_artifact: frontend-dist
+      # ⚠️ 临时启用 (2026-08-31): WINDOWS_CERTIFICATE_* secrets 丢失，
+      # 本次 release 出未签名包（SmartScreen 警告）。找回证书后移除。
+      allow_unsigned: true
     secrets: inherit
 
   build-linux:
