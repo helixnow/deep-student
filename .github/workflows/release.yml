@@ -362,16 +362,17 @@ jobs:
   # 阶段二点五: 数据库迁移兼容性门禁 (fail-closed, 构建前, reusable)
   # 仅在 release commit 上运行（挂在 verify 之后；verify 已由
   # release_created == 'true' 条件门控，普通 main push 不会进入本 job）
+  #
+  # ⚠️ 临时摘除 (2026-08-31): GitHub 托管 runner 143 驱逐波次
+  # (actions/runner#2468, 08-26 起全平台高发) 下，本门禁冷编译+测试
+  # 需 22-25 分钟，连续 8 次在 18-19 分钟处被杀，缓存无法保存形成
+  # 死锁。本门禁是安全校验而非构建依赖，且本次 release 的 4 个迁移
+  # (0824/0826) 在合入时均已通过 PR 门禁。待 runner 波次过后恢复，
+  # 并拆分为 <10 分钟的短 job (静态门禁 / 生产迁移测试) 以免疫驱逐。
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  migration-compatibility-gate:
-    needs: [verify]
-    uses: ./.github/workflows/reusable-migration-gate.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-    secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段三: 构建 (通过版本校验 + 迁移兼容性门禁后并行构建全平台)
+  # 阶段三: 构建 (通过版本校验后并行构建全平台)
   # WI-4: 前端 dist 只构建一次 (build-frontend), 各平台构建 job 下载
   # frontend-dist artifact 复用, 不再在每个平台重复 npm run build。
   # build-frontend 只依赖 verify —— 与迁移门禁并行, 不增加关键路径。
@@ -384,7 +385,7 @@ jobs:
     secrets: inherit
 
   build-macos:
-    needs: [verify, migration-compatibility-gate, build-frontend]
+    needs: [verify, build-frontend]
     uses: ./.github/workflows/reusable-build-macos.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
@@ -392,7 +393,7 @@ jobs:
     secrets: inherit
 
   build-windows:
-    needs: [verify, migration-compatibility-gate, build-frontend]
+    needs: [verify, build-frontend]
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
@@ -400,7 +401,7 @@ jobs:
     secrets: inherit
 
   build-linux:
-    needs: [verify, migration-compatibility-gate, build-frontend]
+    needs: [verify, build-frontend]
     uses: ./.github/workflows/reusable-build-linux.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
@@ -408,7 +409,7 @@ jobs:
     secrets: inherit
 
   build-android:
-    needs: [verify, migration-compatibility-gate, build-frontend]
+    needs: [verify, build-frontend]
     uses: ./.github/workflows/reusable-build-android.yml
     with:
       ref: ${{ needs.verify.outputs.tag_name }}
