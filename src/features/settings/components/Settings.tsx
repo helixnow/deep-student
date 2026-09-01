@@ -896,12 +896,17 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       }
       if (deltaY < 8) return;
       drag.isDragging = true;
-      drag.suppressNextClick = true;
+      // 注意：此处不设置 suppressNextClick。触屏点按常伴随 8~20px 微小位移，
+      // 过早吞掉随后的 click 会导致顶部栏返回/关闭按钮"点不动"。
     }
 
     if (deltaY <= 0) return;
     event.preventDefault();
     drag.offset = deltaY;
+    // 仅在确实发生明显下拉拖拽后才吞掉随后的 click（防止拖拽回弹时误触按钮）。
+    if (deltaY > 24) {
+      drag.suppressNextClick = true;
+    }
     setSheetDragStyle({ offset: deltaY, transition: 'none' });
   }, []);
 
@@ -949,8 +954,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     } catch {
       // Pointer capture is best-effort in older WebViews.
     }
-    if (wasDragging) {
+    if (wasDragging && drag.offset > 24) {
       drag.suppressNextClick = true;
+      settleSheetDragBack();
+    } else if (wasDragging) {
       settleSheetDragBack();
     }
   }, [settleSheetDragBack]);
