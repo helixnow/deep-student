@@ -1677,7 +1677,7 @@ ${resolvedPath}`);
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-4">
-                    <h3 className="flex items-center gap-2 text-base font-medium text-foreground">
+                    <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
                       <Warning className={DATA_CENTER_ICON_SM_CLASS} />
                       {t('data:usage_tips_title')}
                     </h3>
@@ -1692,7 +1692,7 @@ ${resolvedPath}`);
                   </div>
 
                   <div className="rounded-2xl bg-muted p-6">
-                    <h3 className="text-base font-medium text-foreground">{t('data:data_space.title')}</h3>
+                    <h3 className="text-base font-semibold text-foreground">{t('data:data_space.title')}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {t('data:data_space.description')}
                     </p>
@@ -1748,7 +1748,7 @@ ${resolvedPath}`);
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="rounded-2xl bg-muted p-6">
-                      <h3 className="text-base font-medium text-foreground">{t('data:integrity.title')}</h3>
+                      <h3 className="text-base font-semibold text-foreground">{t('data:integrity.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
@@ -1759,7 +1759,7 @@ ${resolvedPath}`);
                     </div>
 
                     <div className="rounded-2xl bg-muted p-6">
-                      <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
+                      <h3 className="text-base font-semibold text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
                       <DsButton variant="outline" className="mt-4 !text-destructive" onClick={handleClearAllData}>
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />

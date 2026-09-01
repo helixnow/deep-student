@@ -223,7 +223,7 @@ export const MediaCacheSection: React.FC = () => {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-base font-medium text-foreground">
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Trash size={16} />
               {t('data:governance.cache.pick_types')}
             </div>

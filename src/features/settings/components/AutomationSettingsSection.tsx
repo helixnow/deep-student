@@ -740,7 +740,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="outline" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
+              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton

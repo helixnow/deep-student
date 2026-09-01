@@ -767,7 +767,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   />
                 </span>
               )}
-              <h3 className="text-lg font-medium text-foreground truncate">
+              <h3 className="text-base font-semibold text-foreground truncate">
                 {vendorDisplayName}
               </h3>
               {selectedVendorIsSiliconflow && (
@@ -1009,7 +1009,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               )}
             >
               <div className="min-w-0 flex-1 space-y-1">
-                <h3 className="text-lg font-medium text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
+                <h3 className="text-base font-semibold text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
                 <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
               </div>
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-shrink-0">

@@ -175,7 +175,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       />
       {/* 标题栏 */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">{t('settings:ocr.test_title')}</h3>
+        <h3 className="text-base font-semibold text-foreground">{t('settings:ocr.test_title')}</h3>
         {onClose && (
           <DsButton variant="ghost" size="sm" iconOnly onClick={onClose}>
             <X size={16} />

@@ -104,7 +104,7 @@ export const LanceOptimizationPanel: React.FC = () => {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Database size={16} className="text-muted-foreground" />
-            <h3 className="text-base font-medium text-foreground">{t('lance_optimization.title')}</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('lance_optimization.title')}</h3>
           </div>
           <p className="text-sm text-muted-foreground">
             {t('lance_optimization.description')}
