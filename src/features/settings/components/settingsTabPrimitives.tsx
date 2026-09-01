@@ -114,11 +114,13 @@ export const SettingsGroup = ({
   children: React.ReactNode;
   className?: string;
 }) => (
+  // 结构：小标题在卡片外（划分页面区域），圆角卡片无描边、纯填充
+  // bg-muted（亮 #f0f0f0 比背景深 / 暗 14% 比背景浅，双向满足对比要求）。
   <section
     className={cn(
+      'min-w-0',
       // content-visibility:auto（静态、非手势期切换）：离屏分组跳过布局/绘制与
       // AX bounds 序列化——拖拽窗口时的每帧税 ∝ 参与布局的节点数（见 wb-interaction-trace）。
-      'min-w-0 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4',
       '[content-visibility:auto] [contain-intrinsic-size:auto_360px]',
       className,
     )}
@@ -129,8 +131,10 @@ export const SettingsGroup = ({
         {description}
       </p>
     ) : null}
-    <div className="space-y-px">
-      {children}
+    <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+      <div className="space-y-px">
+        {children}
+      </div>
     </div>
   </section>
 );
