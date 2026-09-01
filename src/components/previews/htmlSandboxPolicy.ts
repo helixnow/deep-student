@@ -11,13 +11,27 @@ interface BuildHtmlSandboxDocumentOptions {
   fidelity?: 'default' | 'anki';
 }
 
+// 自动高度测量：基础样式把 html/body 钉在 height/min-height:100%，此时
+// body.scrollHeight 恒 ≥ iframe 视口高度，只涨不缩（棘轮）——瞬时窄宽渲染
+// （如等比缩放预览首帧）产生的虚高会被永久锁定。测量时临时解除钉高取真实
+// 内容高度，测完同步恢复，不影响渲染结果。
 const TEMPLATE_RESIZE_SCRIPT = `<script>
+  function sdpMeasure() {
+    var b = document.body;
+    if (!b) return 0;
+    var de = document.documentElement;
+    var deh = de.style.height, bh = b.style.height, bm = b.style.minHeight;
+    de.style.height = 'auto'; b.style.height = 'auto'; b.style.minHeight = '0';
+    var h = b.scrollHeight;
+    de.style.height = deh; b.style.height = bh; b.style.minHeight = bm;
+    return h;
+  }
   new ResizeObserver(function() {
-    var h = document.body ? document.body.scrollHeight : 0;
+    var h = sdpMeasure();
     if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
   }).observe(document.documentElement);
   window.addEventListener('load', function() {
-    var h = document.body ? document.body.scrollHeight : 0;
+    var h = sdpMeasure();
     if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
   });
 </script>`;
