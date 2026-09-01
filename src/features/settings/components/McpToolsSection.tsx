@@ -148,6 +148,10 @@ interface McpToolsSectionProps {
   onHealthCheck: () => void;
   onClearCache: () => void;
   onOpenPolicy: () => void;
+  /** 移动端「新增服务器」入口：打开右滑面板编辑器（与编辑同一表单）；桌面端为 undefined，走行内新建表单 */
+  onCreateServer?: () => void;
+  /** 移动端「编辑服务器」入口：打开右滑面板编辑器；桌面端为 undefined，走行内展开编辑 */
+  onEditServer?: (server: McpServer) => void;
   /** Settings 外层滚动视口；提供时服务器长列表走虚拟化（拖窗每帧税 ∝ 挂载节点） */
   scrollElement?: HTMLElement | null;
 }
@@ -232,7 +236,8 @@ function ServerListItem({
   isTesting,
   disableTest,
   testStepLabel,
-  isBuiltin = false
+  isBuiltin = false,
+  onEditInPanel
 }: {
   server: McpServer;
   status?: McpServerStatus;
@@ -247,6 +252,8 @@ function ServerListItem({
   disableTest: boolean;
   testStepLabel?: string | null;
   isBuiltin?: boolean;
+  /** 移动端：编辑走右滑面板而非行内展开；未提供时保持行内展开 */
+  onEditInPanel?: () => void;
 }) {
   const { t } = useTranslation(['settings']);
   const isConnected = isBuiltin ? true : (status?.connected ?? false);
@@ -328,7 +335,17 @@ function ServerListItem({
       )}
       {/* 主行 */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         onClick={() => onToggleExpand(expandedPanel ? null : 'preview')}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleExpand(expandedPanel ? null : 'preview');
+          }
+        }}
         onMouseEnter={() => {
           setShowActions(true);
           if (!actionsWarm) setActionsWarm(true);
@@ -457,7 +474,7 @@ function ServerListItem({
               )}
               {!isBuiltin && (
                 <>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (onEditInPanel) { onEditInPanel(); } else { onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); } }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
                   </DsButton>
                   <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
@@ -3697,9 +3714,12 @@ export function McpToolsSection({
   onHealthCheck,
   onClearCache,
   onOpenPolicy,
+  onCreateServer,
+  onEditServer,
   scrollElement = null,
 }: McpToolsSectionProps) {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   // 展开面板状态：key 是服务器 index，value 是展开类型
   const [expandedPanels, setExpandedPanels] = useState<Map<number, ExpandedPanelType>>(new Map());
   // 是否正在添加新服务器
@@ -3846,6 +3866,9 @@ export function McpToolsSection({
                 void onAddServer(config);
               }}
             />
+            {/* 移动端：新增入口收进统一顶栏（Settings.tsx rightActions），
+                卡片头部只留次级操作，避免三按钮换行拥挤；桌面端保持行内新建表单 */}
+            {!isSmallScreen && (
             <DsButton
               onClick={() => {
                 setIsAddingNew(true);
@@ -3858,6 +3881,7 @@ export function McpToolsSection({
               <Plus className="w-4 h-4 mr-1" />
               {t('settings:mcp.add_server')}
             </DsButton>
+            )}
           </div>
         </div>
 
@@ -3865,7 +3889,11 @@ export function McpToolsSection({
         <div className="space-y-2">
           {totalServers === 0 && !isAddingNew ? (
             <div className="rounded-lg border border-dashed border-border/60 bg-muted/5">
-              <EmptyServerList onAdd={() => setIsAddingNew(true)} />
+              <EmptyServerList onAdd={() => {
+                // 移动端空态 CTA 同样走右滑面板（与顶栏 + 同一入口）
+                if (isSmallScreen && onCreateServer) { onCreateServer(); return; }
+                setIsAddingNew(true);
+              }} />
             </div>
           ) : (
             <div className="grid gap-3">
@@ -3915,6 +3943,7 @@ export function McpToolsSection({
                         disableTest={testingServerId != null && testingServerId !== server.id}
                         testStepLabel={testingServerId === server.id ? testStepLabel : null}
                         isBuiltin={isBuiltinServer(server.id)}
+                        onEditInPanel={onEditServer ? () => onEditServer(server) : undefined}
                       />
                     ),
                   };

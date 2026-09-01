@@ -199,6 +199,11 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
   const { errors: mcpErrors, addError: addMcpError, dismissError: dismissMcpError, clearAllErrors: clearMcpErrors } = useUnifiedErrorHandler();
 
+  // 移动端统一顶栏保存出口（P1-7）：嵌入式编辑器每次渲染把最新提交闭包写进 ref，
+  // 顶栏 Check 按钮经 ref 调用，无需把表单状态提升到 Settings
+  const mcpToolSubmitRef = useRef<(() => Promise<void>) | null>(null);
+  const mcpPolicySaveRef = useRef<(() => Promise<void>) | null>(null);
+
   // MCP 工具编辑模态
   const [mcpToolModal, setMcpToolModal] = useState<{
     open: boolean;
@@ -522,6 +527,23 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     }
     return JSON.stringify(config, null, 2);
   };
+  // 新增服务器入口：移动端走右滑面板（与编辑同一表单，index=null 即创建模式，
+  // 保存出口在统一顶栏 Check）；桌面维持 McpToolsSection 的行内新建表单不变
+  const handleCreateMcpTool = () => {
+    setMcpToolModal({
+      open: true,
+      index: null,
+      mode: 'form',
+      jsonInput: '',
+      draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [], env: {}, cwd: '', framing: 'jsonl' },
+      error: null,
+    });
+    if (isSmallScreen) {
+      setRightPanelType('mcpTool');
+      setScreenPosition('right');
+    }
+  };
+
   const handleAddMcpTool = async (newServer: Partial<McpToolConfig>): Promise<boolean> => {
     try {
       const toolToSave: McpToolConfig = {
@@ -1471,6 +1493,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       }
     };
 
+    // 移动端保存出口上收统一顶栏（P1-7 同模型编辑器）：顶栏 Check 经此 ref 触发提交，
+    // 每次渲染同步最新闭包，不引入额外状态
+    mcpToolSubmitRef.current = handleSubmit;
+
     return (
       <div
         className="flex h-full min-h-0 flex-col bg-background [&_input]:min-h-11"
@@ -1657,10 +1683,13 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </Alert>
         )}
 
+        {/* 移动端：保存唯一出口在统一顶栏 Check（P1-7，同模型编辑器），底栏不再重复；桌面右侧面板保留 */}
+        {!isSmallScreen && (
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
           <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
           <DsButton onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
         </div>
+        )}
       </div>
     );
   };
@@ -1712,6 +1741,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       showGlobalNotification('success', t('settings:mcp_descriptions.policy_saved'));
       handleClose();
     };
+
+    // 移动端保存出口上收统一顶栏（P1-7 同模型编辑器）：顶栏 Check 经此 ref 触发提交
+    mcpPolicySaveRef.current = handleSave;
 
     return (
       <div
@@ -1813,10 +1845,13 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </div>
         </CustomScrollArea>
 
+        {/* 移动端：保存唯一出口在统一顶栏 Check（P1-7），底栏不再重复；桌面右侧面板保留 */}
+        {!isSmallScreen && (
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
           <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
           <DsButton onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
         </div>
+        )}
       </div>
     );
   };
@@ -2111,5 +2146,5 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const latestPrompts = useMemo(() => mcpCachedDetails.prompts.items.slice(0, 5), [mcpCachedDetails.prompts.items]);
   const latestResources = useMemo(() => mcpCachedDetails.resources.items.slice(0, 5), [mcpCachedDetails.resources.items]);
 
-  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
+  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpToolSubmitRef, mcpPolicySaveRef, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleCreateMcpTool, handleEditMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
 }

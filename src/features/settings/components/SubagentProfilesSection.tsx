@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -398,6 +399,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
 
 export const SubagentProfilesSection: React.FC = () => {
   const { t, i18n } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [loading, setLoading] = useState<boolean>(isTauri);
   const [error, setError] = useState<string | null>(null);
   const [builtin, setBuiltin] = useState<BuiltinProfileSummary[]>([]);
@@ -775,12 +777,13 @@ export const SubagentProfilesSection: React.FC = () => {
       >
         <FolderOpen className="h-4 w-4" aria-hidden="true" />
       </DsButton>
+      {/* 移动端去纯色按钮：描边+主色文字，与供应商/模型页语言一致；桌面保持实心 primary */}
       <DsButton
-        variant="primary"
+        variant={isSmallScreen ? 'outline' : 'primary'}
         size="sm"
         disabled={!isTauri || expandedId === 'create'}
         onClick={openCreate}
-        className="max-lg:min-h-11"
+        className={cn('max-lg:min-h-11', isSmallScreen && 'text-primary')}
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         {t('settings:subagentProfiles.actions.create')}

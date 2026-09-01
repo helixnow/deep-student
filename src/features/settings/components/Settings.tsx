@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import { ModelAssignments, VendorConfig, ModelProfile, ApiConfig } from '@/types';
+import type { McpToolConfig } from './hookDepsTypes';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
@@ -486,7 +487,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   );
 
   const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
-  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
+  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpToolSubmitRef, mcpPolicySaveRef, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleCreateMcpTool, handleEditMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
 
   // 按 rightPanelType 关闭当前右滑面板并清理对应状态
   //（返回键与手势滑回共用，避免手势 dismiss 后 mcpPreview/modelEditor 等状态残留）
@@ -714,6 +715,19 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         </DsButton>
       );
     }
+    // MCP 分区态：新增服务器入口收进顶栏（打开右滑面板编辑器，与编辑同一表单）
+    if (
+      isSmallScreen
+      && screenPosition !== 'right'
+      && mobileNavView === 'content'
+      && activeTab === 'mcp'
+    ) {
+      return (
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreateMcpTool} title={t('settings:mcp.add_server')} aria-label={t('settings:mcp.add_server')} className="!h-11 !w-11 text-primary">
+          <Plus size={20} />
+        </DsButton>
+      );
+    }
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
@@ -740,8 +754,26 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         </DsButton>
       );
     }
+    // MCP 工具/策略编辑器：保存出口同样收进顶栏（P1-7 统一；移动端底栏已移除，
+    // 提交闭包由嵌入式编辑器每次渲染写入 ref）
+    if (rightPanelType === 'mcpTool' || rightPanelType === 'mcpPolicy') {
+      const submitRef = rightPanelType === 'mcpTool' ? mcpToolSubmitRef : mcpPolicySaveRef;
+      return (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => { void submitRef.current?.(); }}
+          title={t('common:actions.save')}
+          aria-label={t('settings:a11y.save')}
+          className="!h-11 !w-11 text-primary"
+        >
+          <Check size={20} />
+        </DsButton>
+      );
+    }
     return undefined;
-  }, [screenPosition, rightPanelType, t, isSmallScreen, mobileNavView, activeTab, mobileVendorDetailOpen, handleOpenVendorModal, selectedVendor]);
+  }, [screenPosition, rightPanelType, t, isSmallScreen, mobileNavView, activeTab, mobileVendorDetailOpen, handleOpenVendorModal, selectedVendor, mcpToolSubmitRef, mcpPolicySaveRef, handleCreateMcpTool]);
 
   // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
   const showSettingsBackArrow = true;
@@ -1496,6 +1528,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             onHealthCheck={handleRunHealthCheck}
             onClearCache={handleClearCaches}
             onOpenPolicy={handleOpenMcpPolicy}
+            onCreateServer={handleCreateMcpTool}
+            onEditServer={isSmallScreen ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined}
             scrollElement={settingsScrollElement}
           />
         )}
