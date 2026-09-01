@@ -259,7 +259,7 @@ export const EngineSettingsSection: React.FC<{
   };
 
   const renderEngineFooter = (id: string, enabled: boolean) => (
-    <div className="w-full pt-8 border-t border-border/40 mt-8">
+    <div className="w-full pt-5 border-t border-border/40 mt-6">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1">
@@ -353,7 +353,7 @@ export const EngineSettingsSection: React.FC<{
           </div>
         </div>
 
-        <div className="w-full min-w-0 rounded-2xl bg-muted p-3 sm:p-4">
+        <div className="w-full min-w-0">
           {activeEngine === 'bing_rss' && (
             <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
@@ -364,7 +364,9 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.bing_rss_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               {renderEngineFooter('bing_rss', true)}
+              </div>
             </div>
           )}
 
@@ -383,6 +385,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.google_cse_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
@@ -402,6 +405,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
+              </div>
             </div>
           )}
 
@@ -420,6 +424,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.serpapi_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
@@ -428,6 +433,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('serpapi', !!config.webSearchSerpApiKey)}
+              </div>
             </div>
           )}
 
@@ -446,6 +452,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.tavily_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
@@ -454,6 +461,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
+              </div>
             </div>
           )}
 
@@ -472,6 +480,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.brave_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
@@ -480,6 +489,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('brave', !!config.webSearchBraveKey)}
+              </div>
             </div>
           )}
 
@@ -498,6 +508,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.searxng_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
@@ -517,6 +528,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('searxng', !!config.webSearchSearxngEndpoint)}
+              </div>
             </div>
           )}
 
@@ -535,6 +547,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.zhipu_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
@@ -543,6 +556,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('zhipu', !!config.webSearchZhipuKey)}
+              </div>
             </div>
           )}
 
@@ -561,6 +575,7 @@ export const EngineSettingsSection: React.FC<{
                   {t('settings:descriptions.bocha_desc')}
                 </p>
               </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
@@ -569,6 +584,7 @@ export const EngineSettingsSection: React.FC<{
                 </div>
               </div>
               {renderEngineFooter('bocha', !!config.webSearchBochaKey)}
+              </div>
             </div>
           )}
 
