@@ -13,7 +13,7 @@
  *   --no-tauri   只启动 bridge（已有 dev 实例时）
  *   --bridge-only  同 --no-tauri
  */
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,33 @@ const bridgeOnly = flags.has('--no-tauri') || flags.has('--bridge-only');
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * 窗口默认落在第二块屏幕（存在时），避免占用主屏。
+ * 返回 { x, y }：第二屏水平居中、距顶 60；单屏时回退主屏 (120, 60)。
+ */
+function preferredWindowOrigin(winW) {
+  try {
+    const script = `
+      ObjC.import("AppKit");
+      const screens = $.NSScreen.screens;
+      const out = [];
+      for (let i = 0; i < screens.count; i++) {
+        const f = screens.objectAtIndex(i).frame;
+        out.push({ x: f.origin.x, y: f.origin.y, w: f.size.width, h: f.size.height });
+      }
+      JSON.stringify(out);
+    `;
+    const screens = JSON.parse(execSync(`osascript -l JavaScript -e '${script}'`).toString());
+    if (Array.isArray(screens) && screens.length > 1) {
+      const second = screens[1];
+      return { x: Math.round(second.x + (second.w - winW) / 2), y: Math.round(second.y + 60) };
+    }
+  } catch {
+    /* 单屏或查询失败时走默认 */
+  }
+  return { x: 120, y: 60 };
 }
 
 async function waitBridge(timeoutMs = 15000) {
@@ -78,6 +105,10 @@ async function main() {
     const cfgObj = JSON.parse(fs.readFileSync(cfg, 'utf8'));
     cfgObj.app.windows[0].width = DEVICES[device].w;
     cfgObj.app.windows[0].height = DEVICES[device].h;
+    // 默认落在第二块屏幕（存在时），避免占用主屏
+    const origin = preferredWindowOrigin(DEVICES[device].w);
+    cfgObj.app.windows[0].x = origin.x;
+    cfgObj.app.windows[0].y = origin.y;
     const runtimeCfg = '/tmp/ds-phone-window.runtime.json';
     fs.writeFileSync(runtimeCfg, JSON.stringify(cfgObj, null, 2));
 
