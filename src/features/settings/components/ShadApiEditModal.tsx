@@ -949,7 +949,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           {/* Tabs & Content - Flex Body */}
           <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
             {/* 移动端两侧边距对齐详情页 16px 约定（原 px-2 仅 8px 过窄） */}
-            <div className="flex-none px-4 border-b border-border/40/40">
+            <div className="flex-none px-4 border-b border-border/40">
               <TabsList className="w-full justify-between sm:justify-start h-auto p-0 bg-transparent gap-0 sm:gap-4">
                 <TabsTrigger 
                   value="general" 

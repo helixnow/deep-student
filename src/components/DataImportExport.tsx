@@ -62,6 +62,7 @@ import {
   RadialBar
 } from 'recharts';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 
 const DATA_CENTER_ICON_CONTAINER_CLASS = 'flex h-8 w-8 items-center justify-center rounded-md bg-muted';
 const DATA_CENTER_ICON_CLASS = 'h-5 w-5 text-primary transition-colors';
@@ -1388,6 +1389,13 @@ ${resolvedPath}`);
                 </div>
               </div>
               )}
+              <div className="mb-6">
+                <TodayCommandCenter
+                  onNavigate={(view) => {
+                    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view });
+                  }}
+                />
+              </div>
               {/* Chat V2 统计部分 - 2026-01: 错题系统已废弃，只显示 Chat V2 统计 */}
               <ChatV2StatsSection />
               
@@ -1690,17 +1698,17 @@ ${resolvedPath}`);
                     </p>
                     {slotInfo ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.active_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.active_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.active_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.inactive_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.inactive_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.inactive_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40/60 bg-background/80 p-3 shadow-sm sm:col-span-2">
+                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm sm:col-span-2">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.pending_label')}</div>
                           <div
                             className={cn(
