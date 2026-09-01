@@ -769,7 +769,11 @@
     "params": "参数调整",
     "shortcuts": "快捷键",
     "about": "关于",
-    "plugins": "插件"
+    "plugins": "插件",
+    "voice_input": "语音听写",
+    "memory": "记忆",
+    "workbench": "学习桌面",
+    "document_processing": "文档处理"
   },
   "mobile_groups": {
     "0": "模型",
@@ -781,7 +785,7 @@
   "mobile_descriptions": {
     "apis": "配置模型接口与密钥",
     "models": "分配各功能使用的模型",
-    "general": "语言、权限与听写",
+    "general": "语言、权限与通知",
     "appearance": "主题、字体与界面",
     "automation": "定时任务与后台运行",
     "mcp": "连接外部工具与服务",
@@ -791,7 +795,11 @@
     "data_governance": "备份、恢复与数据管理",
     "params": "调整模型生成参数",
     "shortcuts": "自定义键盘操作",
-    "about": "版本信息与开源致谢"
+    "about": "版本信息与开源致谢",
+    "voice_input": "听写引擎、快捷键与词典",
+    "memory": "本地记忆库与自动回忆",
+    "workbench": "窗口化桌面与工作区",
+    "document_processing": "PDF 渲染与 OCR 识别"
   },
   "automation": {
     "title": "自动化",
@@ -1074,7 +1082,7 @@
     "keychain": {
       "title": "系统钥匙串保护",
       "description": "把凭据加密根密钥托管到系统钥匙串（macOS Keychain）。默认关闭：密钥保存在应用私有目录的受限文件中，不会触发系统授权弹窗。",
-      "enabled_notice": "已开启：根密钥已迁入系统钥匙串。后续访问可能出现系统授权弹窗，建议选择\u201c始终允许\u201d。",
+      "enabled_notice": "已开启：根密钥已迁入系统钥匙串。后续访问可能出现系统授权弹窗，建议选择“始终允许”。",
       "disabled_notice": "已关闭：根密钥已回迁为本地受限文件，不再触发系统授权弹窗。"
     }
   },

@@ -769,7 +769,11 @@
     "params": "Parameters",
     "shortcuts": "Shortcuts",
     "about": "About",
-    "plugins": "Plugins"
+    "plugins": "Plugins",
+    "voice_input": "Voice Input",
+    "memory": "Memory",
+    "workbench": "Study Desktop",
+    "document_processing": "Document Processing"
   },
   "mobile_groups": {
     "0": "Models",
@@ -781,7 +785,7 @@
   "mobile_descriptions": {
     "apis": "Configure model APIs and credentials",
     "models": "Assign models to app features",
-    "general": "Language, permissions, and dictation",
+    "general": "Language, permissions, and notifications",
     "appearance": "Themes, fonts, and interface",
     "automation": "Schedules and background tasks",
     "mcp": "Connect tools and services",
@@ -791,7 +795,11 @@
     "data_governance": "Back up, restore, and manage data",
     "params": "Tune model generation settings",
     "shortcuts": "Customize keyboard commands",
-    "about": "Version and open-source acknowledgements"
+    "about": "Version and open-source acknowledgements",
+    "voice_input": "Dictation engine, hotkeys, and vocabulary",
+    "memory": "Local memory and auto recall",
+    "workbench": "Windowed desktop and workspaces",
+    "document_processing": "PDF rendering and OCR recognition"
   },
   "automation": {
     "title": "Automations",

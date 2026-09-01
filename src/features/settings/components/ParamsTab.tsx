@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SettingSection } from './SettingsCommon';
-import { PdfSettingsSection } from './PdfSettingsSection';
-import { OcrSettingsSection } from './OcrSettingsSection';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS } from './constants';
@@ -167,13 +165,6 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
           </div></div>
         </div>
 
-        <div className="mt-8">
-          <PdfSettingsSection />
-        </div>
-
-        <div className="mt-8">
-          <OcrSettingsSection />
-        </div>
       </SettingSection>
     </div>
   );

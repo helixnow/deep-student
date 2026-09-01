@@ -364,9 +364,9 @@ export function AgentControlDockEntry({
 
   const openControlSettings = React.useCallback(() => {
     handleOpenChange(false);
-    setPendingSettingsTab('general');
+    setPendingSettingsTab('workbench');
     workbenchBus.launch({ typeId: 'settings', reason: 'dock' });
-    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'general' });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'workbench' });
   }, [handleOpenChange]);
 
   const runEmergencyStop = React.useCallback(async () => {

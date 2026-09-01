@@ -4,10 +4,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { CircleNotch } from '@phosphor-icons/react';
 
 import { SettingSection } from './SettingsCommon';
-import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
-import { MemorySettingsSection } from './MemorySettingsSection';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
-import { WorkbenchSettingsSection } from './WorkbenchSettingsSection';
 import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
 import { SystemPermissionsSection } from './SystemPermissionsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
@@ -30,7 +27,6 @@ import {
   setSystemNotificationPolicy,
   type SystemNotificationPolicy,
 } from '@/utils/systemNotification';
-import type { VoiceInputAssignedModel } from '@/voice-input/types';
 import {
   getQuickAssistantConfig,
   QUICK_ASSISTANT_BACKGROUND_KEY,
@@ -49,7 +45,6 @@ import {
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
 interface GeneralTabProps {
-  voiceInputAssignedModel: VoiceInputAssignedModel;
   topbarTopMargin: string;
   topbarTopMarginLoaded: boolean;
   setTopbarTopMargin: (value: string) => void;
@@ -62,7 +57,6 @@ interface GeneralTabProps {
 }
 
 export const GeneralTab: React.FC<GeneralTabProps> = ({
-  voiceInputAssignedModel,
   topbarTopMargin,
   topbarTopMarginLoaded,
   setTopbarTopMargin,
@@ -326,19 +320,6 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         <div className="mt-8">
           <AnkiConnectSettingsSection />
         </div>
-
-        <div className="mt-8 rounded-2xl bg-muted px-3 py-3 sm:px-4">
-          <VoiceInputSettingsSection embedded assignedModel={voiceInputAssignedModel} />
-        </div>
-
-        <div className="mt-8 rounded-2xl bg-muted px-3 py-3 sm:px-4">
-          <div className="px-1 mb-3 mt-0">
-            <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title')}</h3>
-          </div>
-          <MemorySettingsSection embedded />
-        </div>
-
-        <WorkbenchSettingsSection className="mt-8" />
 
         <SettingsGroup
           title={t('settings:diagnostics.title', 'Diagnostics and feedback')}

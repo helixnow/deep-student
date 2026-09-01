@@ -94,7 +94,11 @@ export type SettingsTabId =
   | 'automation'
   | 'data-governance'
   | 'shortcuts'
-  | 'about';
+  | 'about'
+  | 'voice-input'
+  | 'memory'
+  | 'workbench'
+  | 'document-processing';
 
 export interface SettingsNavigateTabDetail {
   tab: SettingsTabId;

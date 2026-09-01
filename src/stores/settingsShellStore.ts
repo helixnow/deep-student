@@ -49,6 +49,15 @@ const SETTINGS_TAB_MAPPING: Record<string, string> = {
   params: 'params',
   shortcuts: 'shortcuts',
   about: 'about',
+  'voice-input': 'voice-input',
+  voice: 'voice-input',
+  dictation: 'voice-input',
+  memory: 'memory',
+  workbench: 'workbench',
+  'document-processing': 'document-processing',
+  documents: 'document-processing',
+  pdf: 'document-processing',
+  ocr: 'document-processing',
 };
 
 function normalizeDataGovernanceTab(value: unknown): DashboardTab | null {

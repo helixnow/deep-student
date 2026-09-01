@@ -161,6 +161,10 @@ const ParamsTab = React.lazy(() => import('./ParamsTab').then((module) => ({ def
 const ShortcutSettings = React.lazy(() => import('@/command-palette/components/ShortcutSettings').then((module) => ({ default: module.ShortcutSettings })));
 const DataImportExport = React.lazy(() => import('@/components/DataImportExport').then((module) => ({ default: module.DataImportExport })));
 const AboutTab = React.lazy(() => import('./AboutTab').then((module) => ({ default: module.AboutTab })));
+const VoiceInputTab = React.lazy(() => import('./VoiceInputTab').then((module) => ({ default: module.VoiceInputTab })));
+const WorkbenchTab = React.lazy(() => import('./WorkbenchTab').then((module) => ({ default: module.WorkbenchTab })));
+const MemoryTab = React.lazy(() => import('./MemoryTab').then((module) => ({ default: module.MemoryTab })));
+const DocumentProcessingTab = React.lazy(() => import('./DocumentProcessingTab').then((module) => ({ default: module.DocumentProcessingTab })));
 
 const SettingsTabFallback = () => (
   <div
@@ -1555,7 +1559,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         )}
         {activeTab === 'general' && (
           <GeneralTab
-            voiceInputAssignedModel={voiceInputAssignedModel}
             topbarTopMargin={topbarTopMargin}
             topbarTopMarginLoaded={topbarTopMarginLoaded}
             setTopbarTopMargin={setTopbarTopMargin}
@@ -1606,6 +1609,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             handleToggleChatStreamAutoCancel={handleToggleChatStreamAutoCancel}
           />
         )}
+        {/* 语音听写 / 记忆 / 工作台 / 文档处理（2026-09 自常规/参数页拆出的独立分区） */}
+        {activeTab === 'voice-input' && (
+          <VoiceInputTab voiceInputAssignedModel={voiceInputAssignedModel} />
+        )}
+        {activeTab === 'memory' && <MemoryTab />}
+        {activeTab === 'workbench' && <WorkbenchTab />}
+        {activeTab === 'document-processing' && <DocumentProcessingTab />}
         {/* MCP 工具编辑模态 */}
         {renderMcpToolEditor()}
         {/* MCP 全局安全策略模态 - 移动端通过右侧滑动面板渲染 */}
