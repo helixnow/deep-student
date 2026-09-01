@@ -250,6 +250,8 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         style={{ maxWidth: 'none' }}
+        // 触发器是零尺寸隐藏锚点（aria-hidden），labelledby 兜底取不到名字，显式给菜单名
+        aria-label={t('chat_host:model_panel.title')}
       >
         {/* System default */}
         <div style={{ flexShrink: 0 }}>

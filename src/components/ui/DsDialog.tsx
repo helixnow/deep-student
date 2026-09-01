@@ -398,6 +398,9 @@ export function DsAlertDialog({
   const { t } = useTranslation('common');
   const resolvedConfirmText = confirmText ?? t('actions.confirm');
   const resolvedCancelText = cancelText ?? t('actions.cancel');
+  // P3-9：role=alertdialog 需要可访问名——标题/描述经 id 接线
+  const titleId = React.useId();
+  const descriptionId = React.useId();
 
   const handleCancel = React.useCallback(() => {
     onCancel?.();
@@ -442,6 +445,8 @@ export function DsAlertDialog({
         <motion.div
           role="alertdialog"
           aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={description ? descriptionId : undefined}
           variants={alertContentVariants}
           className={cn(
             // 宽度对齐移动端契约上限 calc(100vw-32px)；内容可变长（如 zip 装前确认）时
@@ -461,9 +466,9 @@ export function DsAlertDialog({
           <div className="flex shrink-0 items-start gap-3">
             {icon && <span className="flex-shrink-0 mt-0.5">{icon}</span>}
             <div className="flex-1 min-w-0 space-y-1.5">
-              <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
+              <h3 id={titleId} className="text-base font-semibold leading-tight text-foreground">{title}</h3>
               {description && (
-                <p className="text-[13px] text-muted-foreground leading-relaxed">{description}</p>
+                <p id={descriptionId} className="text-[13px] text-muted-foreground leading-relaxed">{description}</p>
               )}
             </div>
           </div>

@@ -200,6 +200,7 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
   return (
     <Comp
       ref={ref}
+      id={ctx.menuId + '-trigger'}
       type={asChild ? undefined : 'button'}
       aria-haspopup="menu"
       aria-expanded={ctx.open}
@@ -246,6 +247,8 @@ export function AppMenuContent({
   children,
   style,
   onKeyDown,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
   ...rest
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
@@ -489,6 +492,14 @@ export function AppMenuContent({
       role="menu"
       data-app-menu-id={ctx.menuId}
       tabIndex={-1}
+      // P3-9 可访问名兜底：调用方未给 aria-label/labelledby 时，下拉菜单
+      // 用触发器（按钮文本或其 aria-label）作为菜单名；context 模式触发器
+      // 是大面积内容区，不做兜底以免名字冗长。
+      aria-label={ariaLabel}
+      aria-labelledby={
+        ariaLabelledBy ??
+        (ariaLabel || ctx.mode !== 'dropdown' ? undefined : `${ctx.menuId}-trigger`)
+      }
       className={cn(
         'app-menu-content',
         position.origin === 'bottom' ? 'app-menu-origin-bottom' : 'app-menu-origin-top',
