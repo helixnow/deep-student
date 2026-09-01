@@ -457,14 +457,13 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     disabled={zoomSaving || zoomLoading}
                     placeholder={t('settings:zoom.select_placeholder')}
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
-                    size="sm"
-                    variant="ghost"
+                    variant="outline"
                     className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)]"
                     width={90}
                   />
                   <DsButton
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
@@ -488,7 +487,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
                 <DsButton
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
@@ -521,14 +520,13 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   disabled={fontSizeSaving || fontSizeLoading}
                   placeholder={t('settings:font.size_select_placeholder')}
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
-                  size="sm"
-                  variant="ghost"
+                  variant="outline"
                   className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)]"
                   width={90}
                 />
                 <DsButton
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}

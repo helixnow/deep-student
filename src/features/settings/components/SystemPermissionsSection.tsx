@@ -127,7 +127,7 @@ function AuthorizationRow({
         <StatusBadge status={status} title={title} />
         {actionLabel && onAction ? (
           <DsButton
-            variant="default"
+            variant="outline"
             size="sm"
             disabled={actionBusy || actionDisabled}
             aria-busy={actionBusy || undefined}
@@ -366,7 +366,7 @@ export function SystemPermissionsSection() {
           <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-border/50 bg-muted/40 px-2 text-2xs font-medium text-muted-foreground">
             {t('system_authorization.files.status')}
           </span>
-          <DsButton variant="default" size="sm" className="min-h-11 md:min-h-0" onClick={openDirectoryPermissions}>
+          <DsButton variant="outline" size="sm" className="min-h-11 md:min-h-0" onClick={openDirectoryPermissions}>
             {t('system_authorization.files.manage')}
           </DsButton>
         </div>
@@ -382,7 +382,7 @@ export function SystemPermissionsSection() {
       )}
       <div className="flex justify-end border-t border-border/30 px-1 pt-2">
         <DsButton
-          variant="ghost"
+          variant="outline"
           size="sm"
           disabled={refreshing}
           aria-busy={refreshing || undefined}

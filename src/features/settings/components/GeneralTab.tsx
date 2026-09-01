@@ -218,7 +218,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             description={t('settings:quick_assistant.preview_description', '打开小窗，检查剪贴板捕获、搜索、复习和学习状态。')}
           >
             <DsButton
-              variant="default"
+              variant="outline"
               size="sm"
               disabled={!quickAssistantConfig?.enabled}
               onClick={() => void openQuickAssistantWindow()}
@@ -314,7 +314,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               description={t('settings:developer.preview_agreement.desc')}
             >
               <DsButton
-                variant="default"
+                variant="outline"
                 size="sm"
                 onClick={() => setShowAgreementPreview(true)}
               >
@@ -360,7 +360,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           >
             {!isMobilePlatform() && (
               <DsButton
-                variant="primary"
+                variant="outline"
                 size="sm"
                 disabled={diagnosticsExporting}
                 onClick={async () => {
@@ -473,7 +473,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             description={t('settings:developer.description')}
           >
             <DsButton
-              variant="default"
+              variant="outline"
               size="sm"
               onClick={() => {
                 try {
@@ -507,13 +507,12 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   { value: 'debug', label: t('settings:developer.log_types.debug') },
                   { value: 'crash', label: t('settings:developer.log_types.crash') },
                 ]}
-                size="sm"
-                variant="ghost"
-                className="h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                variant="outline"
+                className="[@media(pointer:coarse)]:!min-w-[6rem] bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
               <DsButton
-                variant="primary"
+                variant="outline"
                 size="sm"
                 onClick={async () => {
                   try {
@@ -580,9 +579,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                         { value: 'placeholder', label: t('settings:developer.copy_filter.options.images.placeholder') },
                         { value: 'remove', label: t('settings:developer.copy_filter.options.images.remove') },
                       ]}
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      variant="outline"
+                      className="bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -597,9 +595,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                         { value: 'names_only', label: t('settings:developer.copy_filter.options.tools.names_only') },
                         { value: 'remove', label: t('settings:developer.copy_filter.options.tools.remove') },
                       ]}
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      variant="outline"
+                      className="bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -613,9 +610,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                         { value: 'truncate', label: t('settings:developer.copy_filter.options.messages.truncate') },
                         { value: 'summary', label: t('settings:developer.copy_filter.options.messages.summary') },
                       ]}
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      variant="outline"
+                      className="bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -648,9 +644,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                         { value: 'full', label: t('settings:developer.copy_filter.options.thinking.full') },
                         { value: 'remove', label: t('settings:developer.copy_filter.options.thinking.remove') },
                       ]}
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      variant="outline"
+                      className="bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
