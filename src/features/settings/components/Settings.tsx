@@ -28,6 +28,7 @@ import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -1162,7 +1163,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
+      <div className="mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1400,8 +1401,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
             )}
           >
-          {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
-          <div key={activeTab} className="desktop-shell-content-enter mx-auto w-full max-w-[72rem]">
+          {/* 分区切换：左右对称进出，替代原先只有入场的整树重挂载 */}
+          <ShellViewSwitch viewKey={activeTab} className="mx-auto w-full max-w-[72rem]">
             <React.Suspense fallback={<SettingsTabFallback />}>
             <div className="space-y-6">
         {/* API配置管理 */}
@@ -1777,7 +1778,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         {activeTab === 'about' && <AboutTab />}
             </div>
             </React.Suspense>
-          </div>
+          </ShellViewSwitch>
           </div>
         </CustomScrollArea>
     </div>
@@ -1886,6 +1887,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
           }}
         >
+          <ShellViewSwitch
+            viewKey={loading ? 'loading' : isSectionsLevel ? 'sections' : 'content'}
+            direction={isSectionsLevel ? -1 : 1}
+            className="flex min-h-0 flex-1 flex-col"
+          >
           {loading ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-foreground" data-settings-mobile-level="loading">
               <CustomScrollArea
@@ -1953,6 +1959,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               </div>
             </MobileSlidingLayout>
           )}
+          </ShellViewSwitch>
         </div>
 
         <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">

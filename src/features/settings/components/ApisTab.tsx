@@ -11,6 +11,7 @@ import { SettingSection } from './SettingsCommon';
 import { VendorSettingsProvider, type VendorSettingsContextValue } from './VendorSettingsContext';
 import { VendorSidebar } from './VendorSidebar';
 import { VendorDetailPanel } from './VendorDetailPanel';
+import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import type { VendorConfig, ModelProfile, ApiConfig } from '@/types';
 
 // 内联编辑状态类型（保持向后兼容）
@@ -142,17 +143,17 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
         )}
         <VendorSettingsProvider value={contextValue}>
           {isSmallScreen ? (
-            // P1-6 移动端两级导航（master → detail）：
-            // 列表态只显示供应商列表，进入详情后整屏切换为详情面板（顶栏返回键回到列表）
-            mobileVendorDetailOpen ? (
-              <div key="vendor-detail" className="desktop-shell-content-enter w-full min-w-0 space-y-6">
-                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
-              </div>
-            ) : (
-              <div key="vendor-list" className="desktop-shell-content-enter w-full min-w-0">
-                <VendorSidebar />
-              </div>
-            )
+            <ShellViewSwitch viewKey={mobileVendorDetailOpen ? 'vendor-detail' : 'vendor-list'} direction={mobileVendorDetailOpen ? 1 : -1}>
+              {mobileVendorDetailOpen ? (
+                <div className="w-full min-w-0 space-y-6">
+                  <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
+                </div>
+              ) : (
+                <div className="w-full min-w-0">
+                  <VendorSidebar />
+                </div>
+              )}
+            </ShellViewSwitch>
           ) : (
             <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
               <VendorSidebar />
