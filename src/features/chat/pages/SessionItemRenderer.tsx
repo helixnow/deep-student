@@ -397,6 +397,11 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             {...drag?.provided.draggableProps}
             {...drag?.provided.dragHandleProps}
             style={resolveDragStyle(drag?.provided.draggableProps.style, !!drag?.snapshot.isDragging)}
+            // P3-11 语义与键盘激活：移动端拖拽关闭时 dragHandleProps 为 null，
+            // 行退化为纯 div onClick；显式补齐 role/tabIndex。Enter 始终激活；
+            // Space 仅在拖拽关闭时激活（拖拽启用时 Space 是 dnd 的抓取键）
+            role="button"
+            tabIndex={0}
             onClick={() => {
               if (editingSessionId !== session.id) {
                 resetDeleteConfirmation();
@@ -404,6 +409,16 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 setCurrentSessionId(session.id);
                 // B3: 移动端点会话条目后收起抽屉，直接回到聊天中屏
                 onSessionActivated?.();
+              }
+            }}
+            onKeyDown={(e) => {
+              // 重命名输入框/行内按钮的按键不触发行激活
+              if (editingSessionId === session.id) return;
+              if (e.target !== e.currentTarget) return;
+              const dragEnabled = !!drag?.provided.dragHandleProps;
+              if (e.key === 'Enter' || (!dragEnabled && e.key === ' ')) {
+                e.preventDefault();
+                e.currentTarget.click();
               }
             }}
             onMouseEnter={() => beginSessionHoverPrefetch(session.id)}
