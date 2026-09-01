@@ -327,7 +327,9 @@
     "subject_distribution": "科目分布",
     "data_trend": "数据趋势",
     "mistake_trend": "错题趋势",
-    "top_tags": "标签 Top 8"
+    "top_tags": "标签 Top 8",
+    "empty": "暂无图表数据",
+    "empty_hint": "添加学习记录后，这里会展示数据趋势与标签分布。"
   },
   "save_backup": {
     "title": "保存备份文件",

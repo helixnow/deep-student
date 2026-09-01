@@ -470,6 +470,14 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
                 </ResponsiveContainer>
               </div>
             )}
+
+            {chartData.monthlyTrend.length === 0 && chartData.tags.length === 0 && (
+              <div className="sota-chart-card sota-chart-empty">
+                <TrendUp size={24} className="sota-chart-empty__icon" />
+                <p className="sota-chart-empty__title">{t('charts.empty')}</p>
+                <p className="sota-chart-empty__hint">{t('charts.empty_hint')}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -528,6 +536,36 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           display: flex;
           align-items: center;
           gap: 0.5rem;
+        }
+
+        .sota-chart-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 3rem 2rem;
+          gap: 0.5rem;
+        }
+
+        .sota-chart-empty__icon {
+          color: var(--text-tertiary, var(--text-secondary));
+          opacity: 0.6;
+          margin-bottom: 0.25rem;
+        }
+
+        .sota-chart-empty__title {
+          margin: 0;
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+        }
+
+        .sota-chart-empty__hint {
+          margin: 0;
+          font-size: 0.8rem;
+          color: var(--text-tertiary, var(--text-secondary));
+          opacity: 0.8;
         }
 
         .sota-loading,

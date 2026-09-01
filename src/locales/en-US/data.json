@@ -327,7 +327,9 @@
     "subject_distribution": "Subject Distribution",
     "data_trend": "Data Trend",
     "mistake_trend": "Mistake Trend",
-    "top_tags": "Top 8 Tags"
+    "top_tags": "Top 8 Tags",
+    "empty": "No chart data yet",
+    "empty_hint": "Add some learning records to see data trends and tag distribution here."
   },
   "save_backup": {
     "title": "Save Backup File",
