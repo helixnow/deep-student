@@ -343,12 +343,12 @@ export const ChatSessionArchiveTab: React.FC = () => {
       ) : null}
 
       {loading && !hasArchivedItems ? (
-        <div className="flex min-h-40 items-center justify-center rounded-lg border border-border/40 bg-muted/10 text-sm text-muted-foreground">
+        <div className="flex min-h-40 items-center justify-center rounded-2xl bg-muted text-sm text-muted-foreground">
           <CircleNotch size={16} className="mr-2 animate-spin" />
           {t('data:governance.archive_loading')}
         </div>
       ) : !hasArchivedItems ? (
-        <div className="flex min-h-40 flex-col items-start justify-center rounded-lg border border-dashed border-border/60 bg-muted/10 px-4 py-6">
+        <div className="flex min-h-40 flex-col items-start justify-center rounded-2xl bg-muted px-4 py-6">
           <Archive size={32} className="mb-3 text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">{t('data:governance.archive_empty_state')}</p>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">

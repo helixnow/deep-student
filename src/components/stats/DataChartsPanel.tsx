@@ -118,7 +118,7 @@ const Group: React.FC<{
   <section className={cn('min-w-0', className)}>
     {(title || right) && (
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
-        <h3 className="text-[13px] font-semibold text-foreground/85">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground/85">{title}</h3>
         {right}
       </div>
     )}

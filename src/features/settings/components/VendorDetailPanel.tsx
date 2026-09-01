@@ -681,7 +681,10 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   return next;
                 });
               }}
-              className="mt-3 flex w-full items-center justify-between gap-3 rounded-t-lg border border-border/40 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+              className={cn(
+                'mt-3 flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30',
+                isCollapsed ? 'rounded-2xl bg-muted' : 'rounded-t-2xl bg-muted',
+              )}
               aria-expanded={!isCollapsed}
               aria-controls={groupId}
             >
@@ -710,8 +713,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   aria-posinset={index + 1}
                   aria-setsize={group.items.length}
                   className={cn(
-                    'border-x border-border/40 px-2 pt-1',
-                    isLast && 'mb-3 rounded-b-lg border-b pb-2',
+                    'bg-muted px-2 pt-1',
+                    isLast && 'mb-3 rounded-b-2xl pb-2',
                   )}
                 >
                   {renderModelCard(item)}
@@ -837,7 +840,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
           <OpenAICodexAccountSection />
         ) : isEditingVendor ? (
           /* 编辑模式：始终展开完整表单 */
-          <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
+          <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2 rounded-2xl bg-muted p-4">
             <div className="md:col-span-2 space-y-2">
               <Label className="text-xs font-medium text-muted-foreground">{t('settings:vendor_modal.name_label')}</Label>
               <Input value={vendorFormData.name || ''} onChange={e => setVendorFormData(prev => ({ ...prev, name: e.target.value }))} placeholder={t('settings:vendor_modal.name_placeholder')} />
@@ -1110,7 +1113,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               data-wb-settings-model-count={selectedVendorModels.length}
             >
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
-                <div className="rounded-lg border border-dashed border-border/60 p-8 text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
+                <div className="rounded-2xl bg-muted p-8 text-sm text-muted-foreground">{t('settings:vendor_panel.model_empty')}</div>
               ) : shouldVirtualizeModels ? (
                 <SettingsVirtualList
                   items={virtualModelItems}
