@@ -197,8 +197,10 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     return (
       <div>
       {!embedded && <GroupTitle title={t('settings:memory.title')} />}
-        <div className="flex items-center justify-center py-6">
-          <CircleNotch size={20} className="animate-spin text-muted-foreground" />
+        <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+          <div className="flex items-center justify-center py-6">
+            <CircleNotch size={20} className="animate-spin text-muted-foreground" />
+          </div>
         </div>
       </div>
     );
@@ -209,13 +211,15 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     return (
       <div>
         {!embedded && <GroupTitle title={t('settings:memory.title')} />}
-        <div className="flex flex-col items-start justify-center py-6 gap-2">
-          <WarningCircle size={24} className="text-destructive/60" />
-          <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
-          <DsButton variant="outline" size="sm" onClick={loadData}>
-            <ArrowClockwise size={14} />
-            {t('common:retry')}
-          </DsButton>
+        <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+          <div className="flex flex-col items-start justify-center py-6 gap-2">
+            <WarningCircle size={24} className="text-destructive/60" />
+            <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
+            <DsButton variant="outline" size="sm" onClick={loadData}>
+              <ArrowClockwise size={14} />
+              {t('common:retry')}
+            </DsButton>
+          </div>
         </div>
       </div>
     );
@@ -227,6 +231,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   return (
     <div>
       {!embedded && <GroupTitle title={t('settings:memory.title')} />}
+      <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
       <div className="space-y-px">
         {/* 配置状态 */}
         <div className="group py-2.5 px-1 rounded">
@@ -374,7 +379,8 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
           />
         </SettingRow>
 
-       </div>
+      </div>
+      </div>
     </div>
   );
 };

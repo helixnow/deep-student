@@ -553,13 +553,15 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         <GroupTitle
           title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
         />
-        <div className="flex items-center gap-2 py-3 px-1 text-sm text-muted-foreground">
-          <CircleNotch size={16} className="animate-spin" />
-          <span>
-            {t('settings:voice_input.loading', {
-              defaultValue: 'Loading voice input settings…',
-            })}
-          </span>
+        <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+          <div className="flex items-center gap-2 py-3 px-1 text-sm text-muted-foreground">
+            <CircleNotch size={16} className="animate-spin" />
+            <span>
+              {t('settings:voice_input.loading', {
+                defaultValue: 'Loading voice input settings…',
+              })}
+            </span>
+          </div>
         </div>
       </section>
     );
@@ -613,6 +615,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         }
       />
 
+      <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
       <div className="space-y-px">
         <StatusBar
           support={support}
@@ -658,7 +661,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="h-8 w-40 text-xs"
+            className="w-40"
           />
         </SettingRow>
 
@@ -686,7 +689,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="h-8 w-32 text-xs"
+            className="w-32"
           />
         </SettingRow>
 
@@ -851,6 +854,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             </div>
           )}
         </div>
+      </div>
       </div>
     </section>
   );
