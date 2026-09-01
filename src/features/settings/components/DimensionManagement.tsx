@@ -383,7 +383,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
           </DsButton>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
@@ -533,7 +533,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <p className="text-xs text-muted-foreground/50 mb-4 max-w-md">
               {t('settings:dimension_management.no_data_hint')}
             </p>
-            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">
+            <DsButton onClick={handleOpenCreateDialog} variant="outline" size="sm">
               {t('settings:dimension_management.create_first_dimension')}
             </DsButton>
           </div>

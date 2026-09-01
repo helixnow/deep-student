@@ -229,11 +229,10 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             {t('settings:cards.exam_sheet_ocr_title')}
           </h3>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handleRefresh}
             disabled={loading}
-            className="h-6 px-2 text-muted-foreground/60 hover:text-foreground text-xs"
             title={t('common:refresh')}
           >
             {t('common:refresh')}

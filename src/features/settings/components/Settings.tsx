@@ -1475,7 +1475,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
+              <DsButton variant="outline" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
             </DsDialogFooter>
           </DsDialog>
         )}

@@ -2175,7 +2175,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           >
             <DsButton
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={() => void handleTestConnection()}
               disabled={connectionTest.state === 'testing'}
               className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"

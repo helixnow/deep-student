@@ -1866,7 +1866,7 @@ export function PresetServerSelector({
 
   const permissionFooterButtons = (
     <>
-      <DsButton variant="default" size="sm" onClick={closePermissionDrawer}>
+      <DsButton variant="ghost" size="sm" onClick={closePermissionDrawer}>
         {t('common:cancel')}
       </DsButton>
       <DsButton variant="primary" size="sm" onClick={confirmInstall}>
@@ -3179,11 +3179,11 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   </SelectContent>
                 </Select>
                 <DsButton
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleBrowseRuntimeRoot}
                   disabled={isSavingRuntimeRoot}
-                  className="text-xs flex-shrink-0"
+                  className="flex-shrink-0"
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_browse')}
@@ -3401,11 +3401,11 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 </p>
               </div>
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={fetchConfig}
                 disabled={isLoading || isBulkUpdating}
-                className="text-xs flex-shrink-0"
+                className="flex-shrink-0"
               >
                 <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
@@ -3578,10 +3578,9 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                               <BulkLevelSelector toolNames={Array.from(selectedTools)} />
                             </div>
                             <DsButton
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={() => setSelectedTools(new Set())}
-                              className="!h-6 text-xs [@media(pointer:coarse)]:!h-9"
                             >
                               {t('settings:tool_permissions.clear_selection')}
                             </DsButton>
@@ -3672,10 +3671,10 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 {t('settings:tool_permissions.history_records', { count: historyCount })}
               </span>
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={handleClearHistory}
-                className="text-xs text-destructive hover:text-destructive/80"
+                className="!text-destructive"
               >
                 <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}

@@ -175,12 +175,12 @@ function McpOAuthControls({
           {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
         </DsButton>
         {busy && (
-          <DsButton size="sm" variant="default" onClick={() => void cancelOauth()}>
+          <DsButton size="sm" variant="ghost" onClick={() => void cancelOauth()}>
             {t('settings:mcp.oauth.cancel')}
           </DsButton>
         )}
         {authorized && (
-          <DsButton size="sm" variant="default" disabled={busy} onClick={() => void revokeOauth()}>
+          <DsButton size="sm" variant="outline" className="!text-destructive" disabled={busy} onClick={() => void revokeOauth()}>
             {t('settings:mcp.oauth.logout')}
           </DsButton>
         )}
@@ -1249,7 +1249,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.env_title')}</span>
-                <DsButton variant="ghost" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
+                <DsButton variant="outline" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
               </div>
               <div className="space-y-2">
                 {envEntries.length === 0 && (
@@ -1282,7 +1282,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.connection_test_title')}</div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('settings:mcp_descriptions.connection_test_desc')}</p>
                 </div>
-                <DsButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
+                <DsButton variant="outline" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
               </div>
             </div>
             </div>
@@ -1646,7 +1646,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       </div>
                     ))}
                     <DsButton
-                      variant="default"
+                      variant="outline"
                       size="sm"
                       onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
                       className="min-h-11 sm:min-h-0"
@@ -1687,7 +1687,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         {!isSmallScreen && (
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
           <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
-          <DsButton onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+          <DsButton variant="primary" onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
         </div>
         )}
       </div>
@@ -1849,7 +1849,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         {!isSmallScreen && (
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
           <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
-          <DsButton onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
+          <DsButton variant="primary" onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
         </div>
         )}
       </div>

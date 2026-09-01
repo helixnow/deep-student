@@ -329,7 +329,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               </CardTitle>
             </div>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={handleRefresh}
               disabled={isRefreshing}
@@ -482,6 +482,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               {t('data:sync_settings.download')}
             </DsButton>
             <DsButton
+              variant="outline"
               onClick={() => handleSync('bidirectional')}
               disabled={isSyncing}
               className="flex-1"
@@ -636,6 +637,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             </DsButton>
             {conflicts?.has_conflicts && (
               <DsButton
+                variant="outline"
                 onClick={() => setShowConflictDialog(true)}
                 disabled={isResolving}
                 className="flex-1"

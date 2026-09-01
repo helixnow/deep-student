@@ -445,7 +445,7 @@ export const SystemSettingsSection: React.FC = () => {
             </DsButton>
             
             <DsButton
-              variant="ghost"
+              variant="outline"
               onClick={handleReset}
               disabled={saving}
             >

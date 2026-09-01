@@ -405,7 +405,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <DsButton size="sm" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" variant="outline" onClick={() => onResumeJob?.(job.job_id)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
               </DsButton>
@@ -1158,7 +1158,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="default" size="sm" onClick={onCloseVerifyDialog}>
+          <DsButton variant="outline" size="sm" onClick={onCloseVerifyDialog}>
             {t('common:actions.close')}
           </DsButton>
         </DsDialogFooter>

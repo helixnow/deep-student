@@ -317,7 +317,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                   {t('acknowledgements.openSource.backToAcknowledgements')}
                 </DsButton>
                 <DsButton
-                  variant="default"
+                  variant="outline"
                   size="sm"
                   className="flex-1 justify-center"
                   onClick={() => handleOpenChange(false)}
@@ -329,7 +329,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
               <div className="flex w-full flex-col gap-2 sm:flex-row">
                 {legalEntryButtons}
                 <DsButton
-                  variant="default"
+                  variant="outline"
                   size="sm"
                   className="flex-1 justify-center"
                   onClick={() => handleOpenChange(false)}

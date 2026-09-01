@@ -244,11 +244,11 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           />
         </div>
         <DsButton
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={() => fetchModels(true)}
           disabled={loading || !hasApiKey || !hasBaseUrl}
-          className="shrink-0 h-7 text-xs"
+          className="shrink-0"
         >
           {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
@@ -279,11 +279,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             </div>
             {newModels.length > 0 && (
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={handleAddAll}
                 disabled={addingAll}
-                className="text-xs h-6 px-2"
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                 {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}

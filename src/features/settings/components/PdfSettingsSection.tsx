@@ -142,7 +142,7 @@ export const PdfSettingsSection: React.FC = () => {
         title={t('settings:pdf.title')}
         rightSlot={
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handleReset}
             className="gap-1"

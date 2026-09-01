@@ -661,7 +661,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             >
               <div className="flex items-center gap-2">
                 <DsButton
-                  variant="default"
+                  variant="outline"
                   size="sm"
                   onClick={async () => {
                     try {
@@ -766,7 +766,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 description={t('common:legal.dataRights.manageDataDesc')}
               >
                 <DsButton
-                  variant="default"
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；

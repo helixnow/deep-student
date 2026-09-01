@@ -177,7 +177,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           width={130}
         />
 
-        <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
+        <DsButton variant="ghost" size="sm" iconOnly onClick={onRefresh} disabled={loading} className="shrink-0" aria-label={t('common:actions.refresh')}>
           <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
         </DsButton>
       </div>

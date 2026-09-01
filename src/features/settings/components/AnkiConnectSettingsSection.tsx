@@ -83,7 +83,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           <span className="text-xs">{t('common:anki.settings.open_on_failure_label')}</span>
           <Switch checked={settings.anki_connect_open_folder_on_failure} onCheckedChange={(v) => savePartial({ anki_connect_open_folder_on_failure: v })} />
         </div>
-        <DsButton size="sm" className="w-full h-auto py-1.5 text-xs whitespace-normal" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
+        <DsButton size="sm" variant="outline" className="whitespace-normal" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
           {testing ? t('common:anki.settings.testing') : t('common:anki.settings.test_connection_short')}
         </DsButton>
       </div>

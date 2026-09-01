@@ -1230,10 +1230,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             )}
           </DsButton>
-          <DsButton onClick={saveConfig} disabled={!isConfigValid()}>
+          <DsButton variant="primary" onClick={saveConfig} disabled={!isConfigValid()}>
             {t('cloudStorage:actions.save')}
           </DsButton>
-          <DsButton variant="danger" onClick={clearConfig}>
+          <DsButton variant="outline" className="!text-destructive" onClick={clearConfig}>
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
@@ -1342,6 +1342,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="flex flex-wrap gap-2 pt-2">
               <DsButton
                 size="sm"
+                variant="outline"
                 onClick={handleBackupAndUpload}
                 disabled={uploading || downloading}
               >
@@ -1393,7 +1394,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     <div className="flex gap-1">
                       <DsButton
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         title={t('cloudStorage:history.restore')}
                         disabled={downloading}
                         onClick={() => openRestoreConfirm(version.id)}
@@ -1422,7 +1423,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       ) : (
                         <DsButton
                           size="sm"
-                          variant="ghost"
+                          variant="outline"
+                          className="!text-destructive"
                           title={t('cloudStorage:history.delete')}
                           aria-label={t('cloudStorage:history.delete')}
                           onClick={() => {
