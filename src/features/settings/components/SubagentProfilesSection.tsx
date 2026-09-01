@@ -16,6 +16,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { inputShellClass } from '@/components/ui/shad/inputShell';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SettingsGroup } from './settingsTabPrimitives';
 
@@ -68,11 +69,8 @@ const UNSUPPORTED_RUNTIME_FIELDS = new Set([
 ]);
 const REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'x_high']);
 
-const inputClassName = cn(
-  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9',
-  'outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/20',
-  'disabled:cursor-not-allowed disabled:opacity-50',
-);
+// 控件壳统一走 inputShell 契约（边框/底色/圆角/字号/focus 与全域 Input/Select 一致）
+const inputClassName = cn(inputShellClass, 'h-11 w-full sm:h-9');
 
 /** 表单可编辑的结构化字段；无法结构化解析的文件退回原始文本编辑。 */
 type ProfileDraft = {
@@ -262,7 +260,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
           </p>
           <textarea
             id={`${idPrefix}-raw`}
-            className={cn(inputClassName, 'scroll-area--native h-56 sm:h-56 resize-y py-2 font-mono text-xs leading-5')}
+            className={cn(inputShellClass, 'w-full scroll-area--native h-56 sm:h-56 resize-y py-2 font-mono text-xs leading-5')}
             value={rawContent}
             spellCheck={false}
             onChange={(event) => setRawContent(event.target.value)}
@@ -346,7 +344,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
             </label>
             <textarea
               id={`${idPrefix}-instructions`}
-              className={cn(inputClassName, 'scroll-area--native h-36 sm:h-36 resize-y py-2 leading-5')}
+              className={cn(inputShellClass, 'w-full scroll-area--native h-36 sm:h-36 resize-y py-2 leading-5')}
               value={draft.instructions}
               placeholder={t('settings:subagentProfiles.form.instructions_placeholder')}
               onChange={(event) => patch({ instructions: event.target.value })}
@@ -368,7 +366,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
               </p>
               <textarea
                 aria-label={t('settings:subagentProfiles.form.advanced')}
-                className={cn(inputClassName, 'scroll-area--native h-20 sm:h-20 resize-y py-2 font-mono text-xs leading-5')}
+                className={cn(inputShellClass, 'w-full scroll-area--native h-20 sm:h-20 resize-y py-2 font-mono text-xs leading-5')}
                 value={draft.extraLines}
                 spellCheck={false}
                 placeholder={'reasoning_effort: high\ntools: [builtin-web_search]\nskills: [research]'}

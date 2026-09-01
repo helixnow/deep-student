@@ -17,6 +17,7 @@ import { GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { inputShellClass } from '@/components/ui/shad/inputShell';
 import {
   useAutomationStore,
   startAutomationSync,
@@ -67,11 +68,8 @@ type FormDraft = {
   timeoutSeconds: string;
 };
 
-const inputClassName = cn(
-  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9',
-  'outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/20',
-  'disabled:cursor-not-allowed disabled:opacity-50',
-);
+// 控件壳统一走 inputShell 契约（边框/底色/圆角/字号/focus 与全域 Input/Select 一致）
+const inputClassName = cn(inputShellClass, 'h-11 w-full sm:h-9');
 
 const DELETE_CONFIRM_TIMEOUT_MS = 5_000;
 const NOTICE_TIMEOUT_MS = 3_000;
@@ -279,7 +277,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
         <textarea
           id={`${idPrefix}-prompt`}
           aria-describedby={`${idPrefix}-prompt-count`}
-          className={cn(inputClassName, 'scroll-area--native h-24 sm:h-24 resize-y py-2 leading-5')}
+          className={cn(inputShellClass, 'w-full scroll-area--native h-24 sm:h-24 resize-y py-2 leading-5')}
           maxLength={4000}
           value={draft.prompt}
           onChange={(event) => patch({ prompt: event.target.value })}
@@ -326,7 +324,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
             <textarea
               id={`${idPrefix}-agent-prompt`}
               aria-describedby={`${idPrefix}-agent-prompt-count`}
-              className={cn(inputClassName, 'scroll-area--native h-20 sm:h-20 resize-y py-2 leading-5')}
+              className={cn(inputShellClass, 'w-full scroll-area--native h-20 sm:h-20 resize-y py-2 leading-5')}
               maxLength={4000}
               value={draft.agentPrompt}
               placeholder={t('settings:automation.edit.agent_prompt_fallback')}
