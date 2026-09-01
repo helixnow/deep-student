@@ -482,7 +482,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       {/* 导出备份 */}
       <div className="space-y-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-base font-medium text-foreground">
+          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Archive className="h-4 w-4" />
             {t('data:governance.export_backup')}
           </div>
@@ -639,7 +639,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
       {/* 备份设置 */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-base font-medium text-foreground">
+        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
           <Gear size={16} />
           {t('data:governance.backup_settings')}
         </div>
@@ -664,7 +664,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </DsButton>
           </div>
         ) : backupConfig ? (
-          <div className="space-y-5">
+          <div className="space-y-5 rounded-2xl bg-muted px-4 py-4">
             <p className="text-sm text-muted-foreground">
               {t('data:governance.backup_settings_desc')}
             </p>
@@ -766,7 +766,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       {/* 备份列表 */}
       <div className="space-y-4">
         <div className="space-y-1">
-          <h3 className="text-base font-medium text-foreground">
+          <h3 className="text-base font-semibold text-foreground">
             {t('data:governance.backup_list')}
           </h3>
           <p className="text-sm text-muted-foreground">
@@ -777,7 +777,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
-          className="rounded-lg border border-border/40"
+          className="rounded-2xl bg-muted"
         >
           <Table>
             <TableHeader>

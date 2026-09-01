@@ -69,7 +69,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   return (
     <div className="space-y-8">
       {/* 全局状态 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 rounded-2xl bg-muted px-4 py-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Database className="h-4 w-4" />
@@ -322,7 +322,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-base font-medium text-foreground">
+            <h3 className="text-base font-semibold text-foreground">
               {t('data:governance.database_status')}
             </h3>
             <p className="text-sm text-muted-foreground">
@@ -344,7 +344,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
-          className="rounded-lg border border-border/40"
+          className="rounded-2xl bg-muted"
         >
           <Table>
             <TableHeader>

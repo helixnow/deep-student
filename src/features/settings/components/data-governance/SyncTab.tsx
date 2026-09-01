@@ -117,7 +117,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   return (
     <div className="space-y-8">
       {/* 同步状态概览 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 rounded-2xl bg-muted px-4 py-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Cloud size={16} />
@@ -163,7 +163,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-medium text-foreground">
+            <h3 className="text-base font-semibold text-foreground">
               {t("data:governance.database_sync_status")}
             </h3>
             <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
@@ -198,7 +198,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
-          className="rounded-lg border border-border/40"
+          className="rounded-2xl bg-muted"
         >
           <Table>
             <TableHeader>
@@ -280,7 +280,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-medium text-foreground">
+            <h3 className="text-base font-semibold text-foreground">
               {t("data:governance.cloud_sync_title")}
             </h3>
             <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
@@ -298,7 +298,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         </div>
 
         {!cloudSyncConfigured ? (
-          <div className="rounded-lg border border-border/40 bg-muted/20 p-4 space-y-2">
+          <div className="rounded-2xl bg-muted p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Warning size={16} className="text-amber-500" />
               {t("data:governance.cloud_sync_not_configured")}
@@ -317,7 +317,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-border/40 bg-background p-4 space-y-4">
+          <div className="rounded-2xl bg-muted p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">
@@ -483,7 +483,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         )}
 
         {showCloudSettingsEditor && (
-          <div className="rounded-lg border border-border/40 bg-background p-4">
+          <div className="rounded-2xl bg-muted p-4">
             <CloudStorageSection
               isDialog
               onConfigChanged={onCloudConfigChanged}

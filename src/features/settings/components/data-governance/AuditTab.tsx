@@ -144,6 +144,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       )}
 
       {/* 过滤器 */}
+      <h3 className="text-base font-semibold text-foreground">{t('data:governance.audit_log')}</h3>
       <div className="flex items-center gap-2">
         <AppSelect
           value={operationFilter}
@@ -185,7 +186,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       <CustomScrollArea
         orientation="horizontal"
         fullHeight={false}
-        className="rounded-lg border border-border/40"
+        className="rounded-2xl bg-muted"
       >
         <Table>
           <TableHeader>
