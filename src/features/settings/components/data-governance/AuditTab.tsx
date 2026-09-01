@@ -131,11 +131,10 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           <p className="text-sm text-destructive/80 pl-6">{loadError}</p>
           <div className="pl-6 pt-1">
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.retry')}
@@ -250,11 +249,10 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           </span>
           {hasMore && onLoadMore && (
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onLoadMore}
               disabled={loading}
-              className="h-8"
             >
               {loading ? (
                 <CircleNotch size={14} className="mr-1.5 animate-spin" />

@@ -244,7 +244,7 @@ export const SyncQuarantinePanel: React.FC<{
             </>
           )}
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={refresh}
             disabled={loading}
@@ -292,7 +292,7 @@ export const SyncQuarantinePanel: React.FC<{
                 </div>
                 <div className="flex gap-2">
                   <DsButton
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleRetry(row)}
                     disabled={busy || loading}
@@ -306,7 +306,7 @@ export const SyncQuarantinePanel: React.FC<{
                     {t("common:actions.retry")}
                   </DsButton>
                   <DsButton
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleDiscard(row)}
                     disabled={busy || loading}

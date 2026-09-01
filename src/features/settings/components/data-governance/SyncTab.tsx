@@ -172,11 +172,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
           <div className="flex gap-2">
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="h-8"
             >
               <ArrowClockwise
                 size={14}
@@ -185,11 +184,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               {t("common:actions.refresh")}
             </DsButton>
             <DsButton
-              variant="default"
+              variant="outline"
               size="sm"
               onClick={onDetectConflicts}
               disabled={loading}
-              className="h-8"
             >
               <MagnifyingGlass size={14} className="mr-1.5" />
               {t("data:governance.detect_conflicts")}
@@ -290,10 +288,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </span>
           </div>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={onToggleCloudSettingsEditor}
-            className="h-8"
           >
             <Cloud size={14} className="mr-1.5" />
             {t("data:governance.open_cloud_settings")}
@@ -311,10 +308,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </p>
             <div className="pl-6 pt-1">
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
-                className="bg-background hover:bg-[var(--interactive-hover)]"
               >
                 {t("data:governance.cloud_sync_configure_now")}
               </DsButton>
@@ -371,31 +367,28 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
             <div className="flex flex-wrap gap-2">
               <DsButton
-                variant="default"
+                variant="outline"
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t("data:governance.sync_bidirectional")}
               </DsButton>
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => onRunSync("upload", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Upload size={14} className="mr-1.5" />
                 {t("data:governance.sync_upload")}
               </DsButton>
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => onRunSync("download", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Download size={14} className="mr-1.5" />
                 {t("data:governance.sync_download")}
@@ -461,11 +454,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                       <div className="flex items-center gap-2 pl-[18px]">
                         {onRetrySync && (
                           <DsButton
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
                             onClick={onRetrySync}
                             disabled={syncRunning}
-                            className="h-6 text-xs px-2"
                           >
                             <ArrowClockwise size={12} className="mr-1" />
                             {t("common:actions.retry")}
@@ -473,10 +465,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                         )}
                         {onViewAuditLog && (
                           <DsButton
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
                             onClick={onViewAuditLog}
-                            className="h-6 text-xs px-2"
                           >
                             <FileText size={12} className="mr-1" />
                             {t("data:governance.view_audit_log")}
@@ -530,38 +521,34 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           {/* 冲突解决策略 */}
           <div className="flex flex-wrap gap-2 pt-2">
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => onResolveConflicts("keep_local")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_local")}
             </DsButton>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => onResolveConflicts("use_cloud")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.use_cloud")}
             </DsButton>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => onResolveConflicts("keep_latest")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_latest")}
             </DsButton>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => onResolveConflicts("manual")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.manual")}
             </DsButton>

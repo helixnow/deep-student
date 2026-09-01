@@ -38,9 +38,9 @@ import {
 // 样式常量
 // ============================================================================
 
-/** macOS 分组容器：细边框 + 微弱投影，内容裁切圆角 */
+/** 与设置本体一致的分组容器：无描边、圆角灰填充（bg-muted） */
 const GROUP_BOX_CLASS =
-  'overflow-hidden rounded-[10px] border border-border/60 bg-card shadow-[0_1px_2px_hsl(var(--foreground)/0.04)]';
+  'overflow-hidden rounded-2xl bg-muted';
 
 const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
   background: 'hsl(var(--popover))',
@@ -483,7 +483,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         <div className={cn(GROUP_BOX_CLASS, 'flex flex-col items-center gap-2 py-12')}>
           <p className="text-sm text-muted-foreground">{t('llm_usage:no_data_or_load_failed')}</p>
           <p className="max-w-full truncate px-6 font-mono text-xs text-muted-foreground/50">{error}</p>
-          <DsButton variant="ghost" size="sm" onClick={loadLlmData} className="mt-1">
+          <DsButton variant="outline" size="sm" onClick={loadLlmData} className="mt-1">
             <ArrowsClockwise size={13} className="mr-1.5" />
             {t('llm_usage:actions.retry')}
           </DsButton>

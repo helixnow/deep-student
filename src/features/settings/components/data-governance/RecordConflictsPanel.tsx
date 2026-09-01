@@ -262,29 +262,29 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         </div>
         <div className="flex flex-wrap gap-2">
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => void handleBulkResolve('keep_local')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+           
           >
             {t('data:governance.conflict_bulk_keep_local')}
           </DsButton>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => void handleBulkResolve('keep_cloud')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+           
           >
             {t('data:governance.conflict_bulk_use_cloud')}
           </DsButton>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={refresh}
             disabled={loading}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+           
           >
             {loading ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -294,11 +294,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             {t('common:actions.refresh')}
           </DsButton>
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handlePurgeResolved}
             disabled={purging}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+           
             title={t('data:governance.conflict_purge_title')}
           >
             <Trash size={14} className="mr-1.5" />
@@ -315,7 +315,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         )}
         {pairs.length < totalGroups && (
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => void loadMore()}
             disabled={loading}
@@ -350,7 +350,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <DsButton
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
                     disabled={isResolving || isEditing || !latestLocal}
@@ -359,7 +359,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.keep_local')}
                   </DsButton>
                   <DsButton
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
@@ -369,7 +369,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
                   </DsButton>
                   <DsButton
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleStartMerge(p)}
                     disabled={isResolving || isEditing}
@@ -432,7 +432,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   />
                   <div className="flex gap-2 justify-end">
                     <DsButton
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setMergeEditing(null);
@@ -443,7 +443,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       {t('common:actions.cancel')}
                     </DsButton>
                     <DsButton
-                      variant="default"
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         try {

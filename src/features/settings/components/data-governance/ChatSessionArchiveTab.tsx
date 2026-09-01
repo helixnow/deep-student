@@ -254,7 +254,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => {
               if (restoreArchivedGroup && ownerGroup) {
@@ -274,8 +274,9 @@ export const ChatSessionArchiveTab: React.FC = () => {
             <span>{restoreLabel}</span>
           </DsButton>
           <DsButton
-            variant={confirmingDelete ? 'danger' : 'ghost'}
+            variant={confirmingDelete ? 'danger' : 'outline'}
             size="sm"
+            className={confirmingDelete ? undefined : '!text-destructive'}
             onClick={() => permanentlyDeleteSession(session.id)}
             disabled={busy}
             aria-label={confirmingDelete
@@ -315,7 +316,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
         </div>
 
         <DsButton
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={loadArchivedSessions}
           disabled={loading || actionSessionId !== null || actionGroupId !== null}
@@ -369,7 +370,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                 {isArchivedGroup ? (
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     <DsButton
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => restoreGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}

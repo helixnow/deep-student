@@ -435,10 +435,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </div>
             {backupProgress.cancellable && onCancelBackup && (
               <DsButton
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={onCancelBackup}
-                className="text-destructive hover:text-destructive"
+                className="!text-destructive"
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
@@ -611,7 +611,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={handleBackupAndExport}
             disabled={loading || isBackupRunning}
-            className="h-9"
           >
             {isBackupRunning ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -621,16 +620,15 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {t('data:governance.export_backup')}
           </DsButton>
           <DsButton
-            variant="default"
+            variant="outline"
             size="sm"
             onClick={onImportZip}
             disabled={loading || isBackupRunning}
-            className="h-9"
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
+          <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
             <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
           </DsButton>
@@ -657,7 +655,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               {t('data:governance.backup_config_load_failed')}: {configLoadError}
             </div>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => void loadBackupConfig(true)}
             >

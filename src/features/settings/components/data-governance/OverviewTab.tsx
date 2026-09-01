@@ -142,7 +142,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </div>
 
       {onOpenArchive && (
-        <div className="rounded-lg border border-border/40 p-4">
+        <div className="rounded-2xl bg-muted p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="mt-0.5 rounded-md bg-muted/40 p-2 text-muted-foreground">
@@ -157,7 +157,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </p>
               </div>
             </div>
-            <DsButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0">
+            <DsButton variant="outline" size="sm" onClick={onOpenArchive} className="shrink-0">
               <Archive className="h-3.5 w-3.5" />
               {t('data:governance.archive_overview_action')}
             </DsButton>
@@ -166,7 +166,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       )}
 
       {/* 最近备份验证 */}
-      <div className="rounded-lg border border-border/40 p-4 space-y-3">
+      <div className="rounded-2xl bg-muted p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <ShieldCheck className="h-4 w-4" />
@@ -174,11 +174,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
           {onVerifyLatestBackup && (
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onVerifyLatestBackup}
               disabled={loading || isVerifying}
-              className="h-7"
             >
               {isVerifying ? (
                 <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -331,11 +330,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </p>
           </div>
           <div className="flex gap-2">
-            <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
+            <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.refresh')}
             </DsButton>
-            <DsButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8">
+            <DsButton variant="outline" size="sm" onClick={onRunHealthCheck} disabled={loading}>
               <Shield className="h-3.5 w-3.5 mr-1.5" />
               {t('data:governance.run_health_check')}
             </DsButton>
