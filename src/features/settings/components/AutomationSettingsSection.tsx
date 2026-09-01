@@ -920,7 +920,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         // 非嵌入态（设置子页面）：无描边纯填充灰卡（bg-muted），与 SettingsGroup 原语统一。
         embedded
           ? 'mt-5 rounded-[var(--radius-shell-panel,12px)] border border-[color:var(--border-soft,hsl(var(--border)))] bg-[color:var(--surface-elevated,hsl(var(--card)))] px-4 py-4 sm:px-5'
-          : 'rounded-2xl bg-muted px-3 py-3 sm:px-4',
+          : undefined,
       )}
     >
       {embedded ? <h2 id="automation-settings-title" className="sr-only">{t('settings:automation.title')}</h2> : (
@@ -1000,11 +1000,11 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           {t('settings:automation.errors.desktop_only')}
         </p>
       ) : (
-        <>
+        <div className={cn(embedded ? 'space-y-4' : 'space-y-3 rounded-2xl bg-muted px-3 py-3 sm:px-4')}>
           {/* 后台运行开关：嵌入态由工作区自带同一开关（同一 store），这里仅设置页呈现 */}
           {!embedded && (
             <div
-              className="overflow-hidden rounded-[var(--radius-shell-row,0.5rem)] border border-[color:var(--border-soft)]"
+              className="overflow-hidden rounded-[var(--radius-shell-row,0.5rem)]"
               data-testid="automation-background-row"
             >
               <div className="flex items-center justify-between gap-4 px-3 py-2.5">
@@ -1091,7 +1091,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           )}
 
           {!embedded && expandedId === 'create' && (
-            <div className="ui-fade-in overflow-hidden rounded-[var(--radius-shell-row,0.5rem)] border border-[color:var(--border-soft)] bg-muted/20">
+            <div className="ui-fade-in overflow-hidden rounded-[var(--radius-shell-row,0.5rem)] bg-background/60">
               <div className="border-b border-[color:var(--border-soft)] px-3 py-2.5 sm:px-4">
                 <h3 className="text-sm font-semibold text-foreground">{t('settings:automation.create.title')}</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">{t('settings:automation.create.description')}</p>
@@ -1119,7 +1119,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               ))}
             </div>
           ) : displayError && rows.length === 0 ? null : rows.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border px-4 py-10">
+            <div className="px-4 py-10">
               <Robot className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
               <h3 className="mt-3 text-sm font-medium text-foreground">{t('settings:automation.empty.title')}</h3>
               <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
@@ -1146,7 +1146,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.capacity', { count, max })}
             </p>
           )}
-        </>
+        </div>
       )}
     </section>
   );
