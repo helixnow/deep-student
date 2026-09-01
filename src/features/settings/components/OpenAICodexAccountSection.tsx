@@ -400,7 +400,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
   return (
     <section
       aria-label={translate(t, 'title', 'ChatGPT account')}
-      className="overflow-hidden rounded-lg border border-border/40"
+      className="overflow-hidden rounded-2xl bg-muted"
       data-testid="openai-codex-account"
     >
       <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">

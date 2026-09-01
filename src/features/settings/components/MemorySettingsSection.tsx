@@ -296,7 +296,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder={t('settings:memory.defaultFolderName')}
-                className="h-8 text-xs bg-transparent flex-1"
+                className="h-8 flex-1"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleCreateFolder();

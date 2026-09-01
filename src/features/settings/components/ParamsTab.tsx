@@ -121,7 +121,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
       >
         <div>
           <GroupTitle title={t('common:settings.chat_stream.card_title')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <SettingRow
               title={t('common:settings.chat_stream.timeout_label')}
               description={t('common:settings.chat_stream.timeout_hint', { defaultSeconds: DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS })}
@@ -134,7 +134,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 onChange={e => setExtra((prev: any) => ({ ...prev, chatStreamTimeoutSeconds: e.target.value }))}
                 onBlur={() => { void handleSaveChatStreamTimeout(); }}
                 placeholder={t('common:settings.chat_stream.timeout_placeholder') ?? ''}
-                className="!w-32 bg-transparent md:!w-28"
+                className="!w-32 md:!w-28"
               />
             </SettingRow>
 
@@ -148,12 +148,12 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 void handleToggleChatStreamAutoCancel(checked);
               }}
             />
-          </div>
+          </div></div>
         </div>
 
         <div className="mt-8">
           <GroupTitle title={t('settings:cards.search_settings_title')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <SwitchRow
               title={t('settings:field_labels.semantic_search_fts_filter')}
               description={t('settings:sections.semantic_fts_desc')}
@@ -164,7 +164,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 void handleFtsToggle(checked);
               }}
             />
-          </div>
+          </div></div>
         </div>
 
         <div className="mt-8">

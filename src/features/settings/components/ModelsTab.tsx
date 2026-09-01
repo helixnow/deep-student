@@ -155,7 +155,6 @@ const TranslationDisplayModeRow = ({
       <SegmentedControl<TranslationDisplayMode>
         ariaLabel={title}
         value={value}
-        size="compact"
         options={[
           { value: 'aligned', label: alignedLabel },
           { value: 'streaming', label: streamingLabel },

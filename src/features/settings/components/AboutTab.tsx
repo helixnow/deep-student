@@ -240,7 +240,7 @@ export const AboutTab: React.FC = () => {
                         max={365}
                         value={frequencyDays}
                         onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
-                        className="h-6 [@media(pointer:coarse)]:h-10 w-14 px-1.5 text-xs text-center min-h-0"
+                        className="w-16 text-center"
                       />
                     )}
                   </>

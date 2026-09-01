@@ -361,8 +361,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
             const isArchivedGroup = group.persistStatus === 'archived';
             const confirmingDeleteGroup = confirmingPermanentDeleteGroupId === group.id;
             return (
-            <section key={group.id} className="overflow-hidden rounded-lg border border-border/40 bg-background/70">
-              <div className="flex items-center justify-between gap-3 border-b border-border/40 bg-muted/20 px-4 py-3">
+            <section key={group.id} className="overflow-hidden rounded-2xl bg-muted">
+              <div className="flex items-center justify-between gap-3 border-b border-border/40 bg-background/70 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">{group.name}</p>
                   <p className="text-xs text-muted-foreground">{groupSessions.length} / {archivedCount}</p>
@@ -420,8 +420,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
           })}
 
           {groupedSessions.ungrouped.length > 0 ? (
-            <section className="overflow-hidden rounded-lg border border-border/40 bg-background/70">
-              <div className="border-b border-border/40 bg-muted/20 px-4 py-3">
+            <section className="overflow-hidden rounded-2xl bg-muted">
+              <div className="border-b border-border/40 bg-background/70 px-4 py-3">
                 <p className="text-sm font-medium text-foreground">{t('data:governance.archive_ungrouped_title')}</p>
               </div>
               <div className="divide-y divide-border/40">

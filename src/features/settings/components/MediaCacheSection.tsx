@@ -183,7 +183,7 @@ export const MediaCacheSection: React.FC = () => {
       </div>
 
       {/* 总缓存大小 */}
-      <div className="rounded-lg border border-border/40 p-4">
+      <div className="rounded-2xl bg-muted p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <HardDrive size={16} className="text-muted-foreground" />
@@ -206,10 +206,10 @@ export const MediaCacheSection: React.FC = () => {
             </div>
             <DsButton
               variant="ghost"
-              size="sm"
+              size="icon"
+              iconOnly
               onClick={loadStats}
               disabled={loading}
-              className="h-7 w-7 p-0"
             >
               <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
             </DsButton>
@@ -235,8 +235,9 @@ export const MediaCacheSection: React.FC = () => {
               </span>
             )}
             <DsButton
-              variant="danger"
+              variant="outline"
               size="sm"
+              className="!text-destructive"
               onClick={() => setShowConfirm(true)}
               disabled={
                 clearing ||
@@ -245,7 +246,6 @@ export const MediaCacheSection: React.FC = () => {
                   !clearOptions.clearOcrText &&
                   !clearOptions.clearVectorIndex)
               }
-              className="h-8"
             >
               {clearing ? (
                 <>
@@ -262,7 +262,7 @@ export const MediaCacheSection: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/40 divide-y divide-border/40">
+        <div className="rounded-2xl bg-muted divide-y divide-border/40 overflow-hidden">
           <ClearOption
             checked={clearOptions.clearPdfPreview}
             onChange={(checked) =>

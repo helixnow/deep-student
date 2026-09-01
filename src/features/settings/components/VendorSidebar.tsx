@@ -265,7 +265,7 @@ export const VendorSidebar: React.FC = () => {
         {vendorBusy && sortedVendors.length === 0 ? (
           <VendorSidebarSkeleton />
         ) : sortedVendors.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-sm text-muted-foreground bg-muted/10">
+          <div className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground bg-muted/10">
             <div>{t('settings:vendor_panel.empty_vendors')}</div>
             <div className="mt-1 text-xs">{t('settings:vendor_panel.empty_vendors_desc')}</div>
           </div>

@@ -92,13 +92,13 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
               void persistValue(inputValue);
             }
           }}
-          className="!w-24 h-8 text-xs bg-transparent"
+          className="!w-24 h-8"
         />
         <span className="text-xs text-muted-foreground/70">
           {t('settings:notes_editor.initial_line_window.unit', 'lines')}
         </span>
         <DsButton
-          variant="default"
+          variant="outline"
           size="sm"
           disabled={disabled}
           onClick={() => {

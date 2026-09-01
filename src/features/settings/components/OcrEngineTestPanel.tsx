@@ -198,7 +198,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
           </div>
           <div className="flex justify-center gap-2">
             <DsButton
-              variant="default"
+              variant="outline"
               size="sm"
               onClick={() => clickInputRef.current?.click()}
             >

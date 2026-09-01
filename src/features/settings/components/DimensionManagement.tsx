@@ -374,10 +374,10 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         </div>
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <DsButton
-            variant={isAddingNew ? 'default' : 'ghost'}
+            variant="outline"
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none"
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
@@ -387,7 +387,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none"
           >
             {t('common:refresh')}
           </DsButton>

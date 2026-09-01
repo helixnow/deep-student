@@ -229,12 +229,12 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
         <div className="flex items-start justify-between gap-3">
           <GroupTitle title={t('acknowledgements.openSource.title')} />
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => handleOpenChange(!open)}
             aria-label={t('acknowledgements.openSource.openDialog')}
             aria-expanded={isSmallScreen ? open : undefined}
-            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85"
+            className="mr-1"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             {isSmallScreen ? (

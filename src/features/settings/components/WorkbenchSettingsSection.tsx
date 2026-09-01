@@ -464,8 +464,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             if (!loaded) return;
             handleProfileChange(next as PerformanceProfile);
           }}
-          size="compact"
-          options={[
+            options={[
             {
               value: 'quality',
               label: t('workbench:settings.performanceProfile.quality'),
@@ -498,8 +497,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             if (!loaded) return;
             handleTierChange(next as MaterialTierSetting);
           }}
-          size="compact"
-          options={[
+            options={[
             { value: 'auto', label: t('workbench:settings.materialTier.auto') },
             { value: 'full', label: t('workbench:settings.materialTier.full') },
             { value: 'reduced', label: t('workbench:settings.materialTier.reduced') },
@@ -528,7 +526,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 void chooseCustomWallpaper();
               }
             }}
-            size="compact"
             options={[
               { value: 'theme', label: t('workbench:settings.wallpaper.kindTheme') },
               { value: 'image', label: t('workbench:settings.wallpaper.kindImage') },
@@ -576,9 +573,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               } catch {
                 // noop
               }
-            }}
-            className="h-8 gap-1.5 text-xs"
-          >
+            }}          >
             {t('workbench:settings.wallpaper.manage', '管理壁纸')}
           </DsButton>
         </div>
@@ -699,8 +694,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             setTitleBarDoubleClick(value);
             void persist(WORKBENCH_SETTING_KEYS.titleBarDoubleClick, value, value);
           }}
-          size="compact"
-          options={[
+            options={[
             { value: 'zoom', label: t('workbench:settings.titleBarDoubleClick.zoom') },
             { value: 'minimize', label: t('workbench:settings.titleBarDoubleClick.minimize') },
             { value: 'none', label: t('workbench:settings.titleBarDoubleClick.none') },
@@ -752,8 +746,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           onValueChange={(next) => {
             handleBrowserNetworkModeChange(next as BrowserNetworkMode);
           }}
-          size="compact"
-          options={[
+            options={[
             {
               value: 'local_whitelist',
               label: t('workbench:settings.browserNetworkMode.local_whitelist'),
@@ -804,7 +797,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               setAgentControl(value);
               void persist(WORKBENCH_SETTING_KEYS.agentControl, value, value);
             }}
-            size="compact"
             options={[
               {
                 value: 'off',
@@ -861,8 +853,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             setAgentPacing(value);
             void persist(WORKBENCH_SETTING_KEYS.agentPacing, value, value);
           }}
-          size="compact"
-          options={[
+            options={[
             {
               value: 'fast',
               label: t('workbench:settings.agentPacing.fast'),

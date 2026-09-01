@@ -112,9 +112,10 @@ export const LanceOptimizationPanel: React.FC = () => {
         </div>
         <DsButton
           variant="ghost"
-          size="sm"
+          size="icon"
+          iconOnly
           onClick={() => setShowInfo(!showInfo)}
-          className="h-8"
+          aria-label={t('lance_optimization.title')}
         >
           <Question size={14} />
         </DsButton>
@@ -122,7 +123,7 @@ export const LanceOptimizationPanel: React.FC = () => {
 
       {/* 信息面板 */}
       {showInfo && (
-        <div className="rounded-lg border border-border/40 p-4 text-xs text-muted-foreground space-y-2">
+        <div className="rounded-2xl bg-muted p-4 text-xs text-muted-foreground space-y-2">
           <p className="font-medium text-sm text-foreground">{t('lance_optimization.info.what')}</p>
           <p><strong>{t('lance_optimization.info.why')}</strong> {t('lance_optimization.info.why_answer')}</p>
           <p><strong>{t('lance_optimization.info.when')}</strong> {t('lance_optimization.info.when_answer')}</p>
@@ -130,7 +131,7 @@ export const LanceOptimizationPanel: React.FC = () => {
       )}
 
       {/* 参数配置 */}
-      <div className="rounded-lg border border-border/40 p-4">
+      <div className="rounded-2xl bg-muted p-4">
         <div className="grid md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium mb-1.5 text-foreground">
@@ -169,10 +170,10 @@ export const LanceOptimizationPanel: React.FC = () => {
       {/* 优化按钮组 */}
       <div className="grid grid-cols-2 gap-3">
         <DsButton
-          variant="ghost"
+          variant="outline"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
+          className="flex flex-col items-center gap-1 h-auto py-3"
         >
           {optimizing.chat ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -183,10 +184,10 @@ export const LanceOptimizationPanel: React.FC = () => {
         </DsButton>
 
         <DsButton
-          variant="ghost"
+          variant="outline"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
+          className="flex flex-col items-center gap-1 h-auto py-3"
         >
           {optimizing.vfs ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -202,7 +203,6 @@ export const LanceOptimizationPanel: React.FC = () => {
         variant="outline"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
-        className="w-full"
       >
         {Object.values(optimizing).some(v => v) ? (
           <>

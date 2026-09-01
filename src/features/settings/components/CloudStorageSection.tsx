@@ -1329,8 +1329,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 {opProgress.error && (
                   <DsButton
                     size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs text-muted-foreground"
+                    variant="outline"
                     onClick={() => setOpProgress(null)}
                   >
                     关闭

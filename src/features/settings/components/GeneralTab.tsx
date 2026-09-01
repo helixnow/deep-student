@@ -327,11 +327,11 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           <AnkiConnectSettingsSection />
         </div>
 
-        <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
+        <div className="mt-8 rounded-2xl bg-muted px-3 py-3 sm:px-4">
           <VoiceInputSettingsSection embedded assignedModel={voiceInputAssignedModel} />
         </div>
 
-        <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
+        <div className="mt-8 rounded-2xl bg-muted px-3 py-3 sm:px-4">
           <div className="px-1 mb-3 mt-0">
             <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title')}</h3>
           </div>
@@ -448,7 +448,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 placeholder={isAndroid() ? '30' : '0'}
-                className="!w-20 h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
+                className="!w-20 h-8 [@media(pointer:coarse)]:!w-24"
                 min="0"
               />
               <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
@@ -629,7 +629,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             const v = parseInt(e.target.value, 10);
                             if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
                           }}
-                          className="h-7 [@media(pointer:coarse)]:h-10 w-20 text-xs"
+                          className="h-8 w-20"
                         />
                         <span className="text-2xs text-muted-foreground/60">{t('common:unit.chars')}</span>
                       </div>

@@ -458,7 +458,6 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         <div className="flex items-center gap-1.5">
           <SegmentedControl<RangeDays>
             ariaLabel={t('data:charts_panel.range_label')}
-            size="compact"
             value={rangeDays}
             onValueChange={setRangeDays}
             options={rangeOptions}
@@ -599,8 +598,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
                 </div>
                 <SegmentedControl<RangeDays>
                   ariaLabel={t('data:charts_panel.trend_range_label')}
-                  size="compact"
-                  value={trendRange}
+                      value={trendRange}
                   onValueChange={setTrendRange}
                   options={rangeOptions}
                 />

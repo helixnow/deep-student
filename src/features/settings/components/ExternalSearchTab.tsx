@@ -106,20 +106,20 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
         {/* 2. 高级搜索配置 */}
         <div className="mt-8">
           <GroupTitle title={t('settings:sections.advanced_search_title')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             {/* 🔧 修复 #4: 移除 onConfigChange 中的重复通知，各 handler 已自行通知 */}
             <WebSearchAdvancedConfig 
               onConfigChange={() => {
                 // 不再发通知，避免与 WebSearchAdvancedConfig 内部通知重复
               }}
             />
-          </div>
+          </div></div>
         </div>
 
         {/* 3. 注入文本长度配置 */}
         <div className="mt-8">
           <GroupTitle title={t('settings:sections.injection_settings_title')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <SettingRow
               title={t('settings:field_labels.snippet_max_chars')}
               description={t('settings:sections.snippet_truncate_desc')}
@@ -134,7 +134,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '180', 10) || 180;
                     setConfig(prev => ({ ...prev, webSearchInjectSnippetMax: Math.min(2000, Math.max(50, v)) }));
                   }}
-                  className="!w-28 bg-transparent md:!w-24"
+                  className="!w-28 md:!w-24"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
@@ -153,12 +153,12 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '1900', 10) || 1900;
                     setConfig(prev => ({ ...prev, webSearchInjectTotalMax: Math.min(20000, Math.max(200, v)) }));
                   }}
-                  className="!w-28 bg-transparent md:!w-24"
+                  className="!w-28 md:!w-24"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
             </SettingRow>
-          </div>
+          </div></div>
         </div>
 
         {/* 4. 站点过滤配置 */}
@@ -167,7 +167,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
           <p className="px-1 mb-2 text-xs text-muted-foreground/70 leading-relaxed">
             {t('settings:placeholders.domain_list_hint')}
           </p>
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <SettingRow
               title={t('settings:field_labels.whitelist_sites')}
               description={t('settings:sections.whitelist_desc')}
@@ -183,7 +183,6 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.whitelist_example')}
-                className="bg-transparent"
               />
             </SettingRow>
             <SettingRow
@@ -201,10 +200,9 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.blacklist_example')}
-                className="bg-transparent"
               />
             </SettingRow>
-          </div>
+          </div></div>
         </div>
       </SettingSection>
     </div>

@@ -28,6 +28,13 @@ const SubGroupTitle = ({ title }: { title: string }) => (
   </div>
 );
 
+// 分组卡片容器：与设置本体一致的圆角灰卡
+const GroupCard = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+    <div className="space-y-px">{children}</div>
+  </div>
+);
+
 // 设置行
 const SettingRow = ({
   title,
@@ -148,7 +155,7 @@ export const PdfSettingsSection: React.FC = () => {
 
       {/* 渲染性能 */}
       <SubGroupTitle title={t('settings:pdf.performance.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SettingRow
           title={t('settings:pdf.performance.maxDpr')}
           description={t('settings:pdf.performance.maxDprDesc')}
@@ -196,11 +203,11 @@ export const PdfSettingsSection: React.FC = () => {
             onChange={(v) => updateSetting('virtualizerOverscan', v)}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
 
       {/* 文本层 */}
       <SubGroupTitle title={t('settings:pdf.textLayer.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SwitchRow
           title={t('settings:pdf.textLayer.enable')}
           description={t('settings:pdf.textLayer.enableDesc')}
@@ -221,11 +228,11 @@ export const PdfSettingsSection: React.FC = () => {
             suffix={t('settings:pdf.pages')}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
 
       {/* 批注层 */}
       <SubGroupTitle title={t('settings:pdf.annotationLayer.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SwitchRow
           title={t('settings:pdf.annotationLayer.enable')}
           description={t('settings:pdf.annotationLayer.enableDesc')}
@@ -246,11 +253,11 @@ export const PdfSettingsSection: React.FC = () => {
             suffix={t('settings:pdf.pages')}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
 
       {/* 缩略图 */}
       <SubGroupTitle title={t('settings:pdf.thumbnail.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SettingRow
           title={t('settings:pdf.thumbnail.width')}
           description={t('settings:pdf.thumbnail.widthDesc')}
@@ -277,11 +284,11 @@ export const PdfSettingsSection: React.FC = () => {
             onChange={(v) => updateSetting('thumbnailDpr', v)}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
 
       {/* 默认视图 */}
       <SubGroupTitle title={t('settings:pdf.defaultView.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SettingRow
           title={t('settings:pdf.defaultView.scale')}
           description={t('settings:pdf.defaultView.scaleDesc')}
@@ -312,7 +319,7 @@ export const PdfSettingsSection: React.FC = () => {
             width={80}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
     </div>
   );
 };

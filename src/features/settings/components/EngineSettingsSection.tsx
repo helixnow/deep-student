@@ -191,7 +191,7 @@ export const EngineSettingsSection: React.FC<{
             min={1000}
             value={s.timeout_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'timeout_ms')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -201,7 +201,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.max_retries ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_retries')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -211,7 +211,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.initial_retry_delay_ms ?? ''}
             onChange={handleStrategyFieldChange(id, 'initial_retry_delay_ms')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -221,7 +221,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.max_concurrent_requests ?? ''}
             onChange={handleStrategyFieldChange(id, 'max_concurrent_requests')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -231,7 +231,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.rate_limit_per_minute ?? ''}
             onChange={handleStrategyFieldChange(id, 'rate_limit_per_minute')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -241,7 +241,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.cache_ttl_seconds ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_ttl_seconds')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
         <div className="space-y-1.5">
@@ -251,7 +251,7 @@ export const EngineSettingsSection: React.FC<{
             min={0}
             value={s.cache_max_entries ?? ''}
             onChange={handleStrategyFieldChange(id, 'cache_max_entries')}
-            className="h-8 text-xs bg-transparent"
+            className="h-8"
           />
         </div>
       </div>
@@ -302,7 +302,7 @@ export const EngineSettingsSection: React.FC<{
               </div>
             </div>
             
-            <div className="flex flex-col gap-1 mt-4">
+            <div className="flex flex-col gap-1 mt-4 rounded-2xl bg-muted p-1.5">
               {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
                 const labelMap: Record<string, string> = {
                   bing_rss: t('settings:external_search.bing_rss_name'),
@@ -353,7 +353,7 @@ export const EngineSettingsSection: React.FC<{
           </div>
         </div>
 
-        <div className="space-y-8 w-full min-w-0">
+        <div className="w-full min-w-0 rounded-2xl bg-muted p-3 sm:p-4">
           {activeEngine === 'bing_rss' && (
             <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">

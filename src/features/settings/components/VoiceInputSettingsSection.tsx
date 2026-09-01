@@ -311,7 +311,6 @@ function HotkeyModeSegmented({
       ariaLabel={t('settings:voice_input.trigger_mode_title', { defaultValue: 'Trigger Mode' })}
       value={value}
       onValueChange={onChange}
-      size="compact"
       options={segments.map((segment) => ({
         value: segment.mode,
         label: segment.label,

@@ -28,6 +28,13 @@ const SubGroupTitle = ({ title }: { title: string }) => (
   </div>
 );
 
+// 分组卡片容器：与设置本体一致的圆角灰卡
+const GroupCard = ({ children }: { children: React.ReactNode }) => (
+  <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+    <div className="space-y-px">{children}</div>
+  </div>
+);
+
 // 设置行
 const SettingRow = ({
   title,
@@ -271,7 +278,7 @@ export const OcrSettingsSection: React.FC = () => {
         title={t('settings:ocr.title')}
         rightSlot={
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handleReset}
             disabled={saving}
@@ -285,7 +292,7 @@ export const OcrSettingsSection: React.FC = () => {
 
       {/* 基本设置 */}
       <SubGroupTitle title={t('settings:ocr.general.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SwitchRow
           title={t('settings:ocr.general.enabled')}
           description={t('settings:ocr.general.enabled_desc')}
@@ -301,11 +308,11 @@ export const OcrSettingsSection: React.FC = () => {
           onCheckedChange={(v) => handleToggle('skipForMultimodal', 'ocr.skip_for_multimodal', v)}
           disabled={saving || !config.enabled}
         />
-      </div>
+      </GroupCard>
 
       {/* 图片识别 */}
       <SubGroupTitle title={t('settings:ocr.images.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SwitchRow
           title={t('settings:ocr.images.enabled')}
           description={t('settings:ocr.images.enabled_desc')}
@@ -313,11 +320,11 @@ export const OcrSettingsSection: React.FC = () => {
           onCheckedChange={(v) => handleToggle('ocrImages', 'ocr.images', v)}
           disabled={saving || !config.enabled}
         />
-      </div>
+      </GroupCard>
 
       {/* PDF 识别 */}
       <SubGroupTitle title={t('settings:ocr.pdf.title')} />
-      <div className="space-y-px">
+      <GroupCard>
         <SwitchRow
           title={t('settings:ocr.pdf.enabled')}
           description={t('settings:ocr.pdf.enabled_desc')}
@@ -340,7 +347,7 @@ export const OcrSettingsSection: React.FC = () => {
             suffix={` ${t('common:unit.chars', 'chars')}`}
           />
         </SettingRow>
-      </div>
+      </GroupCard>
 
       {/* 说明提示 */}
       <div className="mt-6 py-3 px-1">
