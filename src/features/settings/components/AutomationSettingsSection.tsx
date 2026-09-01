@@ -994,7 +994,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
       </div>
 
       {desktopUnavailable ? (
-        <p className="rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
+        <p className="rounded-2xl bg-muted px-4 py-6 text-sm text-muted-foreground">
           {t('settings:automation.errors.desktop_only')}
         </p>
       ) : (

@@ -2366,7 +2366,7 @@ function ShellCommandRulesSection() {
             onChange={event => setPreviewCommand(event.target.value)}
             placeholder={t('settings:tool_permissions.shell_rules.preview_placeholder')}
             aria-label={t('settings:tool_permissions.shell_rules.preview_title')}
-            className="h-8 min-w-0 flex-1 font-mono text-xs"
+            className="min-w-0 flex-1 font-mono"
           />
           {preview && (
             <div className="flex min-h-8 items-center gap-2 text-xs sm:max-w-[45%]">
@@ -2391,11 +2391,11 @@ function ShellCommandRulesSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[8rem_10rem_minmax(12rem,1fr)] gap-2">
             <Select value={draft.action} onValueChange={value => { setDraft(prev => ({ ...prev, action: value as ShellCommandAction })); setPendingRisk(null); }}>
-              <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={draft.matchType} onValueChange={value => { setDraft(prev => ({ ...prev, matchType: value as ShellCommandMatchType })); setDraftError(null); setPendingRisk(null); }}>
-              <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Input
@@ -2403,11 +2403,11 @@ function ShellCommandRulesSection() {
               onChange={event => { setDraft(prev => ({ ...prev, pattern: event.target.value })); setDraftError(null); setPendingRisk(null); }}
               placeholder={t(`settings:tool_permissions.shell_rules.placeholder_${draft.matchType}`)}
               aria-label={t('settings:tool_permissions.shell_rules.pattern_label')}
-              className="h-8 text-xs font-mono"
+              className="font-mono"
               autoFocus
             />
           </div>
-          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 h-8 text-xs" />
+          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2" />
           <p className="mt-1.5 text-xs text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
           {draftError && <p className="mt-2 text-xs text-destructive">{t(`settings:tool_permissions.shell_rules.error_${draftError}`)}</p>}
           {pendingRisk && (
@@ -2434,9 +2434,9 @@ function ShellCommandRulesSection() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_9rem_10rem] gap-2 mb-2">
-            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="h-8 pl-8 text-xs" /></div>
-            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
-            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="pl-8" /></div>
+            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
           </div>
           <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">
             <Checkbox
@@ -3126,7 +3126,6 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 onCheckedChange={handleToggleGlobalBypass}
                 aria-label={t('settings:tool_permissions.global_bypass_title')}
                 title={t('settings:tool_permissions.global_bypass_title')}
-                className="data-[state=unchecked]:bg-[color:var(--surface-panel-strong)] data-[state=unchecked]:ring-1 data-[state=unchecked]:ring-[color:var(--button-utility-border)] data-[state=checked]:shadow-[0_0_0_1px_var(--button-primary-border)]"
               />
             </div>
           </div>
@@ -3163,14 +3162,14 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   }
                 }}
                 placeholder={t('settings:tool_permissions.runtime_root_path_placeholder')}
-                className="h-8 min-w-0 text-xs font-mono lg:basis-0 lg:flex-1"
+                className="min-w-0 font-mono lg:basis-0 lg:flex-1"
               />
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select
                   value={workspaceAccess}
                   onValueChange={(value) => setWorkspaceAccess(value as 'read_only' | 'read_write')}
                 >
-                  <SelectTrigger className="h-8 w-[8.5rem] text-xs" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
+                  <SelectTrigger className="w-[8.5rem]" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3526,7 +3525,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         />
                       </div>
                       <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.source_filter')}>
+                        <SelectTrigger aria-label={t('settings:tool_permissions.source_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3537,7 +3536,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={levelFilter} onValueChange={value => setLevelFilter(value as ToolLevelFilter)}>
-                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.level_filter')}>
+                        <SelectTrigger aria-label={t('settings:tool_permissions.level_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3549,7 +3548,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={overrideFilter} onValueChange={value => setOverrideFilter(value as ToolOverrideFilter)}>
-                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.override_filter')}>
+                        <SelectTrigger aria-label={t('settings:tool_permissions.override_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

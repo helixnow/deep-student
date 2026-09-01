@@ -796,7 +796,7 @@ export const SubagentProfilesSection: React.FC = () => {
       actions={headerActions}
     >
       {!isTauri ? (
-        <p className="rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
+        <p className="rounded-2xl bg-muted px-4 py-6 text-sm text-muted-foreground">
           {t('settings:subagentProfiles.errors.desktop_only')}
         </p>
       ) : error ? (
@@ -854,7 +854,7 @@ export const SubagentProfilesSection: React.FC = () => {
           </div>
 
           {customFiles.length === 0 && expandedId !== 'create' && (
-            <div className="rounded-md border border-dashed border-border px-4 py-8">
+            <div className="rounded-2xl bg-muted px-4 py-6">
               <Robot className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
               <h3 className="mt-3 text-sm font-medium text-foreground">
                 {t('settings:subagentProfiles.empty.title')}

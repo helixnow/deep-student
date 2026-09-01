@@ -1099,7 +1099,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             }))
                           }
                           options={protocolOptions}
-                          variant="ghost"
+                          variant="outline"
                           className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10 w-full"
                         />
                         <p className="text-2xs text-muted-foreground/70 ml-1">
@@ -1414,7 +1414,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 : []),
                               ...profileReasoningOptions,
                             ]}
-                            variant="ghost"
+                            variant="outline"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>}
@@ -1432,7 +1432,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               { value: 'medium', label: t('settings:api.modal.reasoning.verbosity.medium', 'Medium') },
                               { value: 'high', label: t('settings:api.modal.reasoning.verbosity.high', 'High') },
                             ]}
-                            variant="ghost"
+                            variant="outline"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>
@@ -1604,7 +1604,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={profileReasoningSelectValue}
                             onValueChange={setProfileReasoningDepth}
                             options={profileReasoningOptions}
-                            variant="ghost"
+                            variant="outline"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>
@@ -1658,7 +1658,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             onValueChange={setProfileReasoningDepth}
                             placeholder={t('settings:api.modal.reasoning.default_option')}
                             options={profileReasoningOptions}
-                            variant="ghost"
+                            variant="outline"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>}
@@ -1770,7 +1770,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   value: option.value,
                                   label: t(option.labelKey, option.defaultLabel),
                                 }))}
-                                variant="ghost"
+                                variant="outline"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                               <p className="text-2xs text-muted-foreground/60 ml-1">
@@ -1829,7 +1829,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 value={profileReasoningSelectValue}
                                 onValueChange={setProfileReasoningDepth}
                                 options={profileReasoningOptions}
-                                variant="ghost"
+                                variant="outline"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>
@@ -1892,7 +1892,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   : []),
                                 ...profileReasoningOptions,
                               ]}
-                              variant="ghost"
+                              variant="outline"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
                             <p className="text-2xs text-muted-foreground/60 ml-1">
@@ -1943,7 +1943,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 { value: 'disabled', label: t('settings:api.modal.doubao.mode_disabled') },
                                 { value: 'auto', label: t('settings:api.modal.doubao.mode_auto') },
                               ]}
-                              variant="ghost"
+                              variant="outline"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
                             <p className="text-2xs text-muted-foreground/60 ml-1">
@@ -1993,7 +1993,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 value={profileReasoningSelectValue}
                                 onValueChange={setProfileReasoningDepth}
                                 options={profileReasoningOptions}
-                                variant="ghost"
+                                variant="outline"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>
@@ -2053,7 +2053,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 value={profileReasoningSelectValue}
                                 onValueChange={setProfileReasoningDepth}
                                 options={profileReasoningOptions}
-                                variant="ghost"
+                                variant="outline"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>

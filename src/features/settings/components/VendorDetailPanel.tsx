@@ -441,7 +441,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
 
   if (!selectedVendor) {
     return (
-      <div className="rounded-2xl border border-dashed border-border/60 p-10 text-muted-foreground">
+      <div className="rounded-2xl bg-muted px-4 py-6 text-sm text-muted-foreground">
         {t('settings:vendor_panel.create_vendor_cta')}
       </div>
     );
