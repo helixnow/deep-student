@@ -1311,7 +1311,9 @@ ${resolvedPath}`);
             flex: 1;
             min-height: 0;
           }
-          .data-management-viewport {
+          /* OverlayScrollbars 会把 viewport 内边距内联置 0（padding 属于内容而非视口），
+             写在 .data-management-viewport 上是死规则；内容边距改挂 inner 容器 */
+          .data-management-viewport .data-management-inner {
             padding: 1rem 2rem 2rem;
           }
           @media (max-width: 767.98px) {
@@ -1321,8 +1323,9 @@ ${resolvedPath}`);
             .data-management-container {
               height: 100%;
             }
-            .data-management-viewport {
-              padding: 1rem 1rem calc(2rem + var(--mobile-safe-area-bottom, 0px)) 1rem;
+            .data-management-viewport .data-management-inner {
+              /* 16px 绝对值对齐其他页面移动端约定（本 app root 14px，1rem≠16px） */
+              padding: 16px 16px calc(2rem + var(--mobile-safe-area-bottom, 0px)) 16px;
             }
           }
           .data-management-content.embedded {
@@ -1368,6 +1371,8 @@ ${resolvedPath}`);
           ) : (
             // all 模式：使用原有的标题样式
             <div className="mb-8">
+              {/* 移动端：标题/导出已由统一顶栏承担（useMobileHeader），页内不再重复主标题行 */}
+              {!isSmallScreen && (
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground mb-1">{t('data:statistics_section_title')}</h2>
@@ -1382,6 +1387,7 @@ ${resolvedPath}`);
                   </DsButton>
                 </div>
               </div>
+              )}
               {/* Chat V2 统计部分 - 2026-01: 错题系统已废弃，只显示 Chat V2 统计 */}
               <ChatV2StatsSection />
               
@@ -1398,8 +1404,8 @@ ${resolvedPath}`);
             {/* 分隔线 */}
             {mode === 'all' && <div className="border-t border-border/40 my-8"></div>}
 
-            {/* 数据管理部分标题 - 仅在 all 模式下显示，避免与外层 SettingSection 重复 */}
-            {mode === 'all' && (
+            {/* 数据管理部分标题 - 仅在 all 模式桌面端显示；移动端顶栏已是「数据管理」，页内不重复 */}
+            {mode === 'all' && !isSmallScreen && (
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-foreground mb-1">{t('data:management_section_title')}</h2>
               <p className="text-sm text-muted-foreground">{t('data:management_section_subtitle')}</p>

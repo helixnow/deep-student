@@ -47,7 +47,6 @@ import {
   getAllowedApiProtocolsForModelAdapter,
   normalizeApiProtocolForModelAdapter,
 } from './modelConverters';
-import { useKeyboardInset } from '../hooks/useKeyboardInset';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -162,8 +161,6 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   mobilePanelMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
-  // P2-15 键盘避让：移动端右滑面板中，软键盘弹出时抬升底部操作栏
-  const keyboardInset = useKeyboardInset(mobilePanelMode);
   const [connectionTest, setConnectionTest] = useState<
     | { state: 'idle' }
     | { state: 'testing' }
@@ -951,7 +948,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
           {/* Tabs & Content - Flex Body */}
           <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
-            <div className="flex-none px-2 sm:px-4 border-b border-border/40/40">
+            {/* 移动端两侧边距对齐详情页 16px 约定（原 px-2 仅 8px 过窄） */}
+            <div className="flex-none px-4 border-b border-border/40/40">
               <TabsList className="w-full justify-between sm:justify-start h-auto p-0 bg-transparent gap-0 sm:gap-4">
                 <TabsTrigger 
                   value="general" 
@@ -985,7 +983,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
             </div>
 
             <CustomScrollArea className="flex-1 min-h-0" viewportClassName="pr-1">
-              <div className="p-2 sm:p-4">
+              {/* 移动端两侧边距对齐详情页 16px 约定（原 p-2 仅 8px 过窄） */}
+              <div className="p-4">
                 {/* General Tab */}
                 <TabsContent value="general" className="mt-0 space-y-3 focus-visible:outline-none">
                   <div className="grid gap-3">
@@ -2167,10 +2166,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
             </CustomScrollArea>
           </Tabs>
 
-          {/* Footer - Fixed & Minimal */}
+          {/* Footer - Fixed & Minimal
+              移动端（右滑面板）：底栏整体移除——保存唯一出口在统一顶栏 Check（P1-7），
+              测试连接入口上移到模型卡片（与收藏/删除/编辑平级），底栏不再承担任何动作 */}
+          {!mobilePanelMode && (
           <div
             className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2"
-            style={mobilePanelMode && keyboardInset > 0 ? { paddingBottom: `calc(0.5rem + ${keyboardInset}px)` } : undefined}
           >
             <DsButton
               type="button"
@@ -2197,19 +2198,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
             </DsButton>
             <div className="flex-1" />
-            {/* P1-7 移动端右滑面板：保存唯一出口在统一顶栏 Check，底栏只保留「测试连接」，
-                避免顶栏/底栏双保存出口造成心智分叉（表单仍可经 requestSubmit 提交） */}
-            {!mobilePanelMode && (
-              <>
-                <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
-                  {t('common:actions.cancel')}
-                </DsButton>
-                <DsButton type="submit" variant="primary" className="min-w-[100px]">
-                  {t('common:actions.save')}
-                </DsButton>
-              </>
-            )}
+            <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+              {t('common:actions.cancel')}
+            </DsButton>
+            <DsButton type="submit" variant="primary" className="min-w-[100px]">
+              {t('common:actions.save')}
+            </DsButton>
           </div>
+          )}
         </form>
   );
 

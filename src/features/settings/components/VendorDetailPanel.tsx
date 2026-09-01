@@ -515,7 +515,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
             <div className="flex w-full shrink-0 items-center justify-end gap-1.5 sm:w-auto">
               {/* 次要操作：桌面 hover 时显示；触屏/窄屏无 hover，常显（否则收藏/删除在移动端不可达）。
-                  测试连接在窄屏隐藏以节省宽度——编辑器底部已有「测试连接」入口 */}
+                  测试连接与收藏/删除/编辑平级常显——移动端编辑器已无底栏，测试入口只在卡片上 */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
                 {!secondaryActionsMounted ? (
                   /* 冷态占位：宽度 = 3 个 w-7 按钮 + 2 个 gap-0.5，首次 hover 挂载真身，无布局跳动 */
@@ -537,10 +537,11 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className="max-md:hidden"
+                  className="max-sm:!h-11 max-sm:!w-11"
                   onClick={() => void testApiConnection(api)}
                   disabled={testingApi === api.id || vendorBusy}
                   title={t('settings:api_config.test_button')}
+                  aria-label={t('settings:api_config.test_button')}
                 >
                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                 </DsButton>

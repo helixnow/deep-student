@@ -311,11 +311,12 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <span>{saveStatus === 'dirty' && pasted ? t('settings:vendor_panel.api_key_pasted_ready') : statusText}</span>
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
-        {/* 移动端去纯色大按钮：描边+彩色文字，桌面保持实心；清除的 armed 确认态保持实心红 */}
+        {/* 移动端去纯色大按钮：描边+彩色文字，桌面保持实心；清除的 armed 确认态保持实心红。
+            移动端两按钮 flex-1 等宽对称（armed 态文本变长会打破对称，属可接受的强调信号） */}
         <DsButton
           variant={isSmallScreen ? 'outline' : 'primary'}
           size="sm"
-          className={cn(isSmallScreen && 'text-primary')}
+          className={cn(isSmallScreen && 'flex-1 text-primary')}
           onClick={() => {
             void handleSaveApiKey();
           }}
@@ -328,7 +329,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <DsButton
           variant={isSmallScreen && !confirmingClear ? 'outline' : 'danger'}
           size="sm"
-          className={cn(isSmallScreen && !confirmingClear && '!text-destructive')}
+          className={cn(isSmallScreen && !confirmingClear && 'flex-1 !text-destructive')}
           onClick={handleClearApiKey}
           disabled={!canClearStoredKey}
           title={t('settings:vendor_panel.clear_api_key_title')}
