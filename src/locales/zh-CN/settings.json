@@ -421,6 +421,8 @@
     "no_api_key_short": "未配置 API 密钥",
     "api_key_configured_short": "已配置 API 密钥",
     "connection_not_configured": "未配置连接",
+    "edit_form_api_key_hint": "API 密钥不在此表单编辑：保存后返回详情页，展开「连接配置」即可录入或修改。",
+    "connection_summary_tap_to_edit": "点按修改",
     "no_api_key_hint": "添加 API 密钥后才能启用此提供商。",
     "model_list_desc": "共 {{count}} 个模型",
     "model_empty": "该供应商暂未创建模型",

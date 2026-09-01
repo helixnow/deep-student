@@ -421,6 +421,8 @@
     "no_api_key_short": "No API key",
     "api_key_configured_short": "API key configured",
     "connection_not_configured": "Connection not configured",
+    "edit_form_api_key_hint": "API keys are not edited in this form: save, return to the detail page, and expand \"Connection\" to enter or update the key.",
+    "connection_summary_tap_to_edit": "Tap to edit",
     "no_api_key_hint": "Add an API key to enable this provider.",
     "model_list_desc": "{{count}} models total",
     "model_empty": "No models under this provider yet",

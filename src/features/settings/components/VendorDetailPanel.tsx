@@ -849,6 +849,14 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               </Label>
               <Textarea className="scroll-area--native" value={vendorFormData.notes || ''} onChange={e => setVendorFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('settings:vendor_modal.notes_placeholder')} rows={3} />
             </div>
+            {/* P3-10：编辑表单无 key 字段是死胡同——用户想改 key 会本能点「编辑」。
+                加一行指引，说明 key 在详情页「连接配置」折叠区录入/修改 */}
+            {!usesNoApiKey && (
+              <p className="md:col-span-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Key className="h-3.5 w-3.5 mt-px shrink-0" aria-hidden="true" />
+                <span>{t('settings:vendor_panel.edit_form_api_key_hint')}</span>
+              </p>
+            )}
           </div>
         ) : (
           /* 查看模式：可折叠连接配置 */
@@ -857,6 +865,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             <button
               type="button"
               onClick={() => setConnectionExpanded(v => !v)}
+              aria-expanded={connectionExpanded}
               className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
             >
               <div className="flex items-center gap-2 min-w-0 text-sm">
@@ -880,8 +889,14 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   </span>
                 )}
               </div>
-              <span className="text-muted-foreground shrink-0">
-                {connectionExpanded ? <CaretUp className="h-4 w-4" /> : <CaretDown className="h-4 w-4" />}
+              {/* P3-10：折叠态补「点按修改」文字提示，状态文案本身不传达可点 */}
+              <span className="flex items-center gap-1.5 shrink-0">
+                {!connectionExpanded && (
+                  <span className="text-xs text-primary">{t('settings:vendor_panel.connection_summary_tap_to_edit')}</span>
+                )}
+                <span className="text-muted-foreground">
+                  {connectionExpanded ? <CaretUp className="h-4 w-4" /> : <CaretDown className="h-4 w-4" />}
+                </span>
               </span>
             </button>
 
