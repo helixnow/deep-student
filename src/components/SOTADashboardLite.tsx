@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -19,7 +19,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useMobileHeader } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { fileManager } from '../utils/fileManager';
 import { 
@@ -130,6 +131,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   const { t } = useTranslation('data');
   const { t: tCommon } = useTranslation('common');
   const { isSmallScreen } = useBreakpoint();
+  // P3-1：总览是抽屉「管理」分组的平级目的地，顶栏应与其它平级页
+  // （制卡任务/技能管理/模板管理）一致显示 ☰ 打开抽屉，而不是"返回"箭头
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 供 useMobileHeader rightActions 调用（exportData 在下方定义）
   const exportDataRef = useRef<() => void>(() => {});
@@ -138,10 +142,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   // 移动端设计哲学：页内不再放返回/导出按钮，操作统一收进顶栏
   useMobileHeader('dashboard', {
     title: tCommon('navigation.dashboard', '总览'),
-    // ★ 顶栏统一：与设置/学习资源等子页一致，显示返回箭头（回聊天），
-    // 而不是全局历史导航的 返回+前进 双按钮
-    showBackArrow: !embedded && typeof onBack === 'function',
-    onMenuClick: () => onBack?.(),
+    showMenu: !embedded,
+    onMenuClick: () => setSidebarOpen((v) => !v),
     rightActions: (
       <DsButton
         variant="ghost"
@@ -154,7 +156,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [tCommon, t, embedded, onBack]);
+  }, [tCommon, t, embedded]);
 
   // 导出数据
   const exportData = useCallback(async () => {
@@ -645,11 +647,38 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         * 页面级 main 地标已由 App 壳（#main-content）唯一提供，这里嵌套也不合法。
         * 契约测试：tests/vitest/dashboardScrollContract.test.ts
         */}
-      <div className="sota-dashboard">
-        <div className="sota-content" style={embedded ? { padding: '0' } : undefined}>
-          {renderUnifiedContent()}
-        </div>
-      </div>
+      {/* P3-1：移动端独立形态挂 MobileSlidingLayout 统一抽屉（本页无页内工具，
+          抽屉只承载应用主导航，与制卡任务页同一配方）；此时组件自带内容滚动，
+          App 层不再套 CustomScrollArea（见 dashboardContent 的 isSmallScreen 分支） */}
+      {(() => {
+        const body = (
+          <div className="sota-dashboard">
+            <div className="sota-content" style={embedded ? { padding: '0' } : undefined}>
+              {renderUnifiedContent()}
+            </div>
+          </div>
+        );
+        if (!embedded && isSmallScreen) {
+          return (
+            <div className="absolute inset-0 overflow-hidden">
+              <MobileSlidingLayout
+                sidebar={<div aria-hidden className="h-0" />}
+                sidebarOpen={sidebarOpen}
+                onSidebarOpenChange={setSidebarOpen}
+                sidebarWidth="auto"
+                showSidebarAppNavigation
+                showContentOverlay
+                className="flex-1"
+              >
+                <CustomScrollArea className="h-full" viewportClassName="h-full">
+                  {body}
+                </CustomScrollArea>
+              </MobileSlidingLayout>
+            </div>
+          );
+        }
+        return body;
+      })()}
     </>
   );
 };

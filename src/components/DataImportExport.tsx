@@ -6,7 +6,7 @@ import { DataGovernanceApi } from '../api/dataGovernance';
 import { fileManager, extractFileName } from '../utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
-import { useMobileHeader } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
@@ -262,9 +262,37 @@ const StatCard = ({
   );
 };
 
+/** P3-1 移动端抽屉壳：仅数据管理独立移动端形态启用；本页无页内工具，抽屉只承载应用主导航（与制卡任务页同一配方） */
+const MaybeMobileDrawerShell: React.FC<{
+  enabled: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+}> = ({ enabled, open, onOpenChange, children }) => {
+  if (!enabled) return <>{children}</>;
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      <MobileSlidingLayout
+        sidebar={<div aria-hidden className="h-0" />}
+        sidebarOpen={open}
+        onSidebarOpenChange={onOpenChange}
+        sidebarWidth="auto"
+        showSidebarAppNavigation
+        showContentOverlay
+        className="flex-1"
+      >
+        {children}
+      </MobileSlidingLayout>
+    </div>
+  );
+};
+
 export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all', onBack }) => {
   const { t } = useTranslation(['data', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  // P3-1：数据管理是抽屉「管理」分组的平级目的地，顶栏应与其它平级页
+  // （制卡任务/技能管理/模板管理）一致显示 ☰ 打开抽屉，而不是"返回"箭头
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 供 useMobileHeader rightActions 调用（handleExport 在下方定义）
   const handleExportRef = useRef<() => void>(() => {});
@@ -273,9 +301,8 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
-    // ★ 顶栏统一：提供返回箭头（回聊天）而非全局历史导航的 返回+前进 双按钮
-    showBackArrow: !embedded && typeof onBack === 'function',
-    onMenuClick: () => onBack?.(),
+    showMenu: !embedded,
+    onMenuClick: () => setSidebarOpen((v) => !v),
     rightActions: (
       <DsButton
         variant="ghost"
@@ -287,7 +314,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [t, embedded, onBack]);
+  }, [t, embedded]);
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -1308,6 +1335,7 @@ ${resolvedPath}`);
           }
         `}
       </style>
+      <MaybeMobileDrawerShell enabled={!embedded && isSmallScreen} open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className={`data-management-container ${embedded ? 'embedded' : ''}`}>
         {/* 移动端：标题与导出统一走顶栏（useMobileHeader），不渲染桌面 HeaderTemplate，避免双标题 */}
         {!embedded && !isSmallScreen && (
@@ -1806,6 +1834,7 @@ ${resolvedPath}`);
             )}
         </DsDialog>
       </div>
+      </MaybeMobileDrawerShell>
     </>
   );
 };

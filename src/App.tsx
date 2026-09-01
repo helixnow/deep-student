@@ -2373,15 +2373,26 @@ function App() {
   // React 协调器看到相同引用后会跳过整个子树的 diff，大幅减少切换耗时。
   // 仅包含稳定依赖（useCallback/useState setter/ref）的视图可安全 memoize。
   const dashboardContent = useMemo(() => (
-    <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
+    // P3-1：移动端组件自带 MobileSlidingLayout 抽屉壳（含内容滚动），
+    // 外层再套 CustomScrollArea 会让抽屉的 absolute 定位落进滚动视口
+    isSmallScreen ? (
       <Suspense fallback={<PageLoadingFallback />}>
         <LazySOTADashboard
           onBack={() => setCurrentView('chat-v2')}
           onNavigate={(view) => setCurrentView(view)}
         />
       </Suspense>
-    </CustomScrollArea>
-  ), [setCurrentView]);
+    ) : (
+      <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <LazySOTADashboard
+            onBack={() => setCurrentView('chat-v2')}
+            onNavigate={(view) => setCurrentView(view)}
+          />
+        </Suspense>
+      </CustomScrollArea>
+    )
+  ), [isSmallScreen, setCurrentView]);
 
   const settingsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
