@@ -157,17 +157,31 @@ export const VendorSidebar: React.FC = () => {
     const providerLabel = getProviderDisplayName(vendor.providerType, t);
     const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
 
+    const activateRow = () => {
+      setSelectedVendorId(vendor.id);
+      // P1-6 移动端两级导航：点击行即进入供应商详情屏
+      if (isSmallScreen) openMobileVendorDetail?.();
+    };
+
+    // P2-9 键盘激活：桌面端 Space/方向键被 dnd 拖拽占用，仅补 Enter；
+    // 移动端拖拽关闭（dragHandleProps 为 null，行无 role/tabIndex），Enter/Space 都可激活
+    const onRowKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || (isSmallScreen && e.key === ' ')) {
+        e.preventDefault();
+        activateRow();
+      }
+    };
+
     return (
       <div
         ref={provided.innerRef}
         {...provided.draggableProps}
         {...provided.dragHandleProps}
         style={provided.draggableProps.style}
-        onClick={() => {
-          setSelectedVendorId(vendor.id);
-          // P1-6 移动端两级导航：点击行即进入供应商详情屏
-          if (isSmallScreen) openMobileVendorDetail?.();
-        }}
+        role="button"
+        tabIndex={0}
+        onClick={activateRow}
+        onKeyDown={onRowKeyDown}
         className={cn(
           'px-3 py-2 text-left w-full flex items-center gap-2 group',
           // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 isDragDisabled 关闭）
