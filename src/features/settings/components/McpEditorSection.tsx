@@ -1315,7 +1315,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
           <DsDialogFooter>
             <DsButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
-            <DsButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+            <DsButton size="sm" variant="primary" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
           </DsDialogFooter>
         </div>
       </UnifiedModal>

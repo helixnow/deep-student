@@ -592,7 +592,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               {/* 编辑按钮 */}
               <DsButton
                 size="sm"
-                variant={isEditing ? "default" : "ghost"}
+                variant={isEditing ? "outline" : "ghost"}
                 iconOnly
                 onClick={handleEditClick}
                 disabled={vendorBusy}

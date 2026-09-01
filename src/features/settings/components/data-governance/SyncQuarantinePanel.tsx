@@ -189,7 +189,7 @@ export const SyncQuarantinePanel: React.FC<{
           {rows.length > 0 && (
             <>
               <DsButton
-                variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "ghost"}
+                variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "outline"}
                 size="sm"
                 onClick={() => {
                   if (!isSmallScreen) {

@@ -384,8 +384,9 @@ export const ChatSessionArchiveTab: React.FC = () => {
                       <span>{t('data:governance.archive_restore_group')}</span>
                     </DsButton>
                     <DsButton
-                      variant={confirmingDeleteGroup ? 'danger' : 'ghost'}
+                      variant={confirmingDeleteGroup ? 'danger' : 'outline'}
                       size="sm"
+                      className={confirmingDeleteGroup ? undefined : '!text-destructive'}
                       onClick={() => permanentlyDeleteGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}
                       aria-label={confirmingDeleteGroup

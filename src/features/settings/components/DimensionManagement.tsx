@@ -636,7 +636,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 )}
                                 <CommonTooltip content={t('settings:dimension_management.assign_model')}>
                                   <DsButton
-                                    variant={isExpanded ? "default" : "ghost"}
+                                    variant={isExpanded ? "outline" : "ghost"}
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
                                     className={cn(
@@ -873,7 +873,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           </span>
                         )}
                         <DsButton
-                          variant={isExpanded ? "default" : "ghost"}
+                          variant={isExpanded ? "outline" : "ghost"}
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
                           className={cn(

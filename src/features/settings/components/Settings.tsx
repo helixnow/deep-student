@@ -1739,6 +1739,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
                 <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
+                  variant="primary"
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,

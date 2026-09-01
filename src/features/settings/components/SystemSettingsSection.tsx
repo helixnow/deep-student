@@ -275,7 +275,7 @@ export const SystemSettingsSection: React.FC = () => {
                 <div className="flex items-center gap-3">
                   {/* 主题切换器 - 使用shadcn样式 */}
                   <DsButton
-                    variant={themeMode === 'light' ? 'primary' : 'default'}
+                    variant={themeMode === 'light' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setThemeMode('light')}
                     className={themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
@@ -286,7 +286,7 @@ export const SystemSettingsSection: React.FC = () => {
                   </DsButton>
                   
                   <DsButton
-                    variant={themeMode === 'dark' ? 'primary' : 'default'}
+                    variant={themeMode === 'dark' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setThemeMode('dark')}
                     className={themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
@@ -297,7 +297,7 @@ export const SystemSettingsSection: React.FC = () => {
                   </DsButton>
                   
                   <DsButton
-                    variant={themeMode === 'auto' ? 'primary' : 'default'}
+                    variant={themeMode === 'auto' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setThemeMode('auto')}
                     className={themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
