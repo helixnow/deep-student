@@ -6,6 +6,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
+import { SettingRow, SwitchRow, SettingsSlider } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -36,96 +37,6 @@ const GroupCard = ({ children }: { children: React.ReactNode }) => (
 );
 
 // 设置行
-const SettingRow = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) => (
-  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    {/* 移动端占满行宽（提高滑块可用行程），≥md 才收敛为固定列宽 */}
-    <div className="w-full md:w-[200px] flex-shrink-0">
-      {children}
-    </div>
-  </div>
-);
-
-// 带开关的设置行
-const SwitchRow = ({
-  title,
-  description,
-  checked,
-  onCheckedChange,
-  disabled,
-}: {
-  title: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  disabled?: boolean;
-}) => (
-  // 整行可点切换，开关本体 stopPropagation 避免双重切换
-  <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
-    onClick={() => {
-      if (!disabled) onCheckedChange(!checked);
-    }}
-  >
-    <div className="flex-1 min-w-0">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-    </span>
-  </div>
-);
-
-/** 滑块组件 - 紧凑版 */
-const Slider: React.FC<{
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  disabled?: boolean;
-  showValue?: boolean;
-  suffix?: string;
-}> = ({ value, min, max, step, onChange, disabled, showValue = true, suffix = '' }) => (
-  <div className="flex items-center gap-2">
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(parseFloat(e.target.value))}
-      disabled={disabled}
-      className="settings-range-slider flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer disabled:opacity-50"
-    />
-    {showValue && (
-      <span className="text-xs text-muted-foreground/70 min-w-[2.5rem] text-right">
-        {value}{suffix}
-      </span>
-    )}
-  </div>
-);
 
 export const PdfSettingsSection: React.FC = () => {
   const { t } = useTranslation(['settings', 'pdf', 'common']);
@@ -156,11 +67,11 @@ export const PdfSettingsSection: React.FC = () => {
       {/* 渲染性能 */}
       <SubGroupTitle title={t('settings:pdf.performance.title')} />
       <GroupCard>
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.performance.maxDpr')}
           description={t('settings:pdf.performance.maxDprDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.maxDevicePixelRatio}
             min={1.0}
             max={3.0}
@@ -177,11 +88,11 @@ export const PdfSettingsSection: React.FC = () => {
         />
 
         {settings.enableScrollDprDowngrade && (
-          <SettingRow
+          <SettingRow controlClassName="md:w-[200px]"
             title={t('settings:pdf.performance.scrollDpr')}
             description={t('settings:pdf.performance.scrollDprDesc')}
           >
-            <Slider
+            <SettingsSlider
               value={settings.scrollDpr}
               min={0.5}
               max={2.0}
@@ -191,11 +102,11 @@ export const PdfSettingsSection: React.FC = () => {
           </SettingRow>
         )}
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.performance.overscan')}
           description={t('settings:pdf.performance.overscanDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.virtualizerOverscan}
             min={1}
             max={6}
@@ -215,11 +126,11 @@ export const PdfSettingsSection: React.FC = () => {
           onCheckedChange={(v) => updateSetting('enableTextLayerByDefault', v)}
         />
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.textLayer.range')}
           description={t('settings:pdf.textLayer.rangeDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.textLayerRange}
             min={0}
             max={5}
@@ -240,11 +151,11 @@ export const PdfSettingsSection: React.FC = () => {
           onCheckedChange={(v) => updateSetting('enableAnnotationLayerByDefault', v)}
         />
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.annotationLayer.range')}
           description={t('settings:pdf.annotationLayer.rangeDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.annotationLayerRange}
             min={0}
             max={5}
@@ -258,11 +169,11 @@ export const PdfSettingsSection: React.FC = () => {
       {/* 缩略图 */}
       <SubGroupTitle title={t('settings:pdf.thumbnail.title')} />
       <GroupCard>
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.thumbnail.width')}
           description={t('settings:pdf.thumbnail.widthDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.thumbnailWidth}
             min={60}
             max={160}
@@ -272,11 +183,11 @@ export const PdfSettingsSection: React.FC = () => {
           />
         </SettingRow>
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.thumbnail.dpr')}
           description={t('settings:pdf.thumbnail.dprDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.thumbnailDpr}
             min={0.5}
             max={2.0}
@@ -289,11 +200,11 @@ export const PdfSettingsSection: React.FC = () => {
       {/* 默认视图 */}
       <SubGroupTitle title={t('settings:pdf.defaultView.title')} />
       <GroupCard>
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.defaultView.scale')}
           description={t('settings:pdf.defaultView.scaleDesc')}
         >
-          <Slider
+          <SettingsSlider
             value={settings.defaultScale}
             min={0.5}
             max={2.0}
@@ -303,7 +214,7 @@ export const PdfSettingsSection: React.FC = () => {
           />
         </SettingRow>
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:pdf.defaultView.mode')}
           description={t('settings:pdf.defaultView.modeDesc')}
         >

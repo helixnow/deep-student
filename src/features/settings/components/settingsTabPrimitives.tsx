@@ -8,11 +8,14 @@ export const SettingRow = ({
   description,
   children,
   className,
+  controlClassName,
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
   className?: string;
+  /** 右列（控件列）附加类，如滑块行需固定行程 md:w-[200px] */
+  controlClassName?: string;
 }) => (
   // 双栏切换点与 useBreakpoint().isSmallScreen（<768，App shell 移动模式）对齐，
   // 避免 640-767px 区间「移动页面模式 + 桌面双栏行」的形态混搭
@@ -25,7 +28,7 @@ export const SettingRow = ({
         </p>
       )}
     </div>
-    <div className="w-full min-w-0 flex-shrink-0 md:w-auto">
+    <div className={cn('w-full min-w-0 flex-shrink-0 md:w-auto', controlClassName)}>
       {children}
     </div>
   </div>
@@ -137,4 +140,37 @@ export const SettingsGroup = ({
       </div>
     </div>
   </section>
+);
+
+/** 紧凑滑块：PDF/OCR 设置共用（原两文件各有一份 drift 拷贝，2026-09 上提统一） */
+export const SettingsSlider: React.FC<{
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+  showValue?: boolean;
+  suffix?: string;
+}> = ({ value, min, max, step, onChange, disabled, showValue = true, suffix = '' }) => (
+  <div className="flex items-center gap-2">
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      disabled={disabled}
+      className={cn(
+        'settings-range-slider flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer',
+        disabled && 'opacity-50 cursor-not-allowed'
+      )}
+    />
+    {showValue && (
+      <span className="text-xs text-muted-foreground/70 min-w-[3.5rem] text-right">
+        {value}{suffix}
+      </span>
+    )}
+  </div>
 );

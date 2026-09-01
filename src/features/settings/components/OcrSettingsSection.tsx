@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, CircleNotch } from '@phosphor-icons/react';
+import { SettingRow, SwitchRow, SettingsSlider } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -36,66 +37,6 @@ const GroupCard = ({ children }: { children: React.ReactNode }) => (
 );
 
 // 设置行
-const SettingRow = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) => (
-  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    {/* 移动端占满行宽（提高滑块可用行程），≥md 才收敛为固定列宽 */}
-    <div className="w-full md:w-[200px] flex-shrink-0">
-      {children}
-    </div>
-  </div>
-);
-
-// 带开关的设置行
-const SwitchRow = ({
-  title,
-  description,
-  checked,
-  onCheckedChange,
-  disabled,
-}: {
-  title: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  disabled?: boolean;
-}) => (
-  // 整行可点切换，开关本体 stopPropagation 避免双重切换
-  <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
-    onClick={() => {
-      if (!disabled) onCheckedChange(!checked);
-    }}
-  >
-    <div className="flex-1 min-w-0">
-      <h3 className={cn("text-sm leading-tight", disabled ? "text-muted-foreground/50" : "text-foreground/90")}>{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-    </span>
-  </div>
-);
 
 /** OCR 策略配置接口 */
 interface OcrStrategyConfig {
@@ -118,39 +59,6 @@ const DEFAULT_CONFIG: OcrStrategyConfig = {
   ocrImages: true,
   ocrScannedPdf: true,
 };
-
-/** 滑块组件 - 紧凑版 */
-const Slider: React.FC<{
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  disabled?: boolean;
-  showValue?: boolean;
-  suffix?: string;
-}> = ({ value, min, max, step, onChange, disabled, showValue = true, suffix = '' }) => (
-  <div className="flex items-center gap-2">
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(parseFloat(e.target.value))}
-      disabled={disabled}
-      className={cn(
-        "settings-range-slider flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer",
-        disabled && "opacity-50 cursor-not-allowed"
-      )}
-    />
-    {showValue && (
-      <span className="text-xs text-muted-foreground/70 min-w-[3.5rem] text-right">
-        {value}{suffix}
-      </span>
-    )}
-  </div>
-);
 
 export const OcrSettingsSection: React.FC = () => {
   const { t } = useTranslation(['settings', 'common']);
@@ -333,11 +241,11 @@ export const OcrSettingsSection: React.FC = () => {
           disabled={saving || !config.enabled}
         />
 
-        <SettingRow
+        <SettingRow controlClassName="md:w-[200px]"
           title={t('settings:ocr.pdf.threshold')}
           description={t('settings:ocr.pdf.threshold_desc')}
         >
-          <Slider
+          <SettingsSlider
             value={config.pdfTextThreshold}
             min={0}
             max={5000}
