@@ -407,6 +407,15 @@ body {
   animation: desktop-shell-content-exit var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
+/* 反向变体：桌面端与正向同动画（纵向淡入淡出无方向语义），移动端在下方 media 内镜像 */
+.desktop-shell-content-enter-rev {
+  animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.desktop-shell-content-exit-rev {
+  animation: desktop-shell-content-exit var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
 /*
  * P2-12: 移动壳（<768，与 useIsMobile / MOBILE_SHELL.breakpointMax 同界）视图切换
  * 改用轻量横向位移：--page-slide-distance（8px）右侧滑入 + fade，消费 --page-slide-* token，不做 blur
@@ -445,6 +454,39 @@ body {
 
   .desktop-shell-view-layer.desktop-shell-content-exit {
     animation: mobile-shell-content-exit var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  /* 反向（返回/出栈）：新层自左入、旧层向右出，与正向镜像 */
+  @keyframes mobile-shell-content-enter-rev {
+    from {
+      opacity: 0;
+      transform: translateX(calc(-1 * var(--page-slide-distance, 8px)));
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .desktop-shell-view-layer.desktop-shell-content-enter-rev {
+    animation: mobile-shell-content-enter-rev var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  @keyframes mobile-shell-content-exit-rev {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translateX(var(--page-slide-distance, 8px));
+    }
+  }
+
+  .desktop-shell-view-layer.desktop-shell-content-exit-rev {
+    animation: mobile-shell-content-exit-rev var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
   }
 }
 
@@ -1493,8 +1535,12 @@ main {
 
   .desktop-shell-content-enter,
   .desktop-shell-content-exit,
+  .desktop-shell-content-enter-rev,
+  .desktop-shell-content-exit-rev,
   .desktop-shell-view-layer.desktop-shell-content-enter,
-  .desktop-shell-view-layer.desktop-shell-content-exit {
+  .desktop-shell-view-layer.desktop-shell-content-exit,
+  .desktop-shell-view-layer.desktop-shell-content-enter-rev,
+  .desktop-shell-view-layer.desktop-shell-content-exit-rev {
     animation: none;
   }
 }

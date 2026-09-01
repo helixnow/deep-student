@@ -860,6 +860,11 @@ function App() {
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
+  // 视图切换方向（仅 <768px 的层滑动画消费；桌面是纵向淡入淡出无方向语义）。
+  // 访问栈模型：目标是栈内已有视图 → 「返回」(-1)，未见过的新视图 → 「前进」(+1)。
+  // 在 setCurrentView 内与视图切换同批 setState，保证动画首帧方向即正确。
+  const viewNavStackRef = useRef<CurrentView[]>(['chat-v2']);
+  const [viewNavDirection, setViewNavDirection] = useState<1 | -1>(1);
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const leftPanelWidth = useUIStore((state) => state.leftPanelWidth);
   const shellSidebarWidth = getShellSidebarWidth(
@@ -1059,6 +1064,20 @@ function App() {
     // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
     // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
     startTransition(() => {
+      // 切换方向：与视图切换同批提交，层动画首帧即拿到正确方向（前进右入/后退左入镜像）
+      const navStack = viewNavStackRef.current;
+      if (targetView !== prevView && navStack[navStack.length - 1] !== targetView) {
+        const existingIdx = navStack.lastIndexOf(targetView);
+        if (existingIdx >= 0) {
+          navStack.length = existingIdx + 1;
+          setViewNavDirection(-1);
+        } else {
+          navStack.push(targetView);
+          if (navStack.length > 30) navStack.shift();
+          setViewNavDirection(1);
+        }
+      }
+
       // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
       setVisitedViews(prev => {
         const now = Date.now();
@@ -2492,6 +2511,7 @@ function App() {
       currentView={currentView}
       visitedViews={visitedViews}
       errorBoundaryName={view}
+      navDirection={viewNavDirection}
       extraClass={extraClass}
       extraStyle={extraStyle}
     >

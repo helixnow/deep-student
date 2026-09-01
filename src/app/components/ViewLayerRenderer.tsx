@@ -18,6 +18,11 @@ export interface ViewLayerRendererProps {
   isBackdrop?: boolean;
   /** Skip the enter animation once (legacy; prefer paired enter/exit). */
   suppressEnterAnimation?: boolean;
+  /**
+   * 移动端层切换方向：1 = 前进（新层右入/旧层左出），-1 = 返回（镜像）。
+   * 仅 <768px 的 mobile-shell-content-* 关键帧区分方向；桌面纵向淡入淡出忽略此值。
+   */
+  navDirection?: 1 | -1;
 }
 
 export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
@@ -30,6 +35,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   errorBoundaryName,
   isBackdrop = false,
   suppressEnterAnimation = false,
+  navDirection = 1,
 }: ViewLayerRendererProps) {
   const isActive = currentView === view;
   const visited = visitedViews.has(view);
@@ -78,11 +84,11 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
         'page-container desktop-shell-view-layer absolute inset-0 flex flex-col',
         extraClass,
         isActive
-          ? `${suppressEnterAnimation ? '' : 'desktop-shell-content-enter'} opacity-100 z-10 pointer-events-auto`
+          ? `${suppressEnterAnimation ? '' : navDirection === -1 ? 'desktop-shell-content-enter-rev' : 'desktop-shell-content-enter'} opacity-100 z-10 pointer-events-auto`
           : isBackdrop
           ? 'opacity-100 z-0 pointer-events-none'
           : exiting
-            ? 'desktop-shell-content-exit z-[9] pointer-events-none'
+            ? `${navDirection === -1 ? 'desktop-shell-content-exit-rev' : 'desktop-shell-content-exit'} z-[9] pointer-events-none`
             : 'opacity-0 z-0 pointer-events-none'
       )}
       style={{
@@ -108,6 +114,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
 
   if (prev.isBackdrop !== next.isBackdrop) return false;
   if (prev.suppressEnterAnimation !== next.suppressEnterAnimation) return false;
+  if (prev.navDirection !== next.navDirection) return false;
 
   const prevVisited = prev.visitedViews.has(prev.view);
   const nextVisited = next.visitedViews.has(next.view);
