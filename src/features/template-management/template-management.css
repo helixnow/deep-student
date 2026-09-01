@@ -211,13 +211,15 @@
   padding: 0;
 }
 
-/* 浏览内容使用独立边界，避免卡片贴住滚动视口，也让宽屏保持可扫描的内容宽度。 */
-.wb-tm-scroll-viewport {
+/* 浏览内容使用独立边界，避免卡片贴住滚动视口，也让宽屏保持可扫描的内容宽度。
+   注意：CustomScrollArea（OverlayScrollbars）会把视口内联 padding 归零，
+   内边距必须放在内容包装 .wb-tm-scroll-content 上（viewportClassName 上的 padding 不生效）。 */
+.wb-tm-scroll-content {
   padding: 20px clamp(20px, 2.2vw, 28px) 32px;
 }
 
-.wb-tm-scroll-viewport-mobile {
-  padding: 8px 12px calc(1rem + var(--mobile-safe-area-bottom, 0px));
+.wb-tm-scroll-content--mobile {
+  padding: 8px 16px calc(1rem + var(--mobile-safe-area-bottom, 0px));
 }
 
 /* 选择模式提示 */
@@ -1241,35 +1243,19 @@
 }
 
 /* ==== 移动端布局（通过 .mobile-layout 类控制）====
-   底部留手势导航安全区；卡片紧贴边缘、无左右边框 */
+   内容区由 .wb-tm-scroll-content--mobile 提供 16px 水平内边距，
+   卡片保持正常圆角/边框，不再贴边。 */
 .wb-tm-browser.mobile-layout {
   padding: 0;
 }
 
 .wb-tm-browser.mobile-layout .wb-tm-grid {
   grid-template-columns: 1fr;
-  gap: 0;
-}
-
-.wb-tm-browser.mobile-layout .wb-tm-card {
-  margin: 0;
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-}
-
-.wb-tm-browser.mobile-layout .wb-tm-card + .wb-tm-card {
-  border-top: none;
+  gap: 12px;
 }
 
 .wb-tm-browser.mobile-layout .wb-tm-list {
-  gap: 0;
-}
-
-.wb-tm-browser.mobile-layout .wb-tm-row {
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
+  gap: 12px;
 }
 
 .wb-tm-browser.mobile-layout .wb-tm-row + .wb-tm-row {

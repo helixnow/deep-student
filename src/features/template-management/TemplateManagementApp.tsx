@@ -156,14 +156,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             if (!leaveEditorGuardRef.current()) return;
             onBackToAnki?.();
           }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary max-lg:min-h-11 max-lg:min-w-11 max-lg:-my-2.5 max-lg:justify-center"
         >
           {tAnki('page_title')}
         </DsButton>
         <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
-        <span className="truncate max-w-[120px]">
+        <h1 className="truncate max-w-[120px] text-base font-semibold">
           {t('manager_title')}
-        </span>
+        </h1>
       </div>
     );
   }, [isSelectingMode, t, tAnki, onBackToAnki]);
@@ -1081,13 +1081,13 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         <CustomScrollArea
           key="browse-view"
           className="wb-tm-view flex-1 min-h-0"
-          viewportClassName={cn(
-            'wb-tm-scroll-viewport',
-            isSmallScreen && 'wb-tm-scroll-viewport-mobile',
-          )}
+          viewportClassName="h-full min-h-0 w-full min-w-0"
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
-          {(isSelectingMode || activeTab === 'browse') && browseContent}
+          {/* OverlayScrollbars 会把视口内联 padding 归零，内边距必须放在内容包装上 */}
+          <div className={cn('wb-tm-scroll-content', isSmallScreen && 'wb-tm-scroll-content--mobile')}>
+            {(isSelectingMode || activeTab === 'browse') && browseContent}
+          </div>
         </CustomScrollArea>
       )}
     </div>
