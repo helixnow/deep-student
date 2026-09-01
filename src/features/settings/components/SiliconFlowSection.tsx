@@ -1099,12 +1099,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           </DsButton>
         </div>
         {/* 简洁风格按钮 - 一键分配 */}
-        <DsButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
+        <DsButton variant="outline" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="!text-primary">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </DsButton>
         {/* 简洁风格按钮 - 清除 (右对齐) */}
-        <DsButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        <DsButton variant={confirmingClearApiKey ? 'danger' : 'outline'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : '!text-destructive'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')

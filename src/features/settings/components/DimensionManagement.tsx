@@ -526,11 +526,11 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             </div>
           </div>
         ) : dimensions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-lg bg-muted/5">
+          <div className="flex flex-col items-start justify-center py-12 px-4 border border-dashed rounded-lg bg-muted/5">
             <p className="text-sm text-muted-foreground/70 mb-2">
               {t('settings:dimension_management.no_data')}
             </p>
-            <p className="text-xs text-muted-foreground/50 mb-4 max-w-md px-4">
+            <p className="text-xs text-muted-foreground/50 mb-4 max-w-md">
               {t('settings:dimension_management.no_data_hint')}
             </p>
             <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">

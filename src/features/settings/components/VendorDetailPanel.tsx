@@ -441,7 +441,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
 
   if (!selectedVendor) {
     return (
-      <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-border/60 p-10 text-muted-foreground">
         {t('settings:vendor_panel.create_vendor_cta')}
       </div>
     );
@@ -1013,7 +1013,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 {!isCodexOAuthVendor && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
                   <DsButton
                     size="sm"
-                    variant="ghost"
+                    variant="outline"
                     className="min-h-11 flex-1 sm:min-h-0 sm:flex-none"
                     onClick={() => {
                       if (isSmallScreen) {
@@ -1110,7 +1110,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               data-wb-settings-model-count={selectedVendorModels.length}
             >
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
-                <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
+                <div className="rounded-lg border border-dashed border-border/60 p-8 text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
               ) : shouldVirtualizeModels ? (
                 <SettingsVirtualList
                   items={virtualModelItems}

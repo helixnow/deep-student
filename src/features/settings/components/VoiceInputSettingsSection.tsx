@@ -220,7 +220,7 @@ function StatusBar({
       </div>
       <DsButton
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={onRequestAccess}
         disabled={requestingAccess}
@@ -344,7 +344,7 @@ function HistoryEntryCard({
             ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
             : ''}
         </div>
-        <DsButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
+        <DsButton type="button" variant="outline" size="sm" onClick={() => onCopy(entry)}>
           <Copy size={14} />
           {copyLabel}
         </DsButton>
@@ -585,7 +585,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
           <>
             <DsButton
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => openSettingsTab('models')}
             >
@@ -594,7 +594,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             </DsButton>
             <DsButton
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => openSettingsTab('apis')}
             >
@@ -603,7 +603,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             </DsButton>
             <DsButton
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => openSettingsTab('statistics')}
             >
@@ -731,8 +731,9 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             historyEntries.length > 0 ? (
               <DsButton
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
+                className="!text-destructive"
                 onClick={() => void handleClearHistory()}
               >
                 <Trash size={14} />
@@ -831,7 +832,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               <div className="flex items-center gap-2">
                 <DsButton
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     void refreshSupport();

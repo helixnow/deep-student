@@ -307,9 +307,8 @@ export const PdfSettingsSection: React.FC = () => {
               { value: 'single', label: t('settings:pdf.defaultView.single') },
               { value: 'dual', label: t('settings:pdf.defaultView.dual') },
             ]}
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            variant="outline"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={80}
           />
         </SettingRow>

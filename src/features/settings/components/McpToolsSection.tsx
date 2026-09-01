@@ -1010,7 +1010,7 @@ function ServerEditPanel({
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
           <DsButton
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={onClose}
             disabled={isSaving}
@@ -1479,7 +1479,7 @@ function NewServerEditItem({
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
             <DsButton
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onCancel}
               disabled={isSubmitting}
@@ -1506,14 +1506,14 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
   const { t } = useTranslation(['settings']);
 
   return (
-    <div className="py-16 text-center">
-      <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+    <div className="py-16">
+      <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mb-4">
         <Plug className="w-6 h-6 text-muted-foreground/60" />
       </div>
       <p className="text-sm font-medium text-foreground mb-1">
         {t('settings:mcp_descriptions.no_mcp_configured')}
       </p>
-      <p className="text-xs text-muted-foreground mb-6 max-w-xs mx-auto leading-relaxed">
+      <p className="text-xs text-muted-foreground mb-6 max-w-xs leading-relaxed">
         {t('settings:mcp_descriptions.click_add_to_start')}
       </p>
       <DsButton
@@ -2314,7 +2314,7 @@ function ShellCommandRulesSection() {
             {t('settings:tool_permissions.shell_rules.desc')}
           </p>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs">
+        <DsButton variant="outline" size="sm" onClick={beginAdd} disabled={loading || saving}>
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('settings:tool_permissions.shell_rules.add')}
         </DsButton>
@@ -2417,8 +2417,8 @@ function ShellCommandRulesSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs">{t('common:cancel')}</DsButton>
-            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs">
+            <DsButton variant="outline" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }}>{t('common:cancel')}</DsButton>
+            <DsButton variant="primary" size="sm" onClick={() => void saveDraft()} disabled={saving}>
               {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
             </DsButton>
           </div>
@@ -2426,8 +2426,8 @@ function ShellCommandRulesSection() {
       )}
 
       {loading ? <div className="h-24 rounded-lg bg-muted/20 animate-pulse" /> : rules.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 py-6 text-center">
-          <CodeBlock className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
+        <div className="rounded-lg border border-dashed border-border/50 py-6 px-4">
+          <CodeBlock className="mb-2 h-5 w-5 text-muted-foreground/40" />
           <p className="text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.empty')}</p>
           <p className="mt-1 text-xs text-muted-foreground/80">{t('settings:tool_permissions.shell_rules.empty_hint')}</p>
         </div>
@@ -2451,13 +2451,13 @@ function ShellCommandRulesSection() {
             </span>
             {selectedRuleIds.size > 0 && (
               <div className="ml-auto flex flex-wrap items-center gap-1">
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')}>{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')}>{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
               </div>
             )}
           </div>
-          {filteredRules.length === 0 ? <div className="rounded-md border border-dashed border-border/50 py-5 text-center text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.no_matches')}</div> : (
+          {filteredRules.length === 0 ? <div className="rounded-md border border-dashed border-border/50 py-5 px-4 text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.no_matches')}</div> : (
             <div className="overflow-hidden rounded-lg border border-border/40 divide-y divide-border/30">
               {filteredRules.map(rule => {
                 const risk = assessShellCommandRuleRisk(rule);
@@ -3250,8 +3250,8 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
             )}
 
             {runtimeRoots.length === 0 ? (
-              <div className="text-center py-5 rounded-lg border border-dashed border-border/60 bg-muted/5">
-                <Lock className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
+              <div className="py-5 px-4 rounded-lg border border-dashed border-border/60 bg-muted/5">
+                <Lock className="h-5 w-5 text-muted-foreground/40 mb-2" />
                 <p className="text-xs text-muted-foreground">
                   {t('settings:tool_permissions.runtime_roots_empty')}
                 </p>
@@ -3413,8 +3413,8 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
             </div>
 
             {allTools.length === 0 ? (
-              <div className="text-center py-6 rounded-lg border border-dashed border-border/60 bg-muted/5">
-                <Shield className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
+              <div className="py-6 px-4 rounded-lg border border-dashed border-border/60 bg-muted/5">
+                <Shield className="h-6 w-6 text-muted-foreground/40 mb-2" />
                 <p className="text-xs text-muted-foreground">
                   {t('settings:tool_permissions.no_tools')}
                 </p>
@@ -3591,7 +3591,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                     )}
 
                     {filteredTools.length === 0 ? (
-                      <div className="py-8 text-center border border-dashed border-border/50 rounded-md text-xs text-muted-foreground">
+                      <div className="py-8 px-4 border border-dashed border-border/50 rounded-md text-xs text-muted-foreground">
                         {t('settings:tool_permissions.no_matching_tools')}
                       </div>
                     ) : (

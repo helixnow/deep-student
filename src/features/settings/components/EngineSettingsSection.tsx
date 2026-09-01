@@ -606,9 +606,8 @@ export const EngineSettingsSection: React.FC<{
                   { value: 'zhipu', label: t('settings:external_search.engine_options.zhipu'), disabled: !config.webSearchZhipuKey },
                   { value: 'bocha', label: t('settings:external_search.engine_options.bocha'), disabled: !config.webSearchBochaKey },
                 ]}
-                size="sm"
-                variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                variant="outline"
+                className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={140}
               />
             );

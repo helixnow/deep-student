@@ -429,7 +429,8 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
                 <DsButton
                   type="button"
                   size="sm"
-                  variant="danger"
+                  variant="outline"
+                  className="!text-destructive"
                   onClick={() => {
                     setForceClearApiKey(true);
                     setFormData(prev => ({ ...prev, apiKey: '' }));

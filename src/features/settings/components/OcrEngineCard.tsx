@@ -335,7 +335,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               </div>
             ))
           ) : (
-            <div className="mx-1 my-1.5 py-3 px-2 text-center">
+            <div className="mx-1 my-1.5 py-3 px-2">
               <p className="text-xs text-muted-foreground/60">{t('settings:ocr.no_engines')}</p>
               <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">
                 {t('settings:ocr.siliconflow_hint')}
@@ -377,7 +377,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
         {!loading && (
           <div className="flex items-center justify-between px-1 pt-1 border-t border-border/20">
             <div className="flex items-center gap-2">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowAddDialog(true)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-xs text-primary/70 hover:text-primary">
+              <DsButton variant="outline" size="sm" onClick={() => setShowAddDialog(true)} className="text-primary">
                 + {t('settings:ocr.add_engine')}
               </DsButton>
               {enabledCount > 1 && (
@@ -388,7 +388,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             </div>
 
             {engines.length >= 1 && (
-              <DsButton variant="ghost" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-xs text-muted-foreground/60 hover:text-foreground">
+              <DsButton variant="outline" size="sm" onClick={() => setShowTestPanel(!showTestPanel)}>
                 {showTestPanel ? t('settings:ocr.collapse_test') : (engines.length >= 2 ? t('settings:ocr.engine_comparison_test') : t('settings:ocr.engine_test'))}
               </DsButton>
             )}
@@ -414,7 +414,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               popoverClassName="w-[280px]"
             />
             {multimodalModels.length === 0 && (
-              <p className="text-xs text-muted-foreground/50 py-1 text-center">
+              <p className="text-xs text-muted-foreground/50 py-1">
                 {t('settings:ocr.no_multimodal_available')}
               </p>
             )}

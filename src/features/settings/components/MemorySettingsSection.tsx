@@ -209,10 +209,10 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     return (
       <div>
         {!embedded && <GroupTitle title={t('settings:memory.title')} />}
-        <div className="flex flex-col items-center justify-center py-6 gap-2">
+        <div className="flex flex-col items-start justify-center py-6 gap-2">
           <WarningCircle size={24} className="text-destructive/60" />
           <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
-          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-primary">
+          <DsButton variant="outline" size="sm" onClick={loadData}>
             <ArrowClockwise size={14} />
             {t('common:retry')}
           </DsButton>
@@ -271,14 +271,13 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 ? [{ value: '_empty', label: t('settings:memory.noFolders'), disabled: true }]
                 : folders.map((folder) => ({ value: folder.id, label: folder.path }))
               }
-              size="sm"
-              variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              variant="outline"
+              className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={160}
             />
 
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => setShowCreateInput(!showCreateInput)}
               disabled={saving}
@@ -342,9 +341,8 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               { value: '偏好', label: t('settings:memory.categoryPreference') },
               { value: '经历', label: t('settings:memory.categoryExperience') },
             ]}
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            variant="outline"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={120}
           />
         </SettingRow>
@@ -370,9 +368,8 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               { value: 'balanced', label: t('settings:memory.freqBalanced') },
               { value: 'aggressive', label: t('settings:memory.freqAggressive') },
             ]}
-            size="sm"
-            variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            variant="outline"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={120}
           />
         </SettingRow>

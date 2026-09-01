@@ -798,7 +798,7 @@ export const SubagentProfilesSection: React.FC = () => {
       actions={headerActions}
     >
       {!isTauri ? (
-        <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
           {t('settings:subagentProfiles.errors.desktop_only')}
         </p>
       ) : error ? (
@@ -810,7 +810,7 @@ export const SubagentProfilesSection: React.FC = () => {
             <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="break-words">{error}</span>
           </span>
-          <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={() => void load()}>
+          <DsButton variant="outline" size="sm" className="min-h-11 sm:min-h-0" onClick={() => void load()}>
             {t('settings:subagentProfiles.actions.retry')}
           </DsButton>
         </div>
@@ -856,12 +856,12 @@ export const SubagentProfilesSection: React.FC = () => {
           </div>
 
           {customFiles.length === 0 && expandedId !== 'create' && (
-            <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
-              <Robot className="mx-auto h-7 w-7 text-muted-foreground" aria-hidden="true" />
+            <div className="rounded-md border border-dashed border-border px-4 py-8">
+              <Robot className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
               <h3 className="mt-3 text-sm font-medium text-foreground">
                 {t('settings:subagentProfiles.empty.title')}
               </h3>
-              <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+              <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:subagentProfiles.empty.description')}
               </p>
               <DsButton variant="primary" size="sm" className="mt-4" onClick={openCreate}>

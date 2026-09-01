@@ -348,7 +348,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           {t('data:governance.archive_loading')}
         </div>
       ) : !hasArchivedItems ? (
-        <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/10 px-4 text-center">
+        <div className="flex min-h-40 flex-col items-start justify-center rounded-lg border border-dashed border-border/60 bg-muted/10 px-4 py-6">
           <Archive size={32} className="mb-3 text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">{t('data:governance.archive_empty_state')}</p>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">

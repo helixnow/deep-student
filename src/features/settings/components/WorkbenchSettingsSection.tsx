@@ -542,9 +542,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 saveWallpaper({ kind: 'theme', value });
               }}
               options={presetOptions}
-              size="sm"
-              variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              variant="outline"
+              className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={100}
             />
           ) : (

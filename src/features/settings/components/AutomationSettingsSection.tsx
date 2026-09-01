@@ -392,7 +392,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
+        <DsButton variant="outline" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
         </DsButton>
         <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={() => void handleSubmit()}>
@@ -742,7 +742,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
+              <DsButton size="sm" variant="outline" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton
@@ -976,7 +976,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               <span className="break-words">{displayError}</span>
             </span>
             <DsButton
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => {
                 setActionError(null);
@@ -996,7 +996,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
       </div>
 
       {desktopUnavailable ? (
-        <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
           {t('settings:automation.errors.desktop_only')}
         </p>
       ) : (
@@ -1068,7 +1068,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                   <div className="flex items-center gap-2">
                     <DsButton
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       onClick={() => setConfirmingBackgroundOff(false)}
                       className="min-h-11 sm:min-h-0"
                     >
@@ -1119,10 +1119,10 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               ))}
             </div>
           ) : displayError && rows.length === 0 ? null : rows.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border px-4 py-10 text-center">
-              <Robot className="mx-auto h-7 w-7 text-muted-foreground" aria-hidden="true" />
+            <div className="rounded-md border border-dashed border-border px-4 py-10">
+              <Robot className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
               <h3 className="mt-3 text-sm font-medium text-foreground">{t('settings:automation.empty.title')}</h3>
-              <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
+              <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:automation.empty.description')}
               </p>
               <DsButton
