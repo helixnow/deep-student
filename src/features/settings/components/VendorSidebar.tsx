@@ -265,7 +265,7 @@ export const VendorSidebar: React.FC = () => {
         {vendorBusy && sortedVendors.length === 0 ? (
           <VendorSidebarSkeleton />
         ) : sortedVendors.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground bg-muted/10">
+          <div className="rounded-2xl bg-muted p-4 text-sm text-muted-foreground">
             <div>{t('settings:vendor_panel.empty_vendors')}</div>
             <div className="mt-1 text-xs">{t('settings:vendor_panel.empty_vendors_desc')}</div>
           </div>
@@ -279,7 +279,7 @@ export const VendorSidebar: React.FC = () => {
               }}
             >
               {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5">
+                <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5 rounded-2xl bg-muted p-1.5">
                   {displayVendors.map((vendor, index) => (
                     // P1-8 触屏禁拖：整行拖拽在触屏上与滚动/点按冲突，小屏直接关闭拖拽排序
                     <Draggable key={vendor.id} draggableId={vendor.id} index={index} isDragDisabled={isSmallScreen}>

@@ -207,7 +207,7 @@ function StatItem({
   };
 
   return (
-    <div className="p-3 bg-muted/30 rounded-lg border border-transparent hover:border-border/40 transition-colors">
+    <div className="p-2 transition-colors">
       <div className="text-xs text-muted-foreground mb-1">{label}</div>
       <div className="flex items-center gap-2">
         {status && (
@@ -3800,7 +3800,7 @@ export function McpToolsSection({
     <SettingSection title={t('settings:tabs.mcp_tools')} description={t('settings:mcp_descriptions.section_description')} hideHeader className="min-w-0 max-w-full" contentClassName="min-w-0 max-w-full">
       <div className="min-w-0 max-w-full space-y-6">
         {/* 概览统计 - 紧凑的网格布局 */}
-        <div className="grid min-w-0 gap-4 grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
+        <div className="grid min-w-0 gap-3 grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0 rounded-2xl bg-muted p-3">
           <StatItem
             label={t('settings:mcp_server_list.connection_status')}
             value={`${connectedServers} / ${totalServers}`}
@@ -3812,7 +3812,7 @@ export function McpToolsSection({
             suffix={`/ ${cacheCapacity}`}
             status={totalCachedTools > 0 ? 'success' : 'neutral'}
           />
-          <div className="p-3 bg-muted/30 rounded-lg border border-transparent hover:border-border/40 transition-colors">
+          <div className="p-2 transition-colors">
             <div className="text-xs text-muted-foreground mb-1">{t('settings:mcp_server_list.prompts_resources')}</div>
             <div className="flex items-center gap-3">
               <div>
@@ -3826,7 +3826,7 @@ export function McpToolsSection({
               </div>
             </div>
           </div>
-          <div className="p-3 bg-muted/30 rounded-lg border border-transparent hover:border-border/40 transition-colors">
+          <div className="p-2 transition-colors">
             <div className="text-xs text-muted-foreground mb-1">{t('settings:mcp_server_list.cache_update_time')}</div>
             <div className="text-sm font-medium text-foreground truncate mt-1">
               {formatDateTime(lastCacheUpdatedAt)}
@@ -3846,7 +3846,7 @@ export function McpToolsSection({
 
         {/* 操作栏 */}
         <div className="flex min-w-0 flex-col items-stretch gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <h3 className="text-base font-medium text-foreground flex-shrink-0">{t('settings:mcp_server_list.server_list')}</h3>
+          <h3 className="text-base font-semibold text-foreground flex-shrink-0">{t('settings:mcp_server_list.server_list')}</h3>
           <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:gap-2 lg:w-auto lg:justify-end">
             <ActionMenu
               onReconnect={onReconnect}
@@ -3884,7 +3884,7 @@ export function McpToolsSection({
         {/* 服务器列表 */}
         <div className="space-y-2">
           {totalServers === 0 && !isAddingNew ? (
-            <div className="rounded-lg border border-dashed border-border/60 bg-muted/5">
+            <div className="rounded-2xl bg-muted">
               <EmptyServerList onAdd={() => {
                 // 移动端空态 CTA 同样走右滑面板（与顶栏 + 同一入口）
                 if (isSmallScreen && onCreateServer) { onCreateServer(); return; }
