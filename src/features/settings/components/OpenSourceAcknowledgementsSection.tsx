@@ -203,18 +203,18 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
   const legalEntryButtons = (
     <>
       <DsButton
-        variant="ghost"
+        variant="outline"
         size="sm"
-        className="flex-1 justify-center"
+        className="flex-1"
         onClick={() => void openLegalDocument('project')}
       >
         <FileText size={14} />
         {t('acknowledgements.openSource.projectLicense')}
       </DsButton>
       <DsButton
-        variant="ghost"
+        variant="outline"
         size="sm"
-        className="flex-1 justify-center"
+        className="flex-1"
         onClick={() => void openLegalDocument('thirdParty')}
       >
         <ListChecks size={14} />
@@ -252,7 +252,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       {/* 移动端：About 页内联展开（P1-9）；桌面端保留 Dialog */}
       {isSmallScreen ? (
         open && (
-          <div className="desktop-shell-content-enter mb-4 space-y-3 rounded-2xl border border-border/40 bg-background p-3">
+          <div className="desktop-shell-content-enter mb-4 space-y-3 rounded-2xl bg-muted p-3">
             {legalDocument ? (
               <>
                 <div className="space-y-1 px-1">
@@ -265,9 +265,8 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 </div>
                 {legalBody}
                 <DsButton
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="w-full min-h-11 justify-center"
                   onClick={() => setLegalDocument(null)}
                 >
                   <ArrowLeft size={14} />

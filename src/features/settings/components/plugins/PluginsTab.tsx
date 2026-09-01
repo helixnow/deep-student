@@ -200,7 +200,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               {plugin.blurb}
             </p>
           </div>
-          <DsButton variant="ghost" size="sm" onClick={onBack}>
+          <DsButton variant="outline" size="sm" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-1" />
             {t('settings:plugins.back_to_list')}
           </DsButton>
@@ -257,7 +257,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                 })}
               </p>
               <DsButton
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 disabled={busy}
                 onClick={async () => {
@@ -300,8 +300,9 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               <div className="px-1 py-2.5">
                 <DsButton
                   size="sm"
-                  variant="danger"
+                  variant="outline"
                   disabled={busy}
+                  className="!text-destructive"
                   onClick={() => setUnbindOpen(true)}
                 >
                   {t('settings:plugins.rebind')}
@@ -557,7 +558,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                       />
                     </div>
                     <DsButton
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       className="gap-1.5 text-foreground/80"
                       onClick={() => setSelectedId(p.id)}
