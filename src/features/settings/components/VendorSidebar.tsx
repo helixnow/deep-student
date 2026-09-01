@@ -190,9 +190,9 @@ export const VendorSidebar: React.FC = () => {
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
           // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
-          // P1-8 触控目标：小屏行高提升到 44px
-          isSmallScreen ? 'min-h-11' : 'min-h-[32px]',
-          'rounded-[var(--shell-nav-row-radius,14px)] text-sm',
+          // P1-8 触控目标：小屏行高提升到 44px；小屏字号同步放大到 16px（可读性）
+          isSmallScreen ? 'min-h-11 text-base' : 'min-h-[32px] text-sm',
+          'rounded-[var(--shell-nav-row-radius,14px)]',
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
       >
@@ -242,21 +242,24 @@ export const VendorSidebar: React.FC = () => {
   return (
     <div className="space-y-3 w-full min-w-0 pr-0 md:border-r md:border-border/40 md:pr-6 md:sticky md:top-4 md:self-start">
       <div className="w-full">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="text-sm font-medium text-foreground">
-            {t('settings:vendor_panel.list_title')}
+        {/* 移动端：标题与新建按钮已收进统一顶栏（Settings.tsx rightActions），页内不再重复 */}
+        {!isSmallScreen && (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-sm font-medium text-foreground">
+              {t('settings:vendor_panel.list_title')}
+            </div>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={() => handleOpenVendorModal(null)}
+              title={t('settings:vendor_panel.add_vendor_button')}
+              aria-label={t('settings:vendor_panel.add_vendor_button')}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </DsButton>
           </div>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={() => handleOpenVendorModal(null)}
-            title={t('settings:vendor_panel.add_vendor_button')}
-            aria-label={t('settings:vendor_panel.add_vendor_button')}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </DsButton>
-        </div>
+        )}
 
         {/* 加载态 skeleton */}
         {vendorBusy && sortedVendors.length === 0 ? (

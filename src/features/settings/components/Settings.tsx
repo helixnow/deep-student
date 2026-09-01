@@ -32,6 +32,8 @@ import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { openUrl } from '@/utils/urlOpener';
+import { getProviderWebsiteUrl } from './VendorDetailPanel';
 import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import '@/command-palette/styles/shortcut-settings.css';
 import { AppMenuDemo } from '@/components/ui/app-menu';
@@ -110,6 +112,7 @@ import {
   Trash,
   Check,
   ArrowCounterClockwise,
+  ArrowSquareOut,
   Info as InfoIcon,
   Stack,
   MagnifyingGlass,
@@ -648,6 +651,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     } else if (mobileNavView === 'content') {
       if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
         text = selectedVendor.name || activeNavItem?.label || t('settings:title');
+      } else if (activeTab === 'apis') {
+        // 供应商列表态：页内「供应商列表」标题上收进顶栏（页内不再重复渲染）
+        text = t('settings:vendor_panel.list_title');
       } else {
         text = activeNavItem?.label ?? t('settings:title');
       }
@@ -676,6 +682,38 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   ), [settingsBreadcrumbText]);
 
   const settingsHeaderRightActions = useMemo(() => {
+    // 供应商详情态：官网入口收进顶栏右侧（页内名称行已随标题上收而移除）
+    if (
+      isSmallScreen
+      && screenPosition !== 'right'
+      && mobileNavView === 'content'
+      && activeTab === 'apis'
+      && mobileVendorDetailOpen
+      && selectedVendor
+    ) {
+      const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
+      if (websiteUrl) {
+        return (
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => void openUrl(websiteUrl)} title={t('settings:vendor_panel.open_website')} aria-label={t('settings:vendor_panel.open_website')} className="!h-11 !w-11 text-primary">
+            <ArrowSquareOut size={20} />
+          </DsButton>
+        );
+      }
+    }
+    // 供应商列表态：新建供应商入口收进顶栏（页内标题行随之移除）
+    if (
+      isSmallScreen
+      && screenPosition !== 'right'
+      && mobileNavView === 'content'
+      && activeTab === 'apis'
+      && !mobileVendorDetailOpen
+    ) {
+      return (
+        <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleOpenVendorModal(null)} title={t('settings:vendor_panel.add_vendor_button')} aria-label={t('settings:vendor_panel.add_vendor_button')} className="!h-11 !w-11 text-primary">
+          <Plus size={20} />
+        </DsButton>
+      );
+    }
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
@@ -703,7 +741,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       );
     }
     return undefined;
-  }, [screenPosition, rightPanelType, t]);
+  }, [screenPosition, rightPanelType, t, isSmallScreen, mobileNavView, activeTab, mobileVendorDetailOpen, handleOpenVendorModal, selectedVendor]);
 
   // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
   const showSettingsBackArrow = true;

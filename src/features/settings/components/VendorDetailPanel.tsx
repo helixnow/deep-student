@@ -236,7 +236,7 @@ const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
   return vendor.name || providerLabel;
 };
 
-const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
+export const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
   if (!providerType) return null;
   const map: Record<string, string> = {
     siliconflow: 'https://cloud.siliconflow.cn/i/deadXN1B',
@@ -747,6 +747,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
       <div className="w-full">
         <div className="mb-5 flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            {/* 移动端顶栏已显示供应商名（Settings.tsx 面包屑），页内名称行不再重复 */}
+            {!isSmallScreen && (
             <div className="flex items-center gap-2 min-w-0">
               {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
               {isCodexOAuthVendor && (
@@ -785,21 +787,25 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 ) : null;
               })()}
             </div>
-            {!isCodexOAuthVendor && <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            )}
+            {!isCodexOAuthVendor && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              {/* 移动端：官网入口在统一顶栏右侧（Settings.tsx rightActions） */}
               {isEditingVendor ? (
                 <>
                   <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
-                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
+                  {/* 移动端去纯色大按钮：描边+主色文字，桌面保持实心 primary */}
+                  <DsButton size="sm" variant={isSmallScreen ? 'outline' : 'primary'} className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && 'text-primary')} onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
                 </>
               ) : (
                 <>
-                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
+                  <DsButton size="sm" variant={isSmallScreen ? 'outline' : 'ghost'} className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
                   {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
                     // 桌面：确认对话框；移动端：行内二次确认（P0-5），删除后回到供应商列表屏
+                    // 移动端去纯色大按钮：待命态描边+危险色文字，armed（确认删除）态保持实心红强调最终破坏动作
                     <DsButton
                       size="sm"
-                      variant="danger"
-                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
+                      variant={isSmallScreen && confirmingDelete?.type !== 'vendor' ? 'outline' : 'danger'}
+                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && confirmingDelete?.type !== 'vendor' && '!text-destructive', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
                       onClick={() => {
                         if (!isSmallScreen) {
                           handleDeleteVendor(selectedVendor);
@@ -1020,7 +1026,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     {t('settings:vendor_panel.fetch_models_button')}
                   </DsButton>
                 )}
-                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => {
+                {/* 移动端去纯色大按钮：描边+主色文字，桌面保持实心 primary */}
+                <DsButton size="sm" variant={isSmallScreen ? 'outline' : 'primary'} className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && 'text-primary')} onClick={() => {
                   if (usePanelModelEditor) {
                     if (isAddingNewModel) handleCancelAddModel();
                     setInlineEditState(null);

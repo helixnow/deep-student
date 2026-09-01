@@ -7,6 +7,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, FloppyDisk, Spinner, Trash, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { cn } from '@/lib/utils';
 import type { VendorConfig } from '@/types';
 import { ApiKeyField } from './ApiKeyField';
 import { normalizePastedApiKey } from '../utils/apiKeyValidation';
@@ -28,6 +30,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   showMessage,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -308,9 +311,11 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <span>{saveStatus === 'dirty' && pasted ? t('settings:vendor_panel.api_key_pasted_ready') : statusText}</span>
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
+        {/* 移动端去纯色大按钮：描边+彩色文字，桌面保持实心；清除的 armed 确认态保持实心红 */}
         <DsButton
-          variant="primary"
+          variant={isSmallScreen ? 'outline' : 'primary'}
           size="sm"
+          className={cn(isSmallScreen && 'text-primary')}
           onClick={() => {
             void handleSaveApiKey();
           }}
@@ -321,8 +326,9 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           {t('settings:vendor_panel.save_api_key')}
         </DsButton>
         <DsButton
-          variant="danger"
+          variant={isSmallScreen && !confirmingClear ? 'outline' : 'danger'}
           size="sm"
+          className={cn(isSmallScreen && !confirmingClear && '!text-destructive')}
           onClick={handleClearApiKey}
           disabled={!canClearStoredKey}
           title={t('settings:vendor_panel.clear_api_key_title')}
