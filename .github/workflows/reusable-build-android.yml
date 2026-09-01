@@ -48,7 +48,7 @@ jobs:
     # Pin the mature hosted image: ubuntu-latest/24.04 repeatedly terminated
     # the runner service mid-build even after the Android Rust errors were fixed.
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    timeout-minutes: 210
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
@@ -320,7 +320,7 @@ jobs:
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
           set +e
-          echo "Starting Android build with 120 minute timeout"
+          echo "Starting Android build with 165 minute timeout"
           # WI-4: dist 预构建时不能把 beforeBuildCommand 直接置空 ——
           # tauri android build 在运行 hook 之前会先用 tauri.conf.json 的
           # 静态 versionCode 重写 gen/android/app/tauri.properties
@@ -343,13 +343,13 @@ jobs:
           # 编译负担最重的依赖树。lean_recovery 不再切换 feature 集
           # （此前为 android-release）：应急重建只该改 cargo profile（见 job env），
           # 不该静默产出功能集不同的 APK。
-          timeout --signal=TERM --kill-after=60s 120m \
+          timeout --signal=TERM --kill-after=60s 165m \
             npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features mobile-slim
           status=$?
           set -e
 
           if [ "$status" -eq 124 ]; then
-            echo "::error::Android build timed out after 120 minutes"
+            echo "::error::Android build timed out after 165 minutes"
           elif [ "$status" -ne 0 ]; then
             echo "::error::Android build failed with exit code ${status}"
           fi
