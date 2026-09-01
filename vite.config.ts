@@ -342,6 +342,13 @@ export default defineConfig(({ command, mode }) => ({
     target: 'esnext', // 支持 top-level await 和其他现代 ES 特性
     rollupOptions: {
       external: [],
+      // MPA：demo.html 为纯浏览器演示壳入口（src/demo/main.tsx），
+      // 不依赖 Tauri 后端；dev 下直接访问 /demo.html，build 时显式产出。
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
+        "preview-charts": fileURLToPath(new URL("./preview-charts.html", import.meta.url)),
+      },
       output: {
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk
         // 大库（mermaid / exceljs / echarts / recharts / xyflow）多为路由级 lazy 或按需动态 import；

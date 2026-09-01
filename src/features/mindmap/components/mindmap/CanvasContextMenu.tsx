@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Z_INDEX } from '@/config/zIndex';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import {
   Plus,
   Pencil,
@@ -75,7 +76,7 @@ const MENU_SHELL_CLASS = cn(
   'border border-[var(--menu-shell-border)] bg-[var(--menu-shell-surface)]',
   'text-[var(--menu-shell-foreground)] shadow-[var(--menu-shell-shadow)]',
   '[backdrop-filter:var(--menu-shell-backdrop-filter)]',
-  'ui-zoom-fade-in outline-none',
+  'ui-zoom-fade-in ui-zoom-fade-out outline-none',
 );
 
 /** 键盘导航可达的菜单项标记（MenuItem / 格式按钮 / 色板都会带上） */
@@ -205,6 +206,10 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const prefersReducedMotion = useReducedMotion();
   /** 钳位后的最终坐标；null = 尚未测量（隐藏渲染，避免越界闪跳） */
   const [coords, setCoords] = useState<{ left: number; top: number } | null>(null);
+  const presence = useMotionPresence(isOpen, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   useEffect(() => {
     if (!isOpen || !isMindMapActive) return;
@@ -296,10 +301,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
   // 越界钳位：渲染后同步测量，定位完成前保持不可见，避免第一帧闪跳
   useLayoutEffect(() => {
-    if (!isOpen) {
-      setCoords(null);
-      return;
-    }
+    if (!isOpen) return;
     const menu = menuRef.current;
     if (!menu) return;
     const rect = menu.getBoundingClientRect();
@@ -343,7 +345,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
     visibility: coords ? 'visible' : 'hidden',
   };
 
-  if (!isOpen) return null;
+  if (!presence.mounted) return null;
+  const menuDataState = presence.exiting ? 'closed' : 'open';
 
   if (isAssociationMenu && association) {
     return createPortal(
@@ -353,6 +356,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         tabIndex={-1}
         aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
         className={MENU_SHELL_CLASS}
+        data-state={menuDataState}
+        aria-hidden={presence.exiting || undefined}
         viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
         fullHeight={false}
         style={menuStyle}
@@ -385,6 +390,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         tabIndex={-1}
         aria-label={t('contextMenu.paneMenuLabel', { defaultValue: '画布菜单' })}
         className={MENU_SHELL_CLASS}
+        data-state={menuDataState}
+        aria-hidden={presence.exiting || undefined}
         viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
         fullHeight={false}
         style={menuStyle}
@@ -454,6 +461,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       tabIndex={-1}
       aria-label={t('contextMenu.nodeMenuLabel', { defaultValue: '节点菜单' })}
       className={MENU_SHELL_CLASS}
+      data-state={menuDataState}
+      aria-hidden={presence.exiting || undefined}
       viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
       fullHeight={false}
       style={menuStyle}

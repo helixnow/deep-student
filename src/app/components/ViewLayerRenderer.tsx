@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { CurrentView } from '@/types/navigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ViewErrorFallback } from '@/components/ViewErrorFallback';
+import { prefersReducedMotion } from '@/styles/motion-springs';
+import { readCssDurationMs } from '@/hooks/useMotionPresence';
 
 export interface ViewLayerRendererProps {
   view: CurrentView;
@@ -14,7 +16,7 @@ export interface ViewLayerRendererProps {
   errorBoundaryName?: string;
   /** Keep the view visible as a non-interactive backdrop while settings is open. */
   isBackdrop?: boolean;
-  /** Avoid replaying the page-enter animation when a sheet returns to this view. */
+  /** Skip the enter animation once (legacy; prefer paired enter/exit). */
   suppressEnterAnimation?: boolean;
 }
 
@@ -29,7 +31,31 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   isBackdrop = false,
   suppressEnterAnimation = false,
 }: ViewLayerRendererProps) {
-  if (!visitedViews.has(view)) {
+  const isActive = currentView === view;
+  const visited = visitedViews.has(view);
+  const [exiting, setExiting] = useState(false);
+  const wasActiveRef = useRef(isActive);
+
+  useEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = isActive;
+    if (wasActive && !isActive && !isBackdrop) {
+      if (prefersReducedMotion()) {
+        setExiting(false);
+        return;
+      }
+      setExiting(true);
+      const ms = readCssDurationMs('--page-slide-dur', 200);
+      const timer = window.setTimeout(() => setExiting(false), ms);
+      return () => window.clearTimeout(timer);
+    }
+    if (isActive) {
+      setExiting(false);
+    }
+    return undefined;
+  }, [isActive, isBackdrop]);
+
+  if (!visited) {
     return null;
   }
 
@@ -43,8 +69,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
       {children}
     </ErrorBoundary>
   ) : children;
-  const isActive = currentView === view;
-  const isVisible = isActive || isBackdrop;
+  const isVisible = isActive || isBackdrop || exiting;
 
   return (
     <div
@@ -52,14 +77,13 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
       className={cn(
         'page-container desktop-shell-view-layer absolute inset-0 flex flex-col',
         extraClass,
-        // 入场动画类仅挂在激活层：非激活时移除，再次激活时重新挂上即可重播一次
-        // CSS animation（样式见 shared/styles/app.css 的 .desktop-shell-content-enter）。
-        // 离场层不做动画，visibility:hidden 同帧生效是刻意行为。
         isActive
           ? `${suppressEnterAnimation ? '' : 'desktop-shell-content-enter'} opacity-100 z-10 pointer-events-auto`
           : isBackdrop
           ? 'opacity-100 z-0 pointer-events-none'
-          : 'opacity-0 z-0 pointer-events-none'
+          : exiting
+            ? 'desktop-shell-content-exit z-[9] pointer-events-none'
+            : 'opacity-0 z-0 pointer-events-none'
       )}
       style={{
         position: 'absolute',
@@ -78,7 +102,6 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
     </div>
   );
 }, (prev, next) => {
-  // 仅在可见性状态、子树引用或样式发生变化时才重新渲染
   const prevActive = prev.currentView === prev.view;
   const nextActive = next.currentView === next.view;
   if (prevActive !== nextActive) return false;

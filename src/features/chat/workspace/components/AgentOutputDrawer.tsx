@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretRight, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight, Timer, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
@@ -442,22 +443,23 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       )}
 
       {/* 🔧 核心修复：使用 ChatContainer 渲染完整聊天视图（与主代理完全相同） */}
-      {isExpanded && (
-        <div
-          className={cn(
-            // 高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围
-            "ui-fade-in border-t border-border/50 overflow-hidden transition-[height] duration-200",
-            isFullHeight ? "h-[min(500px,70vh)]" : "h-[min(280px,45vh)]"
-          )}
-        >
+      <UiPresence
+        open={isExpanded}
+        inClass="ui-fade-in"
+        outClass="ui-fade-out"
+        exitMs={200}
+        className={cn(
+          'border-t border-border/50 overflow-hidden transition-[height] duration-200',
+          isFullHeight ? 'h-[min(500px,70vh)]' : 'h-[min(280px,45vh)]',
+        )}
+      >
           <ChatContainer
             key={agentSessionId}
             sessionId={agentSessionId}
             showInputBar={false}
             className="h-full"
           />
-        </div>
-      )}
+      </UiPresence>
 
       {/* 底部元信息 */}
       <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">

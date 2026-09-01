@@ -261,9 +261,8 @@
  * - .ui-press（纯 CSS 按压反馈；原 usePressable hook 已移除）→ --m-press-*
  * - .ui-press-coarse（仅 coarse 指针生效的按压反馈；共享按钮 primitive
  *   经 buttonPrimitiveContract 统一接入）→ --m-press-*
- * - 移动端页面推入过渡 → --m-page-push-*（保留备用：现行移动视图切换
- *   已由 app.css 的 mobile-shell-content-enter / --page-slide-* 承担，
- *   新增独立推入场景时优先消费本组 token，勿再新造字面量）
+ * - 移动端页面推入过渡 → --m-page-push-*（与 --page-slide-* 对齐，由
+ *   app.css 的 mobile-shell-content-enter/exit 消费 --page-slide-*）
  * - .ui-slide-up-panel / 底部内联面板 → --m-sheet-*
  * - .todo-swipe-hint-content（触屏行滑动手势首次提示）→ --m-swipe-hint-*，
  *   其他有行级滑动手势的域（如 chat/notes 列表）可复用同组 token
@@ -280,9 +279,9 @@
   --m-press-scale: 0.97;
   --m-press-ease: var(--ease-standard);
 
-  /* 移动端页面推入/推出（导航层级切换） */
-  --m-page-push-dur: 220ms;
-  --m-page-push-ease: var(--ease-standard);
+  /* 移动端页面推入/推出（导航层级切换，与 --page-slide-* 同一档） */
+  --m-page-push-dur: var(--page-slide-dur);
+  --m-page-push-ease: var(--page-slide-ease);
 
   /* 底部内联面板（非全屏 sheet）上滑入场 */
   --m-sheet-dur: 260ms;

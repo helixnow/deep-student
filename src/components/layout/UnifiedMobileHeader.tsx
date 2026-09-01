@@ -1,8 +1,7 @@
 /**
  * UnifiedMobileHeader - 统一的移动端顶部导航栏
  *
- * 在 App.tsx 级别渲染，从 MobileHeaderContext 读取配置
- * 提供统一的返回按钮（使用全局历史导航）
+ * 嵌在页面滑动轨道的主栏里，跟着原页面一起平移，而不是 fixed 盖住侧栏。
  */
 
 import React from 'react';
@@ -11,8 +10,10 @@ import { cn } from '@/lib/utils';
 import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
-import { useMobileHeaderContextSafe } from './MobileHeaderContext';
+import { useMobileHeaderContextSafe, useMobileHeaderNav } from './MobileHeaderContext';
+import { useMobileLayoutSafe } from './MobileLayoutContext';
 import { isMobilePlatform } from '@/utils/platform';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 export interface UnifiedMobileHeaderProps {
   /** 是否可以返回（有历史记录） */
@@ -54,9 +55,15 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
     suppressGlobalBackButton: false,
   };
 
-  if (config.hidden) {
-    return null;
-  }
+  const hideChrome = !!config.hidden;
+  const chrome = useMotionPresence(!hideChrome, {
+    exitMs: readCssDurationMs('--panel-close-dur', 350),
+    enter: 'transition',
+  });
+  const chromeMotionClass = cn(
+    'transition-opacity duration-[var(--panel-close-dur,350ms)] ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none',
+    !chrome.shown && 'opacity-0 pointer-events-none',
+  );
 
   // 决定左侧显示什么按钮：
   // 1. showBackArrow 优先 - 显示返回箭头（使用 onMenuClick 回调）
@@ -72,12 +79,17 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   const showForwardButton =
     showGlobalNavigation && Boolean(onForward) && (showBackButton || canGoForward);
 
+  if (!chrome.mounted) {
+    return null;
+  }
+
   if (config.floatingMenuButton && showMenuButton) {
     return (
       <div
         data-mobile-shell="floating-sidebar-trigger"
         className={cn(
-          "pointer-events-none flex w-full items-start justify-start px-3",
+          "pointer-events-none flex w-full items-start justify-between px-3",
+          chromeMotionClass,
           className
         )}
         style={{
@@ -97,6 +109,13 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         >
           <List size={21} weight="regular" />
         </DsButton>
+        {config.rightActions ? (
+          <div className="pointer-events-auto flex shrink-0 items-center" data-no-drag>
+            {config.rightActions}
+          </div>
+        ) : (
+          <span className="min-w-[var(--touch-target-size)]" aria-hidden />
+        )}
       </div>
     );
   }
@@ -112,6 +131,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         "flex w-full flex-shrink-0 items-center gap-2 px-3",
         // 样式 — 不用 backdrop-blur，避免与下方工具栏/遮罩叠出「顶栏阴影」
         "mobile-shell-header border-b border-transparent bg-transparent shadow-none",
+        chromeMotionClass,
         className
       )}
       style={{
@@ -202,6 +222,33 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         {config.rightActions}
       </div>
     </header>
+  );
+};
+
+/** 页内顶栏：读 App 注入的返回/前进，跟主栏一起滑，不盖侧栏。 */
+export const MobileInFlowHeader: React.FC = () => {
+  const nav = useMobileHeaderNav();
+  return (
+    <UnifiedMobileHeader
+      canGoBack={nav?.canGoBack}
+      onBack={nav?.onBack}
+      canGoForward={nav?.canGoForward}
+      onForward={nav?.onForward}
+      fallbackTitle={nav?.fallbackTitle}
+      className="relative shrink-0"
+    />
+  );
+};
+
+/** 无滑动抽屉的移动页：顶栏仍在页面顶部文档流里。 */
+export const MobilePageScaffold: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isMobile = useMobileLayoutSafe()?.isMobile ?? false;
+  if (!isMobile) return <>{children}</>;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <MobileInFlowHeader />
+      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+    </div>
   );
 };
 

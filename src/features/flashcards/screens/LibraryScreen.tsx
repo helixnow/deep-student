@@ -18,6 +18,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
@@ -485,8 +486,15 @@ export const LibraryScreen: React.FC = () => {
         ) : null}
       </div>
 
-      {selectedCards.length > 0 ? (
-        <div className="fc-lib-bulkbar" role="toolbar" aria-label={translate('library.bulkLabel')}>
+      <UiPresence
+        open={selectedCards.length > 0}
+        inClass=""
+        outClass=""
+        exitMs={160}
+        className="fc-lib-bulkbar"
+        role="toolbar"
+        aria-label={translate('library.bulkLabel')}
+      >
           <span className="fc-lib-bulkbar-count">
             {translate('library.selectedCount', { count: selectedCards.length })}
           </span>
@@ -566,8 +574,7 @@ export const LibraryScreen: React.FC = () => {
             <X size={13} />
             {translate('library.clearSelection')}
           </DsButton>
-        </div>
-      ) : null}
+      </UiPresence>
 
       {actionError ? (
         <div role="alert" className="wb-fc-banner flex items-center justify-between gap-3 text-destructive">

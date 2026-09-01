@@ -26,7 +26,7 @@ export default function NotesHome() {
   useMobileHeader('notes', {
     title: active?.title || t('notes:sidebar.title'),
     showMenu: true,
-    onMenuClick: () => setIsMobileSidebarOpen(prev => !prev),
+    onMenuClick: () => setIsMobileSidebarOpen(true),
   }, [active?.title, t]);
 
   // Auto-collapse sidebar on mobile

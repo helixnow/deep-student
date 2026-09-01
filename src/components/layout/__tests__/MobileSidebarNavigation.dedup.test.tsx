@@ -124,7 +124,7 @@ describe('MobileSidebarNavigation drawer dedup', () => {
     expect(screen.queryByRole('button', { name: '总览' })).toBeNull();
   });
 
-  it('can reserve settings for a fixed drawer footer without duplicating it in the scroll area', () => {
+  it('can reserve settings for the drawer header without duplicating it in the scroll area', () => {
     render(<MobileSidebarNavigation hideSettings />);
 
     expect(screen.queryByRole('button', { name: '设置' })).toBeNull();

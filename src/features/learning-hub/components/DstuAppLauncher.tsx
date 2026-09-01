@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
@@ -334,8 +335,14 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           <Plus size={embedded ? 18 : 20} />
         </DsButton>
         {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
-        {showCreateMenu && (
-          <div role="menu" className="absolute right-0 top-full z-dropdown mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
+        <UiPresence
+          open={showCreateMenu}
+          inClass="ui-zoom-fade-in"
+          outClass="ui-zoom-fade-out"
+          exitMs={150}
+          role="menu"
+          className="absolute right-0 top-full z-dropdown mt-1 w-48 rounded-lg border border-border bg-popover py-1 shadow-lg"
+        >
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {t('learningHub:quickCreate.title')}
             </div>
@@ -364,8 +371,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
               <FlowArrow size={16} className="text-teal-500" />
               {t('learningHub:finder.toolbar.newMindMap')}
             </DsButton>
-          </div>
-        )}
+        </UiPresence>
       </div>
     </div>
   );

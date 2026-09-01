@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { highlightRanges } from './highlightRanges';
 import {
   nodeMatchesTags,
@@ -512,7 +513,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [open]);
 
-  if (!open) return null;
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
+
+  if (!presence.mounted) return null;
 
   const searchTitle = t('notesWorkspace.searchOverlay.title', 'Search notes');
   const quickOpenLabel = t('notesWorkspace.searchOverlay.quickOpen', 'Quick open');
@@ -527,7 +533,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     // 顶部居中悬浮命令条（无 backdrop / 无 aria-modal；点击外部、Esc、关闭按钮均可退出）
     <div
       ref={rootRef}
-      className={cn('notes-search-overlay', 'ui-drop-in', className)}
+      className={cn('notes-search-overlay', presence.exiting ? 'ui-drop-out' : 'ui-drop-in', className)}
+      data-state={presence.exiting ? 'closed' : 'open'}
       data-notes-search-overlay
       role="region"
       aria-label={searchTitle}

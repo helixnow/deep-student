@@ -30,6 +30,7 @@ import {
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
 import { CitationSourceContext } from '../../../utils/citationSourceContext';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 // ============================================================================
 // 图标映射
@@ -64,6 +65,8 @@ export interface CitationPopoverProps {
   onMouseEnter?: () => void;
   /** hover 宽限：鼠标移出浮层时重新计时关闭 */
   onMouseLeave?: () => void;
+  /** 关闭动画进行中：保留挂载并播放 zoom-fade 离场 */
+  exiting?: boolean;
   /** 自定义类名 */
   className?: string;
 }
@@ -84,6 +87,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
   onLocate,
   onMouseEnter,
   onMouseLeave,
+  exiting = false,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -185,9 +189,11 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       className={cn(
         'z-50 rounded-lg border border-border shadow-lg',
         'bg-popover text-popover-foreground',
-        'ui-zoom-fade-in',
+        'ui-zoom-fade-in ui-zoom-fade-out',
         className,
       )}
+      data-state={exiting ? 'closed' : 'open'}
+      aria-hidden={exiting || undefined}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -338,6 +344,12 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
   const closeTimerRef = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [source, setSource] = useState<RetrievalSource | null>(null);
+  const lastSourceRef = useRef<RetrievalSource | null>(null);
+  if (source) lastSourceRef.current = source;
+  const presence = useMotionPresence(open && !!source, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   const clearTimers = useCallback(() => {
     window.clearTimeout(openTimerRef.current);
@@ -406,14 +418,15 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
         onBlur={scheduleClose}
         className={className}
       />
-      {open && source && (
+      {presence.mounted && lastSourceRef.current && (
         <CitationPopover
-          source={source}
+          source={lastSourceRef.current}
           anchorEl={anchorRef.current}
           onClose={closeNow}
           onLocate={handleLocate}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
+          exiting={presence.exiting}
         />
       )}
     </span>

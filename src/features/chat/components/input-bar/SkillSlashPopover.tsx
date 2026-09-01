@@ -14,6 +14,7 @@ import { Lightning, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../../skills/skillEnableStorage';
 
@@ -247,42 +248,14 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
   const { t } = useTranslation(['chatV2']);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const closeTimeoutRef = useRef<number | null>(null);
-  const [shouldRender, setShouldRender] = useState(open);
-  const [isClosing, setIsClosing] = useState(false);
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'transition',
+  });
 
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, suggestions.length);
   }, [suggestions.length]);
-
-  // 与 ModelMentionPopover 相同的退场节奏（--dropdown-close-dur）
-  useEffect(() => {
-    if (closeTimeoutRef.current !== null) {
-      window.clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
-    if (open) {
-      setShouldRender(true);
-      setIsClosing(false);
-      return;
-    }
-    if (!shouldRender) return;
-    setIsClosing(true);
-    const closeMs = parseFloat(
-      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
-    ) || 150;
-    closeTimeoutRef.current = window.setTimeout(() => {
-      setShouldRender(false);
-      setIsClosing(false);
-      closeTimeoutRef.current = null;
-    }, closeMs);
-    return () => {
-      if (closeTimeoutRef.current !== null) {
-        window.clearTimeout(closeTimeoutRef.current);
-        closeTimeoutRef.current = null;
-      }
-    };
-  }, [open, shouldRender]);
 
   // 选中项保持可见
   useEffect(() => {
@@ -293,7 +266,7 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
     }
   }, [selectedIndex, open, suggestions.length]);
 
-  if (!shouldRender || suggestions.length === 0) {
+  if (!presence.mounted || suggestions.length === 0) {
     return null;
   }
 
@@ -306,8 +279,8 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
       data-testid="skill-slash-popover"
       className={cn(
         't-dropdown',
-        isClosing && 'is-closing',
-        open && 'is-open',
+        presence.exiting && 'is-closing',
+        presence.shown && 'is-open',
         // ★ H2 修复：与 ModelMentionPopover 对齐——窄屏时收窄到视口内（固定 w-80 会在小屏溢出）
         'absolute w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         'bottom-full mb-3 left-0',

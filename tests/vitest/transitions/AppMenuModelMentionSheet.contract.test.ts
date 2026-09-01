@@ -23,7 +23,7 @@ describe('AppMenu / ModelMentionPopover / Sheet transition contracts', () => {
 
     expect(componentSource).toContain('app-menu-closing');
     expect(componentSource).toContain('--dropdown-close-dur');
-    expect(componentSource).toContain('setTimeout');
+    expect(componentSource).toContain('useMotionPresence');
     expect(styleSource).toContain('.app-menu-content');
     expect(styleSource).toContain('transform-origin: top left;');
     expect(styleSource).toContain('opacity: 0;');
@@ -40,7 +40,7 @@ describe('AppMenu / ModelMentionPopover / Sheet transition contracts', () => {
     expect(source).toContain('is-open');
     expect(source).toContain('is-closing');
     expect(source).toContain('--dropdown-close-dur');
-    expect(source).toContain('setTimeout');
+    expect(source).toContain('useMotionPresence');
   });
 
   it('lets Sheet read the shared transition tokens for overlay and panel motion', () => {
@@ -58,5 +58,11 @@ describe('AppMenu / ModelMentionPopover / Sheet transition contracts', () => {
     expect(motionSource).toContain('var(--panel-open-dur');
     expect(motionSource).toContain('.ui-slide-out-right[data-state="closed"]');
     expect(motionSource).toContain('var(--panel-close-dur');
+  });
+
+  it('pairs Select zoom-fade enter with the existing zoom-fade exit class', () => {
+    const selectSource = readSource('src/components/ui/shad/Select.tsx');
+    expect(selectSource).toContain('ui-zoom-fade-in');
+    expect(selectSource).toContain('ui-zoom-fade-out');
   });
 });

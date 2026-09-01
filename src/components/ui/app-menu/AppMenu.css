@@ -317,7 +317,11 @@
   box-shadow: var(--menu-shell-shadow);
   backdrop-filter: var(--menu-shell-backdrop-filter);
   -webkit-backdrop-filter: var(--menu-shell-backdrop-filter);
-  animation: card-submenu-in 0.12s ease-out;
+  animation: card-submenu-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.app-menu-sub-content[data-state="closed"] {
+  animation: card-submenu-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 @keyframes card-submenu-in {
@@ -328,6 +332,17 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes card-submenu-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-4px);
   }
 }
 

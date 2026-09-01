@@ -34,6 +34,7 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { MobileNodeToolbar, type MobileToolbarPanel } from './MobileNodeToolbar';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { CanvasZoomIndicator } from './CanvasZoomIndicator';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
@@ -1160,6 +1161,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     }
   }, [addNode, document.root.id, setFocusedNodeId, setEditingNodeId]);
 
+  const lastMobileToolbarNodeIdRef = useRef<string | null>(null);
+  const lastAssociationIdRef = useRef<string | null>(null);
+
   // 触屏底部工具条：单选节点且非编辑/背诵/连线/拖拽中时显示
   const showMobileToolbar =
     isCanvasActive &&
@@ -1171,6 +1175,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     !reciteMode &&
     !associatingFromId &&
     !isDragging;
+
+  if (focusedNodeId) lastMobileToolbarNodeIdRef.current = focusedNodeId;
+  if (selectedAssociationId) lastAssociationIdRef.current = selectedAssociationId;
 
   // 工具条隐藏时重置展开面板（选中切换到另一节点时面板保留，便于连续调样式）
   useEffect(() => {
@@ -2073,49 +2080,67 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           关联线的编辑/删除原本只有右键菜单与 Delete 键两条通路，触屏均不可达；
           复用 mm-mobile-node-toolbar 样式（≥44px 按钮、safe-area、上滑入场、
           reduced-motion 降级均由既有 CSS 承担） */}
-      {isCoarsePointer && !reciteMode && selectedAssociationId && !editingAssociationId && (
-        <div
-          className="mm-mobile-node-toolbar"
-          role="toolbar"
-          aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
+      {isCoarsePointer && !reciteMode && (
+        <UiPresence
+          open={Boolean(selectedAssociationId && !editingAssociationId)}
+          inClass=""
+          outClass=""
+          exitMs={150}
         >
-          <div className="mm-mobile-toolbar-row">
-            <DsButton
-              variant="ghost"
-              className="mm-mobile-toolbar-btn"
-              onClick={() => setEditingAssociationId(selectedAssociationId)}
-            >
-              <Pencil size={18} />
-              <span>{t('association.editLabel', { defaultValue: '编辑标签' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="mm-mobile-toolbar-btn destructive"
-              onClick={() => {
-                removeAssociation(selectedAssociationId);
-                setSelectedAssociationId(null);
-              }}
-            >
-              <Trash size={18} />
-              <span>{t('association.delete', { defaultValue: '删除关联线' })}</span>
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              className="mm-mobile-toolbar-btn"
-              onClick={() => setSelectedAssociationId(null)}
-              aria-label={t('association.closeActions', { defaultValue: '关闭操作栏' })}
-            >
-              <X size={18} />
-              <span>{t('association.closeActions', { defaultValue: '关闭' })}</span>
-            </DsButton>
+          <div
+            className="mm-mobile-node-toolbar"
+            role="toolbar"
+            aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
+          >
+            <div className="mm-mobile-toolbar-row">
+              <DsButton
+                variant="ghost"
+                className="mm-mobile-toolbar-btn"
+                onClick={() => setEditingAssociationId(selectedAssociationId ?? lastAssociationIdRef.current)}
+              >
+                <Pencil size={18} />
+                <span>{t('association.editLabel', { defaultValue: '编辑标签' })}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                className="mm-mobile-toolbar-btn destructive"
+                onClick={() => {
+                  const id = selectedAssociationId ?? lastAssociationIdRef.current;
+                  if (!id) return;
+                  removeAssociation(id);
+                  setSelectedAssociationId(null);
+                }}
+              >
+                <Trash size={18} />
+                <span>{t('association.delete', { defaultValue: '删除关联线' })}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                className="mm-mobile-toolbar-btn"
+                onClick={() => setSelectedAssociationId(null)}
+                aria-label={t('association.closeActions', { defaultValue: '关闭操作栏' })}
+              >
+                <X size={18} />
+                <span>{t('association.closeActions', { defaultValue: '关闭' })}</span>
+              </DsButton>
+            </div>
           </div>
-        </div>
+        </UiPresence>
       )}
 
       {/* 触屏：选中节点的底部内联工具条（替代 Portal 右键菜单路径） */}
-      {showMobileToolbar && focusedNodeId && (
+      <UiPresence
+        open={Boolean(showMobileToolbar && focusedNodeId)}
+        inClass=""
+        outClass=""
+        exitMs={150}
+      >
+        {(() => {
+          const nodeId = focusedNodeId ?? lastMobileToolbarNodeIdRef.current;
+          if (!nodeId) return null;
+          return (
         <MobileNodeToolbar
-          nodeId={focusedNodeId}
+          nodeId={nodeId}
           panel={mobileToolbarPanel}
           onPanelChange={setMobileToolbarPanel}
           onClose={closeMobileToolbar}
@@ -2128,7 +2153,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             });
           }}
         />
-      )}
+          );
+        })()}
+      </UiPresence>
     </div>
   );
 });

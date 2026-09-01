@@ -143,7 +143,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   useMobileHeader('dashboard', {
     title: tCommon('navigation.dashboard', '总览'),
     showMenu: !embedded,
-    onMenuClick: () => setSidebarOpen((v) => !v),
+    onMenuClick: () => setSidebarOpen(true),
     rightActions: (
       <DsButton
         variant="ghost"

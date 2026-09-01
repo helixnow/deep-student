@@ -7,6 +7,8 @@ import { getErrorMessage } from "../../../utils/errorUtils";
 import { Trash, ArrowCounterClockwise, ArrowsClockwise, X } from "@phosphor-icons/react";
 import { format } from "date-fns";
 import { dstu } from "@/dstu";
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { cn } from '@/lib/utils';
 
 type TrashItem = {
     id: string;
@@ -33,6 +35,10 @@ export function TrashDialog() {
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState<TrashItem[]>([]);
     const [confirm, setConfirm] = useState<ConfirmState>(null);
+    const presence = useMotionPresence(trashOpen, {
+        exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+        enter: 'animation',
+    });
 
     const loadTrash = useCallback(async () => {
         if (!trashOpen) return;
@@ -139,7 +145,7 @@ export function TrashDialog() {
         }
     };
 
-    if (!trashOpen) return null;
+    if (!presence.mounted) return null;
 
     const confirmBar = (labelTitle: string, labelDesc: string) => (
         <div
@@ -166,7 +172,12 @@ export function TrashDialog() {
         <section
             role="dialog"
             aria-label={t('notes:trash.title')}
-            className="ui-rise-in absolute right-3 top-3 bottom-3 z-[60] flex w-[min(400px,calc(100%-24px))] flex-col rounded-[var(--notes-radius-popup)] border border-border bg-popover p-3.5 text-popover-foreground shadow-[var(--notes-dialog-shadow)]"
+            className={cn(
+                presence.exiting ? 'ui-rise-out' : 'ui-rise-in',
+                'absolute right-3 top-3 bottom-3 z-[60] flex w-[min(400px,calc(100%-24px))] flex-col rounded-[var(--notes-radius-popup)] border border-border bg-popover p-3.5 text-popover-foreground shadow-[var(--notes-dialog-shadow)]',
+            )}
+            data-state={presence.exiting ? 'closed' : 'open'}
+            aria-hidden={presence.exiting || undefined}
         >
             <div className="mb-3 flex items-start justify-between gap-2">
                 <h2 className="flex items-center gap-2 text-[15px] font-semibold text-foreground">

@@ -9,6 +9,7 @@ import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isErr } from '@/shared/result';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import './finder-animations.css';
 
 interface FolderPickerDialogProps {
@@ -169,6 +170,10 @@ export function FolderPickerDialog({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const excludeSet = useMemo(() => new Set(excludeFolderIds), [excludeFolderIds]);
+  const inlinePresence = useMotionPresence(inline && open, {
+    exitMs: readCssDurationMs('--page-slide-dur', 200),
+    enter: 'animation',
+  });
 
   const loadFolderTree = useCallback(async () => {
     setIsLoading(true);
@@ -278,12 +283,14 @@ export function FolderPickerDialog({
 
   // 📱 内联全屏子屏（范式：IndexStatusView OCR 移动全屏）
   if (inline) {
-    if (!open) return null;
+    if (!inlinePresence.mounted) return null;
     return (
       <div
         className="absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-background finder-fade-in"
+        data-state={inlinePresence.exiting ? 'closed' : 'open'}
         role="dialog"
         aria-label={resolvedTitle}
+        aria-hidden={inlinePresence.exiting || undefined}
       >
         {/* 顶栏：返回 + 标题 */}
         <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">

@@ -389,10 +389,28 @@ body {
   animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
+@keyframes desktop-shell-content-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--text-swap-translate-y, 8px)));
+    filter: blur(var(--text-swap-blur, 2px));
+  }
+}
+
+.desktop-shell-content-exit {
+  animation: desktop-shell-content-exit var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
 /*
  * P2-12: 移动壳（<768，与 useIsMobile / MOBILE_SHELL.breakpointMax 同界）视图切换
- * 改用轻量横向位移：12px 右侧滑入 + fade，消费 --page-slide-* token，不做 blur
- * （移动 WebView 上 filter 逐帧代价高）。离场侧仍为 visibility:hidden 同帧生效。
+ * 改用轻量横向位移：--page-slide-distance（8px）右侧滑入 + fade，消费 --page-slide-* token，不做 blur
+ * （移动 WebView 上 filter 逐帧代价高）。离场走 mobile-shell-content-exit（向左 8px + fade）。
  * 断点用 range 语法 (width < 768px)：与 JS 侧 !(min-width:768px) 精确互补，
  * 767.x 小数视口宽（显示缩放/分屏）下不漏判（2026-07 移动端审计 E）。
  */
@@ -400,7 +418,7 @@ body {
   @keyframes mobile-shell-content-enter {
     from {
       opacity: 0;
-      transform: translateX(var(--page-slide-distance, 12px));
+      transform: translateX(var(--page-slide-distance, 8px));
     }
 
     to {
@@ -411,6 +429,22 @@ body {
 
   .desktop-shell-view-layer.desktop-shell-content-enter {
     animation: mobile-shell-content-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  @keyframes mobile-shell-content-exit {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translateX(calc(-1 * var(--page-slide-distance, 8px)));
+    }
+  }
+
+  .desktop-shell-view-layer.desktop-shell-content-exit {
+    animation: mobile-shell-content-exit var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
   }
 }
 
@@ -1458,7 +1492,9 @@ main {
   }
 
   .desktop-shell-content-enter,
-  .desktop-shell-view-layer.desktop-shell-content-enter {
+  .desktop-shell-content-exit,
+  .desktop-shell-view-layer.desktop-shell-content-enter,
+  .desktop-shell-view-layer.desktop-shell-content-exit {
     animation: none;
   }
 }

@@ -701,7 +701,7 @@ export const LearningHubPage: React.FC = () => {
     t,
   ]);
 
-  // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
+  // 移动端统一顶栏：抽屉打开后由滑动壳隐藏顶栏，关闭只靠滑动/遮罩
   useMobileHeader('learning-hub', {
     title: screenPosition === 'left'
       ? rootTitle
@@ -720,9 +720,7 @@ export const LearningHubPage: React.FC = () => {
       ? () => setScreenPosition('center')
       : screenPosition === 'center' && isInSubfolder
         ? () => finderGoUp()
-        : screenPosition === 'left'
-          ? () => setScreenPosition('center')
-          : () => setScreenPosition('left'),
+        : () => setScreenPosition('left'),
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
     rightActions: mobileHeaderRightActions,
   }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions]);

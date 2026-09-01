@@ -48,9 +48,9 @@ export const MobileAppNavigationProvider: React.FC<{
 interface MobileSidebarNavigationProps {
   onNavigate?: (view?: CurrentView) => void;
   className?: string;
-  /** Render only the persistent settings affordance used by the mobile drawer footer. */
+  /** Render only the settings icon used by the mobile drawer header or footer. */
   settingsOnly?: boolean;
-  /** Omit settings from the scrollable navigation when it is rendered in the fixed footer. */
+  /** Omit settings from the scrollable navigation when it is rendered in the header/footer. */
   hideSettings?: boolean;
   /**
    * @deprecated 现在只有「嵌在统一滚动抽屉内」这一种形态（旧版 pinned 底栏
@@ -177,19 +177,20 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
     if (!settingsItem) return null;
     const SettingsIcon = settingsItem.icon;
     return (
-      <div data-mobile-shell="sidebar-settings" className={cn('flex min-h-14 items-center gap-3 px-3 py-2', className)}>
-        <div className="min-w-0 flex-1" aria-hidden="true" />
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground"
-          aria-label={settingsItem.name}
-          onClick={() => handleNavigate(settingsItem.view)}
-        >
-          <SettingsIcon className="size-5" />
-        </DsButton>
-      </div>
+      <DsButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        data-mobile-shell="sidebar-settings"
+        className={cn(
+          'shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground',
+          className,
+        )}
+        aria-label={settingsItem.name}
+        onClick={() => handleNavigate(settingsItem.view)}
+      >
+        <SettingsIcon className="size-5" />
+      </DsButton>
     );
   }
 

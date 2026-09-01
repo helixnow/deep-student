@@ -12,6 +12,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -1554,8 +1555,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       </CustomScrollArea>
       
       {/* 批量管理吸底操作条：全选/反选、选中数量、内联二次确认（不用模态框） */}
-      {isEditMode && (
-        <div className="ui-slide-up-panel flex-shrink-0 border-t border-border/50 bg-background/95 px-3 sm:px-4 pt-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+      <UiPresence
+        open={isEditMode}
+        inClass="ui-slide-up-panel"
+        outClass="ui-slide-up-panel-out"
+        exitMs={260}
+        className="flex-shrink-0 border-t border-border/50 bg-background/95 px-3 sm:px-4 pt-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
+      >
           {confirmingBatch !== null ? (
             <div
               role="alert"
@@ -1637,8 +1643,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               </div>
             </div>
           )}
-        </div>
-      )}
+      </UiPresence>
     </div>
   );
 };

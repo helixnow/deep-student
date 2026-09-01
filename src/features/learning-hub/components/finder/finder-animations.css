@@ -34,6 +34,22 @@
   animation: finder-fade-in 200ms var(--resize-ease) forwards;
 }
 
+.finder-fade-in[data-state="closed"] {
+  animation: finder-fade-out 200ms var(--resize-ease) forwards;
+}
+
+@keyframes finder-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
 /* 徽章弹出保留回弹观感，使用 transitions-dev 的 spring 缓动 token */
 .finder-pop-in {
   animation: finder-pop-in 300ms var(--digit-ease) forwards;
@@ -41,6 +57,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .finder-fade-in,
+  .finder-fade-in[data-state="closed"],
   .finder-pop-in {
     animation: none;
   }

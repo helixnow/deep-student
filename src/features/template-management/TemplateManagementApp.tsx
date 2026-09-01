@@ -667,7 +667,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     showBackArrow: isEditingMode,
     onMenuClick: isEditingMode
       ? handleCancelEdit
-      : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+      : () => setScreenPosition('left'),
     rightActions: isEditingMode ? (
       <DsButton
         variant="ghost"

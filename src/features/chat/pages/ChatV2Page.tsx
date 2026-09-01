@@ -1224,7 +1224,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       {isSmallScreen ? (
         <MobileSlidingLayout
           className="flex-1"
-          sidebarFixedContent={renderSessionSidebarHeader()}
+          drawerHeader={renderSessionSidebarHeader()}
           sidebar={
             <div className="min-h-0">
               {renderSessionSidebarContent({ unifiedMobileDrawer: true, mobileDrawerHeader: 'fixed' })}
@@ -1289,18 +1289,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             sessionSheetOpen ? 'left' : 'center'
           }
           onScreenPositionChange={(pos: ScreenPosition) => {
-            // 资源详情是右屏内的二级页：返回键/右屏回滑先回资源列表，
-            // 与统一顶栏返回行为保持一致；再次返回才退出右屏回到聊天。
             if (pos !== 'right' && openApp && !sandboxWorkbenchOpen) {
               setOpenApp(null);
-              setSessionSheetOpen(false);
-              setMobileResourcePanelOpen(true);
-              return;
             }
             setSessionSheetOpen(pos === 'left');
             setMobileResourcePanelOpen(pos === 'right');
-            // 沙箱工作台占据右屏时，手势/返回键滑回中屏必须同步关闭工作台，
-            // 否则 screenPosition 会被 sandboxWorkbenchOpen 锁在 'right'（导航死胡同）
             if (pos !== 'right' && sandboxWorkbenchOpen) {
               closeSandboxWorkbench(sandboxOwnerKey);
             }

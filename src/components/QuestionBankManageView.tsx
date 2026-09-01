@@ -10,6 +10,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -932,15 +933,18 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       </CustomScrollArea>
 
       {/* 内联二次确认条（吸底，桌面/移动端统一，替代原模态 AlertDialog） */}
-      {(deleteConfirmOpen || resetConfirmOpen) && (
-        <div
-          role="alert"
-          className={cn(
-            'ui-slide-up-panel flex-shrink-0 mx-3 mb-2 rounded-lg border px-3 py-2',
-            deleteConfirmOpen ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/10'
-          )}
-          aria-label={deleteConfirmOpen ? t('exam_sheet:questionBank.confirmDelete') : t('exam_sheet:questionBank.confirmReset')}
-        >
+      <UiPresence
+        open={deleteConfirmOpen || resetConfirmOpen}
+        inClass="ui-slide-up-panel"
+        outClass="ui-slide-up-panel-out"
+        exitMs={260}
+        role="alert"
+        className={cn(
+          'flex-shrink-0 mx-3 mb-2 rounded-lg border px-3 py-2',
+          deleteConfirmOpen ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/10'
+        )}
+        aria-label={deleteConfirmOpen ? t('exam_sheet:questionBank.confirmDelete') : t('exam_sheet:questionBank.confirmReset')}
+      >
           <div className="flex items-start gap-2">
             <Warning size={16} className={cn('mt-0.5 flex-shrink-0', deleteConfirmOpen ? 'text-destructive' : 'text-warning')} />
             <div className="min-w-0 flex-1">
@@ -1001,8 +1005,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               </DsButton>
             </div>
           </div>
-        </div>
-      )}
+      </UiPresence>
 
       {/* 批量改难度 / 改标签 内联面板（吸底展开，不用弹窗） */}
       {batchPanel !== null && selectedIds.size > 0 && !deleteConfirmOpen && !resetConfirmOpen && (
@@ -1088,8 +1091,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       )}
 
       {/* 批量操作吸底操作条 */}
-      {selectedIds.size > 0 && !deleteConfirmOpen && !resetConfirmOpen && (
-        <div className="ui-slide-up-panel flex-shrink-0 flex items-center justify-between gap-2 border-t border-border/50 bg-background/95 px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+      <UiPresence
+        open={selectedIds.size > 0 && !deleteConfirmOpen && !resetConfirmOpen}
+        inClass="ui-slide-up-panel"
+        outClass="ui-slide-up-panel-out"
+        exitMs={260}
+        className="flex-shrink-0 flex items-center justify-between gap-2 border-t border-border/50 bg-background/95 px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
+      >
           <div className="flex items-center gap-1 min-w-0">
             <span className="text-xs text-muted-foreground whitespace-nowrap px-1">
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
@@ -1157,8 +1165,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <span className="hidden sm:inline">{t('common:cancel')}</span>
             </DsButton>
           </div>
-        </div>
-      )}
+      </UiPresence>
 
       {/* 分页 */}
       {pagination && totalPages > 1 && (

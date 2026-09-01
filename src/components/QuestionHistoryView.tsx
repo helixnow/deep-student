@@ -35,6 +35,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import {
   QBANK_FOCUS_EVENT,
   type QbankFocusEventDetail,
@@ -164,6 +165,10 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   const inferChangeType = useCallback((fieldName: string): ChangeType => {
     if (fieldName === 'status') return 'status_change';
@@ -600,11 +605,16 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
   };
 
   // ==================== 内联子屏（桌面端与移动端统一） ====================
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col bg-background ui-rise-in"
+      className={cn(
+        presence.exiting ? 'ui-rise-out' : 'ui-rise-in',
+        'absolute inset-0 z-30 flex flex-col bg-background',
+      )}
+      data-state={presence.exiting ? 'closed' : 'open'}
+      aria-hidden={presence.exiting || undefined}
       role="region"
       aria-label={t('exam_sheet:questionBank.history.title')}
     >

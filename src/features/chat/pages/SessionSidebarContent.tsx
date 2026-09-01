@@ -725,42 +725,13 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   );
 
   const renderUnifiedMobileSidebarHeader = React.useCallback(() => (
-    <div
+    <p
       data-mobile-sidebar-fixed-region="top"
-      className="border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pb-4 pt-2"
+      className="min-w-0 truncate text-[22px] font-bold leading-none text-foreground"
     >
-      <header className="flex h-11 items-center justify-between gap-3 px-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <p className="truncate text-[22px] font-bold leading-none text-foreground">DeepStudent</p>
-        </div>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground"
-          onClick={() => setSessionSheetOpen(false)}
-          aria-label={t('common:close')}
-        >
-          <X size={24} weight="regular" />
-        </DsButton>
-      </header>
-      <div className="px-3 pt-2">
-        <DsButton
-          variant="ghost"
-          size="lg"
-          className="h-12 w-full justify-start gap-3 rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-selected)] px-3 text-[16px] font-medium shadow-none hover:bg-[color:var(--interactive-hover)]"
-          onClick={handleCreateSession}
-        >
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-background/70 text-[color:var(--shell-navigation-foreground)]">
-            <Plus size={17} weight="regular" />
-          </span>
-          <span className="min-w-0 truncate">
-            <span className="truncate">{t('page.newChat')}</span>
-          </span>
-        </DsButton>
-      </div>
-    </div>
-  ), [handleCreateSession, setSessionSheetOpen, t]);
+      DeepStudent
+    </p>
+  ), []);
 
   const buildSessionSidebarBody = (unified: boolean, includeUnifiedHeader = true) => {
     const shouldShowSearch = !unified || sessions.length >= 6 || searchQuery.length > 0;

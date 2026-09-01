@@ -46,6 +46,7 @@ import { commandFavorites } from './registry/commandFavorites';
 import { shortcutManager } from './registry/shortcutManager';
 import { formatShortcut } from './registry/shortcutUtils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import {
   useResourceSearch,
   openFileFromPalette,
@@ -391,8 +392,13 @@ export function CommandPalette() {
   const handleCommandClick = useCallback((command: Command) => {
     handleExecuteCommand(command);
   }, [handleExecuteCommand]);
-  
-  if (!isOpen) return null;
+
+  const presence = useMotionPresence(isOpen, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
+
+  if (!presence.mounted) return null;
   
   // 计算当前命令在扁平列表中的索引
   let currentFlatIndex = 0;
@@ -408,6 +414,7 @@ export function CommandPalette() {
       <div 
         ref={containerRef}
         className={cn('command-palette-container', isSmallScreen && 'command-palette-container-mobile')}
+        data-state={presence.exiting ? 'closed' : 'open'}
         onKeyDown={handleKeyDown}
       >
         {/* 搜索栏（移动端 = 全屏页顶栏：返回 + 搜索输入） */}

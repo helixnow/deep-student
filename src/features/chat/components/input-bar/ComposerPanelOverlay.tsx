@@ -200,7 +200,7 @@ export function ComposerPanelOverlay({
         // P2-4 动效 token 统一：--panel-ease 定义在 :root（portal 到 body 也能解析）；
         // --chat-composer-motion-duration 为 .chat-v2 作用域 token，portal 下走 200ms fallback
         'transition-[opacity,transform] duration-[var(--chat-composer-motion-duration,200ms)] ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))] will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-        motionState === 'open' || motionState === 'opening'
+        motionState === 'open'
           ? 'translate-y-0 opacity-100 pointer-events-auto'
           : 'translate-y-4 opacity-0 pointer-events-none',
         className

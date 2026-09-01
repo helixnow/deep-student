@@ -3,7 +3,8 @@
  *
  * 提供统一的移动端顶栏配置管理：
  * - 各页面通过 useMobileHeader hook 设置自己的 header 配置
- * - App.tsx 级别的 UnifiedMobileHeader 从 context 读取配置并渲染
+ * - MobileSlidingLayout 主栏里的 MobileInFlowHeader（或无抽屉页的 MobilePageScaffold）读取并渲染
+ * - 顶栏属于原页面，跟着主栏一起滑，不 fixed 盖住侧栏
  * - ★ 支持视图级别的配置隔离，只有活跃视图的配置才会生效
  */
 
@@ -32,7 +33,7 @@ export interface MobileHeaderConfig {
   rightActions?: ReactNode;
   /** 是否显示菜单按钮（用于打开次级侧边栏） */
   showMenu?: boolean;
-  /** 只显示浮动菜单入口，不渲染占位顶栏（用于聊天新对话空态） */
+  /** 只显示浮动左右入口（侧栏 / 新对话），不渲染占位顶栏（用于聊天新对话空态） */
   floatingMenuButton?: boolean;
   /** 点击菜单按钮的回调 */
   onMenuClick?: () => void;
@@ -46,8 +47,14 @@ export interface MobileHeaderConfig {
 interface MobileHeaderContextValue {
   /** 当前配置 */
   config: MobileHeaderConfig;
+  /**
+   * 活跃视图的左抽屉是否展开。仅作状态同步；顶栏不再根据它卸载或改成 fixed。
+   */
+  drawerOpen: boolean;
   /** 设置配置（带视图 ID） */
   setConfig: (viewId: string, config: MobileHeaderConfig) => void;
+  /** 由调用方汇报左抽屉开合（当前滑动布局不再消费） */
+  setDrawerOpen: (open: boolean) => void;
   /** 清除某视图缓存的配置（视图卸载时调用，释放 rightActions 等引用） */
   clearConfig: (viewId: string) => void;
   /** 重置配置 */
@@ -71,13 +78,14 @@ const MobileHeaderContext = createContext<MobileHeaderContextValue | null>(null)
 /** 仅包含写操作的 context：引用永久稳定，供 useMobileHeader 等“只写不读”的
  * 消费者使用，避免 config 每次变化都重渲染所有页面组件（曾导致
  * “页面渲染 → 效果重跑 → setConfig → config 变化 → 页面再渲染”的无限循环）。 */
-type MobileHeaderActions = Omit<MobileHeaderContextValue, 'config'>;
+type MobileHeaderActions = Omit<MobileHeaderContextValue, 'config' | 'drawerOpen'>;
 const MobileHeaderActionsContext = createContext<MobileHeaderActions | null>(null);
 
 /** Provider 组件 */
 export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // 当前显示的配置
   const [config, setConfigState] = useState<MobileHeaderConfig>(defaultConfig);
+  const [drawerOpen, setDrawerOpenState] = useState(false);
   // 当前活跃视图
   const activeViewRef = useRef<string>('');
   // 各视图的配置缓存
@@ -116,16 +124,20 @@ export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ childr
     setConfigState(defaultConfig);
   }, []);
 
-  // 稳定 context 引用：只有 config 变化时才产生新值，防止依赖 ctx 的 effect 每次提交都重跑
+  const setDrawerOpen = useCallback((open: boolean) => {
+    setDrawerOpenState((prev) => (prev === open ? prev : open));
+  }, []);
+
+  // 稳定 context 引用：只有 config / drawerOpen 变化时才产生新值，防止依赖 ctx 的 effect 每次提交都重跑
   const contextValue = useMemo(
-    () => ({ config, setConfig, clearConfig, resetConfig, setActiveView }),
-    [config, setConfig, clearConfig, resetConfig, setActiveView],
+    () => ({ config, drawerOpen, setConfig, setDrawerOpen, clearConfig, resetConfig, setActiveView }),
+    [config, drawerOpen, setConfig, setDrawerOpen, clearConfig, resetConfig, setActiveView],
   );
 
   // 所有回调都是 [] 依赖的 useCallback，此对象在 Provider 生命周期内引用不变
   const actionsValue = useMemo(
-    () => ({ setConfig, clearConfig, resetConfig, setActiveView }),
-    [setConfig, clearConfig, resetConfig, setActiveView],
+    () => ({ setConfig, setDrawerOpen, clearConfig, resetConfig, setActiveView }),
+    [setConfig, setDrawerOpen, clearConfig, resetConfig, setActiveView],
   );
 
   return (
@@ -150,6 +162,14 @@ export const useMobileHeaderContext = (): MobileHeaderContextValue => {
 export const useMobileHeaderContextSafe = (): MobileHeaderContextValue | null => {
   return useContext(MobileHeaderContext);
 };
+
+/** 仅写抽屉开合，引用稳定，供 MobileSlidingLayout 汇报而不订阅 config */
+export function useSetMobileDrawerOpen(): (open: boolean) => void {
+  const ctx = useContext(MobileHeaderActionsContext);
+  return useCallback((open: boolean) => {
+    ctx?.setDrawerOpen(open);
+  }, [ctx]);
+}
 
 /**
  * useMobileHeader - 页面级别设置移动端顶栏配置
@@ -229,5 +249,27 @@ export const MobileHeaderActiveViewSync: React.FC<{ activeView: string }> = ({ a
 
   return null;
 };
+
+/** 顶栏返回/前进（App 注入，供页内顶栏而不是壳层 fixed 顶栏消费） */
+export interface MobileHeaderNav {
+  canGoBack?: boolean;
+  onBack?: () => void;
+  canGoForward?: boolean;
+  onForward?: () => void;
+  fallbackTitle?: string;
+}
+
+const MobileHeaderNavContext = createContext<MobileHeaderNav | null>(null);
+
+export const MobileHeaderNavProvider: React.FC<{ value: MobileHeaderNav; children: ReactNode }> = ({
+  value,
+  children,
+}) => (
+  <MobileHeaderNavContext.Provider value={value}>{children}</MobileHeaderNavContext.Provider>
+);
+
+export function useMobileHeaderNav(): MobileHeaderNav | null {
+  return useContext(MobileHeaderNavContext);
+}
 
 export default MobileHeaderProvider;

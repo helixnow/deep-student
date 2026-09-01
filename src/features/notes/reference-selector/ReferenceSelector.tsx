@@ -23,6 +23,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '../../../lib/utils';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { listTextbooks, listExamSessions } from './api';
 import { ReferenceSelectorItem } from './ReferenceSelectorItem';
@@ -119,6 +120,10 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   // 请求序号防竞态：慢的旧响应不覆盖新响应
   const requestSeqRef = useRef(0);
   const listboxId = useRef(`ref-selector-listbox-${Math.random().toString(36).slice(2, 9)}`).current;
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   // 已引用的资源 ID 集合（用于快速查找）
   const existingRefIds = useMemo(() => {
@@ -372,7 +377,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
     }
   }, [type, t]);
 
-  if (!open || typeof document === 'undefined') return null;
+  if (!presence.mounted || typeof document === 'undefined') return null;
 
   const hasAnchor = Boolean(anchorRef?.current);
   const panelStyle: React.CSSProperties = hasAnchor
@@ -403,7 +408,12 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
       role="dialog"
       aria-modal="false"
       aria-label={panelTitle}
-      className="ui-zoom-fade-in flex max-h-[70vh] flex-col overflow-hidden rounded-control border border-border/60 bg-popover text-popover-foreground"
+      className={cn(
+        presence.exiting ? 'ui-zoom-fade-out' : 'ui-zoom-fade-in',
+        'flex max-h-[70vh] flex-col overflow-hidden rounded-control border border-border/60 bg-popover text-popover-foreground',
+      )}
+      data-state={presence.exiting ? 'closed' : 'open'}
+      aria-hidden={presence.exiting || undefined}
       style={panelStyle}
     >
       {/* 头部：标题 + 关闭 */}

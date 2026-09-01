@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { DotsThreeVertical, ListChecks, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
@@ -51,7 +52,7 @@ export interface UseChatPageLayoutDeps {
 export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   const {
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
-    viewMode, sessionSheetOpen, t, sessionCount, createSession, isLoading,
+    viewMode, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
     mobileSandboxOpen, closeMobileSandbox,
@@ -81,6 +82,22 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
 
   // 同步窗口标题栏
   useDocumentTitle(currentSession?.title);
+
+  const homepageNewChatAction = useMemo(() => (
+    <DsButton
+      variant="ghost"
+      size="icon"
+      iconOnly
+      onClick={() => void createSession()}
+      disabled={isLoading}
+      className={shellIconButtonClassName}
+      data-mobile-floating-menu-button
+      aria-label={t('page.newSession')}
+      title={t('page.newSession')}
+    >
+      <Plus size={21} weight="regular" />
+    </DsButton>
+  ), [createSession, isLoading, t]);
 
   const headerRightActions = useMemo(() => {
     if (viewMode === 'browser') {
@@ -187,27 +204,22 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: closeGroupEditor,
   } : {
-    // 打开会话抽屉后由侧栏自己的顶部区接管整个移动视口，避免全局 Chat
-    // header 继续压在抽屉上方，形成两个并列的导航层。
-    hidden: sessionSheetOpen,
     title: isMinimalChatHeader ? undefined : headerTitle,
+    titleNode: isMinimalChatHeader ? <></> : undefined,
     showMenu: viewMode !== 'browser',
-    floatingMenuButton: isMinimalChatHeader,
     showBackArrow: viewMode === 'browser',
     onMenuClick: viewMode === 'browser'
       ? () => {
           setViewMode('sidebar');
           setSessionSheetOpen(true);
         }
-      : sessionSheetOpen
-        ? () => setSessionSheetOpen(false)
-        : () => setSessionSheetOpen(true),
-    rightActions: isMinimalChatHeader ? undefined : headerRightActions,
+      : () => setSessionSheetOpen(true),
+    rightActions: isMinimalChatHeader ? homepageNewChatAction : headerRightActions,
   }, [
-    currentSessionId, headerRightActions, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
+    currentSessionId, headerRightActions, homepageNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
-    groupEditorOpen, groupEditorMode, closeGroupEditor, sessionSheetOpen,
+    groupEditorOpen, groupEditorMode, closeGroupEditor,
     setSessionSheetOpen,
     resourceMultiSelectActive, resourceMultiSelectToggleRef,
   ]);

@@ -6,6 +6,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { Z_INDEX } from '@/config/zIndex';
 import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { springSheet } from '@/styles/motion-springs';
 
 /**
  * ESC / Android 返回键关闭（2026-07 移动端审计 R6）：本组件是 framer-motion
@@ -88,39 +89,33 @@ const overlayVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { duration: 0.2, ease: 'easeOut' as const }
+    transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] as const }
   },
   exit: {
     opacity: 0,
-    transition: { duration: 0.15, ease: 'easeIn' as const }
+    transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] as const }
   }
 };
 
-// Animation variants for content
 const contentVariants = {
   hidden: {
     opacity: 0,
-    scale: 0.95,
-    y: 10
+    scale: 0.96,
+    y: 8
   },
   visible: {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: {
-      type: 'spring' as const,
-      stiffness: 400,
-      damping: 30,
-      mass: 0.8
-    }
+    transition: springSheet
   },
   exit: {
     opacity: 0,
-    scale: 0.95,
-    y: 10,
+    scale: 0.96,
+    y: 8,
     transition: {
       duration: 0.15,
-      ease: 'easeIn' as const
+      ease: [0.22, 1, 0.36, 1] as const
     }
   }
 };

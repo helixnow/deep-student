@@ -286,7 +286,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 aria-label={t('chatV2:inputBar.plusMenu.trigger')}
                 aria-expanded={open}
               >
-                <Plus size={18} weight="bold" className={cn(open && 'rotate-45 transition-transform')} />
+                <Plus size={18} weight="bold" className={cn('transition-transform duration-[var(--dropdown-close-dur,150ms)]', open && 'rotate-45')} />
               </DsButton>
             </CommonTooltip>
           </span>

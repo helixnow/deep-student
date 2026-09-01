@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import './NotesTrashDialog.css';
 
 /** Workspace trash supports notes, mind maps, and folders. */
@@ -329,7 +330,12 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
     }
   }, [focusIndex, focusRow, items, restoreItem]);
 
-  if (!open) return null;
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
+
+  if (!presence.mounted) return null;
 
   // Keep the roving tabindex in range after optimistic removals.
   const rovingIndex = Math.min(focusIndex, Math.max(items.length - 1, 0));
@@ -338,7 +344,8 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
     <div
       ref={panelRef}
       tabIndex={-1}
-      className={cn('ntd-panel ui-rise-in', className)}
+      className={cn('ntd-panel', presence.exiting ? 'ui-rise-out' : 'ui-rise-in', className)}
+      data-state={presence.exiting ? 'closed' : 'open'}
       role="region"
       aria-labelledby={titleId}
     >

@@ -24,14 +24,18 @@ export {
 // 统一移动端顶栏
 export {
   MobileHeaderProvider,
+  MobileHeaderNavProvider,
   useMobileHeader,
+  useMobileHeaderNav,
   useMobileHeaderContext,
   useMobileHeaderContextSafe,
+  useSetMobileDrawerOpen,
   useSetMobileHeaderActiveView,
   MobileHeaderActiveViewSync,
   type MobileHeaderConfig,
+  type MobileHeaderNav,
 } from './MobileHeaderContext';
-export { UnifiedMobileHeader, type UnifiedMobileHeaderProps } from './UnifiedMobileHeader';
+export { UnifiedMobileHeader, MobileInFlowHeader, MobilePageScaffold, type UnifiedMobileHeaderProps } from './UnifiedMobileHeader';
 
 // 现有桌面端组件
 export { MacTopSafeDragZone } from './MacTopSafeDragZone';

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 /**
  * 轻量 Tooltip（shadcn 兼容 API）。
@@ -193,8 +194,8 @@ interface TooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
 
 // 基础样式 - 最小化，让用户传递的类可以完全覆盖
 // ui-tooltip-in：ui-motion 入场（fade + scale 0.97 + 朝最终位置 2px 漂移，方向随 data-side）
-const getBaseClasses = () => {
-  return 'rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-[var(--tooltip-surface)] text-[var(--tooltip-foreground)] font-medium leading-none ui-tooltip-in';
+const getBaseClasses = (exiting: boolean) => {
+  return `rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-[var(--tooltip-surface)] text-[var(--tooltip-foreground)] font-medium leading-none ${exiting ? 'ui-tooltip-out' : 'ui-tooltip-in'}`;
 };
 
 export const TooltipContent: React.FC<TooltipContentProps>
@@ -202,11 +203,18 @@ export const TooltipContent: React.FC<TooltipContentProps>
     const context = React.useContext(TooltipContext);
     const contentRef = React.useRef<HTMLDivElement>(null);
     const [position, setPosition] = useState<TooltipPosition | null>(null);
+    const lastRectRef = React.useRef(context?.triggerRect ?? null);
+    if (context?.triggerRect) lastRectRef.current = context.triggerRect;
+
+    const presence = useMotionPresence(!!context?.open, {
+      exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+      enter: 'animation',
+    });
 
     const updatePosition = React.useCallback(() => {
-      const rect = context?.triggerRect;
+      const rect = context?.triggerRect ?? lastRectRef.current;
       const content = contentRef.current;
-      if (!context?.open || !rect || !content) return;
+      if (!rect || !content) return;
 
       const width = content.offsetWidth;
       const height = content.offsetHeight;
@@ -250,15 +258,12 @@ export const TooltipContent: React.FC<TooltipContentProps>
           ? current
           : next
       ));
-    }, [align, alignOffset, context?.open, context?.triggerRect, side, sideOffset]);
+    }, [align, alignOffset, context?.triggerRect, side, sideOffset]);
 
     React.useLayoutEffect(() => {
-      if (!context?.open) {
-        setPosition(null);
-        return;
-      }
+      if (!presence.mounted) return;
       updatePosition();
-    }, [context?.open, updatePosition]);
+    }, [presence.mounted, updatePosition]);
 
     const closeTooltip = React.useCallback(() => {
       context?.setOpen(false);
@@ -286,12 +291,13 @@ export const TooltipContent: React.FC<TooltipContentProps>
       [context?.open, updatePosition, closeTooltip],
     );
 
-    if (!context || !context.open || !context.triggerRect) return null;
+    if (!context || !presence.mounted || !lastRectRef.current) return null;
 
     const node = (
       <div
         ref={contentRef}
-        className={className ? `${getBaseClasses()} ${className}` : getBaseClasses()}
+        className={className ? `${getBaseClasses(presence.exiting)} ${className}` : getBaseClasses(presence.exiting)}
+        data-state={presence.exiting ? 'closed' : 'open'}
         role="tooltip"
         data-side={position?.side ?? side}
         style={{

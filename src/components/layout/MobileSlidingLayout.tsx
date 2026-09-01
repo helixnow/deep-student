@@ -1,7 +1,9 @@
 /**
  * MobileSlidingLayout - 移动端推拉式三屏滑动布局
  *
- * DeepSeek 风格：侧边栏、主视图、右侧面板连为一体，滑动时整体平移
+ * DeepSeek 风格：侧边栏、主视图、右侧面板连为一体，滑动时整体平移。
+ * 顶栏嵌在主栏（及右屏）文档流里，跟着原页面一起走；侧栏自己全高，
+ * 有独立铬层（DeepStudent + 设置），不被顶栏侵占。
  * 可选主内容遮罩，用于贴近 study-ui 抽屉式侧边栏
  * 支持触摸和鼠标拖拽
  *
@@ -17,7 +19,7 @@ import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useId
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
-import { useMobileHeaderContextSafe } from './MobileHeaderContext';
+import { MobileInFlowHeader } from './UnifiedMobileHeader';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
@@ -27,6 +29,16 @@ import type { CurrentView } from '@/types/navigation';
 
 /** 三屏位置枚举 */
 export type ScreenPosition = 'left' | 'center' | 'right';
+
+/** 与聊天主页抽屉同款的应用标题；未传入 drawerHeader 的页面共用 */
+const DEFAULT_DRAWER_BRAND = (
+  <p
+    data-mobile-sidebar-fixed-region="top"
+    className="min-w-0 truncate text-[22px] font-bold leading-none text-foreground"
+  >
+    DeepStudent
+  </p>
+);
 
 /**
  * P1-5: 手势完全豁免的目标。文本输入/可编辑区域内的横向拖动是光标拖选，
@@ -114,6 +126,8 @@ interface MobileSlidingLayoutProps {
   sidebar: ReactNode;
   /** 移动侧栏中位于滚动 viewport 上方的固定内容 */
   sidebarFixedContent?: ReactNode;
+  /** 抽屉铬层左侧内容（如聊天品牌名）；右侧固定为设置入口 */
+  drawerHeader?: ReactNode;
   /** 主内容 */
   children: ReactNode;
   /** 右侧面板内容（可选，用于三屏布局） */
@@ -155,7 +169,15 @@ interface MobileSlidingLayoutProps {
   rightPanelSwipeEnabled?: boolean;
   /** 是否自动注入移动端应用导航 */
   showSidebarAppNavigation?: boolean;
-  /** 侧边栏打开时是否给主内容加遮罩 */
+  /**
+   * @deprecated 设置入口已统一到抽屉顶栏右侧；该 prop 不再被读取。
+   */
+  showSettingsFooter?: boolean;
+  /**
+   * @deprecated 设置已从滚动导航中固定隐藏（由顶栏齿轮承担）；该 prop 不再被读取。
+   */
+  hideSettingsInNav?: boolean;
+  /** 侧边栏打开时是否给主内容加遮罩，默认 true */
   showContentOverlay?: boolean;
   /**
    * 额外的手势豁免选择器：触点落在匹配元素内时不启动布局手势，
@@ -167,6 +189,7 @@ interface MobileSlidingLayoutProps {
 export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   sidebar,
   sidebarFixedContent,
+  drawerHeader,
   children,
   rightPanel,
   sidebarOpen,
@@ -183,7 +206,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   rightPanelEnabled = false,
   rightPanelSwipeEnabled = true,
   showSidebarAppNavigation = true,
-  showContentOverlay = false,
+  showContentOverlay = true,
   gestureIgnoreSelector = DEFAULT_GESTURE_IGNORE_SELECTOR,
 }) => {
   const { t } = useTranslation('common');
@@ -230,12 +253,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   const lastContainerWidthRef = useRef<number>(0);
   const mobileLayout = useMobileLayoutSafe();
   const isMobileLayout = mobileLayout?.isMobile ?? false;
-  const mobileHeader = useMobileHeaderContextSafe();
   const enterFullscreen = mobileLayout?.enterFullscreen;
   const exitFullscreen = mobileLayout?.exitFullscreen;
   const fullscreenClaimId = useId();
   const hasSidebar = sidebar !== null && sidebar !== undefined;
-  const isMobileDrawerFullBleed = isMobileLayout && hasSidebar && Boolean(mobileHeader?.config.hidden);
+  const isDrawerOpen = screenPosition === 'left';
+  const showDrawerChrome = isMobileLayout && hasSidebar && showSidebarAppNavigation;
 
   // 容器永不横向滚动：轨道平移只由 track 的 transform 表达，任何来源的 scrollLeft
   // 污染（焦点滚动 / scrollIntoView / 键盘导航）都会让三屏整体偏移一列。
@@ -866,15 +889,26 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             {hasSidebar ? (
               isMobileLayout ? (
                 <>
+                  {showDrawerChrome ? (
+                    <div
+                      data-mobile-drawer-chrome
+                      className="shrink-0 border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]"
+                    >
+                      <header className="flex h-11 items-center justify-between gap-3 px-3 pl-[calc(0.75rem+var(--mobile-safe-area-left,0px))]">
+                        <div className="min-w-0 flex-1">
+                          {drawerHeader ?? DEFAULT_DRAWER_BRAND}
+                        </div>
+                        <MobileSidebarNavigation
+                          settingsOnly
+                          onNavigate={closeSidebarAfterAppNavigation}
+                        />
+                      </header>
+                    </div>
+                  ) : null}
                   {sidebarFixedContent ? (
                     <div
                       data-mobile-drawer-fixed
-                      className={cn(
-                        'shrink-0 px-2 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))]',
-                        isMobileDrawerFullBleed
-                          ? 'pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]'
-                          : 'py-1',
-                      )}
+                      className="shrink-0 px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))]"
                     >
                       {sidebarFixedContent}
                     </div>
@@ -889,14 +923,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                       Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
                       入口，聚焦时保证列表尾部可滚出键盘遮挡区 */}
                   <div
-                    className={cn(
-                      'px-2 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]',
-                      isMobileDrawerFullBleed
-                        ? sidebarFixedContent
-                          ? 'pt-0'
-                          : 'pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]'
-                        : 'py-1',
-                    )}
+                    className="px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]"
                   >
                     <div data-mobile-drawer-page className="min-h-0">
                       {sidebar}
@@ -910,14 +937,6 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                     )}
                   </div>
                   </CustomScrollArea>
-                  {showSidebarAppNavigation && (
-                    <div className="shrink-0 border-t border-border/70 px-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))] pt-1">
-                      <MobileSidebarNavigation
-                        settingsOnly
-                        onNavigate={closeSidebarAfterAppNavigation}
-                      />
-                    </div>
-                  )}
                 </>
               ) : (
                 <div className="min-h-0 flex-1 overflow-hidden">{sidebar}</div>
@@ -929,7 +948,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
           className={cn(
-            'relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-[color:var(--shell-workspace-panel)]',
+            'relative z-[1] flex h-full flex-shrink-0 flex-col overflow-x-hidden bg-[color:var(--shell-workspace-panel)]',
             mainContentClassName,
           )}
           style={{ width: containerWidth || '100vw' }}
@@ -947,7 +966,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                 'absolute inset-0 appearance-none border-0 bg-[color:var(--overlay)] p-0',
                 // 拖拽/settle 期间 opacity 已按帧驱动，叠加 CSS 过渡会让遮罩滞后脱节
                 !isDragging && !isSettling &&
-                  'transition-opacity duration-300 ease-out motion-reduce:transition-none',
+                  'transition-opacity duration-[var(--panel-close-dur,350ms)] ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none',
               )}
               style={{
                 // P1-4: 层级消费统一 token（同一 stacking context 内盖过内容即可）
@@ -960,9 +979,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
           <div
             {...inertProps(isMainContentInert)}
             aria-hidden={isMainContentInert || undefined}
-            className="h-full min-h-0"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            {children}
+            {isMobileLayout ? <MobileInFlowHeader /> : null}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {children}
+            </div>
           </div>
         </div>
 
@@ -974,7 +996,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             className="flex flex-col bg-background"
             style={{ width: containerWidth || '100vw', height: '100%' }}
           >
-            {rightPanel}
+            {isMobileLayout ? <MobileInFlowHeader /> : null}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {rightPanel}
+            </div>
           </div>
         )}
       </div>

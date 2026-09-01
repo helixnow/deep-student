@@ -2131,6 +2131,21 @@
   padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px));
 }
 
+@keyframes mmToolbarSlideDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+}
+
+[data-state="closed"] .mm-mobile-node-toolbar {
+  animation: mmToolbarSlideDown var(--mm-dur-enter, 150ms) ease-out both;
+}
+
 .mm-mobile-toolbar-row {
   display: flex;
   align-items: stretch;

@@ -21,6 +21,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import {
   AppMenu,
   AppMenuContent,
@@ -198,14 +199,15 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
     });
   }, [confirmingDelete, runBulk, t, withSkippedNote]);
 
-  if (count === 0) return null;
-
   return (
-    <div
+    <UiPresence
+      open={count > 0}
+      inClass="ui-rise-in"
+      outClass="ui-rise-out"
       role="toolbar"
       aria-label={t('todo:bulk.title', { defaultValue: '批量操作' })}
       className={cn(
-        'ui-rise-in flex flex-wrap items-center gap-1.5 border-b border-border/30 px-4 py-1.5 sm:px-6',
+        'flex flex-wrap items-center gap-1.5 border-b border-border/30 px-4 py-1.5 sm:px-6',
         'bg-[color:hsl(var(--primary))]/[0.05]',
       )}
     >
@@ -292,6 +294,6 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
         <X size={13} />
         {t('todo:bulk.clear', { defaultValue: '清除选择' })}
       </DsButton>
-    </div>
+    </UiPresence>
   );
 };

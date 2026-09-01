@@ -47,7 +47,7 @@ export function ComposerInlinePanel({
   bodyClassName,
   children,
 }: ComposerInlinePanelProps) {
-  const expanded = motionState === 'open' || motionState === 'opening';
+        const expanded = motionState === 'open';
   // 85vh 基于布局视口：Android adjustResize 下随键盘缩小，--keyboard-inset≈0；
   // iOS overlay 键盘下布局视口不变，用 --keyboard-inset 扣除被遮挡部分。
   // 再预留 ~180px 给输入区自身，最低保 160px 可用高度。

@@ -50,6 +50,7 @@ import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
 import { DsButton } from '@/components/ui/DsButton';
+import { UiPresence } from '@/components/ui/UiPresence';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -1585,24 +1586,22 @@ function ActionMenu({
         {t('settings:mcp_descriptions.quick_actions')}
       </DsButton>
 
-      {isOpen && (
-        isSmallScreen ? (
-          // 移动端：按钮下方内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）
-          <div className="mt-1 w-full rounded-lg border border-border bg-popover p-1.5 ui-zoom-fade-in motion-reduce:animate-none">
-            {menuItems}
-          </div>
-        ) : (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
-            />
-            <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
-              {menuItems}
-            </div>
-          </>
-        )
+      {!isSmallScreen && isOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setIsOpen(false)}
+        />
       )}
+      <UiPresence
+        open={isOpen}
+        inClass="ui-zoom-fade-in motion-reduce:animate-none"
+        outClass="ui-zoom-fade-out"
+        className={isSmallScreen
+          ? 'mt-1 w-full rounded-lg border border-border bg-popover p-1.5'
+          : 'absolute top-full right-0 z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-popover p-1.5 shadow-lg'}
+      >
+        {menuItems}
+      </UiPresence>
     </div>
   );
 }
@@ -1892,17 +1891,52 @@ export function PresetServerSelector({
         {t('settings:mcp_presets.add_preset')}
       </DsButton>
 
-      {isOpen && (
-        isSmallScreen ? (
-          // P0-3 移动端：内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）。
-          // 选中预置后列表让位给权限确认卡，取消则回到列表。
-          pendingPreset ? (
-            <div
-              className="mt-1 w-full space-y-4 rounded-lg border border-border bg-popover p-4 text-sm ui-zoom-fade-in motion-reduce:animate-none mcp-preset-permission-drawer"
-              role="group"
-              aria-label={t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
-              data-testid="mcp-preset-permission-drawer"
-            >
+      <UiPresence
+        open={isOpen && !(isSmallScreen && Boolean(pendingPreset))}
+        inClass="ui-zoom-fade-in motion-reduce:animate-none"
+        outClass="ui-zoom-fade-out"
+        className={isSmallScreen ? 'mt-1 w-full' : 'absolute right-0 top-full z-50 mt-1'}
+      >
+        {!isSmallScreen && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={closeSelector}
+            aria-hidden="true"
+            data-testid="mcp-preset-selector-backdrop"
+          />
+        )}
+        <CustomScrollArea
+          ref={selectorPanelRef}
+          className={isSmallScreen
+            ? 'h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover mcp-preset-selector'
+            : 'relative z-50 h-[min(60dvh,30rem)] w-[380px] max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover shadow-lg mcp-preset-selector'}
+          viewportClassName="p-2"
+          trackOffsetTop={4}
+          trackOffsetBottom={4}
+          role={isSmallScreen ? 'group' : 'dialog'}
+          aria-modal={isSmallScreen ? undefined : 'true'}
+          aria-label={t('settings:mcp_presets.title')}
+          tabIndex={-1}
+          data-testid="mcp-preset-selector"
+        >
+          {selectorContent}
+        </CustomScrollArea>
+      </UiPresence>
+
+      {isSmallScreen && (
+        <UiPresence
+          open={isOpen && Boolean(pendingPreset)}
+          inClass="ui-zoom-fade-in motion-reduce:animate-none"
+          outClass="ui-zoom-fade-out"
+          className="mt-1 w-full space-y-4 rounded-lg border border-border bg-popover p-4 text-sm mcp-preset-permission-drawer"
+          role="group"
+          aria-label={pendingPreset
+            ? t('settings:mcp_presets.permission_title', { name: pendingPreset.name })
+            : t('settings:mcp_presets.title')}
+          data-testid="mcp-preset-permission-drawer"
+        >
+          {pendingPreset && (
+            <>
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <Shield className="w-4 h-4" aria-hidden="true" />
@@ -1914,46 +1948,9 @@ export function PresetServerSelector({
               <div className="flex flex-wrap justify-end gap-2 border-t border-border/40 pt-3">
                 {permissionFooterButtons}
               </div>
-            </div>
-          ) : (
-            <CustomScrollArea
-              ref={selectorPanelRef}
-              className="mt-1 h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover ui-zoom-fade-in motion-reduce:animate-none mcp-preset-selector"
-              viewportClassName="p-2"
-              trackOffsetTop={4}
-              trackOffsetBottom={4}
-              role="group"
-              aria-label={t('settings:mcp_presets.title')}
-              tabIndex={-1}
-              data-testid="mcp-preset-selector"
-            >
-              {selectorContent}
-            </CustomScrollArea>
-          )
-        ) : (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={closeSelector}
-              aria-hidden="true"
-              data-testid="mcp-preset-selector-backdrop"
-            />
-            <CustomScrollArea
-              ref={selectorPanelRef}
-              className="absolute right-0 top-full z-50 mt-1 h-[min(60dvh,30rem)] w-[380px] max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover shadow-lg ui-zoom-fade-in mcp-preset-selector"
-              viewportClassName="p-2"
-              trackOffsetTop={4}
-              trackOffsetBottom={4}
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('settings:mcp_presets.title')}
-              tabIndex={-1}
-              data-testid="mcp-preset-selector"
-            >
-              {selectorContent}
-            </CustomScrollArea>
-          </>
-        )
+            </>
+          )}
+        </UiPresence>
       )}
 
       {/* 桌面端：安装前权限确认保留 Sheet；移动端由上方内联卡承载（P0-3） */}

@@ -87,6 +87,7 @@ describe('AppMenu submenu keyboard contract', () => {
     const view = render(renderMenu(1));
     const first = await screen.findByRole('menuitem', { name: 'First action' });
     const second = screen.getByRole('menuitem', { name: 'Second action' });
+    first.focus();
     await waitFor(() => expect(first).toHaveFocus());
     second.focus();
 

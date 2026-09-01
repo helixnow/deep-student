@@ -148,15 +148,14 @@ function EmptyTopicsSidebarHarness() {
 }
 
 describe('useSessionSidebarContent', () => {
-  it('keeps the unified mobile drawer header and new-chat action outside the scroll region', () => {
+  it('keeps the unified mobile drawer brand outside the scroll region', () => {
     const { container } = render(<SidebarHarness unifiedMobileDrawer fixedHeader />);
     const fixedRegion = container.querySelector('[data-mobile-sidebar-fixed-region="top"]');
 
     expect(fixedRegion).toBeInTheDocument();
-    expect(fixedRegion).not.toHaveClass('sticky');
-    expect(fixedRegion).toContainElement(screen.getByText('DeepStudent'));
-    const newChatButton = screen.getByRole('button', { name: '新对话' });
-    expect(fixedRegion).toContainElement(newChatButton);
+    expect(fixedRegion).toHaveTextContent('DeepStudent');
+    expect(screen.queryByRole('button', { name: '新对话' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument();
   });
 
   it('keeps primary chat actions visible in the unified mobile drawer without the legacy section', () => {
@@ -167,7 +166,9 @@ describe('useSessionSidebarContent', () => {
 
     rerender(<SidebarHarness unifiedMobileDrawer fixedHeader />);
 
-    expect(screen.getByRole('button', { name: '新对话' })).toBeInTheDocument();
+    // 移动端统一抽屉：新对话改到首页右上角，设置由滑动壳顶栏齿轮承担
+    expect(screen.queryByRole('button', { name: '新对话' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '设置' })).not.toBeInTheDocument();
     // 移动端统一抽屉不再提供「所有对话」入口（会话浏览由搜索与命令 / 会话搜索承担）
     expect(screen.queryByRole('button', { name: '所有对话' })).not.toBeInTheDocument();
     expect(screen.queryByText('会话')).not.toBeInTheDocument();

@@ -8,6 +8,7 @@ import { CircleNotch, FileArchive, Info, Package, Warning, X } from '@phosphor-i
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotesAPI } from '@/utils/notesApi';
 import { cn } from '@/lib/utils';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 export type ImportConflictStrategy = 'skip' | 'overwrite' | 'merge_keep_newer';
 
@@ -419,6 +420,10 @@ export function NotesLibraryManager({
   const { t } = useTranslation(['notes', 'common']);
   const titleId = useId();
   const busy = panelProps.exporting || panelProps.importing;
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -432,13 +437,18 @@ export function NotesLibraryManager({
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [busy, onOpenChange, open]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   return (
     <section
       role="region"
       aria-labelledby={titleId}
-      className="ui-rise-in absolute right-3 top-3 bottom-3 z-[60] flex w-[min(460px,calc(100%-24px))] flex-col overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-[var(--shadow-shell-floating,var(--notes-popup-shadow))]"
+      data-state={presence.exiting ? 'closed' : 'open'}
+      aria-hidden={presence.exiting || undefined}
+      className={cn(
+        presence.exiting ? 'ui-rise-out' : 'ui-rise-in',
+        'absolute right-3 top-3 bottom-3 z-[60] flex w-[min(460px,calc(100%-24px))] flex-col overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-[var(--shadow-shell-floating,var(--notes-popup-shadow))]',
+      )}
     >
       {/* Visually-hidden anchor for aria-labelledby; the visible title lives inside the panel. */}
       <span id={titleId} className="sr-only">

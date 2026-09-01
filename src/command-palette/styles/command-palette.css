@@ -36,6 +36,10 @@
   animation: command-palette-slide-down 150ms ease-out;
 }
 
+.command-palette-container[data-state="closed"] {
+  animation: command-palette-slide-up 150ms ease-out;
+}
+
 @keyframes command-palette-slide-down {
   from {
     opacity: 0;
@@ -44,6 +48,17 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes command-palette-slide-up {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
   }
 }
 

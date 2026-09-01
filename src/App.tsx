@@ -32,7 +32,7 @@ import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
-import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
+import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MobilePageScaffold } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
@@ -1021,8 +1021,6 @@ function App() {
   const [desktopChatHeaderTarget, setDesktopChatHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
-  // 关闭设置返回原视图时跳过一次页面入场动画，避免和设置页离场动画叠加造成闪现。
-  const settingsClosingViewRef = useRef<CurrentView | null>(null);
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
   
@@ -1061,12 +1059,6 @@ function App() {
     // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
     // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
     startTransition(() => {
-      if (targetView === 'settings' && prevView !== 'settings') {
-        settingsClosingViewRef.current = null;
-      } else if (prevView === 'settings' && targetView !== 'settings') {
-        settingsClosingViewRef.current = targetView;
-      }
-
       // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
       setVisitedViews(prev => {
         const now = Date.now();
@@ -2424,15 +2416,19 @@ function App() {
 
   const templateJsonPreviewContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyTemplateJsonPreviewPage
-        onBack={() => setCurrentView(templateJsonPreviewReturnRef.current)}
-      />
+      <MobilePageScaffold>
+        <LazyTemplateJsonPreviewPage
+          onBack={() => setCurrentView(templateJsonPreviewReturnRef.current)}
+        />
+      </MobilePageScaffold>
     </Suspense>
   ), [setCurrentView]);
 
   const styleDebugContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyStyleDebugPage />
+      <MobilePageScaffold>
+        <LazyStyleDebugPage />
+      </MobilePageScaffold>
     </Suspense>
   ), []);
 
@@ -2441,7 +2437,11 @@ function App() {
   ), []);
 
   const pdfReaderContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyPdfReader /></Suspense>
+    <Suspense fallback={<PageLoadingFallback />}>
+      <MobilePageScaffold>
+        <LazyPdfReader />
+      </MobilePageScaffold>
+    </Suspense>
   ), []);
 
   const chatV2Content = useMemo(() => (
@@ -2494,7 +2494,6 @@ function App() {
       errorBoundaryName={view}
       extraClass={extraClass}
       extraStyle={extraStyle}
-      suppressEnterAnimation={isSmallScreen && currentView !== 'settings' && view === settingsClosingViewRef.current}
     >
       {content}
     </ViewLayerRenderer>
@@ -2535,6 +2534,15 @@ function App() {
       <MobileHeaderProvider>
       {/* ★ 移动端顶栏活跃视图同步 - 必须在 MobileHeaderProvider 内部 */}
       <MobileHeaderActiveViewSync activeView={currentView} />
+      <MobileHeaderNavProvider
+        value={{
+          canGoBack: mobileHeaderCanGoBack,
+          onBack: handleMobileHeaderBack,
+          canGoForward: unifiedCanGoForward,
+          onForward: unifiedGoForward,
+          fallbackTitle: desktopShellViewLabel,
+        }}
+      >
       <LearningHubNavigationProvider>
       <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
       <DesktopShellHeaderPortalProvider value={desktopShellHeaderPortalValue}>
@@ -2563,18 +2571,6 @@ function App() {
         >
           {t('common:aria.skip_to_main_content')}
         </a>
-        {/* 移动端：统一顶部导航栏 */}
-        {isSmallScreen && (
-          <UnifiedMobileHeader
-            canGoBack={mobileHeaderCanGoBack}
-            onBack={handleMobileHeaderBack}
-            canGoForward={unifiedCanGoForward}
-            onForward={unifiedGoForward}
-            fallbackTitle={desktopShellViewLabel}
-            className="fixed top-0 left-0 right-0"
-            style={{ zIndex: Z_INDEX.mobileHeader }}
-          />
-        )}
 
         {/* 桌面端：固定顶部栏。工作台模式不渲染——窗口拖拽与 Win 三键
             全部由 Workbench StatusBar（wb-menubar）接管。 */}
@@ -2738,7 +2734,7 @@ function App() {
           style={{
             // 移动端：48px 基础高度 + topbarTopMargin；工作台：顶栏不占位；其余桌面：标题栏高度
             paddingTop: isSmallScreen
-              ? 'var(--mobile-header-total-height)'
+              ? 0
               : workbenchActive
                 ? 0
                 : `${shellTitlebarOccupiedHeight}px`,
@@ -2855,14 +2851,14 @@ function App() {
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}
 
-              {renderViewLayer('sandbox-workbench', <Suspense fallback={<PageLoadingFallback />}><LazySandboxWorkbenchPage /></Suspense>)}
+              {renderViewLayer('sandbox-workbench', <Suspense fallback={<PageLoadingFallback />}><MobilePageScaffold><LazySandboxWorkbenchPage /></MobilePageScaffold></Suspense>)}
 
               {renderViewLayer('pdf-reader', pdfReaderContent)}
 
               {/* 待办事项独立页面 */}
               {renderViewLayer('todo', <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>)}
 
-              {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><MobilePageScaffold><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></MobilePageScaffold></Suspense>)}
 
               {import.meta.env.DEV && renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
 
@@ -2927,6 +2923,7 @@ function App() {
       </DesktopShellHeaderPortalProvider>
       </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
+      </MobileHeaderNavProvider>
       </MobileHeaderProvider>
       </MobileAppNavigationProvider>
       </MobileLayoutProvider>

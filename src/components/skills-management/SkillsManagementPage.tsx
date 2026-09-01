@@ -1118,9 +1118,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           setRightPanelOpen(false);
           setScreenPosition('center');
         }
-      : screenPosition === 'left'
-        ? () => setScreenPosition('center')
-        : () => setScreenPosition('left'),
+      : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
       <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />

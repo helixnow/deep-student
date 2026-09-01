@@ -10,6 +10,7 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
+import { springSheet } from '@/styles/motion-springs';
 
 /**
  * Android 系统返回键接入：DsDialog 是 framer-motion 自绘弹窗（非 Radix），
@@ -63,8 +64,8 @@ function useEscapeClose(open: boolean, close: () => void) {
 
 const overlayVariants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.18, ease: 'easeOut' as const } },
-  exit: { opacity: 0, transition: { duration: 0.12, ease: 'easeIn' as const } },
+  visible: { opacity: 1, transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] as const } },
+  exit: { opacity: 0, transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 const contentVariants = {
@@ -73,9 +74,9 @@ const contentVariants = {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.7 },
+    transition: springSheet,
   },
-  exit: { opacity: 0, scale: 0.96, y: 8, transition: { duration: 0.12, ease: 'easeIn' as const } },
+  exit: { opacity: 0, scale: 0.96, y: 8, transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 /** 移动端 bottom sheet 形态：从底部整体滑入/滑出（iOS/Material 范式） */
@@ -83,20 +84,20 @@ const sheetContentVariants = {
   hidden: { y: '100%' },
   visible: {
     y: 0,
-    transition: { type: 'spring' as const, stiffness: 380, damping: 34, mass: 0.8 },
+    transition: springSheet,
   },
-  exit: { y: '100%', transition: { duration: 0.18, ease: 'easeIn' as const } },
+  exit: { y: '100%', transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 const alertContentVariants = {
-  hidden: { opacity: 0, scale: 0.92, y: 16 },
+  hidden: { opacity: 0, scale: 0.96, y: 8 },
   visible: {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: 'spring' as const, stiffness: 380, damping: 26, mass: 0.75 },
+    transition: springSheet,
   },
-  exit: { opacity: 0, scale: 0.92, y: 16, transition: { duration: 0.12, ease: 'easeIn' as const } },
+  exit: { opacity: 0, scale: 0.96, y: 8, transition: { duration: 0.15, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 // ============================================================================

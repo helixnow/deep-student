@@ -192,6 +192,18 @@
   }
 }
 
+@keyframes ui-kf-rise-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
 @keyframes ui-kf-drop-in {
   from {
     opacity: 0;
@@ -201,6 +213,18 @@
   to {
     opacity: 1;
     translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-drop-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    translate: 0 -4px;
   }
 }
 
@@ -216,6 +240,18 @@
   }
 }
 
+@keyframes ui-kf-slide-fade-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 0);
+  }
+}
+
 @keyframes ui-kf-tooltip-in {
   from {
     opacity: 0;
@@ -227,6 +263,20 @@
     opacity: 1;
     scale: 1;
     translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-tooltip-out {
+  from {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    scale: var(--dropdown-pre-scale, 0.97);
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 2px);
   }
 }
 
@@ -295,9 +345,17 @@
   animation: ui-kf-rise-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
+.ui-rise-out[data-state="closed"] {
+  animation: ui-kf-rise-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
 /* Mount entry: fade + 4px descend. For banners / bars sliding in from above. */
 .ui-drop-in {
   animation: ui-kf-drop-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-drop-out[data-state="closed"] {
+  animation: ui-kf-drop-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
 /*
@@ -307,6 +365,10 @@
  */
 .ui-slide-fade-in {
   animation: ui-kf-slide-fade-in var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-fade-out[data-state="closed"] {
+  animation: ui-kf-slide-fade-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
 /* ============ Tooltip entry (data-side aware) ============ */
@@ -319,25 +381,39 @@
   animation: ui-kf-tooltip-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
-.ui-tooltip-in[data-side="bottom"] {
+.ui-tooltip-in[data-side="bottom"],
+.ui-tooltip-out[data-side="bottom"] {
   --ui-enter-x: 0;
   --ui-enter-y: -2px;
 
   transform-origin: top center;
 }
 
-.ui-tooltip-in[data-side="left"] {
+.ui-tooltip-in[data-side="left"],
+.ui-tooltip-out[data-side="left"] {
   --ui-enter-x: 2px;
   --ui-enter-y: 0;
 
   transform-origin: center right;
 }
 
-.ui-tooltip-in[data-side="right"] {
+.ui-tooltip-in[data-side="right"],
+.ui-tooltip-out[data-side="right"] {
   --ui-enter-x: -2px;
   --ui-enter-y: 0;
 
   transform-origin: center left;
+}
+
+.ui-tooltip-out {
+  --ui-enter-x: 0;
+  --ui-enter-y: 2px;
+
+  transform-origin: bottom center;
+}
+
+.ui-tooltip-out[data-state="closed"] {
+  animation: ui-kf-tooltip-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
 /* ============ Active-state color swap (not open/close) ============ */
@@ -381,7 +457,11 @@
   .ui-slide-out-top[data-state="closed"],
   .ui-slide-out-bottom[data-state="closed"],
   .ui-slide-out-left[data-state="closed"],
-  .ui-slide-out-right[data-state="closed"] {
+  .ui-slide-out-right[data-state="closed"],
+  .ui-rise-out[data-state="closed"],
+  .ui-drop-out[data-state="closed"],
+  .ui-slide-fade-out[data-state="closed"],
+  .ui-tooltip-out[data-state="closed"] {
     animation: none;
   }
 
@@ -454,6 +534,22 @@
   animation: ui-kf-slide-up-panel var(--m-sheet-dur, 260ms) var(--m-sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
+@keyframes ui-kf-slide-up-panel-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    translate: 0 var(--m-sheet-distance, 16px);
+  }
+}
+
+.ui-slide-up-panel-out[data-state="closed"] {
+  animation: ui-kf-slide-up-panel-out var(--m-sheet-dur, 260ms) var(--m-sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
 /* ============ Mobile primitives: reduced motion ============ */
 
 @media (prefers-reduced-motion: reduce) {
@@ -467,7 +563,8 @@
     scale: 1;
   }
 
-  .ui-slide-up-panel {
+  .ui-slide-up-panel,
+  .ui-slide-up-panel-out[data-state="closed"] {
     animation: none;
   }
 }

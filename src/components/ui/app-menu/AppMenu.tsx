@@ -21,6 +21,7 @@ import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -34,6 +35,8 @@ interface AppMenuContextValue {
   mode: 'dropdown' | 'context';
   position: { x: number; y: number };
   setPosition: (pos: { x: number; y: number }) => void;
+  /** Keyboard open focuses the first item; pointer open keeps focus on the menu shell. */
+  openIntentRef: React.MutableRefObject<'keyboard' | 'pointer'>;
 }
 
 const AppMenuContext = React.createContext<AppMenuContextValue | null>(null);
@@ -90,6 +93,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const openIntentRef = React.useRef<'keyboard' | 'pointer'>('pointer');
 
   React.useEffect(() => {
     if (!actualOpen) return;
@@ -126,7 +130,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   }, [actualOpen, handleKeyDown, setOpen]);
 
   return (
-    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition }}>
+    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition, openIntentRef }}>
       <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
@@ -153,6 +157,10 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
     if (e.defaultPrevented) return;
 
     if (ctx.mode === 'dropdown') {
+      // Keyboard activation synthesizes click with detail=0; keep the keydown intent.
+      if (e.detail !== 0) {
+        ctx.openIntentRef.current = 'pointer';
+      }
       ctx.setOpen(!ctx.open);
       return;
     }
@@ -170,6 +178,7 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
     if (ctx.mode === 'context') {
       e.preventDefault();
       ctx.setPosition({ x: e.clientX, y: e.clientY });
+      ctx.openIntentRef.current = 'pointer';
       ctx.setOpen(true);
     }
   };
@@ -185,6 +194,7 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
         x: rect.left + Math.min(16, rect.width / 2),
         y: rect.top + Math.min(16, rect.height / 2),
       });
+      ctx.openIntentRef.current = 'keyboard';
       ctx.setOpen(true);
       return;
     }
@@ -193,6 +203,7 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
       (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')
     ) {
       e.preventDefault();
+      ctx.openIntentRef.current = 'keyboard';
       ctx.setOpen(true);
     }
   };
@@ -267,9 +278,12 @@ export function AppMenuContent({
   const triggerRef = ctx?.triggerRef;
   const contextPositionX = ctx?.position.x ?? 0;
   const contextPositionY = ctx?.position.y ?? 0;
-  const [shouldRender, setShouldRender] = React.useState(isOpen);
-  const [isClosing, setIsClosing] = React.useState(false);
-  const closeTimeoutRef = React.useRef<number | null>(null);
+  const presence = useMotionPresence(isOpen, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'transition',
+  });
+  const shouldRender = presence.mounted;
+  const isClosing = presence.exiting;
   const resolvedSearchPlaceholder = searchPlaceholder || t('app_menu.search.placeholder');
 
   const actualSearchValue = searchValue !== undefined ? searchValue : internalSearchValue;
@@ -280,39 +294,6 @@ export function AppMenuContent({
       setInternalSearchValue(value);
     }
   };
-
-  React.useEffect(() => {
-    if (closeTimeoutRef.current !== null) {
-      window.clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
-
-    if (isOpen) {
-      setShouldRender(true);
-      setIsClosing(false);
-      return;
-    }
-
-    if (!shouldRender) return;
-
-    setIsClosing(true);
-    const closeMs = parseFloat(
-      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
-    ) || 150;
-
-    closeTimeoutRef.current = window.setTimeout(() => {
-      setShouldRender(false);
-      setIsClosing(false);
-      closeTimeoutRef.current = null;
-    }, closeMs);
-
-    return () => {
-      if (closeTimeoutRef.current !== null) {
-        window.clearTimeout(closeTimeoutRef.current);
-        closeTimeoutRef.current = null;
-      }
-    };
-  }, [isOpen, shouldRender]);
 
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
@@ -408,20 +389,26 @@ export function AppMenuContent({
   }, [contentRef]);
 
   // 打开后建立键盘入口；timer 必须随 close/reopen 清理，避免旧会话抢焦点。
-  // 焦点只落在菜单容器（tabIndex=-1）上，不预先聚焦任何菜单项：
-  // 鼠标打开时不会出现"假悬浮"高亮，键盘方向键仍能从容器进入导航。
+  // 指针打开：焦点落在菜单容器（tabIndex=-1），避免第一项出现"假悬浮"高亮。
+  // 键盘打开：按 APG 把焦点交给当前选中项或第一项。
   React.useEffect(() => {
-    if (!isOpen || !shouldRender) return undefined;
+    if (!isOpen || !shouldRender || !presence.shown) return undefined;
     const timer = window.setTimeout(() => {
       if (!isOpen) return;
       if (showSearch && searchInputRef.current) {
         searchInputRef.current.focus({ preventScroll: true });
         return;
       }
+      if (ctx?.openIntentRef.current === 'keyboard') {
+        const items = getEnabledItems();
+        const target = items.find(isCheckedMenuItem) ?? items[0] ?? contentRef.current;
+        target?.focus({ preventScroll: true });
+        return;
+      }
       contentRef.current?.focus({ preventScroll: true });
     }, showSearch ? 50 : 0);
     return () => window.clearTimeout(timer);
-  }, [contentRef, isOpen, shouldRender, showSearch]);
+  }, [contentRef, ctx?.openIntentRef, getEnabledItems, isOpen, presence.shown, shouldRender, showSearch]);
 
   const handleContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);
@@ -491,7 +478,9 @@ export function AppMenuContent({
       ref={contentRef}
       role="menu"
       data-app-menu-id={ctx.menuId}
+      data-state={isClosing || !isOpen ? 'closed' : 'open'}
       tabIndex={-1}
+      aria-hidden={isClosing || !isOpen ? true : undefined}
       // P3-9 可访问名兜底：调用方未给 aria-label/labelledby 时，下拉菜单
       // 用触发器（按钮文本或其 aria-label）作为菜单名；context 模式触发器
       // 是大面积内容区，不做兜底以免名字冗长。
@@ -503,7 +492,7 @@ export function AppMenuContent({
       className={cn(
         'app-menu-content',
         position.origin === 'bottom' ? 'app-menu-origin-bottom' : 'app-menu-origin-top',
-        isOpen && 'app-menu-open',
+        isOpen && presence.shown && 'app-menu-open',
         isClosing && 'app-menu-closing',
         className
       )}
@@ -843,6 +832,10 @@ export function AppMenuSubContent({
   const subCtx = React.useContext(AppMenuSubContext);
   const rootMenuCtx = React.useContext(AppMenuContext);
   const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+  const presence = useMotionPresence(!!subCtx?.open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
 
   const getEnabledItems = React.useCallback((): HTMLElement[] => {
     const root = subCtx?.contentRef.current;
@@ -859,7 +852,7 @@ export function AppMenuSubContent({
   }, [subCtx?.contentRef]);
 
   React.useEffect(() => {
-    if (!subCtx?.open || subCtx.keyboardFocusRequest === 0) return undefined;
+    if (!subCtx?.open || !presence.mounted || subCtx.keyboardFocusRequest === 0) return undefined;
     const timer = window.setTimeout(() => {
       if (!subCtx.open) return;
       // 键盘展开子菜单时优先聚焦选中项，其次第一项
@@ -870,13 +863,14 @@ export function AppMenuSubContent({
     return () => window.clearTimeout(timer);
   }, [
     getEnabledItems,
+    presence.mounted,
     subCtx?.contentRef,
     subCtx?.keyboardFocusRequest,
     subCtx?.open,
   ]);
 
   React.useLayoutEffect(() => {
-    if (!subCtx?.open || typeof window === 'undefined') return;
+    if (!subCtx?.open || !presence.mounted || typeof window === 'undefined') return;
 
     const updatePosition = () => {
       const triggerEl = subCtx.triggerRef.current;
@@ -920,9 +914,9 @@ export function AppMenuSubContent({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [subCtx]);
+  }, [presence.mounted, subCtx]);
 
-  if (!subCtx?.open) return null;
+  if (!subCtx || !presence.mounted) return null;
 
   const handleSubContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);
@@ -983,6 +977,8 @@ export function AppMenuSubContent({
       data-app-menu-id={rootMenuCtx?.menuId}
       data-app-menu-sub-content=""
       className={cn('app-menu-sub-content', className)}
+      data-state={presence.exiting || !subCtx.open ? 'closed' : 'open'}
+      aria-hidden={presence.exiting || !subCtx.open ? true : undefined}
       onMouseEnter={subCtx.openOnClick ? undefined : subCtx.openSub}
       onMouseLeave={subCtx.openOnClick ? undefined : subCtx.scheduleClose}
       onFocusCapture={(event) => {

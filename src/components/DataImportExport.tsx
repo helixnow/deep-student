@@ -302,7 +302,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
     showMenu: !embedded,
-    onMenuClick: () => setSidebarOpen((v) => !v),
+    onMenuClick: () => setSidebarOpen(true),
     rightActions: (
       <DsButton
         variant="ghost"

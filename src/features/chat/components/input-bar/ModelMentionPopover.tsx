@@ -15,6 +15,7 @@ import { Sparkle, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -63,47 +64,15 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
   const { t } = useTranslation(['chatV2']);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const closeTimeoutRef = useRef<number | null>(null);
-  const [shouldRender, setShouldRender] = React.useState(open);
-  const [isClosing, setIsClosing] = React.useState(false);
+  const presence = useMotionPresence(open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'transition',
+  });
 
   // 重置 itemRefs 数组长度，避免旧引用残留
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, suggestions.length);
   }, [suggestions.length]);
-
-  useEffect(() => {
-    if (closeTimeoutRef.current !== null) {
-      window.clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
-
-    if (open) {
-      setShouldRender(true);
-      setIsClosing(false);
-      return;
-    }
-
-    if (!shouldRender) return;
-
-    setIsClosing(true);
-    const closeMs = parseFloat(
-      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
-    ) || 150;
-
-    closeTimeoutRef.current = window.setTimeout(() => {
-      setShouldRender(false);
-      setIsClosing(false);
-      closeTimeoutRef.current = null;
-    }, closeMs);
-
-    return () => {
-      if (closeTimeoutRef.current !== null) {
-        window.clearTimeout(closeTimeoutRef.current);
-        closeTimeoutRef.current = null;
-      }
-    };
-  }, [open, shouldRender]);
 
   // 确保选中项可见
   useEffect(() => {
@@ -124,9 +93,9 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     : undefined;
 
   // 无匹配结果且有查询时显示提示
-  const showNoResults = shouldRender && suggestions.length === 0 && query.length > 0;
+  const showNoResults = presence.mounted && suggestions.length === 0 && query.length > 0;
 
-  if (!shouldRender) {
+  if (!presence.mounted) {
     return null;
   }
 
@@ -136,8 +105,8 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
       <div
         className={cn(
           't-dropdown',
-          isClosing && 'is-closing',
-          open && 'is-open',
+          presence.exiting && 'is-closing',
+          presence.shown && 'is-open',
           // P2-1: 窄屏时收窄到视口内（固定 w-72 会在小屏溢出）
           'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
           'bottom-full mb-3 left-0',
@@ -173,8 +142,8 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     <div
       className={cn(
         't-dropdown',
-        isClosing && 'is-closing',
-        open && 'is-open',
+        presence.exiting && 'is-closing',
+        presence.shown && 'is-open',
         // 基础样式（P2-1: 窄屏时收窄到视口内，键盘上方仍完整可见）
         'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         // 定位：在输入框上方

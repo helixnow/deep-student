@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '../../../lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
+import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 interface PopoverContextValue {
   open: boolean;
@@ -278,7 +279,12 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
     };
   }, [ctx?.open, ctx?.containerRef, portal, updatePosition]);
 
-  if (!ctx || !ctx.open) return null;
+  const presence = useMotionPresence(!!ctx?.open, {
+    exitMs: readCssDurationMs('--dropdown-close-dur', 150),
+    enter: 'animation',
+  });
+
+  if (!ctx || !presence.mounted) return null;
 
   // 当通过 portal/fixed 定位渲染时
   if (portal && typeof window !== 'undefined' && ctx.containerRef.current) {
@@ -297,9 +303,11 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
         role="dialog"
         ref={assignContentRef}
           className={cn(
-            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
+            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none shadow-none',
+            presence.exiting ? 'ui-zoom-fade-out' : 'ui-zoom-fade-in',
             className
           )}
+        data-state={presence.exiting ? 'closed' : 'open'}
         style={{
           zIndex: Z_INDEX.popover,
           left: finalLeft,
@@ -320,10 +328,12 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
       role="dialog"
       ref={assignContentRef}
       className={cn(
-        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
+        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none shadow-none',
+        presence.exiting ? 'ui-zoom-fade-out' : 'ui-zoom-fade-in',
         alignmentClass,
         className
       )}
+      data-state={presence.exiting ? 'closed' : 'open'}
       style={{ zIndex: Z_INDEX.inputBarInner, ...style }}
       {...rest}
     />

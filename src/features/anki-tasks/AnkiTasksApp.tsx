@@ -445,10 +445,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     title: t('taskDashboard.title'),
     subtitle: isSmallScreen ? undefined : t('taskDashboard.subtitle'),
     showMenu: true,
-    onMenuClick: sidebarOpen
-      ? () => setSidebarOpen(false)
-      : () => setSidebarOpen(true),
-  }, [t, isSmallScreen, sidebarOpen]);
+    onMenuClick: () => setSidebarOpen(true),
+  }, [t, isSmallScreen]);
 
   const renderMobileShell = (body: React.ReactNode) => {
     if (!isSmallScreen) {
