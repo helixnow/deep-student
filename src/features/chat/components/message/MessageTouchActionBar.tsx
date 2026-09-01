@@ -149,7 +149,9 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
     }
   }, [canDelete, isDeleting, deleteArmed, disarmDelete, onDelete, onClose]);
 
-  const barButtonClassName = 'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui';
+  // 字号/图标由按钮契约的移动端规则接管（13px 字 + 18px 图标 @44px 壳）；
+  // 此前 text-ui(12px) 压过契约字号导致壳大字小
+  const barButtonClassName = 'flex-1 min-w-0 justify-center gap-1.5 !px-2 font-medium';
 
   return (
     <div

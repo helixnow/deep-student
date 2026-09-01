@@ -54,26 +54,33 @@ export const buttonToneClassNames: Record<ButtonPrimitiveVariant, string> = {
     'border-transparent bg-transparent text-[color:var(--button-primary-foreground)] underline-offset-4 hover:underline',
 };
 
+// 移动端（<lg）按钮统一 44px 触控高度；字号/图标同步放大保持壳-内容比例协调
+// （修复前 sm=text-xs≈10.5px、图标 16px 贴在 44px 壳上，「按钮太大字太小」）。
+// 桌面端由 lg: 前缀恢复原有紧凑字号；svg 规则仅 max-lg 生效，桌面图标尺寸不动。
 export const buttonSizeClassNames: Record<ButtonPrimitiveSize, string> = {
-  default: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[13px] lg:h-[var(--button-height)]',
-  sm: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-xs lg:h-[var(--button-height-sm)]',
-  md: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[13px] lg:h-[var(--button-height)]',
-  lg: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-sm lg:h-[var(--button-height-lg)]',
+  default:
+    'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[14px] lg:h-[var(--button-height)] lg:text-[13px] max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px]',
+  sm:
+    'h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-[13px] lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px]',
+  md:
+    'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[14px] lg:h-[var(--button-height)] lg:text-[13px] max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px]',
+  lg:
+    'h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-[14px] lg:h-[var(--button-height-lg)] lg:text-sm max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px]',
   icon:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
 };
 
 export const buttonIconSizeClassNames: Record<ButtonPrimitiveSize, string> = {
   default:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
   sm:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-sm)] lg:w-[var(--button-height-sm)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-sm)] lg:w-[var(--button-height-sm)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
   md:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
   lg:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-lg)] lg:w-[var(--button-height-lg)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-lg)] lg:w-[var(--button-height-lg)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
   icon:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] max-lg:[&_svg]:h-5 max-lg:[&_svg]:w-5',
 };
 
 export const shellNavButtonClassName = cn(shellNavBaseClassName, buttonToneClassNames.nav);
