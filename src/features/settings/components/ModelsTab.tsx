@@ -227,7 +227,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
         {/* 1. 基础核心模型 */}
         <div>
           <GroupTitle title={t('settings:groups.core_models')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <ModelAssignmentRow
               title={t('settings:cards.model2_title')}
               description={t('settings:descriptions.model2_desc')}
@@ -241,12 +241,12 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
           </div>
-        </div>
+        </div></div>
 
         {/* 2. 功能增强模型 */}
         <div>
           <GroupTitle title={t('settings:groups.feature_models')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <ModelAssignmentRow
               title={t('settings:api.anki_card_title')}
               description={t('settings:api.anki_card_description')}
@@ -342,11 +342,11 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
           </div>
-        </div>
+        </div></div>
 
         <div>
           <GroupTitle title={t('settings:groups.voice_input')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <ModelAssignmentRow
               title={t('settings:cards.voice_input_asr_title')}
               description={t('settings:descriptions.voice_input_asr_desc')}
@@ -364,12 +364,12 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
           </div>
-        </div>
+        </div></div>
 
         {/* 3. RAG 与知识库 */}
         <div>
           <GroupTitle title={t('settings:groups.rag_models')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             <ModelAssignmentRow
               title={t('settings:cards.reranker_title')}
               description={t('settings:descriptions.reranker_desc')}
@@ -405,7 +405,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
           <div className="mt-8">
              <DimensionManagement apiConfigs={apiConfigs} getEmbeddingApis={getEmbeddingApis} />
           </div>
-        </div>
+        </div></div>
 
         {/* 4. 其他配置 */}
         <div className="mt-8">

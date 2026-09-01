@@ -160,7 +160,7 @@ export const AboutTab: React.FC = () => {
           </div>
           <div className="md:w-2/3">
             <GroupTitle title={t('acknowledgements.developer.title')} />
-            <div className="space-y-px">
+            <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
               <SettingRow title={t('acknowledgements.developer.fields.developer')}>
                 <span className="text-sm text-foreground/90">DeepStudent Team</span>
               </SettingRow>
@@ -371,13 +371,13 @@ export const AboutTab: React.FC = () => {
                 {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
               </span>
             </SettingRow>
-            </div>
+            </div></div>
           </div>
         </div>
 
         <div className="mt-8">
           <GroupTitle title={t('acknowledgements.links.title')} />
-          <div className="space-y-px">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
             {[
               { icon: Globe, label: t('acknowledgements.links.website'), href: 'https://www.deepstudent.cn' },
               { icon: GithubLogo, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
@@ -396,12 +396,12 @@ export const AboutTab: React.FC = () => {
               label={t('legal.settingsSection.viewPrivacyPolicy')}
               onClick={() => setShowPrivacyPolicy(true)}
             />
-          </div>
+          </div></div>
         </div>
 
         <div className="mt-8">
           <GroupTitle title={t('acknowledgements.partners.title')} />
-          <div className="flex items-start justify-between gap-4 px-1 py-1.5">
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="flex items-start justify-between gap-4 px-1 py-1.5">
             <div className="min-w-0 flex-1 max-w-3xl">
               <h4 className="text-sm font-medium text-foreground/90">
                 {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
@@ -414,7 +414,7 @@ export const AboutTab: React.FC = () => {
               alt={t('acknowledgements.partners.cards.siliconflow.alt', 'Powered by SiliconFlow')}
               className="mt-0.5 h-6 w-auto shrink-0 opacity-65"
             />
-          </div>
+          </div></div>
         </div>
 
         <div className="mt-8">

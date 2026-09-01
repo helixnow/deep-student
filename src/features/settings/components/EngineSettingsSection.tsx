@@ -577,7 +577,7 @@ export const EngineSettingsSection: React.FC<{
 
       <div className="pt-8 border-t border-border/40 mt-8">
         <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings')}</h3>
-        <div className="space-y-px">
+        <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
           <SettingRow
           title={t('settings:field_labels.default_search_engine')}
           description={t('settings:sections.search_engine_desc')}
@@ -628,12 +628,12 @@ export const EngineSettingsSection: React.FC<{
                 const v = parseInt(e.target.value || '0', 10) || 15000;
                 setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTimeoutMs: Math.min(60000, Math.max(1000, v)) }));
               }}
-              className="!w-24 h-8 text-xs bg-transparent"
+              className="!w-24"
             />
             <span className="text-xs text-muted-foreground/70">ms</span>
           </div>
         </SettingRow>
-      </div>
+      </div></div>
 
       </div>
     </div>

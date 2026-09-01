@@ -387,27 +387,28 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                   );
             };
 
-            // 扁平化「分组标题 + 行」为虚拟列表项：仅可视区挂载，压低 AX 每帧税
+            // 按分类聚合为虚拟项：每分类 = 外置标题 + 一张灰卡内含全部命令行
+            // （原为「标题+逐行」扁平项，无法给行组包卡片容器；虚拟器有 measureElement 动态测量，粒度变粗不影响正确性）
             const virtualItems: SettingsVirtualItem[] = [];
             let groupIdx = 0;
             for (const [category, commands] of groupedCommands) {
               const idx = groupIdx++;
               virtualItems.push({
                 key: `cat:${category}`,
-                estimateSize: idx > 0 ? 76 : 44,
+                estimateSize: (idx > 0 ? 76 : 44) + commands.length * 42 + 24,
                 render: () => (
                   <div className={idx > 0 ? 'pt-8' : ''}>
                     <GroupTitle title={t(CATEGORY_CONFIG[category]?.labelKey ?? category, category)} />
+                    <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+                      <div className="space-y-px">
+                        {commands.map((command) => (
+                          <div key={command.id} className="pt-px">{renderCommandRow(command)}</div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ),
               });
-              for (const command of commands) {
-                virtualItems.push({
-                  key: command.id,
-                  estimateSize: 42,
-                  render: () => <div className="pt-px">{renderCommandRow(command)}</div>,
-                });
-              }
             }
 
             return (
