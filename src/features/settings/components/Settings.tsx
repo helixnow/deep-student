@@ -9,7 +9,6 @@ import { AppSelect } from '@/components/ui/app-menu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import UnifiedModal from '@/components/UnifiedModal';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter, DsAlertDialog } from '@/components/ui/DsDialog';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/shad/Sheet';
 import { ShadApiEditModal, GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './ShadApiEditModal';
 import { VendorConfigModal, type VendorConfigModalRef } from './VendorConfigModal';
 import { Input } from '@/components/ui/shad/Input';
@@ -109,13 +108,11 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
 import {
   Plus,
   Trash,
-  X,
   Check,
   ArrowCounterClockwise,
   Info as InfoIcon,
   Stack,
   MagnifyingGlass,
-  CaretLeft,
   CaretRight,
 } from '@phosphor-icons/react';
 import {
@@ -565,13 +562,23 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     dismissRightPanel,
   ]);
 
+  // 处理返回按钮，确保在返回前保存配置
+  // 🔧 修复：仅在 config 成功加载后才保存，防止 loadConfig 失败时覆写后端真实配置
+  const handleBack = useCallback(async () => {
+    if (!loading && configLoadedRef.current) {
+      await handleSave(true); // 静默保存
+    }
+    onBack();
+  }, [handleSave, loading, onBack]);
+
   const handleMobileHeaderBack = useCallback(() => {
     if (screenPosition === 'center' && mobileNavView === 'sections') {
-      onBack();
+      // 分区列表态退出设置：走 handleBack 先静默保存再返回（与历史 Sheet 关闭路径一致）。
+      void handleBack();
       return;
     }
     handleMobileSettingsBack();
-  }, [screenPosition, mobileNavView, onBack, handleMobileSettingsBack]);
+  }, [screenPosition, mobileNavView, handleBack, handleMobileSettingsBack]);
 
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
   // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
@@ -702,12 +709,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const showSettingsBackArrow = true;
 
   useMobileHeader('settings', {
-    hidden: isSmallScreen || !isActive,
+    // 移动端设置按普通页面承载，统一顶栏即页面顶栏（标题面包屑 + 返回 + 右侧动作）。
+    hidden: !isActive,
     titleNode: SettingsBreadcrumb,
     onMenuClick: handleMobileHeaderBack,
     showBackArrow: showSettingsBackArrow,
     rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack]);
+  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack, isActive]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -814,173 +822,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     })();
   }, [invoke]);
 
-  // 处理返回按钮，确保在返回前保存配置
-  // 🔧 修复：仅在 config 成功加载后才保存，防止 loadConfig 失败时覆写后端真实配置
-  const handleBack = useCallback(async () => {
-    if (!loading && configLoadedRef.current) {
-      await handleSave(true); // 静默保存
-    }
-    onBack();
-  }, [handleSave, loading, onBack]);
-
-  // Sheet 下拉关闭只从顶部栏启动，避免与设置内容的原生滚动手势冲突。
-  const sheetDragRef = useRef({
-    pointerId: null as number | null,
-    startX: 0,
-    startY: 0,
-    offset: 0,
-    isDragging: false,
-    suppressNextClick: false,
-  });
-  const sheetDragTimerRef = useRef<number | null>(null);
-  const [sheetDragStyle, setSheetDragStyle] = useState({
-    offset: 0,
-    transition: 'none',
-  });
-
-  const clearSheetDragTimer = useCallback(() => {
-    if (sheetDragTimerRef.current !== null) {
-      window.clearTimeout(sheetDragTimerRef.current);
-      sheetDragTimerRef.current = null;
-    }
-  }, []);
-
-  const settleSheetDragBack = useCallback(() => {
-    clearSheetDragTimer();
-    setSheetDragStyle({
-      offset: 0,
-      transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
-    });
-    sheetDragTimerRef.current = window.setTimeout(() => {
-      sheetDragTimerRef.current = null;
-      setSheetDragStyle({ offset: 0, transition: 'none' });
-    }, 220);
-  }, [clearSheetDragTimer]);
-
-  const handleSheetPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    if (!isSmallScreen || !isActive) return;
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-
-    clearSheetDragTimer();
-    sheetDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      offset: 0,
-      isDragging: false,
-      suppressNextClick: false,
-    };
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort in older WebViews.
-    }
-  }, [clearSheetDragTimer, isActive, isSmallScreen]);
-
-  const handleSheetPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const drag = sheetDragRef.current;
-    if (drag.pointerId !== event.pointerId) return;
-
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    if (!drag.isDragging) {
-      // 横向移动不启动下拉关闭，保留顶部栏的点按行为。
-      if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        drag.pointerId = null;
-        try {
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is best-effort in older WebViews.
-        }
-        return;
-      }
-      if (deltaY < 8) return;
-      drag.isDragging = true;
-      // 注意：此处不设置 suppressNextClick。触屏点按常伴随 8~20px 微小位移，
-      // 过早吞掉随后的 click 会导致顶部栏返回/关闭按钮"点不动"。
-    }
-
-    if (deltaY <= 0) return;
-    event.preventDefault();
-    drag.offset = deltaY;
-    // 仅在确实发生明显下拉拖拽后才吞掉随后的 click（防止拖拽回弹时误触按钮）。
-    if (deltaY > 24) {
-      drag.suppressNextClick = true;
-    }
-    setSheetDragStyle({ offset: deltaY, transition: 'none' });
-  }, []);
-
-  const handleSheetPointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const drag = sheetDragRef.current;
-    if (drag.pointerId !== event.pointerId) return;
-
-    const wasDragging = drag.isDragging;
-    const offset = drag.offset;
-    drag.pointerId = null;
-    drag.isDragging = false;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort in older WebViews.
-    }
-
-    if (!wasDragging) return;
-
-    const closeThreshold = Math.max(96, Math.min(window.innerHeight * 0.18, 160));
-    if (offset >= closeThreshold) {
-      clearSheetDragTimer();
-      setSheetDragStyle({
-        offset: Math.max(offset, window.innerHeight),
-        transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)',
-      });
-      sheetDragTimerRef.current = window.setTimeout(() => {
-        sheetDragTimerRef.current = null;
-        void handleBack();
-      }, 180);
-      return;
-    }
-
-    settleSheetDragBack();
-  }, [clearSheetDragTimer, handleBack, settleSheetDragBack]);
-
-  const handleSheetPointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    const drag = sheetDragRef.current;
-    if (drag.pointerId !== event.pointerId) return;
-    const wasDragging = drag.isDragging;
-    drag.pointerId = null;
-    drag.isDragging = false;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort in older WebViews.
-    }
-    if (wasDragging && drag.offset > 24) {
-      drag.suppressNextClick = true;
-      settleSheetDragBack();
-    } else if (wasDragging) {
-      settleSheetDragBack();
-    }
-  }, [settleSheetDragBack]);
-
-  const handleSheetClickCapture = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (!sheetDragRef.current.suppressNextClick) return;
-    sheetDragRef.current.suppressNextClick = false;
-    event.preventDefault();
-    event.stopPropagation();
-  }, []);
-
-  // Settings 视图在 App 中保活，关闭后必须清掉拖动位移，确保下次打开从正常位置进入。
-  useEffect(() => {
-    if (isActive) return;
-    clearSheetDragTimer();
-    sheetDragRef.current.pointerId = null;
-    sheetDragRef.current.isDragging = false;
-    sheetDragRef.current.offset = 0;
-    sheetDragRef.current.suppressNextClick = false;
-    setSheetDragStyle({ offset: 0, transition: 'none' });
-  }, [clearSheetDragTimer, isActive]);
-
-  useEffect(() => clearSheetDragTimer, [clearSheetDragTimer]);
+  // （handleBack 已上移至 handleMobileHeaderBack 之前，供顶栏返回链复用）
 
   // 启动时消费 pending settings tab（防止导航事件竞态丢失）
   useEffect(() => {
@@ -1250,7 +1092,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1483,7 +1325,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <div
             className={cn(
               mobilePageMode
-                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
+                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
                 : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
               effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
             )}
@@ -1954,161 +1796,92 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   };
 
   if (isSmallScreen) {
-    const renderMobileSettingsSheet = () => {
-      const isSectionsLevel = mobileNavView === 'sections';
-      const level = isSectionsLevel ? 'sections' : 'content';
-      const sheetTitle = isSectionsLevel ? t('settings:title') : settingsBreadcrumbText;
-      const handleSheetBack = () => {
-        if (isSectionsLevel) {
-          void handleBack();
-          return;
-        }
-        handleMobileSettingsBack();
-      };
-
-      return (
-        <Sheet
-          open={isActive}
-          onOpenChange={(nextOpen) => { if (!nextOpen) handleSheetBack(); }}
-        >
-          <SheetContent
-            side="bottom"
-            hideCloseButton
-            overlayClassName="settings-mobile-sheet-overlay"
-            className="settings-mobile-sheet !flex !flex-col !h-[90dvh] !max-h-[90dvh] !w-full !max-w-none !gap-0 !rounded-t-3xl !border-x-0 !border-b-0 !p-0"
-            data-wb-settings-content-ready
-            data-wb-settings-active-tab={activeTab}
-            data-settings-mobile-sheet-level={level}
-            style={{
-              height: '90dvh',
-              maxHeight: '90dvh',
-              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-              '--settings-sheet-drag-offset': `${sheetDragStyle.offset}px`,
-              '--settings-sheet-drag-transition': sheetDragStyle.transition,
-            } as React.CSSProperties}
-          >
-            <SheetTitle className="sr-only">{sheetTitle}</SheetTitle>
-            <header
-              className="settings-mobile-sheet-header"
-              onPointerDown={handleSheetPointerDown}
-              onPointerMove={handleSheetPointerMove}
-              onPointerUp={handleSheetPointerUp}
-              onPointerCancel={handleSheetPointerCancel}
-              onClickCapture={handleSheetClickCapture}
-            >
-              {loading || isSectionsLevel ? (
-                <>
-                  <div className="settings-mobile-sheet-header-action" />
-                  <div className="min-w-0 flex-1" />
-                  <DsButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    onClick={handleSheetBack}
-                    aria-label={t('common:actions.close')}
-                    className="settings-mobile-sheet-header-action !rounded-full"
-                  >
-                    <X size={26} weight="regular" />
-                  </DsButton>
-                </>
-              ) : (
-                <>
-                  <DsButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    onClick={handleSheetBack}
-                    aria-label={t('common:mobile_header.back')}
-                    className="settings-mobile-sheet-header-action !rounded-full"
-                  >
-                    <CaretLeft size={26} weight="regular" />
-                  </DsButton>
-                  <div className="min-w-0 flex-1" />
-                  <div className="settings-mobile-sheet-header-action flex items-center justify-center">
-                    {settingsHeaderRightActions}
-                  </div>
-                </>
-              )}
-            </header>
-
-            {loading ? (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-foreground" data-settings-mobile-level="loading">
-                <CustomScrollArea
-                  className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
-                  viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
-                >
-                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
-                    <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
-                    {sidebarNavGroups.map((group, groupIdx) => (
-                      <div key={groupIdx} className="space-y-2">
-                        <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-                        <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
-                          {group.map((item) => (
-                            <div key={item.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
-                              <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
-                              <div className="min-w-0 flex-1 space-y-2">
-                                <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
-                                <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CustomScrollArea>
-              </div>
-            ) : isSectionsLevel ? (
-              <MobileSlidingLayout
-                sidebar={
-                  // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构
-                  <div aria-hidden className="h-0" />
-                }
-                showSidebarAppNavigation={false}
-                showContentOverlay
-                enableGesture={false}
-                mainContentClassName="settings-mobile-sheet-layout-content"
-                className="min-h-0 flex-1"
-              >
-                <div className="flex h-full min-h-0 flex-col overflow-hidden text-foreground" data-settings-mobile-level="sections">
-                  {renderMobileSectionList()}
-                </div>
-              </MobileSlidingLayout>
-            ) : (
-              <MobileSlidingLayout
-                sidebar={
-                  // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构
-                  <div aria-hidden className="h-0" />
-                }
-                rightPanel={renderRightPanel()}
-                screenPosition={screenPosition}
-                onScreenPositionChange={handleScreenPositionChange}
-                sidebarWidth="auto"
-                rightPanelEnabled={rightPanelType !== 'none'}
-                rightPanelSwipeEnabled={false}
-                enableGesture={false}
-                threshold={0.3}
-                showSidebarAppNavigation={false}
-                showContentOverlay
-                mainContentClassName="settings-mobile-sheet-layout-content"
-                className="min-h-0 flex-1"
-              >
-                <div className="flex h-full min-h-0 flex-col overflow-hidden text-foreground" data-settings-mobile-level="content">
-                  {renderSettingsMainContent({ mobilePageMode: true })}
-                </div>
-              </MobileSlidingLayout>
-            )}
-          </SheetContent>
-        </Sheet>
-      );
-    };
+    // 移动端设置按普通页面承载（2026-09 起不再使用底部 Sheet）：
+    // 统一顶栏由上方 useMobileHeader('settings') 注册（标题面包屑 + 返回箭头 + 右侧动作），
+    // 返回链 handleMobileHeaderBack：分区列表态退出设置，内容态逐级回退。
+    const isSectionsLevel = mobileNavView === 'sections';
 
     return (
       <>
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
-        {/* 一级与二级共用同一个 Sheet，只替换内部内容，避免切换时重新播放 Sheet 进场动画。 */}
-        {renderMobileSettingsSheet()}
+        <div
+          className="settings relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]"
+          data-wb-settings-content-ready
+          data-wb-settings-active-tab={activeTab}
+          data-settings-mobile-sheet-level={isSectionsLevel ? 'sections' : 'content'}
+          style={{
+            paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {loading ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-foreground" data-settings-mobile-level="loading">
+              <CustomScrollArea
+                className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
+                viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
+              >
+                <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4">
+                  <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
+                  {sidebarNavGroups.map((group, groupIdx) => (
+                    <div key={groupIdx} className="space-y-2">
+                      <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+                      <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
+                        {group.map((item) => (
+                          <div key={item.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
+                            <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
+                              <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CustomScrollArea>
+            </div>
+          ) : isSectionsLevel ? (
+            <MobileSlidingLayout
+              sidebar={
+                // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构
+                <div aria-hidden className="h-0" />
+              }
+              showSidebarAppNavigation={false}
+              showContentOverlay
+              enableGesture={false}
+              mainContentClassName="settings-mobile-sheet-layout-content"
+              className="min-h-0 flex-1"
+            >
+              <div className="flex h-full min-h-0 flex-col overflow-hidden text-foreground" data-settings-mobile-level="sections">
+                {renderMobileSectionList()}
+              </div>
+            </MobileSlidingLayout>
+          ) : (
+            <MobileSlidingLayout
+              sidebar={
+                // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构
+                <div aria-hidden className="h-0" />
+              }
+              rightPanel={renderRightPanel()}
+              screenPosition={screenPosition}
+              onScreenPositionChange={handleScreenPositionChange}
+              sidebarWidth="auto"
+              rightPanelEnabled={rightPanelType !== 'none'}
+              rightPanelSwipeEnabled={false}
+              enableGesture={false}
+              threshold={0.3}
+              showSidebarAppNavigation={false}
+              showContentOverlay
+              mainContentClassName="settings-mobile-sheet-layout-content"
+              className="min-h-0 flex-1"
+            >
+              <div className="flex h-full min-h-0 flex-col overflow-hidden text-foreground" data-settings-mobile-level="content">
+                {renderSettingsMainContent({ mobilePageMode: true })}
+              </div>
+            </MobileSlidingLayout>
+          )}
+        </div>
 
         <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
           <DsDialogHeader>

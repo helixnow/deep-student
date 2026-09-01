@@ -1021,9 +1021,7 @@ function App() {
   const [desktopChatHeaderTarget, setDesktopChatHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
-  // 移动端设置以 Sheet 覆盖在原视图之上；保留打开设置前的视图作为露出区背景。
-  const [settingsBackdropView, setSettingsBackdropView] = useState<CurrentView>('chat-v2');
-  // 关闭 Sheet 返回原视图时跳过一次页面入场动画，避免和 Sheet 离场动画叠加造成闪现。
+  // 关闭设置返回原视图时跳过一次页面入场动画，避免和设置页离场动画叠加造成闪现。
   const settingsClosingViewRef = useRef<CurrentView | null>(null);
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
@@ -1064,7 +1062,6 @@ function App() {
     // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
     startTransition(() => {
       if (targetView === 'settings' && prevView !== 'settings') {
-        setSettingsBackdropView(prevView);
         settingsClosingViewRef.current = null;
       } else if (prevView === 'settings' && targetView !== 'settings') {
         settingsClosingViewRef.current = targetView;
@@ -2486,7 +2483,6 @@ function App() {
       errorBoundaryName={view}
       extraClass={extraClass}
       extraStyle={extraStyle}
-      isBackdrop={isSmallScreen && currentView === 'settings' && view === settingsBackdropView}
       suppressEnterAnimation={isSmallScreen && currentView !== 'settings' && view === settingsClosingViewRef.current}
     >
       {content}
