@@ -313,7 +313,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   const content = (
     <div className="space-y-6">
       {/* 同步状态概览 */}
-      <Card>
+      <Card className="!rounded-2xl !border-transparent !bg-muted">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -429,7 +429,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       </Card>
 
       {/* 同步操作 */}
-      <Card>
+      <Card className="!rounded-2xl !border-transparent !bg-muted">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <ArrowClockwise className="h-5 w-5 text-muted-foreground" />
@@ -560,7 +560,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       </Card>
 
       {/* 冲突检测和解决 */}
-      <Card>
+      <Card className="!rounded-2xl !border-transparent !bg-muted">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <GearSix className="h-5 w-5 text-muted-foreground" />

@@ -1137,8 +1137,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
 
   const quickContainerClass =
     variant === 'full'
-      ? 'rounded-xl border border-transparent ring-1 ring-border/40 bg-card text-card-foreground shadow-sm'
-      : 'mt-4 rounded-xl border border-transparent ring-1 ring-border/40 bg-card text-card-foreground shadow-sm';
+      ? 'rounded-2xl bg-muted text-card-foreground'
+      : 'mt-4 rounded-2xl bg-muted text-card-foreground';
   const quickHeaderPadding = variant === 'full' ? 'px-5 py-4' : 'px-4 py-3';
   const quickBodyClass =
     variant === 'full'
@@ -1199,7 +1199,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   );
 
   const modelControls = (
-    <div className={variant === 'models' ? 'rounded-lg border border-dashed border-border/50 bg-muted/20 p-4 space-y-3' : 'space-y-3'}>
+    <div className={variant === 'models' ? 'rounded-2xl bg-muted p-4 space-y-3' : 'space-y-3'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <DsButton

@@ -227,7 +227,7 @@ const StatCard = ({
   const displayValue = typeof value === 'number' ? (formatNumber || defaultFormatNumber)(value) : value;
 
   return (
-    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-card p-4 transition-shadow hover:shadow-md">
+    <div className="rounded-2xl bg-muted p-4">
       {/* 顶部：图标 + 标题 + 趋势 */}
       <div className="flex items-center gap-2 mb-3">
         <div>
@@ -1423,7 +1423,7 @@ ${resolvedPath}`);
             {/* Main Actions - shadcn 结构（Header/Description/Footer） */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {/* 导出 */}
-          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
+          <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 {isExporting ? (
@@ -1519,7 +1519,7 @@ ${resolvedPath}`);
           </Card>
 
           {/* 导入 */}
-          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
+          <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <DownloadSimple className={DATA_CENTER_ICON_CLASS} />
@@ -1553,7 +1553,7 @@ ${resolvedPath}`);
           </Card>
 
           {/* 🎯 导入对话（新增）*/}
-          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
+          <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <Brain className={DATA_CENTER_ICON_CLASS} />
@@ -1580,7 +1580,7 @@ ${resolvedPath}`);
 
 
           {/* 云存储配置 */}
-          <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
+          <Card className="overflow-hidden !rounded-2xl !border-transparent !bg-muted shadow-none">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 <Cloud className={DATA_CENTER_ICON_CLASS} />
@@ -1607,7 +1607,7 @@ ${resolvedPath}`);
         </div>
 
         {/* Tabs */}
-        <div className="mb-8 rounded-2xl border border-transparent ring-1 ring-border/40 bg-card shadow-sm">
+        <div className="mb-8 rounded-2xl bg-muted">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="w-full">
             <div className="border-b border-border/60 px-4 py-3">
               {/* 窄屏（尤其英文长标签）4 个 Tab 挤不下：允许横向滚动而非溢出裁切 */}
@@ -1691,24 +1691,24 @@ ${resolvedPath}`);
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
+                  <div className="rounded-2xl bg-muted p-6">
                     <h3 className="text-base font-medium text-foreground">{t('data:data_space.title')}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {t('data:data_space.description')}
                     </p>
                     {slotInfo ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-xl bg-background/80 p-3">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.active_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.active_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.active_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm">
+                        <div className="rounded-xl bg-background/80 p-3">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.inactive_label')}</div>
                           <div className="text-base font-semibold text-foreground">{slotInfo.inactive_slot}</div>
                           <div className="break-all text-xs text-muted-foreground/80">{slotInfo.inactive_dir}</div>
                         </div>
-                        <div className="rounded-lg border border-transparent ring-1 ring-border/40 bg-background/80 p-3 shadow-sm sm:col-span-2">
+                        <div className="rounded-xl bg-background/80 p-3 sm:col-span-2">
                           <div className="text-sm text-muted-foreground">{t('data:data_space.pending_label')}</div>
                           <div
                             className={cn(
@@ -1724,7 +1724,7 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <DsButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
+                      <DsButton variant="outline" onClick={loadDataSpaceInfo} className="sm:w-auto">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
                       </DsButton>
@@ -1747,21 +1747,21 @@ ${resolvedPath}`);
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
+                    <div className="rounded-2xl bg-muted p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:integrity.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
-                      <DsButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
+                      <DsButton variant="outline" onClick={handleRunIntegrityCheck} className="mt-4">
                         <FileText className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:integrity.run_button')}
                       </DsButton>
                     </div>
 
-                    <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
+                    <div className="rounded-2xl bg-muted p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
-                      <DsButton variant="danger" onClick={handleClearAllData} className="mt-4">
+                      <DsButton variant="outline" className="mt-4 !text-destructive" onClick={handleClearAllData}>
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
                       </DsButton>
