@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { SettingSection } from './SettingsCommon';
+import { GroupTitle } from './settingsTabPrimitives';
 import { EngineSettingsSection } from './EngineSettingsSection';
 import WebSearchAdvancedConfig from '@/components/WebSearchAdvancedConfig';
 
@@ -74,11 +75,6 @@ const SettingRow = ({
 );
 
 // 分组标题
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-8 first:mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
 
 interface ExternalSearchTabProps {
   config: any;
@@ -92,7 +88,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
   const { t } = useTranslation(['settings', 'common']);
 
   return (
-    <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
+    <div className="space-y-8 pb-10 text-left ui-fade-in-slow">
       <SettingSection 
         title={t('settings:sections.external_search_title')} 
         description={t('settings:sections.external_search_desc')}

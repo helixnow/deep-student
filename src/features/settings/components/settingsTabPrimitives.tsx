@@ -91,14 +91,22 @@ export const SwitchRow = ({
 export const GroupTitle = ({
   title,
   titleId,
+  description,
   actions,
 }: {
   title: string;
   titleId?: string;
+  /** 标题下的一行小字描述（可选）。 */
+  description?: string;
   actions?: React.ReactNode;
 }) => (
   <div className={cn('mb-3 mt-0 min-w-0 px-1', actions && 'flex flex-wrap items-center justify-between gap-2')}>
-    <h3 id={titleId} className="text-base font-semibold text-foreground">{title}</h3>
+    <div className="min-w-0">
+      <h3 id={titleId} className="text-base font-semibold text-foreground">{title}</h3>
+      {description && (
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/70">{description}</p>
+      )}
+    </div>
     {actions && <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">{actions}</div>}
   </div>
 );

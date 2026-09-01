@@ -12,12 +12,8 @@ import {
   DsDialogTitle,
 } from '@/components/ui/DsDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { GroupTitle } from './settingsTabPrimitives';
 
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
 
 const ACKNOWLEDGEMENT_GROUPS = [
   {

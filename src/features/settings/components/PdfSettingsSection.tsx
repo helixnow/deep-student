@@ -6,7 +6,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
-import { SettingRow, SwitchRow, SettingsSlider } from './settingsTabPrimitives';
+import { SettingRow, SwitchRow, SettingsSlider, GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -15,12 +15,6 @@ import { cn } from '@/lib/utils';
 import { AppSelect } from '@/components/ui/app-menu';
 
 // 分组标题
-const GroupTitle = ({ title, rightSlot }: { title: string; rightSlot?: React.ReactNode }) => (
-  <div className="px-1 mb-3 mt-0 flex items-center justify-between">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-    {rightSlot}
-  </div>
-);
 
 // 子分组标题
 const SubGroupTitle = ({ title }: { title: string }) => (
@@ -51,7 +45,7 @@ export const PdfSettingsSection: React.FC = () => {
     <div>
       <GroupTitle 
         title={t('settings:pdf.title')}
-        rightSlot={
+        actions={
           <DsButton
             variant="outline"
             size="sm"

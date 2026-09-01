@@ -3,79 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SettingSection } from './SettingsCommon';
+import { SettingRow, SwitchRow, GroupTitle } from './settingsTabPrimitives';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS } from './constants';
 import type { SettingsExtra } from './hookDepsTypes';
 
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
-
-const SettingRow = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) => (
-  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <div className="w-full min-w-0 flex-shrink-0 md:w-auto">
-      {children}
-    </div>
-  </div>
-);
-
-const SwitchRow = ({
-  title,
-  description,
-  checked,
-  onCheckedChange,
-  loading,
-}: {
-  title: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  loading?: boolean;
-}) => (
-  // 整行可点切换，开关本体 stopPropagation 避免双重切换
-  <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
-    onClick={() => {
-      if (!loading) onCheckedChange(!checked);
-    }}
-  >
-    <div className="flex-1 min-w-0">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    {loading ? (
-      <div aria-hidden="true" className="h-6 w-11 shrink-0 rounded-full bg-muted/50 animate-pulse" />
-    ) : (
-      <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-        <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      </span>
-    )}
-  </div>
-);
 
 interface ParamsTabProps {
   extra: SettingsExtra;

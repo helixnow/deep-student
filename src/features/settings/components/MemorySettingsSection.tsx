@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
-import { SettingRow as SRow, SwitchRow } from './settingsTabPrimitives';
+import { SettingRow as SRow, SwitchRow, GroupTitle } from './settingsTabPrimitives';
 import {
   getMemoryConfig,
   setMemoryRootFolder,
@@ -28,12 +28,6 @@ import { getFolderTree } from '@/dstu/api/folderApi';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 
 // 分组标题
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
-
 // 设置行（使用共享 primitives）
 const SettingRow = SRow;
 

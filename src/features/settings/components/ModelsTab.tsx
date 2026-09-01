@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingSection } from './SettingsCommon';
+import { GroupTitle } from './settingsTabPrimitives';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { DimensionManagement } from './DimensionManagement';
@@ -119,11 +120,6 @@ const ModelAssignmentRow = ({
   </div>
 );
 
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-8 first:mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
 
 // 内部组件：翻译显示模式行 — 复用 ModelAssignmentRow 的 padding/字号节奏
 const TranslationDisplayModeRow = ({
@@ -217,7 +213,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   const notify = (key: string) => t(`settings:save_notifications.${key}`);
 
   return (
-    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="model-assignment">
+    <div className="space-y-8 pb-10 text-left ui-fade-in-slow" data-tour-id="model-assignment">
       <SettingSection 
         title={t('settings:sections.model_assignment_title')} 
         description={t('settings:sections.model_assignment_desc')} 

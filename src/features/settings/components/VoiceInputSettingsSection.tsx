@@ -26,6 +26,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
+import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
@@ -91,40 +92,7 @@ function formatVoiceHistoryTime(value: string): string {
 
 // —— 公共小组件 ————————————————————————————————————————————
 
-const GroupTitle: React.FC<{ title: string; description?: string; rightSlot?: React.ReactNode }> = ({
-  title,
-  description,
-  rightSlot,
-}) => (
-  <div className="px-1 mb-3 flex items-start justify-between gap-3">
-    <div className="min-w-0">
-      <h3 className="text-base font-semibold text-foreground leading-tight">{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
-      )}
-    </div>
-    {rightSlot && <div className="flex-shrink-0 flex items-center gap-1">{rightSlot}</div>}
-  </div>
-);
 
-const SettingRow: React.FC<{
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}> = ({ title, description, children }) => (
-  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded">
-    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
-      <div className="text-sm text-foreground/90 leading-tight">{title}</div>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <div className="flex-shrink-0">{children}</div>
-  </div>
-);
 
 const Subsection: React.FC<{
   title: string;
@@ -582,7 +550,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         description={t('settings:voice_input.description_short', {
           defaultValue: 'Shortcuts, vocabulary, and history for dictation.',
         })}
-        rightSlot={
+        actions={
           <>
             <DsButton
               type="button"

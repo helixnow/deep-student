@@ -9,41 +9,12 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { SettingSection } from './SettingsCommon';
+import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
 import VERSION_INFO from '@/version';
 import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel, getUpdateFrequency, setUpdateFrequency, type UpdateFrequency, getUpdateFrequencyDays, setUpdateFrequencyDays, getNoRemind, setNoRemind } from '@/hooks/useAppUpdater';
 import ReactMarkdown from 'react-markdown';
 
-const GroupTitle = ({ title }: { title: string }) => (
-  <div className="px-1 mb-3 mt-0">
-    <h3 className="text-base font-semibold text-foreground">{title}</h3>
-  </div>
-);
-
-const SettingRow = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) => (
-  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <div className="min-w-0 max-w-full">
-      {children}
-    </div>
-  </div>
-);
 
 const aboutActionRowClassName =
   'flex w-full items-center gap-3 rounded-[var(--button-radius)] px-2 py-2.5 text-left outline-none transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none';
