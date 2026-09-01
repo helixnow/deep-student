@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { CaretUp, CaretDown, X } from '@phosphor-icons/react';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Switch } from '@/components/ui/shad/Switch';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -320,14 +321,14 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity shrink-0">
                   {/* 触屏下放大到 ≥40px 触控目标，避免 20px 排序/删除按钮误触 */}
                   <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveUp(index)} disabled={index === 0 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_up')} aria-label="move up">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3L9 7H3L6 3Z" fill="currentColor"/></svg>
+                    <CaretUp size={12} weight="bold" />
                   </DsButton>
                   <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveDown(index)} disabled={index === engines.length - 1 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_down')} aria-label="move down">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
+                    <CaretDown size={12} weight="bold" />
                   </DsButton>
                   {engine.engineType !== 'system_ocr' && (
                     <DsButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                      <X size={12} weight="bold" />
                     </DsButton>
                   )}
                 </div>

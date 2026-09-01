@@ -449,7 +449,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
   const initialLoading = loading && !summary;
 
   return (
-    <div className={cn('flex w-full flex-col gap-7', className)}>
+    <div className={cn('flex w-full flex-col gap-6', className)}>
       {/* 工具栏：说明 + 时间范围 + 刷新 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] text-muted-foreground">
@@ -488,7 +488,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
           </DsButton>
         </div>
       ) : initialLoading || chatStats.loading ? (
-        <div className="flex flex-col gap-7">
+        <div className="flex flex-col gap-6">
           <Skeleton className="h-[88px] rounded-[10px] bg-muted/20" />
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Skeleton className="h-[220px] rounded-[10px] bg-muted/20" />
