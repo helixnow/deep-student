@@ -1515,7 +1515,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       <>
         <div className="space-y-3">
           <div>
-            <h3 className="flex items-center gap-2 font-semibold text-lg">
+            <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Cloud size={20} />
               {t('cloudStorage:title')}
             </h3>
