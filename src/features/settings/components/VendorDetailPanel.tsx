@@ -1184,7 +1184,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
       {!isCodexOAuthVendor && !isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
         <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
           <DialogContent
-            className="flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-full max-w-2xl flex-col overflow-hidden p-0"
+            className="flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-full max-w-2xl flex-col overflow-hidden !rounded-[var(--radius-shell-dialog)] p-0"
             onWheel={(event) => event.stopPropagation()}
           >
             <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">

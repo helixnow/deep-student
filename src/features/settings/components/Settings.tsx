@@ -115,6 +115,7 @@ import {
   Check,
   ArrowCounterClockwise,
   ArrowSquareOut,
+  X,
   Info as InfoIcon,
   Stack,
   MagnifyingGlass,
@@ -1625,19 +1626,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             onClose={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}
             closeOnOverlayClick={false}
           >
-            <div className="relative mx-auto mt-10 flex min-h-0 max-h-[min(85dvh,720px)] w-[90%] max-w-[500px] flex-col overflow-hidden rounded-2xl bg-popover p-4 text-popover-foreground shadow-lg" style={{ animation: 'slideUp 0.3s ease' }}>
+            <div className="ui-rise-in relative mx-auto mt-10 flex min-h-0 max-h-[min(85dvh,720px)] w-[90%] max-w-[500px] flex-col overflow-hidden rounded-[var(--radius-shell-dialog)] bg-popover p-4 text-popover-foreground shadow-lg">
               {/* 头部 */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '16px'
-              }}>
-                <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-foreground">{t('settings:mcp.security_policy')}</h3>
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                    <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <X size={16} />
                 </DsButton>
               </div>
               {/* 矮窗口下限高滚动，避免表单被弹窗限高裁剪后按钮不可达 */}
@@ -1647,7 +1641,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 trackOffsetTop={4}
                 trackOffsetBottom={4}
               >
-                <div style={{ display: 'grid', gap: 12 }}>
+                <div className="grid gap-3">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
@@ -1655,7 +1649,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   />
                   <span className="text-sm">{t('settings:mcp_policy.advertise_all')}</span>
                 </label>
-                <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+                <div className="text-xs text-muted-foreground">
                   {t('settings:mcp_policy.whitelist_mode_hint')}
                 </div>
 
@@ -1678,7 +1672,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, blacklist: e.target.value }))}
                   placeholder="delete_file, execute_command, rm, sudo"
                 />
-                <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{t('settings:mcp_policy.danger_hint')}</div>
+                <div className="text-xs text-muted-foreground">{t('settings:mcp_policy.danger_hint')}</div>
 
                 <div className="two-col-grid">
                   <div>
@@ -1736,7 +1730,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 </div>
                 </div>
               </CustomScrollArea>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <div className="mt-4 flex justify-end gap-2">
                 <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
                   variant="primary"

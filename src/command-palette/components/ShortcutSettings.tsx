@@ -243,7 +243,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                 placeholder={t('command_palette:search_shortcuts')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 text-xs bg-transparent"
+                className="pl-8"
               />
             </div>
 
@@ -251,7 +251,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
               value={selectedCategory}
               onValueChange={(value) => setSelectedCategory(value as CommandCategory | 'all')}
             >
-              <SelectTrigger className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-[var(--interactive-hover)] transition-colors">
+              <SelectTrigger className="w-auto min-w-[7rem]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
