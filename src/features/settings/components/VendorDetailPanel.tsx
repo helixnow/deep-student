@@ -867,7 +867,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
           </div>
         ) : (
           /* 查看模式：可折叠连接配置 */
-          <div className="rounded-lg border border-border/40 overflow-hidden">
+          <div className="rounded-2xl bg-muted overflow-hidden">
             {/* 折叠头部 / 摘要行 */}
             <button
               type="button"
@@ -950,7 +950,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                           showMessage={showGlobalNotification}
                         />
                       ) : usesNoApiKey ? (
-                        <div className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-3 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
                           <Prohibit className="h-4 w-4 shrink-0" />
                           <span>{t('settings:vendor_panel.no_api_key_required_hint')}</span>
                         </div>
@@ -1126,7 +1126,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     return (
                       <section
                         key={group.family.id}
-                        className="rounded-lg border border-border/40 overflow-hidden"
+                        className="rounded-2xl bg-muted overflow-hidden"
                       >
                         <button
                           type="button"

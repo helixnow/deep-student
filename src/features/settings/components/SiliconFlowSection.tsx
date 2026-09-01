@@ -1203,7 +1203,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <DsButton
-            variant="default"
+            variant="outline"
             onClick={() => fetchSiliconFlowModels(true)}
             disabled={loading || !apiKey.trim()}
           >

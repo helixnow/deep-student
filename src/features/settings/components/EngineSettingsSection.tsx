@@ -275,7 +275,7 @@ export const EngineSettingsSection: React.FC<{
                 {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
               </span>
             )}
-            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
+            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="outline">
               {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
             </DsButton>
             <DsButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>

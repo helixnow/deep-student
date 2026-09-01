@@ -199,7 +199,7 @@ export const LanceOptimizationPanel: React.FC = () => {
 
       {/* 一键优化所有表 */}
       <DsButton
-        variant="default"
+        variant="outline"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
         className="w-full"

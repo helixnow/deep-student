@@ -917,9 +917,10 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         'space-y-4',
         // 嵌入态与工作区 .automation-card 同一 token 体系（--surface-elevated / --border-soft），
         // 替代未定义的 --surface-raised，避免卡片透明或与相邻卡片色阶不一致。
+        // 非嵌入态（设置子页面）：无描边纯填充灰卡（bg-muted），与 SettingsGroup 原语统一。
         embedded
           ? 'mt-5 rounded-[var(--radius-shell-panel,12px)] border border-[color:var(--border-soft,hsl(var(--border)))] bg-[color:var(--surface-elevated,hsl(var(--card)))] px-4 py-4 sm:px-5'
-          : 'rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4',
+          : 'rounded-2xl bg-muted px-3 py-3 sm:px-4',
       )}
     >
       {embedded ? <h2 id="automation-settings-title" className="sr-only">{t('settings:automation.title')}</h2> : (

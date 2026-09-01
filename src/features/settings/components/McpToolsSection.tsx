@@ -1576,11 +1576,10 @@ function ActionMenu({
   return (
     <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
       <DsButton
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
-        className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
       >
         <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
@@ -1881,7 +1880,7 @@ export function PresetServerSelector({
       <DsButton
         ref={addPresetBtnRef}
         onClick={() => setIsOpen(!isOpen)}
-        variant="default"
+        variant="outline"
         size="sm"
         aria-haspopup={isSmallScreen ? undefined : 'dialog'}
         aria-expanded={isOpen}
@@ -3893,7 +3892,9 @@ export function McpToolsSection({
               }} />
             </div>
           ) : (
-            <div className="grid gap-3">
+            // 区域卡片化：小标题「服务器列表」对应一张无描边灰卡（设置子页面统一语言），
+            // 行 hover/展开态对比在灰底上依然成立
+            <div className="grid gap-1.5 rounded-2xl bg-muted p-2">
               {/* 新增服务器编辑项 */}
               {isAddingNew && (
                 <NewServerEditItem

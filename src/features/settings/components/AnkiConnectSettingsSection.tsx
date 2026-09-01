@@ -138,7 +138,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
 
       <div className="flex justify-end px-1 pt-2.5">
         <DsButton
-          variant="default"
+          variant="outline"
           size="sm"
           onClick={testConnection}
           disabled={!settings.anki_connect_enabled || testing}
