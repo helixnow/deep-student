@@ -144,12 +144,17 @@ fn configure_stdio(command: &mut Command, cwd: &Path) {
 }
 
 #[cfg(unix)]
-fn isolate_process_group(command: &mut Command) {
+fn isolate_process_group(command: &mut Command, with_resource_limits: bool) {
     // SAFETY: setpgid/setrlimit are async-signal-safe and the closure performs no allocation.
+    // 完全信任（unsandboxed）通道只保留 setpgid 进程组隔离（用于取消时清理
+    // 进程树），不施加 RLIMIT——npm install 等长任务不应被 130s CPU 上限强杀。
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
             if libc::setpgid(0, 0) == -1 {
                 return Err(std::io::Error::last_os_error());
+            }
+            if !with_resource_limits {
+                return Ok(());
             }
             let cpu_limit = libc::rlimit {
                 rlim_cur: SANDBOX_CPU_TIME_LIMIT_SECS as libc::rlim_t,
@@ -178,7 +183,7 @@ fn isolate_process_group(command: &mut Command) {
 }
 
 #[cfg(not(unix))]
-fn isolate_process_group(_command: &mut Command) {}
+fn isolate_process_group(_command: &mut Command, _with_resource_limits: bool) {}
 
 #[cfg(unix)]
 impl SandboxBackend for UnsandboxedShellBackend {
@@ -208,7 +213,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
         let mut command = Command::new("/bin/sh");
         command.args(["-c", shell_command]);
         configure_stdio(&mut command, cwd);
-        isolate_process_group(&mut command);
+        isolate_process_group(&mut command, false);
         Ok(command)
     }
 
@@ -220,9 +225,10 @@ impl SandboxBackend for UnsandboxedShellBackend {
             enforced: false,
             network_enforced: false,
             process_group_isolated: true,
-            cpu_time_limit_seconds: Some(SANDBOX_CPU_TIME_LIMIT_SECS),
-            file_size_limit_bytes: Some(SANDBOX_FILE_SIZE_LIMIT_BYTES),
-            active_process_limit: Some(SANDBOX_PROCESS_LIMIT),
+            // 完全信任通道不施加 RLIMIT（CPU/文件大小/进程数均不设限）。
+            cpu_time_limit_seconds: None,
+            file_size_limit_bytes: None,
+            active_process_limit: None,
             readable_roots: policy.readable_roots.len(),
             writable_roots: policy.writable_roots.len(),
             protected_read_roots: policy.protected_read_roots.len(),
@@ -468,7 +474,7 @@ mod macos {
                 .arg(profile_path)
                 .args(["/bin/sh", "-c", shell_command]);
             configure_stdio(&mut command, cwd);
-            isolate_process_group(&mut command);
+            isolate_process_group(&mut command, true);
             Ok(command)
         }
 
@@ -640,7 +646,7 @@ mod linux {
             let mut command = Command::new(bwrap);
             command.args(args);
             configure_stdio(&mut command, cwd);
-            isolate_process_group(&mut command);
+            isolate_process_group(&mut command, true);
             Ok(command)
         }
 
@@ -1222,9 +1228,9 @@ mod tests {
         assert!(!report.enforced);
         assert!(!report.network_enforced);
         assert!(report.process_group_isolated);
-        assert_eq!(
-            report.cpu_time_limit_seconds,
-            Some(SANDBOX_CPU_TIME_LIMIT_SECS)
-        );
+        // 完全信任通道不施加 RLIMIT 资源上限
+        assert_eq!(report.cpu_time_limit_seconds, None);
+        assert_eq!(report.file_size_limit_bytes, None);
+        assert_eq!(report.active_process_limit, None);
     }
 }
