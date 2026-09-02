@@ -23,7 +23,8 @@ const LOG = '[demo-autoplay]';
 /** 进入<|sep|>后先让空态输入框亮相的节拍，再开始打字 */
 const PRE_TYPE_DELAY_MS = 600;
 /** 逐字打字间隔（带轻微抖动更像真人） */
-const typeCharMs = () => 35 + Math.random() * 45;
+// 打字机节奏：17~40ms/字（2026-09 起 2 倍速，原 35~80ms）
+const typeCharMs = () => 17 + Math.random() * 23;
 /** 打完字到点击发送之间的"看一眼"停顿 */
 const POST_TYPE_PAUSE_MS = 450;
 
@@ -109,7 +110,11 @@ export function installDemoAutoPlay(): void {
       return;
     }
 
-    ta.focus({ preventScroll: true });
+    // 触屏设备不聚焦：focus 会呼出输入法（Android WebView）并可能触发
+    // iOS 输入框自动缩放。打字走原生 setter+input 事件，无需焦点。
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      ta.focus({ preventScroll: true });
+    }
     for (let i = 1; i <= prompt.length; i += 1) {
       if (isStale()) {
         clearComposer();
