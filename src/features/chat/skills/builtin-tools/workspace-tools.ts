@@ -587,7 +587,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '提交非交互本地 shell 命令，由后端按当前会话档位静默执行或展示审批 UI。不要在调用前用正文自行索要确认。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止，联网命令须显式传 allow_network=true。',
+        '提交非交互本地 shell 命令，由后端按当前会话档位静默执行或展示审批 UI。不要在调用前用正文自行索要确认。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell 5.1（-NoProfile -NonInteractive，UTF-8 输出）——Windows 下必须用 PowerShell 语法：不支持 &&/||（用 ; 或 if ($?)）、export（用 $env:X="v"）、rm -rf（用 Remove-Item -Recurse -Force）、grep/sed/awk/touch/which；命令必须非交互（无 stdin）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY 或持久 shell session，网络默认禁止，联网命令须显式传 allow_network=true。',
       inputSchema: {
         type: 'object',
         properties: {

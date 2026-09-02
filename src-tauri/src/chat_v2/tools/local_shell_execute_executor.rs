@@ -250,6 +250,57 @@ impl LocalShellExecuteExecutor {
         &text[start..]
     }
 
+    /// 检测命令里常见的 POSIX/bash 语法，给出 PowerShell 5.1 对应写法。
+    /// Windows 下模型最高频的失败模式就是写了 bash 语法；失败时给出针对性
+    /// 提示可以直接打断"语法错误→原样重试"的循环。仅在失败时追加展示，
+    /// 启发式误报无害。
+    fn posix_syntax_hints_for_powershell(command: &str) -> Vec<&'static str> {
+        fn has_word(command: &str, word: &str) -> bool {
+            command.match_indices(word).any(|(idx, _)| {
+                let before_ok = idx == 0
+                    || !command.as_bytes()[idx - 1].is_ascii_alphanumeric();
+                let after = idx + word.len();
+                let after_ok = after >= command.len()
+                    || !command.as_bytes()[after].is_ascii_alphanumeric();
+                before_ok && after_ok
+            })
+        }
+        let mut hints = Vec::new();
+        if command.contains("&&") || command.contains("||") {
+            hints.push(
+                "PowerShell 5.1 不支持 `&&`/`||`：改用 `;` 顺序分隔，或用 `if ($?) { ... }` 判断上一条是否成功",
+            );
+        }
+        if has_word(command, "export") {
+            hints.push("`export X=Y` 是 bash 语法：PowerShell 用 `$env:X = \"Y\"` 设置环境变量");
+        }
+        if command.contains("rm -rf")
+            || command.contains("rm -fr")
+            || command.contains("rm -r ")
+            || command.contains("Remove-Item -rf")
+        {
+            hints.push(
+                "`rm -rf` 在 PowerShell 5.1 中无效：用 `Remove-Item -Recurse -Force <path>`",
+            );
+        }
+        if has_word(command, "grep") {
+            hints.push("`grep` 不存在：用 `Select-String -Pattern <模式>`");
+        }
+        if has_word(command, "sed") || has_word(command, "awk") {
+            hints.push("`sed`/`awk` 不存在：用 `-replace` 运算符或 `Select-String`");
+        }
+        if has_word(command, "touch") {
+            hints.push("`touch` 不存在：用 `New-Item -ItemType File -Force -Path <path>`");
+        }
+        if has_word(command, "which") {
+            hints.push("`which` 不存在：用 `Get-Command <name>`");
+        }
+        if command.trim_start().starts_with("#!") {
+            hints.push("shebang（#!/...）在 PowerShell 中无效：直接写脚本命令");
+        }
+        hints
+    }
+
     /// 命令执行失败时回传给 LLM 的错误摘要：退出码/超时/取消标记 + stderr
     /// 尾部 + 修正引导。对齐业界惯例（Claude Code 的 "Exit code N" 模板、
     /// Roo Code 的失败引导语）——模型必须看到失败原因才能修正命令，
@@ -281,9 +332,7 @@ impl LocalShellExecuteExecutor {
         }
         match exit_code {
             Some(code) => parts.push(format!("Exit code {}", code)),
-            None if !timed_out && !cancelled => {
-                parts.push("Exit code <unknown>".to_string())
-            }
+            None if !timed_out && !cancelled => parts.push("Exit code <unknown>".to_string()),
             _ => {}
         }
         let stderr = output
@@ -307,6 +356,23 @@ impl LocalShellExecuteExecutor {
                 "stdout (tail): {}",
                 Self::tail_chars(stdout, STDOUT_TAIL_CHARS)
             ));
+        }
+        // Windows PowerShell 5.1：检测命令里的 bash 语法并给出对应写法。
+        let is_powershell = output
+            .get("sandbox")
+            .and_then(|sandbox| sandbox.get("shell_kind"))
+            .and_then(|v| v.as_str())
+            == Some("windows_powershell");
+        if is_powershell {
+            if let Some(command) = output.get("command").and_then(|v| v.as_str()) {
+                let hints = Self::posix_syntax_hints_for_powershell(command);
+                if !hints.is_empty() {
+                    parts.push(format!(
+                        "PowerShell syntax hints:\n- {}",
+                        hints.join("\n- ")
+                    ));
+                }
+            }
         }
         parts.push(
             "Command execution was not successful; inspect the cause above and adjust the \
@@ -2129,7 +2195,10 @@ mod tests {
             "stderr": "Windows local shell sandbox failed: access denied",
         });
         let error = LocalShellExecuteExecutor::failure_error_for_llm(&output);
-        assert!(error.contains("Exit code 126"), "missing exit code: {error}");
+        assert!(
+            error.contains("Exit code 126"),
+            "missing exit code: {error}"
+        );
         assert!(
             error.contains("access denied"),
             "missing stderr detail: {error}"
@@ -2190,6 +2259,71 @@ mod tests {
             error.len() < 3000,
             "error must stay bounded, got {} chars",
             error.len()
+        );
+    }
+
+    #[test]
+    fn posix_syntax_hints_cover_common_bash_isms() {
+        let hints = LocalShellExecuteExecutor::posix_syntax_hints_for_powershell(
+            "export A=1 && rm -rf target && grep -r foo .",
+        );
+        assert!(hints.iter().any(|h| h.contains("&&")), "{hints:?}");
+        assert!(hints.iter().any(|h| h.contains("$env:")), "{hints:?}");
+        assert!(hints.iter().any(|h| h.contains("Remove-Item")), "{hints:?}");
+        assert!(hints.iter().any(|h| h.contains("Select-String")), "{hints:?}");
+
+        let hints = LocalShellExecuteExecutor::posix_syntax_hints_for_powershell(
+            "which node; touch out.txt",
+        );
+        assert!(hints.iter().any(|h| h.contains("Get-Command")), "{hints:?}");
+        assert!(hints.iter().any(|h| h.contains("New-Item")), "{hints:?}");
+
+        // 纯 PowerShell 命令不报提示
+        let hints = LocalShellExecuteExecutor::posix_syntax_hints_for_powershell(
+            "Get-ChildItem | Select-Object -First 5",
+        );
+        assert!(hints.is_empty(), "{hints:?}");
+        // 单词边界：exporter/extra 里的子串不触发 export 检测
+        let hints = LocalShellExecuteExecutor::posix_syntax_hints_for_powershell(
+            "cargo run --bin exporter",
+        );
+        assert!(hints.is_empty(), "{hints:?}");
+    }
+
+    #[test]
+    fn failure_error_includes_powershell_hints_only_for_windows_shell() {
+        let command = "npm install && npm run build";
+        let windows_output = json!({
+            "success": false,
+            "exit_code": 1,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": "所在位置 行:1 字符: 12 附近的标记“&&”不是有效的语句分隔符。",
+            "command": command,
+            "sandbox": { "shell_kind": "windows_powershell" },
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&windows_output);
+        assert!(
+            error.contains("PowerShell syntax hints"),
+            "windows shell must get hints: {error}"
+        );
+        assert!(error.contains("if ($?)"), "{error}");
+
+        let posix_output = json!({
+            "success": false,
+            "exit_code": 1,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": "some error",
+            "command": command,
+            "sandbox": { "shell_kind": "posix_sh" },
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&posix_output);
+        assert!(
+            !error.contains("PowerShell syntax hints"),
+            "posix shell must not get hints: {error}"
         );
     }
 

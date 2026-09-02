@@ -1171,9 +1171,16 @@ impl PipelineContext {
         } else {
             format!("当前日期: {}", now.format("%Y-%m-%d"))
         };
+        // Windows 下模型最常犯的错误是写 bash 语法（PS 5.1 不支持 &&/export/
+        // rm -rf 等）——在运行时事实里显式声明，避免"语法错误→盲试"循环。
+        let shell_notes = if shell.shell_kind == "windows_powershell" {
+            "\nshell_notes: Windows PowerShell 5.1（不是 bash）：不支持 `&&`/`||`（改用 `;` 分隔，或用 `if ($?) { ... }` 判断上一条成败）；不支持 `export X=Y`（用 `$env:X = \"Y\"`）；没有 `rm -rf`（用 `Remove-Item -Recurse -Force`）、`grep`（用 `Select-String`）、`sed`/`awk`（用 `-replace`）、`touch`（用 `New-Item -Force`）、`which`（用 `Get-Command`）；环境变量读取用 `$env:NAME`；路径分隔符用 `\\` 或 `/` 均可；命令必须完全非交互（无 stdin，交互式命令会挂起直到超时）。"
+        } else {
+            ""
+        };
 
         format!(
-            "<runtime_facts>\n{}\n时区: {}\nos: {}\nplatform: {}\nlocal_shell: {}\nshell_path: {}\nsandbox_backend: {}\nshell_kind: {}\noutput_encoding: {}\nexecution_supported: {}\nnon_interactive: true\npty_available: false\npersistent_shell_session: false\nnetwork_default: deny\n</runtime_facts>",
+            "<runtime_facts>\n{}\n时区: {}\nos: {}\nplatform: {}\nlocal_shell: {}\nshell_path: {}\nsandbox_backend: {}\nshell_kind: {}\noutput_encoding: {}\nexecution_supported: {}\nnon_interactive: true\npty_available: false\npersistent_shell_session: false\nnetwork_default: deny{}\n</runtime_facts>",
             temporal_fact,
             now.format("%:z"),
             shell.os,
@@ -1184,6 +1191,7 @@ impl PipelineContext {
             shell.shell_kind,
             shell.output_encoding.unwrap_or("none"),
             shell.execution_supported,
+            shell_notes,
         )
     }
 
