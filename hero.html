@@ -26,7 +26,8 @@
           0 12px 28px -12px hsl(0 0% 0% / 0.16),
           0 48px 96px -40px hsl(0 0% 0% / 0.22);
         /* 舞台宽度：真实窗口宽 1112 为上限；视口偏矮时按可用高度反推保证窗壳完整可见
-           （reserve 360px ≈ 刊头+题辞区+舞台顶距的实际占位）。刊头胶囊与窗壳共用。 */
+           （reserve 360px ≈ 刊头+题辞区+舞台顶距的实际占位）。刊头胶囊与窗壳共用。
+           手机模式（≤767px）的覆盖规则在样式表末尾（同特异性需后写）。 */
         --stage-w: min(1112px, 92vw, calc((100dvh - 360px) * 1.4387));
       }
 
@@ -368,8 +369,9 @@
           inset 0 -1px 0 rgba(0, 0, 0, 0.35);
       }
 
-      /* 内屏恒为真实窗口尺寸 1112×773（桌面布局，永不触碰 768 移动断点），
-         由 inline script 按窗壳宽度等比缩放（transform: scale） */
+      /* 内屏为真实设备逻辑尺寸（桌面 1112×773 / 手机 390×844），由 inline script
+         按断点切换并等比缩放（transform: scale）——桌面布局永不触碰 768 移动断点，
+         手机模式则刻意以 <768 宽度渲染，让应用走真实移动端布局 */
       .screen {
         position: relative;
         width: 1112px;
@@ -467,9 +469,61 @@
         }
       }
 
+      /* ---------- 手机模式（≤767px，对齐应用 isSmallScreen 断点）----------
+         去窗壳化：演示占满整宽 + 剩余全部高度，iframe 以设备真实 CSS 尺寸渲染
+         （应用自然落入移动端布局；不做 transform 缩放，文字保持物理像素清晰）。
+         题辞区紧凑化、图注与红绿灯让位——窄屏每一寸都给演示。 */
       @media (max-width: 767px) {
-        .stage { padding: 22px 12px 36px; }
-        .colophon { padding: 14px 20px 20px; }
+        :root {
+          --stage-w: 100%;
+        }
+        .hero {
+          padding: 18px 16px 0;
+        }
+        .kicker {
+          margin-bottom: 10px;
+        }
+        .hero h1 {
+          font-size: 26px;
+        }
+        .hero .sub {
+          margin-top: 8px;
+          line-height: 1.6;
+        }
+        .actions {
+          margin-top: 14px;
+        }
+        .stage {
+          padding: 16px 0 0;
+          min-height: 0;
+        }
+        .window {
+          width: 100%;
+          flex: 1;
+          min-height: 380px;
+          border-radius: 0;
+          border-left: 0;
+          border-right: 0;
+          border-bottom: 0;
+        }
+        /* absolute inset 布局：绕开"块级子元素 % 高度依赖父级显式 height"
+           的解析陷阱（.window 的高度来自 flex，非 height 属性） */
+        .screen {
+          position: absolute;
+          inset: 0;
+          width: auto;
+          height: auto;
+          transform: none;
+        }
+        .lights {
+          display: none;
+        }
+        .caption {
+          display: none;
+        }
+        .colophon {
+          padding: 12px 20px 16px;
+        }
       }
 
       @media (max-width: 639px) {
@@ -565,19 +619,32 @@
           lights.parentNode.removeChild(lights);
         }
 
-        // 内屏恒为 1112×773（真实窗口尺寸），整体等比缩放适配窗壳宽度：
-        // 应用永远按桌面布局渲染，任何视口下内容完整、比例不变
+        // 内屏尺寸双模式（断点 ≤767px 对齐应用 isSmallScreen）：
+        // 桌面——真实窗口 1112×773 等比缩放适配窗壳（永不触碰移动断点）；
+        // 手机——去窗壳化，CSS 接管全宽全高布局，iframe 以设备真实 CSS 尺寸
+        // 渲染（无缩放最清晰）；此时必须清掉桌面模式写过的内联尺寸/变换。
+        var mqPhone = window.matchMedia('(max-width: 767px)');
         var NATIVE_W = 1112;
         var NATIVE_H = 773;
         var windowEl = document.getElementById('window');
         var screenEl = document.getElementById('screen');
         function fit() {
+          if (mqPhone.matches) {
+            screenEl.style.width = '';
+            screenEl.style.height = '';
+            screenEl.style.transform = '';
+            windowEl.style.height = '';
+            return;
+          }
+          screenEl.style.width = NATIVE_W + 'px';
+          screenEl.style.height = NATIVE_H + 'px';
           var scale = windowEl.clientWidth / NATIVE_W;
           screenEl.style.transform = 'scale(' + scale + ')';
           windowEl.style.height = Math.round(NATIVE_H * scale) + 'px';
         }
         window.addEventListener('resize', fit);
         window.addEventListener('load', fit);
+        if (mqPhone.addEventListener) mqPhone.addEventListener('change', fit);
         fit();
       })();
 
