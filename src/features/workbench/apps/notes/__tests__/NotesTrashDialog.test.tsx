@@ -97,7 +97,9 @@ describe('NotesTrashDialog', () => {
     renderDialog();
 
     const panel = await screen.findByRole('region', { name: /回收站|Trash/i });
-    await waitFor(() => expect(listTrash).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(listTrash).toHaveBeenCalledWith(100, 0, ['note', 'mindmap', 'folder']),
+    );
 
     const names = within(panel).getAllByText(/Old|Map|Folder|Essay/).map((el) => el.textContent);
     expect(names).toEqual(['Map', 'Folder', 'Old']);
@@ -156,7 +158,7 @@ describe('NotesTrashDialog', () => {
     expect(confirm).toHaveTextContent(/2/);
     fireEvent.click(within(confirm).getByRole('button', { name: /^清空$|^Empty$/i }));
 
-    await waitFor(() => expect(emptyTrash).toHaveBeenCalled());
+    await waitFor(() => expect(emptyTrash).toHaveBeenCalledWith(['note', 'mindmap', 'folder']));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(await screen.findByText(/回收站为空|Trash is empty/i)).toBeInTheDocument();
   });

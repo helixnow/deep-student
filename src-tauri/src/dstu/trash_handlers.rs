@@ -2,7 +2,9 @@
 //!
 //! 提供统一的软删除、恢复、列表和永久删除命令。
 
-use rusqlite::params;
+use rusqlite::{params, Connection};
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use tauri::{State, Window};
 use tracing::{error, info, warn};
@@ -236,12 +238,13 @@ pub async fn dstu_trash_restore(
 pub async fn dstu_list_trash(
     limit: Option<u32>,
     offset: Option<u32>,
+    item_types: Option<Vec<String>>,
     db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<DstuNode>, DstuError> {
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
-    list_trash_with_db(db.inner(), limit, offset)
+    list_trash_with_db(db.inner(), limit, offset, item_types.as_deref())
 }
 
 /// Window-independent production core used by the Tauri command and Agent
@@ -251,23 +254,34 @@ pub(crate) fn list_trash_with_db(
     db: &VfsDatabase,
     limit: u32,
     offset: u32,
+    item_types: Option<&[String]>,
 ) -> Result<Vec<DstuNode>, DstuError> {
     info!(
-        "[DSTU::trash] dstu_list_trash: limit={}, offset={}",
-        limit, offset
+        "[DSTU::trash] dstu_list_trash: limit={}, offset={}, types={:?}",
+        limit, offset, item_types
     );
+    let type_filter = item_types.map(|types| {
+        types
+            .iter()
+            .map(|value| value.to_ascii_lowercase())
+            .collect::<HashSet<_>>()
+    });
 
     let mut nodes: Vec<DstuNode> = Vec::new();
 
     // 1. 获取已删除的文件夹
-    let deleted_folders = match VfsFolderRepo::list_deleted_folders(db, limit + offset, 0) {
-        Ok(folders) => folders,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_folders FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_folders = if !wants_trash_type(&type_filter, "folder") {
+        Vec::new()
+    } else {
+        match VfsFolderRepo::list_deleted_folders(db, limit + offset, 0) {
+            Ok(folders) => folders,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_folders FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for folder in deleted_folders {
@@ -282,14 +296,18 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 2. 获取已删除的笔记
-    let deleted_notes = match VfsNoteRepo::list_deleted_notes(db, limit + offset, 0) {
-        Ok(notes) => notes,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_notes FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_notes = if !wants_trash_type(&type_filter, "note") {
+        Vec::new()
+    } else {
+        match VfsNoteRepo::list_deleted_notes(db, limit + offset, 0) {
+            Ok(notes) => notes,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_notes FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for note in deleted_notes {
@@ -307,14 +325,18 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 3. 获取已删除的教材
-    let deleted_textbooks = match VfsTextbookRepo::list_deleted_textbooks(db, limit + offset, 0) {
-        Ok(textbooks) => textbooks,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_textbooks FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_textbooks = if !wants_trash_type(&type_filter, "textbook") {
+        Vec::new()
+    } else {
+        match VfsTextbookRepo::list_deleted_textbooks(db, limit + offset, 0) {
+            Ok(textbooks) => textbooks,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_textbooks FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for textbook in deleted_textbooks {
@@ -336,14 +358,18 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 4. 获取已删除的题目集
-    let deleted_exams = match VfsExamRepo::list_deleted_exams(db, limit + offset, 0) {
-        Ok(exams) => exams,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_exams FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_exams = if !wants_trash_type(&type_filter, "exam") {
+        Vec::new()
+    } else {
+        match VfsExamRepo::list_deleted_exams(db, limit + offset, 0) {
+            Ok(exams) => exams,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_exams FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for exam in deleted_exams {
@@ -363,7 +389,7 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 5. 获取已删除的翻译
-    {
+    if wants_trash_type(&type_filter, "translation") {
         let deleted_translations =
             match VfsTranslationRepo::list_deleted_translations(db, limit + offset, 0) {
                 Ok(translations) => translations,
@@ -399,14 +425,18 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 6. 获取已删除的作文会话（Learning Hub 使用 essay_session_* 作为“作文资源”）
-    let deleted_sessions = match VfsEssayRepo::list_deleted_sessions(db, limit + offset, 0) {
-        Ok(sessions) => sessions,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_sessions FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_sessions = if !wants_trash_type(&type_filter, "essay") {
+        Vec::new()
+    } else {
+        match VfsEssayRepo::list_deleted_sessions(db, limit + offset, 0) {
+            Ok(sessions) => sessions,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_sessions FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for session in deleted_sessions {
@@ -425,14 +455,18 @@ pub(crate) fn list_trash_with_db(
 
     // 注意：禁止旧 essay 轮次（essay_*）的向后兼容，只支持 essay_session
 
-    let deleted_files = match VfsFileRepo::list_deleted_files(db, limit + offset, 0) {
-        Ok(files) => files,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_files FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_files = if !wants_trash_type(&type_filter, "file") {
+        Vec::new()
+    } else {
+        match VfsFileRepo::list_deleted_files(db, limit + offset, 0) {
+            Ok(files) => files,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_files FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for file in deleted_files {
@@ -456,14 +490,18 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 7. 获取已删除的知识导图
-    let deleted_mindmaps = match VfsMindMapRepo::list_deleted_mindmaps(db, limit + offset, 0) {
-        Ok(mindmaps) => mindmaps,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_list_trash: list_deleted_mindmaps FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
+    let deleted_mindmaps = if !wants_trash_type(&type_filter, "mindmap") {
+        Vec::new()
+    } else {
+        match VfsMindMapRepo::list_deleted_mindmaps(db, limit + offset, 0) {
+            Ok(mindmaps) => mindmaps,
+            Err(e) => {
+                error!(
+                    "[DSTU::trash] dstu_list_trash: list_deleted_mindmaps FAILED - error={}",
+                    e
+                );
+                return Err(DstuError::VfsError(e.to_string()));
+            }
         }
     };
     for mindmap in deleted_mindmaps {
@@ -507,175 +545,228 @@ pub(crate) fn list_trash_with_db(
     Ok(nodes)
 }
 
+fn wants_trash_type(filter: &Option<HashSet<String>>, type_name: &str) -> bool {
+    match filter {
+        None => true,
+        Some(set) => set.iter().any(|value| {
+            value == type_name
+                || value == &format!("{type_name}s")
+                || (type_name == "file"
+                    && matches!(
+                        value.as_str(),
+                        "image" | "images" | "attachment" | "attachments"
+                    ))
+                || (type_name == "textbook" && matches!(value.as_str(), "textbooks"))
+        }),
+    }
+}
+
+fn collect_column_strings(conn: &Connection, sql: &str) -> Result<Vec<String>, DstuError> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| DstuError::VfsError(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| DstuError::VfsError(e.to_string()))?;
+    Ok(rows.flatten().collect())
+}
+
+fn purge_deleted_rows_by_id<F>(
+    conn: &Connection,
+    sql: &str,
+    mut purge_one: F,
+) -> Result<usize, DstuError>
+where
+    F: FnMut(&str) -> Result<(), String>,
+{
+    let ids = collect_column_strings(conn, sql)?;
+    for id in &ids {
+        purge_one(id).map_err(DstuError::VfsError)?;
+    }
+    Ok(ids.len())
+}
+
+fn cleanup_note_asset_dirs(app_data_dir: &Path, note_ids: &[String]) {
+    if note_ids.is_empty() {
+        return;
+    }
+    let notes_assets_root = app_data_dir.join("notes_assets");
+    if !notes_assets_root.is_dir() {
+        return;
+    }
+    let Ok(base_dir) = notes_assets_root.canonicalize() else {
+        return;
+    };
+    let Ok(subjects) = std::fs::read_dir(&notes_assets_root) else {
+        return;
+    };
+    for subject in subjects.flatten() {
+        let subject_path = subject.path();
+        if !subject_path.is_dir() {
+            continue;
+        }
+        for note_id in note_ids {
+            if note_id.is_empty()
+                || note_id.contains('/')
+                || note_id.contains('\\')
+                || note_id.contains("..")
+            {
+                continue;
+            }
+            let dir = subject_path.join(note_id);
+            if !dir.is_dir() {
+                continue;
+            }
+            let Ok(canonical) = dir.canonicalize() else {
+                continue;
+            };
+            if !canonical.starts_with(&base_dir) || !canonical.is_dir() {
+                continue;
+            }
+            if let Err(e) = std::fs::remove_dir_all(&canonical) {
+                warn!(
+                    "[DSTU::trash] Failed to remove note assets dir {}: {}",
+                    canonical.display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
 /// 清空回收站
 ///
-///
-/// 永久删除所有已软删除的资源。
+/// `item_types` 为空时清空全部类型；笔记工作台传入 note/mindmap/folder，
+/// 避免误删学习中心里独立进入回收站的教材/附件。
 #[tauri::command]
 pub async fn dstu_empty_trash(
+    item_types: Option<Vec<String>>,
     window: Window,
     db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
 ) -> Result<usize, DstuError> {
-    info!("[DSTU::trash] dstu_empty_trash");
+    info!("[DSTU::trash] dstu_empty_trash types={:?}", item_types);
+    let type_filter = item_types.map(|types| {
+        types
+            .into_iter()
+            .map(|value| value.to_ascii_lowercase())
+            .collect::<HashSet<_>>()
+    });
 
-    // ★ P1 修复：在 purge 之前收集所有待清理的 resource_ids
-    let resource_ids_to_cleanup: Vec<String> = {
-        if let Ok(conn) = db.get_conn_safe() {
-            let mut ids = Vec::new();
-            // 收集已删除的 notes, files, exam_sheets, translations, mindmaps, essays 的 resource_id
-            // ★ P1 修复：补充 essays 表（包括已删除的独立 essay 和被删除 session 下的子 essay）
-            for sql in &[
-                "SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
-                "SELECT resource_id FROM files WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
-                "SELECT resource_id FROM exam_sheets WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
-                "SELECT resource_id FROM translations WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
-                "SELECT resource_id FROM mindmaps WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
-                // 被删除 session 下的子 essay 的 resource_id
-                "SELECT e.resource_id FROM essays e INNER JOIN essay_sessions s ON e.session_id = s.id WHERE s.deleted_at IS NOT NULL AND e.resource_id IS NOT NULL",
-            ] {
-                if let Ok(mut stmt) = conn.prepare(sql) {
-                    if let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) {
-                        for rid in rows.flatten() {
-                            ids.push(rid);
-                        }
-                    }
-                }
-            }
-            ids
-        } else {
-            Vec::new()
+    let conn = db
+        .get_conn_safe()
+        .map_err(|e| DstuError::VfsError(e.to_string()))?;
+    let blobs_dir = db.blobs_dir().to_path_buf();
+    let app_data_dir = db.app_data_dir();
+
+    let resource_ids_to_cleanup = {
+        let mut ids = Vec::new();
+        for sql in [
+            "SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            "SELECT resource_id FROM files WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            "SELECT resource_id FROM exam_sheets WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            "SELECT resource_id FROM translations WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            "SELECT resource_id FROM mindmaps WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL",
+            "SELECT e.resource_id FROM essays e INNER JOIN essay_sessions s ON e.session_id = s.id WHERE s.deleted_at IS NOT NULL AND e.resource_id IS NOT NULL",
+        ] {
+            ids.extend(collect_column_strings(&conn, sql).unwrap_or_default());
+        }
+        ids
+    };
+    let note_ids_to_cleanup =
+        collect_column_strings(&conn, "SELECT id FROM notes WHERE deleted_at IS NOT NULL")
+            .unwrap_or_default();
+
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| DstuError::VfsError(e.to_string()))?;
+
+    let purge_result = (|| -> Result<usize, DstuError> {
+        let mut total_deleted = 0;
+        if wants_trash_type(&type_filter, "folder") {
+            total_deleted += VfsFolderRepo::purge_deleted_folders_with_conn(&conn, &blobs_dir)
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+        }
+        if wants_trash_type(&type_filter, "note") {
+            total_deleted += VfsNoteRepo::purge_deleted_notes_with_conn(&conn)
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+        }
+        if wants_trash_type(&type_filter, "exam") {
+            total_deleted += purge_deleted_rows_by_id(
+                &conn,
+                "SELECT id FROM exam_sheets WHERE deleted_at IS NOT NULL",
+                |id| {
+                    VfsExamRepo::purge_exam_sheet_with_conn(&conn, &blobs_dir, id)
+                        .map_err(|e| e.to_string())
+                },
+            )?;
+        }
+        if wants_trash_type(&type_filter, "translation") {
+            total_deleted += purge_deleted_rows_by_id(
+                &conn,
+                "SELECT id FROM translations WHERE deleted_at IS NOT NULL",
+                |id| {
+                    VfsTranslationRepo::purge_translation_with_conn(&conn, id)
+                        .map_err(|e| e.to_string())
+                },
+            )?;
+        }
+        if wants_trash_type(&type_filter, "essay") {
+            total_deleted += purge_deleted_rows_by_id(
+                &conn,
+                "SELECT id FROM essay_sessions WHERE deleted_at IS NOT NULL",
+                |id| {
+                    VfsEssayRepo::purge_session_with_conn(&conn, id)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                },
+            )?;
+        }
+        if wants_trash_type(&type_filter, "textbook") {
+            total_deleted += VfsTextbookRepo::purge_deleted_textbooks_with_conn(&conn, &blobs_dir)
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+        }
+        if wants_trash_type(&type_filter, "file") {
+            total_deleted += VfsFileRepo::purge_deleted_files_with_conn(&conn, &blobs_dir)
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+        }
+        if wants_trash_type(&type_filter, "mindmap") {
+            total_deleted += VfsMindMapRepo::purge_deleted_mindmaps_with_conn(&conn)
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+        }
+        Ok(total_deleted)
+    })();
+
+    let total_deleted = match purge_result {
+        Ok(count) => {
+            conn.execute_batch("COMMIT")
+                .map_err(|e| DstuError::VfsError(e.to_string()))?;
+            count
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(error);
         }
     };
 
-    let mut total_deleted = 0;
-
-    // 永久删除各类资源
-    match VfsFolderRepo::purge_deleted_folders(&db) {
-        Ok(count) => total_deleted += count,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_deleted_folders FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
+    if let Err(e) =
+        crate::vfs::repos::VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, &blobs_dir)
+    {
+        warn!(
+            "[DSTU::trash] dstu_empty_trash: post-purge blob sweep failed: {}",
+            e
+        );
     }
-
-    match VfsNoteRepo::purge_deleted_notes(&db) {
-        Ok(count) => total_deleted += count,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_deleted_notes FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-
-    // 题目集：逐个永久删除已软删除的记录
-    let deleted_exams = match VfsExamRepo::list_deleted_exams(&db, 1000, 0) {
-        Ok(exams) => exams,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: list_deleted_exams FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    };
-    for exam in &deleted_exams {
-        if let Err(e) = VfsExamRepo::purge_exam_sheet(&db, &exam.id) {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_exam_sheet FAILED - id={}, error={}",
-                exam.id, e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-    total_deleted += deleted_exams.len();
-
-    // 翻译：逐个永久删除
-    let deleted_translations = match VfsTranslationRepo::list_deleted_translations(&db, 1000, 0) {
-        Ok(translations) => translations,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: list_deleted_translations FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    };
-    for tr in &deleted_translations {
-        if let Err(e) = VfsTranslationRepo::purge_translation(&db, &tr.id) {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_translation FAILED - id={}, error={}",
-                tr.id, e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-    total_deleted += deleted_translations.len();
-
-    // 作文会话：逐个永久删除（连带删除轮次）
-    let deleted_sessions = match VfsEssayRepo::list_deleted_sessions(&db, 1000, 0) {
-        Ok(sessions) => sessions,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: list_deleted_sessions FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    };
-    for session in &deleted_sessions {
-        if let Err(e) = VfsEssayRepo::purge_session(&db, &session.id) {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_session FAILED - id={}, error={}",
-                session.id, e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-    total_deleted += deleted_sessions.len();
-
-    // 注意：禁止旧 essay 轮次（essay_*）的向后兼容，只支持 essay_session
-
-    match VfsFileRepo::purge_deleted_files(&db) {
-        Ok(count) => total_deleted += count,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_deleted_files FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
-
-    // 知识导图
-    match VfsMindMapRepo::purge_deleted_mindmaps(&db) {
-        Ok(count) => total_deleted += count,
-        Err(e) => {
-            error!(
-                "[DSTU::trash] dstu_empty_trash: purge_deleted_mindmaps FAILED - error={}",
-                e
-            );
-            return Err(DstuError::VfsError(e.to_string()));
-        }
-    }
+    cleanup_note_asset_dirs(&app_data_dir, &note_ids_to_cleanup);
 
     info!(
         "[DSTU::trash] dstu_empty_trash: SUCCESS - deleted {} items",
         total_deleted
     );
 
-    // 发射批量永久删除事件（通知前端刷新回收站视图）
     if total_deleted > 0 {
         emit_watch_event(&window, DstuWatchEvent::purged("/_trash"));
     }
 
-    // ★ P1 修复：purge 成功后异步清理所有索引数据
-    // ★ F3 修复：改用完整清理（向量 + units/segments + 维度计数刷新）
     if !resource_ids_to_cleanup.is_empty() {
         let lance_for_cleanup = Arc::clone(lance_store.inner());
         let db_for_cleanup = Arc::clone(db.inner());
@@ -737,6 +828,35 @@ pub async fn dstu_permanently_delete(
         } else {
             Vec::new()
         };
+    let note_ids_to_cleanup: Vec<String> = if item_type == "note" || item_type == "notes" {
+        vec![id.clone()]
+    } else if item_type == "folder" || item_type == "folders" {
+        if let Ok(conn) = db.get_conn_safe() {
+            conn.prepare(
+                r#"
+                WITH RECURSIVE folder_tree AS (
+                    SELECT id FROM folders WHERE id = ?1
+                    UNION ALL
+                    SELECT f.id FROM folders f
+                    JOIN folder_tree ft ON f.parent_id = ft.id
+                )
+                SELECT fi.item_id
+                FROM folder_items fi
+                WHERE fi.item_type = 'note'
+                  AND fi.folder_id IN (SELECT id FROM folder_tree)
+                "#,
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map(params![&id], |row| row.get::<_, String>(0))
+                    .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
 
     // The trash predicate and destructive statements share one writer transaction. This
     // prevents a concurrent restore from turning a stale preflight check into a hard delete.
@@ -748,6 +868,7 @@ pub async fn dstu_permanently_delete(
                 "[DSTU::trash] dstu_permanently_delete: SUCCESS - type={}, id={}",
                 item_type, id
             );
+            cleanup_note_asset_dirs(&db.app_data_dir(), &note_ids_to_cleanup);
 
             // ★ P1 修复：永久删除后清理向量索引（如果软删除时未清理）
             // ★ F3 修复：vfs_index_units 对 resources 无外键，purge 后必须显式清理 units/segments

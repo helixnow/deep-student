@@ -20,7 +20,7 @@ describe('shared primitive migration contract', () => {
   it('adds explicit shell button roles beyond the legacy card variants', () => {
     expect(buttonPrimitiveSource).toContain("'utility'");
     expect(buttonPrimitiveSource).toContain("'nav'");
-    expect(buttonPrimitiveSource).toContain('var(--button-tonal-hover-bg)');
+    expect(buttonPrimitiveSource).toContain('var(--button-plain-hover-bg)');
     expect(cardButtonSource).toContain('type ButtonPrimitiveVariant');
     expect(cardButtonSource).toContain('buttonToneClassNames[variant]');
   });
@@ -28,7 +28,7 @@ describe('shared primitive migration contract', () => {
   it('routes dialog, input, and sheet surfaces through shell tokens', () => {
     expect(cardDialogSource).toContain('var(--dialog-shell-surface)');
     expect(buttonSource).toContain('buttonToneClassNames.primary');
-    expect(buttonPrimitiveSource).toContain('var(--button-prominent-bg)');
+    expect(buttonPrimitiveSource).toContain('var(--button-plain-bg)');
     expect(inputSource).toContain('inputShellClass');
     expect(inputShellSource).toContain('var(--input-shell-surface)');
     expect(switchSource).toContain('./Switch.css');

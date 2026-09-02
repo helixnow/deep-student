@@ -6,6 +6,7 @@
 pub mod adapters;
 pub mod anki;
 pub mod anki_connect_service;
+pub mod apk_installer;
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
 pub mod apkg_importer_service;
@@ -539,6 +540,11 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
+
+    // Android 专用：应用内 APK 安装桥（FileProvider → 系统安装器）。
+    // updater 插件不支持移动端，移动端更新由前端检查 + 该插件负责落地安装。
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(crate::apk_installer::init());
 
     // 🔧 MCP 调试插件（通过 mcp-debug feature 启用）
     // 使用 hypothesi/mcp-server-tauri 桥接插件
@@ -1581,6 +1587,8 @@ pub fn run() {
             // =================================================
             crate::pdfium_utils::test_pdfium_status,
             crate::commands::get_app_version,
+            crate::commands::updater_install_supported,
+            crate::commands::install_apk,
             crate::commands::get_app_data_dir,
             crate::commands::process_pdf_ocr,
             crate::commands::init_pdf_ocr_session, // 🎯

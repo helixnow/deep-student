@@ -32,9 +32,9 @@ use tauri::Manager;
 
 // SSRF 判定统一使用全库正源 crate::browser::policy（回环放行、私网/元数据封锁），
 // 避免多份实现漂移。is_internal_ip 保留原名导入以兼容本文件测试。
-use crate::browser::policy::{is_blocked_internal_ip, is_internal_ip};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use crate::browser::policy::{is_blocked_internal_ip, is_internal_ip};
 use crate::chat_v2::runtime_roots::artifact_root;
 use crate::chat_v2::task_objects::{
     ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
@@ -1613,15 +1613,23 @@ mod tests {
         use std::net::{Ipv4Addr, Ipv6Addr};
 
         // 回环放行（本地 MCP / 插件桥 / 开发服务器是合法抓取目标）
-        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
-        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3))));
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            127, 0, 0, 1
+        ))));
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            127, 1, 2, 3
+        ))));
         assert!(!is_blocked_internal_ip(&IpAddr::V6(Ipv6Addr::LOCALHOST)));
         let ipv4_mapped_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0x7f00, 0x0001);
         assert!(!is_blocked_internal_ip(&IpAddr::V6(ipv4_mapped_loopback)));
 
         // 私网 / 链路本地 / 云元数据仍然封锁
-        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
-        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            10, 0, 0, 1
+        ))));
+        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            192, 168, 1, 1
+        ))));
         assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
             169, 254, 169, 254
         ))));
@@ -1629,7 +1637,9 @@ mod tests {
         assert!(is_blocked_internal_ip(&IpAddr::V6(ipv4_mapped_private)));
 
         // 公网不受影响
-        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            8, 8, 8, 8
+        ))));
     }
 
     #[test]

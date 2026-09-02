@@ -66,7 +66,7 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, title, onRetry, re
         {errorMessage || t('errorBoundary.unknownErrorRefresh')}
       </p>
       {onRetry && (
-        <DsButton variant="primary" size="sm" onClick={onRetry} className="bg-primary text-primary-foreground hover:bg-primary/90">
+        <DsButton variant="ghost" size="sm" onClick={onRetry}>
           <ArrowClockwise size={16} />
           {retryLabel ?? t('errorBoundary.retry')}
         </DsButton>

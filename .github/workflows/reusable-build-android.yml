@@ -221,6 +221,34 @@ jobs:
           cmp -s "$SRC" "$DST" || { echo "::error::MainActivity.kt sync verification failed"; exit 1; }
           echo "✅ MainActivity.kt synced from managed copy"
 
+          # 应用内 APK 安装器：插件类 + FileProvider 路径配置 + manifest provider。
+          # 缺失时 install_apk 命令在运行期才报错（用户点了"下载并安装"才发现装不了），
+          # 因此这里 fail-closed。与 build_android.sh 的 sync_apk_installer_files /
+          # inject_apk_file_provider 保持一致。
+          SRC="src-tauri/mobile/android/ApkInstallerPlugin.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/ApkInstallerPlugin.kt"
+          test -f "$SRC" || { echo "::error::managed ApkInstallerPlugin.kt missing at $SRC"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::ApkInstallerPlugin.kt sync verification failed"; exit 1; }
+          echo "✅ ApkInstallerPlugin.kt synced from managed copy"
+
+          SRC="src-tauri/mobile/android/res/xml/file_paths.xml"
+          DST="src-tauri/gen/android/app/src/main/res/xml/file_paths.xml"
+          test -f "$SRC" || { echo "::error::managed file_paths.xml missing at $SRC"; exit 1; }
+          mkdir -p "$(dirname "$DST")"
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::file_paths.xml sync verification failed"; exit 1; }
+          echo "✅ file_paths.xml synced from managed copy"
+
+          if ! grep -qF 'androidx.core.content.FileProvider' "$MANIFEST"; then
+            # ${applicationId} 是 manifest placeholder（gradle 构建时替换），
+            # 用单引号防止 shell 展开。整段单行插入，与 build_android.sh 保持一致。
+            PROVIDER_LINE='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'
+            sed -i "s|</application>|${PROVIDER_LINE}</application>|" "$MANIFEST"
+          fi
+          grep -qF 'androidx.core.content.FileProvider' "$MANIFEST" || { echo "::error::failed to inject FileProvider"; exit 1; }
+          echo "✅ FileProvider present"
+
       - name: Copy custom Android icons
         run: |
           ICONS_SRC="src-tauri/icons/android"

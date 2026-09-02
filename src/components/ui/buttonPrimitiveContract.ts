@@ -25,31 +25,27 @@ export const buttonBaseClassName =
 export const shellNavBaseClassName =
   'ui-press-coarse inline-flex shrink-0 appearance-none items-center gap-2 whitespace-nowrap text-[13px] leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
 
+// 2026-09 裁定：DsButton 只保留两套油漆——ghost（透明）与 danger。
+// variant 名仍可用，避免扫全库改调用点；primary/outline/default 等一律走 ghost。
+const GHOST_TONE =
+  'border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)]';
+const DANGER_TONE =
+  'border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)]';
+
 export const buttonToneClassNames: Record<ButtonPrimitiveVariant, string> = {
-  primary:
-    'border-[color:var(--button-prominent-border)] bg-[var(--button-prominent-bg)] text-primary-foreground hover:bg-[var(--button-prominent-hover-bg)] active:bg-[var(--button-prominent-active-bg)]',
-  danger:
-    'border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)]',
-  success:
-    'border-[color:var(--button-tonal-border)] bg-[var(--button-tonal-bg)] text-[color:hsl(var(--success))] hover:bg-[var(--button-tonal-hover-bg)] active:bg-[var(--button-tonal-active-bg)]',
-  warning:
-    'border-[color:var(--button-tonal-border)] bg-[var(--button-tonal-bg)] text-[color:hsl(var(--warning))] hover:bg-[var(--button-tonal-hover-bg)] active:bg-[var(--button-tonal-active-bg)]',
-  ghost:
-    'border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)]',
-  default:
-    'border-[color:var(--button-tonal-border)] bg-[var(--button-tonal-bg)] text-foreground hover:bg-[var(--button-tonal-hover-bg)] active:bg-[var(--button-tonal-active-bg)]',
-  outline:
-    'border-[color:var(--button-outline-border)] bg-[var(--button-outline-bg)] text-foreground hover:bg-[var(--button-outline-hover-bg)] hover:text-foreground active:bg-[var(--button-outline-active-bg)]',
-  secondary:
-    'border-[color:var(--button-tonal-border)] bg-[var(--button-tonal-bg)] text-foreground hover:bg-[var(--button-tonal-hover-bg)] active:bg-[var(--button-tonal-active-bg)]',
-  destructive:
-    'border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)]',
-  utility:
-    'border-[color:var(--button-tonal-border)] bg-[var(--button-tonal-bg)] text-[color:var(--text-secondary)] hover:bg-[var(--button-tonal-hover-bg)] hover:text-[color:var(--text-primary)] active:bg-[var(--button-tonal-active-bg)]',
+  ghost: GHOST_TONE,
+  primary: GHOST_TONE,
+  default: GHOST_TONE,
+  outline: GHOST_TONE,
+  secondary: GHOST_TONE,
+  utility: GHOST_TONE,
+  shell: GHOST_TONE,
+  success: GHOST_TONE,
+  warning: GHOST_TONE,
+  danger: DANGER_TONE,
+  destructive: DANGER_TONE,
   nav:
     'flex min-h-[2.75rem] w-full min-w-0 justify-start gap-2.5 overflow-hidden rounded-2xl border-transparent bg-transparent px-2.5 py-1.5 text-left text-sm text-[color:var(--shell-navigation-muted)] lg:min-h-9 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)] active:bg-[color:var(--sidebar-quiet-active)]',
-  shell:
-    'border-[color:var(--button-tonal-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)] hover:bg-[var(--button-tonal-hover-bg)] active:bg-[var(--button-tonal-active-bg)]',
   link:
     'border-transparent bg-transparent text-[color:var(--button-primary-foreground)] underline-offset-4 hover:underline',
 };

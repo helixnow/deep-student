@@ -90,7 +90,8 @@
   "update": {
     "short": "更新",
     "available": "有可用更新",
-    "downloading": "下载中..."
+    "downloading": "下载中...",
+    "restart": "重启"
   },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",

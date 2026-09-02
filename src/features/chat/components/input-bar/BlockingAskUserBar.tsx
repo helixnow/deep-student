@@ -395,10 +395,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               size="sm"
               onClick={handlePrimarySubmit}
               disabled={disabled || !canSubmit}
-              className={cn(
-                'rounded-full px-4',
-                'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)]'
-              )}
+              className="rounded-full px-4"
             >
               <span>{t('askUser.submit')}</span>
             </DsButton>

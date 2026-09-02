@@ -579,8 +579,9 @@ impl DstuToolExecutor {
         let (limit, offset) = parse_trash_pagination(args)?;
         let probe_limit = limit.saturating_add(1);
         let db = vfs_db(ctx)?;
-        let mut items = crate::dstu::trash_handlers::list_trash_with_db(&db, probe_limit, offset)
-            .map_err(|error| backend_error("list trash", error))?;
+        let mut items =
+            crate::dstu::trash_handlers::list_trash_with_db(&db, probe_limit, offset, None)
+                .map_err(|error| backend_error("list trash", error))?;
         let has_more = items.len() > limit as usize;
         if has_more {
             items.truncate(limit as usize);
@@ -1023,7 +1024,7 @@ mod tests {
         assert_eq!(persisted.color.as_deref(), Some("#336699"));
 
         VfsFolderRepo::delete_folder(&db, &folder.id).expect("soft-delete folder");
-        let trash = crate::dstu::trash_handlers::list_trash_with_db(&db, 20, 0)
+        let trash = crate::dstu::trash_handlers::list_trash_with_db(&db, 20, 0, None)
             .expect("list trash through production core");
         let trashed = trash
             .iter()

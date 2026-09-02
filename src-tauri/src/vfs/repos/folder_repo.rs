@@ -1297,6 +1297,11 @@ impl VfsFolderRepo {
                 params![folder_id, now_str, now_ms],
             )?;
 
+            // 4. 级联软删仅属于本树的子实体，使它们从主列表消失并进入回收站。
+            // 仍有树外活跃成员关系的资源只断成员、不删实体。
+            let folder_ids = Self::get_folder_ids_for_purge_with_conn(conn, folder_id)?;
+            Self::cascade_soft_delete_folder_resources_with_conn(conn, &folder_ids)?;
+
             Ok(())
         })();
 
@@ -1516,6 +1521,10 @@ impl VfsFolderRepo {
                 params![folder_id, now_ts],
             )?;
 
+            // 7. 级联恢复本树内仍在回收站的子实体（与软删对称）。
+            let folder_ids = Self::get_folder_ids_for_purge_with_conn(conn, folder_id)?;
+            Self::cascade_restore_folder_resources_with_conn(conn, &folder_ids)?;
+
             if new_title != folder.title {
                 info!(
                     "[VFS::FolderRepo] Restored folder with cascade and rename: {} -> {} ({})",
@@ -1693,6 +1702,152 @@ impl VfsFolderRepo {
         Ok(folder_ids.len())
     }
 
+    fn item_has_external_live_membership(
+        conn: &Connection,
+        item_id: &str,
+        folder_id_set: &HashSet<&str>,
+    ) -> VfsResult<bool> {
+        let mut live_memberships = conn.prepare(
+            "SELECT folder_id FROM folder_items
+             WHERE item_id = ?1 AND deleted_at IS NULL",
+        )?;
+        let folders = live_memberships
+            .query_map(params![item_id], |row| row.get::<_, Option<String>>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(folders
+            .into_iter()
+            .any(|folder_id| match folder_id.as_deref() {
+                None => true,
+                Some(id) => !folder_id_set.contains(id),
+            }))
+    }
+
+    fn is_folder_item_entity_trashed(
+        conn: &Connection,
+        item_type: &str,
+        item_id: &str,
+    ) -> VfsResult<bool> {
+        let sql = match item_type {
+            "note" => "SELECT deleted_at IS NOT NULL FROM notes WHERE id = ?1",
+            "file" | "image" => {
+                "SELECT status = 'deleted' OR deleted_at IS NOT NULL FROM files WHERE id = ?1"
+            }
+            "exam" => "SELECT deleted_at IS NOT NULL FROM exam_sheets WHERE id = ?1",
+            "translation" => "SELECT deleted_at IS NOT NULL FROM translations WHERE id = ?1",
+            "essay" if item_id.starts_with("essay_session_") => {
+                "SELECT deleted_at IS NOT NULL FROM essay_sessions WHERE id = ?1"
+            }
+            "essay" => "SELECT deleted_at IS NOT NULL FROM essays WHERE id = ?1",
+            "mindmap" => "SELECT deleted_at IS NOT NULL FROM mindmaps WHERE id = ?1",
+            _ => return Ok(false),
+        };
+        match conn.query_row(sql, params![item_id], |row| row.get::<_, bool>(0)) {
+            Ok(trashed) => Ok(trashed),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn soft_delete_folder_item_entity(
+        conn: &Connection,
+        item_type: &str,
+        item_id: &str,
+    ) -> VfsResult<()> {
+        match item_type {
+            "note" => VfsNoteRepo::delete_note_with_conn(conn, item_id),
+            "file" | "image" => VfsFileRepo::delete_file_with_conn(conn, item_id),
+            "exam" => VfsExamRepo::delete_exam_sheet_with_conn(conn, item_id),
+            "translation" => VfsTranslationRepo::delete_translation_with_conn(conn, item_id),
+            "essay" if item_id.starts_with("essay_session_") => {
+                VfsEssayRepo::delete_session_with_conn(conn, item_id)
+            }
+            "essay" => VfsEssayRepo::delete_essay_with_conn(conn, item_id),
+            "mindmap" => VfsMindMapRepo::delete_mindmap_with_conn(conn, item_id),
+            other => {
+                warn!(
+                    "[VFS::FolderRepo] Skipping unsupported folder item during cascade delete: type={}, id={}",
+                    other, item_id
+                );
+                Ok(())
+            }
+        }
+    }
+
+    fn restore_folder_item_entity_if_trashed(
+        conn: &Connection,
+        item_type: &str,
+        item_id: &str,
+    ) -> VfsResult<()> {
+        if !Self::is_folder_item_entity_trashed(conn, item_type, item_id)? {
+            return Ok(());
+        }
+        let result = match item_type {
+            "note" => VfsNoteRepo::restore_note_with_conn(conn, item_id),
+            "file" | "image" => VfsFileRepo::restore_file_with_conn(conn, item_id),
+            "exam" => VfsExamRepo::restore_exam_with_conn(conn, item_id),
+            "translation" => VfsTranslationRepo::restore_translation_with_conn(conn, item_id),
+            "essay" if item_id.starts_with("essay_session_") => {
+                VfsEssayRepo::restore_session_with_conn(conn, item_id)
+            }
+            "essay" => VfsEssayRepo::restore_essay_with_conn(conn, item_id),
+            "mindmap" => VfsMindMapRepo::restore_mindmap_with_conn(conn, item_id).map(|_| ()),
+            other => {
+                warn!(
+                    "[VFS::FolderRepo] Skipping unsupported folder item during cascade restore: type={}, id={}",
+                    other, item_id
+                );
+                return Ok(());
+            }
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(VfsError::NotFound { .. }) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn cascade_soft_delete_folder_resources_with_conn(
+        conn: &Connection,
+        folder_ids: &[String],
+    ) -> VfsResult<()> {
+        if folder_ids.is_empty() {
+            return Ok(());
+        }
+        let folder_id_set: HashSet<&str> = folder_ids.iter().map(String::as_str).collect();
+        let items = Self::get_items_by_folders_including_deleted_with_conn(conn, folder_ids)?;
+        let mut seen = HashSet::new();
+        for item in items {
+            let canonical_item_type = canonical_folder_item_type(&item.item_type).to_string();
+            if !seen.insert((canonical_item_type.clone(), item.item_id.clone())) {
+                continue;
+            }
+            if Self::item_has_external_live_membership(conn, &item.item_id, &folder_id_set)? {
+                continue;
+            }
+            Self::soft_delete_folder_item_entity(conn, &canonical_item_type, &item.item_id)?;
+        }
+        Ok(())
+    }
+
+    fn cascade_restore_folder_resources_with_conn(
+        conn: &Connection,
+        folder_ids: &[String],
+    ) -> VfsResult<()> {
+        if folder_ids.is_empty() {
+            return Ok(());
+        }
+        let items = Self::get_items_by_folders_including_deleted_with_conn(conn, folder_ids)?;
+        let mut seen = HashSet::new();
+        for item in items {
+            let canonical_item_type = canonical_folder_item_type(&item.item_type).to_string();
+            if !seen.insert((canonical_item_type.clone(), item.item_id.clone())) {
+                continue;
+            }
+            Self::restore_folder_item_entity_if_trashed(conn, &canonical_item_type, &item.item_id)?;
+        }
+        Ok(())
+    }
+
     fn get_folder_ids_for_purge_with_conn(
         conn: &Connection,
         folder_id: &str,
@@ -1738,7 +1893,6 @@ impl VfsFolderRepo {
                 continue;
             }
 
-            // Folder soft-delete only tombstones folder_items, not entity rows.
             // Refuse purge when the membership was restored in-place, or when the
             // resource still has an active membership outside this purge set.
             match canonical_item_type.as_str() {
@@ -1757,21 +1911,8 @@ impl VfsFolderRepo {
                 |row| row.get(0),
             )?;
             let folder_id_set: HashSet<&str> = folder_ids.iter().map(String::as_str).collect();
-            let mut live_memberships = conn.prepare(
-                "SELECT folder_id FROM folder_items
-                 WHERE item_id = ?1 AND deleted_at IS NULL",
-            )?;
-            let has_external_live_membership = live_memberships
-                .query_map(params![&item.item_id], |row| {
-                    row.get::<_, Option<String>>(0)
-                })?
-                .map(|folder_id| folder_id.map_err(VfsError::from))
-                .collect::<VfsResult<Vec<_>>>()?
-                .into_iter()
-                .any(|folder_id| match folder_id.as_deref() {
-                    None => true,
-                    Some(id) => !folder_id_set.contains(id),
-                });
+            let has_external_live_membership =
+                Self::item_has_external_live_membership(conn, &item.item_id, &folder_id_set)?;
             if !link_trashed || has_external_live_membership {
                 return Err(VfsError::Conflict {
                     key: "folders.purge_conflict".to_string(),
@@ -1780,6 +1921,13 @@ impl VfsFolderRepo {
                         canonical_item_type, item.item_id
                     ),
                 });
+            }
+
+            // Never hard-delete a still-active entity (legacy folder-only tombstones,
+            // or a child restored independently). Drop this tree's membership instead.
+            if !Self::is_folder_item_entity_trashed(conn, &canonical_item_type, &item.item_id)? {
+                conn.execute("DELETE FROM folder_items WHERE id = ?1", params![&item.id])?;
+                continue;
             }
 
             match canonical_item_type.as_str() {
@@ -3340,6 +3488,88 @@ mod tests {
             )
             .expect("Failed to count resources");
         assert_eq!(remaining_resources, 0);
+    }
+
+    #[test]
+    fn test_delete_folder_soft_deletes_owned_notes_and_restore_brings_them_back() {
+        let (_temp_dir, db) = setup_test_db();
+        let folder = VfsFolder::new("级联软删".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).expect("create folder");
+        let note = crate::vfs::repos::VfsNoteRepo::create_note_in_folder(
+            &db,
+            crate::vfs::VfsCreateNoteParams {
+                title: "仍可见就会被误删".to_string(),
+                content: "body".to_string(),
+                tags: vec![],
+            },
+            Some(&folder.id),
+        )
+        .expect("create note");
+
+        VfsFolderRepo::delete_folder(&db, &folder.id).expect("soft delete folder");
+
+        let listed =
+            crate::vfs::repos::VfsNoteRepo::list_notes(&db, None, 50, 0).expect("list notes");
+        assert!(
+            listed.iter().all(|item| item.id != note.id),
+            "owned note must leave the live list after folder soft-delete"
+        );
+        let deleted_at: Option<String> = {
+            let conn = db.get_conn_safe().unwrap();
+            conn.query_row(
+                "SELECT deleted_at FROM notes WHERE id = ?1",
+                params![note.id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert!(deleted_at.is_some());
+
+        VfsFolderRepo::restore_folder(&db, &folder.id).expect("restore folder");
+        let restored = crate::vfs::repos::VfsNoteRepo::get_note(&db, &note.id)
+            .expect("get note")
+            .expect("note should be live again");
+        assert_eq!(restored.title, "仍可见就会被误删");
+    }
+
+    #[test]
+    fn test_purge_folder_skips_still_active_legacy_children() {
+        let (_temp_dir, db) = setup_test_db();
+        let folder = VfsFolder::new("旧数据只墓碑成员".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).expect("create folder");
+        let note = crate::vfs::repos::VfsNoteRepo::create_note_in_folder(
+            &db,
+            crate::vfs::VfsCreateNoteParams {
+                title: "活跃笔记".to_string(),
+                content: "keep".to_string(),
+                tags: vec![],
+            },
+            Some(&folder.id),
+        )
+        .expect("create note");
+
+        {
+            let conn = db.get_conn_safe().unwrap();
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            conn.execute(
+                "UPDATE folders SET deleted_at = ?1 WHERE id = ?2",
+                params![now, folder.id],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE folder_items SET deleted_at = ?1 WHERE item_id = ?2",
+                params![now, note.id],
+            )
+            .unwrap();
+        }
+
+        VfsFolderRepo::purge_folder(&db, &folder.id).expect("purge folder");
+        let still_live = crate::vfs::repos::VfsNoteRepo::get_note(&db, &note.id)
+            .expect("get note")
+            .expect("legacy active note must not be hard-deleted");
+        assert_eq!(still_live.title, "活跃笔记");
     }
 
     /// ★ 2026-06-12（第二轮审阅）回归测试：

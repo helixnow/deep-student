@@ -2033,7 +2033,7 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 第三行：操作按钮独占一行 */}
           <div className="flex items-center gap-1.5">
-            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+            <DsButton variant="ghost" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className="!px-3">
               {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </DsButton>

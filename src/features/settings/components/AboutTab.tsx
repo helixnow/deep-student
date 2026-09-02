@@ -260,6 +260,19 @@ export const AboutTab: React.FC = () => {
                   </div>
                   {updater.isMobile ? (
                     <div className="w-full sm:w-auto sm:ml-3 flex-shrink-0 flex flex-col gap-1.5">
+                      {updater.canInstallInApp && updater.info?.apkUrl ? (
+                        <DsButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updater.downloadAndInstall()}
+                          disabled={updater.downloading}
+                        >
+                          <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                          {updater.downloading
+                            ? t('about.update.downloading')
+                            : t('about.update.install')}
+                        </DsButton>
+                      ) : null}
                       {updater.info?.apkUrl && (
                         <a
                           href={updater.info.apkUrl}
@@ -281,6 +294,25 @@ export const AboutTab: React.FC = () => {
                         {t('about.update.githubDownload')}
                       </a>
                     </div>
+                  ) : updater.readyToRelaunch ? (
+                    <DsButton
+                      size="sm"
+                      onClick={() => void updater.relaunchApp()}
+                      className="ml-3 flex-shrink-0"
+                    >
+                      <ArrowClockwise size={14} className="mr-1" />
+                      {t('about.update.restartNow')}
+                    </DsButton>
+                  ) : updater.installSupported === false ? (
+                    <a
+                      href={`https://github.com/helixnow/deep-student/releases/latest`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-3 flex-shrink-0 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      <Download size={14} />
+                      {t('about.update.manualDownload')}
+                    </a>
                   ) : (
                     <DsButton
                       size="sm"
@@ -296,12 +328,22 @@ export const AboutTab: React.FC = () => {
                     </DsButton>
                   )}
                 </div>
-                {!updater.isMobile && updater.downloading && updater.progress > 0 && (
+                {updater.readyToRelaunch && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t('about.update.readyHint')}
+                  </p>
+                )}
+                {!updater.isMobile && updater.installSupported === false && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t('about.update.manualDownloadHint')}
+                  </p>
+                )}
+                {updater.downloading && updater.progress > 0 && (
                   <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${updater.progress}%` }} />
                   </div>
                 )}
-                {!updater.downloading && (
+                {!updater.downloading && !updater.readyToRelaunch && (
                   <div className="mt-2 flex justify-end md:justify-start">
                     <DsButton
                       variant="outline"

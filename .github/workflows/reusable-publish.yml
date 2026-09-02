@@ -143,6 +143,7 @@ jobs:
         id: manifest
         env:
           ANDROID_RESULT: ${{ inputs.android_result }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${{ inputs.version }}"
@@ -150,6 +151,16 @@ jobs:
           TAG="${{ inputs.tag_name }}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           CHANNEL="${{ steps.channel.outputs.channel }}"
+
+          # latest.json 的 notes 用 Release 真实说明（draft 创建时 --generate-notes
+          # 已生成），让用户在应用内看到与 GitHub Release 一致的更新内容；
+          # 读取失败时退回占位文案，不阻塞发布。
+          RELEASE_ID="${{ steps.release_state.outputs.release_id }}"
+          NOTES=$(gh api "repos/${REPO}/releases/${RELEASE_ID}" --jq '.body // ""' 2>/dev/null || echo "")
+          if [ -z "$NOTES" ]; then
+            NOTES="Deep Student v${VERSION} 更新"
+            echo "⚠️ Release body empty/unreadable, using placeholder notes"
+          fi
 
           # fail() 会在命令替换的子 shell 里被调用，计数器无法传回父 shell，
           # 所以用文件收集失败项；::error:: 必须走 stderr，避免污染被捕获的
@@ -334,7 +345,7 @@ jobs:
 
           jq -n \
             --arg version "$VERSION" \
-            --arg notes "Deep Student v$VERSION 更新" \
+            --arg notes "$NOTES" \
             --arg pub_date "$DATE" \
             --arg channel "$CHANNEL" \
             --arg android_status "$ANDROID_STATUS" \

@@ -132,6 +132,8 @@ setup_dev_package() {
         inject_android_permissions
         inject_android_soft_input_mode
         sync_main_activity
+        sync_apk_installer_files
+        inject_apk_file_provider
     fi
 }
 
@@ -199,6 +201,65 @@ inject_android_permissions() {
 
     if [[ "$changed" == true ]]; then
         info "✓ Android microphone permissions injected"
+    fi
+}
+
+# 同步受控 ApkInstallerPlugin.kt + FileProvider 路径配置（应用内 APK 更新安装）
+# 到生成工程。与 MainActivity 同理：tauri android init 重新生成后裸模板不含
+# 这些文件，缺失时 install_apk 命令会在运行期报"插件未初始化"。
+sync_apk_installer_files() {
+    local SRC_KT="$REPO_ROOT/src-tauri/mobile/android/ApkInstallerPlugin.kt"
+    local DST_KT="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/ApkInstallerPlugin.kt"
+    local SRC_XML="$REPO_ROOT/src-tauri/mobile/android/res/xml/file_paths.xml"
+    local DST_XML="$REPO_ROOT/src-tauri/gen/android/app/src/main/res/xml/file_paths.xml"
+
+    if [[ ! -f "$SRC_KT" || ! -f "$SRC_XML" ]]; then
+        warn "受控 APK 安装器文件不存在（$SRC_KT / $SRC_XML）；跳过同步"
+        return
+    fi
+    if [[ ! -d "$(dirname "$DST_KT")" ]]; then
+        warn "Android 工程 java 目录不存在; ApkInstallerPlugin 同步跳过"
+        return
+    fi
+    if ! cmp -s "$SRC_KT" "$DST_KT" 2>/dev/null; then
+        cp "$SRC_KT" "$DST_KT"
+        info "✓ ApkInstallerPlugin.kt 已从受控副本同步"
+    fi
+    mkdir -p "$(dirname "$DST_XML")"
+    if ! cmp -s "$SRC_XML" "$DST_XML" 2>/dev/null; then
+        cp "$SRC_XML" "$DST_XML"
+        info "✓ file_paths.xml 已从受控副本同步"
+    fi
+}
+
+# 注入 FileProvider manifest 声明：应用内更新下载的 APK 以 content:// URI
+# 授权给系统安装器读取（file:// 在 Android 7+ 会被拒绝）。幂等。
+inject_apk_file_provider() {
+    local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$MANIFEST" ]]; then
+        warn "AndroidManifest.xml not found; FileProvider injection skipped"
+        return
+    fi
+    if grep -qF 'androidx.core.content.FileProvider' "$MANIFEST" 2>/dev/null; then
+        return
+    fi
+
+    # 注意：${applicationId} 是 manifest placeholder，由 gradle 构建时替换，
+    # 必须防止 shell 展开，故用单引号。整段单行插入（BSD/GNU sed 对替换串中
+    # \n 的解释不一致，单行写法两边行为一致；XML 不关心缩进）。
+    local PROVIDER_LINE='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'
+
+    say "Injecting FileProvider for APK installer"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' "s|</application>|$PROVIDER_LINE</application>|" "$MANIFEST"
+    else
+        sed -i "s|</application>|$PROVIDER_LINE</application>|" "$MANIFEST"
+    fi
+
+    if grep -qF 'androidx.core.content.FileProvider' "$MANIFEST" 2>/dev/null; then
+        info "✓ FileProvider injected"
+    else
+        warn "FileProvider injection failed"
     fi
 }
 
@@ -606,6 +667,8 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     inject_android_permissions
     inject_android_soft_input_mode
     sync_main_activity
+    sync_apk_installer_files
+    inject_apk_file_provider
     JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"

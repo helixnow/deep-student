@@ -630,11 +630,9 @@ async fn download_image_url(
             .map_err(|e| format!("生图 URL DNS 解析失败: {}", e))?
             .collect();
         if addrs.is_empty()
-            || addrs
-                .iter()
-                .any(|addr: &std::net::SocketAddr| {
-                    crate::browser::policy::is_blocked_internal_ip(&addr.ip())
-                })
+            || addrs.iter().any(|addr: &std::net::SocketAddr| {
+                crate::browser::policy::is_blocked_internal_ip(&addr.ip())
+            })
         {
             return Err("生图 URL 指向被封锁的内网地址".to_string());
         }

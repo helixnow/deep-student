@@ -350,6 +350,7 @@ export default defineConfig(({ command, mode }) => ({
         // WorkBuddy 风格落地页：Mac 窗壳居中内嵌 demo.html（纯静态，无 JS bundle）
         hero: fileURLToPath(new URL("./hero.html", import.meta.url)),
         "preview-charts": fileURLToPath(new URL("./preview-charts.html", import.meta.url)),
+        "button-audit": fileURLToPath(new URL("./button-audit.html", import.meta.url)),
       },
       output: {
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk

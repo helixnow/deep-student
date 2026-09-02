@@ -269,6 +269,14 @@ impl VfsDatabase {
         &self.blobs_dir
     }
 
+    /// Application data directory (`vfs_blobs` parent). Used for notes_assets cleanup.
+    pub fn app_data_dir(&self) -> PathBuf {
+        self.blobs_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.blobs_dir.clone())
+    }
+
     /// 进入维护模式：将连接池切换为内存数据库，释放对磁盘文件的占用
     ///
     /// 用于恢复流程中替换实际数据库文件，避免 Windows 上文件锁定（os error 32）。

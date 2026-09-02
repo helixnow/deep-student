@@ -1480,8 +1480,7 @@ impl VfsMindMapRepo {
             return Ok(0);
         }
 
-        // 使用单个事务包裹所有删除操作
-        conn.execute("BEGIN IMMEDIATE", [])?;
+        conn.execute("SAVEPOINT purge_deleted_mindmaps", [])?;
 
         let result = (|| -> VfsResult<()> {
             for id in &ids {
@@ -1492,15 +1491,13 @@ impl VfsMindMapRepo {
 
         match result {
             Ok(_) => {
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(commit_err.into());
-                }
+                conn.execute("RELEASE SAVEPOINT purge_deleted_mindmaps", [])?;
                 info!("[VFS::MindMapRepo] Purged {} deleted mindmaps", count);
                 Ok(count)
             }
             Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT purge_deleted_mindmaps", []);
+                let _ = conn.execute("RELEASE SAVEPOINT purge_deleted_mindmaps", []);
                 Err(e)
             }
         }

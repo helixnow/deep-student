@@ -4457,15 +4457,24 @@ mod tests {
     #[test]
     fn http_status_code_matching_covers_real_adapter_error_formats() {
         // 各适配器的真实错误格式（此前 "status: NNN" 模式对其全部失配）
-        assert!(mentions_http_status_code("llm 响应错误 429: rate limited", 429));
+        assert!(mentions_http_status_code(
+            "llm 响应错误 429: rate limited",
+            429
+        ));
         assert!(mentions_http_status_code(
             "deepseek api 返回错误 (503): service unavailable",
             503
         ));
-        assert!(mentions_http_status_code("模型二api请求失败 http 502 ...", 502));
+        assert!(mentions_http_status_code(
+            "模型二api请求失败 http 502 ...",
+            502
+        ));
         assert!(mentions_http_status_code("status: 504", 504));
         // 不误伤：端口号、位数不同的数字、拼接在数字内的子串
-        assert!(!mentions_http_status_code("connect to 127.0.0.1:1429 failed", 429));
+        assert!(!mentions_http_status_code(
+            "connect to 127.0.0.1:1429 failed",
+            429
+        ));
         assert!(!mentions_http_status_code("status: 500", 503));
         assert!(!mentions_http_status_code("4299 tokens", 429));
         assert!(!mentions_http_status_code("error 14293", 429));

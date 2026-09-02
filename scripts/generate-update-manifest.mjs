@@ -124,7 +124,8 @@ if (Object.keys(platforms).length === 0) {
 
 const manifest = {
   version,
-  notes: `Deep Student v${version} 更新`,
+  // 支持 RELEASE_NOTES 环境变量注入真实更新说明（与发布流水线行为一致）
+  notes: process.env.RELEASE_NOTES || `Deep Student v${version} 更新`,
   pub_date: new Date().toISOString(),
   platforms,
 };

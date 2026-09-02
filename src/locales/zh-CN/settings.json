@@ -2940,7 +2940,11 @@
         "neverRemindConfirm": "确定不再提醒？可在设置中重新开启",
         "confirm": "确定",
         "cancel": "取消"
-      }
+      },
+      "restartNow": "立即重启",
+      "readyHint": "更新已下载完成，重启应用后生效。",
+      "manualDownload": "前往下载页",
+      "manualDownloadHint": "当前安装方式（deb/rpm）不支持应用内更新，请下载最新安装包手动更新。"
     }
   },
   "siliconflow_ocr": {

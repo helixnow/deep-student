@@ -90,7 +90,8 @@
   "update": {
     "short": "Update",
     "available": "Update available",
-    "downloading": "Downloading..."
+    "downloading": "Downloading...",
+    "restart": "Restart"
   },
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",

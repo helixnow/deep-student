@@ -1339,7 +1339,7 @@ impl VfsFileRepo {
                    processing_started_at, processing_completed_at,
                    compressed_blob_hash
             FROM files
-            WHERE status = 'deleted'
+            WHERE status = 'deleted' AND id NOT LIKE 'tb_%'
             ORDER BY deleted_at DESC
             LIMIT ?1 OFFSET ?2
         "#;
@@ -1668,19 +1668,14 @@ impl VfsFileRepo {
 
     pub fn purge_deleted_files_with_conn(conn: &Connection, blobs_dir: &Path) -> VfsResult<usize> {
         let file_ids: Vec<String> = conn
-            .prepare("SELECT id FROM files WHERE status = 'deleted'")?
+            .prepare("SELECT id FROM files WHERE status = 'deleted' AND id NOT LIKE 'tb_%'")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
 
         let count = file_ids.len();
 
         for file_id in &file_ids {
-            if let Err(e) = Self::purge_file_with_conn(conn, blobs_dir, file_id) {
-                warn!(
-                    "[VFS::FileRepo] Failed to purge deleted file {}: {}",
-                    file_id, e
-                );
-            }
+            Self::purge_file_with_conn(conn, blobs_dir, file_id)?;
         }
 
         info!("[VFS::FileRepo] Purged {} deleted files", count);

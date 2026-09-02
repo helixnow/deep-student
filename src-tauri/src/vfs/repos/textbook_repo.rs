@@ -1254,7 +1254,7 @@ impl VfsTextbookRepo {
                    f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
             FROM files f
             LEFT JOIN resources r ON r.id = f.resource_id
-            WHERE f.status = 'deleted'
+            WHERE f.status = 'deleted' AND f.id LIKE 'tb_%'
             ORDER BY f.updated_at DESC
             LIMIT ?1 OFFSET ?2
         "#;
@@ -1288,7 +1288,7 @@ impl VfsTextbookRepo {
     ) -> VfsResult<usize> {
         // 先获取所有待删除教材的 ID
         let textbook_ids: Vec<String> = conn
-            .prepare("SELECT id FROM files WHERE status = 'deleted'")?
+            .prepare("SELECT id FROM files WHERE status = 'deleted' AND id LIKE 'tb_%'")?
             .query_map([], |row| row.get(0))?
             .filter_map(log_and_skip_err)
             .collect();

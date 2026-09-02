@@ -81,30 +81,38 @@ export async function restoreItem(id: string, itemType: string): Promise<Result<
  */
 export async function listTrash(
   limit?: number,
-  offset?: number
+  offset?: number,
+  itemTypes?: string[]
 ): Promise<Result<DstuNode[], VfsError>> {
   try {
-    const result = await invoke<DstuNode[]>('dstu_list_trash', { limit, offset });
+    const result = await invoke<DstuNode[]>('dstu_list_trash', {
+      limit,
+      offset,
+      itemTypes: itemTypes && itemTypes.length > 0 ? itemTypes : null,
+    });
     return ok(result);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, i18next.t('dstu:api.trash.listFailed'), { limit, offset });
+    const vfsError = toVfsError(error, i18next.t('dstu:api.trash.listFailed'), { limit, offset, itemTypes });
     console.error(LOG_PREFIX, 'listTrash() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }
 }
 
 /**
- * 清空回收站
+ * 清空回收站。
+ * `itemTypes` 为空时清空全部类型；笔记工作台应传入 note/mindmap/folder。
  */
-export async function emptyTrash(): Promise<Result<number, VfsError>> {
+export async function emptyTrash(itemTypes?: string[]): Promise<Result<number, VfsError>> {
   try {
-    const count = await invoke<number>('dstu_empty_trash', {});
+    const count = await invoke<number>('dstu_empty_trash', {
+      itemTypes: itemTypes && itemTypes.length > 0 ? itemTypes : null,
+    });
     // [CACHE-003] 清空回收站需要清除所有缓存，因为无法获知被删除的具体项目ID
     clearAllCaches();
     console.log(LOG_PREFIX, `emptyTrash() cleared all caches, deleted ${count} items`);
     return ok(count);
   } catch (error: unknown) {
-    const vfsError = toVfsError(error, i18next.t('dstu:api.trash.emptyFailed'), {});
+    const vfsError = toVfsError(error, i18next.t('dstu:api.trash.emptyFailed'), { itemTypes });
     console.error(LOG_PREFIX, 'emptyTrash() failed:', vfsError.toDetailedMessage());
     return err(vfsError);
   }

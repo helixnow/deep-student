@@ -3989,5 +3989,12 @@
       "stage_pending": "Stage pending",
       "percentage": "{{value}}%"
     }
+  },
+  "update": {
+    "notifyMessage": "New version v{{version}} available",
+    "notifyAction": "Update now",
+    "readyMessage": "Update downloaded. Restart the app to apply.",
+    "restartNow": "Restart now",
+    "installerLaunched": "System installer launched. Finish the installation there."
   }
 }

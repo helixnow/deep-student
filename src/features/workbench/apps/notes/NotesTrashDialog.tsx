@@ -112,7 +112,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
   const loadTrash = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const result = await trashApi.listTrash(limit, 0);
+    const result = await trashApi.listTrash(limit, 0, ['note', 'mindmap', 'folder']);
     if (!result.ok) {
       setError(result.error.toUserMessage());
       setItems([]);
@@ -239,7 +239,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
     setConfirm(null);
     const snapshot = items;
     setItems([]);
-    const result = await trashApi.emptyTrash();
+    const result = await trashApi.emptyTrash(['note', 'mindmap', 'folder']);
     setBusy(false);
     if (!result.ok) {
       setItems(snapshot);

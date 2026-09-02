@@ -2940,7 +2940,11 @@
         "neverRemindConfirm": "Stop reminding? You can re-enable this in Settings.",
         "confirm": "Confirm",
         "cancel": "Cancel"
-      }
+      },
+      "restartNow": "Restart now",
+      "readyHint": "Update downloaded. Restart the app to apply it.",
+      "manualDownload": "Download page",
+      "manualDownloadHint": "This installation (deb/rpm) cannot be updated in-app. Download the latest package and reinstall manually."
     }
   },
   "siliconflow_ocr": {

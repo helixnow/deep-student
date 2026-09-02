@@ -11592,16 +11592,14 @@ mod tests {
 
     #[test]
     fn humanize_chatanki_error_appends_readable_detail_after_key() {
-        let humanized = humanize_chatanki_error(
-            "blocks.ankiCards.errors.statusNotFound".to_string(),
-        );
+        let humanized =
+            humanize_chatanki_error("blocks.ankiCards.errors.statusNotFound".to_string());
         // key 保留（前端按 key 本地化），可读描述在后（LLM 据此修正调用）
         assert!(humanized.starts_with("blocks.ankiCards.errors.statusNotFound: "));
         assert!(humanized.contains("chatanki_status"));
 
-        let humanized = humanize_chatanki_error(
-            "blocks.ankiCards.errors.ankiConnectUnavailable".to_string(),
-        );
+        let humanized =
+            humanize_chatanki_error("blocks.ankiCards.errors.ankiConnectUnavailable".to_string());
         assert!(humanized.contains("AnkiConnect is unavailable"));
 
         // 非 key 形式的错误原样透传

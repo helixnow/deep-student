@@ -138,7 +138,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               )}
             </div>
           )}
-          <DsButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
+          <DsButton variant="ghost" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5">
             {i18n.t('common:error_boundary.refresh', 'Refresh Page')}
           </DsButton>
         </div>

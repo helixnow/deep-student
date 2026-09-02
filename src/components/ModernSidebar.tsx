@@ -107,7 +107,7 @@ interface ModernSidebarProps {
   startDragging?: (e: React.MouseEvent) => void;
   navigationHistory?: NavigationHistory;
   topbarTopMargin?: number;
-  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'performUpdateAction'>;
+  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'readyToRelaunch' | 'performUpdateAction'>;
 }
 
 type SidebarSectionId = 'pinned' | 'topics' | 'conversations';
@@ -1760,11 +1760,19 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 event.stopPropagation();
                 void updater.performUpdateAction();
               }}
-              aria-label={updater?.downloading ? t('sidebar:update.downloading') : t('sidebar:update.available')}
+              aria-label={
+                updater?.downloading
+                  ? t('sidebar:update.downloading')
+                  : updater?.readyToRelaunch
+                    ? t('sidebar:update.restart')
+                    : t('sidebar:update.available')
+              }
               disabled={updater?.downloading}
             >
               {updater?.downloading ? (
                 <CircleNotch size={10} className="animate-spin" aria-hidden="true" />
+              ) : updater?.readyToRelaunch ? (
+                t('sidebar:update.restart')
               ) : t('sidebar:update.short')}
             </button>
           ) : null}

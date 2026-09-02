@@ -4917,7 +4917,7 @@ pub async fn dstu_purge_all(
             let sql = match resource_type.as_str() {
                 "notes" => Some("SELECT resource_id FROM notes WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL"),
                 // purge_deleted_textbooks 使用 status='deleted' 选择，保持一致
-                "textbooks" => Some("SELECT resource_id FROM files WHERE status = 'deleted' AND resource_id IS NOT NULL"),
+                "textbooks" => Some("SELECT resource_id FROM files WHERE status = 'deleted' AND id LIKE 'tb_%' AND resource_id IS NOT NULL"),
                 _ => None,
             };
             if let Some(sql) = sql {

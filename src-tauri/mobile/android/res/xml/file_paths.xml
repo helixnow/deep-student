@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NOTE: 此文件有受控副本 src-tauri/mobile/android/res/xml/file_paths.xml。 -->
+<!-- FileProvider 路径配置：仅暴露应用私有缓存下的 updates/ 目录（应用内更新 APK）。 -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

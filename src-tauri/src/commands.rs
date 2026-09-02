@@ -474,6 +474,58 @@ pub async fn get_app_version() -> String {
     )
 }
 
+/// 自更新安装支持探测。
+///
+/// Tauri updater 在 Linux 上仅支持 AppImage 打包形态（deb/rpm 安装后
+/// `downloadAndInstall` 无法替换自身，会在安装阶段失败）。前端据此把
+/// "下载更新"按钮降级为"手动下载"引导。AppImage 运行时由启动器注入
+/// `APPIMAGE` 环境变量，以此判定安装形态。
+#[tauri::command]
+pub fn updater_install_supported() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("APPIMAGE").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
+/// 触发 Android 系统安装器安装指定路径的 APK（应用内更新的最后一步）。
+///
+/// 仅 Android 有效；其他平台返回错误（前端只在 Android 分支调用本命令）。
+/// 实际安装动作由 `apk_installer` 插件的 Kotlin 侧完成（FileProvider →
+/// ACTION_VIEW），这里只做桥接。
+#[tauri::command]
+pub async fn install_apk(app: AppHandle, path: String) -> Result<()> {
+    #[cfg(target_os = "android")]
+    {
+        let state = app
+            .try_state::<crate::apk_installer::ApkInstallerHandle>()
+            .ok_or_else(|| AppError::unknown("apk-installer 插件未初始化".to_string()))?;
+        // State 借用了 command 生命周期，无法直接 move 进 'static 闭包；先克隆出 handle。
+        let plugin = state.0.clone();
+        let payload = serde_json::json!({ "path": path });
+        // run_mobile_plugin 内部是同步 channel 阻塞；install 只是发一个 Intent，
+        // 耗时极短，但仍放到 blocking 池避免占住异步运行时线程。
+        tauri::async_runtime::spawn_blocking(move || {
+            plugin.run_mobile_plugin::<serde_json::Value>("install", payload)
+        })
+        .await
+        .map_err(|e| AppError::unknown(format!("install task join error: {e}")))?
+        .map_err(|e| AppError::unknown(format!("无法调起系统安装器: {e}")))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, path);
+        Err(AppError::unknown(
+            "install_apk is only supported on Android".to_string(),
+        ))
+    }
+}
+
 /// 获取应用数据目录的绝对路径
 #[tauri::command]
 pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String> {
