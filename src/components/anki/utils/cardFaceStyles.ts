@@ -75,10 +75,21 @@ export const CARD_FACE_DARK_CSS = `
 
 export interface BuildCardFaceCssOptions {
   darkMode?: boolean;
+  /**
+   * 卡面文档的显式背景色（resolveCardFaceSurfaceColor 的解析值）。
+   *
+   * 为什么需要：桌面 Chromium 的 iframe 画布透明，卡面透显父级主题表面
+   * （iframe 元素自身有 background: hsl(var(--background))）；但移动端
+   * WebView 的 iframe 画布恒为不透明白色——深色模式下"白画布 + 暗色兜底的
+   * 浅色文字"会让卡面全白不可见。显式写入同一表面色后两端一致：
+   * 桌面视觉零变化（本来就透显这个色），移动端修复白底。
+   * 模板若自带背景（.card 等内层元素）不受影响，仍可覆盖。
+   */
+  surfaceColor?: string | null;
 }
 
 /**
- * 组合卡面最终 CSS：辅助样式 + 归一化后的模板样式 +（可选）暗色兜底。
+ * 组合卡面最终 CSS：辅助样式 + 归一化后的模板样式 +（可选）显式背景 +（可选）暗色兜底。
  * 纯函数，可重复调用，结果幂等。
  */
 export function buildCardFaceCss(
@@ -86,6 +97,12 @@ export function buildCardFaceCss(
   options: BuildCardFaceCssOptions = {},
 ): string {
   const parts = [CARD_FACE_HELPER_CSS, normalizeCssForRender(templateCss || '')];
+  if (options.surfaceColor) {
+    // 与基础样式 html,body{background:transparent} 等特异性（0-0-1），
+    // 靠级联顺序（模板 CSS 注入在基础样式之后）覆盖；在暗色兜底之前声明，
+    // 不影响其 :where() 前景色兜底。
+    parts.push(`html, body { background: ${options.surfaceColor}; }`);
+  }
   if (options.darkMode) {
     parts.push(CARD_FACE_DARK_CSS);
   }
@@ -115,4 +132,43 @@ const getDarkModeSnapshot = (): boolean => {
  */
 export function useDocumentDarkMode(): boolean {
   return useSyncExternalStore(subscribeToThemeChanges, getDarkModeSnapshot, () => false);
+}
+
+// ============================================================================
+// 卡面文档背景色解析（移动端 WebView iframe 白底修复）
+// ============================================================================
+
+/**
+ * 解析应用主题表面色（hsl(var(--background))）为具体颜色值。
+ *
+ * 用途：把该颜色显式写进卡面 iframe 文档（buildCardFaceCss 的 surfaceColor）。
+ * 桌面 Chromium 的 iframe 画布透明、透显父级该表面色；移动端 WebView 的
+ * iframe 画布恒为不透明白——显式背景让两端一致（桌面视觉零变化）。
+ *
+ * 结果按主题签名缓存（主题切换时 MutationObserver 触发订阅方重取）。
+ */
+let surfaceColorCache: { key: string; value: string | null } | null = null;
+
+export function resolveCardFaceSurfaceColor(): string | null {
+  if (typeof document === 'undefined') return null;
+  const root = document.documentElement;
+  const key = `${root.className}|${root.getAttribute('data-theme') ?? ''}`;
+  if (surfaceColorCache?.key === key) return surfaceColorCache.value;
+  if (!document.body) return null;
+
+  // 探针元素：把主题变量表达式交给浏览器求值，读出 rgb() 具体值
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:absolute;visibility:hidden;pointer-events:none;background:hsl(var(--background))';
+  document.body.appendChild(probe);
+  const value = getComputedStyle(probe).backgroundColor || null;
+  probe.remove();
+
+  surfaceColorCache = { key, value };
+  return value;
+}
+
+/** 订阅主题变化并返回当前卡面文档应使用的表面色（未解析到时为 null） */
+export function useCardFaceSurfaceColor(): string | null {
+  return useSyncExternalStore(subscribeToThemeChanges, resolveCardFaceSurfaceColor, () => null);
 }

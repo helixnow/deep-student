@@ -7,7 +7,7 @@ import {
   type DetailedCardRenderResult,
 } from '@/services/templateRenderService';
 import type { TemplateRenderIssue } from '@/services/ankiTemplateEngine';
-import { buildCardFaceCss, useDocumentDarkMode } from './utils/cardFaceStyles';
+import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './utils/cardFaceStyles';
 import { renderCardFaceLatexHtml } from './utils/cardFaceLatex';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 
@@ -90,6 +90,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   showRenderIssues = true,
 }) => {
   const darkMode = useDocumentDarkMode();
+  const surfaceColor = useCardFaceSurfaceColor();
 
   const rendered = useMemo<DetailedCardRenderResult | null>(() => {
     if (!template) return null;
@@ -117,8 +118,8 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   );
 
   const cssContent = useMemo(
-    () => buildCardFaceCss(template?.css_style, { darkMode }),
-    [template?.css_style, darkMode],
+    () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor }),
+    [template?.css_style, darkMode, surfaceColor],
   );
 
   return (

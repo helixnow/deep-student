@@ -5,7 +5,7 @@ import { Pause, Play, ArrowsClockwise, CaretLeft, CaretRight } from '@phosphor-i
 import { AnkiCard, AnkiCardTemplate, CustomAnkiTemplate } from '../types';
 import { TemplateRenderService } from '../services/templateRenderService';
 import { ShadowDomPreview } from './ShadowDomPreview'; // 导入新的 ShadowDomPreview 组件
-import { buildCardFaceCss, useDocumentDarkMode } from './anki/utils/cardFaceStyles';
+import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './anki/utils/cardFaceStyles';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import './Card3DPreview.css';
 
@@ -35,6 +35,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
   const heightRef = useRef<number>(0);
   // 卡面 CSS 走 buildCardFaceCss：辅助样式 + overflow 归一化 + 暗色兜底
   const darkMode = useDocumentDarkMode();
+  const surfaceColor = useCardFaceSurfaceColor();
   // ≤3 张卡时不做 3D 叠放，直接平铺内联卡（点击翻面）
   const isFlatLayout = cards.length > 0 && cards.length <= 3;
 
@@ -511,7 +512,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
               >
                 <ShadowDomPreview
                   htmlContent={flipped ? renderCardBack(card) : renderCardFront(card)}
-                  cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
+                  cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode, surfaceColor })}
                   fidelity="anki"
                 />
               </div>
@@ -581,7 +582,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
                     {isNearViewport && (
                       <ShadowDomPreview
                         htmlContent={renderCardFront(card)}
-                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
+                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode, surfaceColor })}
                         fidelity="anki"
                       />
                     )}
@@ -592,7 +593,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
                     {isNearViewport && (
                       <ShadowDomPreview
                         htmlContent={renderCardBack(card)}
-                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
+                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode, surfaceColor })}
                         fidelity="anki"
                       />
                     )}
