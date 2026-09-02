@@ -52,6 +52,7 @@ import '../styles/ios-safe-area.css';
 import '../styles/responsive-utilities.css';
 import '../styles/typography.css';
 import '../styles/shadcn-overrides.css';
+import './demo.css';
 
 // ④ i18n
 import i18n from '../i18n';

@@ -1,0 +1,52 @@
+/**
+ * 演示壳 UI 收窄（仅 demo 加载，不影响生产构建）：
+ * 隐藏演示用不到的二级/三级入口，只保留一级功能菜单可见，
+ * 让访客"看到有这个功能"即可——一级入口的点击拦截在 App.tsx
+ * 的 isDemoShell 导航收口处完成，本文件只负责视觉剔除。
+ *
+ * 选择器依赖 aria-label 文案；若上游文案改动导致个别入口重新出现，
+ * 只会"多显示"不会破坏功能，可安全增量补充。
+ */
+
+/* 顶栏：命令面板入口（面板内全是已被拦截的导航命令） */
+.desktop-shell-toolbar-button {
+  display: none !important;
+}
+
+/* 顶栏：导航历史后退/前进（视图导航已拦截，按钮必然无效） */
+button[aria-label='后退'],
+button[aria-label='前进'] {
+  display: none !important;
+}
+
+/* 侧栏：课题分区（演示会话均不分组，整个分区为空） */
+button[aria-label='课题'],
+button[aria-label='展开所有课题'],
+button[aria-label='新建课题'] {
+  display: none !important;
+}
+
+/* 侧栏：会话区分头的"新建对话"（顶部"新会话"主按钮保留） */
+button[aria-label='新建对话'] {
+  display: none !important;
+}
+
+/* 侧栏：会话项悬浮操作（置顶/归档） */
+button[aria-label='置顶会话'],
+button[aria-label='归档会话'] {
+  display: none !important;
+}
+
+/* 输入区：'+' 附件/工具菜单（附件/MCP 工具等在演示里是死路）、
+   语音输入（点击会触发系统麦克风授权弹窗） */
+button[aria-label='添加与会话选项'],
+button[aria-label='语音输入'] {
+  display: none !important;
+}
+
+/* 消息悬浮操作：重试/编辑/更多（保留可用的"复制"） */
+button[aria-label='重试'],
+button[aria-label='编辑'],
+button[aria-label='更多'] {
+  display: none !important;
+}

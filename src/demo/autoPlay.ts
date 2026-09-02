@@ -23,6 +23,33 @@ const ENTRY_DELAY_MS = 1000;
 const isDemoSession = (sessionId: string) =>
   DEMO_SESSIONS.some((s) => s.meta.id === sessionId);
 
+/**
+ * 清扫启动时应用自建的空草稿会话（ensureActiveChatSession 在首轮加载时
+ * 创建，列表里显示为"未命名会话"的杂物）。删除后派发 sessions-updated
+ * 让侧栏刷新。当前会话永不删除（守卫 s.id !== currentId）。
+ */
+const sweepDraftSessions = async (currentId: string): Promise<void> => {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const list = await invoke<Array<{ id: string }>>('chat_v2_list_sessions', {
+      status: 'active',
+    });
+    const drafts = list.filter(
+      (s) => s.id.startsWith('demo-draft-') && s.id !== currentId,
+    );
+    if (drafts.length === 0) return;
+    await Promise.all(
+      drafts.map((s) =>
+        invoke('chat_v2_delete_session', { sessionId: s.id }),
+      ),
+    );
+    window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    console.info(LOG, `swept ${drafts.length} draft session(s)`);
+  } catch (e) {
+    console.warn(LOG, 'draft sweep failed:', e);
+  }
+};
+
 export function installDemoAutoPlay(): void {
   /** 单调递增令牌：切换<|sep|>时使上一个等待中的播放作废 */
   let ticket = 0;
@@ -67,6 +94,11 @@ export function installDemoAutoPlay(): void {
     }
     previousId = event.sessionId || null;
 
-    if (event.sessionId) maybePlay(event.sessionId);
+    if (event.sessionId) {
+      if (isDemoSession(event.sessionId)) {
+        void sweepDraftSessions(event.sessionId);
+      }
+      maybePlay(event.sessionId);
+    }
   });
 }
