@@ -98,7 +98,9 @@ export function installDemoIpcMocks(): void {
           return DEMO_MODEL_PROFILES;
         case 'get_model_assignments':
           return {
-            model2_config_id: null,
+            // 预分配 demo 配置：readinessGate 见 model2 已分配即放行；
+            // 为 null 会触发 autoAssignAllModels 并弹"已自动分配N个模型"气泡
+            model2_config_id: 'demo-config-deepseek',
             anki_card_model_config_id: null,
             qbank_ai_grading_model_config_id: null,
             embedding_model_config_id: null,

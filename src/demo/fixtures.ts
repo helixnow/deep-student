@@ -222,11 +222,7 @@ const RESEARCH_REPLY: DemoBlocks = [
 ## 对你的建议
 
 - 你的错题本适合用"最小单元"原则重新拆分（一道错题 → 多张单点卡）
-- 生成式回忆 > 看卡认答案：复习时先默写再翻面
-
----
-
-*以上为演示环境的模拟检索结果。*`,
+- 生成式回忆 > 看卡认答案：复习时先默写再翻面`,
   },
 ];
 
@@ -263,6 +259,6 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
 
 /** 演示用模型列表（get_model_profiles） */
 export const DEMO_MODEL_PROFILES = [
-  { id: 'demo-deepseek-v4', label: 'DeepSeek V4（演示）', model: 'deepseek-v4' },
-  { id: 'demo-kimi-k3', label: 'Kimi K3（演示）', model: 'kimi-k3' },
+  { id: 'demo-deepseek-v4', label: 'DeepSeek V4', model: 'deepseek-v4' },
+  { id: 'demo-kimi-k3', label: 'Kimi K3', model: 'kimi-k3' },
 ];
