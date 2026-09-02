@@ -172,6 +172,23 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         debugLog.log('正在通过前端SDK获取在线MCP工具列表...');
         const { McpService } = await import('../mcp/mcpService');
+        // 🔧 启动竞态保护：设置里配置了服务器但尚无成功连接时，
+        // 先触发/等待 bootstrap（幂等，in-flight 复用 = 等待完成），
+        // 避免把"连接进行中"误判为"无在线工具"——静态回退后的选择清洗
+        // 会把用户已选的非内置服务器工具持久化清除（不可逆）。
+        // 注意必须等 connected 而非 available：servers map 在 bootstrap
+        // 一开始就被填充，available=true 时连接可能仍在进行中。
+        try {
+          const rawList = await TauriAPI.getSetting('mcp.tools.list');
+          const configured = (() => { try { return JSON.parse(rawList || '[]'); } catch { return []; } })();
+          if (Array.isArray(configured) && configured.length > 0) {
+            const st = await McpService.status();
+            if (!st.servers.some(s => s.connected)) {
+              const { bootstrapMcpFromSettings } = await import('../mcp/mcpService');
+              await bootstrapMcpFromSettings().catch(() => undefined);
+            }
+          }
+        } catch { /* best-effort：bootstrap 探测失败不阻塞后续流程 */ }
         // 不再每次 reload 都调用 connectAll()：
         // 1. 连接管理由 bootstrapMcpFromSettings() 一次性完成
         // 2. 反复 connectAll() 会导致资源泄漏（Tauri HTTP resource id invalid）
@@ -335,7 +352,18 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
           const builtinServer = getBuiltinServer();
           const allToolsWithBuiltin = [...builtinServer.tools, ...staticTools];
           setAvailableMcpTools(allToolsWithBuiltin);
-          setAvailableMcpServers([builtinServer]); // 至少有内置服务器
+          // 静态配置中的非内置服务器也必须出现在列表里（connected:false 占位），
+          // 否则在线列表为空时用户在聊天侧完全看不到已配置的服务器（死锁）
+          const staticServers: McpServer[] = (tools || [])
+            .filter((t: any) => t && (t.id || t.name))
+            .map((t: any, idx: number) => ({
+              id: String(t.id || t.name || `mcp_item_${idx}`),
+              name: String(t.name || t.id || i18n.t('common:search_engines.unnamed_mcp', 'Unnamed MCP Item')),
+              connected: false,
+              toolsCount: 0,
+              tools: [],
+            }));
+          setAvailableMcpServers([builtinServer, ...staticServers]);
 
           // 默认启用内置服务器
           const builtinDisabled = await TauriAPI.getSetting('mcp.builtin_server.disabled').catch(() => null);

@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import { EmptyResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -730,7 +731,10 @@ class McpServiceImpl {
           return;
         }
         try {
-          await rt.client.request({ method: 'ping' }, {} as any);
+          // 必须传合法 zod schema：`{} as any` 会让 SDK 的 safeParse 抛
+          // TypeError（safeParse is not a function），导致支持 ping 的标准
+          // MCP server 每次 ping 都被误判失败、每 ~4.5 分钟无谓重连一次
+          await rt.client.request({ method: 'ping' }, EmptyResultSchema);
           // ping 成功，重置失败计数
           rt.keepaliveFailCount = 0;
         } catch (pingErr: unknown) {
@@ -754,7 +758,11 @@ class McpServiceImpl {
           rt.connected = false;
           rt.connectPromise = undefined;
           this.emitStatus();
-          rt.connectPromise = this.connectServer(rt).catch((err) => {
+          rt.connectPromise = this.connectServer(rt).then(() => {
+            // 重连成功后必须补一次工具刷新：connectServer 本身不拉取 tools/list，
+            // 若缓存恰好过期，工具会长期缺失（聊天侧看不到该服务器）
+            return this.refreshTools(false).catch(() => undefined);
+          }).catch((err) => {
             debugLog.error('[MCP] Reconnect from keepalive failed:', err);
           }).finally(() => {
             rt.reconnectingFromKeepalive = false;
@@ -1018,7 +1026,9 @@ class McpServiceImpl {
     for (const rt of this.servers.values()) {
       const sid = rt.cfg.id;
       const cache = this.toolCacheByServer.get(sid);
-      const notExpired = cache && (now - cache.at) < ttl;
+      // 空结果（连接失败/服务器无工具）不享受 TTL：缓存空列表会短路后续所有
+      // listTools 请求，导致服务器恢复后工具仍长期不可见（UI 死锁）
+      const notExpired = !!cache && cache.tools.length > 0 && (now - cache.at) < ttl;
       if (!force && notExpired) {
         aggregated.push(...(cache?.tools || []));
         continue;
