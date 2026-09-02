@@ -319,6 +319,17 @@ impl LocalShellPreflightExecutor {
         if command.is_empty() {
             reasons.push("command is required".to_string());
         }
+        // 🛡️ 不可降级的灾难命令守卫：preflight 必须与 pipeline/tool_loop 的
+        // 拦截判定一致地暴露 Deny——否则模型会依据 preflight 的
+        // submit_execute_directly/medium 结论去提交一条必然被 pipeline 拦的
+        // 命令（如 `mkfs /dev/disk0`），浪费一轮且误导用户。
+        let immutable_guard_decision = immutable_shell_command_guard(&command, None, &[]);
+        if immutable_guard_decision.effect == ShellCommandGuardEffect::Deny {
+            reasons.push(format!(
+                "immutable command guard denies this command (reason={}); it can never be executed in any preset",
+                immutable_guard_decision.reason
+            ));
+        }
         if command.len() > 8192 {
             reasons.push("command is too long for local shell preflight".to_string());
         }
@@ -481,6 +492,7 @@ impl LocalShellPreflightExecutor {
             || command.len() > 8192
             || !shell.execution_supported
             || !sandbox_available
+            || immutable_guard_decision.effect == ShellCommandGuardEffect::Deny
             || command_policy.effective_effect
                 == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
             || (touches_skills_directory && !unsandboxed)
