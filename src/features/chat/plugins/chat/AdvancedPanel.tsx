@@ -21,7 +21,6 @@ import type { ChatStore } from '../../core/types';
 import { ensureModelsCacheLoaded, getModelInfoByConfigId } from '../../hooks/useAvailableModels';
 import { deriveInputContextBudget, inferModelContextWindow } from '@/utils/modelCapabilities';
 import { shouldLockDeepSeekV4SamplingControls } from './deepseekSamplingControls';
-import { normalizeDeepSeekV4Effort } from '@/utils/deepseekReasoningControls';
 
 // ============================================================================
 // 常量
@@ -182,7 +181,6 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
       }),
     [modelInfo?.model, modelInfo?.providerType, modelInfo?.providerScope, modelInfo?.baseUrl, chatParams.modelId, enableThinking]
   );
-  const deepSeekV4ReasoningEffort = normalizeDeepSeekV4Effort(chatParams.reasoningEffort);
   const samplingControlsDisabled = isStreaming || deepSeekV4SamplingLocked;
   const inferredContextWindow = useMemo(
     () => {
@@ -243,13 +241,6 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
       <CustomScrollArea className={isMobile || sidebarMode ? 'flex-1 min-h-0' : undefined} viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : undefined)}>
         {/* 侧栏模式强制单列布局，非侧栏模式使用响应式双列 */}
         <div className={sidebarMode ? 'flex flex-col gap-2 pb-1' : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'}>
-        {deepSeekV4SamplingLocked && (
-          <div className={cn('rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning', !sidebarMode && 'md:col-span-2')}>
-            {t('chat_host:advanced.deepseek_v4_sampling_notice', {
-              effort: deepSeekV4ReasoningEffort,
-            })}
-          </div>
-        )}
         {/* 温度 */}
         <div className="p-2">
           <div className="flex items-center gap-1.5">
