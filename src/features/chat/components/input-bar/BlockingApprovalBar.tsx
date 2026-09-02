@@ -13,7 +13,6 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -63,9 +62,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   const [isArgsExpanded, setIsArgsExpanded] = useState(false);
   const [isReasonOpen, setIsReasonOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  // 📱 触屏设备：runtime scope 徽章墙可堆 10+ 行，把审批按钮推出视口，
-  // coarse 指针下默认折叠为一行摘要（rootId + 命令 + 风险 flags）+「详情」展开
-  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  // runtime scope 徽章墙对普通用户不可读，所有设备统一默认折叠为一行决策摘要
+  // （沙箱状态 + rootId + cwd + 命令 + 风险 flags）+「详情」展开审计信息。
   const [isScopeExpanded, setIsScopeExpanded] = useState(false);
   // a11y：倒计时暂停（WCAG 2.2.1 Timing Adjustable）——
   // hover 暂停服务鼠标用户；键盘交互暂停服务键盘/屏幕阅读器用户（焦点离开审批栏后恢复）
@@ -153,7 +151,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   const isExternalMcpExecution = shellScope?.executionLocation?.startsWith('external') ?? false;
   // 📱 coarse 折叠态只保留一行核心摘要（rootId + 命令 + 风险 flags），
   // 其余 scope 徽章由「详情」按钮展开；fine 指针（桌面）恒为 true，布局零影响
-  const showScopeDetails = !isCoarsePointer || isScopeExpanded;
+  // 技术细节（执行位置/root 路径/env 清单/绑定指纹/编码等审计信息）统一默认
+  // 折叠——桌面端此前恒展开导致审批卡被一长串用户读不懂的 chip 淹没。
+  // 默认视图只保留决策所需：命令、风险标记、沙箱是否强制。
+  const showScopeDetails = isScopeExpanded;
 
   // 新请求到达时重置状态
   useEffect(() => {
@@ -395,7 +396,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         {localizedDescription}
       </p>
 
-      {/* Row 2: Runtime scope 摘要（内联 chip，不新增审批面板） */}
+      {/* Row 2: Runtime scope——默认只显示决策信息（沙箱状态+命令+风险标记），
+          路径/env/绑定等审计细节收进「详情」折叠 */}
       {shellScope && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           {isExternalMcpExecution ? (
@@ -404,6 +406,20 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             </span>
           ) : (
             <>
+              {!showScopeDetails && shellScope.sandboxEnforced !== undefined && (
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 font-mono',
+                    shellScope.sandboxEnforced
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-destructive/10 text-destructive',
+                  )}
+                >
+                  {shellScope.sandboxEnforced
+                    ? t('approval.scope.sandboxOn', '沙箱内执行')
+                    : t('approval.scope.sandboxOff', '无沙箱（宿主机直执）')}
+                </span>
+              )}
               {showScopeDetails && shellScope.executionLocation && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
                   {shellScope.executionLocation}
@@ -442,7 +458,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
                   {shellScope.rootSessionScoped ? 'session-root' : 'persistent-root'}
                 </span>
               )}
-              {showScopeDetails && (
+              {shellScope.cwd && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.cwd}>
                   {shellScope.cwd}
                 </span>
@@ -514,27 +530,25 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               read:{path}
             </span>
           ))}
-          {isCoarsePointer && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsScopeExpanded((prev) => !prev)}
-              aria-expanded={isScopeExpanded}
-              className="flex items-center gap-0.5 text-[11px] text-primary"
-            >
-              {isScopeExpanded ? (
-                <>
-                  <CaretUp size={10} />
-                  {t('approval.scopeCollapse')}
-                </>
-              ) : (
-                <>
-                  <CaretDown size={10} />
-                  {t('approval.scopeExpand')}
-                </>
-              )}
-            </DsButton>
-          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsScopeExpanded((prev) => !prev)}
+            aria-expanded={isScopeExpanded}
+            className="ml-auto flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            {isScopeExpanded ? (
+              <>
+                <CaretUp size={10} />
+                {t('approval.scopeCollapse')}
+              </>
+            ) : (
+              <>
+                <CaretDown size={10} />
+                {t('approval.scopeExpand')}
+              </>
+            )}
+          </DsButton>
         </div>
       )}
 

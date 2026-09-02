@@ -1756,6 +1756,7 @@
     "collapseArgs": "收起参数",
     "scopeExpand": "详情",
     "scopeCollapse": "收起详情",
+    "scope": { "sandboxOn": "沙箱内执行", "sandboxOff": "无沙箱·宿主机直执" },
     "countdownPaused": "已暂停",
     "aria": {
       "requested": "工具 {{tool}} 等待审批，{{seconds}} 秒后将自动拒绝",

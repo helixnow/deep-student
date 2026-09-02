@@ -1756,6 +1756,7 @@
     "collapseArgs": "Collapse arguments",
     "scopeExpand": "Details",
     "scopeCollapse": "Hide details",
+    "scope": { "sandboxOn": "Sandboxed", "sandboxOff": "No sandbox · direct host exec" },
     "countdownPaused": "Paused",
     "aria": {
       "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",

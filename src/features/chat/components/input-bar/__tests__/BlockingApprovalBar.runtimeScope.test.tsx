@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { BlockingApprovalBar } from '../BlockingApprovalBar';
 import type { ToolApprovalBlockingInteraction } from '../../../core/types/store';
@@ -144,6 +144,10 @@ describe('BlockingApprovalBar runtime scope', () => {
     };
 
     render(<BlockingApprovalBar interaction={interaction} sessionId="sess-shell" />);
+
+    // 审计类细节（路径全文/访问级别/沙箱后端/绑定指纹/可读根清单）默认折叠，
+    // 需用户主动展开「详情」——默认视图只保留命令、风险标记与沙箱状态。
+    fireEvent.click(screen.getByRole('button', { name: 'approval.scopeExpand' }));
 
     expect(screen.getByText('/Users/student/project')).toBeInTheDocument();
     expect(screen.getByText('read_only')).toBeInTheDocument();
