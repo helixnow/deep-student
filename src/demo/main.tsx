@@ -18,6 +18,9 @@ import React from 'react';
 import { installDemoIpcMocks } from './mockIpc';
 installDemoIpcMocks();
 
+// 演示壳标记：App 据此隐藏开发版悬浮件（调试面板球 / 移动端恢复 FAB）
+(window as unknown as { __DS_DEMO_SHELL__: boolean }).__DS_DEMO_SHELL__ = true;
+
 // ② localStorage 预置（早于 App 模块级读取）
 const params = new URLSearchParams(window.location.search);
 const dark = params.get('theme') === 'dark';
@@ -64,7 +67,7 @@ async function main() {
     { TopLevelFallback },
     { OverlayCoordinatorProvider },
     { DialogControlProvider },
-    { DemoBadge },
+    { installDemoAutoPlay },
     { dispatchAppEvent, APP_EVENTS },
     { DEMO_SESSIONS },
   ] = await Promise.all([
@@ -73,7 +76,7 @@ async function main() {
     import('../components/TopLevelFallback'),
     import('../components/shared/OverlayCoordinator'),
     import('../contexts/DialogControlContext'),
-    import('./DemoBadge'),
+    import('./autoPlay'),
     import('../events/app'),
     import('./fixtures'),
   ]);
@@ -89,11 +92,13 @@ async function main() {
       <OverlayCoordinatorProvider>
         <DialogControlProvider>
           <App />
-          <DemoBadge />
         </DialogControlProvider>
       </OverlayCoordinatorProvider>
     </ErrorBoundary>,
   );
+
+  // ⑤.5 自动播放：点进剧本会话即自动发问并流式播放回复（含初次自动导航）
+  installDemoAutoPlay();
 
   // ⑥ ChatV2Page 完成首轮会话加载后，自动导航到第一个剧本会话。
   // sessions-updated 发出时 draft 会话的 setCurrentSessionId 尚未执行，

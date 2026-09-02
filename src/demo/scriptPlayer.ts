@@ -21,6 +21,17 @@ import type { DemoBlocks } from './fixtures';
 
 const LOG = '[demo-player]';
 
+/** 演示节奏（2026-09 调快约 2x，方便观看）：块间停顿、chunk 间隔、工具停留 */
+const PACE = {
+  /** 每个 block 开始前的停顿（可被剧本 def.delay 覆盖） */
+  blockDelay: 120,
+  /** 流式 chunk 间隔：min + random*span（毫秒） */
+  chunkMin: 6,
+  chunkSpan: 14,
+  /** 检索/工具类 block 的模拟执行耗时 */
+  toolDwell: 350,
+} as const;
+
 const players = new Map<string, AbortController>();
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -37,11 +48,11 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** 把长文本切成流式 chunk（4~10 字符随机，模拟 token 节奏） */
+/** 把长文本切成流式 chunk（6~14 字符随机，模拟 token 节奏） */
 function* chunkText(text: string): Generator<string> {
   let pos = 0;
   while (pos < text.length) {
-    const size = 4 + Math.floor(Math.random() * 7);
+    const size = 6 + Math.floor(Math.random() * 9);
     yield text.slice(pos, pos + size);
     pos += size;
   }
@@ -92,7 +103,7 @@ export async function playReplyScript(opts: {
     for (let i = 0; i < blocks.length; i++) {
       const def = blocks[i];
       if (signal.aborted) return;
-      await sleep(def.delay ?? 240, signal);
+      await sleep(def.delay ?? PACE.blockDelay, signal);
 
       const blockId = `${assistantMessageId}-sb${i}`;
       await emitBlock({
@@ -117,11 +128,11 @@ export async function playReplyScript(opts: {
             chunk,
             sequenceId: sequenceId++,
           });
-          await sleep(12 + Math.random() * 30, signal);
+          await sleep(PACE.chunkMin + Math.random() * PACE.chunkSpan, signal);
         }
       } else {
         // 检索/工具类：无 chunk，停留一段模拟执行耗时
-        await sleep(700, signal);
+        await sleep(PACE.toolDwell, signal);
       }
 
       if (signal.aborted) return;

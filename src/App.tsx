@@ -93,7 +93,12 @@ import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNa
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
 import { usePreventScroll } from './hooks/usePreventScroll';
-import { CommandPaletteProvider, CommandPalette, registerBuiltinCommands, useCommandPalette } from './command-palette';
+// ★ 刻意深路径导入：经 command-palette/index.ts barrel 会把 ShortcutSettings
+//   → @/features/settings barrel → 全部设置页签（含 recharts 等重组件）拖进主 bundle；
+//   ShortcutSettings 在 Settings.tsx 中本就是 React.lazy 加载（设计 §9.3 同法）。
+import { CommandPaletteProvider, useCommandPalette } from './command-palette/CommandPaletteProvider';
+import { CommandPalette } from './command-palette/CommandPalette';
+import { registerBuiltinCommands } from './command-palette/registry/builtinCommands';
 import { TextContextMenuProvider } from './components/context-menu/TextContextMenu';
 import { useMenuEventBridge } from './menu/menuEventBridge';
 import { useCommandEvents, COMMAND_EVENTS } from './command-palette/hooks/useCommandEvents';
@@ -184,6 +189,10 @@ try {
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
 const LazyDevMobileRecoveryFab = React.lazy(() => import('./dev/DevMobileRecoveryFab'));
+// Web 演示壳（demo.html/hero.html iframe）标记：由 src/demo/main.tsx 在加载 App 前置位。
+// 演示环境不渲染任何开发版悬浮件（调试面板球、移动端恢复 FAB）。
+const isDemoShell =
+  typeof window !== 'undefined' && Boolean((window as unknown as { __DS_DEMO_SHELL__?: boolean }).__DS_DEMO_SHELL__);
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
 
@@ -933,9 +942,11 @@ function App() {
     '--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`,
     '--shell-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
     '--desktop-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
-    '--shell-navigation-surface-width': leftPanelCollapsed && desktopSidebarMotionWidth !== null
-      ? `${desktopSidebarMotionWidth}px`
-      : 'var(--shell-navigation-width)',
+    // 与 --shell-navigation-width 同值。该变量已注册为 <length> 自定义属性并挂在
+    // app-shell 的 transition 上（app.css @property），标题栏深浅渐变分界随侧栏
+    // 收起/展开逐帧联动；拖拽改宽期间由下方 setProperty 直写（过渡已被
+    // data-sidebar-resizing 规则关闭），保证手柄拖动时即时跟随。
+    '--shell-navigation-surface-width': `${desktopNavigationWidth}px`,
     '--shell-titlebar-content-height': `${workbenchActive ? 0 : DESKTOP_SHELL.titlebarBaseHeight}px`,
     '--topbar-safe-area': `${workbenchActive ? 0 : shellTitlebarTopInset}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
@@ -943,8 +954,6 @@ function App() {
     desktopNavigationWidth,
     desktopSidebarPresentationWidth,
     desktopSidebarTranslateX,
-    desktopSidebarMotionWidth,
-    leftPanelCollapsed,
     shellTitlebarOccupiedHeight,
     topbarTopMargin,
     workbenchActive,
@@ -974,6 +983,10 @@ function App() {
         `${DESKTOP_SHELL.navigationMinWidth}px`
       );
       appShellRef.current?.style.setProperty(
+        '--shell-navigation-surface-width',
+        `${DESKTOP_SHELL.navigationMinWidth}px`
+      );
+      appShellRef.current?.style.setProperty(
         '--sidebar-expanded-width',
         `${DESKTOP_SHELL.navigationMinWidth}px`
       );
@@ -995,6 +1008,7 @@ function App() {
       typeof window === 'undefined' ? undefined : window.innerWidth
     );
     appShellRef.current?.style.setProperty('--shell-navigation-width', `${layout.trackWidth}px`);
+    appShellRef.current?.style.setProperty('--shell-navigation-surface-width', `${layout.trackWidth}px`);
     appShellRef.current?.style.setProperty('--sidebar-expanded-width', `${layout.surfaceWidth}px`);
     appShellRef.current?.style.setProperty('--shell-sidebar-translate-x', `${layout.translateX}px`);
   }, [leftPanelWidth]);
@@ -1044,6 +1058,10 @@ function App() {
     const prevView = currentViewRef.current;
     const rawTargetView = typeof newView === 'function' ? newView(prevView) : newView;
     const targetView = canonicalizeView(rawTargetView);
+
+    // 演示壳收窄：只保留主会话页交互，次级页面入口点击不响应
+    //（对应 lazy 页面模块已在 vite.demo.config.ts 中 stub 剔除，不会被打包/加载）
+    if (isDemoShell && targetView !== 'chat-v2') return;
 
     if (targetView !== prevView) {
       const startTime = performance.now();
@@ -2908,14 +2926,14 @@ function App() {
           </Suspense>
         </DsDialogBody>
       </DsDialog>
-      {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块） */}
-      {debugPanelRequested && (
+      {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块）；演示壳不出现 */}
+      {debugPanelRequested && !isDemoShell && (
         <Suspense fallback={null}>
           <LazyGlobalDebugPanel openRequest={debugPanelOpenRequest} />
         </Suspense>
       )}
 
-      {import.meta.env.DEV && isSmallScreen && (
+      {import.meta.env.DEV && isSmallScreen && !isDemoShell && (
         <Suspense fallback={null}>
           <LazyDevMobileRecoveryFab />
         </Suspense>

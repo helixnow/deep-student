@@ -17,7 +17,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
 import { emitToolCallDebug, trackStart, trackEnd } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
-import { workbenchBus } from '@/features/workbench';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
 /**
  * ACR R2-05 / DESIGN §6：High 审批前聚焦会话所属 chat 窗，

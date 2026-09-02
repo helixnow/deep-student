@@ -16,6 +16,8 @@
     "version:generate": "node scripts/generate-version.mjs",
     "predev": "npm run version:generate",
     "dev": "vite --port 1422",
+    "dev:demo": "vite --config vite.demo.config.ts --port 1423",
+    "build:demo": "vite build --config vite.demo.config.ts",
     "predev:tauri": "npm run version:generate",
     "pretauri": "npm run version:generate",
     "dev:tauri": "tauri dev",

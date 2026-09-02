@@ -40,13 +40,34 @@ body {
   transition: background-color var(--page-slide-dur, 200ms) var(--ease-shell);
 }
 
+/* 标题栏深浅渐变分界（见下方 .desktop-shell-titlebar 渐变与 theme-colors.css 的
+ * 同款规则）引用本变量。CSS 渐变的色标位置本身不可过渡；将变量注册为 <length>
+ * 自定义属性后，其值变化即可参与 transition，使标题栏深浅分界随侧栏收起/展开
+ * 逐帧联动，而不是动画结束后突变。
+ * 注意：过渡必须挂在下方 (0,2,0) 规则里——[data-sidebar-visible] 属性恒存在，
+ * 裸 [data-shell-role="app-shell"] (0,1,0) 的 transition 声明永远会被它覆盖。 */
+@property --shell-navigation-surface-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 [data-shell-role="app-shell"][data-sidebar-visible] {
-  transition: background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition:
+    background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1),
+    --shell-navigation-surface-width var(--resize-dur) var(--resize-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-shell-role="app-shell"][data-sidebar-visible] {
+    transition: none;
+  }
 }
 
 [data-shell-role="app-shell"][data-sidebar-resizing="true"] {
   cursor: col-resize;
   user-select: none;
+  /* 拖拽改宽期间关闭全部过渡（含渐变分界变量），保证手柄拖动即时跟随 */
   transition: none;
 }
 

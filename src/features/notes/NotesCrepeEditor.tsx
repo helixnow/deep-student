@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
-import { COMMAND_EVENTS } from '@/command-palette';
+import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';

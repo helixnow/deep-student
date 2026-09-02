@@ -26,6 +26,8 @@ export interface DemoSessionFixture {
   blocks: BackendBlock[];
   /** 用户自由发送后播放的回复剧本 */
   followUp: DemoBlocks;
+  /** 点进会话时自动播放的用户追问（经真实 sendMessage 链路发送） */
+  autoPrompt?: string;
 }
 
 // ============================================================================
@@ -95,6 +97,7 @@ function makeFixture(opts: {
   prompt: string;
   reply: DemoBlocks;
   followUp?: DemoBlocks;
+  autoPrompt?: string;
 }): DemoSessionFixture {
   const updatedAt = new Date(Date.now() - opts.minutesAgo * 60_000);
   const createdAt = new Date(updatedAt.getTime() - 10 * 60_000);
@@ -118,6 +121,7 @@ function makeFixture(opts: {
     messages,
     blocks,
     followUp: opts.followUp ?? DEFAULT_FOLLOW_UP,
+    autoPrompt: opts.autoPrompt,
   };
 }
 
@@ -289,6 +293,112 @@ const RESEARCH_REPLY: DemoBlocks = [
 ];
 
 // ============================================================================
+// 自动播放剧本（点进会话后自动追问一轮：发送 → 思维链 → 流式输出）
+// ============================================================================
+
+const ANKI_FOLLOW_UP: DemoBlocks = [
+  {
+    type: 'thinking',
+    status: 'success',
+    streaming: true,
+    delay: 160,
+    content: `用户对"换元法"还不熟，想要再练一道。
+选一道同结构陷阱题：被积函数可拆出导数因子，但上下限必须跟着换。
+先给提示让他自己做，再给完整过程——符合主动回忆原则。`,
+  },
+  {
+    type: 'content',
+    status: 'success',
+    streaming: true,
+    delay: 240,
+    content: `来，用同样的陷阱结构练一道：
+
+$$\\int_0^{\\frac{\\pi}{2}} \\sin^3 x\\,dx$$
+
+**先自己试**：把 $\\sin^3 x$ 拆成 $\\sin^2 x \\cdot \\sin x$，令 $u = \\cos x$。
+
+---
+
+**完整过程**：
+
+$$\\int_0^{\\frac{\\pi}{2}} \\sin^3 x\\,dx = -\\int_0^{\\frac{\\pi}{2}} (1-\\cos^2 x)\\,d(\\cos x)$$
+
+换元 $u = \\cos x$，**上下限跟着换**：$x=0 \\to u=1$，$x=\\frac{\\pi}{2} \\to u=0$：
+
+$$= \\int_0^1 (1-u^2)\\,du = \\left[u - \\frac{u^3}{3}\\right]_0^1 = \\frac{2}{3}$$
+
+**自检清单**（做完每道换元题过一遍）：
+- 换元的同时换了上下限吗？
+- 符号方向对吗（上限比下限小时别慌，照常代入）？
+- 最后结果用**原变量**还是**新变量**回代，别混。
+
+这道题已加入牌组「高等数学 · 换元法专项」，明天复习见。`,
+  },
+];
+
+const FEYNMAN_FOLLOW_UP: DemoBlocks = [
+  {
+    type: 'thinking',
+    status: 'success',
+    streaming: true,
+    delay: 160,
+    content: `用户开始实践费曼输出，要我扮演"12 岁小孩"。
+要点：进入角色、用大白话追问、专挑术语下手，不急着给正确答案。
+追问设计：先接纳，再抓"先验概率"这种术语让他翻译。`,
+  },
+  {
+    type: 'content',
+    status: 'success',
+    streaming: true,
+    delay: 240,
+    content: `好呀，我搬好小板凳了。你讲，我听着。
+
+不过我先把规则说好——**你说到我不懂的地方，我可是会举手的**：
+
+> 比如你要是说"先验概率"，我一定会问：先验是什么？能先尝尝吗？
+
+讲之前给你一个选题建议：别选太大的（"什么是机器学习"讲不完），选一个**今晚就能讲清楚的小概念**最合适，比如：
+
+- 为什么 $0.9^5 \\approx 0.59$ 说明"每次都九成把握的事，连做五次就只剩六成"？
+- 或者就讲贝叶斯定理：为什么"检测 99% 准确的病，查出阳性也别先慌"？
+
+你开始，我保证全程用小孩能懂的话追问到底。讲卡壳的地方，记得回头点一下「转为错题」。`,
+  },
+];
+
+const RESEARCH_FOLLOW_UP: DemoBlocks = [
+  {
+    type: 'thinking',
+    status: 'success',
+    streaming: true,
+    delay: 160,
+    content: `用户追问 FSRS-6 与 SM-2 的日常复习量差异。
+结论先行：同等留存目标下 FSRS 复习量更少；量化口径要讲清楚（模拟+公开数据集）。
+提醒：复习量不是唯一指标，初始难度预判才是 FSRS-6 的增量。`,
+  },
+  {
+    type: 'content',
+    status: 'success',
+    streaming: true,
+    delay: 240,
+    content: `**结论先行**：在同等 90% 目标留存下，FSRS 系列的日常复习量通常比 SM-2 **少 20%–30%**，差距主要来自两点：
+
+| | SM-2（Anki 默认） | FSRS-6 |
+| --- | --- | --- |
+| 调度依据 | 固定倍率（2.5x 阶梯） | 三参数记忆模型（难度/稳定性/可提取性） |
+| 初始难度 | 所有新卡一视同仁 | LLM 预判初始难度，简单卡首轮就排远 |
+| 遗忘处理 | 直接"重来"，复习量陡增 | 按记忆衰减曲线精确回退 |
+
+**对你的实际意义**：
+
+- 你现在错题本 300+ 卡，SM-2 下高峰期每天约 90–120 次复习；换 FSRS 后预计落在 **60–80 次**，且遗忘更集中在真正的难卡上
+- FSRS-6 的 LLM 初判对**错题卡**收益最大：错因明确的卡会被直接识别为"高初始难度"，前三天就密集见
+
+一句话：SM-2 是"公平但粗放的排班表"，FSRS 是"按你记忆曲线量身排的班"。`,
+  },
+];
+
+// ============================================================================
 // 导出
 // ============================================================================
 
@@ -300,6 +410,8 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 3,
     prompt: '帮我把这三道高数错题整理成 Anki 卡片，重点突出每道题的易错点',
     reply: ANKI_REPLY,
+    followUp: ANKI_FOLLOW_UP,
+    autoPrompt: '换元那步我还是容易错，能再带我练一道吗？',
   }),
   makeFixture({
     id: 'demo-feynman',
@@ -308,6 +420,8 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 25,
     prompt: '给我讲讲费曼学习法，最好结合我备考的场景',
     reply: FEYNMAN_REPLY,
+    followUp: FEYNMAN_FOLLOW_UP,
+    autoPrompt: '好，那你当小孩，我来给你讲讲贝叶斯定理。',
   }),
   makeFixture({
     id: 'demo-spaced-repetition',
@@ -316,6 +430,8 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 62,
     prompt: '帮我查一下间隔重复（spaced repetition）领域最近有什么新进展',
     reply: RESEARCH_REPLY,
+    followUp: RESEARCH_FOLLOW_UP,
+    autoPrompt: 'FSRS-6 和 Anki 自带的 SM-2 比，日常复习量差多少？',
   }),
 ];
 

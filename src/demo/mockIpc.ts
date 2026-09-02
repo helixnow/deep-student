@@ -61,6 +61,11 @@ const SETTINGS_SEED: Record<string, unknown> = {
 
 const settingsKV = new Map<string, unknown>(Object.entries(SETTINGS_SEED));
 
+/** 模拟真实 IPC 往返延迟（过快会导致列表挂载前 restore 完成，跳过吸底滚动） */
+function withLatency<T>(value: T, ms = 120): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
+
 // ============================================================================
 // 安装
 // ============================================================================
@@ -149,6 +154,38 @@ export function installDemoIpcMocks(): void {
         case 'llm_usage_session_summary':
           return { total_tokens: 0, total_requests: 0 };
 
+        // ---------- 设置页预热的列表型命令（真实桌面版启动时同样预热） ----------
+        case 'get_api_configurations':
+          // 一条演示配置：避免"未配置 AI 服务"banner；名称明确标注演示
+          return [
+            {
+              id: 'demo-config-deepseek',
+              name: '演示模型服务',
+              vendorId: 'deepseek',
+              vendorName: 'DeepSeek',
+              providerType: 'openai',
+              apiKey: 'demo-key-not-real',
+              baseUrl: 'https://api.deepseek.com',
+              model: 'deepseek-v4',
+              isMultimodal: false,
+              isReasoning: true,
+              isEmbedding: false,
+              isReranker: false,
+              enabled: true,
+              modelAdapter: 'openai',
+            },
+          ];
+        case 'get_available_ocr_models':
+        case 'get_ocr_engines':
+          return [];
+        case 'get_ocr_thinking_enabled':
+          return false;
+        case 'save_model_assignments':
+        case 'add_ocr_engine':
+        case 'remove_ocr_engine':
+        case 'update_ocr_engine_priority':
+          return null;
+
         // ---------- 会话列表 / 计数 / 详情 ----------
         case 'chat_v2_list_sessions': {
           const status = String(args.status ?? 'active');
@@ -216,11 +253,11 @@ export function installDemoIpcMocks(): void {
             LOG,
             `load_session ${rec.meta.id}: ${rec.messages.length} messages, ${rec.blocks.length} blocks`,
           );
-          return {
+          return withLatency({
             session: rec.meta,
             messages: rec.messages,
             blocks: rec.blocks,
-          };
+          });
         }
         case 'chat_v2_load_messages_page':
           // 尾部分块之外没有更多历史

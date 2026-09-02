@@ -347,6 +347,8 @@ export default defineConfig(({ command, mode }) => ({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
+        // WorkBuddy 风格落地页：Mac 窗壳居中内嵌 demo.html（纯静态，无 JS bundle）
+        hero: fileURLToPath(new URL("./hero.html", import.meta.url)),
         "preview-charts": fileURLToPath(new URL("./preview-charts.html", import.meta.url)),
       },
       output: {
@@ -354,7 +356,41 @@ export default defineConfig(({ command, mode }) => ({
         // 大库（mermaid / exceljs / echarts / recharts / xyflow）多为路由级 lazy 或按需动态 import；
         // 独立 chunk 避免打进主包并利于长期缓存。
         manualChunks(id: string) {
+          // Vite 运行时辅助（__vitePreload / modulepreload polyfill）必须独立成组：
+          // 它们被所有含动态 import 的 chunk 静态引用，若被 Rollup 并入
+          // vendor-milkdown 之类的重 chunk（实测如此），首屏每个 chunk 都会
+          // 静态 import 它 → 整个 milkdown 编辑器被迫随首屏加载。
+          if (id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill')) {
+            return 'vite-runtime';
+          }
           if (!id.includes('node_modules')) return;
+          // 微型通用库必须显式归组（先于各重库规则）：
+          // 否则 manualChunks 函数式的"独占依赖合并"会把 uuid / es-toolkit
+          // 卷进 vendor-mermaid / vendor-recharts 等重 chunk——首屏代码
+          // 一旦 import 它们（src/utils/shared.ts 就用 uuid），整个重 chunk
+          // 会以静态 import 边被拉进首屏。
+          if (
+            id.includes('node_modules/uuid/') ||
+            id.includes('node_modules/es-toolkit/') ||
+            id.includes('node_modules/scheduler/') ||
+            id.includes('node_modules/nanoid/') ||
+            id.includes('node_modules/dompurify/') ||
+            id.includes('node_modules/invariant/') ||
+            id.includes('node_modules/tippy.js/') ||
+            id.includes('node_modules/use-sync-external-store/') ||
+            id.includes('node_modules/react-redux/') ||
+            id.includes('node_modules/reselect/') ||
+            id.includes('node_modules/redux/') ||
+            id.includes('@floating-ui/')
+          ) {
+            return 'vendor-micro';
+          }
+          // d3 家族必须独立：@xyflow/react（聊天思维导图卡片，首屏正当需求）
+          // 与 recharts（懒加载统计图）共用 d3-*——不拆出来 d3 会被并入
+          // vendor-recharts，xyflow 一加载就把整个 recharts 拖进首屏。
+          if (id.includes('node_modules/d3-')) {
+            return 'vendor-d3';
+          }
           // i18n
           if (id.includes('i18next') || id.includes('react-i18next')) {
             return 'vendor-i18n';
@@ -362,7 +398,9 @@ export default defineConfig(({ command, mode }) => ({
           if (id.includes('pdfjs-dist')) {
             return 'vendor-pdfjs';
           }
-          if (id.includes('mermaid')) {
+          // mermaid 图表库本体（refractor/lang/mermaid.js 只是 2KB 语法高亮规则，
+          // 必须排除——否则它落入本 chunk，会把 6MB+ 的 mermaid 拽进聊天代码块的首屏静态图）
+          if (id.includes('mermaid') && !id.includes('refractor')) {
             return 'vendor-mermaid';
           }
           // Excel 预览（RichDocumentPreview → lazy XlsxPreview）
@@ -400,6 +438,19 @@ export default defineConfig(({ command, mode }) => ({
           // Milkdown 编辑器全家桶（仅笔记编辑场景加载）
           if (id.includes('@milkdown') || id.includes('milkdown') || id.includes('prosemirror')) {
             return 'vendor-milkdown';
+          }
+          // Markdown 处理生态 + 微型工具库：chat 的 react-markdown 渲染与
+          // milkdown 编辑器共用同一套 unified/mdast/micromark/vfile——
+          // 此规则必须在 milkdown 规则之后、且不匹配它们会触发 Rollup 的
+          // "独占依赖合并"把它们卷进 vendor-milkdown，导致首屏为聊天渲染
+          // 被迫加载 4MB+ 的 milkdown 编辑器本体。
+          if (
+            id.includes('lodash-es') ||
+            id.includes('node_modules/clsx') ||
+            id.includes('node_modules/immer') ||
+            /node_modules\/(unified|remark-|rehype-|mdast|hast|micromark|vfile|zwitch|bail|trough|devlop|comma-separated-tokens|property-information|space-separated-tokens|decode-named-character-reference|character-entities)/.test(id)
+          ) {
+            return 'vendor-markdown-shared';
           }
         },
       }

@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/app-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Deep Student · AI 学习工作台</title>
+    <style>
+      :root {
+        --paper: #f7f6f2;
+        --ink: #1c1b17;
+        --ink-2: #5d5a50;
+        --ink-3: #8f8b7d;
+        --hairline: rgba(28, 27, 23, 0.1);
+        --grid-line: rgba(28, 27, 23, 0.045);
+        --accent: #2f5fe0;
+        --window-border: rgba(28, 27, 23, 0.12);
+        --window-shadow:
+          0 1px 1px rgba(28, 27, 23, 0.05),
+          0 10px 24px -10px rgba(28, 27, 23, 0.22),
+          0 40px 80px -32px rgba(28, 27, 23, 0.3);
+      }
+
+      html[data-theme='dark'] {
+        --paper: #131312;
+        --ink: #ecebe6;
+        --ink-2: #a5a296;
+        --ink-3: #6e6b60;
+        --hairline: rgba(236, 235, 230, 0.12);
+        --grid-line: rgba(236, 235, 230, 0.05);
+        --accent: #7c9ef8;
+        --window-border: rgba(236, 235, 230, 0.14);
+        --window-shadow:
+          0 1px 1px rgba(0, 0, 0, 0.4),
+          0 12px 32px -10px rgba(0, 0, 0, 0.55),
+          0 56px 112px -32px rgba(0, 0, 0, 0.6);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        min-height: 100dvh;
+        background: var(--paper);
+        color: var(--ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+          'Segoe UI', 'Microsoft YaHei', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* 稿纸方格：错题本/演算纸的肌理，边缘用径向渐隐收住 */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(var(--grid-line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: radial-gradient(ellipse 90% 80% at 50% 42%, black 55%, transparent 100%);
+        -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 42%, black 55%, transparent 100%);
+      }
+
+      /* ---------- 页眉：栏外小字，杂志刊头式 ---------- */
+      .masthead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 22px 32px 0;
+        font-size: 12.5px;
+        letter-spacing: 0.04em;
+        color: var(--ink-3);
+      }
+
+      .masthead .brand {
+        font-weight: 650;
+        color: var(--ink);
+        letter-spacing: 0.01em;
+      }
+
+      .masthead .brand::after {
+        content: '';
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--accent);
+        margin-left: 7px;
+        vertical-align: 2px;
+      }
+
+      /* ---------- 题辞区 ---------- */
+      .hero {
+        text-align: center;
+        padding: clamp(36px, 6.5vh, 72px) 24px 0;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-family: 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', serif;
+        font-size: clamp(30px, 4.2vw, 46px);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1.25;
+      }
+
+      .hero .sub {
+        margin: 14px auto 0;
+        max-width: 560px;
+        color: var(--ink-2);
+        font-size: clamp(13.5px, 1.4vw, 15.5px);
+        line-height: 1.8;
+      }
+
+      /* ---------- 窗壳：无边框窗口，红绿灯叠在应用内顶栏的预留空位 ---------- */
+      .stage-wrap {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: clamp(28px, 4.5vh, 48px) 24px 56px;
+      }
+
+      .window {
+        position: relative;
+        /* 宽度上限取真实窗口宽；视口偏矮时按可用高度反推，保证完整可见 */
+        width: min(1112px, 92vw, calc((100dvh - 300px) * 1.4387));
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--window-border);
+        box-shadow: var(--window-shadow);
+        background: #fff;
+      }
+
+      html[data-theme='dark'] .window {
+        background: #17181c;
+      }
+
+      /* 内屏恒为真实窗口尺寸 1112×773（桌面布局，永不触碰 768 移动断点），
+         由 inline script 按窗壳宽度等比缩放（transform: scale） */
+      .screen {
+        position: relative;
+        width: 1112px;
+        height: 773px;
+        transform-origin: top left;
+      }
+
+      .screen iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+      }
+
+      /* macOS 红绿灯：应用无边框（原生标题栏已移除），灯直接落在
+         应用内顶栏 40px 区域的预留空位（DESKTOP_SHELL.macTrafficLightsSpacer=68）。
+         放在 .screen 内随应用一起缩放，与真实窗口严格一致 */
+      .lights {
+        position: absolute;
+        top: 14px;
+        left: 12px;
+        z-index: 2;
+        display: flex;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      .lights i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: block;
+        box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.18);
+      }
+
+      .lights i:nth-child(1) { background: #ff5f57; }
+      .lights i:nth-child(2) { background: #febc2e; }
+      .lights i:nth-child(3) { background: #28c840; }
+
+      @media (max-width: 767px) {
+        .masthead { padding: 16px 20px 0; }
+        .stage-wrap { padding: 20px 12px 40px; }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .hero > * {
+          animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .hero .sub { animation-delay: 0.08s; }
+        .window {
+          animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+        }
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <header class="masthead">
+      <span class="brand">Deep Student</span>
+      <span>AI 学习工作台</span>
+    </header>
+
+    <section class="hero">
+      <h1>把学习，做深。</h1>
+      <p class="sub">会话、笔记、错题、思维导图——在同一个工作台里彼此打通。</p>
+    </section>
+
+    <div class="stage-wrap">
+      <div class="window" id="window">
+        <div class="screen" id="screen">
+          <iframe id="demo-frame" title="Deep Student" src="./demo.html"></iframe>
+          <span class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        if (params.get('theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark';
+        }
+        if (location.search) {
+          document.getElementById('demo-frame').src = './demo.html' + location.search;
+        }
+        // 红绿灯仅在 macOS 布局下与顶栏预留空位对齐（非 Mac 环境无空位，隐藏）
+        if (!/macintosh|mac os x/i.test(navigator.userAgent)) {
+          var lights = document.getElementById('lights');
+          lights.parentNode.removeChild(lights);
+        }
+
+        // 内屏恒为 1112×773（真实窗口尺寸），整体等比缩放适配窗壳宽度：
+        // 应用永远按桌面布局渲染，任何视口下内容完整、比例不变
+        var NATIVE_W = 1112;
+        var NATIVE_H = 773;
+        var windowEl = document.getElementById('window');
+        var screenEl = document.getElementById('screen');
+        function fit() {
+          var scale = windowEl.clientWidth / NATIVE_W;
+          screenEl.style.transform = 'scale(' + scale + ')';
+          windowEl.style.height = Math.round(NATIVE_H * scale) + 'px';
+        }
+        window.addEventListener('resize', fit);
+        window.addEventListener('load', fit);
+        fit();
+      })();
+    </script>
+  </body>
+</html>

@@ -5,7 +5,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
-import { workbenchBus } from '@/features/workbench';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import i18next from 'i18next';
 
 function resourceIdToAppTypeId(resourceId: string, preferredType?: string): string {

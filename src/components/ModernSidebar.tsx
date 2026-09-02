@@ -58,7 +58,7 @@ import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
-import { useCommandPalette } from '@/command-palette';
+import { useCommandPalette } from '@/command-palette/CommandPaletteProvider';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
 import { StudyComposeIcon, StudySettingsIcon } from './icons/StudySidebarIcons';
 import {

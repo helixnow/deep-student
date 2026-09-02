@@ -5,21 +5,13 @@
  * Notes workspace hosts (and currently displays) each resource so OS routing and ACR do
  * not need to treat an internal tab as a standalone workbench window.
  */
-import {
-  getMindMapStoreForWindow,
-  getMindMapStoreForResource,
-  subscribeMindMapStoreReady,
-  subscribeMindMapStoreReadyForWindow,
-  type MindMapStoreApi,
-} from '@/features/mindmap/store/mindmapStore';
-import { findNodeById } from '@/features/mindmap/utils/node/find';
-import { getMindMapViewController } from '@/features/mindmap/viewController';
-import type { MindMapViewType } from '@/features/mindmap/types';
-import {
-  getNoteEditor,
-  subscribeNoteEditorReady,
-} from '@/features/workbench/agent/drivers/noteDriver';
+import type { MindMapStoreApi } from '@/features/mindmap/store/mindmapStore';
+import type { getNoteEditor } from '@/features/workbench/agent/drivers/noteDriver';
 import type { ActivationResult } from '@/features/workbench/core/types';
+
+// ★ 重依赖刻意动态化：mindmap store / noteDriver(@milkdown) 仅在 ACR/工作区
+//   激活路径按需 import()——本模块被 command-palette builtinCommands 静态引入
+//   App 主 bundle，静态引用会把笔记编辑器与导图画布拖进首屏（设计 §9.3 同法）。
 
 export type NotesWorkspaceResourceType = 'note' | 'mindmap';
 
@@ -275,6 +267,9 @@ function payloadRecord(payload: unknown): Record<string, unknown> | null {
 }
 
 async function waitForNoteEditor(resourceId: string, windowId?: string) {
+  const { getNoteEditor, subscribeNoteEditorReady } = await import(
+    '@/features/workbench/agent/drivers/noteDriver'
+  );
   const ready = getNoteEditor(resourceId, windowId);
   if (ready) return ready;
   return new Promise<ReturnType<typeof getNoteEditor>>((resolve) => {
@@ -295,6 +290,12 @@ async function waitForMindmapStore(
   resourceId: string,
   windowId?: string,
 ): Promise<MindMapStoreApi | null> {
+  const {
+    getMindMapStoreForWindow,
+    getMindMapStoreForResource,
+    subscribeMindMapStoreReady,
+    subscribeMindMapStoreReadyForWindow,
+  } = await import('@/features/mindmap/store/mindmapStore');
   const ready = windowId
     ? getMindMapStoreForWindow(windowId, resourceId)
     : getMindMapStoreForResource(resourceId);
@@ -395,6 +396,7 @@ export async function activateWorkspaceResource(
     if (!store) {
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
+    const { findNodeById } = await import('@/features/mindmap/utils/node/find');
     if (!findNodeById(store.getState().document.root, nodeId)) {
       return { windowId, result: { handled: false, code: 'NODE_NOT_FOUND' } };
     }

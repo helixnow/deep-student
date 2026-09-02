@@ -29,14 +29,14 @@ import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import {
   isWorkbenchBlockRestored,
 } from '@/features/chat/utils/workbenchBlockRemap';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { stageManager } from '@/features/workbench/agent/stageManager';
+import { usePresenceStore } from '@/features/workbench/agent/presenceStore';
 import {
-  workbenchBus,
-  stageManager,
-  usePresenceStore,
   makeAcrSessionRunId,
   type AcrReceipt,
   type AcrReceiptStatus,
-} from '@/features/workbench';
+} from '@/features/workbench/agent/types';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================

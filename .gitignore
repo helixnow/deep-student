@@ -312,3 +312,4 @@ docs/vfs-vector-knowledge-base-hardening.md
 docs/design-tokens-and-color-semantics.md
 dstu-test/docs/*
 !dstu-test/docs/README.md
+/dist-demo
