@@ -168,6 +168,15 @@ export function installDemoAutoPlay(): void {
         if (isStale()) return;
         const status = store.getState().sessionStatus;
         if (status === 'streaming' || status === 'sending') return;
+        // 附件先行（等价于用户先在输入框"添加附件"再打字）：
+        // 生产 addContextRef → pendingContextRefs，sendMessage 时打包进
+        // _meta.contextSnapshot，消息上的缩略图/文件 chip/点击预览全真链路
+        if (fixture.attachmentRefs?.length) {
+          for (const ref of fixture.attachmentRefs) {
+            store.getState().addContextRef(ref);
+          }
+          console.info(LOG, `injected ${fixture.attachmentRefs.length} attachment ref(s)`);
+        }
         void typeAndSend(sessionId, fixture.autoPrompt!, isStale);
       })();
     }, PRE_TYPE_DELAY_MS);
@@ -186,11 +195,9 @@ export function installDemoAutoPlay(): void {
       isDemoSession(previousId)
     ) {
       abortScript(previousId);
-      try {
-        capturePlayedSnapshot(previousId);
-      } catch (e) {
+      void capturePlayedSnapshot(previousId).catch((e) => {
         console.warn(LOG, 'leave-snapshot failed:', e);
-      }
+      });
     }
     previousId = event.sessionId || null;
 

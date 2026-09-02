@@ -26,6 +26,12 @@ import {
 } from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
 import { getPlayedHistory } from './playedHistory';
+import {
+  getDemoAttachmentContent,
+  getDemoAttachmentResource,
+  getDemoDstuNode,
+  resolveDemoAttachmentRef,
+} from './attachmentAssets';
 
 const LOG = '[demo-ipc]';
 
@@ -173,6 +179,82 @@ export function installDemoIpcMocks(): void {
         case 'vfs_get_mindmap_content': {
           const mindmapId = String(args.mindmapId ?? '');
           return mindmapId === DEMO_MINDMAP_ID ? DEMO_MINDMAP_CONTENT : null;
+        }
+
+        // ---------- 附件能力（错题照片 / 上传 PDF，见 attachmentAssets.ts） ----------
+        // 发送前校验（validateAndCleanupContextRefs）：演示资源一律存在，
+        // 否则引用会被当作"已删除资源"从 store 清掉
+        case 'vfs_resource_exists': {
+          const resourceId = String(args.resourceId ?? '');
+          return getDemoAttachmentResource(resourceId) !== null;
+        }
+        // 消息缩略图与文件 chip：resources 表 → VfsContextRefData 引用清单
+        case 'vfs_get_resource': {
+          const resourceId = String(args.resourceId ?? '');
+          return getDemoAttachmentResource(resourceId);
+        }
+        // 引用解析：图片 → PNG base64；PDF → DocumentParser 解析文本
+        case 'vfs_resolve_resource_refs': {
+          const refs = Array.isArray(args.refs) ? args.refs : [];
+          return Promise.all(
+            refs.map(async (r) => {
+              const sourceId = String((r as { sourceId?: string })?.sourceId ?? '');
+              const resolved = await resolveDemoAttachmentRef(sourceId);
+              return (
+                resolved ?? {
+                  sourceId,
+                  resourceHash: '',
+                  type: 'file',
+                  name: sourceId,
+                  path: null,
+                  found: false,
+                  content: null,
+                  metadata: {},
+                }
+              );
+            }),
+          );
+        }
+        // PDF 预览：无本地 blob 路径 → usePdfLoader 回退 base64 整文件加载
+        case 'vfs_get_file_blob_path':
+          return null;
+        case 'vfs_get_attachment_content': {
+          const attachmentId = String(args.attachmentId ?? '');
+          return getDemoAttachmentContent(attachmentId) ?? { content: null, found: false };
+        }
+        // 右侧附件预览面板的节点信息
+        case 'dstu_get': {
+          const path = String(args.path ?? '');
+          return getDemoDstuNode(path);
+        }
+        // 发送前附件暂存（生产会把二进制材料化到任务对象存储；演示直通，
+        // 剧本后端不消费暂存结果，只要覆盖校验通过即可）
+        case 'chat_v2_stage_context_attachments': {
+          const items = Array.isArray(args.items)
+            ? (args.items as Array<{ resourceId?: string; sourceId?: string; displayName?: string }>)
+            : [];
+          return {
+            expectedItems: items.length,
+            observedItems: items.length,
+            coverageComplete: true,
+            truncated: false,
+            attachments: items.map((it) => ({
+              resourceId: String(it.resourceId ?? ''),
+              sourceId: String(it.sourceId ?? ''),
+              rootId: 'demo-root',
+              relativePath: `attachments/${String(it.sourceId ?? 'file')}`,
+              sizeBytes: 0,
+              sha256: 'demo',
+              reused: false,
+              objectHandle: {
+                schemaVersion: 1,
+                handleId: `demo-obj-${String(it.sourceId ?? '')}`,
+                kind: 'file',
+                displayName: String(it.displayName ?? ''),
+              },
+            })),
+            failures: [],
+          };
         }
 
         // ---------- App 启动链路的安全默认值 ----------

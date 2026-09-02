@@ -10,7 +10,6 @@
  * 重建，首轮播放照旧。
  */
 
-import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type {
   BackendBlock,
   BackendMessage,
@@ -24,11 +23,25 @@ export interface PlayedHistory {
 const playedHistory = new Map<string, PlayedHistory>();
 
 /**
+ * ⚠️ sessionManager 必须动态导入：本模块被 mockIpc 静态引用，而 mockIpc
+ * 在任何 app 模块之前加载（demo/main.tsx 的 import 提升语义）。若顶层
+ * 静态 import sessionManager，会把 resources/index.ts 等 app 模块提前
+ * 求值——其模块级 isTauriRuntime() 在 mockIPC 安装前执行为 false，
+ * resourceStoreApi 永远落进内存 mock（附件校验/预览链全断）。
+ */
+async function peekStore(sessionId: string) {
+  const { sessionManager } = await import(
+    '@/features/chat/core/session/sessionManager'
+  );
+  return sessionManager.peek(sessionId);
+}
+
+/**
  * 把会话当前 store 内容快照为后端形状。无内容 / store 已销毁时静默跳过。
  * 幂等：后一次快照整体覆盖前一次（同一 store 的全量状态）。
  */
-export function capturePlayedSnapshot(sessionId: string): void {
-  const store = sessionManager.peek(sessionId);
+export async function capturePlayedSnapshot(sessionId: string): Promise<void> {
+  const store = await peekStore(sessionId);
   if (!store) return;
   const state = store.getState();
   if (!state.messageOrder || state.messageOrder.length === 0) return;

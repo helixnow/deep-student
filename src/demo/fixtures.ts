@@ -21,7 +21,14 @@ import type {
   BackendMessage,
   SessionInfo,
 } from '@/features/chat/adapters/types';
+import type { ContextRef } from '@/features/chat/context/types';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
+import {
+  DEMO_IMAGE_ASSETS,
+  DEMO_PDF_NAME,
+  DEMO_PDF_RESOURCE_ID,
+  DEMO_PDF_SOURCE_ID,
+} from './attachmentAssets';
 
 /** 演示块定义：在生产 AutoReplyScenario 块的基础上加演示节奏字段 */
 export type DemoBlockDef = AutoReplyScenario['blocks'][number] & {
@@ -49,6 +56,12 @@ export interface DemoSessionFixture {
   followUp: DemoBlocks;
   /** 点进会话时自动播放的首条用户消息（经真实 sendMessage 链路发送） */
   autoPrompt?: string;
+  /**
+   * 首条消息携带的附件引用（autoPlay 在打字前经生产 addContextRef 注入
+   * pendingContextRefs，发送时由 store 打包进 _meta.contextSnapshot——
+   * 缩略图/文件 chip/点击预览全走真实链路）
+   */
+  attachmentRefs?: ContextRef[];
 }
 
 // ============================================================================
@@ -62,6 +75,8 @@ function makeFixture(opts: {
   minutesAgo: number;
   /** 进入会话后自动发送的第一条用户消息（经真实 sendMessage 链路） */
   autoPrompt: string;
+  /** 首条消息携带的附件引用（见 DemoSessionFixture.attachmentRefs） */
+  attachmentRefs?: ContextRef[];
   /** 自动播放的回复剧本（思维链 + 流式输出 + 工具块） */
   reply: DemoBlocks;
 }): DemoSessionFixture {
@@ -83,6 +98,7 @@ function makeFixture(opts: {
     blocks: [],
     followUp: opts.reply,
     autoPrompt: opts.autoPrompt,
+    attachmentRefs: opts.attachmentRefs,
   };
 }
 
@@ -271,7 +287,7 @@ const ANKI_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 200,
-    content: `用户给了三道高数错题。先去他的知识库看看错题本和教材里有没有相关记录，再定制卡策略。
+    content: `用户拍了三道高数错题照片。先识别照片里的题目，再去他的知识库看看错题本和教材里有没有相关记录，然后定制制卡策略。
 
 三道题的核心错因：
 1. 极限计算：等价无穷小误用于相减项
@@ -324,7 +340,7 @@ const ANKI_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 250,
-    content: `检索到你的教材和错题笔记了——错题 2 的「换元不换限」在你的错题本里**这个月已经出现过一次** [知识库-2]，这类错误必须单独成卡。
+    content: `三张错题照片都识别出来了。检索到你的教材和错题笔记——错题 2 的「换元不换限」在你的错题本里**这个月已经出现过一次** [知识库-2]，这类错误必须单独成卡。
 
 ## 错因定位
 
@@ -434,27 +450,27 @@ const PDF_REPLY: DemoBlocks = [
       sources: [
         {
           title: '机器学习系统.pdf · 第 3 章',
-          url: '/教材/机器学习系统.pdf',
+          url: '/上传/机器学习系统（第 3 章）·数据并行训练.pdf',
           snippet:
             '……数据并行将 mini-batch 切分到 K 个 worker，各自在完整模型副本上计算梯度，由参数服务器（Parameter Server）聚合后再广播更新值……',
           score: 0.93,
-          metadata: { pageIndex: 45, resourceId: 'tb_demo_mlsys', resourceType: 'textbook' },
+          metadata: { pageIndex: 45, resourceId: 'file_demo_mlsys', resourceType: 'file' },
         },
         {
           title: '机器学习系统.pdf · 第 3 章',
-          url: '/教材/机器学习系统.pdf',
+          url: '/上传/机器学习系统（第 3 章）·数据并行训练.pdf',
           snippet:
             '……同步随机梯度下降要求所有 worker 等待最慢的一步，straggler 效应使加速比随 worker 数增加而显著偏离线性……',
           score: 0.9,
-          metadata: { pageIndex: 47, resourceId: 'tb_demo_mlsys', resourceType: 'textbook' },
+          metadata: { pageIndex: 47, resourceId: 'file_demo_mlsys', resourceType: 'file' },
         },
         {
           title: '机器学习系统.pdf · 第 3 章',
-          url: '/教材/机器学习系统.pdf',
+          url: '/上传/机器学习系统（第 3 章）·数据并行训练.pdf',
           snippet:
             '……在通信受限场景下，梯度压缩（量化 / 稀疏化）与流水线并行是降低同步开销的两条主要路径……',
           score: 0.84,
-          metadata: { pageIndex: 52, resourceId: 'tb_demo_mlsys', resourceType: 'textbook' },
+          metadata: { pageIndex: 52, resourceId: 'file_demo_mlsys', resourceType: 'file' },
         },
       ],
     },
@@ -468,11 +484,11 @@ const PDF_REPLY: DemoBlocks = [
 
 ## 知识框架
 
-**① 基本范式**：mini-batch 切到 $K$ 个 worker，各自在完整模型副本上算梯度，参数服务器聚合后再广播 [PDF@tb_demo_mlsys:45]
+**① 基本范式**：mini-batch 切到 $K$ 个 worker，各自在完整模型副本上算梯度，参数服务器聚合后再广播 [PDF@file_demo_mlsys:45]
 
-**② 同步的代价**：同步 SGD 里所有人要等最慢的那个 worker（straggler 效应），worker 越多加速比越偏离线性 [PDF@tb_demo_mlsys:47]
+**② 同步的代价**：同步 SGD 里所有人要等最慢的那个 worker（straggler 效应），worker 越多加速比越偏离线性 [PDF@file_demo_mlsys:47]
 
-**③ 破局方向**：通信受限时做梯度压缩（量化 / 稀疏化），或者干脆换流水线并行的切分方式 [PDF@tb_demo_mlsys:52]
+**③ 破局方向**：通信受限时做梯度压缩（量化 / 稀疏化），或者干脆换流水线并行的切分方式 [PDF@file_demo_mlsys:52]
 
 整章的概念依赖我整理成了导图，可以直接缩放、拖动着看 ↓
 
@@ -752,7 +768,13 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     title: '高数错题 → Anki 卡片',
     description: '知识库检索 + 引用溯源，三道错题实时生成 5 张可交互卡片',
     minutesAgo: 3,
-    autoPrompt: '帮我把这三道高数错题整理成 Anki 卡片，重点突出每道题的易错点',
+    autoPrompt: '这三道高数错题我拍了照片传上来了，帮我整理成 Anki 卡片，重点突出每道题的易错点',
+    attachmentRefs: DEMO_IMAGE_ASSETS.map((img) => ({
+      resourceId: img.resourceId,
+      hash: `hash_${img.sourceId}`,
+      typeId: 'image',
+      displayName: img.name,
+    })),
     reply: ANKI_REPLY,
   }),
   makeFixture({
@@ -761,6 +783,14 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     description: 'PDF 页码引用 + 内嵌思维导图 + 挖空卡片',
     minutesAgo: 18,
     autoPrompt: '我上传的《机器学习系统》第 3 章讲的是数据并行训练，帮我梳理这章的知识框架，再出几张卡片',
+    attachmentRefs: [
+      {
+        resourceId: DEMO_PDF_RESOURCE_ID,
+        hash: `hash_${DEMO_PDF_SOURCE_ID}`,
+        typeId: 'file',
+        displayName: DEMO_PDF_NAME,
+      },
+    ],
     reply: PDF_REPLY,
   }),
   makeFixture({

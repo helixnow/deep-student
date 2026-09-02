@@ -171,11 +171,9 @@ export async function playReplyScript(opts: {
     // 把最终 消息+块 快照进演示内存库——本次访问内切走再切回不再重播，
     // 直接展示完成态（见 playedHistory.ts / mockIpc 的 load_session）。
     window.setTimeout(() => {
-      try {
-        capturePlayedSnapshot(sessionId);
-      } catch (e) {
+      void capturePlayedSnapshot(sessionId).catch((e) => {
         console.warn(LOG, 'snapshot failed:', e);
-      }
+      });
     }, 600);
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
