@@ -8,8 +8,10 @@
  * 只会"多显示"不会破坏功能，可安全增量补充。
  */
 
-/* 顶栏：命令面板入口（面板内全是已被拦截的导航命令） */
-.desktop-shell-toolbar-button {
+/* 顶栏：命令面板入口（面板内全是已被拦截的导航命令）。
+   注意排除 desktop-shell-accessory-button——侧栏开关按钮同属
+   toolbar-button 家族，必须保留。 */
+.desktop-shell-toolbar-button:not(.desktop-shell-accessory-button) {
   display: none !important;
 }
 

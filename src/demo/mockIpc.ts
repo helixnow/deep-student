@@ -17,10 +17,16 @@ import type {
   BackendMessage,
   SessionInfo,
 } from '@/features/chat/adapters/types';
-import { DEMO_MODEL_PROFILES, DEMO_SESSIONS, type DemoBlocks } from './fixtures';
+import { DEMO_MODEL_PROFILES, DEFAULT_FOLLOW_UP, DEMO_SESSIONS, type DemoBlocks } from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
 
 const LOG = '[demo-ipc]';
+
+/**
+ * 每个会话的专属剧本只首播一次；之后（含自由输入）走 DEFAULT_FOLLOW_UP 兜底。
+ * chat_v2_load_session 时重置——重进会话会重播第一答。
+ */
+const playedOnce = new Set<string>();
 
 // ============================================================================
 // 内存会话库
@@ -244,7 +250,10 @@ export function installDemoIpcMocks(): void {
 
         // ---------- 会话加载 ----------
         case 'chat_v2_load_session': {
-          const rec = sessionDb.get(String(args.sessionId ?? ''));
+          const sessionId = String(args.sessionId ?? '');
+          // 重进会话时重置首播标记（历史已重置为空，第一答会重播）
+          playedOnce.delete(sessionId);
+          const rec = sessionDb.get(sessionId);
           if (!rec) {
             console.warn(LOG, 'load_session for unknown session:', args.sessionId);
             return null;
@@ -273,9 +282,12 @@ export function installDemoIpcMocks(): void {
           };
           const rec = sessionDb.get(request.sessionId);
           touch(rec?.meta ?? ({} as SessionInfo));
-          const followUp = rec?.followUp?.length
+          // 首轮播放专属剧本（自动播放的第一答）；之后自由输入走兜底罐头回复
+          const firstPlay = !playedOnce.has(request.sessionId);
+          playedOnce.add(request.sessionId);
+          const followUp = firstPlay && rec?.followUp?.length
             ? rec.followUp
-            : DEMO_SESSIONS[0].followUp;
+            : DEFAULT_FOLLOW_UP;
           // 异步播放，立即返回 assistantMessageId（与真实后端一致）
           void playReplyScript({
             sessionId: request.sessionId,
@@ -304,7 +316,7 @@ export function installDemoIpcMocks(): void {
           void playReplyScript({
             sessionId,
             assistantMessageId,
-            blocks: rec?.followUp?.length ? rec.followUp : DEMO_SESSIONS[0].followUp,
+            blocks: DEFAULT_FOLLOW_UP,
           });
           return assistantMessageId;
         }
