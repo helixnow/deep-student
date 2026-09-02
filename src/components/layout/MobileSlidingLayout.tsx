@@ -3,7 +3,7 @@
  *
  * DeepSeek 风格：侧边栏、主视图、右侧面板连为一体，滑动时整体平移。
  * 顶栏嵌在主栏（及右屏）文档流里，跟着原页面一起走；侧栏自己全高，
- * 有独立铬层（DeepStudent + 设置），不被顶栏侵占。
+ * 有独立铬层（DeepStudent + 设置 + 二行三列应用入口），不被顶栏侵占。
  * 可选主内容遮罩，用于贴近 study-ui 抽屉式侧边栏
  * 支持触摸和鼠标拖拽
  *
@@ -894,7 +894,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                       data-mobile-drawer-chrome
                       className="shrink-0 border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]"
                     >
-                      <header className="flex h-11 items-center justify-between gap-3 px-3 pl-[calc(0.75rem+var(--mobile-safe-area-left,0px))]">
+                      <header className="flex h-11 items-center justify-between gap-3 px-3 pl-[calc(1rem+var(--mobile-safe-area-left,0px))]">
                         <div className="min-w-0 flex-1">
                           {drawerHeader ?? DEFAULT_DRAWER_BRAND}
                         </div>
@@ -928,15 +928,22 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                     <div data-mobile-drawer-page className="min-h-0">
                       {sidebar}
                     </div>
-                    {showSidebarAppNavigation && (
+                  </div>
+                  </CustomScrollArea>
+                  {/* 六宫格应用启动器：固定在所有侧栏（抽屉）底部，不随列表滚动。
+                      底部避让安全区；键盘弹出时由滚动区内层 padding 处理避让，
+                      启动器条保持钉在抽屉底缘 */}
+                  {showSidebarAppNavigation ? (
+                    <div
+                      data-mobile-drawer-launcher
+                      className="shrink-0 border-t border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] px-2 pt-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.25rem+var(--mobile-safe-area-bottom,0px))]"
+                    >
                       <MobileSidebarNavigation
-                        embedded
                         hideSettings
                         onNavigate={closeSidebarAfterAppNavigation}
                       />
-                    )}
-                  </div>
-                  </CustomScrollArea>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <div className="min-h-0 flex-1 overflow-hidden">{sidebar}</div>
