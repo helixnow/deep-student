@@ -2091,6 +2091,33 @@ impl ToolExecutor for MemoryToolExecutor {
 
         match result {
             Ok(output) => {
+                // 🔧 业务失败（顶层 success == false）必须映射为工具级失败：
+                // 否则 doom-loop 守卫、瞬时重试等失败保护全部被绕过，
+                // 模型会在"成功"假象下反复重试同一失败操作。
+                // 批处理结果数组内的 per-item success=false 不在此列。
+                let business_ok = output
+                    .get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if !business_ok {
+                    let message = output
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("memory operation failed")
+                        .to_string();
+                    ctx.emit_tool_call_error(&message);
+                    let mut info = ToolResultInfo::failure(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        message,
+                        duration_ms as u64,
+                    );
+                    // 保留完整 output 供 UI/审计；回传给模型的错误消息已含原因。
+                    info.output = output;
+                    return Ok(info);
+                }
                 ctx.emit_tool_call_end(Some(json!({
                     "result": output,
                     "durationMs": duration_ms,

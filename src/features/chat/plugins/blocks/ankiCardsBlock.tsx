@@ -2385,7 +2385,16 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     (error?: string | null) => {
       if (!error) return undefined;
       const translated = t(error, { defaultValue: '' });
-      return translated || error;
+      if (translated) return translated;
+      // 后端错误为 "i18n key: 可读细节" 形式（humanize_chatanki_error）时，
+      // 翻译 key 部分并保留细节文本。
+      const separator = error.indexOf(': ');
+      if (separator > 0) {
+        const keyPart = error.slice(0, separator);
+        const translatedKey = t(keyPart, { defaultValue: '' });
+        if (translatedKey) return `${translatedKey}: ${error.slice(separator + 2)}`;
+      }
+      return error;
     },
     [t]
   );

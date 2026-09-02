@@ -1511,7 +1511,8 @@ impl ToolExecutor for ChatAnkiToolExecutor {
 
         let stripped_name = strip_tool_namespace(&call.name).to_string();
 
-        match stripped_name.as_str() {
+        // i18n key 形式的错误统一追加可读描述后再上抛（详见 humanize_chatanki_error）。
+        let result = match stripped_name.as_str() {
             "chatanki_import_apkg" => self.execute_import_apkg(call, ctx, start_time).await,
             "chatanki_check_anki_connect" => {
                 self.execute_check_anki_connect(call, ctx, start_time).await
@@ -1564,7 +1565,8 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             "chatanki_start" => self.execute_start(call, ctx, start_time).await,
             "chatanki_run" => self.execute_run(call, ctx, start_time).await,
             _ => Err(format!("Unsupported chatanki tool: {}", stripped_name)),
-        }
+        };
+        result.map_err(humanize_chatanki_error)
     }
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
@@ -2393,7 +2395,7 @@ impl ChatAnkiToolExecutor {
                 results.push(json!({
                     "cardId": card_id,
                     "status": "invalid",
-                    "error": "blocks.ankiCards.errors.cardContentRequired",
+                    "error": "card_content_required",
                 }));
                 continue;
             }
@@ -2424,7 +2426,7 @@ impl ChatAnkiToolExecutor {
                     results.push(json!({
                         "cardId": card_id,
                         "status": "not_found",
-                        "error": "blocks.ankiCards.errors.statusNotFound",
+                        "error": "status_not_found",
                     }));
                 }
                 Err(error) => {
@@ -2640,7 +2642,7 @@ impl ChatAnkiToolExecutor {
                     results.push(json!({
                         "cardId": card_id,
                         "status": "not_found",
-                        "error": "blocks.ankiCards.errors.statusNotFound",
+                        "error": "status_not_found",
                     }));
                 }
                 Err(error) => {
@@ -9198,6 +9200,85 @@ fn finish_chatanki_success(
     result
 }
 
+/// chatanki 错误的人读化：UI 依赖 i18n key 做本地化（t(key)），因此保留
+/// key 本体、追加英文可读描述与修复建议，让 LLM 能看懂失败原因并修正调用，
+/// 而不是对着 "blocks.ankiCards.errors.statusNotFound" 盲目重试。
+/// 前端 resolveChatAnkiError 按 "key: detail" 形式拆分翻译。
+fn humanize_chatanki_error(error: String) -> String {
+    const PREFIX: &str = "blocks.ankiCards.errors.";
+    let Some(key) = error.strip_prefix(PREFIX) else {
+        return error;
+    };
+    let message = match key {
+        "addArgsRequired" => {
+            "adding cards requires a documentId and 1-100 cards in the request"
+        }
+        "ankiConnectUnavailable" => {
+            "AnkiConnect is unavailable; ask the user to open Anki with the AnkiConnect add-on enabled, then retry"
+        }
+        "ankiSyncEmpty" => {
+            "no cards were imported into Anki; check that Anki is running, the note type exists, and card fields are non-empty"
+        }
+        "cardContentRequired" => {
+            "each card must have a non-empty front/back or non-empty cloze text"
+        }
+        "contextRefInvalid" => {
+            "the attachment reference is invalid; remove and re-add the attachment before retrying"
+        }
+        "databaseUnavailable" => {
+            "the card database is currently unavailable; wait and retry later instead of repeating immediately"
+        }
+        "documentIdRequired" => {
+            "missing documentId; supply the card-generation document id"
+        }
+        "generationFailed" => {
+            "card generation failed with no usable cards produced; check the model configuration or the error details"
+        }
+        "missingClozeNoteType" => {
+            "Anki is missing the Cloze note type; ask the user to create it in Anki first"
+        }
+        "noContent" => {
+            "no content available for card generation; provide text or upload a file first"
+        }
+        "pipelineTimeout" => {
+            "generation took too long and automatic updates stopped; query later with chatanki_status or regenerate"
+        }
+        "retemplateSelectorRequired" => {
+            "retemplate requires exactly one of documentId or cardIds"
+        }
+        "reviewSelectorRequired" => {
+            "enqueueing a review requires exactly one of documentId or cardIds"
+        }
+        "startFailed" => {
+            "failed to start card generation; retry or adjust the template/settings"
+        }
+        "statusNotFound" => {
+            "no card task found for the given id; do not retry the same id - call chatanki_status to list current tasks"
+        }
+        "templateDatabaseUnavailable" => {
+            "the template database is currently unavailable; retry later"
+        }
+        "templateLoadFailed" => {
+            "failed to load the template; retry or re-import the template"
+        }
+        "templateNotFound" => {
+            "template not found; choose another template or import it first"
+        }
+        "updateArgsRequired" => {
+            "updating a card requires cardId, expectedVersion and at least one modified field"
+        }
+        "waitInvalidArgs" => "chatanki_wait requires ankiBlockId or documentId",
+        "waitNotFound" => {
+            "no card block found yet; wait a moment or call chatanki_status with the documentId"
+        }
+        "waitTimeout" => {
+            "waiting timed out; query later with chatanki_status or retry with a longer timeout"
+        }
+        _ => "unrecognized chatanki error code",
+    };
+    format!("{PREFIX}{key}: {message}")
+}
+
 fn finish_chatanki_failure(
     call: &ToolCall,
     ctx: &ExecutionContext,
@@ -9205,6 +9286,7 @@ fn finish_chatanki_failure(
     error: String,
 ) -> ToolResultInfo {
     let duration_ms = start_time.elapsed().as_millis() as u64;
+    let error = humanize_chatanki_error(error);
     ctx.emit_tool_call_error(&error);
     let result = ToolResultInfo::failure(
         Some(call.id.clone()),
@@ -9924,7 +10006,7 @@ fn retemplate_rejection_payload(result: AnkiRetemplateBatchResult) -> Value {
         }
         AnkiRetemplateBatchResult::OwnershipRejected => json!({
             "status": "rejected",
-            "error": "blocks.ankiCards.errors.statusNotFound",
+            "error": "status_not_found",
             "mutationApplied": false,
             "retryable": false,
         }),
@@ -11507,6 +11589,25 @@ mod tests {
     use crate::models::{DocumentTask, TaskStatus};
     use crate::vfs::types::{VfsContextRefData, VfsResourceRef, VfsResourceType};
     use tempfile::tempdir;
+
+    #[test]
+    fn humanize_chatanki_error_appends_readable_detail_after_key() {
+        let humanized = humanize_chatanki_error(
+            "blocks.ankiCards.errors.statusNotFound".to_string(),
+        );
+        // key 保留（前端按 key 本地化），可读描述在后（LLM 据此修正调用）
+        assert!(humanized.starts_with("blocks.ankiCards.errors.statusNotFound: "));
+        assert!(humanized.contains("chatanki_status"));
+
+        let humanized = humanize_chatanki_error(
+            "blocks.ankiCards.errors.ankiConnectUnavailable".to_string(),
+        );
+        assert!(humanized.contains("AnkiConnect is unavailable"));
+
+        // 非 key 形式的错误原样透传
+        let plain = "some other failure".to_string();
+        assert_eq!(humanize_chatanki_error(plain.clone()), plain);
+    }
 
     fn make_task(status: TaskStatus) -> DocumentTask {
         DocumentTask {

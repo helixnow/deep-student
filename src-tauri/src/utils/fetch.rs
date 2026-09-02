@@ -1,54 +1,17 @@
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
 use std::collections::HashMap;
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::time::Duration;
 
+// SSRF 判定使用全库正源 crate::browser::policy：内网封锁但放行回环
+// （本地图片服务如 ComfyUI/A1111 是合法的 LLM 载荷来源）。
+use crate::browser::policy::is_blocked_internal_ip;
+
 static CACHE: LazyLock<Mutex<HashMap<String, (Vec<u8>, Option<String>)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn is_blocked_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.is_unspecified()
-                || v4.is_multicast()
-                || v4.octets() == [255, 255, 255, 255]
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_multicast()
-                // unique local (fc00::/7)
-                || (v6.segments()[0] & 0xfe00) == 0xfc00
-                // link-local unicast (fe80::/10)
-                || (v6.segments()[0] & 0xffc0) == 0xfe80
-                // site-local (fec0::/10, deprecated but still risky)
-                || (v6.segments()[0] & 0xffc0) == 0xfec0
-                // IPv4-mapped IPv6 addresses
-                || v6
-                    .to_ipv4_mapped()
-                    .map(|v4| {
-                        v4.is_private()
-                            || v4.is_loopback()
-                            || v4.is_link_local()
-                            || v4.is_unspecified()
-                            || v4.is_multicast()
-                            || v4.octets() == [255, 255, 255, 255]
-                    })
-                    .unwrap_or(false)
-        }
-    }
-}
-
-fn is_localhost_host(host: &str) -> bool {
-    let normalized = host.trim_end_matches('.').to_ascii_lowercase();
-    normalized == "localhost" || normalized.ends_with(".localhost")
-}
 
 fn is_safe_remote_url(url: &str) -> bool {
     let parsed = match reqwest::Url::parse(url) {
@@ -64,13 +27,14 @@ fn is_safe_remote_url(url: &str) -> bool {
         Some(value) => value,
         None => return false,
     };
+    // url crate 对 IPv6 host 的序列化带方括号（"[::1]"），剥离后再解析。
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
 
-    if is_localhost_host(host) {
-        return false;
-    }
-
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        return !is_blocked_ip(&ip);
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return !is_blocked_internal_ip(&ip);
     }
 
     let port = match parsed.port_or_known_default() {
@@ -88,7 +52,7 @@ fn is_safe_remote_url(url: &str) -> bool {
     }
 
     for addr in resolved_addrs {
-        if is_blocked_ip(&addr.ip()) {
+        if is_blocked_internal_ip(&addr.ip()) {
             return false;
         }
     }
@@ -148,15 +112,17 @@ mod tests {
     }
 
     #[test]
-    fn blocks_localhost_hosts() {
-        assert!(!is_safe_remote_url("http://localhost/image.png"));
-        assert!(!is_safe_remote_url("http://localhost./image.png"));
-        assert!(!is_safe_remote_url("https://api.localhost/image.png"));
+    fn allows_loopback_hosts() {
+        // 本地图片/插件服务（ComfyUI、本地桥接等）是合法来源
+        assert!(is_safe_remote_url("http://localhost/image.png"));
+        assert!(is_safe_remote_url("http://localhost./image.png"));
+        assert!(is_safe_remote_url("https://api.localhost/image.png"));
+        assert!(is_safe_remote_url("http://127.0.0.1/image.png"));
+        assert!(is_safe_remote_url("http://[::1]/image.png"));
     }
 
     #[test]
     fn blocks_private_and_link_local_ipv4() {
-        assert!(!is_safe_remote_url("http://127.0.0.1/image.png"));
         assert!(!is_safe_remote_url("http://10.0.0.8/image.png"));
         assert!(!is_safe_remote_url("http://172.16.5.1/image.png"));
         assert!(!is_safe_remote_url("http://192.168.1.2/image.png"));
@@ -165,7 +131,6 @@ mod tests {
 
     #[test]
     fn blocks_local_ipv6_ranges() {
-        assert!(!is_safe_remote_url("http://[::1]/image.png"));
         assert!(!is_safe_remote_url("http://[fc00::1]/image.png"));
         assert!(!is_safe_remote_url("http://[fe80::1]/image.png"));
     }

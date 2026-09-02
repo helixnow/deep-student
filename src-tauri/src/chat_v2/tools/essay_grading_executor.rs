@@ -583,7 +583,23 @@ impl EssayGradingExecutor {
                 return Ok(payload);
             }
             if status == "error" || status == "cancelled" {
-                return Ok(state);
+                // 🔧 终态失败必须作为工具错误返回（而非 success=true 的 payload），
+                // 让 doom-loop 守卫等失败保护生效；失败原因随错误消息回传模型。
+                // 注意：timeout 不算失败——等待超时是设计内的轮询节奏，可再次调用。
+                let detail = state.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                return Err(format!(
+                    "批改任务{}{}",
+                    if status == "error" {
+                        "失败"
+                    } else {
+                        "已取消"
+                    },
+                    if detail.is_empty() {
+                        "。".to_string()
+                    } else {
+                        format!("：{}", detail)
+                    },
+                ));
             }
 
             if Instant::now() >= deadline {

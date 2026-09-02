@@ -135,8 +135,8 @@ struct CapabilityAllocation {
 }
 
 impl CapabilityAllocation {
-    fn internet_client() -> Result<Self, String> {
-        let name = wide("internetClient");
+    fn from_name(name: &str) -> Result<Self, String> {
+        let name = wide(name);
         let mut allocation = Self {
             group_sids: null_mut(),
             group_count: 0,
@@ -850,15 +850,24 @@ fn run_payload(
     if is_cancelled(cancellation_event) {
         return Ok(124);
     }
-    let capability_allocation = payload
-        .policy
-        .allow_network
-        .then(CapabilityAllocation::internet_client)
-        .transpose()?;
-    let capabilities = capability_allocation
-        .as_ref()
-        .map(CapabilityAllocation::attributes)
-        .unwrap_or_default();
+    let capability_allocations = if payload.policy.allow_network {
+        // internetClient 放行公网；privateNetworkClientServer 放行私网/本机
+        // 网络服务（AppContainer 默认连私网一并隔离）。注意：严格的
+        // 127.0.0.1 loopback 豁免需要 CheckNetIsolation LoopbackExempt +
+        // PackageFamilyName，临时 AppContainer 没有包族无法注册——
+        // 必须访问 127.0.0.1 的场景请走完全信任档（非沙箱通道）。
+        let mut allocations = Vec::new();
+        for name in ["internetClient", "privateNetworkClientServer"] {
+            allocations.push(CapabilityAllocation::from_name(name)?);
+        }
+        allocations
+    } else {
+        Vec::new()
+    };
+    let capabilities: Vec<SID_AND_ATTRIBUTES> = capability_allocations
+        .iter()
+        .flat_map(CapabilityAllocation::attributes)
+        .collect();
     let profile = create_profile(&payload.profile_name, &capabilities)?;
     let changed_paths = grant_policy(&payload.policy, profile.sid)?;
     let result = if is_cancelled(cancellation_event) {

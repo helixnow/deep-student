@@ -14,7 +14,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::{Cursor, Write};
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -30,6 +30,9 @@ use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 use tauri::Manager;
 
+// SSRF 判定统一使用全库正源 crate::browser::policy（回环放行、私网/元数据封锁），
+// 避免多份实现漂移。is_internal_ip 保留原名导入以兼容本文件测试。
+use crate::browser::policy::{is_blocked_internal_ip, is_internal_ip};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::artifact_root;
@@ -313,76 +316,12 @@ where
 // 模块级辅助函数
 // ============================================================================
 
-/// SSRF 防护：检查 IP 是否为内网地址
-///
-/// 阻止访问以下地址：
-/// - localhost / 127.0.0.1 (loopback)
-/// - 私有 IP (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
-/// - 链路本地地址 (169.254.x.x)
-/// - 云元数据端点 (169.254.169.254)
-/// - IPv6 唯一本地地址 (fc00::/7)
-/// - IPv6 链路本地地址 (fe80::/10)
-/// - IPv6 Site-local (fec0::/10) - 已废弃但部分系统仍支持
-/// - 6to4 地址 (2002::/16) - 封装 IPv4，检查封装的 IPv4
-/// - IPv4 映射的 IPv6 地址中的私有地址
-fn is_internal_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ipv4) => {
-            ipv4.is_loopback() ||
-            ipv4.is_private() ||
-            ipv4.is_link_local() ||
-            // 云元数据端点 (AWS/GCP/Azure)
-            ipv4.octets() == [169, 254, 169, 254]
-        }
-        IpAddr::V6(ipv6) => {
-            ipv6.is_loopback() ||
-            // 唯一本地地址 (fc00::/7) - 类似 IPv4 私有地址
-            (ipv6.segments()[0] & 0xfe00) == 0xfc00 ||
-            // 链路本地地址 (fe80::/10)
-            (ipv6.segments()[0] & 0xffc0) == 0xfe80 ||
-            // Site-local (fec0::/10) - 已废弃但部分系统仍支持
-            (ipv6.segments()[0] & 0xffc0) == 0xfec0 ||
-            // 6to4 (2002::/16) - 封装 IPv4，检查封装的 IPv4 是否私有
-            (ipv6.segments()[0] == 0x2002 && {
-                let embedded_v4 = Ipv4Addr::new(
-                    (ipv6.segments()[1] >> 8) as u8,
-                    (ipv6.segments()[1] & 0xff) as u8,
-                    (ipv6.segments()[2] >> 8) as u8,
-                    (ipv6.segments()[2] & 0xff) as u8,
-                );
-                embedded_v4.is_private() || embedded_v4.is_loopback() || embedded_v4.is_link_local() ||
-                embedded_v4.octets() == [169, 254, 169, 254]
-            }) ||
-            // IPv4 映射地址 (::ffff:x.x.x.x) - 检查映射的 IPv4 是否为私有
-            ipv6.to_ipv4_mapped().map(|v4| {
-                v4.is_private() || v4.is_loopback() || v4.is_link_local() ||
-                v4.octets() == [169, 254, 169, 254]
-            }).unwrap_or(false)
-        }
-    }
-}
-
-/// 回环地址判定（127.0.0.0/8、::1、IPv4-mapped loopback）。
-/// 本地服务（本地 MCP 桥、插件服务、开发服务器等）是桌面 Agent 的合法
-/// 抓取目标——业界 WebFetch 类工具均不对 loopback 做 SSRF 式封禁；
-/// 私网网段与云元数据端点（169.254.169.254）仍然封锁。
-fn is_loopback_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => v4.is_loopback(),
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6
-                    .to_ipv4_mapped()
-                    .map(|v4| v4.is_loopback())
-                    .unwrap_or(false)
-        }
-    }
-}
-
-/// SSRF 拦截判定：内网地址且非回环。
-fn is_blocked_internal_ip(ip: &IpAddr) -> bool {
-    is_internal_ip(ip) && !is_loopback_ip(ip)
-}
+/// SSRF 防护说明：内网判定统一走 `crate::browser::policy` 正源
+/// （`is_internal_ip` / `is_blocked_internal_ip`），规则：
+/// - 放行 loopback（本地 MCP 桥 / 插件 / 开发服务器是合法抓取目标）
+/// - 封锁私有 IP (10.x/8, 172.16-31.x, 192.168.x.x)、链路本地、
+///   云元数据端点 (169.254.169.254)、IPv6 ULA/link-local/site-local、
+///   6to4 与 IPv4-mapped 中的内网嵌入地址、CGNAT 等非全域路由地址
 
 fn validate_public_url_target(url: &reqwest::Url) -> Result<(), String> {
     if !matches!(url.scheme(), "http" | "https") {

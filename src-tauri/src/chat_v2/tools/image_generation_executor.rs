@@ -617,6 +617,28 @@ async fn download_image_url(
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("生图 URL 只支持 http/https".to_string());
     }
+    // 🔒 SSRF 防护补齐（与 fetch_executor 同一正源判定）：私网/云元数据
+    // 封锁，回环放行（本地生图服务如 ComfyUI/A1111 是合法来源）。
+    {
+        use std::net::ToSocketAddrs;
+        let host = parsed.host_str().ok_or("生图 URL 缺少 host")?;
+        let port = parsed
+            .port()
+            .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+        let addrs: Vec<_> = (host, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("生图 URL DNS 解析失败: {}", e))?
+            .collect();
+        if addrs.is_empty()
+            || addrs
+                .iter()
+                .any(|addr: &std::net::SocketAddr| {
+                    crate::browser::policy::is_blocked_internal_ip(&addr.ip())
+                })
+        {
+            return Err("生图 URL 指向被封锁的内网地址".to_string());
+        }
+    }
 
     let response = client
         .get(parsed)

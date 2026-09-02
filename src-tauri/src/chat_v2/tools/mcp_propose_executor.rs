@@ -29,22 +29,12 @@ pub mod tool_names {
 pub(crate) const ENV_PLACEHOLDER: &str = "<REQUIRED>";
 const STDIO_TEST_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// 判断 URL 的 host 是否为本地回环（localhost / *.localhost / 127.0.0.0/8 / ::1）。
+/// 判断 URL 的 host 是否为本地回环（复用全库正源 browser::policy）。
 fn url_host_is_loopback(url: &str) -> bool {
-    let Ok(parsed) = reqwest::Url::parse(url) else {
-        return false;
-    };
-    let Some(host) = parsed.host_str() else {
-        return false;
-    };
-    // url crate 对 IPv6 host 的序列化带方括号（"[::1]"），剥离后再解析。
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    if host.eq_ignore_ascii_case("localhost") || host.to_ascii_lowercase().ends_with(".localhost")
-    {
-        return true;
-    }
-    host.parse::<std::net::IpAddr>()
-        .map(|ip| ip.is_loopback())
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_string))
+        .map(|host| crate::browser::policy::is_loopback_host(&host))
         .unwrap_or(false)
 }
 const REMOTE_TEST_TIMEOUT: Duration = Duration::from_secs(30);

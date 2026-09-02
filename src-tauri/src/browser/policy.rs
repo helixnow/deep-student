@@ -64,7 +64,7 @@ fn is_loopback_url_host(url: &Url) -> bool {
     }
 }
 
-fn is_loopback_ip(ip: &IpAddr) -> bool {
+pub fn is_loopback_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_loopback(),
         IpAddr::V6(v6) => {
@@ -75,6 +75,14 @@ fn is_loopback_ip(ip: &IpAddr) -> bool {
                     .unwrap_or(false)
         }
     }
+}
+
+/// 统一的 SSRF 拦截判定（全库正源）：内网地址且非回环。
+/// 回环放行——本地服务（本地 MCP 桥、插件服务、开发服务器）是桌面 Agent
+/// 的合法访问目标，业界 WebFetch/MCP 客户端均不封禁 loopback；
+/// 私网网段、链路本地与云元数据端点仍然封锁。
+pub fn is_blocked_internal_ip(ip: &IpAddr) -> bool {
+    is_internal_ip(ip) && !is_loopback_ip(ip)
 }
 
 /// SSRF / Agent 私网硬拦：对齐 `chat_v2::tools::fetch_executor` 的 `is_internal_ip` 语义

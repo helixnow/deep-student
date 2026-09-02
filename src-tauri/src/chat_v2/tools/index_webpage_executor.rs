@@ -880,6 +880,25 @@ fn validate_web_url(value: &str) -> Result<(), String> {
             "must not contain embedded credentials",
         ));
     }
+    // 🔒 SSRF 防护补齐（此前只查 scheme/凭据）：与 fetch_executor 同一正源
+    // 判定——私网/链路本地/云元数据封锁，回环放行（本地文档站可索引）。
+    let host = parsed.host_str().unwrap_or_default();
+    let port = parsed
+        .port()
+        .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+    let addrs: Vec<_> = std::net::ToSocketAddrs::to_socket_addrs(&(host, port))
+        .map_err(|error| invalid_argument("url", format!("DNS resolution failed: {error}")))?
+        .collect();
+    if addrs.is_empty()
+        || addrs
+            .iter()
+            .any(|addr| crate::browser::policy::is_blocked_internal_ip(&addr.ip()))
+    {
+        return Err(invalid_argument(
+            "url",
+            "resolves to a blocked internal IP address",
+        ));
+    }
     Ok(())
 }
 
