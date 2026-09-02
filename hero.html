@@ -74,6 +74,20 @@
         background: color-mix(in hsl, var(--accent) 20%, transparent);
       }
 
+      /* 分页容器：桌面端复刻原 body 的 flex 布局（视觉零变化）；
+         手机端由 JS 分页器用 transform 整屏平移（见末尾媒体查询） */
+      .pages {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 100dvh;
+      }
+
+      /* 分页圆点：桌面不显示 */
+      .pager-dots {
+        display: none;
+      }
+
       /* 稿纸方格：错题本/演算纸的肌理，边缘用径向渐隐收住。
          也是玻璃折射的"被摄物"——静止时透镜边沿把格线弯折，让玻璃在素底上仍可读。 */
       body::before {
@@ -502,11 +516,22 @@
         :root {
           --stage-w: 100%;
         }
-        /* 整屏分页由页面底部内联 JS 实现（自由滚动 + 停稳后就近吸附，
-           每次手势最多翻一屏）。不要用 CSS scroll-snap mandatory——它与触屏
-           惯性/iframe 嵌套滚动打架：手势中途 re-snap 会"先回弹一下再继续"，
-           链式滚动中 snap-stop 也拦不住惯性过头。 */
-        /* 刊头改为 absolute 随题辞屏滚走（fixed/悬浮会压住演示屏左上角）。
+        /* 关闭原生滚动：页面不再有惯性/链接滚动，手势完全由 JS 分页器接管
+           （translate3d 整屏平移，跟手 + 抬手翻屏）。这从根源上消除
+           自由滚动方案的"滚动过头再拉回"与 CSS 磁吸方案的"中途回弹"。 */
+        html,
+        body {
+          overflow: hidden;
+          overscroll-behavior: none;
+        }
+        .pages {
+          position: relative; /* 刊头 absolute 的包含块 */
+          transition: transform 0.38s cubic-bezier(0.22, 0.8, 0.3, 1);
+        }
+        .pages.no-anim {
+          transition: none; /* 跟手拖动期间禁用过渡 */
+        }
+        /* 刊头改为 absolute 随题辞屏一起走（fixed/悬浮会压住演示屏左上角）。
            整屏分页下停驻点只有整屏：题辞屏刊头在位，演示屏完全无遮挡。 */
         .masthead {
           position: absolute;
@@ -514,6 +539,43 @@
           left: 0;
           right: 0;
           padding-top: 10px;
+        }
+        /* 分页圆点：演示屏内滑动手势由应用 iframe 消费（到不了父页面），
+           翻屏靠壳体边缘条手势或这组圆点 */
+        .pager-dots {
+          position: fixed;
+          right: 3px;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 30;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .pager-dots button {
+          width: 16px;
+          height: 16px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .pager-dots button::before {
+          content: '';
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: color-mix(in srgb, var(--ink) 28%, transparent);
+          transition:
+            background 200ms ease,
+            transform 200ms ease;
+        }
+        .pager-dots button.on::before {
+          background: var(--ink);
+          transform: scale(1.3);
         }
         /* 第一屏：题辞垂直居中 */
         .hero {
@@ -611,6 +673,7 @@
   </head>
 
   <body>
+    <div class="pages" id="pages">
     <header class="masthead">
       <div class="masthead-inner">
         <span class="pill glass" data-glass="bar">
@@ -653,6 +716,15 @@
         <a href="https://github.com/helixnow/deep-student">GitHub</a>
       </nav>
     </footer>
+    </div>
+
+    <!-- 分页圆点（仅手机模式显示）：演示屏内滑动手势由应用消费，
+         页面翻屏靠边缘条手势或这里的圆点 -->
+    <nav class="pager-dots" aria-label="分页导航">
+      <button type="button" data-i="0" aria-label="题辞"></button>
+      <button type="button" data-i="1" aria-label="实时演示"></button>
+      <button type="button" data-i="2" aria-label="站点信息"></button>
+    </nav>
 
     <script>
       (function () {
@@ -697,68 +769,139 @@
         if (mqPhone.addEventListener) mqPhone.addEventListener('change', fit);
         fit();
 
-        /* ================= 手机端整屏分页 =================
-           自由滚动 + 停稳后就近吸附。为什么不用 CSS scroll-snap mandatory：
-           它与触屏惯性/iframe 嵌套滚动打架——手势中途 re-snap 造成
-           "先回弹一下再继续"，链式滚动里 snap-stop 也拦不住惯性过头。
-           这里手势期间完全不干预（没有东西跟手指打架），等滚动静止后
-           再 smooth 吸附；且以手势起点所在屏为基准，每次手势最多翻一屏，
-           惯性再大也只停在相邻屏。只在真实触屏设备上启用（窄桌面窗口
-           里鼠标/触控板保持自由滚动）。 */
+        /* ================= 手机端整屏分页（transform 分页器） =================
+           手机模式下原生滚动已关（overflow:hidden），页面没有任何惯性/链接
+           滚动——手势完全由本分页器接管：跟手平移（边界橡皮筋 0.35 阻尼），
+           抬手按位移阈值（56px）或速度（0.35px/ms）翻一屏。每次手势最多
+           翻一屏，没有惯性链，从根源上没有"过头再拉回"。
+           前两代方案的病历：CSS scroll-snap mandatory 在触屏上与惯性/iframe
+           嵌套滚动打架（中途 re-snap 回弹、snap-stop 拦不住过头）；
+           自由滚动+停稳吸附则是"过头再拉回"的形态。两者都已废弃。
+           注意：演示屏内 iframe 的触摸事件到不了父页面（应用照常滚动），
+           演示屏的翻屏入口 = 壳体 12px 边缘条手势 / 右侧分页圆点。 */
         (function () {
+          var pages = document.getElementById('pages');
+          var heroEl = document.querySelector('.hero');
           var stageEl = document.querySelector('.stage');
-          var hasTouch = false;
-          var touching = false;
-          var gestureStartY = 0;
-          var settleTimer = 0;
+          var colophonEl = document.querySelector('.colophon');
+          var dots = Array.prototype.slice.call(document.querySelectorAll('.pager-dots button'));
+          var idx = 0;
+          var dragging = false;
+          var startY = 0;
+          var startT = 0;
+          var baseY = 0;
 
-          function nearestIndex(stops, v) {
-            var best = 0;
-            for (var i = 1; i < stops.length; i++) {
-              if (Math.abs(stops[i] - v) < Math.abs(stops[best] - v)) best = i;
+          /* 手机模式下原生滚动必须恒为 0：overflow:hidden 只挡用户滚动，
+             浏览器 reload 的滚动恢复/程序化 scrollTo 仍会改 scrollY，
+             它会与 transform 叠加把内容推出视口。 */
+          function resetNativeScroll() {
+            if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+          }
+
+          // 三屏停驻位：题辞顶 / 演示顶 / 版权行贴底（等价 snap-align:end）
+          function positions() {
+            var demoTop = heroEl.offsetHeight;
+            var total = heroEl.offsetHeight + stageEl.offsetHeight + colophonEl.offsetHeight;
+            var endTop = Math.max(demoTop, total - window.innerHeight);
+            return [0, demoTop, endTop];
+          }
+
+          function render(y) {
+            pages.style.transform = 'translate3d(0,' + -y + 'px,0)';
+          }
+
+          function go(i, animate) {
+            var pos = positions();
+            idx = Math.max(0, Math.min(pos.length - 1, i));
+            resetNativeScroll();
+            pages.classList.toggle('no-anim', animate === false);
+            if (animate !== false) {
+              void pages.offsetHeight; // 确保过渡类状态已应用再改 transform
             }
-            return best;
-          }
-
-          function settle() {
-            if (touching || !hasTouch || !mqPhone.matches) return;
-            var stageTop = stageEl.offsetTop;
-            var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-            var stops = [0, stageTop, maxY];
-            var from = nearestIndex(stops, gestureStartY);
-            // 只允许：停在原屏 / 上一屏 / 下一屏（每次手势最多翻一屏）
-            var allowed = [stops[from]];
-            if (from > 0) allowed.push(stops[from - 1]);
-            if (from < stops.length - 1) allowed.push(stops[from + 1]);
-            var target = allowed[nearestIndex(allowed, window.scrollY)];
-            if (Math.abs(window.scrollY - target) > 4) {
-              window.scrollTo({ top: target, behavior: 'smooth' });
+            render(pos[idx]);
+            for (var j = 0; j < dots.length; j++) {
+              dots[j].classList.toggle('on', j === idx);
             }
           }
 
-          function scheduleSettle() {
-            clearTimeout(settleTimer);
-            settleTimer = setTimeout(settle, 140);
+          pages.addEventListener('touchstart', function (e) {
+            if (!mqPhone.matches || !e.touches.length) return;
+            dragging = true;
+            startY = e.touches[0].clientY;
+            startT = Date.now();
+            baseY = positions()[idx];
+            pages.classList.add('no-anim');
+          }, { passive: true });
+
+          pages.addEventListener('touchmove', function (e) {
+            if (!dragging) return;
+            var pos = positions();
+            var maxY = pos[pos.length - 1];
+            var y = baseY - (e.touches[0].clientY - startY);
+            if (y < 0) y *= 0.35; // 边界橡皮筋
+            else if (y > maxY) y = maxY + (y - maxY) * 0.35;
+            render(y);
+          }, { passive: true });
+
+          function endDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            var t = e.changedTouches && e.changedTouches[0];
+            var d = t ? t.clientY - startY : 0;
+            var v = Math.abs(d) / Math.max(1, Date.now() - startT);
+            var step = Math.abs(d) > 56 || v > 0.35 ? (d < 0 ? 1 : -1) : 0;
+            go(idx + step);
+          }
+          pages.addEventListener('touchend', endDrag, { passive: true });
+          pages.addEventListener('touchcancel', function () {
+            if (!dragging) return;
+            dragging = false;
+            go(idx);
+          }, { passive: true });
+
+          // 窄桌面窗口（无触屏）用滚轮翻屏
+          var wheelAcc = 0;
+          var wheelLock = 0;
+          window.addEventListener('wheel', function (e) {
+            if (!mqPhone.matches) return;
+            var now = Date.now();
+            if (now < wheelLock) return;
+            wheelAcc += e.deltaY;
+            if (Math.abs(wheelAcc) > 48) {
+              go(idx + (wheelAcc > 0 ? 1 : -1));
+              wheelAcc = 0;
+              wheelLock = now + 550;
+            }
+          }, { passive: true });
+
+          for (var k = 0; k < dots.length; k++) {
+            (function (d) {
+              d.addEventListener('click', function () { go(+d.getAttribute('data-i')); });
+            })(dots[k]);
           }
 
-          window.addEventListener('touchstart', function () {
-            hasTouch = true;
-            touching = true;
-            gestureStartY = window.scrollY;
-            clearTimeout(settleTimer);
-          }, { passive: true });
-          window.addEventListener('touchend', function () {
-            touching = false;
-            scheduleSettle();
-          }, { passive: true });
-          window.addEventListener('touchcancel', function () {
-            touching = false;
-            scheduleSettle();
-          }, { passive: true });
-          // 惯性段：touch 已抬起但页面仍在滚动——等它静止再吸附
-          window.addEventListener('scroll', function () {
-            if (!touching && hasTouch) scheduleSettle();
-          }, { passive: true });
+          // 尺寸变化（旋转/地址栏/窄桌面拖宽）保持当前屏对齐
+          window.addEventListener('resize', function () {
+            if (mqPhone.matches) go(idx, false);
+          });
+          if (mqPhone.addEventListener) {
+            mqPhone.addEventListener('change', function (e) {
+              if (!e.matches) {
+                idx = 0;
+                pages.style.transform = ''; // 回桌面模式：还原原生滚动态
+                if ('scrollRestoration' in history) history.scrollRestoration = 'auto';
+              } else {
+                if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+                resetNativeScroll();
+                go(idx, false);
+              }
+            });
+          }
+          if (mqPhone.matches) {
+            if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+            resetNativeScroll();
+            go(0, false);
+          }
         })();
       })();
 
