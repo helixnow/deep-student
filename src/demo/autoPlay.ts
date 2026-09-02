@@ -1,13 +1,13 @@
 /**
  * Web 演示壳 - 自动播放驱动
  *
- * 点进剧本会话后自动播放一轮追问：经真实 store.sendMessage 链路发送
- * 该会话的 autoPrompt（用户气泡照常上屏），mock 的 chat_v2_send_message
- * 随即把 followUp 剧本（思维链 + 流式输出）推给真实 adapter 渲染。
+ * 点进剧本<|sep|>后自动播放首轮问答：先把该<|sep|>的 autoPrompt 逐字"打"进
+ * 空态的真实输入框（打字机动画，观感像真人在操作），停顿一拍后点击真实
+ * 发送按钮；mock 的 chat_v2_send_message 随即把第一答剧本（思维链 +
+ * 流式输出）推给真实 adapter 渲染——全程 100% 生产链路。
  *
  * 触发时机：sessionManager 的 current-session-changed 事件（含初次自动导航）。
- * 重进同一会话会重新播放——历史在 load_session 时重置为静态剧本，
- * 自动播放的上一轮本就不会残留，重播恰好与之一致。
+ * 重进同一会话会重新播放——历史在 load_session 时重置为空，播放与之一致。
  */
 
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
@@ -17,16 +17,41 @@ import { abortScript } from './scriptPlayer';
 
 const LOG = '[demo-autoplay]';
 
-/** 进入<|sep|>后留出看清<|sep|>内容的节拍，再自动发问 */
-const ENTRY_DELAY_MS = 1000;
+/** 进入<|sep|>后先让空态输入框亮相的节拍，再开始打字 */
+const PRE_TYPE_DELAY_MS = 600;
+/** 逐字打字间隔（带轻微抖动更像真人） */
+const typeCharMs = () => 35 + Math.random() * 45;
+/** 打完字到点击发送之间的"看一眼"停顿 */
+const POST_TYPE_PAUSE_MS = 450;
 
 const isDemoSession = (sessionId: string) =>
   DEMO_SESSIONS.some((s) => s.meta.id === sessionId);
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+const findComposer = (): HTMLTextAreaElement | null =>
+  document.querySelector<HTMLTextAreaElement>('textarea[placeholder^="请输入"]') ??
+  document.querySelector<HTMLTextAreaElement>('textarea');
+
+/** 经原生 setter + input 事件写入，React 受控组件可正常感知 */
+const setComposerValue = (el: HTMLTextAreaElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+  setter?.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+const clearComposer = () => {
+  const el = findComposer();
+  if (el && el.value) setComposerValue(el, '');
+};
+
 /**
- * 清扫启动时应用自建的空草稿会话（ensureActiveChatSession 在首轮加载时
- * 创建，列表里显示为"未命名会话"的杂物）。删除后派发 sessions-updated
- * 让侧栏刷新。当前会话永不删除（守卫 s.id !== currentId）。
+ * 清扫启动时应用自建的空草稿<|sep|>（ensureActiveChatSession 在首轮加载时
+ * 创建，列表里显示为"未命名<|sep|>"的杂物）。删除后派发 sessions-updated
+ * 让侧栏刷新。当前<|sep|>永不删除（守卫 s.id !== currentId）。
  */
 const sweepDraftSessions = async (currentId: string): Promise<void> => {
   try {
@@ -51,39 +76,90 @@ const sweepDraftSessions = async (currentId: string): Promise<void> => {
 };
 
 export function installDemoAutoPlay(): void {
-  /** 单调递增令牌：切换<|sep|>时使上一个等待中的播放作废 */
+  /** 单调递增令牌：切换<|sep|>时使等待中/打字中的播放作废 */
   let ticket = 0;
   /** 上一个当前<|sep|>：离开时销毁其缓存 store（见下） */
   let previousId: string | null = null;
+
+  /** 逐字打字 → 点击真实发送按钮；任何时刻切走都会作废并清理残字 */
+  const typeAndSend = async (
+    sessionId: string,
+    prompt: string,
+    isStale: () => boolean,
+  ): Promise<void> => {
+    const store = sessionManager.peek(sessionId);
+    const directSend = () => {
+      clearComposer();
+      store?.getState().sendMessage(prompt, []).catch((e) => {
+        console.warn(LOG, 'auto-play send failed:', e);
+      });
+    };
+
+    // 等空态输入框挂载（<|sep|>切换后空态渲染需要一拍）
+    let ta = findComposer();
+    for (let i = 0; i < 20 && !ta; i += 1) {
+      await sleep(100);
+      ta = findComposer();
+    }
+    if (!ta || isStale()) {
+      if (!isStale()) directSend();
+      return;
+    }
+
+    ta.focus({ preventScroll: true });
+    for (let i = 1; i <= prompt.length; i += 1) {
+      if (isStale()) {
+        clearComposer();
+        return;
+      }
+      setComposerValue(ta, prompt.slice(0, i));
+      await sleep(typeCharMs());
+    }
+    await sleep(POST_TYPE_PAUSE_MS);
+    if (isStale()) {
+      clearComposer();
+      return;
+    }
+
+    const sendBtn = [...document.querySelectorAll('button')].find(
+      (b) =>
+        b.getAttribute('aria-label') === '发送消息' &&
+        !(b as HTMLButtonElement).disabled,
+    ) as HTMLButtonElement | undefined;
+    if (sendBtn) {
+      sendBtn.click();
+      console.info(LOG, `auto-play ${sessionId}: ${prompt}`);
+    } else {
+      directSend();
+    }
+  };
 
   const maybePlay = (sessionId: string) => {
     const fixture = DEMO_SESSIONS.find((s) => s.meta.id === sessionId);
     if (!fixture?.autoPrompt) return;
 
     const myTicket = ++ticket;
-    window.setTimeout(() => {
-      if (myTicket !== ticket) return;
-      if (sessionManager.getCurrentSessionId() !== sessionId) return;
+    const isStale = () =>
+      myTicket !== ticket ||
+      sessionManager.getCurrentSessionId() !== sessionId;
 
+    window.setTimeout(() => {
+      if (isStale()) return;
       const store = sessionManager.peek(sessionId);
       if (!store) return;
       const status = store.getState().sessionStatus;
       if (status === 'streaming' || status === 'sending') return;
-
-      console.info(LOG, `auto-play ${sessionId}: ${fixture.autoPrompt}`);
-      store.getState().sendMessage(fixture.autoPrompt, []).catch((e) => {
-        console.warn(LOG, 'auto-play send failed:', e);
-      });
-    }, ENTRY_DELAY_MS);
+      void typeAndSend(sessionId, fixture.autoPrompt!, isStale);
+    }, PRE_TYPE_DELAY_MS);
   };
 
   sessionManager.subscribe((event: SessionManagerEvent) => {
     if (event.type !== 'current-session-changed') return;
 
-    // 离开剧本<|sep|>时销毁其缓存 store：mock 后端是冻结的静态剧本，
+    // 离开剧本<|sep|>时销毁其缓存 store：mock 后端是冻结的空历史，
     // 缓存 store 里已流完的内容会在下次进入时先闪现"最终态"，
-    // 随后才被 chat_v2_load_session 拉回初始剧本重置，观感断裂。
-    // 销毁后下次进入重建空 store → 恢复静态历史 → 重新自动播放。
+    // 随后才被 chat_v2_load_session 拉回空态重置，观感断裂。
+    // 销毁后下次进入重建空 store → 空态 → 重新打字播放。
     if (
       previousId &&
       previousId !== event.sessionId &&
