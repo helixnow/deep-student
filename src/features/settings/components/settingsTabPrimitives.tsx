@@ -28,7 +28,8 @@ export const SettingRow = ({
         </p>
       )}
     </div>
-    <div className={cn('w-full min-w-0 flex-shrink-0 md:w-auto', controlClassName)}>
+    {/* Mobile (<768px): right-align the control column; full-width controls unaffected. */}
+    <div className={cn('w-full min-w-0 flex-shrink-0 md:w-auto max-md:flex max-md:flex-wrap max-md:items-center max-md:justify-end max-md:gap-2', controlClassName)}>
       {children}
     </div>
   </div>

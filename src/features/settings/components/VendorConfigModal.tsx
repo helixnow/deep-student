@@ -425,7 +425,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
               className="mt-2"
             />
             {vendor && vendor.id && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2 max-md:justify-end">
                 <DsButton
                   type="button"
                   size="sm"

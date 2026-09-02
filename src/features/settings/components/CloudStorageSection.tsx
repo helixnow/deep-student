@@ -1211,7 +1211,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         </div>
 
         {/* 操作按钮 */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 max-md:justify-end">
           <DsButton
             variant="outline"
             onClick={testConnection}
@@ -1339,7 +1339,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             )}
 
             {/* 快捷操作 */}
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2 max-md:justify-end">
               <DsButton
                 size="sm"
                 variant="outline"

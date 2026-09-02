@@ -165,7 +165,7 @@ function McpOAuthControls({
           authorized ? 'bg-green-500' : 'bg-muted-foreground/40',
         )} />
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 max-md:justify-end">
         <DsButton
           size="sm"
           variant="primary"

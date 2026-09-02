@@ -472,7 +472,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
           {translate(t, 'checking', 'Checking account status…')}
         </div>
       ) : (state === 'signed_out' || state === 'reauth_required' || (!status && operationFailed)) ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border/30 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/30 px-4 py-3 max-md:justify-end">
           <DsButton
             size="sm"
             variant="primary"

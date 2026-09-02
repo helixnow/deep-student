@@ -302,7 +302,7 @@ export const AboutTab: React.FC = () => {
                   </div>
                 )}
                 {!updater.downloading && (
-                  <div className="mt-2">
+                  <div className="mt-2 flex justify-end md:justify-start">
                     <DsButton
                       variant="outline"
                       size="sm"

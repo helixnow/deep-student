@@ -450,7 +450,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               description={zoomLoading ? t('settings:zoom.loading') : t('settings:zoom.status_current', { value: formatZoomLabel(uiZoom) })}
             >
               {isTauriEnvironment ? (
-                <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:justify-start">
                   <AppSelect
                     value={uiZoom.toString()}
                     onValueChange={val => { void handleZoomChange(parseFloat(val)); }}
@@ -484,7 +484,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.title')}
               description={fontLoading ? t('settings:font.loading') : t('settings:font.status_current', { font: t(`settings:font.presets.${uiFont.replace(/-/g, '_')}`) })}
             >
-              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+              <div className="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:justify-start">
                 <DsButton
                   type="button"
                   variant="outline"
@@ -513,7 +513,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.size_title')}
               description={fontSizeLoading ? t('settings:font.size_loading') : t('settings:font.size_status_current', { value: formatFontSizeLabel(uiFontSize) })}
             >
-              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+              <div className="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:justify-start">
                 <AppSelect
                   value={uiFontSize.toString()}
                   onValueChange={val => { void handleFontSizeChange(parseFloat(val)); }}
