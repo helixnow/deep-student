@@ -98,6 +98,16 @@ async function main() {
     </ErrorBoundary>,
   );
 
+  // 通知 hero 落地页撤下"演示加载中"占位。用 setTimeout 而非 rAF：
+  // rAF 在离屏 iframe（演示窗被平移出视口/未滚到）会被浏览器节流甚至暂停，
+  // 回调可能永不执行——消息丢失会让占位层盖住已加载的演示。
+  // hero 侧另有 15s 超时兜底。
+  if (window.parent !== window) {
+    setTimeout(() => {
+      window.parent.postMessage({ type: 'demo-shell-ready' }, window.location.origin);
+    }, 0);
+  }
+
   // ⑤.5 自动播放：点进剧本会话即自动发问并流式播放回复（含初次自动导航）
   installDemoAutoPlay();
 

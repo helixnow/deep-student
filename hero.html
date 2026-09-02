@@ -402,6 +402,52 @@
         display: block;
       }
 
+      /* 演示加载占位：iframe 首帧就绪前盖住（应用的 App 首帧经 postMessage
+         'demo-shell-ready' 通知撤下，另有 15s 超时兜底）。加载其实在首屏
+         就已开始（eager iframe + 构建期注入的 modulepreload 预热），
+         这个占位只是让等待过程可感知。 */
+      .demo-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: var(--window-bg);
+        color: var(--ink-3);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        pointer-events: none;
+        transition:
+          opacity 300ms ease,
+          visibility 0s linear 300ms;
+      }
+
+      .demo-loading.done {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .demo-loading .pulse-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: demo-pulse 1.2s ease-in-out infinite;
+      }
+
+      @keyframes demo-pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.8); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .demo-loading .pulse-dot {
+          animation: none;
+        }
+      }
+
       /* macOS 红绿灯：应用无边框（原生标题栏已移除），灯直接落在
          应用内顶栏 40px 区域的预留空位（DESKTOP_SHELL.macTrafficLightsSpacer=68）。
          放在 .screen 内随应用一起缩放，与真实窗口严格一致 */
@@ -702,6 +748,7 @@
       <div class="window" id="window">
         <div class="screen" id="screen">
           <iframe id="demo-frame" title="Deep Student" src="./demo.html"></iframe>
+          <div class="demo-loading" id="demo-loading" aria-hidden="true"><span class="pulse-dot"></span><span>正在加载实时演示…</span></div>
           <span class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
       </div>
@@ -768,6 +815,19 @@
         window.addEventListener('load', fit);
         if (mqPhone.addEventListener) mqPhone.addEventListener('change', fit);
         fit();
+
+        // 演示加载占位：应用首帧渲染后由 demo main.tsx postMessage 撤下；
+        // 超时兜底防消息丢失（慢网/异常时不至于永远盖着）
+        var loadingEl = document.getElementById('demo-loading');
+        var hideDemoLoading = function () {
+          if (loadingEl) loadingEl.classList.add('done');
+        };
+        window.addEventListener('message', function (e) {
+          if (e.origin === location.origin && e.data && e.data.type === 'demo-shell-ready') {
+            hideDemoLoading();
+          }
+        });
+        setTimeout(hideDemoLoading, 15000);
 
         /* ================= 手机端整屏分页（transform 分页器） =================
            手机模式下原生滚动已关（overflow:hidden），页面没有任何惯性/链接

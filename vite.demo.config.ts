@@ -16,8 +16,54 @@
  */
 
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import baseConfig from "./vite.config";
+
+/**
+ * 首屏预热演示加载（2026-09）：把 demo.html 的入口脚本与 modulepreload
+ * 提升为 hero.html 的 modulepreload——用户在首屏（题辞/落地）时浏览器就
+ * 开始并行下载演示的重 chunk，而不是等 iframe 抓取并解析 demo.html 后才
+ * 串行发现。幂等（重复构建先清旧块）。
+ */
+function demoWarmupPreloadPlugin(): Plugin {
+  return {
+    name: "demo-warmup-preload",
+    apply: "build",
+    closeBundle() {
+      const dir = fileURLToPath(new URL("./dist-demo", import.meta.url));
+      const demoHtmlPath = path.join(dir, "demo.html");
+      const heroPath = path.join(dir, "hero.html");
+      if (!fs.existsSync(demoHtmlPath) || !fs.existsSync(heroPath)) return;
+
+      const demoHtml = fs.readFileSync(demoHtmlPath, "utf8");
+      const urls = new Set<string>();
+      for (const m of demoHtml.matchAll(/<script[^>]+type="module"[^>]+src="([^"]+)"/g)) {
+        urls.add(m[1]);
+      }
+      for (const m of demoHtml.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g)) {
+        urls.add(m[1]);
+      }
+      if (urls.size === 0) return;
+
+      const links = [...urls]
+        .map((u) => `    <link rel="modulepreload" crossorigin href="${u}">`)
+        .join("\n");
+      const block =
+        `    <!-- demo-warmup:start 首屏预热演示入口（构建期从 demo.html 提取注入，勿手改） -->\n` +
+        `${links}\n` +
+        `    <!-- demo-warmup:end -->\n`;
+
+      let hero = fs.readFileSync(heroPath, "utf8");
+      hero = hero.replace(/\n?[ \t]*<!-- demo-warmup:start[\s\S]*?demo-warmup:end -->\n?/, "\n");
+      hero = hero.replace("</head>", `${block}  </head>`);
+      fs.writeFileSync(heroPath, hero);
+      console.log(`[demo-build] warmup preloads injected into hero.html: ${urls.size}`);
+    },
+  };
+}
+
 
 /**
  * Demo 专用模块入口 stub（功能模块级，形状简单不易崩；生产代码零改动）
@@ -151,7 +197,7 @@ export default defineConfig((env) => {
 
   return {
     ...base,
-    plugins: [demoModuleStubPlugin(), ...(base.plugins ?? [])],
+    plugins: [demoModuleStubPlugin(), ...(base.plugins ?? []), demoWarmupPreloadPlugin()],
     build: {
       ...base.build,
       outDir: "dist-demo",
