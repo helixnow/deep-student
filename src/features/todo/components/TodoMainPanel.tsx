@@ -884,7 +884,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 aria-label={t('todo:actions.search')}
                 title={t('todo:actions.search')}
                 className={cn(
-                  '!h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                   (mobileSearchOpen || filter.search.trim()) &&
                     '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
                 )}
@@ -910,7 +909,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             <Select value={filter.sortBy} onValueChange={(v) => setSortBy(v as TodoSortBy)}>
               <SelectTrigger
                 aria-label={t('todo:sort.label')}
-                className="!h-8 !min-h-0 !w-auto gap-1 !px-2.5 !py-0 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-[2.75rem]"
+                className="w-auto gap-1"
               >
                 <SortAscending size={14} className="text-muted-foreground" />
                 {/* !hidden：对抗 SelectTrigger 基类的 [&>span]:line-clamp-1（会把 span 重置为 -webkit-box） */}
@@ -934,7 +933,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               disabled={filter.view === 'completed'}
               data-selected={filter.showCompleted}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 filter.showCompleted &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -953,7 +951,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               aria-label={t('todo:bulk.selectMode', '选择')}
               title={t('todo:bulk.selectMode', '选择')}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 checkMode &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}

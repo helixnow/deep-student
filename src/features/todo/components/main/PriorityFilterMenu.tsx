@@ -51,7 +51,6 @@ export const PriorityFilterMenu: React.FC = () => {
           size="sm"
           data-selected={Boolean(priorityFilter)}
           className={cn(
-            'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
             priorityFilter &&
               '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
           )}
