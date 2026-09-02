@@ -18,13 +18,21 @@ import type {
   SessionInfo,
 } from '@/features/chat/adapters/types';
 import { DEMO_MODEL_PROFILES, DEFAULT_FOLLOW_UP, DEMO_SESSIONS, type DemoBlocks } from './fixtures';
+import {
+  DEMO_ANKI_TEMPLATES,
+  DEMO_MINDMAP_CONTENT,
+  DEMO_MINDMAP_ID,
+  DEMO_MINDMAP_META,
+} from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
+import { getPlayedHistory } from './playedHistory';
 
 const LOG = '[demo-ipc]';
 
 /**
  * 每个会话的专属剧本只首播一次；之后（含自由输入）走 DEFAULT_FOLLOW_UP 兜底。
- * chat_v2_load_session 时重置——重进会话会重播第一答。
+ * 播放完成的历史由 playedHistory 快照承载——重进会话直接恢复完成态，
+ * 不再重置 playedOnce、不重播第一答（页面刷新才全部重来）。
  */
 const playedOnce = new Set<string>();
 
@@ -115,12 +123,57 @@ export function installDemoIpcMocks(): void {
             voice_input_asr_model_config_id: null,
           };
 
-        // ---------- Anki 模板（DialogControlProvider 初始化加载） ----------
+        // ---------- Anki 模板（DialogControlProvider 初始化加载；
+        // 演示模板让 anki_cards 块走 ShadowDOM 模板渲染 + 翻面，与桌面版一致） ----------
         case 'get_all_custom_templates':
         case 'import_builtin_templates':
-          return [];
+          return DEMO_ANKI_TEMPLATES;
         case 'get_default_template_id':
-          return null;
+          return DEMO_ANKI_TEMPLATES[0]?.id ?? null;
+
+        // ---------- Anki 卡片写库 / 导出 / 同步（anki_cards 块的操作按钮；
+        // 返回诚实语义成功，观众点按钮能看到真实成功反馈而非报错） ----------
+        case 'save_anki_cards': {
+          const request = (args.request ?? {}) as { cards?: Array<{ id?: string | null }> };
+          const cards = Array.isArray(request.cards) ? request.cards : [];
+          const persistedIds = cards.map(
+            (_, i) => `demo-saved-${Date.now().toString(36)}-${i}`,
+          );
+          return {
+            savedIds: persistedIds,
+            taskId: `demo-task-${Date.now().toString(36)}`,
+            cardIdMappings: cards.map((card, i) => ({
+              inputIndex: i,
+              inputId: card?.id ?? null,
+              persistedId: persistedIds[i],
+            })),
+            skippedIds: [],
+            duplicatedIds: [],
+            failed: [],
+          };
+        }
+        case 'export_multi_template_apkg':
+          return `/tmp/deep-student-demo/${String(args.deckName ?? 'demo-cards')}.apkg`;
+        case 'add_cards_to_anki_connect': {
+          const syncCards = (args.selectedCards as unknown[] | undefined) ?? [];
+          return {
+            noteIds: syncCards.map((_, i) => 1700000000000 + i),
+            added: syncCards.length,
+            duplicates: 0,
+            failed: 0,
+            createdModels: [],
+          };
+        }
+
+        // ---------- 思维导图（正文 [思维导图:mm_demo_...] 内嵌预览） ----------
+        case 'vfs_get_mindmap': {
+          const mindmapId = String(args.mindmapId ?? '');
+          return mindmapId === DEMO_MINDMAP_ID ? DEMO_MINDMAP_META : null;
+        }
+        case 'vfs_get_mindmap_content': {
+          const mindmapId = String(args.mindmapId ?? '');
+          return mindmapId === DEMO_MINDMAP_ID ? DEMO_MINDMAP_CONTENT : null;
+        }
 
         // ---------- App 启动链路的安全默认值 ----------
         // 维护模式闸门（返回 null 会触发 status.is_in_maintenance_mode 解包异常）
@@ -147,6 +200,13 @@ export function installDemoIpcMocks(): void {
         // 路径插件（resolve_directory 用于定位 skills 等目录）
         case 'plugin:path|resolve_directory':
           return '/tmp/deep-student-demo';
+        // 技能目录扫描 / dstu 文件监听 / 窗口枚举：演示环境恒为空，静默
+        case 'skill_list_directories':
+          return [];
+        case 'dstu_watch':
+        case 'dstu_unwatch':
+        case 'plugin:window|get_all_windows':
+          return null;
         // 更新检查（useAppUpdater: check() 返回 falsy → 视为已是最新）
         case 'plugin:updater|check':
           return null;
@@ -253,21 +313,23 @@ export function installDemoIpcMocks(): void {
         // ---------- 会话加载 ----------
         case 'chat_v2_load_session': {
           const sessionId = String(args.sessionId ?? '');
-          // 重进会话时重置首播标记（历史已重置为空，第一答会重播）
-          playedOnce.delete(sessionId);
           const rec = sessionDb.get(sessionId);
           if (!rec) {
             console.warn(LOG, 'load_session for unknown session:', args.sessionId);
             return null;
           }
+          // 已播放完成的会话：返回播放结果快照（本次访问内不重播）
+          const played = getPlayedHistory(sessionId);
+          const messages = played?.messages ?? rec.messages;
+          const blocks = played?.blocks ?? rec.blocks;
           console.info(
             LOG,
-            `load_session ${rec.meta.id}: ${rec.messages.length} messages, ${rec.blocks.length} blocks`,
+            `load_session ${rec.meta.id}: ${messages.length} messages, ${blocks.length} blocks${played ? ' (played snapshot)' : ''}`,
           );
           return withLatency({
             session: rec.meta,
-            messages: rec.messages,
-            blocks: rec.blocks,
+            messages,
+            blocks,
           });
         }
         case 'chat_v2_load_messages_page':

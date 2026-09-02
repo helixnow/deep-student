@@ -829,9 +829,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           ),
           p: ({ children, node: _node, ...props }: any) => {
             const childArray = React.Children.toArray(children);
-            const hasMindmapCard = childArray.some((child) =>
-              React.isValidElement(child) && child.type === MindmapCitationCard
-            );
+            const hasMindmapCard = childArray.some((child) => {
+              if (!React.isValidElement(child)) return false;
+              if (child.type === MindmapCitationCard) return true;
+              // 自定义 span 渲染器包装的引用占位符：此时 child.type 是 span 渲染
+              // 函数，MindmapCitationCard 要在 span 渲染内部才出现，只能靠 props
+              // 上的 data 属性识别（否则块级导图卡会留在 <p> 里，嵌套非法且
+              // 被 .markdown-content > p 的 width:fit-content 收成 0 宽）
+              const childProps = child.props as Record<string, unknown> | undefined;
+              return childProps?.['data-mindmap-citation'] === 'true';
+            });
             if (hasMindmapCard) {
               return <div className="my-3">{children}</div>;
             }

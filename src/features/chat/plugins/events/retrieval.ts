@@ -30,8 +30,12 @@ import type { ChatStore } from '../../core/types';
 
 /**
  * 支持的检索事件类型
+ *
+ * 注：academic_search 历史上只经历史加载映射成块类型（工具执行期间实时显示为
+ * 工具块）；注册检索处理器后，后端若直接发 academic_search 流式事件也能成块，
+ * 演示壳的剧本流即依赖于此。
  */
-const RETRIEVAL_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag'] as const;
+const RETRIEVAL_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search'] as const;
 
 type RetrievalType = (typeof RETRIEVAL_TYPES)[number];
 
@@ -218,3 +222,4 @@ export const ragEventHandler = retrievalHandlers.rag;
 export const memoryEventHandler = retrievalHandlers.memory;
 export const webSearchEventHandler = retrievalHandlers.web_search;
 export const multimodalRagEventHandler = retrievalHandlers.multimodal_rag;
+export const academicSearchEventHandler = retrievalHandlers.academic_search;

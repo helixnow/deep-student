@@ -18,6 +18,7 @@ import { emit } from '@tauri-apps/api/event';
 import type { BackendEvent } from '@/features/chat/core/middleware/eventBridge';
 import type { SessionEventPayload } from '@/features/chat/adapters/types';
 import type { DemoBlocks } from './fixtures';
+import { capturePlayedSnapshot } from './playedHistory';
 
 const LOG = '[demo-player]';
 
@@ -113,12 +114,27 @@ export async function playReplyScript(opts: {
         blockId,
         sequenceId: sequenceId++,
         payload: {
+          ...(def.payload ?? {}),
           ...(def.toolName ? { toolName: def.toolName } : {}),
           ...(def.toolInput ? { toolInput: def.toolInput } : {}),
         },
       });
 
-      if (def.streaming && def.content) {
+      if (def.chunks && def.chunks.length > 0) {
+        // 结构化流式（如 anki_cards：每个 chunk 是一条完整 JSON 记录，
+        // 不可切分——生产解析器按整条 chunk 解析），逐条 emit
+        for (const chunk of def.chunks) {
+          if (signal.aborted) return;
+          await emitBlock({
+            type: def.type,
+            phase: 'chunk',
+            blockId,
+            chunk,
+            sequenceId: sequenceId++,
+          });
+          await sleep(def.dwellMs ?? PACE.toolDwell, signal);
+        }
+      } else if (def.streaming && def.content) {
         for (const chunk of chunkText(def.content)) {
           if (signal.aborted) return;
           await emitBlock({
@@ -132,7 +148,7 @@ export async function playReplyScript(opts: {
         }
       } else {
         // 检索/工具类：无 chunk，停留一段模拟执行耗时
-        await sleep(PACE.toolDwell, signal);
+        await sleep(def.dwellMs ?? PACE.toolDwell, signal);
       }
 
       if (signal.aborted) return;
@@ -150,6 +166,17 @@ export async function playReplyScript(opts: {
       messageId: assistantMessageId,
       durationMs: Date.now() - startedAt,
     });
+
+    // 播放完成：延迟一拍（等 store 处理完 stream_complete / chunkBuffer flush），
+    // 把最终 消息+块 快照进演示内存库——本次访问内切走再切回不再重播，
+    // 直接展示完成态（见 playedHistory.ts / mockIpc 的 load_session）。
+    window.setTimeout(() => {
+      try {
+        capturePlayedSnapshot(sessionId);
+      } catch (e) {
+        console.warn(LOG, 'snapshot failed:', e);
+      }
+    }, 600);
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
       console.warn(LOG, 'script playback failed:', e);

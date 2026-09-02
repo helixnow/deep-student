@@ -7,13 +7,16 @@
  * 流式输出）推给真实 adapter 渲染——全程 100% 生产链路。
  *
  * 触发时机：sessionManager 的 current-session-changed 事件（含初次自动导航）。
- * 重进同一会话会重新播放——历史在 load_session 时重置为空，播放与之一致。
+ * 2026-09 行为变更：播放完成的会话会把最终 消息+块 快照进 playedHistory；
+ * 同一次访问内切走再切回时 load_session 返回快照、显示完成态，不再重播。
+ * 页面刷新（新一次访问）后首轮播放照旧。
  */
 
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { SessionManagerEvent } from '@/features/chat/core/session/types';
 import { DEMO_SESSIONS } from './fixtures';
 import { abortScript } from './scriptPlayer';
+import { capturePlayedSnapshot } from './playedHistory';
 
 const LOG = '[demo-autoplay]';
 
@@ -145,28 +148,49 @@ export function installDemoAutoPlay(): void {
 
     window.setTimeout(() => {
       if (isStale()) return;
-      const store = sessionManager.peek(sessionId);
-      if (!store) return;
-      const status = store.getState().sessionStatus;
-      if (status === 'streaming' || status === 'sending') return;
-      void typeAndSend(sessionId, fixture.autoPrompt!, isStale);
+      void (async () => {
+        const store = sessionManager.peek(sessionId);
+        if (!store) return;
+        // 等历史加载落定：已播放过的会话会从快照恢复出消息，
+        // 此时直接显示完成态，不再打字重播
+        for (let i = 0; i < 30; i += 1) {
+          const state = store.getState();
+          if (state.isDataLoaded) {
+            if (state.messageOrder.length > 0) {
+              console.info(LOG, `skip auto-play ${sessionId}: history restored`);
+              return;
+            }
+            break;
+          }
+          if (isStale()) return;
+          await sleep(100);
+        }
+        if (isStale()) return;
+        const status = store.getState().sessionStatus;
+        if (status === 'streaming' || status === 'sending') return;
+        void typeAndSend(sessionId, fixture.autoPrompt!, isStale);
+      })();
     }, PRE_TYPE_DELAY_MS);
   };
 
   sessionManager.subscribe((event: SessionManagerEvent) => {
     if (event.type !== 'current-session-changed') return;
 
-    // 离开剧本<|sep|>时销毁其缓存 store：mock 后端是冻结的空历史，
-    // 缓存 store 里已流完的内容会在下次进入时先闪现"最终态"，
-    // 随后才被 chat_v2_load_session 拉回空态重置，观感断裂。
-    // 销毁后下次进入重建空 store → 空态 → 重新打字播放。
+    // 离开剧本<|sep|>时兜底快照当前内容（播放中途切走时保存已流出的部分；
+    // 正常播完的路径由 scriptPlayer 在 stream_complete 后快照）。
+    // 不销毁缓存 store——isDataLoaded 语义下切回会话直接复用缓存，
+    // 避免"先空态再加载"的闪烁；store 万一被回收，load_session 也有快照兜底。
     if (
       previousId &&
       previousId !== event.sessionId &&
       isDemoSession(previousId)
     ) {
       abortScript(previousId);
-      void sessionManager.destroy(previousId);
+      try {
+        capturePlayedSnapshot(previousId);
+      } catch (e) {
+        console.warn(LOG, 'leave-snapshot failed:', e);
+      }
     }
     previousId = event.sessionId || null;
 
