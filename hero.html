@@ -515,10 +515,11 @@
         .colophon {
           scroll-snap-align: end;
         }
-        /* 刊头改为 fixed 悬浮：题辞/演示屏从玻璃胶囊下穿过（桌面 sticky 同观感），
-           且不占文档流高度，题辞屏才能正好一屏 */
+        /* 刊头改为 absolute 随题辞屏滚走（fixed/悬浮会压住演示屏左上角）。
+           磁吸滚动下停驻点只有整屏：题辞屏刊头在位，演示屏完全无遮挡。 */
         .masthead {
-          position: fixed;
+          position: absolute;
+          top: 0;
           left: 0;
           right: 0;
           padding-top: 10px;
