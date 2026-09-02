@@ -379,9 +379,9 @@ export function FinderFileList({
   const viewMode: 'grid' | 'list' = viewModeProp === 'columns' ? 'grid' : viewModeProp;
   const { t } = useTranslation('learningHub');
   const { isSmallScreen } = useBreakpoint();
-  // 触屏行高与 FinderFileItem（coarse 常显更多按钮）同源，保证虚拟滚动行槽 / 框选命中几何一致
+  // 触屏或移动壳行高与 FinderFileItem 同源，保证虚拟滚动行槽 / 框选命中几何一致
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  const listItemHeight = isTouchPrimary ? LIST_ITEM_HEIGHT_TOUCH : LIST_ITEM_HEIGHT;
+  const listItemHeight = (isTouchPrimary || isSmallScreen) ? LIST_ITEM_HEIGHT_TOUCH : LIST_ITEM_HEIGHT;
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);

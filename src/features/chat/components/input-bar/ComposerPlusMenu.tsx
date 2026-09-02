@@ -4,19 +4,19 @@
  * Desktop: flyout secondary menus (files / mode / skills / connectors)，
  * built on AppMenu + AppMenuSub — same shell as the previous attachment menu.
  *
- * Mobile (P1-1): 单层扁平列表——文件/拍照/资源库直出、模式开关直出、
- * 技能与连接器改为跳转到内联面板（不再塞进 SubContent 飞出层），
- * 行高 ≥44px 满足触控目标。
+ * Mobile: 根层只放动作（附件/资源库/技能/连接器/对话控制）。
+ * 模式与执行档位走页内二级面板（避免窄屏飞出层被裁切），
+ * 技能与连接器跳转到内联面板。行高 ≥44px 满足触控目标。
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Archive,
   Books,
   Camera,
+  CaretLeft,
+  CaretRight,
   Check,
-  CircleNotch,
   FolderOpen,
   Hammer,
   Lightning,
@@ -49,7 +49,6 @@ import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import type { PermissionPreset } from '../../core/types/store';
 
-export type ComposerAuthorityMode = 'ask' | 'plan' | 'craft';
 export type ComposerPermissionPreset = PermissionPreset;
 
 const PERMISSION_PRESETS: ComposerPermissionPreset[] = [
@@ -76,15 +75,8 @@ export interface ComposerPlusMenuProps {
   /** 移动端：打开内联技能面板（替代桌面端的技能 SubContent 飞出层） */
   onOpenSkillPanel?: () => void;
   sessionId?: string;
-  onCompactContext?: () => void | Promise<void>;
-  isCompactingContext?: boolean;
-  compactContextDisabled?: boolean;
-  compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
-  authorityMode?: ComposerAuthorityMode;
-  onAuthorityModeChange?: (mode: ComposerAuthorityMode) => void | Promise<void>;
   permissionPreset?: ComposerPermissionPreset;
   onPermissionPresetChange?: (preset: ComposerPermissionPreset) => void | Promise<void>;
-  authorityAskBlockedHint?: boolean;
   renderSkillPanel?: () => React.ReactNode;
   activeSkillCount?: number;
   hasLoadedSkills?: boolean;
@@ -115,15 +107,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onOpenCamera,
   onOpenSkillPanel,
   sessionId,
-  onCompactContext,
-  isCompactingContext = false,
-  compactContextDisabled = false,
-  compactContextStatus = null,
-  authorityMode = 'craft',
-  onAuthorityModeChange,
   permissionPreset = 'relaxed',
   onPermissionPresetChange,
-  authorityAskBlockedHint = false,
   renderSkillPanel,
   activeSkillCount = 0,
   hasLoadedSkills = false,
@@ -137,33 +122,14 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
 }) => {
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
   const [confirmDangerOpen, setConfirmDangerOpen] = React.useState(false);
+  const [mobilePane, setMobilePane] = React.useState<'root' | 'mode'>('root');
 
-  const modeDescription = useMemo(() => {
-    switch (authorityMode) {
-      case 'ask':
-        return t('chatV2:authority.hints.ask');
-      case 'plan':
-        return t('chatV2:authority.hints.plan');
-      default:
-        return t('chatV2:inputBar.plusMenu.modeDefaultDescription');
-    }
-  }, [authorityMode, t]);
+  React.useEffect(() => {
+    if (!open) setMobilePane('root');
+  }, [open]);
 
-  const handlePlanChange = useCallback(
-    (checked: boolean) => {
-      if (!onAuthorityModeChange) return;
-      void onAuthorityModeChange(checked ? 'plan' : 'craft');
-    },
-    [onAuthorityModeChange],
-  );
-
-  const handleAskChange = useCallback(
-    (checked: boolean) => {
-      if (!onAuthorityModeChange) return;
-      void onAuthorityModeChange(checked ? 'ask' : 'craft');
-    },
-    [onAuthorityModeChange],
-  );
+  const modeSummary = t(`chatV2:authority.permissionPreset.modes.${permissionPreset}`);
+  const modeDescription = t('chatV2:inputBar.plusMenu.modeDefaultDescription');
 
   const applyPermissionPreset = useCallback(
     (preset: ComposerPermissionPreset) => {
@@ -208,16 +174,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     onOpenAdvancedPanel?.();
   }, [onOpenChange, onOpenAdvancedPanel]);
 
-  const handleSwitchToPlan = useCallback(() => {
-    if (!onAuthorityModeChange) return;
-    void onAuthorityModeChange('plan');
-  }, [onAuthorityModeChange]);
-  const handleCompactContext = useCallback(() => {
-    if (!onCompactContext || isCompactingContext || compactContextDisabled) return;
-    void onCompactContext();
-  }, [compactContextDisabled, isCompactingContext, onCompactContext]);
-
-  const showMode = Boolean(sessionId && onAuthorityModeChange);
+  const showMode = Boolean(sessionId && onPermissionPresetChange);
   const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange);
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
@@ -241,22 +198,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   ) : mcpEnabled ? (
     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
   ) : null;
-  const compactionIcon = isCompactingContext
-    ? <CircleNotch className="h-4 w-4 animate-spin" />
-    : compactContextStatus === 'success'
-      ? <Check className="h-4 w-4 text-success" />
-      : <Archive className="h-4 w-4" />;
-  const compactionLabel = isCompactingContext
-    ? t('chatV2:inputBar.plusMenu.compactingContext')
-    : compactContextStatus === 'success'
-      ? t('chatV2:inputBar.plusMenu.compactionComplete')
-      : compactContextStatus === 'not-needed'
-        ? t('chatV2:inputBar.plusMenu.compactionNotNeeded')
-        : compactContextStatus === 'skipped'
-          ? t('chatV2:inputBar.plusMenu.compactionSkipped')
-          : compactContextStatus === 'error'
-            ? t('chatV2:inputBar.plusMenu.compactionFailed')
-            : t('chatV2:inputBar.plusMenu.compactContext');
 
   return (
     <div className="flex items-center gap-1">
@@ -295,13 +236,67 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         <AppMenuContent
           align="start"
           width={useFlatMobileMenu ? 248 : 200}
+          maxHeight={useFlatMobileMenu ? 'min(28rem, calc(100dvh - 7.5rem))' : undefined}
           // ★ L4 修复：魔法数 320 收敛到 Z_INDEX 体系（高于移动顶栏 1100）
           style={{ zIndex: Z_INDEX.composerPanel }}
           data-testid="composer-plus-menu"
         >
           {useFlatMobileMenu ? (
+            mobilePane === 'mode' ? (
+              <>
+                <AppMenuGroup>
+                  <AppMenuItem
+                    className={mobileItemClass}
+                    icon={<CaretLeft className="w-4 h-4" />}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setMobilePane('root');
+                    }}
+                    data-testid="plus-menu-mode-back"
+                  >
+                    {t('common:back')}
+                  </AppMenuItem>
+                </AppMenuGroup>
+                <AppMenuSeparator />
+                <AppMenuGroup label={t('chatV2:inputBar.plusMenu.mode')} data-testid="plus-menu-mode-panel">
+                  {PERMISSION_PRESETS.map((preset) => (
+                    <AppMenuItem
+                      key={preset}
+                      className={cn(
+                        mobileItemClass,
+                        preset === 'danger_full_access' && 'text-destructive',
+                      )}
+                      onClick={() => handlePermissionPresetSelect(preset)}
+                      data-testid={`plus-menu-permission-${preset}`}
+                      title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
+                      suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
+                    >
+                      {t(`chatV2:authority.permissionPreset.modes.${preset}`)}
+                    </AppMenuItem>
+                  ))}
+                </AppMenuGroup>
+                {showKnowledgeBase && (
+                  <>
+                    <AppMenuSeparator />
+                    <AppMenuGroup
+                      label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
+                      data-testid="plus-menu-knowledge-base-panel"
+                    >
+                      <AppMenuSwitchItem
+                        className={mobileItemClass}
+                        checked={knowledgeBaseProactive}
+                        onCheckedChange={handleKnowledgeBaseProactiveChange}
+                        data-testid="plus-menu-kb-proactive"
+                        title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
+                      >
+                        {t('chatV2:inputBar.plusMenu.kbProactive')}
+                      </AppMenuSwitchItem>
+                    </AppMenuGroup>
+                  </>
+                )}
+              </>
+            ) : (
             <>
-              {/* 📱 移动端扁平列表：文件动作直出 */}
               <AppMenuGroup>
                 <AppMenuItem
                   className={mobileItemClass}
@@ -331,88 +326,44 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 </AppMenuItem>
               </AppMenuGroup>
 
-              {sessionId && onCompactContext && (
-                <>
-                  <AppMenuSeparator />
-                  <AppMenuGroup>
-                    <AppMenuItem
-                      className={mobileItemClass}
-                      icon={compactionIcon}
-                      onClick={handleCompactContext}
-                      disabled={compactContextDisabled || isCompactingContext}
-                      data-testid="plus-menu-compact-context"
-                    >
-                      {compactionLabel}
-                    </AppMenuItem>
-                  </AppMenuGroup>
-                </>
-              )}
-
-              {/* 模式开关直出（不再折进 SubContent） */}
               {showMode && (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuGroup label={t('chatV2:inputBar.plusMenu.mode')} data-testid="plus-menu-mode-panel">
-                    <AppMenuSwitchItem
-                      className={mobileItemClass}
-                      checked={authorityMode === 'plan'}
-                      onCheckedChange={handlePlanChange}
-                      data-testid="plus-menu-mode-plan"
-                    >
-                      {t('chatV2:authority.modes.plan')}
-                    </AppMenuSwitchItem>
-                    <AppMenuSwitchItem
-                      className={mobileItemClass}
-                      checked={authorityMode === 'ask'}
-                      onCheckedChange={handleAskChange}
-                      data-testid="plus-menu-mode-ask"
-                    >
-                      {t('chatV2:authority.modes.ask')}
-                    </AppMenuSwitchItem>
-                    <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
-                      {t('chatV2:authority.permissionPreset.modePriority')}
-                    </AppMenuLabel>
-                    {PERMISSION_PRESETS.map((preset) => (
-                      <AppMenuItem
-                        key={preset}
-                        className={cn(
-                          mobileItemClass,
-                          preset === 'danger_full_access' && 'text-destructive',
-                        )}
-                        onClick={() => handlePermissionPresetSelect(preset)}
-                        data-testid={`plus-menu-permission-${preset}`}
-                        title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
-                        suffix={permissionPreset === preset ? <Check className="h-4 w-4" /> : undefined}
-                      >
-                        {t(`chatV2:authority.permissionPreset.modes.${preset}`)}
-                      </AppMenuItem>
-                    ))}
-                  </AppMenuGroup>
+                  <AppMenuItem
+                    className={mobileItemClass}
+                    icon={<Sparkle className="w-4 h-4" />}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setMobilePane('mode');
+                    }}
+                    data-testid="plus-menu-mode"
+                    suffix={(
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <span className="max-w-[5.5rem] truncate text-[12px]">{modeSummary}</span>
+                        <CaretRight className="h-3.5 w-3.5 shrink-0" />
+                      </span>
+                    )}
+                  >
+                    {t('chatV2:inputBar.plusMenu.mode')}
+                  </AppMenuItem>
                 </>
               )}
 
-              {/* 知识库开关直出 */}
-              {showKnowledgeBase && (
+              {!showMode && showKnowledgeBase && (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuGroup
-                    label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
-                    data-testid="plus-menu-knowledge-base-panel"
+                  <AppMenuSwitchItem
+                    className={mobileItemClass}
+                    checked={knowledgeBaseProactive}
+                    onCheckedChange={handleKnowledgeBaseProactiveChange}
+                    data-testid="plus-menu-kb-proactive"
+                    title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
                   >
-                    <AppMenuSwitchItem
-                      className={mobileItemClass}
-                      checked={knowledgeBaseProactive}
-                      onCheckedChange={handleKnowledgeBaseProactiveChange}
-                      data-testid="plus-menu-kb-proactive"
-                      title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
-                    >
-                      {t('chatV2:inputBar.plusMenu.kbProactive')}
-                    </AppMenuSwitchItem>
-                  </AppMenuGroup>
+                    {t('chatV2:inputBar.plusMenu.kbProactive')}
+                  </AppMenuSwitchItem>
                 </>
               )}
 
-              {/* 技能/连接器：跳转到内联面板，不嵌套飞出层 */}
               {((showSkills && onOpenSkillPanel) || showConnectors || showAdvanced) && <AppMenuSeparator />}
               {showSkills && onOpenSkillPanel && (
                 <AppMenuItem
@@ -447,6 +398,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 </AppMenuItem>
               )}
             </>
+            )
           ) : (
           <AppMenuGroup>
             <AppMenuSub openOnClick>
@@ -483,17 +435,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               </AppMenuSubContent>
             </AppMenuSub>
 
-            {sessionId && onCompactContext && (
-              <AppMenuItem
-                icon={compactionIcon}
-                onClick={handleCompactContext}
-                disabled={compactContextDisabled || isCompactingContext}
-                data-testid="plus-menu-compact-context"
-              >
-                {compactionLabel}
-              </AppMenuItem>
-            )}
-
             {showMode && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
@@ -510,34 +451,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     {modeDescription}
                   </AppMenuLabel>
                   <AppMenuSeparator />
-                  <AppMenuSwitchItem
-                    checked={authorityMode === 'plan'}
-                    onCheckedChange={handlePlanChange}
-                    data-testid="plus-menu-mode-plan"
-                  >
-                    <span className="flex flex-col items-start gap-0.5">
-                      <span>{t('chatV2:authority.modes.plan')}</span>
-                      <span className="text-2xs text-muted-foreground">
-                        {t('chatV2:authority.modeSubtitles.plan')}
-                      </span>
-                    </span>
-                  </AppMenuSwitchItem>
-                  <AppMenuSwitchItem
-                    checked={authorityMode === 'ask'}
-                    onCheckedChange={handleAskChange}
-                    data-testid="plus-menu-mode-ask"
-                  >
-                    <span className="flex flex-col items-start gap-0.5">
-                      <span>{t('chatV2:authority.modes.ask')}</span>
-                      <span className="text-2xs text-muted-foreground">
-                        {t('chatV2:authority.modeSubtitles.ask')}
-                      </span>
-                    </span>
-                  </AppMenuSwitchItem>
-                  <AppMenuSeparator />
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
-                    {t('chatV2:authority.permissionPreset.modePriority')}
-                  </AppMenuLabel>
                   {PERMISSION_PRESETS.map((preset) => (
                     <AppMenuItem
                       key={preset}
@@ -658,16 +571,6 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         </AppMenuContent>
       </AppMenu>
 
-      {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
-        <button
-          type="button"
-          className="shrink-0 text-[11px] text-warning underline-offset-2 hover:underline"
-          onClick={handleSwitchToPlan}
-          data-testid="plus-menu-switch-to-plan"
-        >
-          {t('chatV2:authority.switchToPlan')}
-        </button>
-      )}
       {permissionPreset === 'full_access' && (
         <button
           type="button"

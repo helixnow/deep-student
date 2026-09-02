@@ -20,18 +20,14 @@ describe('activity timeline thinking summary source', () => {
     'utf-8'
   );
 
-  it('keeps completed thinking auto-collapsed by default and only applies sticky behavior while expanded', () => {
+  it('keeps completed thinking auto-collapsed by default and never pins the summary', () => {
     expect(activityTimelineSource).toContain('function readAutoCollapseSetting(): boolean');
     expect(activityTimelineSource).toContain('return !autoCollapseEnabled;');
     expect(activityTimelineSource).toContain('setIsExpanded(false);');
-    expect(activityTimelineSource).toContain('const [preserveStickyOnCollapse, setPreserveStickyOnCollapse] = useState(false);');
-    expect(activityTimelineSource).toContain('const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);');
-    expect(activityTimelineSource).toContain('thinking-summary-sticky sticky top-0 z-10');
-  });
-
-  it('preserves the sticky summary when the user collapses it from the pinned top position', () => {
-    expect(activityTimelineSource).toContain('setPreserveStickyOnCollapse(!nextExpanded && pinnedAtTop);');
-    expect(activityTimelineSource).toContain('const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);');
+    expect(activityTimelineSource).not.toContain('preserveStickyOnCollapse');
+    expect(activityTimelineSource).not.toContain('shouldStickSummary');
+    expect(activityTimelineSource).not.toContain('thinking-summary-sticky');
+    expect(activityTimelineSource).not.toContain('sticky top-0');
   });
 
   it('uses a body-aligned summary row as the thinking trigger', () => {
@@ -42,17 +38,16 @@ describe('activity timeline thinking summary source', () => {
     expect(activityTimelineSource).not.toContain('group-hover:translate-x-0.5');
   });
 
-  it('scopes the sticky treatment without negative timeline offsets', () => {
-    expect(activityTimelineSource).toContain('thinking-summary-sticky sticky top-0 z-10 -mr-3 pr-3');
+  it('keeps the summary row in normal document flow without negative timeline offsets', () => {
+    expect(activityTimelineSource).toContain('thinking-summary-row flex w-full max-w-full items-center');
+    expect(activityTimelineSource).not.toContain('thinking-summary-sticky');
     expect(activityTimelineSource).not.toContain('-ml-[28px]');
     expect(activityTimelineSource).not.toContain('pl-[28px]');
     expect(activityTimelineSource).not.toContain('-ml-[22px]');
-    expect(activityTimelineSource).toContain('flex w-full max-w-full items-center');
   });
 
-  it('keeps the sticky summary transparent so it matches adjacent timeline entries', () => {
-    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::before');
-    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::after');
+  it('keeps the thinking summary transparent so it matches adjacent timeline entries', () => {
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky');
     expect(activityTimelineCssSource).not.toContain('.thinking-summary-row {');
     expect(activityTimelineCssSource).not.toContain('--surface-panel-strong');
     expect(activityTimelineSource).not.toContain('border-[color:var(--surface-divider)]');
@@ -66,8 +61,8 @@ describe('activity timeline thinking summary source', () => {
     expect(thinkingChainCssSource).toContain('list-style-position: outside;');
   });
 
-  it('leaves compact safety space between the sticky row and the following thinking content', () => {
-    expect(activityTimelineSource).toContain("className={cn('activity-timeline-thinking-details overflow-hidden', shouldStickSummary && 'pt-2')}");
+  it('keeps thinking-chain details in normal flow under the summary row', () => {
+    expect(activityTimelineSource).toContain('className="activity-timeline-thinking-details overflow-hidden"');
   });
 
   it('keeps timeline-to-answer spacing from stacking with markdown first-block margins', () => {

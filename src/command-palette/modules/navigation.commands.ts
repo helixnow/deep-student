@@ -153,7 +153,7 @@ export function getNavigationCommands(): Command[] {
       keywords: kw('nav.goto.dashboard'),
       priority: 85,
       execute: (deps) => {
-        deps.navigate('dashboard');
+        deps.navigate('data-management');
       },
     },
     {

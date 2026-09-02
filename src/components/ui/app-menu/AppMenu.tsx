@@ -362,14 +362,26 @@ export function AppMenuContent({
       ));
     };
 
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => updatePosition());
+    const observeContent = () => {
+      const el = contentRef.current;
+      if (el) resizeObserver?.observe(el);
+    };
     updatePosition();
-    const rafId = requestAnimationFrame(updatePosition);
+    observeContent();
+    const rafId = requestAnimationFrame(() => {
+      updatePosition();
+      observeContent();
+    });
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      resizeObserver?.disconnect();
     };
   }, [align, contentRef, contextPositionX, contextPositionY, menuMode, shouldRender, triggerRef]);
 
@@ -592,6 +604,7 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         onClick={(event) => {
           if (disabled) return;
           onClick?.(event);
+          if (event.defaultPrevented) return;
           ctx?.setOpen(false);
         }}
         {...rest}

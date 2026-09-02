@@ -24,6 +24,9 @@ describe('permission preset source contract', () => {
     }
     expect(plusMenuSource).toContain('<DsAlertDialog');
     expect(plusMenuSource).not.toContain('window.confirm');
+    expect(plusMenuSource).not.toContain('plus-menu-mode-plan');
+    expect(plusMenuSource).not.toContain('plus-menu-mode-ask');
+    expect(plusMenuSource).not.toContain('onAuthorityModeChange');
   });
 
   it('exposes session remember but not always/global persistent memory', () => {

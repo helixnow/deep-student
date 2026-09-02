@@ -955,16 +955,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setMobileResourcePanelOpen(false);
   }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
 
-  const openCurrentSessionSettings = useCallback(() => {
-    if (!currentSessionId) return;
-    const store = sessionManager.get(currentSessionId);
-    if (!store) return;
-    // ★ 顶栏 ⋯ 会话设置按钮：切换语义。原实现无条件 setPanelState(..., true)，
-    // 面板已打开时再点会重放底部滑入动画而非关闭（顶栏按钮成为死入口）。
-    const { panelStates, setPanelState } = store.getState();
-    setPanelState('advanced', !panelStates.advanced);
-  }, [currentSessionId]);
-
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
@@ -978,7 +968,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     groupEditorOpen,
     groupEditorMode: editingGroup ? 'edit' : 'create',
     closeGroupEditor: requestCloseGroupEditor,
-    openCurrentSessionSettings,
     resourceMultiSelectActive,
     resourceMultiSelectToggleRef,
   });

@@ -174,15 +174,28 @@ describe('useSessionSidebarContent', () => {
     expect(screen.queryByText('会话')).not.toBeInTheDocument();
   });
 
-  it('separates topic groups, flat recents, and the ungrouped folder on mobile', () => {
+  it('nests the ungrouped folder under topics and keeps desktop recents separate', () => {
     render(<SidebarHarness />);
 
     expect(screen.getByText('课题')).toBeInTheDocument();
     expect(screen.getByText('最近')).toBeInTheDocument();
     expect(screen.getByText('未分组')).toBeInTheDocument();
     expect(screen.getAllByText('四级备考待办').length).toBeGreaterThan(0);
-    // 「最近」为跨分组扁平列表，未分组会话会同时出现在最近与「未分组」折叠区
     expect(screen.getAllByText('社会工作简介').length).toBeGreaterThan(0);
+    const studySection = screen.getByText('课题').closest('section');
+    expect(studySection).toHaveTextContent('未分组');
+    expect(studySection).toHaveTextContent('社会工作简介');
+  });
+
+  it('does not show calendar recents in the unified mobile drawer', () => {
+    render(<SidebarHarness unifiedMobileDrawer />);
+
+    expect(screen.queryByText('最近')).not.toBeInTheDocument();
+    expect(screen.queryByText('更早')).not.toBeInTheDocument();
+    expect(screen.queryByText('今天')).not.toBeInTheDocument();
+    const studySection = screen.getByText('课题').closest('section');
+    expect(studySection).toHaveTextContent('未分组');
+    expect(studySection).toHaveTextContent('社会工作简介');
   });
 
   it('renders an inline search box wired to the sidebar filter chain', () => {
@@ -203,8 +216,10 @@ describe('useSessionSidebarContent', () => {
     render(<EmptyTopicsSidebarHarness />);
 
     expect(screen.getByText('课题')).toBeInTheDocument();
-    expect(screen.getByText('暂无课题')).toBeInTheDocument();
+    expect(screen.queryByText('暂无课题')).not.toBeInTheDocument();
     expect(screen.getByText('最近')).toBeInTheDocument();
     expect(screen.getByText('未分组')).toBeInTheDocument();
+    const studySection = screen.getByText('课题').closest('section');
+    expect(studySection).toHaveTextContent('社会工作简介');
   });
 });

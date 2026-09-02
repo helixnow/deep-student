@@ -15,8 +15,12 @@ describe('chat v2 mobile sidebar layer contract', () => {
     expect(chatPageSource).toContain('viewMode, sessionSheetOpen, t, sessionCount: sessions.length,');
     expect(layoutHookSource).toContain('const isMinimalChatHeader = viewMode !== \'browser\' && isEmptyNewChat;');
     expect(layoutHookSource).toContain('title: isMinimalChatHeader ? undefined : headerTitle,');
-    expect(layoutHookSource).toContain('rightActions: isMinimalChatHeader ? homepageNewChatAction : headerRightActions,');
+    expect(layoutHookSource).toContain('isMinimalChatHeader\n        ? homepageNewChatAction');
+    expect(layoutHookSource).toContain('sessionNewChatAction');
     expect(layoutHookSource).toContain('data-mobile-floating-menu-button');
+    expect(layoutHookSource).not.toContain('DotsThreeVertical');
+    expect(layoutHookSource).not.toContain('open_session_settings');
+    expect(layoutHookSource).not.toContain('floatingMenuButton: isMinimalChatHeader');
     expect(layoutHookSource).not.toContain('floatingMenuButton: isMinimalChatHeader');
     expect(mobileLayoutSource).toContain('MobileInFlowHeader');
     expect(mobileHeaderSource).toContain('className="relative shrink-0"');
@@ -33,13 +37,17 @@ describe('chat v2 mobile sidebar layer contract', () => {
     expect(responsiveUtilitiesSource).not.toContain('[data-mobile-sliding-main]');
   });
 
-  it('uses a unified scroll drawer for page sidebar and app navigation on mobile', () => {
+  it('pins the app launcher under drawer chrome instead of the scroll list', () => {
     expect(mobileLayoutSource).toContain('data-mobile-unified-drawer');
     expect(mobileLayoutSource).toContain('MobileUnifiedDrawerProvider');
     expect(mobileLayoutSource).toContain('sidebarFixedContent?: ReactNode');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-fixed');
-    expect(mobileLayoutSource).toContain('embedded');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-page');
+    const chromeBlock = mobileLayoutSource.match(/data-mobile-drawer-chrome[\s\S]*?<CustomScrollArea/)?.[0] ?? '';
+    expect(chromeBlock).toContain('MobileSidebarNavigation');
+    expect(chromeBlock).toContain('hideSettings');
+    const afterScroll = mobileLayoutSource.slice(mobileLayoutSource.indexOf('<CustomScrollArea'));
+    expect(afterScroll).not.toContain('MobileSidebarNavigation');
     expect(mobileLayoutSource).not.toContain("position: 'fixed'");
     expect(mobileLayoutSource).not.toContain('overlayViewport');
     expect(mobileLayoutSource).not.toContain('useSetMobileDrawerOpen');

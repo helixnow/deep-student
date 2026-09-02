@@ -676,7 +676,7 @@
     "statusCancelled": "已取消"
   },
   "taskDashboard": {
-    "title": "制卡任务",
+    "title": "Anki制卡",
     "loading": "加载中...",
     "preventSleep": "防休眠",
     "preventSleepOn": "防休眠已开启：制卡期间系统不会进入睡眠",

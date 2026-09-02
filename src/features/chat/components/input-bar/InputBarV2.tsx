@@ -286,7 +286,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       pendingApprovalRequest,
       authorityMode,
       permissionPreset,
-      authorityAskBlockedHint,
       setAuthorityMode,
       setPermissionPreset,
       setAuthorityAskBlockedHint,
@@ -338,7 +337,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pendingApprovalRequest: s.pendingBlockingInteraction,
         authorityMode: s.authorityMode ?? 'craft',
         permissionPreset: s.permissionPreset ?? 'relaxed',
-        authorityAskBlockedHint: s.authorityAskBlockedHint ?? false,
         setAuthorityMode: s.setAuthorityMode,
         setPermissionPreset: s.setPermissionPreset,
         setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
@@ -384,6 +382,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     useEffect(() => {
       handledAuthorityBlockRef.current = null;
     }, [sessionId]);
+    useEffect(() => {
+      if (!sessionId) return;
+      if (authorityMode === 'ask' || authorityMode === 'plan') {
+        void setAuthorityMode('craft');
+      }
+    }, [sessionId, authorityMode, setAuthorityMode]);
     useEffect(() => {
       if (!liveAuthorityBlockedBlockId) return;
       if (handledAuthorityBlockRef.current === liveAuthorityBlockedBlockId) return;
@@ -1360,11 +1364,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 工具审批请求
         pendingApprovalRequest={pendingApprovalRequest}
         sessionId={sessionId}
-        authorityMode={authorityMode}
-        onAuthorityModeChange={(mode) => setAuthorityMode(mode)}
         permissionPreset={permissionPreset}
         onPermissionPresetChange={(preset) => setPermissionPreset(preset)}
-        authorityAskBlockedHint={authorityAskBlockedHint}
         // 🆕 知识库主动检索
         knowledgeBaseProactive={knowledgeBaseProactive}
         onKnowledgeBaseProactiveChange={handleKnowledgeBaseProactiveChange}

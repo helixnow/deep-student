@@ -21,9 +21,9 @@ describe('chat v2 conversation control entry contract', () => {
     expect(chatPageSource).not.toContain('<AdvancedPanel');
   });
 
-  it('keeps the mobile header entry compact while reusing the current session panel', () => {
-    expect(layoutHookSource).toContain('DotsThreeVertical');
-    expect(layoutHookSource).toContain('openCurrentSessionSettings');
+  it('keeps session settings in the composer plus menu, not the mobile header', () => {
+    expect(layoutHookSource).not.toContain('DotsThreeVertical');
+    expect(layoutHookSource).not.toContain('openCurrentSessionSettings');
     expect(layoutHookSource).not.toContain('SlidersHorizontal');
     expect(layoutHookSource).not.toContain('setShowChatControl(true);');
     expect(layoutHookSource).not.toContain('aria-label={t(\'common:chat_controls\')}');

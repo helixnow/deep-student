@@ -184,7 +184,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [matchesSearchQuery, sortedSessions]
   );
 
-  // 「最近」= 跨分组按 updatedAt 的扁平最近会话（排除置顶），修正原先"最近=未分组"的名实不符
+  // 「最近」= 桌面侧栏跨分组扁平最近会话（排除置顶）。移动端不再按日历桶重复列出。
   const recentFlatSessions = React.useMemo(
     () => sessions
       .filter((session) => !isSessionPinned(session))
@@ -193,35 +193,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       .slice(0, RECENT_FLAT_SESSION_LIMIT),
     [matchesSearchQuery, sessions]
   );
-
-  const recentSessionBuckets = React.useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
-    const recentStart = todayStart - 6 * 24 * 60 * 60 * 1000;
-    const buckets = [
-      { id: 'today', label: t('page.timeGroups.today'), sessions: [] as ChatSession[] },
-      { id: 'yesterday', label: t('page.timeGroups.yesterday'), sessions: [] as ChatSession[] },
-      { id: 'recent', label: t('page.timeGroups.previous7Days'), sessions: [] as ChatSession[] },
-      { id: 'older', label: t('page.timeGroups.older'), sessions: [] as ChatSession[] },
-    ];
-
-    for (const session of recentFlatSessions) {
-      const updatedAt = Date.parse(session.updatedAt ?? '');
-      const bucket = Number.isFinite(updatedAt)
-        ? updatedAt >= todayStart
-          ? buckets[0]
-          : updatedAt >= yesterdayStart
-            ? buckets[1]
-            : updatedAt >= recentStart
-              ? buckets[2]
-              : buckets[3]
-        : buckets[3];
-      bucket.sessions.push(session);
-    }
-
-    return buckets.filter((bucket) => bucket.sessions.length > 0);
-  }, [recentFlatSessions, t]);
 
   const currentSession = React.useMemo(
     () => sessions.find((session) => session.id === currentSessionId) ?? null,
@@ -248,6 +219,11 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       if (currentGroupId && !next.has(currentGroupId)) {
         next.add(currentGroupId);
         changed = true;
+      } else if (!currentGroupId && currentSession) {
+        if (!next.has('ungrouped')) {
+          next.add('ungrouped');
+          changed = true;
+        }
       } else if (!currentGroupId && next.size === 0 && visibleGroups[0]) {
         next.add(visibleGroups[0].id);
         changed = true;
@@ -255,7 +231,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
       return changed ? next : current;
     });
-  }, [currentSession?.groupId, visibleGroups]);
+  }, [currentSession, visibleGroups]);
 
   const handleCreateSession = React.useCallback(() => {
     setViewMode('sidebar');
@@ -548,7 +524,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       : (!currentSession?.groupId && currentSession ? 'ungrouped' : null);
     const hasAnySearchResult = pinnedSessions.length > 0
       || visibleGroups.length > 0
-      || recentFlatSessions.length > 0
       || ungroupedNonPinned.length > 0;
 
     if (isSearching && !hasAnySearchResult) {
@@ -558,6 +533,28 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         </div>
       );
     }
+
+    const ungroupedFolder = (ungroupedNonPinned.length > 0 || !isSearching) ? (
+      renderFolderRow(
+        'ungrouped',
+        t('page.ungrouped'),
+        ungroupedNonPinned,
+        activeGroupId === 'ungrouped',
+        unified,
+        hasMoreSessions ? (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => { void loadMoreSessions(); }}
+            disabled={isLoadingMore}
+            className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+          >
+            {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+            <span>{t('page.loadMore')}</span>
+          </DsButton>
+        ) : undefined,
+      )
+    ) : null;
 
     return (
       <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
@@ -570,19 +567,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             </div>
           </section>
         )}
-
-        {/* On phones, the next useful conversation comes before project organisation.
-            Desktop keeps its topic-first layout for denser, deliberate browsing. */}
-        {unified && recentSessionBuckets.map((bucket) => (
-          <section key={bucket.id} className="space-y-0.5" aria-label={bucket.label}>
-            {renderSectionLabel(bucket.label, true)}
-            <div className="space-y-0.5" role="list">
-              <AnimatePresence initial={false} mode="popLayout">
-                {bucket.sessions.map(renderAnimatedSessionRow)}
-              </AnimatePresence>
-            </div>
-          </section>
-        ))}
 
         <section className="space-y-1" aria-label={t('page.studySessions')}>
           <div className={cn('flex items-center justify-between gap-2', unified ? 'rounded-xl px-1' : 'pr-0.5')}>
@@ -602,19 +586,19 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             </DsButton>
           </div>
           <div className="space-y-1">
-            {visibleGroups.length > 0 ? (
-              visibleGroups.map((group) =>
-                renderFolderRow(
-                  group.id,
-                  group.name,
-                  sessionsByGroup.get(group.id) ?? [],
-                  activeGroupId === group.id,
-                  unified,
-                  undefined,
-                  group,
-                )
+            {visibleGroups.map((group) =>
+              renderFolderRow(
+                group.id,
+                group.name,
+                sessionsByGroup.get(group.id) ?? [],
+                activeGroupId === group.id,
+                unified,
+                undefined,
+                group,
               )
-            ) : !isSearching ? (
+            )}
+            {ungroupedFolder}
+            {visibleGroups.length === 0 && !ungroupedFolder && !isSearching ? (
               <div className="px-3 py-2 text-ui text-muted-foreground opacity-80">
                 {t('page.studySessionsEmpty')}
               </div>
@@ -622,7 +606,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </div>
         </section>
 
-        {/* 「最近」：跨分组扁平最近会话（排除置顶），与下方「未分组」折叠区分离 */}
+        {/* 桌面：「最近」跨分组扁平列表。移动端会话只走课题夹（含未分组）。 */}
         {!unified && recentFlatSessions.length > 0 && (
           <section className="space-y-0.5" aria-label={t('page.recentSessions')}>
             {renderSectionLabel(t('page.recentSessions'), unified)}
@@ -630,32 +614,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <AnimatePresence initial={false} mode="popLayout">
                 {recentFlatSessions.map(renderAnimatedSessionRow)}
               </AnimatePresence>
-            </div>
-          </section>
-        )}
-
-        {ungroupedNonPinned.length > 0 && (
-          <section className="space-y-0.5" aria-label={t('page.ungrouped')}>
-            <div className="space-y-0.5">
-              {renderFolderRow(
-                'ungrouped',
-                t('page.ungrouped'),
-                ungroupedNonPinned,
-                activeGroupId === 'ungrouped',
-                unified,
-                hasMoreSessions ? (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { void loadMoreSessions(); }}
-                    disabled={isLoadingMore}
-                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
-                  >
-                    {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
-                    <span>{t('page.loadMore')}</span>
-                  </DsButton>
-                ) : undefined,
-              )}
             </div>
           </section>
         )}

@@ -22,6 +22,7 @@ import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 export interface FinderFileItemProps {
   item: DstuNode;
@@ -133,6 +134,9 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   const memoryMeta = item.type === 'note' ? extractMemoryMeta(item.metadata?.tags as string[] | undefined) : null;
   // N-3/N-4: 触屏设备上没有 hover 和双击心智，单击直接打开、更多按钮常显
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  const { isSmallScreen } = useBreakpoint();
+  // 移动壳（<768）即使用鼠标，列表也走加高行；真实触屏（含横屏）同样加高
+  const useComfortableList = isTouchPrimary || isSmallScreen;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理点击事件
@@ -193,9 +197,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     return (
       <div
         className={cn(
-          // 触屏行高 48px（LIST_ITEM_HEIGHT_TOUCH），与虚拟滚动行槽 / 框选命中几何同源
-          "group relative flex min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
-          "[@media(pointer:coarse)]:min-h-12",
+          // 触屏/移动壳行高 64px（LIST_ITEM_HEIGHT_TOUCH），用 px 而非 rem，避免根字号把 4rem 缩成 56px
+          "group relative flex h-full min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
+          "max-md:min-h-[64px] max-md:gap-2.5 max-md:px-3.5 max-md:py-2.5",
+          "[@media(pointer:coarse)]:min-h-[64px] [@media(pointer:coarse)]:gap-2.5 [@media(pointer:coarse)]:px-3.5 [@media(pointer:coarse)]:py-2.5",
           "transition-[background-color,opacity] duration-100 ease-out",
           // 触屏按压即时反馈（无 hover 心智，点按瞬间需要可见响应）
           !isSelected && "hover:bg-[var(--interactive-hover)]/70 [@media(pointer:coarse)]:active:bg-[var(--interactive-hover)]",
@@ -214,7 +219,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         
         {/* 自定义 SVG 图标 */}
         <div className="shrink-0">
-          <CustomIcon size={24} />
+          <CustomIcon size={useComfortableList ? 28 : 24} />
         </div>
         
         {/* 已关联标记 */}
@@ -234,13 +239,14 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             selectNameOnly={item.type !== 'folder'}
             textClassName={cn(
               'truncate block text-ui font-normal',
+              'max-md:!text-lg max-md:leading-5 [@media(pointer:coarse)]:!text-lg [@media(pointer:coarse)]:leading-5',
               isSelected ? 'text-primary-foreground' : 'text-foreground/90'
             )}
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
-            inputClassName="h-6 text-ui [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!text-[16px]"
+            inputClassName="h-6 text-ui max-md:!h-9 max-md:!text-[16px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!text-[16px]"
           />
           {isFavorite && (
-            <Star size={12} className="text-yellow-500 shrink-0" />
+            <Star size={useComfortableList ? 14 : 12} className="text-yellow-500 shrink-0" />
           )}
           {/* ★ 记忆 badge */}
           {memoryMeta && (
@@ -267,18 +273,18 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               <>
                 {/* 子项数量（文件夹）或文件大小（文件类） */}
                 {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-                  <span className={cn('text-[11px] tabular-nums w-12 text-right', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
+                  <span className={cn('text-[11px] tabular-nums w-12 text-right max-md:text-caption [@media(pointer:coarse)]:text-caption', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {childCountLabel ?? formatSize(item.size)}
                   </span>
                 )}
                 {/* 类型标签 */}
                 {typeLabel && (
-                  <span className={cn('text-2xs shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
+                  <span className={cn('text-2xs shrink-0 max-md:text-caption [@media(pointer:coarse)]:text-caption', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {typeLabel}
                   </span>
                 )}
                 {/* 修改时间 */}
-                <span className={cn('text-[11px] tabular-nums shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
+                <span className={cn('text-[11px] tabular-nums shrink-0 max-md:text-caption [@media(pointer:coarse)]:text-caption', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
                   {relativeTime}
                 </span>
               </>
@@ -445,7 +451,7 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
       data-agent-entity={`files:${id}`}
       role="option"
       aria-selected={props.isSelected}
-      className={props.viewMode === 'grid' ? 'w-[88px] max-w-[88px] min-w-0' : undefined}
+      className={props.viewMode === 'grid' ? 'w-[88px] max-w-[88px] min-w-0' : 'h-full'}
     >
       <FinderFileItem
         {...props}

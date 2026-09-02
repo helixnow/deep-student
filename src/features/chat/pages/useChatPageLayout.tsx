@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { DotsThreeVertical, ListChecks, Plus } from '@phosphor-icons/react';
+import { ListChecks, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeader } from '@/components/layout';
@@ -41,8 +41,6 @@ export interface UseChatPageLayoutDeps {
   groupEditorMode: 'create' | 'edit';
   /** 关闭分组编辑器（顶栏返回箭头 / Android 返回键） */
   closeGroupEditor: () => void;
-  /** 打开当前会话的对话设置面板 */
-  openCurrentSessionSettings: () => void;
   /** 移动端右屏资源库：多选模式是否激活（全局顶栏勾选按钮高亮） */
   resourceMultiSelectActive: boolean;
   /** 移动端右屏资源库：多选模式切换句柄（由 LearningHubSidebar 持续写入） */
@@ -58,7 +56,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     mobileSandboxOpen, closeMobileSandbox,
     openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor,
-    openCurrentSessionSettings,
     resourceMultiSelectActive, resourceMultiSelectToggleRef,
   } = deps;
 
@@ -99,53 +96,37 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     </DsButton>
   ), [createSession, isLoading, t]);
 
-  const headerRightActions = useMemo(() => {
-    if (viewMode === 'browser') {
-      return (
-        <DsButton
-          variant="primary"
-          size="icon"
-          iconOnly
-          onClick={() => {
-            setViewMode('sidebar');
-            void createSession();
-          }}
-          disabled={isLoading}
-          aria-label={t('page.newSession')}
-          title={t('page.newSession')}
-        >
-          <Plus size={20} />
-        </DsButton>
-      );
-    }
-    return (
-      <>
-        {currentSessionId && (
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={openCurrentSessionSettings}
-            aria-label={t('common:mobile_header.open_session_settings')}
-            title={t('common:mobile_header.open_session_settings')}
-          >
-            <DotsThreeVertical size={20} weight="bold" />
-          </DsButton>
-        )}
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => createSession()}
-          disabled={isLoading || isEmptyNewChat}
-          aria-label={t('page.newSession')}
-          title={t('page.newSession')}
-        >
-          <Plus size={20} />
-        </DsButton>
-      </>
-    );
-  }, [currentSessionId, viewMode, createSession, isLoading, isEmptyNewChat, openCurrentSessionSettings, setViewMode, t]);
+  const sessionNewChatAction = useMemo(() => (
+    <DsButton
+      variant="ghost"
+      size="icon"
+      iconOnly
+      onClick={() => void createSession()}
+      disabled={isLoading || isEmptyNewChat}
+      className={shellIconButtonClassName}
+      aria-label={t('page.newSession')}
+      title={t('page.newSession')}
+    >
+      <Plus size={20} />
+    </DsButton>
+  ), [createSession, isEmptyNewChat, isLoading, t]);
+
+  const browserNewChatAction = useMemo(() => (
+    <DsButton
+      variant="primary"
+      size="icon"
+      iconOnly
+      onClick={() => {
+        setViewMode('sidebar');
+        void createSession();
+      }}
+      disabled={isLoading}
+      aria-label={t('page.newSession')}
+      title={t('page.newSession')}
+    >
+      <Plus size={20} />
+    </DsButton>
+  ), [createSession, isLoading, setViewMode, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {
@@ -214,9 +195,13 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           setSessionSheetOpen(true);
         }
       : () => setSessionSheetOpen(true),
-    rightActions: isMinimalChatHeader ? homepageNewChatAction : headerRightActions,
+    rightActions: viewMode === 'browser'
+      ? browserNewChatAction
+      : isMinimalChatHeader
+        ? homepageNewChatAction
+        : sessionNewChatAction,
   }, [
-    currentSessionId, headerRightActions, homepageNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
+    currentSessionId, homepageNewChatAction, sessionNewChatAction, browserNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor,
@@ -227,6 +212,5 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   return {
     isEmptyNewChat,
     headerTitle,
-    headerRightActions,
   };
 }

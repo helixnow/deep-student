@@ -19,7 +19,8 @@
     "batch": "Batch Analysis",
     "textbook_library": "Textbook Library",
     "rag_query": "RAG Query",
-    "anki_generation": "Card Tasks",
+    "anki_generation": "Anki Cards",
+    "sessions": "Chats",
     "template_management": "Template Management",
     "notes": "Notes",
     "pdf_reader": "PDF Reader",
@@ -43,7 +44,15 @@
     "command_palette": "Search & Commands",
     "workbench_mode": "Learning Desktop",
     "show_workbench_mode": "Show Learning Desktop",
-    "hide_workbench_mode": "Hide Learning Desktop"
+    "hide_workbench_mode": "Hide Learning Desktop",
+    "launcher": {
+      "chat_v2": "Chat",
+      "learning_hub": "Hub",
+      "todo": "Todo",
+      "skills_management": "Skills",
+      "task_dashboard": "Cards",
+      "data_management": "Data"
+    }
   },
   "aria": {
     "sidebar_navigation": "Main navigation",

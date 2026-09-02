@@ -4,36 +4,47 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/app-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Deep Student —— 开源、本地优先的 AI 学习工作台" />
     <title>Deep Student · AI 学习工作台</title>
     <style>
+      /* 色板与应用本体同轨：中性灰度（hue 0 / sat 0）+ 冷调墨（= --foreground）
+         + 静海蓝 accent（= 默认 palette --primary）。亮色纸面取 --secondary 同族
+         98%，让纯白窗口自然浮起；暗色纸面略深于应用背景（0 0% 9%）。 */
       :root {
-        --paper: #f7f6f2;
-        --ink: #1c1b17;
-        --ink-2: #5d5a50;
-        --ink-3: #8f8b7d;
-        --hairline: rgba(28, 27, 23, 0.1);
-        --grid-line: rgba(28, 27, 23, 0.045);
-        --accent: #2f5fe0;
-        --window-border: rgba(28, 27, 23, 0.12);
+        color-scheme: light;
+        --paper: hsl(0 0% 98%);
+        --ink: hsl(220 9% 18%);
+        --ink-2: hsl(220 6% 42%);
+        --ink-3: hsl(220 5% 56%);
+        --hairline: hsl(0 0% 88%);
+        --grid-line: hsl(220 9% 18% / 0.055);
+        --accent: hsl(215 72% 42%);
+        --window-bg: hsl(0 0% 100%);
+        --window-border: hsl(0 0% 85%);
         --window-shadow:
-          0 1px 1px rgba(28, 27, 23, 0.05),
-          0 10px 24px -10px rgba(28, 27, 23, 0.22),
-          0 40px 80px -32px rgba(28, 27, 23, 0.3);
+          0 1px 1px hsl(0 0% 0% / 0.04),
+          0 12px 28px -12px hsl(0 0% 0% / 0.16),
+          0 48px 96px -40px hsl(0 0% 0% / 0.22);
+        /* 舞台宽度：真实窗口宽 1112 为上限；视口偏矮时按可用高度反推保证窗壳完整可见
+           （reserve 360px ≈ 刊头+题辞区+舞台顶距的实际占位）。刊头胶囊与窗壳共用。 */
+        --stage-w: min(1112px, 92vw, calc((100dvh - 360px) * 1.4387));
       }
 
       html[data-theme='dark'] {
-        --paper: #131312;
-        --ink: #ecebe6;
-        --ink-2: #a5a296;
-        --ink-3: #6e6b60;
-        --hairline: rgba(236, 235, 230, 0.12);
-        --grid-line: rgba(236, 235, 230, 0.05);
-        --accent: #7c9ef8;
-        --window-border: rgba(236, 235, 230, 0.14);
+        color-scheme: dark;
+        --paper: hsl(0 0% 7%);
+        --ink: hsl(0 0% 96%);
+        --ink-2: hsl(0 0% 62%);
+        --ink-3: hsl(0 0% 46%);
+        --hairline: hsl(0 0% 19%);
+        --grid-line: hsl(0 0% 96% / 0.06);
+        --accent: hsl(214 64% 72%);
+        --window-bg: hsl(0 0% 9%);
+        --window-border: hsl(0 0% 21%);
         --window-shadow:
-          0 1px 1px rgba(0, 0, 0, 0.4),
-          0 12px 32px -10px rgba(0, 0, 0, 0.55),
-          0 56px 112px -32px rgba(0, 0, 0, 0.6);
+          0 1px 1px hsl(0 0% 0% / 0.4),
+          0 12px 32px -10px hsl(0 0% 0% / 0.55),
+          0 56px 112px -32px hsl(0 0% 0% / 0.6);
       }
 
       * {
@@ -58,7 +69,12 @@
         flex-direction: column;
       }
 
-      /* 稿纸方格：错题本/演算纸的肌理，边缘用径向渐隐收住 */
+      ::selection {
+        background: color-mix(in hsl, var(--accent) 20%, transparent);
+      }
+
+      /* 稿纸方格：错题本/演算纸的肌理，边缘用径向渐隐收住。
+         也是玻璃折射的"被摄物"——静止时透镜边沿把格线弯折，让玻璃在素底上仍可读。 */
       body::before {
         content: '';
         position: fixed;
@@ -72,81 +88,284 @@
         -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 42%, black 55%, transparent 100%);
       }
 
-      /* ---------- 页眉：栏外小字，杂志刊头式 ---------- */
+      /* ================= Liquid Glass 材质 =================
+         三层叠加：
+         ① 背景采样 backdrop-filter —— SVG feDisplacementMap 做边缘折射（位移图由
+            内联脚本按元素实际尺寸/圆角生成：透镜剖面，边沿最强、向中心快速衰减，
+            向内采样 = 边沿放大），之后轻 blur + saturate。不支持 backdrop 引用
+            SVG 滤镜的引擎（Safari/Firefox）停留在下面这行 CSS 回退。
+         ② 极低不透明 tint —— 玻璃有色但不遮挡。
+         ③ 表面光学 —— 1px 随形镜面边缘（顶亮 / 侧弱 / 底部回光）、左上柔光、
+            底部厚度阴影、外侧 hairline 定边、落影。 */
+      .glass {
+        position: relative;
+        isolation: isolate;
+        border-radius: 999px;
+        --glass-tint: color-mix(in hsl, var(--paper) 42%, transparent);
+        --glass-edge: color-mix(in hsl, var(--ink) 9%, transparent);
+        --rim-top: rgba(255, 255, 255, 0.92);
+        --rim-mid: rgba(255, 255, 255, 0.16);
+        --rim-bot: rgba(255, 255, 255, 0.55);
+        --sheen: rgba(255, 255, 255, 0.3);
+        --depth: hsl(0 0% 0% / 0.035);
+        background: var(--glass-tint);
+        -webkit-backdrop-filter: blur(12px) saturate(1.4);
+        backdrop-filter: blur(12px) saturate(1.4);
+        box-shadow:
+          0 0 0 1px var(--glass-edge),
+          0 1px 2px hsl(0 0% 0% / 0.05),
+          0 12px 32px -14px hsl(0 0% 0% / 0.22);
+      }
+
+      html[data-theme='dark'] .glass {
+        --glass-tint: color-mix(in hsl, var(--ink) 7%, transparent);
+        --glass-edge: rgba(255, 255, 255, 0.06);
+        --rim-top: rgba(255, 255, 255, 0.34);
+        --rim-mid: rgba(255, 255, 255, 0.05);
+        --rim-bot: rgba(255, 255, 255, 0.16);
+        --sheen: rgba(255, 255, 255, 0.1);
+        --depth: hsl(0 0% 0% / 0.2);
+        box-shadow:
+          0 0 0 1px var(--glass-edge),
+          0 1px 2px hsl(0 0% 0% / 0.4),
+          0 14px 36px -14px hsl(0 0% 0% / 0.6);
+      }
+
+      /* 镜面边缘：渐变只落在 1px 环上（mask 挖空 content-box） */
+      .glass::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        padding: 1px;
+        background: linear-gradient(180deg, var(--rim-top), var(--rim-mid) 38%, var(--rim-mid) 62%, var(--rim-bot));
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        mask-composite: exclude;
+      }
+
+      /* 表面受光：左上柔光 + 底部厚度阴影 */
+      .glass::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background:
+          radial-gradient(120% 90% at 28% -30%, var(--sheen), transparent 62%),
+          linear-gradient(180deg, transparent 55%, var(--depth));
+      }
+
+      /* 文字/图标浮在玻璃表面之上 */
+      .glass > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ---------- 刊头：两枚悬浮玻璃胶囊，与窗壳左右边缘对齐。
+         sticky 停在顶部——滚动时窗口从胶囊下穿过，边沿把应用 UI 弯折。 ---------- */
       .masthead {
+        position: sticky;
+        top: 0;
+        z-index: 20;
         display: flex;
-        align-items: baseline;
+        justify-content: center;
+        padding: 14px 24px 0;
+        pointer-events: none;
+      }
+
+      .masthead-inner {
+        width: var(--stage-w);
+        display: flex;
+        align-items: center;
         justify-content: space-between;
-        gap: 16px;
-        flex-wrap: wrap;
-        padding: 22px 32px 0;
-        font-size: 12.5px;
-        letter-spacing: 0.04em;
+        gap: 12px;
+      }
+
+      .pill {
+        pointer-events: auto;
+        height: 40px;
+        padding: 0 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        color: var(--ink-3);
+        white-space: nowrap;
+      }
+
+      .pill .brand {
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+        color: var(--ink);
+      }
+
+      .pill .mark {
+        width: 16px;
+        height: 16px;
+        display: block;
+        color: var(--ink);
+      }
+
+      /* ---------- 题辞区：kicker（subject）/ 标题 / 摘要 / 动作 ---------- */
+      .hero {
+        text-align: center;
+        padding: clamp(32px, 5vh, 48px) 24px 0;
+      }
+
+      .kicker {
+        margin: 0 0 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        font-size: 11.5px;
+        font-weight: 600;
+        /* 加字距居中时末字符的尾随空距会让视心偏左，用同值 text-indent 补回 */
+        letter-spacing: 0.38em;
+        text-indent: 0.38em;
         color: var(--ink-3);
       }
 
-      .masthead .brand {
-        font-weight: 650;
-        color: var(--ink);
-        letter-spacing: 0.01em;
-      }
-
-      .masthead .brand::after {
+      .kicker::before {
         content: '';
-        display: inline-block;
         width: 5px;
         height: 5px;
-        border-radius: 50%;
         background: var(--accent);
-        margin-left: 7px;
-        vertical-align: 2px;
-      }
-
-      /* ---------- 题辞区 ---------- */
-      .hero {
-        text-align: center;
-        padding: clamp(36px, 6.5vh, 72px) 24px 0;
+        /* 方块不参与字距补偿 */
+        text-indent: 0;
       }
 
       .hero h1 {
         margin: 0;
         font-family: 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', serif;
-        font-size: clamp(30px, 4.2vw, 46px);
+        font-size: clamp(30px, 4vw, 44px);
         font-weight: 600;
-        letter-spacing: 0.02em;
-        line-height: 1.25;
+        letter-spacing: 0.05em;
+        line-height: 1.3;
       }
 
       .hero .sub {
-        margin: 14px auto 0;
+        margin: 12px auto 0;
         max-width: 560px;
         color: var(--ink-2);
-        font-size: clamp(13.5px, 1.4vw, 15.5px);
-        line-height: 1.8;
+        font-size: clamp(13.5px, 1.35vw, 15px);
+        line-height: 1.9;
+      }
+
+      /* 动作行：胶囊玻璃——主按钮为烟色墨玻璃，次按钮为清玻璃。
+         accent 不用于按钮，全页只留给 kicker 方块与链接 hover。 */
+      .actions {
+        margin: 22px 0 0;
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        height: 38px;
+        padding: 0 20px;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        text-decoration: none;
+        transition:
+          background-color 160ms ease,
+          color 160ms ease;
+      }
+
+      .btn-primary {
+        --glass-tint: color-mix(in hsl, var(--ink) 82%, transparent);
+        --glass-edge: color-mix(in hsl, var(--ink) 30%, transparent);
+        --rim-top: rgba(255, 255, 255, 0.34);
+        --rim-mid: rgba(255, 255, 255, 0.06);
+        --rim-bot: rgba(255, 255, 255, 0.14);
+        --sheen: rgba(255, 255, 255, 0.16);
+        --depth: hsl(0 0% 0% / 0.18);
+        color: var(--paper);
+      }
+
+      .btn-primary:hover {
+        --glass-tint: color-mix(in hsl, var(--ink) 92%, transparent);
+      }
+
+      /* 暗色下主按钮反白：变成一枚亮玻璃，厚度阴影用暖灰压重 */
+      html[data-theme='dark'] .btn-primary {
+        --glass-tint: color-mix(in hsl, var(--ink) 86%, transparent);
+        --glass-edge: rgba(255, 255, 255, 0.22);
+        --rim-top: rgba(255, 255, 255, 0.98);
+        --rim-mid: rgba(255, 255, 255, 0.3);
+        --rim-bot: rgba(255, 255, 255, 0.6);
+        --sheen: rgba(255, 255, 255, 0.4);
+        --depth: hsl(0 0% 0% / 0.1);
+      }
+
+      html[data-theme='dark'] .btn-primary:hover {
+        --glass-tint: color-mix(in hsl, var(--ink) 96%, transparent);
+      }
+
+      .btn-ghost {
+        color: var(--ink-2);
+      }
+
+      .btn-ghost:hover {
+        --glass-tint: color-mix(in hsl, var(--paper) 72%, transparent);
+        color: var(--ink);
+      }
+
+      .btn:focus-visible,
+      .colophon a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
       }
 
       /* ---------- 窗壳：无边框窗口，红绿灯叠在应用内顶栏的预留空位 ---------- */
-      .stage-wrap {
+      .stage {
         flex: 1;
+        margin: 0;
         display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        padding: clamp(28px, 4.5vh, 48px) 24px 56px;
+        flex-direction: column;
+        align-items: center;
+        padding: clamp(24px, 3.5vh, 36px) 24px 44px;
       }
 
       .window {
         position: relative;
-        /* 宽度上限取真实窗口宽；视口偏矮时按可用高度反推，保证完整可见 */
-        width: min(1112px, 92vw, calc((100dvh - 300px) * 1.4387));
+        width: var(--stage-w);
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid var(--window-border);
         box-shadow: var(--window-shadow);
-        background: #fff;
+        background: var(--window-bg);
       }
 
-      html[data-theme='dark'] .window {
-        background: #17181c;
+      /* 窗沿边缘光：顶缘受光、底缘回暗——物理窗沿做法。
+         叠在 iframe 之上但不拦截交互（与红绿灯同层逻辑）。 */
+      .window::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 3;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.35),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+      }
+
+      html[data-theme='dark'] .window::after {
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.35);
       }
 
       /* 内屏恒为真实窗口尺寸 1112×773（桌面布局，永不触碰 768 移动断点），
@@ -192,9 +411,70 @@
       .lights i:nth-child(2) { background: #febc2e; }
       .lights i:nth-child(3) { background: #28c840; }
 
+      /* 图注：学术图版式（图序加字距 + 说明小字），本页的签名细节 */
+      .caption {
+        margin-top: 18px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        color: var(--ink-3);
+      }
+
+      .caption .fig-no {
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: var(--ink-2);
+        margin-right: 10px;
+      }
+
+      /* ---------- 版权行：colophon ---------- */
+      .colophon {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px 24px;
+        flex-wrap: wrap;
+        padding: 15px 32px 22px;
+        border-top: 1px solid var(--hairline);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        color: var(--ink-3);
+      }
+
+      .colophon nav {
+        display: flex;
+        gap: 20px;
+      }
+
+      .colophon a {
+        color: var(--ink-2);
+        text-decoration: none;
+        transition: color 150ms ease;
+      }
+
+      .colophon a:hover {
+        color: var(--accent);
+      }
+
+      @media (prefers-reduced-transparency: reduce) {
+        /* 降级契约：关掉背景采样，玻璃退回不透明表面（脚本同样不注入透镜滤镜） */
+        .glass {
+          --glass-tint: var(--paper);
+          -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+        }
+        .btn-primary {
+          --glass-tint: var(--ink);
+        }
+      }
+
       @media (max-width: 767px) {
-        .masthead { padding: 16px 20px 0; }
-        .stage-wrap { padding: 20px 12px 40px; }
+        .stage { padding: 22px 12px 36px; }
+        .colophon { padding: 14px 20px 20px; }
+      }
+
+      @media (max-width: 639px) {
+        .masthead { padding: 12px 16px 0; }
+        .pill-meta { display: none; }
       }
 
       @media (prefers-reduced-motion: no-preference) {
@@ -202,8 +482,15 @@
           animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
         .hero .sub { animation-delay: 0.08s; }
+        .hero .actions { animation-delay: 0.14s; }
         .window {
-          animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+          animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+        }
+        .caption {
+          animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+        }
+        .colophon {
+          animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.38s both;
         }
       }
 
@@ -222,23 +509,46 @@
 
   <body>
     <header class="masthead">
-      <span class="brand">Deep Student</span>
-      <span>AI 学习工作台</span>
+      <div class="masthead-inner">
+        <span class="pill glass" data-glass="bar">
+          <svg class="mark" viewBox="0 0 126 126" aria-hidden="true" fill="currentColor">
+            <path d="M107.394 31.3911C107.394 34.1859 105.11 36.4515 102.292 36.4515C99.475 36.4515 97.191 34.1859 97.191 31.3911C97.191 28.5963 99.475 26.3307 102.292 26.3307C105.11 26.3307 107.394 28.5963 107.394 31.3911Z" />
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M10 29.6379C10 22.764 10 19.327 11.3378 16.7015C12.5145 14.3921 14.3921 12.5145 16.7015 11.3378C19.327 10 22.764 10 29.6379 10H96.3621C103.236 10 106.673 10 109.298 11.3378C111.608 12.5145 113.486 14.3921 114.662 16.7015C116 19.327 116 22.764 116 29.6379V35.6632C116 63.7837 116 77.844 110.527 88.5846C105.714 98.0323 98.0323 105.714 88.5846 110.527C77.844 116 63.7837 116 35.6632 116H29.6379C22.764 116 19.327 116 16.7015 114.662C14.3921 113.486 12.5145 111.608 11.3378 109.298C10 106.673 10 103.236 10 96.3621V29.6379ZM32.6636 38.85H53.598C72.1285 38.85 87.1504 53.8719 87.1504 72.4024C87.1504 90.9329 72.1285 105.955 53.598 105.955H32.6636C32.3707 105.955 32.2242 105.955 32.1004 105.952C25.4999 105.819 20.181 100.5 20.048 93.9C20.0456 93.7761 20.0456 93.6297 20.0456 93.3368V51.468C20.0456 51.1751 20.0456 51.0286 20.048 50.9048C20.181 44.3043 25.4999 38.9854 32.1004 38.8524C32.2242 38.85 32.3707 38.85 32.6636 38.85ZM95.8062 44.6188C103.183 44.6188 109.163 38.6866 109.163 31.3688C109.163 24.0511 103.183 18.1188 95.8062 18.1188C88.4294 18.1188 82.4493 24.0511 82.4493 31.3688C82.4493 38.6866 88.4294 44.6188 95.8062 44.6188ZM107.394 31.3911C107.394 34.1859 105.11 36.4515 102.292 36.4515C99.475 36.4515 97.191 34.1859 97.191 31.3911C97.191 28.5963 99.475 26.3307 102.292 26.3307C105.11 26.3307 107.394 28.5963 107.394 31.3911Z" />
+          </svg>
+          <span class="brand">Deep Student</span>
+        </span>
+        <span class="pill pill-meta glass" data-glass="bar"><span>macOS · Windows · Linux · Android</span></span>
+      </div>
     </header>
 
     <section class="hero">
+      <p class="kicker">AI 学习工作台</p>
       <h1>把学习，做深。</h1>
       <p class="sub">会话、笔记、错题、思维导图——在同一个工作台里彼此打通。</p>
+      <p class="actions">
+        <a class="btn btn-primary glass" data-glass="button" href="https://github.com/helixnow/deep-student/releases/latest"><span>下载桌面版</span></a>
+        <a class="btn btn-ghost glass" data-glass="button" href="https://github.com/helixnow/deep-student"><span>GitHub</span></a>
+      </p>
     </section>
 
-    <div class="stage-wrap">
+    <figure class="stage">
       <div class="window" id="window">
         <div class="screen" id="screen">
           <iframe id="demo-frame" title="Deep Student" src="./demo.html"></iframe>
           <span class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
       </div>
-    </div>
+      <figcaption class="caption"><span class="fig-no">图 1</span>Deep Student 工作台实况（可交互演示）</figcaption>
+    </figure>
+
+    <footer class="colophon">
+      <span>Deep Student —— 开源（AGPL-3.0）· 本地优先</span>
+      <nav>
+        <a href="https://deepstudent.cn">deepstudent.cn</a>
+        <a href="https://deepstudent.cn/docs/">文档</a>
+        <a href="https://github.com/helixnow/deep-student">GitHub</a>
+      </nav>
+    </footer>
 
     <script>
       (function () {
@@ -269,6 +579,133 @@
         window.addEventListener('resize', fit);
         window.addEventListener('load', fit);
         fit();
+      })();
+
+      /* ================= Liquid Glass：边缘折射 =================
+         为每个 [data-glass] 元素生成一张与其尺寸/圆角严格匹配的位移图，
+         经 SVG feDisplacementMap 作用于 backdrop（Chromium 支持
+         backdrop-filter: url(#svgFilter)）。位移图编码：
+           R = 128 + 127·dx，G = 128 + 127·dy（dx/dy ∈ [-1,1]，单位 = strength px）
+           feDisplacementMap scale = 2·strength，故 (c−0.5)·scale = strength·d
+         透镜剖面：以圆角矩形 SDF 到边沿的距离 t（0 = 边沿，1 = bevel 内侧）
+         取 m = smoothstep(1−t)²，沿法线向内采样 —— 边沿把内侧内容放大外推，
+         与实体玻璃边缘的观感一致；向内采样同时避免了在 backdrop 区域外取样。
+         参数集中在 LG，便于调感觉。 */
+      (function () {
+        var LG = {
+          bar:    { bevel: 14, strength: 9, blur: 8, saturate: 1.45 },
+          button: { bevel: 12, strength: 7, blur: 2, saturate: 1.3 }
+        };
+        if (matchMedia('(prefers-reduced-transparency: reduce)').matches) return;
+        var supports = window.CSS && CSS.supports &&
+          (CSS.supports('backdrop-filter', 'url(#lg)') || CSS.supports('-webkit-backdrop-filter', 'url(#lg)'));
+        if (!supports || typeof ResizeObserver === 'undefined') return;
+
+        var NS = 'http://www.w3.org/2000/svg';
+        var XLINK = 'http://www.w3.org/1999/xlink';
+        var svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('width', '0');
+        svg.setAttribute('height', '0');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+        document.body.appendChild(svg);
+        document.documentElement.dataset.lg = 'lens';
+
+        var glassEls = document.querySelectorAll('[data-glass]');
+        for (var i = 0; i < glassEls.length; i++) setup(glassEls[i], i);
+
+        function setup(el, index) {
+          var id = 'lg-' + index;
+          var kind = LG[el.getAttribute('data-glass')] || LG.bar;
+          var filter = document.createElementNS(NS, 'filter');
+          filter.setAttribute('id', id);
+          filter.setAttribute('filterUnits', 'userSpaceOnUse');
+          filter.setAttribute('color-interpolation-filters', 'sRGB');
+          var map = document.createElementNS(NS, 'feImage');
+          map.setAttribute('result', 'map');
+          map.setAttribute('preserveAspectRatio', 'none');
+          var disp = document.createElementNS(NS, 'feDisplacementMap');
+          disp.setAttribute('in', 'SourceGraphic');
+          disp.setAttribute('in2', 'map');
+          disp.setAttribute('xChannelSelector', 'R');
+          disp.setAttribute('yChannelSelector', 'G');
+          disp.setAttribute('scale', String(kind.strength * 2));
+          filter.appendChild(map);
+          filter.appendChild(disp);
+          svg.appendChild(filter);
+
+          var lastKey = '';
+          function render() {
+            var w = Math.round(el.offsetWidth);
+            var h = Math.round(el.offsetHeight);
+            if (!w || !h) return;
+            var r = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, w / 2, h / 2);
+            var key = w + 'x' + h + 'r' + r;
+            if (key === lastKey) return;
+            lastKey = key;
+            filter.setAttribute('x', '0');
+            filter.setAttribute('y', '0');
+            filter.setAttribute('width', String(w));
+            filter.setAttribute('height', String(h));
+            map.setAttribute('x', '0');
+            map.setAttribute('y', '0');
+            map.setAttribute('width', String(w));
+            map.setAttribute('height', String(h));
+            var url = makeMap(w, h, r, kind.bevel);
+            map.setAttribute('href', url);
+            map.setAttributeNS(XLINK, 'xlink:href', url);
+            var value = 'url(#' + id + ') blur(' + kind.blur + 'px) saturate(' + kind.saturate + ')';
+            el.style.webkitBackdropFilter = value;
+            el.style.backdropFilter = value;
+          }
+          new ResizeObserver(render).observe(el);
+          render();
+        }
+
+        // 圆角矩形 SDF：dist < 0 在内部；(nx, ny) 为指向外侧的法线
+        function makeMap(w, h, r, bevel) {
+          var ss = 2; // 2× 超采样，让边沿剖面平滑
+          var cw = w * ss, ch = h * ss;
+          var canvas = document.createElement('canvas');
+          canvas.width = cw;
+          canvas.height = ch;
+          var ctx = canvas.getContext('2d');
+          var img = ctx.createImageData(cw, ch);
+          var d = img.data;
+          var hw = w / 2, hh = h / 2;
+          var bx = hw - r, by = hh - r;
+          for (var y = 0; y < ch; y++) {
+            for (var x = 0; x < cw; x++) {
+              var px = (x + 0.5) / ss - hw;
+              var py = (y + 0.5) / ss - hh;
+              var qx = Math.abs(px) - bx;
+              var qy = Math.abs(py) - by;
+              var dist, nx, ny;
+              if (qx > 0 && qy > 0) {
+                var len = Math.sqrt(qx * qx + qy * qy) || 1;
+                dist = len - r; nx = qx / len; ny = qy / len;
+              } else if (qx > qy) {
+                dist = qx - r; nx = 1; ny = 0;
+              } else {
+                dist = qy - r; nx = 0; ny = 1;
+              }
+              if (px < 0) nx = -nx;
+              if (py < 0) ny = -ny;
+              var t = -dist / bevel;
+              t = t < 0 ? 0 : t > 1 ? 1 : t;
+              var s = 1 - t;
+              var m = s * s * (3 - 2 * s);
+              m = m * m;
+              var idx = (y * cw + x) * 4;
+              d[idx]     = Math.round(128 - nx * m * 127);
+              d[idx + 1] = Math.round(128 - ny * m * 127);
+              d[idx + 2] = 128;
+              d[idx + 3] = 255;
+            }
+          }
+          ctx.putImageData(img, 0, 0);
+          return canvas.toDataURL('image/png');
+        }
       })();
     </script>
   </body>

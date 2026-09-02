@@ -50,6 +50,10 @@ function createThinkingBlock(overrides: Partial<Block> = {}): Block {
   };
 }
 
+function summaryRowOf(button: HTMLElement): HTMLElement | null {
+  return button.parentElement;
+}
+
 describe('ActivityTimeline thinking summary', () => {
   it('uses the concise completed-thinking copy in zh-CN', () => {
     expect(zhChatV2.timeline.thinking.completed).toBe('已思考 {{seconds}} 秒');
@@ -59,28 +63,30 @@ describe('ActivityTimeline thinking summary', () => {
     render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
 
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
-    const stickySummary = button.parentElement?.parentElement;
+    const summaryRow = summaryRowOf(button);
 
     expect(button).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('第一段思维链')).not.toBeInTheDocument();
-    expect(stickySummary?.className).not.toContain('sticky');
+    expect(summaryRow?.className).not.toContain('sticky');
+    expect(summaryRow?.parentElement?.className).not.toContain('sticky');
   });
 
-  it('keeps the compact summary sticky while the user expands the thinking chain', () => {
+  it('lets the compact summary scroll with the chat when the thinking chain is expanded', () => {
     render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
 
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
     fireEvent.click(button);
-    const stickySummary = button.parentElement?.parentElement;
+    const summaryRow = summaryRowOf(button);
 
     expect(button).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('第一段思维链')).toBeInTheDocument();
     expect(screen.getByText('第二段思维链')).toBeInTheDocument();
-    expect(stickySummary?.className).toContain('sticky');
-    expect(stickySummary?.className).toContain('top-0');
+    expect(summaryRow?.className).not.toContain('sticky');
+    expect(summaryRow?.className).not.toContain('top-0');
+    expect(summaryRow?.parentElement?.className).not.toContain('sticky');
   });
 
-  it('removes the sticky summary treatment after the user collapses the thinking chain', async () => {
+  it('hides thinking content after the user collapses the thinking chain', async () => {
     render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
 
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
@@ -93,52 +99,8 @@ describe('ActivityTimeline thinking summary', () => {
       expect(screen.queryByText('第一段思维链')).not.toBeInTheDocument();
     });
 
-    const collapsedSummary = button.parentElement?.parentElement;
+    const collapsedSummary = summaryRowOf(button);
     expect(collapsedSummary?.className).not.toContain('sticky');
     expect(collapsedSummary?.className).not.toContain('top-0');
-  });
-
-  it('keeps the summary pinned when collapsing from the sticky top position', async () => {
-    const { container } = render(
-      <div style={{ height: '180px', overflowY: 'auto' }}>
-        <div style={{ height: '220px' }} />
-        <ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />
-        <div style={{ height: '400px' }} />
-      </div>
-    );
-
-    const scrollContainer = container.firstElementChild as HTMLDivElement;
-    const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
-    fireEvent.click(button);
-    expect(screen.getByText('第一段思维链')).toBeInTheDocument();
-
-    const stickySummary = button.parentElement?.parentElement as HTMLDivElement;
-
-    const originalGetBoundingClientRect = stickySummary.getBoundingClientRect.bind(stickySummary);
-    vi.spyOn(stickySummary, 'getBoundingClientRect').mockImplementation(() => ({
-      ...originalGetBoundingClientRect(),
-      top: 0,
-      bottom: 32,
-    } as DOMRect));
-    vi.spyOn(scrollContainer, 'getBoundingClientRect').mockImplementation(() => ({
-      top: 0,
-      bottom: 180,
-      left: 0,
-      right: 800,
-      width: 800,
-      height: 180,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect));
-
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(screen.queryByText('第一段思维链')).not.toBeInTheDocument();
-    });
-
-    expect(stickySummary.className).toContain('sticky');
-    expect(stickySummary.className).toContain('top-0');
   });
 });

@@ -5,7 +5,7 @@
  * - 上下文窗口占用：used / limit tokens、百分比、剩余量
  * - 会话累计：总 tokens、费用（useSessionUsageSummary 已有数据）
  * - 压缩状态：active compaction 的压缩前后 token（来自 compaction_summary 块元数据）
- * - "压缩上下文"快捷操作（复用 ComposerPlusMenu 的手动压缩逻辑，流式中禁用）
+ * - "压缩上下文"快捷操作（对话会在接近窗口上限时自动压缩；这里提供手动入口，流式中禁用）
  *
  * 全部使用现有可得数据，不新增后端接口。定位/视口防溢出由 AppMenu 提供
  * （移动端小屏自动 clamp 到视口内）。

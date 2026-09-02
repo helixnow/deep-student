@@ -1,4 +1,5 @@
 import { TFunction } from 'i18next';
+import type { CurrentView } from '@/types/navigation';
 import {
   StudyBlocksIcon,
   StudyBooksIcon,
@@ -71,7 +72,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
       icon: StudyMagicWandIcon,
     },
     {
-      name: t('sidebar:navigation.anki_generation', '制卡任务'),
+      name: t('sidebar:navigation.anki_generation', 'Anki制卡'),
       view: 'task-dashboard',
       icon: StudyStackIcon,
     },
@@ -100,22 +101,19 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
 };
 
 /**
- * 移动抽屉导航分组：
- * - study（学习）：会话 / 学习资源 / 待办 —— 高频学习入口
- * - manage（管理）：技能 / 制卡 / 模板 / (UI Lab) / 设置 —— 低频管理入口
+ * 移动端所有侧栏在 head 之下的二行三列应用入口。
+ * 不含设置（抽屉顶栏齿轮）、模板管理（从 Anki制卡进入）、命令面板。
  */
-export type MobileNavSectionId = 'study' | 'manage';
+export const MOBILE_APP_LAUNCHER_VIEWS = [
+  'chat-v2',
+  'learning-hub',
+  'todo',
+  'skills-management',
+  'task-dashboard',
+  'data-management',
+] as const satisfies readonly CurrentView[];
 
-export const MOBILE_NAV_SECTION_OF_VIEW: Record<NavViewType, MobileNavSectionId> = {
-  'chat-v2': 'study',
-  'learning-hub': 'study',
-  'todo': 'study',
-  'skills-management': 'manage',
-  'task-dashboard': 'manage',
-  'template-management': 'manage',
-  'ui-lab': 'manage',
-  'settings': 'manage',
-};
+export type MobileAppLauncherView = (typeof MOBILE_APP_LAUNCHER_VIEWS)[number];
 
 /** 传给 createNavItems 的最小 t 桩：返回 defaultValue（或 key），仅用于计数等纯结构场景 */
 const structuralT = ((key: string, defaultValue?: string) => defaultValue ?? key) as unknown as TFunction;

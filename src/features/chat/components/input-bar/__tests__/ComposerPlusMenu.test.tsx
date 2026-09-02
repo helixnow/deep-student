@@ -4,8 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ComposerPlusMenu } from '../ComposerPlusMenu';
 
 describe('ComposerPlusMenu', () => {
-  it('opens mode flyout with plan/ask switches and persists craft when both off', async () => {
-    const onAuthorityModeChange = vi.fn();
+  it('opens mode flyout with permission presets and no plan/ask switches', async () => {
     render(
       <ComposerPlusMenu
         open
@@ -15,18 +14,17 @@ describe('ComposerPlusMenu', () => {
         onAddAttachment={() => undefined}
         onOpenResourceLibrary={() => undefined}
         sessionId="sess_1"
-        authorityMode="craft"
-        onAuthorityModeChange={onAuthorityModeChange}
+        permissionPreset="relaxed"
+        onPermissionPresetChange={() => undefined}
       />,
     );
 
     fireEvent.click(screen.getByTestId('plus-menu-mode'));
     expect(await screen.findByTestId('plus-menu-mode-panel')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('plus-menu-mode-plan'));
-    await waitFor(() => {
-      expect(onAuthorityModeChange).toHaveBeenCalledWith('plan');
-    });
+    expect(screen.getByTestId('plus-menu-permission-cautious')).toBeInTheDocument();
+    expect(screen.getByTestId('plus-menu-permission-relaxed')).toBeInTheDocument();
+    expect(screen.queryByTestId('plus-menu-mode-plan')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('plus-menu-mode-ask')).not.toBeInTheDocument();
   });
 
   it('shows all Craft presets and confirms danger full access before persisting', async () => {
@@ -40,8 +38,6 @@ describe('ComposerPlusMenu', () => {
         onAddAttachment={() => undefined}
         onOpenResourceLibrary={() => undefined}
         sessionId="sess_1"
-        authorityMode="craft"
-        onAuthorityModeChange={() => undefined}
         permissionPreset="relaxed"
         onPermissionPresetChange={onPermissionPresetChange}
       />,
@@ -74,8 +70,6 @@ describe('ComposerPlusMenu', () => {
         onAddAttachment={() => undefined}
         onOpenResourceLibrary={() => undefined}
         sessionId="sess_1"
-        authorityMode="craft"
-        onAuthorityModeChange={() => undefined}
         permissionPreset="full_access"
         onPermissionPresetChange={onPermissionPresetChange}
       />,
@@ -96,8 +90,6 @@ describe('ComposerPlusMenu', () => {
         onAddAttachment={() => undefined}
         onOpenResourceLibrary={() => undefined}
         sessionId="sess_1"
-        authorityMode="craft"
-        onAuthorityModeChange={() => undefined}
         permissionPreset="danger_full_access"
         onPermissionPresetChange={onPermissionPresetChange}
       />,
@@ -159,8 +151,8 @@ describe('ComposerPlusMenu', () => {
         onAddAttachment={() => undefined}
         onOpenResourceLibrary={() => undefined}
         sessionId="sess_1"
-        authorityMode="craft"
-        onAuthorityModeChange={() => undefined}
+        permissionPreset="relaxed"
+        onPermissionPresetChange={() => undefined}
         knowledgeBaseProactive={false}
         onKnowledgeBaseProactiveChange={() => undefined}
       />,
@@ -199,37 +191,48 @@ describe('ComposerPlusMenu', () => {
     expect(onOpenMcpPanel).toHaveBeenCalled();
   });
 
-  // 📱 P1-1: 移动端单层扁平菜单（无 AppMenuSub 飞出层）
+  // 📱 移动端根层只放动作；模式/档位/知识库进入二级面板
   describe('mobile flat menu', () => {
-    it('renders file actions and mode switches at the top level without submenus', () => {
+    it('renders file actions at the top level and nests mode controls behind a second page', () => {
       const onAddAttachment = vi.fn();
+      const onOpenChange = vi.fn();
       render(
         <ComposerPlusMenu
           open
           isMobile
-          onOpenChange={() => undefined}
+          onOpenChange={onOpenChange}
           attachmentCount={0}
           iconButtonClass=""
           onAddAttachment={onAddAttachment}
           onOpenResourceLibrary={() => undefined}
           sessionId="sess_1"
-          authorityMode="craft"
-          onAuthorityModeChange={() => undefined}
+          permissionPreset="relaxed"
+          onPermissionPresetChange={() => undefined}
+          knowledgeBaseProactive={false}
+          onKnowledgeBaseProactiveChange={() => undefined}
         />,
       );
 
-      // 文件动作直出，不再有「添加文件」飞出层触发器
       expect(screen.queryByTestId('plus-menu-add-file')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('plus-menu-mode')).not.toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-mode')).toBeInTheDocument();
       expect(screen.getByTestId('plus-menu-resource-library')).toBeInTheDocument();
+      expect(screen.queryByTestId('plus-menu-mode-plan')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('plus-menu-kb-proactive')).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId('plus-menu-add-attachment'));
       expect(onAddAttachment).toHaveBeenCalled();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
 
-      // 模式开关直出（无需先点开二级面板）
-      expect(screen.getByTestId('plus-menu-mode-plan')).toBeInTheDocument();
-      expect(screen.getByTestId('plus-menu-mode-ask')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('plus-menu-mode'));
+      expect(screen.queryByTestId('plus-menu-mode-plan')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('plus-menu-mode-ask')).not.toBeInTheDocument();
       expect(screen.getByTestId('plus-menu-permission-relaxed')).toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-kb-proactive')).toBeInTheDocument();
+      expect(onOpenChange).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByTestId('plus-menu-mode-back'));
+      expect(screen.queryByTestId('plus-menu-permission-relaxed')).not.toBeInTheDocument();
+      expect(screen.getByTestId('plus-menu-add-attachment')).toBeInTheDocument();
     });
 
     it('opens the inline skill panel instead of embedding it in a flyout', () => {

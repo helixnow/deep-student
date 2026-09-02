@@ -17,7 +17,8 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   // 2026-02: 补全所有已移除视图的重定向，防止历史记录导航到空白页
   library: 'learning-hub',
   'mistake-detail': 'chat-v2',
-  'llm-usage-stats': 'dashboard',
+  dashboard: 'data-management',
+  'llm-usage-stats': 'data-management',
   irec: 'chat-v2',
   'irec-management': 'chat-v2',
   'irec-service-switcher': 'chat-v2',
@@ -29,7 +30,6 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'chat-v2',
   'sandbox-workbench',
   'settings',
-  'dashboard',
   'data-management',
   'task-dashboard',
   'template-management',

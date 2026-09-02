@@ -1,28 +1,31 @@
 /**
- * MobileSidebarNavigation - 移动统一抽屉底部的全局应用导航
+ * MobileSidebarNavigation - 移动统一抽屉的全局应用入口
  *
- * 由 MobileSlidingLayout 注入到统一滚动抽屉（页内工具下方），行样式与
- * ModernSidebar 同源（mobileDrawerStyles）。导航按「学习 / 管理」分组，
- * 当前视图带 active 高亮。
+ * - settingsOnly：抽屉 head 右侧设置齿轮
+ * - 默认：head 之下的二行三列入口（会话 / 资源 / 待办 / 技能 / 制卡 / 数据）
  */
 
 import React, { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChartBar, Database, MagnifyingGlass } from '@phosphor-icons/react';
+import { Database } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
-import { createNavItems, MOBILE_NAV_SECTION_OF_VIEW, type NavItem } from '@/config/navigation';
+import {
+  createNavItems,
+  MOBILE_APP_LAUNCHER_VIEWS,
+  type MobileAppLauncherView,
+} from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
 import { canonicalizeView } from '@/app/navigation/canonicalView';
-import { useCommandPaletteSafe } from '@/command-palette';
 import { useIsUILabEnabled } from '@/utils/uiLabToggle';
 import {
-  mobileDrawerNavRowClassName,
-  mobileDrawerRowIconWrapClassName,
-  mobileDrawerRowTitleClassName,
-  mobileDrawerSectionLabelClassName,
-} from './mobileDrawerStyles';
+  StudyBooksIcon,
+  StudyChatIcon,
+  StudyMagicWandIcon,
+  StudyStackIcon,
+  StudyTodoIcon,
+} from '@/components/icons/StudySidebarIcons';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 /** @deprecated 请优先使用 APP_EVENTS.MOBILE_APP_NAVIGATE；保留导出以兼容既有 import */
@@ -45,6 +48,33 @@ export const MobileAppNavigationProvider: React.FC<{
   </MobileAppNavigationContext.Provider>
 );
 
+const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
+  'chat-v2': StudyChatIcon,
+  'learning-hub': StudyBooksIcon,
+  todo: StudyTodoIcon,
+  'skills-management': StudyMagicWandIcon,
+  'task-dashboard': StudyStackIcon,
+  'data-management': Database,
+};
+
+const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
+  'chat-v2': { key: 'sidebar:navigation.launcher.chat_v2', fallback: '会话' },
+  'learning-hub': { key: 'sidebar:navigation.launcher.learning_hub', fallback: '资源' },
+  todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
+  'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
+  'task-dashboard': { key: 'sidebar:navigation.launcher.task_dashboard', fallback: '制卡' },
+  'data-management': { key: 'sidebar:navigation.launcher.data_management', fallback: '数据' },
+};
+
+const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
+  'chat-v2': { key: 'sidebar:navigation.sessions', fallback: '会话' },
+  'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '学习资源' },
+  todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
+  'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
+  'task-dashboard': { key: 'sidebar:navigation.anki_generation', fallback: 'Anki制卡' },
+  'data-management': { key: 'common:navigation.data_management', fallback: '数据管理' },
+};
+
 interface MobileSidebarNavigationProps {
   onNavigate?: (view?: CurrentView) => void;
   className?: string;
@@ -63,14 +93,11 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   onNavigate,
   className,
   settingsOnly = false,
-  hideSettings = false,
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
   const currentView = useViewStore((state) => state.currentView);
   const uiLabEnabled = useIsUILabEnabled();
-  // 与桌面 ModernSidebar 同源：显式启用 UI Lab 后，移动抽屉也必须有可发现入口。
   const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
-  const commandPalette = useCommandPaletteSafe();
   const navigateDirect = useContext(MobileAppNavigationContext);
 
   const currentCanonicalView = canonicalizeView(currentView);
@@ -79,99 +106,24 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
     [navItems],
   );
 
-  // F1（移动端审计）：dashboard / data-management 在桌面侧栏之外没有任何
-  // 移动端入口（原本只能靠命令面板输入命令抵达），补进抽屉「管理」分组，
-  // 保证这两个页面在移动端可发现、可进可出。仅移动抽屉展示，不影响桌面侧栏。
-  const mobileOnlyManageItems = useMemo(() => ([
-    {
-      view: 'dashboard' as CurrentView,
-      name: t('common:navigation.dashboard', '总览'),
-      icon: ChartBar,
-    },
-    {
-      view: 'data-management' as CurrentView,
-      name: t('common:navigation.data_management', '数据管理'),
-      icon: Database,
-    },
-  ]), [t]);
-
-  const sections = useMemo(() => {
-    type DrawerNavItem = Pick<NavItem, 'name' | 'icon'> & { view: CurrentView };
-    // 去重（两层，均基于 canonicalizeView 归一化后的 view）：
-    // 1. 当前视图：抽屉上方已经渲染了当前页面的页内工具（如 Chat 页的
-    //    「新对话/所有对话」），全局导航里指向当前视图的入口与之语义重复，
-    //    且点击只是关抽屉的空跳转——直接过滤掉。
-    // 2. 集合去重：createNavItems 与移动端手工追加项（总览/数据管理）可能
-    //    指向同一 canonical view（含废弃别名重定向的情况），按首次出现保留、
-    //    后续丢弃，保证每个导航入口在抽屉中只渲染一次。
-    const seenCanonicalViews = new Set<CurrentView>();
-    const admit = (view: CurrentView): boolean => {
-      const canonical = canonicalizeView(view);
-      if (canonical === currentCanonicalView) return false;
-      if (seenCanonicalViews.has(canonical)) return false;
-      seenCanonicalViews.add(canonical);
-      return true;
-    };
-    const study: DrawerNavItem[] = [];
-    const manage: DrawerNavItem[] = [];
-    for (const item of navItems) {
-      if (hideSettings && canonicalizeView(item.view) === 'settings') continue;
-      if (!admit(item.view)) continue;
-      (MOBILE_NAV_SECTION_OF_VIEW[item.view] === 'study' ? study : manage).push(item);
-    }
-    // 移动端专属入口插在设置之前，保持「设置」按惯例收尾；
-    // 若 createNavItems 已包含同一 canonical view 的入口，这里不再重复追加
-    const extraManageItems = mobileOnlyManageItems.filter((item) => admit(item.view));
-    const settingsIndex = manage.findIndex((item) => item.view === 'settings');
-    if (settingsIndex >= 0) {
-      manage.splice(settingsIndex, 0, ...extraManageItems);
-    } else {
-      manage.push(...extraManageItems);
-    }
-    return [
-      { id: 'study', label: t('sidebar:mobile_drawer.section_study', '学习'), items: study },
-      { id: 'manage', label: t('sidebar:mobile_drawer.section_manage', '管理'), items: manage },
-    ];
-  }, [currentCanonicalView, hideSettings, mobileOnlyManageItems, navItems, t]);
+  const launcherItems = useMemo(() => (
+    MOBILE_APP_LAUNCHER_VIEWS.map((view) => ({
+      view,
+      name: t(LAUNCHER_SHORT_LABEL[view].key, LAUNCHER_SHORT_LABEL[view].fallback),
+      ariaLabel: t(LAUNCHER_FULL_LABEL[view].key, LAUNCHER_FULL_LABEL[view].fallback),
+      icon: LAUNCHER_ICONS[view],
+    }))
+  ), [t]);
 
   const handleNavigate = useCallback((view: CurrentView) => {
     if (navigateDirect) {
-      // 守卫拦截（如 Android 键盘弹出期）返回 false：不收抽屉，
-      // 避免"点了没跳转还把菜单关了"的割裂感
       const accepted = navigateDirect(view);
       if (accepted === false) return;
     } else {
-      // 兼容路径：无 Provider（如独立挂载/测试环境）时退回全局事件（无法感知拦截结果）
       dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view });
     }
     onNavigate?.(view);
   }, [navigateDirect, onNavigate]);
-
-  const handleOpenCommandPalette = useCallback(() => {
-    onNavigate?.();
-    commandPalette?.open();
-  }, [commandPalette, onNavigate]);
-
-  const renderRow = (
-    key: string,
-    label: string,
-    Icon: React.ElementType,
-    onClick: () => void,
-    isActive = false,
-  ) => (
-    <button
-      key={key}
-      type="button"
-      aria-current={isActive ? 'page' : undefined}
-      onClick={onClick}
-      className={mobileDrawerNavRowClassName(isActive, 'group gap-2.5')}
-    >
-      <span className={mobileDrawerRowIconWrapClassName}>
-        <Icon className="size-[18px]" />
-      </span>
-      <span className={mobileDrawerRowTitleClassName}>{label}</span>
-    </button>
-  );
 
   if (settingsOnly) {
     if (!settingsItem) return null;
@@ -195,42 +147,34 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   }
 
   return (
-    <div
+    <nav
       data-mobile-shell="sidebar-nav"
-      className={cn(
-        'mt-4 border-t border-[color:var(--shell-navigation-border)] pt-3 pb-1',
-        className,
-      )}
+      data-mobile-app-launcher=""
+      aria-label={t('common:navigation_label')}
+      className={cn('grid grid-cols-3 gap-x-0.5 gap-y-0', className)}
     >
-      <nav aria-label={t('common:navigation_label')} className="space-y-0.5">
-        {commandPalette ? (
-          <div className="mb-2">
-            {renderRow(
-              'command-palette',
-              t('sidebar:navigation.command_palette'),
-              MagnifyingGlass,
-              handleOpenCommandPalette,
+      {launcherItems.map(({ view, icon: Icon, name, ariaLabel }) => {
+        const isActive = currentCanonicalView === canonicalizeView(view);
+        return (
+          <button
+            key={view}
+            type="button"
+            aria-label={ariaLabel}
+            aria-current={isActive ? 'page' : undefined}
+            onClick={() => handleNavigate(view)}
+            className={cn(
+              'flex min-h-10 flex-row items-center gap-1.5 rounded-md px-1.5',
+              'text-[13px] leading-none text-[color:var(--shell-navigation-muted)]',
+              'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+              isActive && 'bg-[color:hsl(var(--primary)/0.1)] text-[color:var(--shell-navigation-foreground)]',
             )}
-          </div>
-        ) : null}
-        {sections.map(({ id, label, items }) =>
-          items.length > 0 ? (
-            <div key={id} className="space-y-0.5">
-              <span className={mobileDrawerSectionLabelClassName}>{label}</span>
-              {items.map(({ view, icon: Icon, name }) =>
-                renderRow(
-                  view,
-                  name,
-                  Icon,
-                  () => handleNavigate(view as CurrentView),
-                  currentCanonicalView === canonicalizeView(view as CurrentView),
-                ),
-              )}
-            </div>
-          ) : null,
-        )}
-      </nav>
-    </div>
+          >
+            <Icon className="size-[25px] shrink-0" />
+            <span className="min-w-0 truncate">{name}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 };
 

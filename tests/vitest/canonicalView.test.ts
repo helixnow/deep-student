@@ -23,4 +23,9 @@ describe('canonicalView', () => {
     expect(isSupportedView('notes')).toBe(true);
     expect(isSupportedView('chat-v2')).toBe(true);
   });
+
+  it('folds the standalone dashboard into data management', () => {
+    expect(canonicalizeView('dashboard')).toBe('data-management');
+    expect(canonicalizeView('llm-usage-stats')).toBe('data-management');
+  });
 });

@@ -423,14 +423,11 @@ interface TimelineNodeProps {
   icon?: React.ReactNode;
   /** 隐藏节点圆点，仅保留连接线 */
   hideDot?: boolean;
-  /** 图标是否跟随吸顶 */
-  stickyIcon?: boolean;
   children: React.ReactNode;
 }
 
 const TimelineNode: React.FC<TimelineNodeProps> = ({
   icon,
-  stickyIcon,
   children,
 }) => {
   return (
@@ -440,7 +437,7 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
         {icon && (
           <div
             aria-hidden="true"
-            className={cn('inline-flex h-5 w-5 items-center justify-center leading-none', stickyIcon && 'sticky top-0')}
+            className="inline-flex h-5 w-5 items-center justify-center leading-none"
           >
             {icon}
           </div>
@@ -473,7 +470,6 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
-  const summaryRef = useRef<HTMLDivElement | null>(null);
 
   const [, forceRerender] = useReducer((x: number) => x + 1, 0);
 
@@ -501,84 +497,23 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
     if (node.isThinking) return true;
     return !autoCollapseEnabled;
   });
-  const [preserveStickyOnCollapse, setPreserveStickyOnCollapse] = useState(false);
   const isManuallyControlled = useRef(false);
 
   useEffect(() => {
     if (isManuallyControlled.current) return;
     if (node.isThinking) {
       setIsExpanded(true);
-      setPreserveStickyOnCollapse(false);
     } else if (autoCollapseEnabled) {
       setIsExpanded(false);
     }
   }, [node.isThinking, autoCollapseEnabled]);
 
-  const getScrollContainer = useCallback((element: HTMLElement | null): HTMLElement | null => {
-    if (typeof window === 'undefined') return null;
-
-    let current = element?.parentElement ?? null;
-    while (current) {
-      const { overflowY } = window.getComputedStyle(current);
-      if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
-        return current;
-      }
-      current = current.parentElement;
-    }
-
-    return null;
+  const toggleExpanded = useCallback(() => {
+    isManuallyControlled.current = true;
+    setIsExpanded((prev) => !prev);
   }, []);
 
-  const isSummaryPinnedAtTop = useCallback((element: HTMLElement | null): boolean => {
-    const scrollContainer = getScrollContainer(element);
-    if (!element || !scrollContainer) return false;
-
-    const summaryRect = element.getBoundingClientRect();
-    const containerRect = scrollContainer.getBoundingClientRect();
-
-    return Math.abs(summaryRect.top - containerRect.top) <= 2;
-  }, [getScrollContainer]);
-
-  const hasSummaryScrolledPastTop = useCallback((element: HTMLElement | null): boolean => {
-    const scrollContainer = getScrollContainer(element);
-    if (!element || !scrollContainer) return false;
-
-    const summaryRect = element.getBoundingClientRect();
-    const containerRect = scrollContainer.getBoundingClientRect();
-
-    return summaryRect.top < containerRect.top - 2;
-  }, [getScrollContainer]);
-
-  const toggleExpanded = useCallback(() => {
-    // 标记为用户手动控制
-    isManuallyControlled.current = true;
-    const pinnedAtTop = isSummaryPinnedAtTop(summaryRef.current);
-    setIsExpanded((prev) => {
-      const nextExpanded = !prev;
-      setPreserveStickyOnCollapse(!nextExpanded && pinnedAtTop);
-      return nextExpanded;
-    });
-  }, [isSummaryPinnedAtTop]);
-
-  useEffect(() => {
-    if (isExpanded || !preserveStickyOnCollapse) return;
-
-    const scrollContainer = getScrollContainer(summaryRef.current);
-    if (!scrollContainer) return;
-
-    const handleScroll = () => {
-      if (hasSummaryScrolledPastTop(summaryRef.current)) {
-        setPreserveStickyOnCollapse(false);
-      }
-    };
-
-    handleScroll();
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, [getScrollContainer, hasSummaryScrolledPastTop, isExpanded, preserveStickyOnCollapse]);
-
   const hasContent = !!(node.content || node.isThinking);
-  const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);
 
   const paragraphs = useMemo(
     () => (node.content ?? '')
@@ -597,7 +532,6 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
       contentId={contentId}
-      stickyIcon={shouldStickSummary}
       icon={
         <Brain
           size={15}
@@ -606,56 +540,47 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
         />
       }
     >
-      <div
-        ref={summaryRef}
-        className={cn(
-          shouldStickSummary && cn(
-            'thinking-summary-sticky sticky top-0 z-10 -mr-3 pr-3'
-          )
-        )}
-      >
-        <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={hasContent ? toggleExpanded : undefined}
-            disabled={!hasContent}
-            aria-expanded={hasContent ? isExpanded : undefined}
-            aria-controls={hasContent ? contentId : undefined}
-            className={cn(
-              'thinking-summary-trigger activity-timeline-thinking-trigger activity-timeline-summary w-full !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 rounded-[var(--radius-shell-control)] transition-colors group',
-              'text-muted-foreground hover:text-foreground',
-              'focus-visible:text-foreground',
-              hasContent && 'hover:text-foreground cursor-pointer',
-              'disabled:cursor-default disabled:hover:!bg-transparent'
-            )}
-          >
-            {node.isThinking ? (
-              <TextShimmer className="activity-timeline-summary" duration={1.5} spread={3}>
-                {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
-              </TextShimmer>
-            ) : node.isAborted ? (
-              <span className="activity-timeline-summary text-muted-foreground/80">
-                {t('timeline.thinking.stopped')}
-              </span>
-            ) : (
-              <span className="activity-timeline-summary">
-                {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
-              </span>
-            )}
-            {hasContent && (
-              <motion.span
-                aria-hidden="true"
-                className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground/50 group-hover:text-foreground/70 transition-colors duration-200"
-                initial={false}
-                animate={{ rotate: isExpanded ? 90 : 0 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-              >
-                <CaretRight size={12} weight="bold" />
-              </motion.span>
-            )}
-          </DsButton>
-        </div>
+      <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={hasContent ? toggleExpanded : undefined}
+          disabled={!hasContent}
+          aria-expanded={hasContent ? isExpanded : undefined}
+          aria-controls={hasContent ? contentId : undefined}
+          className={cn(
+            'thinking-summary-trigger activity-timeline-thinking-trigger activity-timeline-summary w-full !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 rounded-[var(--radius-shell-control)] transition-colors group',
+            'text-muted-foreground hover:text-foreground',
+            'focus-visible:text-foreground',
+            hasContent && 'hover:text-foreground cursor-pointer',
+            'disabled:cursor-default disabled:hover:!bg-transparent'
+          )}
+        >
+          {node.isThinking ? (
+            <TextShimmer className="activity-timeline-summary" duration={1.5} spread={3}>
+              {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
+            </TextShimmer>
+          ) : node.isAborted ? (
+            <span className="activity-timeline-summary text-muted-foreground/80">
+              {t('timeline.thinking.stopped')}
+            </span>
+          ) : (
+            <span className="activity-timeline-summary">
+              {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
+            </span>
+          )}
+          {hasContent && (
+            <motion.span
+              aria-hidden="true"
+              className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground/50 group-hover:text-foreground/70 transition-colors duration-200"
+              initial={false}
+              animate={{ rotate: isExpanded ? 90 : 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+            >
+              <CaretRight size={12} weight="bold" />
+            </motion.span>
+          )}
+        </DsButton>
       </div>
 
       <AnimatePresence initial={false}>
@@ -665,7 +590,7 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             id={contentId}
             role="region"
             aria-label={t('timeline.thinking.contentLabel')}
-            className={cn('activity-timeline-thinking-details overflow-hidden', shouldStickSummary && 'pt-2')}
+            className="activity-timeline-thinking-details overflow-hidden"
           >
             <div
               className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400"

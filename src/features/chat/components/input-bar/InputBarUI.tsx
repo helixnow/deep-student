@@ -555,7 +555,6 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onSetPanelState,
   onCompactContext,
   isCompactingContext = false,
-  compactContextStatus = null,
   getCompactionInfo,
   // UI 配置
   placeholder,
@@ -612,11 +611,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 🆕 工具审批请求
   pendingApprovalRequest,
   sessionId,
-  authorityMode = 'craft',
-  onAuthorityModeChange,
   permissionPreset = 'relaxed',
   onPermissionPresetChange,
-  authorityAskBlockedHint = false,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
   // ★ PDF 页码引用
@@ -3397,7 +3393,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         <div className="flex items-center justify-between gap-2">
           {/* 左侧按钮 - 窄屏时可横向滚动 */}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
-            {/* 加号菜单：附件 / 模式 / 技能 / 连接器（AppMenu 次级飞出） */}
+            {/* 加号菜单：附件 / 模式 / 技能 / 连接器 / 对话控制 */}
             <ComposerPlusMenu
               open={isAttachmentMenuOpen}
               onOpenChange={handleAttachmentMenuOpenChange}
@@ -3411,16 +3407,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               onOpenResourceLibrary={handleOpenResourceLibrary}
               onOpenCamera={handleOpenCameraAction}
               onOpenSkillPanel={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
-              onCompactContext={onCompactContext}
-              isCompactingContext={isCompactingContext}
-              compactContextStatus={compactContextStatus}
-              compactContextDisabled={isStreaming}
               sessionId={sessionId}
-              authorityMode={authorityMode}
-              onAuthorityModeChange={onAuthorityModeChange}
               permissionPreset={permissionPreset}
               onPermissionPresetChange={onPermissionPresetChange}
-              authorityAskBlockedHint={authorityAskBlockedHint}
               knowledgeBaseProactive={knowledgeBaseProactive}
               onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
               renderSkillPanel={renderSkillPanelMenuVariant}

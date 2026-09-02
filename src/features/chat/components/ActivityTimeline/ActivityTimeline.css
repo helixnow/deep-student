@@ -93,12 +93,6 @@ button.timeline-node-dot {
   margin-top: 0;
 }
 
-.thinking-summary-sticky {
-  position: sticky;
-  isolation: isolate;
-  overflow: visible;
-}
-
 .thinking-summary-trigger:hover,
 .thinking-summary-trigger:focus-visible {
   background: transparent;

@@ -117,7 +117,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 提交非交互本地命令，由后端按当前会话档位决定静默执行或展示审批 UI，返回 exit code、stdout/stderr 与截断状态
 
-本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。做一做模式下，完全访问会同时免除普通 shell 审批并取消本地 shell 的 runtime root、文件系统和网络沙箱边界；此时命令可以访问当前用户有权访问的宿主机路径。问一问和想一想模式的限制仍然优先。
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。完全访问会同时免除普通 shell 审批并取消本地 shell 的 runtime root、文件系统和网络沙箱边界；此时命令可以访问当前用户有权访问的宿主机路径。
 
 ### 本地命令的执行根选择
 - 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。

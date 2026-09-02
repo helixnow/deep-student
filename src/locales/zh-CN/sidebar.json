@@ -19,7 +19,8 @@
     "batch": "批量分析",
     "textbook_library": "教材库",
     "rag_query": "RAG查询",
-    "anki_generation": "制卡任务",
+    "anki_generation": "Anki制卡",
+    "sessions": "会话",
     "template_management": "模板管理",
     "notes": "笔记",
     "pdf_reader": "PDF阅读器",
@@ -43,7 +44,15 @@
     "command_palette": "搜索与命令",
     "workbench_mode": "学习桌面",
     "show_workbench_mode": "显示学习桌面",
-    "hide_workbench_mode": "隐藏学习桌面"
+    "hide_workbench_mode": "隐藏学习桌面",
+    "launcher": {
+      "chat_v2": "会话",
+      "learning_hub": "资源",
+      "todo": "待办",
+      "skills_management": "技能",
+      "task_dashboard": "制卡",
+      "data_management": "数据"
+    }
   },
   "aria": {
     "sidebar_navigation": "主导航",

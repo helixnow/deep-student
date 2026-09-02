@@ -664,7 +664,7 @@
     "statusCancelled": "Cancelled"
   },
   "taskDashboard": {
-    "title": "Card Tasks",
+    "title": "Anki Cards",
     "loading": "Loading...",
     "preventSleep": "Keep awake",
     "preventSleepOn": "Keep awake is on: the system won't sleep while generating cards",
