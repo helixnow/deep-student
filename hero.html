@@ -502,6 +502,19 @@
         :root {
           --stage-w: 100%;
         }
+        /* 整屏磁吸滚动：滚动停止时吸附到最近一屏（题辞屏 / 演示屏 / 版权行）。
+           各屏均以 svh/dvh 定义，吸附后自然适应当前窗口大小。
+           版权行高度不足一屏，用 snap-align:end 使其贴底对齐作为末屏。 */
+        html {
+          scroll-snap-type: y mandatory;
+        }
+        .hero,
+        .stage {
+          scroll-snap-align: start;
+        }
+        .colophon {
+          scroll-snap-align: end;
+        }
         /* 刊头改为 fixed 悬浮：题辞/演示屏从玻璃胶囊下穿过（桌面 sticky 同观感），
            且不占文档流高度，题辞屏才能正好一屏 */
         .masthead {
