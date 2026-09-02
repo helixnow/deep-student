@@ -537,13 +537,13 @@
         .stage {
           flex: none;
           height: 100dvh;
-          padding: 0;
+          padding: 12px;
         }
+        /* 演示壳带边距的圆角矩形（紧贴屏幕边缘既不美观也压迫内容） */
         .window {
           width: 100%;
           flex: 1;
-          border-radius: 0;
-          border: 0;
+          border-radius: 28px;
         }
         /* absolute inset 布局：绕开"块级子元素 % 高度依赖父级显式 height"
            的解析陷阱（.window 的高度来自 flex，非 height 属性） */
