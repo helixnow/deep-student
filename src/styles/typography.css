@@ -19,6 +19,21 @@ html, body, #root {
 	text-rendering: optimizeLegibility;
 }
 
+/* 移动端/触屏：root 提到 16px。
+ * 问题：上方 `font-size: var(--font-size-base)`（=14px）后加载压过 tailwind.css 的
+ * `html { font-size: calc(16px * --font-size-scale) }`，root 恒为 14px，导致所有
+ * rem 尺寸（tailwind min-h-10/11、h-*、p-*）缩水 12.5%——标称 40/44px 的触控目标
+ * 实测仅 35/38.5px，低于 Apple HIG 44pt / Material 48dp。
+ * 桌面端保持 14px 紧凑密度不变；移动端 16px root 让 rem 恢复标称值。
+ * 断点与切壳断点（useIsMobile <768）及 CrepeEditor.css 移动段惯例对齐。
+ * 注：UI 字号 token（--font-size-sm/base/ui）是 px 基准，不受影响——文字密度
+ * 不变，只有 rem 容器/间距/触控目标放大。 */
+@media (max-width: 767.98px), (pointer: coarse) {
+	html {
+		font-size: calc(16px * var(--font-size-scale, 1));
+	}
+}
+
 html[data-font-smoothing="macos-native"] body {
 	-webkit-font-smoothing: auto;
 	-moz-osx-font-smoothing: auto;

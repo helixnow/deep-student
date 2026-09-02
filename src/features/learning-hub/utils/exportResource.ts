@@ -11,6 +11,7 @@
 import type { TFunction } from 'i18next';
 import { dstu } from '@/dstu';
 import { fileManager } from '@/utils/fileManager';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 /** 移动端 WebView 不支持文件保存对话框 */
@@ -28,6 +29,21 @@ export function isExportUnsupportedPlatform(): boolean {
 export async function exportResourceById(resourceId: string, t: TFunction): Promise<boolean> {
   try {
     if (isExportUnsupportedPlatform()) {
+      // 移动端没有文件保存对话框：文本资源（笔记/翻译/作文）降级为「复制 Markdown」，
+      // 让移动端用户有可用出口而非死路警告；二进制资源（PDF/图片）维持不支持提示。
+      if (/^(note_|tr_|essay_)/.test(resourceId)) {
+        try {
+          const result = await dstu.exportResource(`/${resourceId}`, 'markdown');
+          if (result.ok && result.value.payloadType === 'text' && result.value.content) {
+            if (await copyTextToClipboard(result.value.content)) {
+              showGlobalNotification('success', t('contextMenu.exportCopiedMobile'));
+              return true;
+            }
+          }
+        } catch {
+          // 降级失败则落回下方的不支持警告
+        }
+      }
       showGlobalNotification('warning', `${t('contextMenu.exportFailed')}: ${t('contextMenu.exportUnsupportedMobile')}`);
       return false;
     }

@@ -135,7 +135,8 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
         iconOnly
         data-mobile-shell="sidebar-settings"
         className={cn(
-          'shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground',
+          // !h-11 !w-11 = 44px：触控目标底线（同导航格口径）
+          'shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground',
           className,
         )}
         aria-label={settingsItem.name}
@@ -163,8 +164,10 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
             aria-current={isActive ? 'page' : undefined}
             onClick={() => handleNavigate(view)}
             className={cn(
-              'flex min-h-10 flex-row items-center gap-1.5 rounded-md px-1.5',
-              'text-[13px] leading-none text-[color:var(--shell-navigation-muted)]',
+              // min-h-11 = 44px：达到 Apple HIG / Material 触控目标底线（移动端 root 16px 下 rem 标称生效）
+              // 注意不要用 text-sm：typography.css 把 .text-sm 重定义为 --font-size-sm(12px)
+              'flex min-h-11 flex-row items-center gap-1.5 rounded-md px-1.5',
+              'text-[14px] leading-none text-[color:var(--shell-navigation-muted)]',
               'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
               isActive && 'bg-[color:hsl(var(--primary)/0.1)] text-[color:var(--shell-navigation-foreground)]',
             )}

@@ -65,6 +65,7 @@
     "exportSuccess": "Exported to: {{path}}",
     "exportFailed": "Export failed",
     "exportUnsupportedMobile": "Export is not supported on mobile yet",
+    "exportCopiedMobile": "Markdown copied (file export is not supported on mobile)",
     "confirmDelete": "Confirm Delete",
     "confirmDeleteWithRefs": "This resource is referenced by {{count}} chats. Those chats will lose access after deletion. Delete anyway?",
     "favoriteError": "Unable to favorite: resource path not found",

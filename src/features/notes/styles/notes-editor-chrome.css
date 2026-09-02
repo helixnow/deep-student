@@ -148,6 +148,37 @@
   max-width: var(--notes-focus-content-max-w, 920px);
 }
 
+/* 焦点模式真正隐藏头部（上方 115 行注释所述"组件层切 data-focus-mode=true 收走"）。
+   本规则属组件级（作用于 NotesCrepeEditor 渲染的元素），必须随组件全路径加载——
+   曾误放在 workbench 懒加载 CSS 里，导致 Learning Hub 路径下焦点模式头部不隐藏。 */
+.notes-crepe-shell[data-focus-mode='true'] .notes-editor-header-section,
+.notes-crepe-shell[data-focus-mode='true'] .notes-editor-header {
+  display: none;
+}
+
+/* 焦点模式退出按钮（NotesCrepeEditor 渲染，全路径需定位）。
+   玻璃模糊走 workbench 材质 token（禁止自写 blur；LHB 等无 token 路径回落 none） */
+.notes-focus-exit {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 24;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background) / 0.88);
+  color: hsl(var(--muted-foreground));
+  backdrop-filter: var(--wb-glass-blur, none);
+}
+
+/* 触屏/窄屏：焦点模式追求极简视觉，按钮视觉保持 32px，
+   用伪元素把命中区外扩到 ≥44px（h-8 w-8 直接点不准）。 */
+@media (max-width: 767.98px), (pointer: coarse) {
+  .notes-focus-exit::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notes-template-card {
     transition: none;

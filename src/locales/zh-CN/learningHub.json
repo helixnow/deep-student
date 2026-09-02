@@ -65,6 +65,7 @@
     "exportSuccess": "已导出到: {{path}}",
     "exportFailed": "导出失败",
     "exportUnsupportedMobile": "移动端暂不支持导出",
+    "exportCopiedMobile": "已复制 Markdown 全文（移动端暂不支持导出文件）",
     "confirmDelete": "确定要删除此资源吗？",
     "confirmDeleteWithRefs": "此资源被 {{count}} 个对话引用，删除后这些对话将无法访问此资源。确定要删除吗？",
     "favoriteError": "无法收藏：资源路径未找到",

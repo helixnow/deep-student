@@ -43,6 +43,14 @@
   /* 阴影 */
   --crepe-shadow-1: 0 1px 2px hsl(var(--shadow-base) / 0.12);
   --crepe-shadow-2: 0 2px 8px hsl(var(--shadow-base) / 0.14);
+
+  /* 字体族归一：crepe 默认标题用 Noto Serif 衬线栈（不含中文，中文落系统宋体），
+     与 UI/正文的无衬线栈割裂，且 400 字重衬线在移动端辨识度差。
+     标题/正文/代码统一走项目字体变量（--font-family 已含 PingFang SC 等中文回退），
+     与阅读态 .prose-note 同源（阅读态不定义标题字体族，继承正文）。 */
+  --crepe-font-default: var(--font-family);
+  --crepe-font-title: var(--font-family);
+  --crepe-font-code: var(--font-mono);
 }
 
 /* ===== 编辑器容器 ===== */
@@ -295,8 +303,12 @@
   box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15)) !important;
 }
 
-/* 标题样式 — 简洁 阶梯（相对正文 em，token 见 notes-typography.css） */
-.crepe-editor-wrapper h1 {
+/* 标题样式 — 简洁 阶梯（相对正文 em，token 见 notes-typography.css）
+ * 特异性说明：crepe reset.css 用 `.milkdown .ProseMirror hN`（0,2,1）硬编码了
+ * 42/36/32px 标题 + 400 字重 + 衬线字体，`.crepe-editor-wrapper hN`（0,1,1）赢不了，
+ * 导致设计 token 长期失效（移动端 355px 列宽下 42px 标题一行仅 8 个汉字）。
+ * 这里统一用 (0,3,1) 压过 reset，恢复 token 阶梯与 600 字重。 */
+.crepe-editor-wrapper .milkdown .ProseMirror h1 {
   font-size: var(--notes-heading-h1-size, 1.875em);
   font-weight: var(--notes-heading-h1-weight, 600);
   line-height: var(--notes-heading-h1-lh, 1.3);
@@ -304,7 +316,7 @@
   margin-bottom: 0.5em;
 }
 
-.crepe-editor-wrapper h2 {
+.crepe-editor-wrapper .milkdown .ProseMirror h2 {
   font-size: var(--notes-heading-h2-size, 1.5em);
   font-weight: var(--notes-heading-h2-weight, 600);
   line-height: var(--notes-heading-h2-lh, 1.3);
@@ -312,7 +324,7 @@
   margin-bottom: 0.5em;
 }
 
-.crepe-editor-wrapper h3 {
+.crepe-editor-wrapper .milkdown .ProseMirror h3 {
   font-size: var(--notes-heading-h3-size, 1.25em);
   font-weight: var(--notes-heading-h3-weight, 600);
   line-height: var(--notes-heading-h3-lh, 1.3);
@@ -320,7 +332,7 @@
   margin-bottom: 0.5em;
 }
 
-.crepe-editor-wrapper h4 {
+.crepe-editor-wrapper .milkdown .ProseMirror h4 {
   font-size: var(--notes-heading-h4-size, 1.125em);
   font-weight: var(--notes-heading-h4-weight, 600);
   line-height: var(--notes-heading-h4-lh, 1.35);
@@ -328,7 +340,7 @@
   margin-bottom: 0.4em;
 }
 
-.crepe-editor-wrapper h5 {
+.crepe-editor-wrapper .milkdown .ProseMirror h5 {
   font-size: var(--notes-heading-h5-size, 1em);
   font-weight: var(--notes-heading-h5-weight, 600);
   line-height: var(--notes-heading-h5-lh, 1.4);
@@ -336,7 +348,7 @@
   margin-bottom: 0.35em;
 }
 
-.crepe-editor-wrapper h6 {
+.crepe-editor-wrapper .milkdown .ProseMirror h6 {
   font-size: var(--notes-heading-h6-size, 1em);
   font-weight: var(--notes-heading-h6-weight, 500);
   line-height: var(--notes-heading-h6-lh, 1.4);
@@ -366,13 +378,20 @@
   border-radius: var(--notes-inline-code-radius, 4px);
 }
 
-/* 引用块 — 3px 前景竖线、不斜体、正常前景 */
-.crepe-editor-wrapper blockquote {
+/* 引用块 — 3px 前景竖线、不斜体、正常前景
+ * 特异性 (0,3,1)：压过 crepe reset 的 padding-left:40px（移动端 355px 列宽下
+ * 40px 缩进挤掉 11% 正文宽度）；reset 的 ::before 圆角竖条与 border-left 并存
+ * 会成双竖线，一并屏蔽。 */
+.crepe-editor-wrapper .milkdown .ProseMirror blockquote {
   border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground));
   padding-left: 1rem;
   margin-left: 0;
   font-style: normal;
   color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror blockquote::before {
+  content: none;
 }
 
 /* 链接 */
@@ -468,11 +487,16 @@
   text-decoration: line-through;
 }
 
-/* 分隔线 — 1px border 色、上下约 0.75em */
-.crepe-editor-wrapper hr {
+/* 分隔线 — 1px border 色、上下约 0.75em
+ * 特异性 (0,3,1)：压过 crepe reset 的 13px 高背景条样式（border:none + padding
+ * 6px 0 + background-clip），恢复设计的 1px 细线。 */
+.crepe-editor-wrapper .milkdown .ProseMirror hr {
   border: none;
   border-top: 1px solid hsl(var(--border));
   margin: var(--notes-hr-margin-block, 0.75em) 0;
+  padding: 0;
+  height: 1px;
+  background: none;
 }
 
 /* 表格 */
@@ -1594,6 +1618,23 @@
   }
 }
 
+/* 📱 触屏/窄屏：任务列表勾选框（crepe .label-wrapper 命中区仅 24×32）——
+   视觉尺寸不动（32px 与行高对齐），用伪元素把命中区外扩到 ≥44px。
+   断点与本文件移动段惯例对齐（窄屏桌面窗同样受益，鼠标点大目标无害）。
+   注意只向左/上下扩（inset: 上 右 下 左）：右扩会盖住文本开头，
+   点文本起点会被误吞为勾选切换。 */
+@media (max-width: 767.98px), (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper {
+    position: relative;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: -6px 0 -6px -20px;
+  }
+}
+
 /* 移动端：编辑器浮层（斜杠菜单/气泡工具栏/链接浮层）防超屏 */
 @media (max-width: 767.98px) {
   .crepe-editor-wrapper .milkdown .milkdown-slash-menu {
@@ -1619,6 +1660,14 @@
   .notes-crepe-shell .notes-editor-chrome-row button {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  /* iOS/Android WebView 对 <16px 的输入框聚焦时强制放大页面且失焦不回弹——
+     crepe 主题浮层输入框（链接编辑 14px、代码块语言搜索 14px）补齐 16px。
+     与项目 inputShell 的 [@media(pointer:coarse)]:text-base 契约同源。 */
+  .crepe-editor-wrapper .milkdown .milkdown-link-edit input,
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .search-box input {
+    font-size: 16px !important;
   }
 
   /* 与 NT-2 触屏工具栏图标口径一致（16px → 18px） */

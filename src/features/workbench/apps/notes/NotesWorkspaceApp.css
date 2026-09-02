@@ -50,23 +50,10 @@
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.notes-crepe-shell[data-focus-mode="true"] .notes-editor-header-section,
-.notes-crepe-shell[data-focus-mode="true"] .notes-editor-header {
-  display: none;
-}
-
-/* 玻璃模糊走 workbench 材质 token（禁止自写 blur：材质分档与跟手期关 blur
- * 纪律由 token 层统一管理；见 styles/workbench.css 文件头契约） */
-.notes-focus-exit {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 24;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--background) / 0.88);
-  color: hsl(var(--muted-foreground));
-  backdrop-filter: var(--wb-glass-blur, none);
-}
+/* 组件级专注模式规则（header 隐藏 / .notes-focus-exit 定位与触屏命中区）
+   已迁至 features/notes/styles/notes-editor-chrome.css——该文件随
+   NotesCrepeEditor 全路径加载；留在这里会导致 Learning Hub 路径
+   （本文件未加载）下专注模式头部不隐藏、退出按钮失去 absolute 定位。 */
 
 .notes-icon-button {
   display: inline-grid;
