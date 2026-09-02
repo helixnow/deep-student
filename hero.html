@@ -503,7 +503,9 @@
           --stage-w: 100%;
         }
         /* 整屏磁吸滚动：滚动停止时吸附到最近一屏（题辞屏 / 演示屏 / 版权行）。
-           各屏均以 svh/dvh 定义，吸附后自然适应当前窗口大小。
+           屏高统一用 svh（小视口高，不随地址栏伸缩变化）——若用 dvh，滑动中
+           地址栏收起会改变屏高，触发手势中途 re-snap，表现为"先回弹一下再走"。
+           scroll-snap-stop:always 保证惯性滑动逐屏停驻，不会一滑越过目标屏。
            版权行高度不足一屏，用 snap-align:end 使其贴底对齐作为末屏。 */
         html {
           scroll-snap-type: y mandatory;
@@ -511,6 +513,7 @@
         .hero,
         .stage {
           scroll-snap-align: start;
+          scroll-snap-stop: always;
         }
         .colophon {
           scroll-snap-align: end;
@@ -547,10 +550,11 @@
           margin-top: 14px;
         }
         /* 第二屏：演示独占一整屏。注意必须 flex:none——基础规则的 flex:1
-           展开为 flex-basis:0%，basis 非 auto 时 height 不生效，会被压成 0 */
+           展开为 flex-basis:0%，basis 非 auto 时 height 不生效，会被压成 0。
+           用 svh 不用 dvh：磁吸几何必须稳定，见上方 scroll-snap 注释。 */
         .stage {
           flex: none;
-          height: 100dvh;
+          height: 100svh;
           padding: 12px;
         }
         /* 演示壳带边距的圆角矩形（紧贴屏幕边缘既不美观也压迫内容） */
