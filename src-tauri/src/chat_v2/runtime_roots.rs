@@ -1094,6 +1094,7 @@ pub(crate) fn shell_runtime_approval_binding(
     root_id: Option<&str>,
     cwd: Option<&str>,
     support_readable_roots: &[PathBuf],
+    allow_absolute_cwd: bool,
 ) -> Result<RuntimeRootApprovalBinding, String> {
     let mut selected = runtime_root_by_id(
         app,
@@ -1105,14 +1106,36 @@ pub(crate) fn shell_runtime_approval_binding(
     )?;
     selected.path = revalidate_runtime_root(database, &selected)?;
 
-    let cwd_relative = normalize_runtime_relative_path(cwd)?;
-    let cwd_path = selected.path.join(cwd_relative);
-    let cwd_canonical = cwd_path
-        .canonicalize()
-        .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
-    if !cwd_canonical.starts_with(&selected.path) || !cwd_canonical.is_dir() {
-        return Err("Shell cwd is not a directory inside the selected runtime root".to_string());
-    }
+    // 完全信任（unsandboxed）档：cwd 允许宿主机绝对路径——审批绑定直接
+    // 锚定到该目录的 canonical 身份，跳过 runtime root 相对性/逃逸检查。
+    // 与 execute 侧 resolve_absolute_cwd_unsandboxed、preflight 侧
+    // cwd_absolute_input 分流保持同一语义。沙箱档行为不变。
+    let cwd_trimmed = cwd.map(str::trim).unwrap_or("");
+    let cwd_canonical = if allow_absolute_cwd
+        && !cwd_trimmed.is_empty()
+        && cwd_trimmed != "."
+        && Path::new(cwd_trimmed).is_absolute()
+    {
+        let canonical = Path::new(cwd_trimmed)
+            .canonicalize()
+            .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
+        if !canonical.is_dir() {
+            return Err("Shell cwd is not a directory".to_string());
+        }
+        canonical
+    } else {
+        let cwd_relative = normalize_runtime_relative_path(cwd)?;
+        let cwd_path = selected.path.join(cwd_relative);
+        let cwd_canonical = cwd_path
+            .canonicalize()
+            .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
+        if !cwd_canonical.starts_with(&selected.path) || !cwd_canonical.is_dir() {
+            return Err(
+                "Shell cwd is not a directory inside the selected runtime root".to_string(),
+            );
+        }
+        cwd_canonical
+    };
     let cwd_identity = runtime_root_identity(&cwd_canonical)?;
 
     let mut roots = runtime_roots_for_session(app, database, session_id, true)?;

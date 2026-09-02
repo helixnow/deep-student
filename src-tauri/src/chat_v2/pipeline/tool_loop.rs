@@ -3794,6 +3794,22 @@ impl ChatV2Pipeline {
             crate::chat_v2::approval_scope::normalized_shell_runtime_location(&approval_args);
         let support_readable_roots =
             LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?;
+        // 完全信任档（craft + full/danger-full-access）允许绝对路径 cwd——审批
+        // 绑定需要与 execute 侧 resolve_absolute_cwd_unsandboxed 同一语义，
+        // 否则模型在绑定阶段就被 "Path must be relative" 劝退。
+        let allow_absolute_cwd =
+            ChatV2Repo::get_session_authority_state(&self.db, session_id)
+                .map(|state| {
+                    matches!(
+                        (state.authority_mode, state.permission_preset),
+                        (
+                            crate::chat_v2::types::AuthorityMode::Craft,
+                            crate::chat_v2::types::PermissionPreset::FullAccess
+                                | crate::chat_v2::types::PermissionPreset::DangerFullAccess
+                        )
+                    )
+                })
+                .unwrap_or(false);
         let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
             window.app_handle(),
             &state.database,
@@ -3802,6 +3818,7 @@ impl ChatV2Pipeline {
             Some(&root_id),
             Some(&cwd),
             &support_readable_roots,
+            allow_absolute_cwd,
         )?;
         let scoped = crate::chat_v2::approval_scope::attach_runtime_root_approval_binding(
             &approval_args,
