@@ -502,24 +502,12 @@
         :root {
           --stage-w: 100%;
         }
-        /* 整屏磁吸滚动：滚动停止时吸附到最近一屏（题辞屏 / 演示屏 / 版权行）。
-           屏高统一用 svh（小视口高，不随地址栏伸缩变化）——若用 dvh，滑动中
-           地址栏收起会改变屏高，触发手势中途 re-snap，表现为"先回弹一下再走"。
-           scroll-snap-stop:always 保证惯性滑动逐屏停驻，不会一滑越过目标屏。
-           版权行高度不足一屏，用 snap-align:end 使其贴底对齐作为末屏。 */
-        html {
-          scroll-snap-type: y mandatory;
-        }
-        .hero,
-        .stage {
-          scroll-snap-align: start;
-          scroll-snap-stop: always;
-        }
-        .colophon {
-          scroll-snap-align: end;
-        }
+        /* 整屏分页由页面底部内联 JS 实现（自由滚动 + 停稳后就近吸附，
+           每次手势最多翻一屏）。不要用 CSS scroll-snap mandatory——它与触屏
+           惯性/iframe 嵌套滚动打架：手势中途 re-snap 会"先回弹一下再继续"，
+           链式滚动中 snap-stop 也拦不住惯性过头。 */
         /* 刊头改为 absolute 随题辞屏滚走（fixed/悬浮会压住演示屏左上角）。
-           磁吸滚动下停驻点只有整屏：题辞屏刊头在位，演示屏完全无遮挡。 */
+           整屏分页下停驻点只有整屏：题辞屏刊头在位，演示屏完全无遮挡。 */
         .masthead {
           position: absolute;
           top: 0;
@@ -708,6 +696,70 @@
         window.addEventListener('load', fit);
         if (mqPhone.addEventListener) mqPhone.addEventListener('change', fit);
         fit();
+
+        /* ================= 手机端整屏分页 =================
+           自由滚动 + 停稳后就近吸附。为什么不用 CSS scroll-snap mandatory：
+           它与触屏惯性/iframe 嵌套滚动打架——手势中途 re-snap 造成
+           "先回弹一下再继续"，链式滚动里 snap-stop 也拦不住惯性过头。
+           这里手势期间完全不干预（没有东西跟手指打架），等滚动静止后
+           再 smooth 吸附；且以手势起点所在屏为基准，每次手势最多翻一屏，
+           惯性再大也只停在相邻屏。只在真实触屏设备上启用（窄桌面窗口
+           里鼠标/触控板保持自由滚动）。 */
+        (function () {
+          var stageEl = document.querySelector('.stage');
+          var hasTouch = false;
+          var touching = false;
+          var gestureStartY = 0;
+          var settleTimer = 0;
+
+          function nearestIndex(stops, v) {
+            var best = 0;
+            for (var i = 1; i < stops.length; i++) {
+              if (Math.abs(stops[i] - v) < Math.abs(stops[best] - v)) best = i;
+            }
+            return best;
+          }
+
+          function settle() {
+            if (touching || !hasTouch || !mqPhone.matches) return;
+            var stageTop = stageEl.offsetTop;
+            var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+            var stops = [0, stageTop, maxY];
+            var from = nearestIndex(stops, gestureStartY);
+            // 只允许：停在原屏 / 上一屏 / 下一屏（每次手势最多翻一屏）
+            var allowed = [stops[from]];
+            if (from > 0) allowed.push(stops[from - 1]);
+            if (from < stops.length - 1) allowed.push(stops[from + 1]);
+            var target = allowed[nearestIndex(allowed, window.scrollY)];
+            if (Math.abs(window.scrollY - target) > 4) {
+              window.scrollTo({ top: target, behavior: 'smooth' });
+            }
+          }
+
+          function scheduleSettle() {
+            clearTimeout(settleTimer);
+            settleTimer = setTimeout(settle, 140);
+          }
+
+          window.addEventListener('touchstart', function () {
+            hasTouch = true;
+            touching = true;
+            gestureStartY = window.scrollY;
+            clearTimeout(settleTimer);
+          }, { passive: true });
+          window.addEventListener('touchend', function () {
+            touching = false;
+            scheduleSettle();
+          }, { passive: true });
+          window.addEventListener('touchcancel', function () {
+            touching = false;
+            scheduleSettle();
+          }, { passive: true });
+          // 惯性段：touch 已抬起但页面仍在滚动——等它静止再吸附
+          window.addEventListener('scroll', function () {
+            if (!touching && hasTouch) scheduleSettle();
+          }, { passive: true });
+        })();
       })();
 
       /* ================= Liquid Glass：边缘折射 =================
