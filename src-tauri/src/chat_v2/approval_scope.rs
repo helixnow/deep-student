@@ -737,7 +737,8 @@ fn normalized_shell_execution_controls(args: &Value) -> (u64, u64, bool) {
         .or_else(|| args.get("timeoutMs"))
         .and_then(Value::as_u64)
         .unwrap_or(30_000)
-        .clamp(1_000, 120_000);
+        // 与 local_shell_execute_executor 的执行侧 clamp 保持一致（上限 10 分钟）。
+        .clamp(1_000, 600_000);
     let max_output_bytes = args
         .get("max_output_bytes")
         .or_else(|| args.get("maxOutputBytes"))

@@ -562,7 +562,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。禁止绝对路径和 .. 逃逸。',
+            description: '所选 root 内的相对工作目录，默认为 root 本身。沙箱档禁止绝对路径和 .. 逃逸；完全访问（完全信任）档允许直接传宿主机绝对路径。',
           },
           skill_root_id: {
             type: 'string',
@@ -601,7 +601,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。禁止绝对路径和 .. 逃逸。',
+            description: '所选 root 内的相对工作目录，默认为 root 本身。沙箱档禁止绝对路径和 .. 逃逸；完全访问（完全信任）档允许直接传宿主机绝对路径。',
           },
           skill_root_id: {
             type: 'string',
@@ -611,15 +611,15 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           timeout_ms: {
             type: 'integer',
             minimum: 1000,
-            maximum: 120000,
+            maximum: 600000,
             default: 30000,
-            description: '命令超时时间。超时后会终止进程并返回 timed_out=true。',
+            description: '命令超时时间（毫秒），默认 30 秒，最长 10 分钟。超时后会终止进程并返回 timed_out=true。长任务（如 npm install）请显式调大。',
           },
           inherit_env: {
             type: 'boolean',
             default: false,
             description:
-              'Whether to inherit a sanitized allowlist of parent-process environment variables. Defaults to false. Sensitive and execution-control variables are always blocked; inherited key names are shown in the approval scope.',
+              'Whether to inherit a sanitized allowlist of parent-process environment variables. Defaults to false in sandboxed modes and true under Full Access (完全信任). Sensitive and execution-control variables are always blocked; inherited key names are shown in the approval scope.',
           },
           allow_network: {
             type: 'boolean',

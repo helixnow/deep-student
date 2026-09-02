@@ -12,6 +12,25 @@ fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
 }
 
+/// 判断错误串中是否出现独立的 HTTP 状态码数字（前后均非数字字符），
+/// 兼容 "status: 429" / "LLM 响应错误 429: …" / "API 返回错误 (503): …" /
+/// "HTTP 502" 等各适配器的实际错误格式。`lower` 必须已转小写。
+fn mentions_http_status_code(lower: &str, code: u32) -> bool {
+    let needle = code.to_string();
+    let mut start = 0usize;
+    while let Some(pos) = lower.get(start..).and_then(|s| s.find(&needle)) {
+        let abs = start + pos;
+        let before_ok = abs == 0 || !lower.as_bytes()[abs - 1].is_ascii_digit();
+        let after = abs + needle.len();
+        let after_ok = after >= lower.len() || !lower.as_bytes()[after].is_ascii_digit();
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + 1;
+    }
+    false
+}
+
 /// Retain usage reported before a failed terminal event. Responses providers
 /// commonly emit usage immediately before `response.incomplete`/`failed`;
 /// losing it here would make persisted message metadata and billing logs show 0.
@@ -862,10 +881,13 @@ impl ChatV2Pipeline {
                     || lower.contains("broken pipe")
                     || lower.contains("connect")
                     || lower.contains("temporarily unavailable")
-                    || lower.contains("status: 429")
-                    || lower.contains("status: 502")
-                    || lower.contains("status: 503")
-                    || lower.contains("status: 504")
+                    // 🔧 原 "status: NNN" 模式与实际错误格式不匹配（死代码）。
+                    // 实际格式："LLM 响应错误 429: …" / "API 返回错误 (503): …" /
+                    // "HTTP 502 …"——按独立数字 token 匹配状态码。
+                    || mentions_http_status_code(&lower, 429)
+                    || mentions_http_status_code(&lower, 502)
+                    || mentions_http_status_code(&lower, 503)
+                    || mentions_http_status_code(&lower, 504)
             };
 
             let mut call_result = {
@@ -4430,6 +4452,23 @@ mod tests {
         assert!(approval_manager_required(Some(ToolSensitivity::Medium)));
         assert!(approval_manager_required(Some(ToolSensitivity::High)));
         assert!(approval_manager_required(None));
+    }
+
+    #[test]
+    fn http_status_code_matching_covers_real_adapter_error_formats() {
+        // 各适配器的真实错误格式（此前 "status: NNN" 模式对其全部失配）
+        assert!(mentions_http_status_code("llm 响应错误 429: rate limited", 429));
+        assert!(mentions_http_status_code(
+            "deepseek api 返回错误 (503): service unavailable",
+            503
+        ));
+        assert!(mentions_http_status_code("模型二api请求失败 http 502 ...", 502));
+        assert!(mentions_http_status_code("status: 504", 504));
+        // 不误伤：端口号、位数不同的数字、拼接在数字内的子串
+        assert!(!mentions_http_status_code("connect to 127.0.0.1:1429 failed", 429));
+        assert!(!mentions_http_status_code("status: 500", 503));
+        assert!(!mentions_http_status_code("4299 tokens", 429));
+        assert!(!mentions_http_status_code("error 14293", 429));
     }
 
     #[test]

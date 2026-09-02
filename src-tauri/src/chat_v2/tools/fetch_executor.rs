@@ -362,6 +362,28 @@ fn is_internal_ip(ip: &IpAddr) -> bool {
     }
 }
 
+/// 回环地址判定（127.0.0.0/8、::1、IPv4-mapped loopback）。
+/// 本地服务（本地 MCP 桥、插件服务、开发服务器等）是桌面 Agent 的合法
+/// 抓取目标——业界 WebFetch 类工具均不对 loopback 做 SSRF 式封禁；
+/// 私网网段与云元数据端点（169.254.169.254）仍然封锁。
+fn is_loopback_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6
+                    .to_ipv4_mapped()
+                    .map(|v4| v4.is_loopback())
+                    .unwrap_or(false)
+        }
+    }
+}
+
+/// SSRF 拦截判定：内网地址且非回环。
+fn is_blocked_internal_ip(ip: &IpAddr) -> bool {
+    is_internal_ip(ip) && !is_loopback_ip(ip)
+}
+
 fn validate_public_url_target(url: &reqwest::Url) -> Result<(), String> {
     if !matches!(url.scheme(), "http" | "https") {
         return Err(format!("Unsupported final URL scheme: {}", url.scheme()));
@@ -374,7 +396,7 @@ fn validate_public_url_target(url: &reqwest::Url) -> Result<(), String> {
         .to_socket_addrs()
         .map_err(|error| format!("Final URL DNS resolution failed for '{host}': {error}"))?
         .collect();
-    if addrs.is_empty() || addrs.iter().any(|addr| is_internal_ip(&addr.ip())) {
+    if addrs.is_empty() || addrs.iter().any(|addr| is_blocked_internal_ip(&addr.ip())) {
         return Err("Blocked: final URL resolves to an internal IP address".to_string());
     }
     Ok(())
@@ -590,9 +612,9 @@ impl FetchExecutor {
                     return attempt.stop();
                 }
 
-                // 检查所有解析的 IP 是否为内网地址
+                // 检查所有解析的 IP 是否为内网地址（回环除外）
                 for addr in &addrs {
-                    if is_internal_ip(&addr.ip()) {
+                    if is_blocked_internal_ip(&addr.ip()) {
                         return attempt.stop();
                     }
                 }
@@ -633,7 +655,7 @@ impl FetchExecutor {
             ));
         }
         for addr in &addrs {
-            if is_internal_ip(&addr.ip()) {
+            if is_blocked_internal_ip(&addr.ip()) {
                 return Err("Blocked: URL resolves to internal IP address".to_string());
             }
         }
@@ -895,9 +917,9 @@ impl FetchExecutor {
             ));
         }
 
-        // 检查所有解析的 IP 是否为内网地址
+        // 检查所有解析的 IP 是否为内网地址（回环除外）
         for addr in &addrs {
-            if is_internal_ip(&addr.ip()) {
+            if is_blocked_internal_ip(&addr.ip()) {
                 return Err("Blocked: URL resolves to internal IP address".to_string());
             }
         }
@@ -988,11 +1010,26 @@ impl FetchExecutor {
             .to_string();
 
         if !status.is_success() {
-            return Err(format!(
+            // 🔧 回传响应 body 摘要——服务器给出的失败原因（如
+            // "rate limit exceeded, retry after 30s"）是模型修正请求的关键信息。
+            let body_excerpt = response
+                .text()
+                .await
+                .unwrap_or_default()
+                .chars()
+                .take(500)
+                .collect::<String>()
+                .trim()
+                .to_string();
+            let mut message = format!(
                 "HTTP request failed with status {}: {}",
                 status.as_u16(),
                 status.canonical_reason().unwrap_or("Unknown")
-            ));
+            );
+            if !body_excerpt.is_empty() {
+                message.push_str(&format!("\nResponse body (excerpt): {}", body_excerpt));
+            }
+            return Err(message);
         }
 
         // 🆕 取消检查：在读取响应前检查
@@ -1630,6 +1667,30 @@ mod tests {
         assert!(!is_internal_ip(&IpAddr::V6(Ipv6Addr::new(
             0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888
         ))));
+    }
+
+    #[test]
+    fn test_is_blocked_internal_ip_loopback_exempt() {
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        // 回环放行（本地 MCP / 插件桥 / 开发服务器是合法抓取目标）
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3))));
+        assert!(!is_blocked_internal_ip(&IpAddr::V6(Ipv6Addr::LOCALHOST)));
+        let ipv4_mapped_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0x7f00, 0x0001);
+        assert!(!is_blocked_internal_ip(&IpAddr::V6(ipv4_mapped_loopback)));
+
+        // 私网 / 链路本地 / 云元数据仍然封锁
+        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
+        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        assert!(is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(
+            169, 254, 169, 254
+        ))));
+        let ipv4_mapped_private = Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc0a8, 0x0101);
+        assert!(is_blocked_internal_ip(&IpAddr::V6(ipv4_mapped_private)));
+
+        // 公网不受影响
+        assert!(!is_blocked_internal_ip(&IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
     }
 
     #[test]

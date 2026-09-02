@@ -28,6 +28,25 @@ pub mod tool_names {
 /// env 占位符：与 mcp_manage_executor 共享（用户未填 secret 前保持 disabled）
 pub(crate) const ENV_PLACEHOLDER: &str = "<REQUIRED>";
 const STDIO_TEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// 判断 URL 的 host 是否为本地回环（localhost / *.localhost / 127.0.0.0/8 / ::1）。
+fn url_host_is_loopback(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    // url crate 对 IPv6 host 的序列化带方括号（"[::1]"），剥离后再解析。
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host.eq_ignore_ascii_case("localhost") || host.to_ascii_lowercase().ends_with(".localhost")
+    {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
+}
 const REMOTE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 const ALLOWED_TOP_LEVEL_KEYS: &[&str] = &[
@@ -284,12 +303,23 @@ impl McpProposeExecutor {
         Ok(out)
     }
 
+    /// 远程 MCP URL 仅允许 https://；本地回环（localhost / *.localhost /
+    /// 127.0.0.0/8 / [::1]）额外允许 http://——业界 MCP 客户端
+    /// （Claude Code / Cursor / Cline）均把 localhost 服务器作为一等公民，
+    /// 强制 https 会直接杀死本地插件生态（如各类本地桥接服务）。
     pub(crate) fn validate_https_url(url: &str) -> Result<(), String> {
         let trimmed = url.trim();
-        if !trimmed.to_ascii_lowercase().starts_with("https://") {
-            return Err("Remote MCP url must use https://".to_string());
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("https://") {
+            return Ok(());
         }
-        Ok(())
+        if lower.starts_with("http://") && url_host_is_loopback(trimmed) {
+            return Ok(());
+        }
+        Err(
+            "Remote MCP url must use https:// (http:// is allowed only for loopback hosts such as localhost or 127.0.0.1)"
+                .to_string(),
+        )
     }
 
     fn parse_input(args: &Value) -> Result<ProposeInput, String> {
@@ -815,6 +845,36 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.contains("https"));
+    }
+
+    #[test]
+    fn allows_http_url_for_loopback_hosts() {
+        // 本地回环 MCP 服务器（如本地桥接插件）允许 http://
+        for url in [
+            "http://localhost:3000/mcp",
+            "http://127.0.0.1:8787/callback",
+            "http://[::1]:8080/sse",
+            "http://api.localhost:9000/mcp",
+        ] {
+            let input = McpProposeExecutor::parse_input(&json!({
+                "name": "local-bridge",
+                "transport": "sse",
+                "url": url,
+                "purpose": "local bridge"
+            }));
+            assert!(input.is_ok(), "loopback url must be accepted: {url}");
+        }
+        // 非回环 http 与非法 URL 仍拒绝
+        for url in ["http://192.168.1.10:3000/mcp", "http://10.0.0.5/mcp"] {
+            let err = McpProposeExecutor::parse_input(&json!({
+                "name": "remote",
+                "transport": "sse",
+                "url": url,
+                "purpose": "remote mcp"
+            }))
+            .unwrap_err();
+            assert!(err.contains("https"), "{url} must be rejected: {err}");
+        }
     }
 
     #[test]

@@ -735,13 +735,26 @@ fn job_limit_information() -> JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
     limits
 }
 
-fn create_job() -> Result<OwnedHandle, String> {
+/// 完全信任（Danger Full Access）通道的 Job Object：仅保留
+/// KILL_ON_JOB_CLOSE（进程树清理），不施加 CPU 时间 / 进程数上限——
+/// 用户显式选择完全信任后，npm install 等长任务不应再被沙箱资源策略杀死。
+fn relaxed_job_limit_information() -> JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    limits
+}
+
+fn create_job(relaxed: bool) -> Result<OwnedHandle, String> {
     let name = wide(&job_name(unsafe { GetCurrentProcessId() }));
     let job = OwnedHandle::new(
         unsafe { CreateJobObjectW(null(), name.as_ptr()) },
         "Failed to create the Windows shell Job Object",
     )?;
-    let limits = job_limit_information();
+    let limits = if relaxed {
+        relaxed_job_limit_information()
+    } else {
+        job_limit_information()
+    };
     let ok = unsafe {
         SetInformationJobObject(
             job.0,
@@ -861,7 +874,8 @@ fn run_unsandboxed_job_process(
     payload: &WindowsSandboxPayload,
     cancellation_event: Option<HANDLE>,
 ) -> Result<i32, String> {
-    let job = create_job()?;
+    // 完全信任通道：仅保留进程树清理，不施加 CPU/进程数上限。
+    let job = create_job(true)?;
     let mut startup: STARTUPINFOW = unsafe { zeroed() };
     startup.cb = size_of::<STARTUPINFOW>() as u32;
     startup.dwFlags = STARTF_USESTDHANDLES;
@@ -960,7 +974,7 @@ fn run_appcontainer_process(
     capabilities: &[SID_AND_ATTRIBUTES],
     cancellation_event: Option<HANDLE>,
 ) -> Result<i32, String> {
-    let job = create_job()?;
+    let job = create_job(false)?;
     if is_cancelled(cancellation_event) {
         return Ok(124);
     }

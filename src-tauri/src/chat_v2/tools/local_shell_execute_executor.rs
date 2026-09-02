@@ -222,6 +222,100 @@ impl LocalShellExecuteExecutor {
         Ok(target_canon)
     }
 
+    /// 完全信任（unsandboxed）模式下解析宿主机绝对路径 cwd：
+    /// 不做 runtime root 约束，仅要求目录真实存在。
+    fn resolve_absolute_cwd_unsandboxed(cwd: &Path) -> Result<PathBuf, String> {
+        if !cwd.exists() {
+            return Err("cwd does not exist".to_string());
+        }
+        let canonical = cwd
+            .canonicalize()
+            .map_err(|e| format!("Failed to canonicalize cwd: {}", e))?;
+        if !canonical.is_dir() {
+            return Err("cwd is not a directory".to_string());
+        }
+        Ok(canonical)
+    }
+
+    /// UTF-8 安全的尾部截取（错误信息通常在输出末尾）。
+    fn tail_chars(text: &str, max_chars: usize) -> &str {
+        if text.chars().count() <= max_chars {
+            return text;
+        }
+        let start = text
+            .char_indices()
+            .nth(text.chars().count() - max_chars)
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+        &text[start..]
+    }
+
+    /// 命令执行失败时回传给 LLM 的错误摘要：退出码/超时/取消标记 + stderr
+    /// 尾部 + 修正引导。对齐业界惯例（Claude Code 的 "Exit code N" 模板、
+    /// Roo Code 的失败引导语）——模型必须看到失败原因才能修正命令，
+    /// 而不是带着一句 "exited unsuccessfully" 盲目重试。
+    fn failure_error_for_llm(output: &Value) -> String {
+        const STDERR_TAIL_CHARS: usize = 2000;
+        const STDOUT_TAIL_CHARS: usize = 500;
+        let mut parts: Vec<String> = Vec::new();
+        let timed_out = output
+            .get("timed_out")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let cancelled = output
+            .get("cancelled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let exit_code = output.get("exit_code").and_then(|v| v.as_i64());
+        if timed_out {
+            let timeout_ms = output
+                .get("timeout_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            parts.push(format!(
+                "Command timed out after {}ms and was killed.",
+                timeout_ms
+            ));
+        } else if cancelled {
+            parts.push("Command was cancelled.".to_string());
+        }
+        match exit_code {
+            Some(code) => parts.push(format!("Exit code {}", code)),
+            None if !timed_out && !cancelled => {
+                parts.push("Exit code <unknown>".to_string())
+            }
+            _ => {}
+        }
+        let stderr = output
+            .get("stderr")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if !stderr.is_empty() {
+            parts.push(format!(
+                "stderr (tail): {}",
+                Self::tail_chars(stderr, STDERR_TAIL_CHARS)
+            ));
+        }
+        let stdout = output
+            .get("stdout")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if !stdout.is_empty() {
+            parts.push(format!(
+                "stdout (tail): {}",
+                Self::tail_chars(stdout, STDOUT_TAIL_CHARS)
+            ));
+        }
+        parts.push(
+            "Command execution was not successful; inspect the cause above and adjust the \
+             command instead of retrying it unchanged."
+                .to_string(),
+        );
+        parts.join("\n")
+    }
+
     fn normalize_env_key(key: &str) -> Result<String, String> {
         let trimmed = key.trim();
         if trimmed.is_empty() {
@@ -757,11 +851,21 @@ impl LocalShellExecuteExecutor {
     }
 
     fn build_env_plan(args: &Value) -> Result<ShellEnvPlan, String> {
+        Self::build_env_plan_with_inherit_default(args, false)
+    }
+
+    /// `inherit_default`：完全信任（unsandboxed）模式默认继承父进程环境
+    /// （对齐 Codex shell_environment_policy 的 inherit="all" + 敏感变量剥离；
+    /// 敏感词/执行控制变量在任何档位都强制不下发），沙箱模式默认不继承。
+    fn build_env_plan_with_inherit_default(
+        args: &Value,
+        inherit_default: bool,
+    ) -> Result<ShellEnvPlan, String> {
         let inherit_parent_env = args
             .get("inherit_env")
             .or_else(|| args.get("inheritEnv"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .unwrap_or(inherit_default);
         let allowlist = Self::normalize_env_key_set(
             args.get("env_allowlist")
                 .or_else(|| args.get("envAllowlist")),
@@ -1465,8 +1569,26 @@ impl LocalShellExecuteExecutor {
         let (root_id, cwd_input) =
             normalized_shell_runtime_location_with_default(args, preferred_default.as_deref());
         let root_id_input = Some(root_id.as_str());
-        let cwd_relative = normalize_runtime_relative_path(Some(cwd_input.as_str()))?;
-        let cwd_display = if cwd_relative.as_os_str().is_empty() {
+        // 🆓 完全信任模式：cwd 允许宿主机绝对路径（"完全访问"即取消 runtime
+        // root 边界）；相对路径仍按所选 root 解析，沙箱档行为不变。
+        let cwd_absolute_input = if unsandboxed {
+            let trimmed = cwd_input.trim();
+            if !trimmed.is_empty() && trimmed != "." && Path::new(trimmed).is_absolute() {
+                Some(PathBuf::from(trimmed))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let cwd_relative = if cwd_absolute_input.is_some() {
+            PathBuf::new()
+        } else {
+            normalize_runtime_relative_path(Some(cwd_input.as_str()))?
+        };
+        let cwd_display = if let Some(abs) = &cwd_absolute_input {
+            abs.to_string_lossy().to_string()
+        } else if cwd_relative.as_os_str().is_empty() {
             ".".to_string()
         } else {
             cwd_relative.to_string_lossy().to_string()
@@ -1476,7 +1598,9 @@ impl LocalShellExecuteExecutor {
             .or_else(|| args.get("timeoutMs"))
             .and_then(|v| v.as_u64())
             .unwrap_or(30_000)
-            .clamp(1_000, 120_000);
+            // 上限 10 分钟（对齐 Claude Code BASH_MAX_TIMEOUT_MS=600000 的业界
+            // 心智）：npm install 等长任务不再被 120s 墙钟强杀。默认仍 30s。
+            .clamp(1_000, 600_000);
         let max_output_bytes = args
             .get("max_output_bytes")
             .or_else(|| args.get("maxOutputBytes"))
@@ -1515,7 +1639,10 @@ impl LocalShellExecuteExecutor {
             revalidate_runtime_root(&state.database, &root)?
         };
         root.path = validated_root_path;
-        let cwd_abs = Self::resolve_cwd(&root, &cwd_relative, unsandboxed)?;
+        let cwd_abs = match &cwd_absolute_input {
+            Some(abs) => Self::resolve_absolute_cwd_unsandboxed(abs)?,
+            None => Self::resolve_cwd(&root, &cwd_relative, unsandboxed)?,
+        };
         if !unsandboxed {
             Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
         }
@@ -1537,7 +1664,7 @@ impl LocalShellExecuteExecutor {
             .canonicalize()
             .unwrap_or_else(|_| root.path.clone());
         let analysis = analyze_shell_command(&command);
-        let env_plan = Self::build_env_plan(args)?;
+        let env_plan = Self::build_env_plan_with_inherit_default(args, unsandboxed)?;
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
         let sandbox_policy = if unsandboxed {
             SandboxPolicy {
@@ -1901,6 +2028,13 @@ impl ToolExecutor for LocalShellExecuteExecutor {
                     "result": output,
                     "durationMs": duration_ms,
                 })));
+                // 🔧 失败必须回传可诊断细节（exit code / 超时 / stderr 尾部），
+                // 否则模型只能盲目重试直至触发 doom-loop 守卫。
+                let failure_error = if success {
+                    None
+                } else {
+                    Some(Self::failure_error_for_llm(&output))
+                };
                 let result = ToolResultInfo {
                     tool_call_id: Some(call.id.clone()),
                     block_id: Some(ctx.block_id.clone()),
@@ -1908,11 +2042,7 @@ impl ToolExecutor for LocalShellExecuteExecutor {
                     input: redacted_arguments.clone(),
                     output,
                     success,
-                    error: if success {
-                        None
-                    } else {
-                        Some("Local shell command exited unsuccessfully".to_string())
-                    },
+                    error: failure_error,
                     duration_ms: Some(duration_ms),
                     reasoning_content: None,
                     thought_signature: None,
@@ -1985,6 +2115,124 @@ mod tests {
         assert_eq!(text, "abc");
         assert!(truncated);
         assert_eq!(bytes, 6);
+    }
+
+    #[test]
+    fn failure_error_for_llm_includes_exit_code_and_stderr_tail() {
+        let output = json!({
+            "success": false,
+            "exit_code": 126,
+            "timed_out": false,
+            "cancelled": false,
+            "timeout_ms": 30_000,
+            "stdout": "partial output",
+            "stderr": "Windows local shell sandbox failed: access denied",
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&output);
+        assert!(error.contains("Exit code 126"), "missing exit code: {error}");
+        assert!(
+            error.contains("access denied"),
+            "missing stderr detail: {error}"
+        );
+        assert!(
+            error.contains("inspect the cause"),
+            "missing guidance: {error}"
+        );
+        assert!(
+            !error.contains("partial output") || error.contains("stdout (tail)"),
+            "stdout must be labelled when included: {error}"
+        );
+    }
+
+    #[test]
+    fn failure_error_for_llm_marks_timeout_and_unknown_exit() {
+        let timed_out = json!({
+            "success": false,
+            "exit_code": null,
+            "timed_out": true,
+            "cancelled": false,
+            "timeout_ms": 120_000,
+            "stdout": "",
+            "stderr": "",
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&timed_out);
+        assert!(
+            error.contains("timed out after 120000ms"),
+            "missing timeout marker: {error}"
+        );
+
+        let no_detail = json!({
+            "success": false,
+            "exit_code": null,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": "",
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&no_detail);
+        assert!(error.contains("Exit code <unknown>"), "{error}");
+    }
+
+    #[test]
+    fn failure_error_for_llm_truncates_long_stderr_by_tail() {
+        let long_stderr = format!("{}{}", "x".repeat(5000), "TAIL_MARKER");
+        let output = json!({
+            "success": false,
+            "exit_code": 1,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": long_stderr,
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&output);
+        assert!(error.contains("TAIL_MARKER"), "tail must be kept: {error}");
+        assert!(
+            error.len() < 3000,
+            "error must stay bounded, got {} chars",
+            error.len()
+        );
+    }
+
+    #[test]
+    fn env_plan_inherit_default_only_applies_when_requested() {
+        // 沙箱档默认不继承（保持原行为）
+        let plan = LocalShellExecuteExecutor::build_env_plan(&json!({})).expect("env plan");
+        assert!(!plan.inherit_parent_env);
+        // 完全信任档默认继承
+        let plan = LocalShellExecuteExecutor::build_env_plan_with_inherit_default(&json!({}), true)
+            .expect("env plan");
+        assert!(plan.inherit_parent_env);
+        assert!(!plan.allowlist_mode);
+        // 显式 inherit_env=false 在任何档位都优先
+        let plan = LocalShellExecuteExecutor::build_env_plan_with_inherit_default(
+            &json!({ "inherit_env": false }),
+            true,
+        )
+        .expect("env plan");
+        assert!(!plan.inherit_parent_env);
+        assert!(plan.allowlist_mode);
+    }
+
+    #[test]
+    fn env_plan_full_access_inherit_still_strips_sensitive_keys() {
+        // 完全信任档默认继承，但敏感/执行控制变量仍必须剥离。
+        let sentinel = "DS_TEST_PLAIN_VAR_FOR_ENV_PLAN";
+        std::env::set_var(sentinel, "visible");
+        std::env::set_var("DS_TEST_SECRET_TOKEN_FOR_ENV_PLAN", "hidden");
+        let plan = LocalShellExecuteExecutor::build_env_plan_with_inherit_default(&json!({}), true)
+            .expect("env plan");
+        std::env::remove_var(sentinel);
+        std::env::remove_var("DS_TEST_SECRET_TOKEN_FOR_ENV_PLAN");
+        assert!(
+            plan.inherited_values.contains_key(sentinel),
+            "plain variable must be inherited under full access"
+        );
+        assert!(
+            !plan
+                .inherited_values
+                .contains_key("DS_TEST_SECRET_TOKEN_FOR_ENV_PLAN"),
+            "sensitive variable must be stripped even under full access"
+        );
     }
 
     #[test]

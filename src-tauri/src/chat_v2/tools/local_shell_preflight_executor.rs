@@ -236,7 +236,8 @@ impl LocalShellPreflightExecutor {
             .or_else(|| args.get("timeoutMs"))
             .and_then(|v| v.as_u64())
             .unwrap_or(30_000)
-            .clamp(1_000, 120_000);
+            // 与执行侧 clamp 保持一致（上限 10 分钟）。
+            .clamp(1_000, 600_000);
         let purpose = args
             .get("purpose")
             .and_then(|v| v.as_str())
