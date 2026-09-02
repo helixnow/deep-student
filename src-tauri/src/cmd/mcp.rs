@@ -1434,4 +1434,91 @@ mod stdio_start_validation_tests {
         )
         .is_err());
     }
+
+    /// 端到端：对真实 spawn 的最小标准 MCP server（规范 camelCase 字段）
+    /// 跑完整 probe——initialize 握手 + tools/list 必须解析出工具。
+    /// 回归：Tool.input_schema 缺 serde rename 时 tools/list 必然失败。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stdio_probe_parses_spec_camel_case_tools() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("mcp-probe-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let server_path = dir.join("mini_server.py");
+        std::fs::write(
+            &server_path,
+            r#"#!/usr/bin/env python3
+import json, sys
+
+def reply(i, result=None):
+    sys.stdout.write(json.dumps({"jsonrpc":"2.0","id":i,"result":result}) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    m = json.loads(line)
+    method, mid = m.get("method"), m.get("id")
+    if method == "initialize":
+        reply(mid, {"protocolVersion": m["params"]["protocolVersion"],
+                    "capabilities": {"tools": {"listChanged": True}},
+                    "serverInfo": {"name": "mini", "version": "0.1"}})
+    elif method in ("notifications/initialized", "initialized"):
+        pass
+    elif method == "tools/list":
+        reply(mid, {"tools": [{"name": "echo_upper",
+                               "description": "upper",
+                               "inputSchema": {"type": "object",
+                                               "properties": {"text": {"type": "string"}}}}]})
+    elif method == "prompts/list":
+        reply(mid, {"prompts": []})
+    elif method == "resources/list":
+        reply(mid, {"resources": []})
+    elif mid is not None:
+        reply(mid, {})
+"#,
+        )
+        .expect("write mini server");
+        std::fs::set_permissions(&server_path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod mini server");
+
+        let python = if std::path::Path::new("/usr/bin/python3").exists() {
+            "/usr/bin/python3"
+        } else {
+            "python3"
+        };
+        let outcome = mcp_test_helpers::test_stdio(
+            python.to_string(),
+            vec![server_path.to_str().expect("UTF-8 server path").to_string()],
+            None,
+            None,
+            None,
+            &|_| {},
+        )
+        .await;
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            outcome.get("success").and_then(|v| v.as_bool()),
+            Some(true),
+            "probe should succeed: {}",
+            outcome
+        );
+        assert_eq!(
+            outcome.get("tools_count").and_then(|v| v.as_u64()),
+            Some(1),
+            "spec camelCase tools must parse: {}",
+            outcome
+        );
+        let preview = outcome
+            .get("tools_preview")
+            .and_then(|t| t.as_array())
+            .expect("tools_preview array");
+        assert_eq!(
+            preview[0].get("name").and_then(|n| n.as_str()),
+            Some("echo_upper")
+        );
+    }
 }
