@@ -562,7 +562,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。沙箱档禁止绝对路径和 .. 逃逸；完全访问（完全信任）档允许直接传宿主机绝对路径。',
+            description: '工作目录。默认为所选 root 本身；完全访问（完全信任）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；其余档位必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。',
           },
           skill_root_id: {
             type: 'string',
@@ -601,7 +601,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。沙箱档禁止绝对路径和 .. 逃逸；完全访问（完全信任）档允许直接传宿主机绝对路径。',
+            description: '工作目录。默认为所选 root 本身；完全访问（完全信任）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；其余档位必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。',
           },
           skill_root_id: {
             type: 'string',

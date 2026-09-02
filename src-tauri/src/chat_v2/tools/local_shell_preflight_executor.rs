@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -286,7 +286,22 @@ impl LocalShellPreflightExecutor {
             root_id_input,
             true,
         );
-        let cwd_result = normalize_runtime_relative_path(cwd_input);
+        // 🆓 完全信任（unsandboxed）档：cwd 允许宿主机绝对路径，与 execute 侧
+        // resolve_absolute_cwd_unsandboxed 语义对齐——不 join runtime root、不做
+        // 逃逸检查，仅校验存在且为目录。沙箱档维持相对路径约束不变。
+        let cwd_absolute_input = if unsandboxed {
+            cwd_input
+                .map(str::trim)
+                .filter(|value| !value.is_empty() && *value != ".")
+                .filter(|value| Path::new(value).is_absolute())
+                .map(PathBuf::from)
+        } else {
+            None
+        };
+        let cwd_result = match &cwd_absolute_input {
+            Some(abs) => Ok(abs.clone()),
+            None => normalize_runtime_relative_path(cwd_input),
+        };
         let analysis = analyze_shell_command(&command);
         let (display_command, command_redacted) = redact_shell_command_for_display(&command);
         let display_analysis = analyze_shell_command(&display_command);
@@ -377,7 +392,22 @@ impl LocalShellPreflightExecutor {
         }
         let (cwd_relative, cwd_valid, cwd_error) = match cwd_result {
             Ok(cwd) => {
-                if let Some(root) = root.as_ref() {
+                if cwd_absolute_input.is_some() {
+                    // 绝对路径 cwd（完全信任档）：直接对宿主机路径做存在性/目录校验。
+                    let display = cwd.to_string_lossy().to_string();
+                    let valid = match cwd.canonicalize() {
+                        Ok(canon) if canon.is_dir() => true,
+                        Ok(_) => {
+                            reasons.push("cwd is not a directory".to_string());
+                            false
+                        }
+                        Err(error) => {
+                            reasons.push(format!("failed to canonicalize cwd: {}", error));
+                            false
+                        }
+                    };
+                    (display, valid, None)
+                } else if let Some(root) = root.as_ref() {
                     let (display, valid, cwd_reasons) = Self::inspect_cwd(root, &cwd);
                     reasons.extend(cwd_reasons);
                     (display, valid, None)
