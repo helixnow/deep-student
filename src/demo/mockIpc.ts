@@ -285,6 +285,11 @@ export function installDemoIpcMocks(): void {
         // 技能目录扫描 / dstu 文件监听 / 窗口枚举：演示环境恒为空，静默
         case 'skill_list_directories':
           return [];
+        // 移动端右屏资源库（LearningHubSidebar→finderStore→dstu.list）：
+        // 缺省会 ok(null) → selectionPrune .map 崩溃被 ChatErrorBoundary 捕获。
+        // 演示资源库恒为空列表（空态即可，剧本资源不在这里展示）
+        case 'dstu_list':
+          return [];
         case 'dstu_watch':
         case 'dstu_unwatch':
         case 'plugin:window|get_all_windows':
