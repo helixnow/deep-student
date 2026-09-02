@@ -413,6 +413,31 @@
       .lights i:nth-child(2) { background: #febc2e; }
       .lights i:nth-child(3) { background: #28c840; }
 
+      /* 下滑提示（仅手机模式显示，见末尾媒体查询）：第一屏底部的滚动引导 */
+      .scroll-hint {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 18px;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-indent: 0.18em;
+        color: var(--ink-3);
+        pointer-events: none;
+      }
+
+      .scroll-hint i {
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid var(--ink-3);
+        border-bottom: 1.5px solid var(--ink-3);
+        transform: rotate(45deg);
+      }
+
       /* 图注：学术图版式（图序加字距 + 说明小字），本页的签名细节 */
       .caption {
         margin-top: 18px;
@@ -470,15 +495,29 @@
       }
 
       /* ---------- 手机模式（≤767px，对齐应用 isSmallScreen 断点）----------
-         去窗壳化：演示占满整宽 + 剩余全部高度，iframe 以设备真实 CSS 尺寸渲染
-         （应用自然落入移动端布局；不做 transform 缩放，文字保持物理像素清晰）。
-         题辞区紧凑化、图注与红绿灯让位——窄屏每一寸都给演示。 */
+         多屏竖直滚动：题辞独占第一屏、演示独占一屏（100dvh）——窄屏每一寸
+         都给演示。演示屏去窗壳化满宽，iframe 以设备真实 CSS 尺寸渲染
+         （应用自然落入移动端布局；不做 transform 缩放，文字保持物理像素清晰）。 */
       @media (max-width: 767px) {
         :root {
           --stage-w: 100%;
         }
+        /* 刊头改为 fixed 悬浮：题辞/演示屏从玻璃胶囊下穿过（桌面 sticky 同观感），
+           且不占文档流高度，题辞屏才能正好一屏 */
+        .masthead {
+          position: fixed;
+          left: 0;
+          right: 0;
+          padding-top: 10px;
+        }
+        /* 第一屏：题辞垂直居中 */
         .hero {
-          padding: 18px 16px 0;
+          min-height: 100svh;
+          padding: 0 16px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          position: relative;
         }
         .kicker {
           margin-bottom: 10px;
@@ -493,18 +532,18 @@
         .actions {
           margin-top: 14px;
         }
+        /* 第二屏：演示独占一整屏。注意必须 flex:none——基础规则的 flex:1
+           展开为 flex-basis:0%，basis 非 auto 时 height 不生效，会被压成 0 */
         .stage {
-          padding: 16px 0 0;
-          min-height: 0;
+          flex: none;
+          height: 100dvh;
+          padding: 0;
         }
         .window {
           width: 100%;
           flex: 1;
-          min-height: 380px;
           border-radius: 0;
-          border-left: 0;
-          border-right: 0;
-          border-bottom: 0;
+          border: 0;
         }
         /* absolute inset 布局：绕开"块级子元素 % 高度依赖父级显式 height"
            的解析陷阱（.window 的高度来自 flex，非 height 属性） */
@@ -520,6 +559,10 @@
         }
         .caption {
           display: none;
+        }
+        /* 下滑提示：只在手机模式出现（桌面一屏尽览无需引导） */
+        .scroll-hint {
+          display: flex;
         }
         .colophon {
           padding: 12px 20px 16px;
@@ -583,6 +626,7 @@
         <a class="btn btn-primary glass" data-glass="button" href="https://github.com/helixnow/deep-student/releases/latest"><span>下载桌面版</span></a>
         <a class="btn btn-ghost glass" data-glass="button" href="https://github.com/helixnow/deep-student"><span>GitHub</span></a>
       </p>
+      <div class="scroll-hint" aria-hidden="true"><span>下滑体验实时演示</span><i></i></div>
     </section>
 
     <figure class="stage">
