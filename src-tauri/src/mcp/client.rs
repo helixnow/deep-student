@@ -124,17 +124,20 @@ pub struct ServerCapabilities {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsCapability {
+    #[serde(rename = "listChanged")]
     pub list_changed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourcesCapability {
+    #[serde(rename = "listChanged")]
     pub list_changed: Option<bool>,
     pub subscribe: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptsCapability {
+    #[serde(rename = "listChanged")]
     pub list_changed: Option<bool>,
 }
 
@@ -160,6 +163,7 @@ pub struct ClientCapabilities {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RootsCapability {
+    #[serde(rename = "listChanged")]
     pub list_changed: Option<bool>,
 }
 
@@ -174,6 +178,10 @@ pub struct SamplingCapability {
 pub struct Tool {
     pub name: String,
     pub description: Option<String>,
+    // MCP 规范的 wire 字段名是 inputSchema（camelCase）；此前缺失 rename 导致
+    // 所有标准 server 的 tools/list 反序列化失败（"missing field `input_schema`"），
+    // propose 连测必然回滚——对话式添加任何真实 MCP server 都会被静默掐死。
+    #[serde(rename = "inputSchema")]
     pub input_schema: Value,
 }
 
@@ -186,6 +194,7 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     pub content: Vec<Content>,
+    #[serde(rename = "isError")]
     pub is_error: Option<bool>,
 }
 
@@ -196,12 +205,14 @@ pub struct Resource {
     pub uri: String,
     pub name: String,
     pub description: Option<String>,
+    #[serde(rename = "mimeType")]
     pub mime_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceContent {
     pub uri: String,
+    #[serde(rename = "mimeType")]
     pub mime_type: Option<String>,
     pub text: Option<String>,
     pub blob: Option<String>,
@@ -209,9 +220,11 @@ pub struct ResourceContent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceTemplate {
+    #[serde(rename = "uriTemplate")]
     pub uri_template: String,
     pub name: String,
     pub description: Option<String>,
+    #[serde(rename = "mimeType")]
     pub mime_type: Option<String>,
 }
 
@@ -246,7 +259,7 @@ pub enum Content {
     Text { text: String },
 
     #[serde(rename = "image")]
-    Image { data: String, mime_type: String },
+    Image { data: String, #[serde(rename = "mimeType")] mime_type: String },
 
     #[serde(rename = "resource")]
     Resource { resource: ResourceContent },
@@ -263,11 +276,16 @@ pub struct SamplingMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageRequest {
     pub messages: Vec<SamplingMessage>,
+    #[serde(rename = "modelPreferences")]
     pub model_preferences: Option<ModelPreferences>,
+    #[serde(rename = "systemPrompt")]
     pub system_prompt: Option<String>,
+    #[serde(rename = "includeContext")]
     pub include_context: Option<String>,
     pub temperature: Option<f64>,
+    #[serde(rename = "maxTokens")]
     pub max_tokens: Option<i32>,
+    #[serde(rename = "stopSequences")]
     pub stop_sequences: Option<Vec<String>>,
     pub metadata: Option<Value>,
 }
@@ -275,8 +293,11 @@ pub struct CreateMessageRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelPreferences {
     pub hints: Option<Vec<ModelHint>>,
+    #[serde(rename = "costPriority")]
     pub cost_priority: Option<f64>,
+    #[serde(rename = "speedPriority")]
     pub speed_priority: Option<f64>,
+    #[serde(rename = "intelligencePriority")]
     pub intelligence_priority: Option<f64>,
 }
 
@@ -290,6 +311,7 @@ pub struct CreateMessageResult {
     pub content: Content,
     pub model: String,
     pub role: String,
+    #[serde(rename = "stopReason")]
     pub stop_reason: Option<String>,
 }
 
@@ -1887,6 +1909,66 @@ impl ReconnectingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_deserializes_spec_camel_case_fields() {
+        // MCP 规范（2024-11-05+）tools/list 的 Tool 使用 camelCase 字段名。
+        // 回归：此前缺 rename 导致 "missing field `input_schema`"，
+        // propose 连测对任何标准 server 必然回滚。
+        let wire = serde_json::json!({
+            "name": "echo_upper",
+            "description": "Echo in upper case",
+            "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}
+        });
+        let tool: Tool = serde_json::from_value(wire).expect("spec camelCase tool");
+        assert_eq!(tool.name, "echo_upper");
+        assert!(tool.input_schema.get("properties").is_some());
+    }
+
+    #[test]
+    fn tool_result_and_capabilities_use_camel_case_wire_names() {
+        let result: ToolResult = serde_json::from_value(serde_json::json!({
+            "content": [{"type": "text", "text": "ok"}],
+            "isError": false
+        }))
+        .expect("spec ToolResult");
+        assert_eq!(result.is_error, Some(false));
+
+        let caps: ServerCapabilities = serde_json::from_value(serde_json::json!({
+            "tools": {"listChanged": true},
+            "resources": {"listChanged": false, "subscribe": true}
+        }))
+        .expect("spec ServerCapabilities");
+        assert_eq!(caps.tools.and_then(|t| t.list_changed), Some(true));
+        assert_eq!(
+            caps.resources.and_then(|r| r.subscribe),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn resource_types_use_camel_case_wire_names() {
+        let resource: Resource = serde_json::from_value(serde_json::json!({
+            "uri": "file:///a.txt", "name": "a", "mimeType": "text/plain"
+        }))
+        .expect("spec Resource");
+        assert_eq!(resource.mime_type.as_deref(), Some("text/plain"));
+
+        let template: ResourceTemplate = serde_json::from_value(serde_json::json!({
+            "uriTemplate": "file:///{path}", "name": "t"
+        }))
+        .expect("spec ResourceTemplate");
+        assert_eq!(template.uri_template, "file:///{path}");
+
+        let content: Content = serde_json::from_value(serde_json::json!({
+            "type": "image", "data": "aGk=", "mimeType": "image/png"
+        }))
+        .expect("spec image Content");
+        match content {
+            Content::Image { mime_type, .. } => assert_eq!(mime_type, "image/png"),
+            _ => panic!("expected image content"),
+        }
+    }
 
     struct MockTransport {
         responses: Arc<Mutex<Vec<String>>>,
