@@ -157,12 +157,13 @@ export function useVariantUI({
   );
 
   // 🔧 P2优化：稳定 displayBlockIds 引用，避免不必要的重渲染
-  // 🔧 P3修复：使用 Store 的 getDisplayBlockIds，它会按 firstChunkAt 排序
+  // 🔧 P3修复：使用 Store 的 getDisplayBlockIds（权威实现，不再排序；块顺序由创建时的有序插入与终态归一化维护）
   // 确保刷新后思维链与工具调用保持交替顺序
   const prevDisplayBlockIdsRef = useRef<string[]>([]);
   const displayBlockIds = useMemo(() => {
-    // 🔧 P3修复：使用 Store 的 getDisplayBlockIds 而不是本地简单函数
-    // Store 版本会按 firstChunkAt/startedAt 排序，保持正确的时间顺序
+    // 🔧 P3修复：使用 Store 的 getDisplayBlockIds（权威实现）而不是本地简单函数
+    // 权威实现保持 blockIds 原始顺序（由创建时有序插入与终态归一化维护），
+    // 渲染阶段不再排序，避免与后端持久化顺序漂移
     const newIds = store.getState().getDisplayBlockIds(messageId);
     
     // 浅比较，如果内容相同则返回之前的引用

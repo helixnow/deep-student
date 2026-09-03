@@ -234,9 +234,30 @@ export function createBlockInternal(
       }
 
       // 更新消息的 blockIds
-      // 🔧 直接追加，排序由 getDisplayBlockIds 根据 firstChunkAt 时间戳处理
+      // 🔧 按 startedAt 有序插入：正常流式序（时间递增）走 push 快路径；
+      // 晚到/重放块（startedAt 早于末尾块）插入到正确位置，避免块被追加到
+      // 消息底部——分段渲染忠实按 blockIds 顺序，误排会导致工具块/思维链
+      // 出现在正文之后（安装版 0.9.50 已复现该数据形态）。
       const messageUpdate = updateSingleMessage(messageId, (draft) => {
-        draft.blockIds.push(blockId);
+        const blockStartedAt = block.startedAt;
+        const existing = draft.blockIds;
+        const lastBlockId = existing.length > 0 ? existing[existing.length - 1] : undefined;
+        const lastBlock = lastBlockId ? s.blocks.get(lastBlockId) : undefined;
+        if (!lastBlockId || (lastBlock?.startedAt ?? 0) <= blockStartedAt) {
+          // 快路径：末尾块不晚于新块，直接追加（正常流式序，零额外开销）
+          draft.blockIds.push(blockId);
+          return;
+        }
+        // 晚到块：插入到第一个 startedAt 晚于新块的块之前，保持时间序
+        let insertAt = existing.length;
+        for (let i = 0; i < existing.length; i++) {
+          const b = s.blocks.get(existing[i]);
+          if (b !== undefined && (b.startedAt ?? 0) > blockStartedAt) {
+            insertAt = i;
+            break;
+          }
+        }
+        draft.blockIds.splice(insertAt, 0, blockId);
       })(s);
 
       return {

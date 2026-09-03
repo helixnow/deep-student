@@ -1156,10 +1156,23 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
       if (handler.onStart) {
         const startPayload: EventStartPayload = payload ?? {};
 
-        // 如果后端传了 blockId，直接使用（多工具并发场景）；否则由前端创建
-        const effectiveBlockId = blockId
-          ? handler.onStart(store, effectiveMessageId, startPayload, blockId)
-          : handler.onStart(store, effectiveMessageId, startPayload);
+        // 🔧 重复 start 防护：断流重连/事件重放可能再次发送 start，且该
+        // blockId 已存在于 store（restore 后继续流式、同事件重复到达）。
+        // 此时复用已有块，不再创建克隆块追加到 blockIds 末尾——克隆块会
+        // 与原文重复且永远收不到正确的 end，导致工具块/思维链残留在消息
+        // 底部（安装版 0.9.50 数据已复现该形态）。
+        let effectiveBlockId: string | undefined;
+        if (blockId && isBlockKnown(store, context, blockId)) {
+          effectiveBlockId = blockId;
+          console.warn(
+            `[EventBridge] Duplicate '${type}' start for known block, reusing existing: blockId=${blockId}`
+          );
+        } else {
+          // 如果后端传了 blockId，直接使用（多工具并发场景）；否则由前端创建
+          effectiveBlockId = blockId
+            ? handler.onStart(store, effectiveMessageId, startPayload, blockId)
+            : handler.onStart(store, effectiveMessageId, startPayload);
+        }
 
         if (variantId) {
           logMultiVariant('adapter', 'handleBlockEventWithVariant_block_created', {

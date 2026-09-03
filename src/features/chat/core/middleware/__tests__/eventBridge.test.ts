@@ -131,3 +131,52 @@ describe('eventBridge guards', () => {
     expect(onEnd).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('eventBridge duplicate start guard', () => {
+  const onStart = vi.fn((_, __, ___, backendBlockId?: string) => backendBlockId ?? 'blk_generated');
+  const onEnd = vi.fn();
+  const onError = vi.fn();
+
+  beforeEach(() => {
+    eventRegistry.clear();
+    eventRegistry.register('thinking', { onStart, onEnd, onError });
+    onStart.mockClear();
+    onEnd.mockClear();
+    onError.mockClear();
+    resetBridgeState('sess_test');
+  });
+
+  afterEach(() => {
+    clearProcessedEventIds('sess_test');
+    clearEventContext('sess_test');
+    clearBridgeState('sess_test');
+    eventRegistry.clear();
+  });
+
+  it('reuses an existing block instead of creating a clone when the same start replays', () => {
+    const store = createStore(3);
+    // 模拟 restore 后继续流式：blockId 已存在于 store
+    (store as { blocks: Map<string, { id: string }> }).blocks = new Map([
+      ['blk_restored', { id: 'blk_restored' }],
+    ]);
+
+    handleBackendEventWithSequence(store, {
+      sequenceId: 0,
+      type: 'thinking',
+      phase: 'start',
+      messageId: 'msg_test',
+      blockId: 'blk_restored',
+    });
+
+    // 重复 start：不再创建克隆块（onStart 不应被再次调用）
+    handleBackendEventWithSequence(store, {
+      sequenceId: 1,
+      type: 'thinking',
+      phase: 'start',
+      messageId: 'msg_test',
+      blockId: 'blk_restored',
+    });
+
+    expect(onStart).not.toHaveBeenCalled();
+  });
+});

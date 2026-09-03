@@ -791,8 +791,32 @@ export function createVariantStoreActions(
                 return;
               }
 
-              // 🔧 直接追加，排序由 getDisplayBlockIds 根据 firstChunkAt 时间戳处理
-              targetVariant.blockIds.push(blockId);
+              // 🔧 按 startedAt 有序插入（与 createBlockInternal 同策略）：
+              // 晚到/重放块插入正确位置，避免残留在 variant.blockIds 末尾
+              const variantBlockStartedAt = s.blocks.get(blockId)?.startedAt ?? Date.now();
+              const existingVariantIds = targetVariant.blockIds;
+              const lastVariantBlockId = existingVariantIds.length > 0
+                ? existingVariantIds[existingVariantIds.length - 1]
+                : undefined;
+              const lastVariantBlock = lastVariantBlockId
+                ? s.blocks.get(lastVariantBlockId)
+                : undefined;
+              if (
+                !lastVariantBlockId ||
+                (lastVariantBlock?.startedAt ?? 0) <= variantBlockStartedAt
+              ) {
+                targetVariant.blockIds.push(blockId);
+              } else {
+                let variantInsertAt = existingVariantIds.length;
+                for (let vi = 0; vi < existingVariantIds.length; vi++) {
+                  const b = s.blocks.get(existingVariantIds[vi]);
+                  if (b !== undefined && (b.startedAt ?? 0) > variantBlockStartedAt) {
+                    variantInsertAt = vi;
+                    break;
+                  }
+                }
+                targetVariant.blockIds.splice(variantInsertAt, 0, blockId);
+              }
 
               // 🔧 从 message.blockIds 移除该 block（避免重复）
               // handler.onStart 会将 block 添加到 message.blockIds
