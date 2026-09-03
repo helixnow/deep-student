@@ -19,6 +19,7 @@ import type {
 import { isLegacyFrontendWorkerStartEnabled } from './runtimeMode';
 import {
   SubagentIdleWakeController,
+  wasDeliveredViaSyncToolReturn,
   type ParentWakeStore,
 } from './subagentIdleWake';
 // 🆕 P25: 导入子代理事件日志函数
@@ -222,9 +223,13 @@ const WAKE_SUMMARY_MAX_CHARS = 2000;
 
 /**
  * Completion wakes are retained while the parent is busy or not loaded, then
- * delivered serially once its store becomes idle. This intentionally can emit
- * a redundant notice after wait=true; the notice tells the coordinator to
- * ignore it when the tool return value was already handled.
+ * delivered serially once its store becomes idle.
+ *
+ * wait=true 同步调用的结果已随工具返回值交付（后端 subagent_executor 也会
+ * 吞掉父会话收件箱里对应的 agent_completion 消息），完成事件若再唤醒一次，
+ * 等于把同一子代理既当同步又当异步处理。投递前经 wasDeliveredViaSyncToolReturn
+ * 在父会话块里查找该 run 的终态回执（subagent_embed 块的 toolOutput），
+ * 命中则跳过唤醒。
  */
 const completionWakeController = new SubagentIdleWakeController({
   resolveParentStore: async (parentSessionId) => {
@@ -245,6 +250,21 @@ const completionWakeController = new SubagentIdleWakeController({
         wakeSession(content: string): Promise<void>;
       };
       if (latest.sessionStatus !== 'idle' || latest.currentStreamingMessageId) return false;
+
+      // 🔧 wait=true 同步交付去重：结果已随工具返回值处理过，跳过冗余唤醒
+      if (wasDeliveredViaSyncToolReturn(parentStore, payload)) {
+        console.log(
+          `[Workspace Events] [SUBAGENT_WAKE] Skipping wake for agent ${payload.agent_session_id} (run=${payload.run_id || 'unknown'}): result already delivered via wait=true tool return`,
+        );
+        addSubagentEventLog(
+          'coord_wake',
+          payload.agent_session_id,
+          `sync-delivered wake skipped: parent=${parentSessionId}, status=${payload.status}`,
+          undefined,
+          payload.workspace_id,
+        );
+        return true;
+      }
 
       const summarySource = payload.final_output || payload.error || '';
       const summary = summarySource.length > WAKE_SUMMARY_MAX_CHARS

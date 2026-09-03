@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   SubagentIdleWakeController,
+  wasDeliveredViaSyncToolReturn,
   type ParentWakeState,
   type ParentWakeStore,
 } from '../subagentIdleWake';
@@ -153,5 +154,84 @@ describe('SubagentIdleWakeController', () => {
 
     expect(sendWake).not.toHaveBeenCalled();
     controller.dispose();
+  });
+});
+
+describe('wasDeliveredViaSyncToolReturn', () => {
+  function storeWithBlocks(blocks: Array<{ type?: string; toolOutput?: unknown }>): ParentWakeStore {
+    const map = new Map(
+      blocks.map((block, index) => [`blk_${index}`, block]),
+    );
+    return {
+      getState: () =>
+        ({ sessionStatus: 'idle', currentStreamingMessageId: null, blocks: map }) as ParentWakeState,
+      subscribe: () => () => {},
+    };
+  }
+
+  const syncToolOutput = (overrides = {}) => ({
+    agent_session_id: 'agent-1',
+    run_id: 'run-1',
+    status: 'completed',
+    output: 'done',
+    ...overrides,
+  });
+
+  it('matches a terminal subagent_embed tool output for the same run', () => {
+    const store = storeWithBlocks([
+      { type: 'subagent_embed', toolOutput: syncToolOutput() },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(true);
+  });
+
+  it('matches failed/cancelled terminal statuses too', () => {
+    for (const status of ['failed', 'cancelled']) {
+      const store = storeWithBlocks([
+        { type: 'subagent_embed', toolOutput: syncToolOutput({ status }) },
+      ]);
+      expect(wasDeliveredViaSyncToolReturn(store, completion({ status }))).toBe(true);
+    }
+  });
+
+  it('does not match a non-terminal tool output (wait=false dispatch or wait timeout)', () => {
+    const store = storeWithBlocks([
+      { type: 'subagent_embed', toolOutput: syncToolOutput({ status: 'running' }) },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(false);
+  });
+
+  it('does not match a different agent', () => {
+    const store = storeWithBlocks([
+      { type: 'subagent_embed', toolOutput: syncToolOutput({ agent_session_id: 'agent-2' }) },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(false);
+  });
+
+  it('does not match a stale run receipt when both run ids are known (resume scenario)', () => {
+    const store = storeWithBlocks([
+      { type: 'subagent_embed', toolOutput: syncToolOutput({ run_id: 'run-old' }) },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion({ run_id: 'run-new' }))).toBe(false);
+  });
+
+  it('falls back to agent-level match when the block predates run_id', () => {
+    const output = syncToolOutput();
+    delete (output as Record<string, unknown>).run_id;
+    const store = storeWithBlocks([{ type: 'subagent_embed', toolOutput: output }]);
+    expect(wasDeliveredViaSyncToolReturn(store, completion())).toBe(true);
+  });
+
+  it('ignores non-embed blocks and missing blocks map', () => {
+    const wrongType = storeWithBlocks([
+      { type: 'subagent_retry', toolOutput: syncToolOutput() },
+      { type: 'mcp_tool', toolOutput: syncToolOutput() },
+    ]);
+    expect(wasDeliveredViaSyncToolReturn(wrongType, completion())).toBe(false);
+
+    const noBlocks: ParentWakeStore = {
+      getState: () => ({ sessionStatus: 'idle', currentStreamingMessageId: null }),
+      subscribe: () => () => {},
+    };
+    expect(wasDeliveredViaSyncToolReturn(noBlocks, completion())).toBe(false);
   });
 });

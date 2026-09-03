@@ -20,6 +20,44 @@ export interface ParentWakeStore {
   subscribe(listener: (state: ParentWakeState) => void): () => void;
 }
 
+/** wait=true 工具返回值中的终态 status（与后端 subagent_executor 的终态返回一致） */
+const SYNC_DELIVERED_TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * 判断本次子代理完成是否已通过 wait=true 工具返回值交付过。
+ *
+ * wait=true 同步调用的结果已随工具返回值写入父会话的 subagent_embed 块
+ * （后端 subagent_executor 也会吞掉父会话收件箱里对应的 agent_completion
+ * 消息）；完成事件若再唤醒一次，等于把同一子代理既当同步又当异步处理。
+ *
+ * run_id 双侧齐全时必须匹配，避免续跑场景旧 run 的回执吞掉新 run 的唤醒；
+ * 单侧缺失时按 agent + 终态回执兜底匹配（兼容旧历史块）。
+ */
+export function wasDeliveredViaSyncToolReturn(
+  parentStore: ParentWakeStore,
+  payload: SubagentCompletionWakePayload,
+): boolean {
+  const state = parentStore.getState() as ParentWakeState & {
+    blocks?: Map<string, { type?: string; toolOutput?: unknown }>;
+  };
+  if (!state.blocks) return false;
+  for (const block of state.blocks.values()) {
+    if (block.type !== 'subagent_embed') continue;
+    const output = block.toolOutput as
+      | { agent_session_id?: unknown; run_id?: unknown; status?: unknown }
+      | null
+      | undefined;
+    if (!output || output.agent_session_id !== payload.agent_session_id) continue;
+    const status = typeof output.status === 'string' ? output.status : '';
+    if (!SYNC_DELIVERED_TERMINAL_STATUSES.has(status)) continue;
+    if (typeof output.run_id === 'string' && payload.run_id && output.run_id !== payload.run_id) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 interface IdleWakeControllerOptions {
   resolveParentStore(parentSessionId: string): Promise<ParentWakeStore | undefined>;
   /**
