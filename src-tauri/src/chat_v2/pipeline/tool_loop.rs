@@ -56,7 +56,7 @@
 
 use super::*;
 
-use super::super::context::{DoomLoopGuard, DoomLoopVerdict, DOOM_LOOP_ABORT_THRESHOLD};
+
 
 #[derive(Debug, Clone)]
 pub(crate) struct ExternalToolRoute {
@@ -468,89 +468,22 @@ impl ChatV2Pipeline {
                 hook.before_turn(self, ctx, recursion_depth).await?;
             }
 
-            // ============================================================
-            // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
-            // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
-            // （拦截结果已在上一轮以合成失败回喂，此处只负责终止收尾）
-            // ============================================================
-            if ctx.doom_loop_guard.abort_triggered() {
-                let tool_name = ctx
-                    .doom_loop_guard
-                    .abort_tool_name()
-                    .unwrap_or("<unknown>")
-                    .to_string();
-                log::warn!(
-                "[ChatV2::pipeline] Doom loop abort: tool={} repeated {} times with identical arguments, terminating tool loop at depth={}",
-                tool_name,
-                DOOM_LOOP_ABORT_THRESHOLD,
-                recursion_depth
-            );
-                let limit_message = format!(
-                    "⚠️ 检测到重复调用循环，已终止本轮执行\n\n\
-                AI 连续 {} 次以完全相同的参数调用工具「{}」，为防止无效死循环已暂停自动执行。\n\n\
-                您可以：\n\
-                • 补充信息或调整指令后重新发送\n\
-                • 发送「继续」让 AI 换一种策略再试\n\
-                • 手动完成剩余步骤",
-                    DOOM_LOOP_ABORT_THRESHOLD, tool_name
-                );
-                let result_payload = serde_json::json!({
-                    "content": limit_message,
-                    "reason": "doom_loop",
-                    "toolName": tool_name,
-                    "repeatCount": DOOM_LOOP_ABORT_THRESHOLD,
-                });
-                self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
-                return Ok(());
-            }
+            // 工具轮次上限：None = 不限轮次（默认；长程 agent / 未来 /goal 模式）。
+            // 仅当显式配置 max_tool_recursion > 0 时启用上限；心跳（白名单内部
+            // 工具的 continue_execution 信号）可越过该上限继续执行。
+            let max_recursion_opt = effective_max_tool_rounds(ctx.options.max_tool_recursion);
 
-            // 检查递归深度限制
-            // 🔧 配置化：使用用户设置的限制值，默认 MAX_TOOL_RECURSION (30)
-            // 🔧 2026-07（短板 #13）：与多变体路径共用 effective_max_tool_rounds
-            let max_recursion = effective_max_tool_rounds(ctx.options.max_tool_recursion);
-
-            // 🔒 安全修复：心跳机制仅信任白名单内部工具
-            // 外部/MCP 工具不能通过返回 continue_execution 绕过递归限制
-            const ABSOLUTE_MAX_RECURSION: u32 = 150;
-            const MAX_HEARTBEAT_COUNT: u32 = 50;
+            // 🔒 心跳：仅信任白名单内部工具（coordinator_sleep）
             const HEARTBEAT_TOOLS: &[&str] = &["coordinator_sleep", "builtin-coordinator_sleep"];
 
             // 🔧 F5 修复：只看最近一轮的心跳（由上一轮工具执行后写入），
             // 而非扫描 ctx.tool_results 全量历史 —— 否则一次 continue_execution=true
-            // 会让所有后续轮次都被视为有心跳，心跳计数语义失真
-            let has_heartbeat = ctx.last_round_heartbeat;
+            // 会让所有后续轮次都被视为有心跳
+            let heartbeat_effective = ctx.last_round_heartbeat;
 
-            // 追踪连续心跳次数，超过上限后忽略心跳
-            if has_heartbeat {
-                ctx.heartbeat_count += 1;
-                if ctx.heartbeat_count > MAX_HEARTBEAT_COUNT {
-                    log::warn!(
-                    "[ChatV2::pipeline] Heartbeat count exceeded limit: count={}, max={}, ignoring heartbeat",
-                    ctx.heartbeat_count,
-                    MAX_HEARTBEAT_COUNT
-                );
-                }
-            } else {
-                ctx.heartbeat_count = 0;
-            }
-
-            let heartbeat_effective = has_heartbeat && ctx.heartbeat_count <= MAX_HEARTBEAT_COUNT;
-
-            // 绝对上限检查（不可绕过）
-            if recursion_depth > ABSOLUTE_MAX_RECURSION {
-                log::error!(
-                "[ChatV2::pipeline] ABSOLUTE recursion limit reached: depth={}, absolute_max={}",
-                recursion_depth,
-                ABSOLUTE_MAX_RECURSION
-            );
-                return Err(ChatV2Error::Tool(format!(
-                    "达到绝对递归上限 ({})，任务已终止",
-                    ABSOLUTE_MAX_RECURSION
-                )));
-            }
-
-            // 普通限制检查（仅白名单工具的有效心跳可绕过）
-            if recursion_depth > max_recursion && !heartbeat_effective {
+            // 普通限制检查（仅显式配置上限时生效；白名单工具的心跳可绕过）
+            if let Some(max_recursion) = max_recursion_opt {
+                if !heartbeat_effective && recursion_depth > max_recursion {
                 log::warn!(
                     "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
                     recursion_depth,
@@ -576,6 +509,7 @@ impl ChatV2Pipeline {
 
                 // 正常返回，不抛出错误
                 return Ok(());
+                }
             }
 
             // ============================================================
@@ -1829,15 +1763,11 @@ impl ChatV2Pipeline {
                 // 下一轮递归入口生成 tool_limit 块终止循环。
                 // 心跳白名单工具（coordinator_sleep）豁免——重复同参调用是合法轮询。
                 // ============================================================
-                let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
-                    &mut ctx.doom_loop_guard,
-                    &tool_calls,
-                    &emitter,
-                    &ctx.assistant_message_id,
-                    None,
-                    ctx.options.skill_state_version,
-                    Some(round_id.as_str()),
-                );
+                // 2026-09：工具循环完全不设限（长程 agent 支持），
+                // doom loop 拦截机制整体移除——所有调用直接进入执行，无合成结果。
+                // tool_calls 之后仍需用于结果归并，故克隆。
+                let (calls_to_execute, doom_synthetic): (Vec<ToolCall>, Vec<ToolResultInfo>) =
+                    (tool_calls.clone(), Vec::new());
 
                 // 🆕 取消支持：传递取消令牌给工具执行器
                 let cancel_token = ctx.cancellation_token();
@@ -2072,9 +2002,8 @@ impl ChatV2Pipeline {
                 ctx.last_round_heartbeat = has_continue_execution;
                 if has_continue_execution {
                     log::info!(
-                    "[ChatV2::pipeline] Heartbeat detected from whitelisted tool, will bypass recursion limit (count: {})",
-                    ctx.heartbeat_count
-                );
+                        "[ChatV2::pipeline] Heartbeat detected from whitelisted tool, will bypass configured recursion limit"
+                    );
                 }
 
                 // 🆕 持久化 TodoList 状态（消息内继续执行支持）
@@ -2570,159 +2499,6 @@ impl ChatV2Pipeline {
         }
 
         Ok(())
-    }
-
-    /// 🆕 2026-07 Doom loop 检测：按执行顺序观察本轮工具调用，拦截连续重复调用
-    ///
-    /// 返回 `(calls_to_execute, synthetic_results)`：
-    /// - `calls_to_execute`: 通过检测、应正常执行的调用（保持原顺序）；
-    /// - `synthetic_results`: 被拦截调用的合成失败结果（含 block_id，事件已发射），
-    ///   由调用方按原始 tool_calls 顺序归并回结果列表回喂 LLM。
-    ///
-    /// 心跳白名单工具（coordinator_sleep）参与指纹序列（打断其他工具的连续链，
-    /// 使「查询→睡眠→查询」合法轮询不被误伤）但自身豁免拦截。
-    /// 单变体与多变体路径共用（多变体持有变体局部 DoomLoopGuard）。
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn apply_doom_loop_guard(
-        &self,
-        guard: &mut DoomLoopGuard,
-        tool_calls: &[ToolCall],
-        emitter: &Arc<ChatV2EventEmitter>,
-        message_id: &str,
-        variant_id: Option<&str>,
-        skill_state_version: Option<u64>,
-        round_id: Option<&str>,
-    ) -> (Vec<ToolCall>, Vec<ToolResultInfo>) {
-        let mut calls_to_execute: Vec<ToolCall> = Vec::with_capacity(tool_calls.len());
-        let mut synthetic_results: Vec<ToolResultInfo> = Vec::new();
-
-        for tc in tool_calls {
-            let verdict = guard.observe(&tc.name, &tc.arguments);
-
-            // 心跳工具豁免拦截（observe 已更新指纹链）
-            if is_doom_loop_exempt_tool(&tc.name) {
-                calls_to_execute.push(tc.clone());
-                continue;
-            }
-
-            match verdict {
-                DoomLoopVerdict::Execute => calls_to_execute.push(tc.clone()),
-                DoomLoopVerdict::SkipRepeated { count } => {
-                    log::warn!(
-                        "[ChatV2::pipeline] Doom loop detected: tool={} repeated {} times with identical arguments, intercepting call (id={})",
-                        tc.name,
-                        count,
-                        tc.id
-                    );
-                    synthetic_results.push(self.emit_doom_loop_interception(
-                        tc,
-                        count,
-                        false,
-                        emitter,
-                        message_id,
-                        variant_id,
-                        skill_state_version,
-                        round_id,
-                    ));
-                }
-                DoomLoopVerdict::Abort { count } => {
-                    log::error!(
-                        "[ChatV2::pipeline] Doom loop abort threshold reached: tool={} repeated {} times, tool loop will terminate (id={})",
-                        tc.name,
-                        count,
-                        tc.id
-                    );
-                    guard.mark_abort(&tc.name);
-                    synthetic_results.push(self.emit_doom_loop_interception(
-                        tc,
-                        count,
-                        true,
-                        emitter,
-                        message_id,
-                        variant_id,
-                        skill_state_version,
-                        round_id,
-                    ));
-                }
-            }
-        }
-
-        (calls_to_execute, synthetic_results)
-    }
-
-    /// 为被 doom loop 拦截的调用发射前端事件并构造合成失败结果
-    #[allow(clippy::too_many_arguments)]
-    fn emit_doom_loop_interception(
-        &self,
-        tc: &ToolCall,
-        count: u32,
-        is_abort: bool,
-        emitter: &Arc<ChatV2EventEmitter>,
-        message_id: &str,
-        variant_id: Option<&str>,
-        skill_state_version: Option<u64>,
-        round_id: Option<&str>,
-    ) -> ToolResultInfo {
-        let block_id = MessageBlock::generate_id();
-
-        // 发射 start + error 事件，让用户在前端看到被拦截的调用
-        emitter.emit_start_with_meta(
-            event_types::TOOL_CALL,
-            message_id,
-            Some(&block_id),
-            Some(json!({
-                "toolName": tc.name,
-                "toolInput": tc.arguments,
-                "toolCallId": tc.id,
-                "_doomLoopIntercepted": true,
-                "_repeatCount": count,
-            })),
-            variant_id,
-            skill_state_version,
-            round_id,
-        );
-        let display_msg = format!(
-            "检测到重复调用循环：工具 {} 连续第 {} 次以完全相同的参数被调用，本次调用已被拦截（未执行）。",
-            tc.name, count
-        );
-        emitter.emit_error_with_meta(
-            event_types::TOOL_CALL,
-            &block_id,
-            &display_msg,
-            variant_id,
-            skill_state_version,
-            round_id,
-        );
-
-        // 回喂 LLM 的合成失败结果：明确要求改变策略
-        let llm_error = if is_abort {
-            format!(
-                "LOOP DETECTED — tool call intercepted (NOT executed). You have called '{}' {} times in a row with identical arguments. The tool loop is being terminated and the user will be asked to take over. Do NOT repeat this call.",
-                tc.name, count
-            )
-        } else {
-            format!(
-                "LOOP DETECTED — tool call intercepted (NOT executed). This is the {}th consecutive call to '{}' with identical arguments. Repeating the exact same call will keep failing. You MUST change strategy: adjust the arguments, use a different tool, or ask the user for help (ask_user). If you cannot make progress, explain the blocker to the user instead of retrying.",
-                count, tc.name
-            )
-        };
-
-        ToolResultInfo {
-            tool_call_id: Some(tc.id.clone()),
-            block_id: Some(block_id),
-            tool_name: tc.name.clone(),
-            input: tc.arguments.clone(),
-            output: json!({
-                "error": "doom_loop_detected",
-                "repeat_count": count,
-                "intercepted": true,
-            }),
-            success: false,
-            error: Some(llm_error),
-            duration_ms: Some(0),
-            reasoning_content: None,
-            thought_signature: None,
-        }
     }
 
     /// 对工具调用列表进行依赖感知排序
@@ -3720,13 +3496,6 @@ where
 // 🆕 2026-07 Doom loop 检测辅助（纯函数，可单测）
 // ============================================================================
 
-/// 心跳白名单工具豁免 doom loop 拦截（重复同参轮询是其合法行为）
-///
-/// 与 execute_with_tools 内的 HEARTBEAT_TOOLS 白名单保持一致。
-pub(crate) fn is_doom_loop_exempt_tool(tool_name: &str) -> bool {
-    matches!(tool_name, "coordinator_sleep" | "builtin-coordinator_sleep")
-}
-
 /// 把「已执行结果 + doom loop 合成失败结果」按原始 tool_calls 顺序归并
 ///
 /// 归并规则：
@@ -3734,6 +3503,7 @@ pub(crate) fn is_doom_loop_exempt_tool(tool_name: &str) -> bool {
 /// - 保证每个 tool_call 都有对应结果回喂（协议完整性）且顺序确定
 ///   （参考 内部审查报告「确定性状态管理防缓存 miss」教训）；
 /// - 防御：任何未匹配上的结果（不应发生）按执行顺序补到末尾，避免结果丢失。
+
 pub(crate) fn merge_round_results_in_call_order(
     original_calls: &[ToolCall],
     executed: Vec<ToolResultInfo>,

@@ -24,11 +24,8 @@ use super::vfs_resolver::escape_xml_content;
 // 🆕 2026-07 Doom loop 检测（借鉴 参考实现）
 // ============================================================
 
-/// 同一指纹连续出现第 3 次起拦截执行（合成失败结果回喂 LLM）
-pub(crate) const DOOM_LOOP_WARN_THRESHOLD: u32 = 3;
-
-/// 同一指纹连续出现第 5 次时终止本轮工具循环（生成 tool_limit 块）
-pub(crate) const DOOM_LOOP_ABORT_THRESHOLD: u32 = 5;
+// 2026-09：工具循环**完全不设限**（长程 agent 支持），
+// 原有 Doom loop 拦截/终止机制整体移除（见 git 历史）。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LocalShellRuntimeContract {
@@ -89,99 +86,6 @@ pub(crate) fn local_shell_contract_for_platform(platform: &str) -> LocalShellRun
             output_encoding: Some("unknown"),
             execution_supported: false,
         },
-    }
-}
-
-/// Doom loop 裁决结果
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DoomLoopVerdict {
-    /// 正常执行
-    Execute,
-    /// 连续第 3/4 次相同调用：拦截执行，合成失败结果告知 LLM 改变策略
-    SkipRepeated { count: u32 },
-    /// 连续第 5 次相同调用：拦截执行并终止本轮工具循环
-    Abort { count: u32 },
-}
-
-/// Doom loop 守卫：跨工具轮次追踪「工具名 + 参数 JSON」指纹的连续重复次数
-///
-/// 借鉴 参考实现 的 doom loop 检测（同工具同参数连续 3 次告警）。
-/// 状态生命周期与 PipelineContext 一致（单次请求内跨递归轮次累计）；
-/// 指纹不同（换工具或换参数）即重置计数。多变体路径在变体循环内各持有独立实例。
-#[derive(Debug, Default)]
-pub(crate) struct DoomLoopGuard {
-    /// 最近一次观察到的调用指纹（sha256(工具名 + 参数 JSON)）
-    last_fingerprint: Option<String>,
-    /// 该指纹的连续出现次数（含当前次）
-    repeat_count: u32,
-    /// 是否已触发终止（达到 DOOM_LOOP_ABORT_THRESHOLD）
-    abort_triggered: bool,
-    /// 触发终止的工具名（用于 tool_limit 块提示文案）
-    abort_tool_name: Option<String>,
-}
-
-impl DoomLoopGuard {
-    /// 按执行顺序观察一次工具调用，返回裁决结果并更新内部计数
-    ///
-    /// 本方法只做计数与裁决，不落终止标记；由 tool_loop 对 Abort 裁决
-    /// 调用 `mark_abort`（心跳白名单工具会忽略裁决，避免误伤合法轮询）。
-    pub(crate) fn observe(
-        &mut self,
-        tool_name: &str,
-        arguments: &serde_json::Value,
-    ) -> DoomLoopVerdict {
-        let fingerprint = Self::fingerprint(tool_name, arguments);
-        if self.last_fingerprint.as_deref() == Some(fingerprint.as_str()) {
-            self.repeat_count += 1;
-        } else {
-            self.last_fingerprint = Some(fingerprint);
-            self.repeat_count = 1;
-        }
-
-        if self.repeat_count >= DOOM_LOOP_ABORT_THRESHOLD {
-            DoomLoopVerdict::Abort {
-                count: self.repeat_count,
-            }
-        } else if self.repeat_count >= DOOM_LOOP_WARN_THRESHOLD {
-            DoomLoopVerdict::SkipRepeated {
-                count: self.repeat_count,
-            }
-        } else {
-            DoomLoopVerdict::Execute
-        }
-    }
-
-    /// 落终止标记（tool_loop 对非心跳工具的 Abort 裁决调用）
-    pub(crate) fn mark_abort(&mut self, tool_name: &str) {
-        self.abort_triggered = true;
-        self.abort_tool_name = Some(tool_name.to_string());
-    }
-
-    /// 是否已达到终止阈值（由 tool_loop 在工具批次执行后检查）
-    pub(crate) fn abort_triggered(&self) -> bool {
-        self.abort_triggered
-    }
-
-    /// 触发终止的工具名
-    pub(crate) fn abort_tool_name(&self) -> Option<&str> {
-        self.abort_tool_name.as_deref()
-    }
-
-    /// 计算调用指纹：sha256(工具名 + 0x1f + 参数 JSON 序列化)
-    ///
-    /// serde_json 启用 preserve_order，同一 LLM 重复输出的相同参数
-    /// 序列化结果稳定，指纹可靠。
-    fn fingerprint(tool_name: &str, arguments: &serde_json::Value) -> String {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(tool_name.as_bytes());
-        hasher.update(b"\x1f");
-        hasher.update(
-            serde_json::to_string(arguments)
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        format!("{:x}", hasher.finalize())
     }
 }
 
@@ -477,7 +381,7 @@ pub(crate) struct PipelineContext {
 
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
-    pub(crate) heartbeat_count: u32,
+
 
     /// 🔧 F5 修复：最近一轮工具执行是否产生有效心跳
     /// 之前通过扫描 ctx.tool_results 全量历史判断心跳，一次 coordinator_sleep
@@ -492,7 +396,7 @@ pub(crate) struct PipelineContext {
 
     /// 🆕 2026-07: Doom loop 守卫 —— 跨工具轮次追踪「工具名+参数」指纹的连续重复，
     /// 连续第 3 次拦截执行回喂合成失败，连续第 5 次终止本轮循环（见 DoomLoopGuard）
-    pub(crate) doom_loop_guard: DoomLoopGuard,
+
 
     /// 🆕 最近一次 load_chat_history 中 FIFO 截断的丢弃报告（dropped > 0 时挂起），
     /// 由 notify_context_trimmed 消费并发射 `context_trimmed` 事件
@@ -573,10 +477,10 @@ impl PipelineContext {
             workspace_id: request.workspace_id.clone(),
             workspace_injection_count: 0,
             cancellation_token: None,
-            heartbeat_count: 0,
+
             last_round_heartbeat: false,
             needs_compaction: false,
-            doom_loop_guard: DoomLoopGuard::default(),
+
             pending_context_trim: None,
             context_trim_notified: false,
             forced_compaction_before_trim: false,

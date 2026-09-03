@@ -2,19 +2,17 @@
 // 常量定义
 // ============================================================
 
-/// 工具递归最大深度
-pub(crate) const MAX_TOOL_RECURSION: u32 = 30;
-
 /// 计算工具循环的有效最大轮数
 ///
-/// 🔧 2026-07（短板 #13）：单变体递归路径与多变体轮询路径共用此函数，
-/// 消除多变体硬编码 `MAX_TOOL_ROUNDS = 10` 造成的行为不一致：
-/// - 用户显式配置 `options.max_tool_recursion` 时以其为准，clamp 到 1–100；
-/// - 未配置时回退 MAX_TOOL_RECURSION（30）。
-pub(crate) fn effective_max_tool_rounds(max_tool_recursion: Option<u32>) -> u32 {
+/// 2026-09（长程 agent 支持 / 未来 /goal 模式）：工具循环**默认完全不设限**。
+/// - `None` / `Some(0)` = 不限轮次（默认）；
+/// - `Some(v)` = 显式配置上限（如自动化任务模板），clamp 到 1–100。
+///
+/// 单变体递归路径与多变体轮询路径共用此函数（2026-07 短板 #13 统一）。
+pub(crate) fn effective_max_tool_rounds(max_tool_recursion: Option<u32>) -> Option<u32> {
     max_tool_recursion
-        .unwrap_or(MAX_TOOL_RECURSION)
-        .clamp(1, 100)
+        .filter(|&v| v > 0)
+        .map(|v| v.clamp(1, 100))
 }
 
 /// 默认工具超时（毫秒）
