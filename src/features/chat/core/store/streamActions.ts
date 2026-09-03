@@ -171,6 +171,50 @@ export function createStreamActions(
               }
             }
 
+            // 🔧 终态归一化：按 firstChunkAt/startedAt 稳定重排 blockIds。
+            // 晚到/重放块（startedAt 早于末尾块）可能在流式期间被追加到消息
+            // 末尾（EventBridge 对 start 无重放防护时会克隆块），流结束后归位，
+            // 避免工具块/思维链始终渲染在消息底部。仅乱序时排序，正常消息
+            // 保持原引用（零拷贝）。
+            if (currentMessageId) {
+              const msg = newMessageMap.get(currentMessageId);
+              if (msg) {
+                const keyOf = (id: string): number => {
+                  const b = newBlocks.get(id);
+                  return (b?.firstChunkAt ?? b?.startedAt ?? 0) || 0;
+                };
+                const normalize = (ids: string[]): string[] | null => {
+                  let disordered = false;
+                  for (let i = 1; i < ids.length; i++) {
+                    if (keyOf(ids[i]) < keyOf(ids[i - 1])) {
+                      disordered = true;
+                      break;
+                    }
+                  }
+                  // Array.prototype.sort 稳定：相同时间戳保持原顺序
+                  return disordered
+                    ? [...ids].sort((aId, bId) => keyOf(aId) - keyOf(bId))
+                    : null;
+                };
+                const sortedMain = normalize(msg.blockIds);
+                const sortedVariants = msg.variants?.map((v) => normalize(v.blockIds)) ?? [];
+                if (sortedMain || sortedVariants.some((x) => x !== null)) {
+                  newMessageMap = new Map(newMessageMap);
+                  newMessageMap.set(currentMessageId, {
+                    ...msg,
+                    ...(sortedMain ? { blockIds: sortedMain } : {}),
+                    ...(msg.variants
+                      ? {
+                          variants: msg.variants.map((v, i) =>
+                            sortedVariants[i] ? { ...v, blockIds: sortedVariants[i]! } : v
+                          ),
+                        }
+                      : {}),
+                  });
+                }
+              }
+            }
+
             return {
               sessionStatus: 'idle',
               currentStreamingMessageId: null,
