@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.48](https://github.com/helixnow/deep-student/compare/v0.9.47...v0.9.48) (2026-09-03)
+
+
+### Bug Fixes
+
+* **button-audit:** 修复阻塞发版的 tsc 错误——items 数组字面量 union widening 加 as AuditItem[]、SegmentedControl onValueChange 类型适配、补 notes-misc 缺失的 note 字段 ([4c49b58](https://github.com/helixnow/deep-student/commit/4c49b58ece672f3f722bd76e190751aa7c1d47ac))
+
 ## [0.9.47](https://github.com/helixnow/deep-student/compare/v0.9.46...v0.9.47) (2026-09-03)
 
 
