@@ -17,7 +17,6 @@ export type CurrentView =
   | 'task-dashboard'     // 制卡任务管理页面
   | 'template-management'
   | 'ui-lab'            // UI 样式调试与 primitive 校对页面
-  | 'template-json-preview'
   | 'crepe-demo'
   | 'pdf-reader'
   | 'learning-hub'      // Learning Hub 学习资源全屏模式

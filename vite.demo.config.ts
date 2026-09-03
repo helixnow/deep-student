@@ -142,7 +142,6 @@ const DEMO_PAGE_STUBS: Array<{ test: RegExp; label: string }> = [
   { label: "SkillsManagementPage", test: /skills-management[\/][^\/]*Page(\.tsx?)?$/ },
   { label: "TemplateManagementApp", test: /template-management[\/]Template[^\/]*App(\.tsx?)?$/ },
   { label: "StyleDebugPage", test: /style-lab[\/]StyleDebugPage(\.tsx?)?$/ },
-  { label: "TemplateJsonPreviewPage", test: /components[\/]TemplateJsonPreviewPage(\.tsx?)?$/ },
   { label: "LearningHubPage", test: /features[\/]learning-hub[\/]LearningHubPage(\.tsx?)?$/ },
   { label: "SandboxWorkbenchPage", test: /features[\/]sandbox[\/]pages[\/][^\/]*WorkbenchPage(\.tsx?)?$/ },
   { label: "PdfReader", test: /features[\/]pdf[\/]components[\/]PdfReader(\.tsx?)?$/ },

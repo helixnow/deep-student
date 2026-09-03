@@ -24,6 +24,8 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   'irec-service-switcher': 'chat-v2',
   'math-workflow': 'chat-v2',
   'bridge-to-irec': 'chat-v2',
+  // 2026-09: 模板 JSON 预览页已移除，历史记录重定向回模板管理
+  'template-json-preview': 'template-management',
 };
 
 const BASE_CANONICAL_VIEWS: CurrentView[] = [
@@ -34,7 +36,6 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'task-dashboard',
   'template-management',
   'ui-lab',
-  'template-json-preview',
   'pdf-reader',
   'learning-hub',
   'skills-management',

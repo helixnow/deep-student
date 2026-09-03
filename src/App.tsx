@@ -148,7 +148,6 @@ import {
   LazySkillsManagementPage,
   LazyTemplateManagementPage,
   LazyStyleDebugPage,
-  LazyTemplateJsonPreviewPage,
   LazyLearningHubPage,
   LazySandboxWorkbenchPage,
   LazyPdfReader,
@@ -469,7 +468,7 @@ type CurrentView = NavigationCurrentView;
  * P3 handoff 兜底：经典壳视图 → Workbench 应用 typeId。
  * 与 legacyNavigationMap 的 VIEW_BY_TYPE_ID（禁改文件）互为反向；仅收录有明确
  * 对应桌面应用的视图。chat-v2 不进表（需要活跃会话 id，见消费 effect 单独处理）；
- * pdf-reader / template-json-preview 等上下文视图的资源状态不在 App 层，
+ * pdf-reader 等上下文视图的资源状态不在 App 层，
  * 其「同一资源」交接依赖 handoff descriptor 主通道。
  */
 const WORKBENCH_APP_BY_CLASSIC_VIEW: Partial<Record<CurrentView, string>> = {
@@ -497,12 +496,12 @@ const BRIDGE_COMPLETION_REASONS = new Set([
 /** 始终保活的视图（不参与 LRU 淘汰） */
 const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
 /**
- * 暂缓驱逐的视图（2026-07 移动端审计 残留#3）：这两个视图的关键状态是纯本地
- * state（pdf-reader 已打开的 PDF 与页码、template-json-preview 手输的 JSON），
+ * 暂缓驱逐的视图（2026-07 移动端审计 残留#3）：该视图的关键状态是纯本地
+ * state（pdf-reader 已打开的 PDF 与页码），
  * 被 LRU 驱逐即清零且不可恢复。淘汰时优先驱逐其他视图，仅当候选里只剩它们
  * 时才驱逐（软保护，不是 pinned——总保活上限不变，不抬高低端机内存天花板）。
  */
-const EVICTION_DEFERRED_VIEWS: Set<CurrentView> = new Set(['pdf-reader', 'template-json-preview']);
+const EVICTION_DEFERRED_VIEWS: Set<CurrentView> = new Set(['pdf-reader']);
 /** 最大保活视图数量（含 pinned）
  *  桌面用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销；
  *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
@@ -1228,7 +1227,6 @@ function App() {
       setCurrentViewRaw(targetView);
     });
   }, []);
-  const templateJsonPreviewReturnRef = useRef<CurrentView>('template-management');
 
   useEffect(() => {
     let shouldOpenRecoveryReceipt = false;
@@ -1708,8 +1706,8 @@ function App() {
   }, [setCurrentView]);
 
   // F1（移动端审计）：移动端统一顶栏的返回兜底。
-  // dashboard / data-management / pdf-reader / sandbox-workbench /
-  // template-json-preview 等视图没有 ☰ 抽屉入口，左上角只有全局历史返回按钮；
+  // dashboard / data-management / pdf-reader / sandbox-workbench
+  // 等视图没有 ☰ 抽屉入口，左上角只有全局历史返回按钮；
   // 历史为空时按钮会消失，页面失去唯一出口。这里保证非 chat-v2 视图始终
   // 显示返回按钮：有历史走历史后退，无历史回 chat-v2 主视图。
   // （注册了 showMenu/showBackArrow 的页面优先级更高，不受影响。）
@@ -2567,7 +2565,6 @@ function App() {
       'data-management': t('common:navigation.data_management'),
       'template-management': t('sidebar:navigation.template_management'),
       'ui-lab': t('sidebar:navigation.ui_lab'),
-      'template-json-preview': t('common:navigation.template_json_preview'),
       'pdf-reader': t('common:navigation.pdf_reader'),
       'sandbox-workbench': t('common:navigation.sandbox_workbench'),
       'todo': t('sidebar:navigation.todo'),
@@ -2633,16 +2630,6 @@ function App() {
     <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
   ), []);
 
-  const templateJsonPreviewContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold>
-        <LazyTemplateJsonPreviewPage
-          onBack={() => setCurrentView(templateJsonPreviewReturnRef.current)}
-        />
-      </MobilePageScaffold>
-    </Suspense>
-  ), [setCurrentView]);
-
   const styleDebugContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <MobilePageScaffold>
@@ -2679,10 +2666,6 @@ function App() {
         onBackToAnki={() => setCurrentView('task-dashboard')}
         refreshToken={templateManagementRefreshTick}
         onDesktopShellBackVisibilityChange={setTemplateManagementShellBackVisible}
-        onOpenJsonPreview={() => {
-          templateJsonPreviewReturnRef.current = currentViewRef.current;
-          setCurrentView('template-json-preview');
-        }}
       />
     </Suspense>
   ), [isSelectingTemplate, handleTemplateSelected, handleTemplateSelectionCancel, templateManagementRefreshTick, setCurrentView]);
@@ -3060,8 +3043,6 @@ function App() {
               {renderViewLayer('template-management', templateManagementContent)}
 
               {uiLabEnabled && renderViewLayer('ui-lab', styleDebugContent)}
-
-              {renderViewLayer('template-json-preview', templateJsonPreviewContent)}
 
               {/* ★ 废弃视图已移除（2026-01 清理）：irec, irec-management, irec-service-switcher, math-workflow */}
 

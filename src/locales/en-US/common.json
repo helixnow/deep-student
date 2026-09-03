@@ -739,7 +739,6 @@
     "restoreFailed": "Page state could not be restored",
     "dashboard": "Dashboard",
     "data_management": "Data Management",
-    "template_json_preview": "Template Preview",
     "pdf_reader": "PDF Reader",
     "sandbox_workbench": "Sandbox Workbench",
     "todo": "Todo",

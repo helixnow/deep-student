@@ -50,7 +50,6 @@ const CODE_FILE_PATTERN = /\.(ts|tsx|js|jsx)$/;
  */
 const CONTEXTUAL_ENTRY_VIEWS = new Set([
   'pdf-reader',            // 学习资源/文件上下文打开 PDF 阅读器
-  'template-json-preview', // 模板管理内的 JSON 预览入口
   'sandbox-workbench',     // Chat 沙箱上下文入口
   'crepe-demo',            // DEV：Crepe 编辑器演示
   'chat-v2-test',          // DEV：Chat V2 集成测试页
