@@ -106,7 +106,6 @@ export interface TemplateManagementAppProps {
   onCancel?: () => void;
   // 从模板管理返回到 Anki 制卡
   onBackToAnki?: () => void;
-  onOpenJsonPreview?: () => void;
   onDesktopShellBackVisibilityChange?: (visible: boolean) => void;
   refreshToken?: number;
   workbenchWindowId?: string;
@@ -117,7 +116,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   onTemplateSelected,
   onCancel,
   onBackToAnki,
-  onOpenJsonPreview,
   onDesktopShellBackVisibilityChange,
   refreshToken = 0,
   workbenchWindowId,
@@ -892,17 +890,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               description={t('total_templates', { count: filteredTemplates.length })}
               className={templateSidebarRowClassName(activeTab === 'browse')}
             />
-            {!isSelectingMode && onOpenJsonPreview && (
-              <UnifiedSidebarItem
-                id="json-preview"
-                isSelected={false}
-                onClick={onOpenJsonPreview}
-                icon={Code}
-                title={t('json_preview.open_button')}
-                description={t('json_preview.open_button_hint')}
-                className={templateSidebarRowClassName()}
-              />
-            )}
           </div>
         )}
 
@@ -1060,20 +1047,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 <Download size={14} weight="bold" />
               </DsButton>
             </CommonTooltip>
-            {onOpenJsonPreview && (
-              <CommonTooltip content={t('json_preview.open_button_hint')}>
-                <DsButton
-                  variant="utility"
-                  size="icon"
-                  iconOnly
-                  onClick={onOpenJsonPreview}
-                  aria-label={t('json_preview.open_button')}
-                  className="h-7 w-7"
-                >
-                  <Code size={14} />
-                </DsButton>
-              </CommonTooltip>
-            )}
           </>
         )}
         {isSelectingMode && onCancel && (
@@ -1341,10 +1314,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             setActiveTab('browse');
             closeMobileDrawer();
           }, activeTab === 'browse')}
-          {!isSelectingMode && onOpenJsonPreview && renderMobileDrawerRow('json-preview', Code, t('json_preview.open_button'), () => {
-            onOpenJsonPreview();
-            closeMobileDrawer();
-          })}
           {!isSelectingMode && (
             <>
               <span className={mobileDrawerSectionLabelClassName}>{t('import_section')}</span>

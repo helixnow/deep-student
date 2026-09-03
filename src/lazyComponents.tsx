@@ -113,11 +113,6 @@ export const LazyStyleDebugPage = React.lazy(() =>
   import('./components/style-lab/StyleDebugPage')
 );
 
-// 模板 JSON 预览
-export const LazyTemplateJsonPreviewPage = React.lazy(() =>
-  import('./components/TemplateJsonPreviewPage').then(m => ({ default: m.default }))
-);
-
 // ★ 知识图谱已废弃（2026-01 移除）
 // LazyIrecGraphFlow, LazyIrecGraphPage, LazyIrecGraphFlowDemo
 

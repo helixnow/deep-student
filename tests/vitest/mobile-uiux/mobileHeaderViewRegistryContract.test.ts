@@ -50,7 +50,6 @@ const VIEW_REGISTRY_FILES: Record<string, string> = {
   'task-dashboard': 'src/features/anki-tasks/AnkiTasksApp.tsx',
   'template-management': 'src/features/template-management/TemplateManagementApp.tsx',
   'ui-lab': 'src/components/style-lab/StyleDebugPage.tsx',
-  'template-json-preview': 'src/components/TemplateJsonPreviewPage.tsx',
   'crepe-demo': 'src/components/dev/CrepeDemoPage.tsx',
   'pdf-reader': 'src/features/pdf/components/PdfReader.tsx',
   'learning-hub': 'src/features/learning-hub/LearningHubPage.tsx',

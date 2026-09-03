@@ -50,7 +50,7 @@
 }
 
 /* 以下通用类名（.summary/.warning-list/.actions 等）一律收敛到 .tag-tree-modal
-   作用域内，避免全局泄漏污染其他同名类（如 TemplateJsonPreviewPage 的 .actions） */
+   作用域内，避免全局泄漏污染其他页面的同名类 */
 .tag-tree-modal .summary {
   margin-bottom: 16px;
 }
