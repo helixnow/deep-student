@@ -3062,7 +3062,8 @@ impl Default for ChatParams {
             // 补齐字段默认值
             model_display_name: None,
             rag_enable_reranking: None,
-            max_tool_recursion: Some(30),
+            // 2026-09：默认不限工具轮次（长程 agent 支持）；显式配置时启用上限
+            max_tool_recursion: None,
             multimodal_rag_enabled: None,
             multimodal_top_k: None,
             multimodal_enable_reranking: None,

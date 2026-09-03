@@ -414,9 +414,9 @@ pub const MAX_HARD_TIMEOUT_SECS: u64 = 3600;
 pub const CANCEL_GRACE_SECS: u64 = 30;
 /// 长时间运行的 headless turn 周期性进度日志间隔（秒）
 const PROGRESS_LOG_INTERVAL_SECS: u64 = 60;
-/// 工具轮次上限默认值（取较小值，headless 不做长程任务）
-pub const DEFAULT_MAX_TOOL_ROUNDS: u32 = 15;
-/// 工具轮次上限硬顶
+/// 工具轮次上限默认值（0 = 不限轮次；2026-09 长程 agent 支持，随聊天路径对齐）
+pub const DEFAULT_MAX_TOOL_ROUNDS: u32 = 0;
+/// 显式配置的工具轮次上限硬顶（0 表示不设限，显式 >0 值时 clamp 到 1..=CAP）
 pub const MAX_TOOL_ROUNDS_CAP: u32 = 30;
 /// 结果摘要最大字符数
 const SUMMARY_MAX_CHARS: usize = 200;
@@ -1282,7 +1282,7 @@ pub async fn run_headless_turn(
         req.model_id.as_deref(),
         None,
         std::time::Duration::from_secs(hard_timeout_secs),
-        Some(max_tool_rounds),
+        max_tool_rounds,
         req.cancellation_token,
         req.trusted_profile.as_ref(),
     )
@@ -1571,13 +1571,15 @@ async fn execute_headless_pipeline(
     // 轮次预算：run_headless_turn 已经通过 resolve_budget（profile > 请求 >
     // 设置 > 默认 + 硬顶）解析并经 override 传入，这里直接采信不再重算；
     // override 为 None 的低层路径（run_headless_agent_turn）保留原有解析链。
-    let max_tool_rounds = max_tool_rounds_override
+    // 2026-09：0/缺失 = 不限轮次（长程 agent 支持）；显式 >0 值按硬顶钳制
+    let max_tool_rounds: Option<u32> = max_tool_rounds_override
         .or_else(|| trusted_profile.map(|profile| profile.max_tool_rounds))
         .or_else(|| {
             read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32)
         })
-        .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
-        .clamp(1, MAX_TOOL_ROUNDS_CAP);
+        .or(Some(DEFAULT_MAX_TOOL_ROUNDS))
+        .filter(|&v| v > 0)
+        .map(|v| v.clamp(1, MAX_TOOL_ROUNDS_CAP));
 
     // —— system prompt 追加：headless 约束说明 + 调用方补充段
     let mut system_append = headless_system_prompt_note();
@@ -1614,7 +1616,7 @@ async fn execute_headless_pipeline(
         mcp_tool_schemas: Some(schemas),
         // 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截回喂
         execution_allowed_tools: Some(allowed_tools),
-        max_tool_recursion: Some(max_tool_rounds),
+        max_tool_recursion: max_tool_rounds,
         memory_enabled: Some(true),
         rag_enabled: Some(true),
         web_search_enabled: Some(true),
@@ -1670,7 +1672,9 @@ async fn execute_headless_pipeline(
         "[ChatV2::headless] 启动 headless turn: session={}, timeout={}s, max_rounds={}, generation={}",
         session_id,
         hard_timeout.as_secs(),
-        max_tool_rounds,
+        max_tool_rounds
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unlimited".to_string()),
         stream_generation
     );
 
@@ -1904,7 +1908,7 @@ fn resolve_emit_window(app: &AppHandle) -> Option<Window> {
 }
 
 /// 解析高层请求的超时/轮次预算：请求值 > 全局设置 > 默认值，并施加硬顶。
-fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, u32) {
+fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, Option<u32>) {
     let setting_timeout = read_main_db_setting_u64(app, SETTING_HEADLESS_TIMEOUT_SECS);
     let setting_rounds =
         read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32);
@@ -1917,14 +1921,16 @@ fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, u32) {
         .or(setting_timeout)
         .unwrap_or(DEFAULT_HARD_TIMEOUT_SECS)
         .clamp(30, MAX_HARD_TIMEOUT_SECS);
+    // 2026-09：0/缺失 = 不限轮次（长程 agent 支持）；显式 >0 值按硬顶钳制
     let rounds = req
         .trusted_profile
         .as_ref()
         .map(|profile| profile.max_tool_rounds)
         .or(req.max_tool_rounds)
         .or(setting_rounds)
-        .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
-        .clamp(1, MAX_TOOL_ROUNDS_CAP);
+        .or(Some(DEFAULT_MAX_TOOL_ROUNDS))
+        .filter(|&v| v > 0)
+        .map(|v| v.clamp(1, MAX_TOOL_ROUNDS_CAP));
     (timeout, rounds)
 }
 

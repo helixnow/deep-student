@@ -125,9 +125,12 @@ fn test_tool_call_creation() {
 }
 
 #[test]
-fn test_tool_recursion_limit_constant() {
-    // 验证递归限制常量定义正确
-    assert_eq!(MAX_TOOL_RECURSION, 30);
+fn test_tool_recursion_unlimited_by_default() {
+    // 2026-09：工具循环默认不设限（长程 agent 支持）；显式配置时启用上限
+    use crate::chat_v2::pipeline::constants::effective_max_tool_rounds;
+    assert_eq!(effective_max_tool_rounds(None), None);
+    assert_eq!(effective_max_tool_rounds(Some(0)), None);
+    assert_eq!(effective_max_tool_rounds(Some(30)), Some(30));
 }
 
 #[test]
@@ -935,10 +938,26 @@ async fn test_parallel_retrievals_integration() {
 // ============================================================
 
 #[test]
-fn test_max_tool_recursion_constant() {
-    // 验证工具递归最大深度常量
-    assert_eq!(MAX_TOOL_RECURSION, 30);
-    // 工具递归最多 30 次
+fn test_max_tool_recursion_unlimited_by_default() {
+    // 2026-09：工具循环默认完全不设限（长程 agent 支持）
+    assert_eq!(
+        crate::chat_v2::pipeline::constants::effective_max_tool_rounds(None),
+        None
+    );
+    // 显式配置 0 也视为不限
+    assert_eq!(
+        crate::chat_v2::pipeline::constants::effective_max_tool_rounds(Some(0)),
+        None
+    );
+    // 显式配置 >0 时按 1-100 钳制
+    assert_eq!(
+        crate::chat_v2::pipeline::constants::effective_max_tool_rounds(Some(30)),
+        Some(30)
+    );
+    assert_eq!(
+        crate::chat_v2::pipeline::constants::effective_max_tool_rounds(Some(500)),
+        Some(100)
+    );
 }
 
 #[test]
@@ -1106,26 +1125,15 @@ async fn test_execute_with_tools_error_handling() {
 }
 
 #[tokio::test]
-async fn test_execute_with_tools_recursion_limit() {
-    // 单元测试：验证递归限制检查
-    //
-    // 约束条件：
-    // - 工具递归最多 MAX_TOOL_RECURSION（30）次
-
-    // 验证递归深度超过限制时返回错误
-    // 注意：这个测试可以直接验证递归深度检查逻辑，
-    // 因为第1386-1394行的检查是同步的
-
-    let recursion_depth = MAX_TOOL_RECURSION + 1;
-
-    // 验证超过限制
-    assert!(recursion_depth > MAX_TOOL_RECURSION);
-
-    // 验证限制值
-    assert_eq!(MAX_TOOL_RECURSION, 30);
-
-    // 注意：完整的递归测试需要 mock 环境，
-    // 这里只验证常量和基本逻辑
+async fn test_execute_with_tools_recursion_unlimited() {
+    // 2026-09：工具循环完全不设限（长程 agent 支持）。
+    // 仅当显式配置 max_tool_recursion > 0 时才启用上限（clamp 1-100）；
+    // 默认 None / Some(0) 均表示不限轮次。
+    use crate::chat_v2::pipeline::constants::effective_max_tool_rounds;
+    assert_eq!(effective_max_tool_rounds(None), None);
+    assert_eq!(effective_max_tool_rounds(Some(0)), None);
+    assert_eq!(effective_max_tool_rounds(Some(30)), Some(30));
+    assert_eq!(effective_max_tool_rounds(Some(500)), Some(100));
 }
 
 // ============================================================

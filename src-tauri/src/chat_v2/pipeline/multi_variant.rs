@@ -1111,7 +1111,8 @@ impl ChatV2Pipeline {
         // effective_max_tool_rounds（默认值/clamp 逻辑单点维护）。
         // 注意：变体内无心跳白名单豁免（coordinator_sleep 在多变体模式下不适用），
         // 因此不需要 ABSOLUTE_MAX_RECURSION 二级上限。
-        let max_tool_rounds: u32 = effective_max_tool_rounds(options.max_tool_recursion);
+        // 2026-09：None = 不限轮次（长程 agent 支持）；仅显式配置时启用上限
+        let max_tool_rounds: Option<u32> = effective_max_tool_rounds(options.max_tool_recursion);
 
         options.model_id = Some(config_id.clone());
         options.model2_override_id = Some(config_id.clone());
@@ -1430,8 +1431,7 @@ impl ChatV2Pipeline {
 
         let mut tool_round = 0u32;
         // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
-        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
-        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
+        // 2026-09：工具循环完全不设限（长程 agent 支持），doom loop 守卫已移除。
         loop {
             if ctx.is_cancelled() {
                 ctx.cancel();
@@ -1587,17 +1587,11 @@ impl ChatV2Pipeline {
             let execution_allowed_tools = options.execution_allowed_tools.clone();
             let round_id = format!("variant-tool-round-{}", tool_round);
 
-            // 🆕 2026-07 Doom loop 检测：拦截连续重复调用（同工具同参数第 3 次起），
-            // 合成失败结果回喂 LLM；第 5 次落终止标记，本轮结果回喂后终止变体循环
-            let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
-                &mut doom_loop_guard,
-                &tool_calls,
-                &emitter_arc,
-                ctx.message_id(),
-                Some(ctx.variant_id()),
-                options.skill_state_version,
-                Some(round_id.as_str()),
-            );
+            // 2026-09：工具循环完全不设限，doom loop 拦截机制移除——
+            // 所有调用直接执行，无合成失败结果。
+            // tool_calls 之后仍需用于结果归并（merge_round_results_in_call_order），故克隆
+            let (calls_to_execute, doom_synthetic): (Vec<ToolCall>, Vec<ToolResultInfo>) =
+                (tool_calls.clone(), Vec::new());
 
             // 🔧 F9 修复：传真实 session_id（之前是 "{session}:{variant}" 复合键，
             // 导致所有按 session 查库的工具——子代理/附件/技能状态/所有权校验——在
@@ -1885,29 +1879,19 @@ impl ChatV2Pipeline {
                 break;
             }
 
-            // 🆕 2026-07 Doom loop 终止：同一调用连续第 5 次重复，
-            // 拦截结果已回喂本轮 messages，直接终止变体循环（对齐 max rounds 处理）
-            if doom_loop_guard.abort_triggered() {
-                log::warn!(
-                    "[ChatV2::VariantPipeline] variant={} doom loop abort: tool={:?} repeated identical calls, stopping",
-                    ctx.variant_id(),
-                    doom_loop_guard.abort_tool_name()
-                );
-                ctx.complete();
-                break;
-            }
-
             tool_round += 1;
             ctx.increment_tool_round();
 
-            if tool_round >= max_tool_rounds {
-                log::warn!(
-                    "[ChatV2::VariantPipeline] variant={} reached max tool rounds ({})",
-                    ctx.variant_id(),
-                    max_tool_rounds
-                );
-                ctx.complete();
-                break;
+            if let Some(max_tool_rounds) = max_tool_rounds {
+                if tool_round >= max_tool_rounds {
+                    log::warn!(
+                        "[ChatV2::VariantPipeline] variant={} reached max tool rounds ({})",
+                        ctx.variant_id(),
+                        max_tool_rounds
+                    );
+                    ctx.complete();
+                    break;
+                }
             }
 
             adapter.reset_for_new_round();

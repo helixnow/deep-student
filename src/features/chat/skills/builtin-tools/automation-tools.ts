@@ -215,7 +215,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             type: 'object',
             description: '仅 agent_turn：显式预授权且带内容哈希锁的 trusted AutomationProfile。普通自动化不要设置。',
             additionalProperties: false,
-            required: ['schemaVersion', 'profileHash', 'allowedTools', 'runtimeRoots', 'shellCommandPrefixes', 'networkDomains', 'maxToolRounds', 'timeoutSeconds', 'maxOutputBytes', 'rollbackRequired'],
+            required: ['schemaVersion', 'profileHash', 'allowedTools', 'runtimeRoots', 'shellCommandPrefixes', 'networkDomains', 'timeoutSeconds', 'maxOutputBytes', 'rollbackRequired'],
             properties: {
               schemaVersion: { type: 'integer', enum: [1] },
               profileHash: { type: 'string', pattern: '^(|[0-9a-fA-F]{64})$', description: '创建/更新可传空字符串，由后端 seal 后回传；非空必须与内容匹配' },
@@ -223,7 +223,8 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
               runtimeRoots: { type: 'array', minItems: 1, items: { type: 'object', required: ['rootId', 'access'], properties: { rootId: { type: 'string' }, access: { type: 'string', enum: ['read_only', 'read_write'] } }, additionalProperties: false } },
               shellCommandPrefixes: { type: 'array', items: { type: 'string' } },
               networkDomains: { type: 'array', items: { type: 'string' } },
-              maxToolRounds: { type: 'integer', minimum: 1, maximum: 30 },
+              // 2026-09：0 = 不限工具轮次（长程 agent / /goal 模式）；>0 为显式上限（<=30）
+              maxToolRounds: { type: 'integer', minimum: 0, maximum: 30 },
               timeoutSeconds: { type: 'integer', minimum: 30, maximum: 3600 },
               maxOutputBytes: { type: 'integer', minimum: 1, maximum: 4194304 },
               rollbackRequired: { type: 'boolean' },
