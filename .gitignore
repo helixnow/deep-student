@@ -321,3 +321,6 @@ docs/design-tokens-and-color-semantics.md
 dstu-test/docs/*
 !dstu-test/docs/README.md
 /dist-demo
+
+# vite jiti 缓存（tailwind/配置文件加载产物）
+node-jiti/
