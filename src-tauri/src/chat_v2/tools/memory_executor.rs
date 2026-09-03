@@ -1976,14 +1976,43 @@ impl MemoryToolExecutor {
                             .and_then(|rest| rest.split_once(" 字符"))
                             .and_then(|(count, _)| count.parse::<usize>().ok())
                             .unwrap_or(LEARNER_PROFILE_MAX_CHARS.saturating_add(1));
+                        // 当轮自合并协议（参考 Hermes 容量溢出处理）：画像写满时不
+                        // 静默截断，而是把当前画像全文随错误一起返回——模型无需
+                        // 额外一次 learner_profile_get，即可在同一轮内完成
+                        // 合并/清理后重试。注意：工具业务失败时模型只能看到 error
+                        // 字符串（context.rs 失败分支不回传 output），因此画像全文
+                        // 必须放进 error 文本，current_profile 字段仅供 UI/审计。
+                        let current_profile = learner_profile::load_profile(&service)
+                            .ok()
+                            .flatten()
+                            .map(|profile| profile.render_markdown())
+                            .filter(|rendered| !rendered.trim().is_empty());
+                        let mut error = format!(
+                            "{} 画像是策展层而非日志，容量不会自动扩容。请在本轮内先腾出空间再重试本次更新：\
+                            1) 用 weak_points_remove / goals_remove 移除已克服、已达成或过时的条目；\
+                            2) 合并语义重叠的条目（remove 旧条目 + add 一条更短的合并描述）；\
+                            3) 精简 recent_status 与 error_pattern 中的长描述。",
+                            reason
+                        );
+                        match &current_profile {
+                            Some(rendered) => {
+                                error.push_str(&format!(
+                                    "\n\n当前画像全文（用于决定合并/移除对象）：\n{}",
+                                    rendered
+                                ));
+                            }
+                            None => {
+                                error.push_str(
+                                    "\n\n当前画像内容请先调用 builtin-learner_profile_get 获取。",
+                                );
+                            }
+                        }
                         return Ok(json!({
                             "success": false,
-                            "error": format!(
-                                "{} 画像是策展层而非日志：请精炼本次更新（减少条目、缩短描述），或先用 weak_points_remove/goals_remove 清理过时内容。",
-                                reason
-                            ),
+                            "error": error,
                             "rendered_chars": rendered_chars,
                             "max_chars": LEARNER_PROFILE_MAX_CHARS,
+                            "current_profile": current_profile,
                         }));
                     }
                     Err(error) => return Err(error.to_string()),
