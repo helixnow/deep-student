@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.52](https://github.com/helixnow/deep-student/compare/v0.9.51...v0.9.52) (2026-09-03)
+
+
+### Bug Fixes
+
+* **android:** MainActivity.kt doc 注释内 `/*` 触发 Kotlin 嵌套块注释致 EOF 未闭合——改写路径表述 ([6e49d41](https://github.com/helixnow/deep-student/commit/6e49d41065690e6c9ef1a91a895480fe9d5cb74b))
+
 ## [0.9.51](https://github.com/helixnow/deep-student/compare/v0.9.50...v0.9.51) (2026-09-03)
 
 
