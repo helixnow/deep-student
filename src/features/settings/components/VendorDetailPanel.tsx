@@ -13,7 +13,6 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Switch } from '@/components/ui/shad/Switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/shad/Dialog';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -308,9 +307,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
   const [baseUrlSaveStatus, setBaseUrlSaveStatus] = useState<SaveStatus>('idle');
   const [connectionExpanded, setConnectionExpanded] = useState(false);
   const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
-  const [isModelFetcherDialogOpen, setIsModelFetcherDialogOpen] = useState(false);
-  // 移动端不使用 Dialog（契约：移动端弹层禁承载列表流程），改为模型列表上方的内联卡片
-  const [isMobileFetcherOpen, setIsMobileFetcherOpen] = useState(false);
+  // 获取模型列表：桌面/移动端统一为模型列表上方的内联卡片（不使用弹层）
+  const [isModelFetcherOpen, setIsModelFetcherOpen] = useState(false);
   // P0-5 移动端删除行内二次确认：记录当前处于「再点一次确认」态的目标（供应商 / 模型）
   const [confirmingDelete, setConfirmingDelete] = useState<
     { type: 'vendor' } | { type: 'model'; profileId: string } | null
@@ -402,7 +400,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
     setConnectionExpanded(!isConnectionConfigured);
     // 切换供应商时折叠状态归零（默认全展开）
     setCollapsedFamilies(new Set());
-    setIsMobileFetcherOpen(false);
+    setIsModelFetcherOpen(false);
     setConfirmingDelete(null);
   }, [selectedVendor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1020,13 +1018,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     size="sm"
                     variant="outline"
                     className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                    onClick={() => {
-                      if (isSmallScreen) {
-                        setIsMobileFetcherOpen(v => !v);
-                      } else {
-                        setIsModelFetcherDialogOpen(true);
-                      }
-                    }}
+                    onClick={() => setIsModelFetcherOpen(v => !v)}
                   >
                     <DownloadSimple className="h-3.5 w-3.5" />
                     {t('settings:vendor_panel.fetch_models_button')}
@@ -1054,15 +1046,14 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 <SiliconFlowSection variant="models" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
               </div>
             )}
-            {/* 移动端：获取模型列表内联卡片（替代桌面 Dialog，遵循移动端无弹层契约） */}
-            {!isCodexOAuthVendor && isSmallScreen && isMobileFetcherOpen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+            {/* 获取模型列表内联卡片（桌面/移动端统一内联展开，不使用 Dialog） */}
+            {!isCodexOAuthVendor && isModelFetcherOpen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
               <div className="mb-4">
                 <VendorModelFetcher
                   key={selectedVendor.id}
                   vendor={selectedVendor}
                   existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
                   onAddModels={onAddVendorModels}
-                  embedded="card"
                 />
               </div>
             )}
@@ -1181,32 +1172,6 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
           </div>
         </div>
       </div>
-
-      {/* 获取模型列表 Dialog（仅桌面端；移动端使用上方内联卡片） */}
-      {!isCodexOAuthVendor && !isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
-        <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
-          <DialogContent
-            className="flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-full max-w-2xl flex-col overflow-hidden !rounded-[var(--radius-shell-dialog)] p-0"
-            onWheel={(event) => event.stopPropagation()}
-          >
-            <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">
-              <DialogTitle>{t('settings:vendor_model_fetcher.dialog_title')}</DialogTitle>
-              <DialogDescription>
-                {t('settings:vendor_model_fetcher.dialog_description', { vendor: selectedVendor.name || providerLabel })}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 p-4">
-              <VendorModelFetcher
-                key={selectedVendor.id}
-                vendor={selectedVendor}
-                existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
-                onAddModels={onAddVendorModels}
-                embedded="dialog"
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </>
   );
 };

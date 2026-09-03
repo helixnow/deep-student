@@ -30,18 +30,12 @@ interface VendorModelFetcherProps {
   vendor: VendorConfig;
   existingModelIds: string[];
   onAddModels: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
-  /**
-   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表高 15rem）。
-   * 'dialog': 由外层 Dialog 提供边框/背景，列表填满弹窗剩余高度。
-   */
-  embedded?: 'card' | 'dialog';
 }
 
 export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   vendor,
   existingModelIds,
   onAddModels,
-  embedded = 'card',
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [loading, setLoading] = useState(false);
@@ -223,14 +217,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   };
 
   return (
-    <div
-      className={cn(
-        'overflow-hidden',
-        embedded === 'card'
-          ? 'rounded-lg border border-border/50 bg-muted/10'
-          : 'flex h-full min-h-0 flex-col'
-      )}
-    >
+    <div className="overflow-hidden rounded-lg border border-border/50 bg-muted/10">
       {/* 头部：搜索框 + 获取按钮 */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/30">
         <div className="relative flex-1 min-w-0">
@@ -295,11 +282,9 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             )}
           </div>
 
-          {/* 卡片给明确高度；Dialog 通过完整 flex/min-h-0 链获得可收缩视口。 */}
+          {/* 内联卡片给明确高度 */}
           <CustomScrollArea
-            className={cn(
-              embedded === 'dialog' ? 'min-h-0 flex-1' : 'h-60'
-            )}
+            className="h-60"
             viewportClassName="overscroll-contain"
             trackOffsetTop={4}
             trackOffsetBottom={4}

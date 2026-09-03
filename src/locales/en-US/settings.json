@@ -539,8 +539,6 @@
     "adding": "Adding…",
     "add_success": "Successfully added {{count}} models",
     "add_failed": "Failed to add models: {{error}}",
-    "dialog_title": "Fetch available models from API",
-    "dialog_description": "{{vendor}}: pick items to add to your model list",
     "search_placeholder_empty": "Fetch the model list before searching...",
     "add_all_new": "Add all ({{count}})",
     "click_fetch": "Click the button above to fetch available models",
