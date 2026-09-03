@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.49](https://github.com/helixnow/deep-student/compare/v0.9.48...v0.9.49) (2026-09-03)
+
+
+### Bug Fixes
+
+* **release:** 重新生成第三方声明——同步 Cargo.lock 根版本后的 SHA256，修复 --locked 构建门禁 ([1eb646f](https://github.com/helixnow/deep-student/commit/1eb646f0d7a8517a5c9b161de22fd26e6595d736))
+
 ## [0.9.48](https://github.com/helixnow/deep-student/compare/v0.9.47...v0.9.48) (2026-09-03)
 
 
