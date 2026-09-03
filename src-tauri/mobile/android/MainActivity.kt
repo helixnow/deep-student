@@ -23,7 +23,7 @@ class MainActivity : TauriActivity() {
 
   /**
    * Tauri dialog 走 Activity Result API，[onActivityResult] 拦截不到授权回调。
-   * Rust 把待 persist 的 `content://` 原子写入 [filesDir]/pending_saf_persist/*.uri，
+   * Rust 把待 persist 的 `content://` 原子写入 [filesDir]/pending_saf_persist/ 下的 *.uri 文件，
    * 并双读旧单文件 pending_saf_persist.uri。前台立刻尝试并每 400ms 轮询。
    * `ACTION_GET_CONTENT` 常常不可 persist：SecurityException 必须删队列并 warn，
    * 不得假装已授权。
