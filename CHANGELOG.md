@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.51](https://github.com/helixnow/deep-student/compare/v0.9.50...v0.9.51) (2026-09-03)
+
+
+### Bug Fixes
+
+* **android:** apk_installer 用全限定 Manager::manage——修复 mobile-slim Android 构建 E0599（trait 未导入） ([412e853](https://github.com/helixnow/deep-student/commit/412e853360b50095315dbf640e711c9432e2c39b))
+
 ## [0.9.50](https://github.com/helixnow/deep-student/compare/v0.9.49...v0.9.50) (2026-09-03)
 
 
