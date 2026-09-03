@@ -102,11 +102,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 5000,
     freqLabel: '聊天页常驻',
     note: '黑底圆钮；空输入 muted；停止同形。不是 DsButton variant。',
-    items: [
+    items: ([
       { id: 'composer-send.empty', label: '空输入（muted）', spec: { kind: 'widget', widget: 'send-empty' } },
       { id: 'composer-send.ready', label: '可发送（黑底）', spec: { kind: 'widget', widget: 'send-ready' } },
       { id: 'composer-send.stop', label: '停止生成', spec: { kind: 'widget', widget: 'stop' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'shell-chrome',
@@ -115,12 +115,12 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 4000,
     freqLabel: '桌面壳常驻',
     note: '顶栏、侧栏开关、窗口最小化/最大化。关闭钮另见红色 hover 族。',
-    items: [
+    items: ([
       { id: 'shell-chrome.toolbar', label: '顶栏方钮', spec: { kind: 'replica', replica: 'shell-toolbar' } },
       { id: 'shell-chrome.accessory', label: '附属图标', spec: { kind: 'replica', replica: 'shell-accessory' } },
       { id: 'shell-chrome.circle', label: '圆形壳图标', spec: { kind: 'replica', replica: 'shell-circle' } },
       { id: 'shell-chrome.history', label: '历史后退 26px', spec: { kind: 'replica', replica: 'nav-history' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-outline', 'Outline 描边', 'outline', 2500, '约 2500 处', '设置页、对话框次按钮。'),
   dsFamily('ds-primary', 'Primary 实心主按钮', 'primary', 1800, '约 1800 处', '确认 / CTA。token --button-prominent-*。'),
@@ -131,11 +131,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 1500,
     freqLabel: '聊天附件与功能标签',
     note: '圆角胶囊，常带关闭小圆点。',
-    items: [
+    items: ([
       { id: 'chips.attachment', label: '附件胶囊', spec: { kind: 'replica', replica: 'chip-attachment' } },
       { id: 'chips.feature', label: '功能标签', spec: { kind: 'replica', replica: 'chip-feature' } },
       { id: 'chips.close', label: '胶囊内关闭点', spec: { kind: 'widget', widget: 'chip-close' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-default', 'Tonal 浅底（default）', 'default', 1200, '约 1200 处', 'DsButton 默认色。与 secondary / utility 几乎同漆。'),
   dsFamily('ds-danger', 'Danger 实心危险', 'danger', 800, '约 800 处', '删除确认。与 destructive 同漆。'),
@@ -146,12 +146,12 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 700,
     freqLabel: 'PDF 阅读器',
     note: '26/24px 无边框 ghost 图标。不是 DsButton。',
-    items: [
+    items: ([
       { id: 'pdf-ds-btn.md', label: '26px', spec: { kind: 'replica', replica: 'pdf-ds-btn' } },
       { id: 'pdf-ds-btn.sm', label: '24px sm', spec: { kind: 'replica', replica: 'pdf-ds-btn-sm' } },
       { id: 'pdf-ds-btn.active', label: 'active 高亮', spec: { kind: 'replica', replica: 'pdf-ds-btn-active' } },
       { id: 'pdf-ds-btn.select', label: '下拉选择钮', spec: { kind: 'replica', replica: 'pdf-select' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'ds-nav',
@@ -160,10 +160,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 600,
     freqLabel: '侧栏每一行',
     note: '全宽、无边框、左对齐 rounded-2xl。尺寸轴不适用。',
-    items: [
+    items: ([
       { id: 'ds-nav.idle', label: '默认', spec: { kind: 'widget', widget: 'nav-row' } },
       { id: 'ds-nav.icon', label: '带图标', spec: { kind: 'ds', variant: 'nav', size: 'md' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'mm-toolbar',
@@ -172,7 +172,7 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 600,
     freqLabel: '导图画布',
     note: '28px compact ghost；与 PDF 的 .ds-btn 同名不同形。',
-    items: [
+    items: ([
       { id: 'mm-toolbar.ds-btn', label: 'mm .ds-btn 带文字', spec: { kind: 'replica', replica: 'mm-ds-btn' } },
       { id: 'mm-toolbar.icon', label: 'mm-toolbar-button', spec: { kind: 'replica', replica: 'mm-toolbar' } },
       { id: 'mm-toolbar.active', label: 'is-active', spec: { kind: 'replica', replica: 'mm-toolbar-active' } },
@@ -181,7 +181,7 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
       { id: 'mm-toolbar.action-add', label: '节点 +', spec: { kind: 'replica', replica: 'mm-action-add' } },
       { id: 'mm-toolbar.action-del', label: '节点删除', spec: { kind: 'replica', replica: 'mm-action-del' } },
       { id: 'mm-toolbar.flow', label: 'React Flow 缩放', spec: { kind: 'replica', replica: 'mm-flow' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'tabs',
@@ -190,11 +190,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 500,
     freqLabel: '设置与样式实验室',
     note: 'shad 是圆角块；设置页是底边标签，两套不同。',
-    items: [
+    items: ([
       { id: 'tabs.default', label: 'shad default', spec: { kind: 'widget', widget: 'tabs-default' } },
       { id: 'tabs.bare', label: 'shad bare', spec: { kind: 'widget', widget: 'tabs-bare' } },
       { id: 'tabs.settings', label: '设置底边 tab', spec: { kind: 'replica', replica: 'settings-tab' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'code-copy',
@@ -203,9 +203,9 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 400,
     freqLabel: '每段代码块',
     note: 'hover 仍是写死的 zinc，未走主题 token。',
-    items: [
+    items: ([
       { id: 'code-copy.idle', label: '默认', spec: { kind: 'replica', replica: 'ft-copy' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'segmented',
@@ -214,9 +214,9 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 400,
     freqLabel: '外观设置等',
     note: '滑动指示条，不是独立 DsButton。',
-    items: [
+    items: ([
       { id: 'segmented.default', label: 'default', spec: { kind: 'widget', widget: 'segmented' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-destructive', 'Destructive（danger 别名）', 'destructive', 350, '约 350 处', '与 danger 同漆，shad 侧用这个名字。'),
   {
@@ -226,10 +226,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 350,
     freqLabel: '工作台模式',
     note: '44px 圆角方块，玻璃条上的 App 图标。',
-    items: [
+    items: ([
       { id: 'dock.item', label: 'dock item', spec: { kind: 'replica', replica: 'dock-item' } },
       { id: 'dock.list', label: '窗口列表钮', spec: { kind: 'replica', replica: 'dock-list' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'editor-toolbar',
@@ -238,12 +238,12 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 300,
     freqLabel: '笔记编辑',
     note: '浮动 WYSIWYG 与块菜单。',
-    items: [
+    items: ([
       { id: 'editor-toolbar.item', label: 'toolbar-item', spec: { kind: 'replica', replica: 'crepe-toolbar' } },
       { id: 'editor-toolbar.active', label: 'active', spec: { kind: 'replica', replica: 'crepe-toolbar-active' } },
       { id: 'editor-toolbar.block', label: '块菜单行', spec: { kind: 'replica', replica: 'crepe-block' } },
       { id: 'editor-toolbar.lightbox', label: '图片灯箱钮', spec: { kind: 'replica', replica: 'crepe-lightbox' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-utility', 'Utility 浅底弱字色', 'utility', 250, '约 250 处', 'Todo / 模板为主，和 default 几乎一样。'),
   dsFamily('ds-secondary', 'Secondary（tonal 别名）', 'secondary', 220, '约 220 处', '与 default 同漆。'),
@@ -254,11 +254,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 200,
     freqLabel: '图片预览',
     note: '半透明圆 + 边框阴影，叠在媒体上。',
-    items: [
+    items: ([
       { id: 'overlay-media.float', label: '浮动玻璃圆', spec: { kind: 'replica', replica: 'overlay-float' } },
       { id: 'overlay-media.ghost', label: '透明圆', spec: { kind: 'replica', replica: 'overlay-ghost' } },
       { id: 'overlay-media.dark', label: '黑底移除点', spec: { kind: 'replica', replica: 'overlay-dark' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'tree-row',
@@ -267,11 +267,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 200,
     freqLabel: '笔记树与 EPUB',
     note: '全宽列表行，看起来像 nav，但是私有 CSS。',
-    items: [
+    items: ([
       { id: 'tree-row.file', label: '文件树行', spec: { kind: 'replica', replica: 'tree-row' } },
       { id: 'tree-row.selected', label: '选中行', spec: { kind: 'replica', replica: 'tree-row-selected' } },
       { id: 'tree-row.epub', label: 'EPUB 目录行', spec: { kind: 'replica', replica: 'epub-toc' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'flashcard-rating',
@@ -280,10 +280,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 150,
     freqLabel: '闪卡复习',
     note: 'Again/Hard/Good/Easy 四色描边，外加全宽显示答案。',
-    items: [
+    items: ([
       { id: 'flashcard-rating.bar', label: '四色条', spec: { kind: 'widget', widget: 'rating-bar' } },
       { id: 'flashcard-rating.show', label: '显示答案 全宽', spec: { kind: 'ds', variant: 'primary', size: 'md', fullWidth: true } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'command-palette',
@@ -292,11 +292,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 100,
     freqLabel: '命令面板',
     note: '28px ghost，active 用 primary 浅底。',
-    items: [
+    items: ([
       { id: 'command-palette.idle', label: 'mode 默认', spec: { kind: 'replica', replica: 'cp-mode' } },
       { id: 'command-palette.active', label: 'mode active', spec: { kind: 'replica', replica: 'cp-mode-active' } },
       { id: 'command-palette.close', label: '关闭', spec: { kind: 'replica', replica: 'cp-close' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'viewer-icon',
@@ -305,11 +305,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 90,
     freqLabel: '全屏看图',
     note: '6px 圆角 ghost，另有 primary / danger 着色。',
-    items: [
+    items: ([
       { id: 'viewer-icon.plain', label: '默认', spec: { kind: 'replica', replica: 'viewer' } },
       { id: 'viewer-icon.primary', label: 'primary', spec: { kind: 'replica', replica: 'viewer-primary' } },
       { id: 'viewer-icon.danger', label: 'danger', spec: { kind: 'replica', replica: 'viewer-danger' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-warning', 'Warning 浅底警告字', 'warning', 80, '约 80 处', '同步/冲突等，很少见。'),
   {
@@ -319,10 +319,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 70,
     freqLabel: '桌面窗控',
     note: '平时和顶栏图标一样，hover 变红。',
-    items: [
+    items: ([
       { id: 'window-close.idle', label: '默认', spec: { kind: 'replica', replica: 'win-close' } },
       { id: 'window-close.hover', label: 'hover 预览', spec: { kind: 'replica', replica: 'win-close-hover' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'swatch',
@@ -331,10 +331,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 60,
     freqLabel: '强调色与导图',
     note: '圆形色块，不是文字按钮。',
-    items: [
+    items: ([
       { id: 'swatch.idle', label: '色点', spec: { kind: 'replica', replica: 'swatch' } },
       { id: 'swatch.selected', label: '选中', spec: { kind: 'replica', replica: 'swatch-selected' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'ghost-danger-hover',
@@ -343,10 +343,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 50,
     freqLabel: 'Todo 行',
     note: '平时 ghost，hover 才变成危险浅底。',
-    items: [
+    items: ([
       { id: 'ghost-danger-hover.idle', label: '默认', spec: { kind: 'replica', replica: 'ghost-danger' } },
       { id: 'ghost-danger-hover.hover', label: 'hover 预览', spec: { kind: 'replica', replica: 'ghost-danger-hover' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'workbench-misc',
@@ -355,14 +355,14 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 45,
     freqLabel: '工作台各窗',
     note: '空桌面引导、HUD、日程、内置浏览器、模板切换。',
-    items: [
+    items: ([
       { id: 'workbench-misc.tour-ghost', label: '引导 ghost', spec: { kind: 'replica', replica: 'tour-ghost' } },
       { id: 'workbench-misc.tour-primary', label: '引导 primary', spec: { kind: 'replica', replica: 'tour-primary' } },
       { id: 'workbench-misc.hud', label: 'HUD', spec: { kind: 'replica', replica: 'hud' } },
       { id: 'workbench-misc.agenda', label: '日程添加', spec: { kind: 'replica', replica: 'agenda-add' } },
       { id: 'workbench-misc.browser', label: '内置浏览器图标', spec: { kind: 'replica', replica: 'browser-icon' } },
       { id: 'workbench-misc.toggle', label: '模板视图切换', spec: { kind: 'replica', replica: 'tm-toggle' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-shell', 'Shell 面板实底', 'shell', 40, '约 40 处', 'AgentControlCenter / TodoQuickAdd，极少。'),
   {
@@ -372,11 +372,11 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 40,
     freqLabel: '独立小窗',
     note: '25px 图标、30px 实心主钮、评分描边。',
-    items: [
+    items: ([
       { id: 'quick-assistant.icon', label: '图标', spec: { kind: 'replica', replica: 'qa-icon' } },
       { id: 'quick-assistant.primary', label: '主按钮', spec: { kind: 'replica', replica: 'qa-primary' } },
       { id: 'quick-assistant.rating', label: '评分格', spec: { kind: 'replica', replica: 'qa-rating' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'legacy-toolbars',
@@ -385,14 +385,14 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 35,
     freqLabel: '旧模块',
     note: '迁移目标外的本地 .btn 族。',
-    items: [
+    items: ([
       { id: 'legacy-toolbars.sb-ghost', label: 'Summary ghost', spec: { kind: 'replica', replica: 'sb-ghost' } },
       { id: 'legacy-toolbars.sb-icon', label: 'Summary 图标', spec: { kind: 'replica', replica: 'sb-icon' } },
       { id: 'legacy-toolbars.batch', label: '批处理 action', spec: { kind: 'replica', replica: 'batch-action' } },
       { id: 'legacy-toolbars.batch-danger', label: '批处理危险', spec: { kind: 'replica', replica: 'batch-danger' } },
       { id: 'legacy-toolbars.tpl', label: '模板 .btn', spec: { kind: 'replica', replica: 'tpl-btn' } },
       { id: 'legacy-toolbars.settings', label: '设置 secondary', spec: { kind: 'replica', replica: 'settings-secondary' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'card-3d',
@@ -401,10 +401,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 30,
     freqLabel: '卡片预览',
     note: '40px 圆 + 阴影，和发送圆钮不是一套。',
-    items: [
+    items: ([
       { id: 'card-3d.idle', label: '默认', spec: { kind: 'replica', replica: 'card3d' } },
       { id: 'card-3d.active', label: 'active', spec: { kind: 'replica', replica: 'card3d-active' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'notes-misc',
@@ -412,12 +412,13 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     source: 'notes-icon-button / tabs-scroll / mobile-editor-toolbar / trash dialog',
     freq: 25,
     freqLabel: '笔记工作区',
-    items: [
+    note: '笔记工作区内的杂项图标按钮族。',
+    items: ([
       { id: 'notes-misc.icon', label: 'notes-icon-button', spec: { kind: 'replica', replica: 'notes-icon' } },
       { id: 'notes-misc.scroll', label: '标签滚动', spec: { kind: 'replica', replica: 'notes-scroll' } },
       { id: 'notes-misc.mobile', label: '移动编辑工具条', spec: { kind: 'replica', replica: 'notes-mobile' } },
       { id: 'notes-misc.trash', label: '回收站图标', spec: { kind: 'replica', replica: 'notes-trash' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'fab-debug',
@@ -426,10 +427,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 20,
     freqLabel: '仅开发态',
     note: '44px 脉冲圆，带状态点。',
-    items: [
+    items: ([
       { id: 'fab-debug.toggle', label: '调试球', spec: { kind: 'replica', replica: 'fab' } },
       { id: 'fab-debug.inspect', label: 'inspect CTA', spec: { kind: 'replica', replica: 'dbg-inspect' } },
-    ],
+    ]) as AuditItem[],
   },
   dsFamily('ds-success', 'Success 浅底成功字', 'success', 10, '约 10 处', '几乎不用。'),
   {
@@ -439,10 +440,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 8,
     freqLabel: '遗留 shad',
     note: '下划线文字。DsButton 已排除。',
-    items: [
+    items: ([
       { id: 'shad-link.default', label: 'link', spec: { kind: 'shad', variant: 'link', size: 'default' } },
       { id: 'shad-link.sm', label: 'link sm', spec: { kind: 'shad', variant: 'link', size: 'sm' } },
-    ],
+    ]) as AuditItem[],
   },
   {
     id: 'hero-glass',
@@ -451,10 +452,10 @@ export const AUDIT_FAMILIES: AuditFamily[] = [
     freq: 5,
     freqLabel: '仅落地页',
     note: 'Liquid Glass，不进 App 壳。',
-    items: [
+    items: ([
       { id: 'hero-glass.primary', label: '墨玻璃主钮', spec: { kind: 'replica', replica: 'hero-primary' } },
       { id: 'hero-glass.ghost', label: '清玻璃次钮', spec: { kind: 'replica', replica: 'hero-ghost' } },
-    ],
+    ]) as AuditItem[],
   },
 ].sort((a, b) => b.freq - a.freq);
 

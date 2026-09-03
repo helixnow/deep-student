@@ -225,7 +225,7 @@ export function ControlSample({ widget }: { widget: ControlWidget }) {
         <SegmentedControl
           ariaLabel="分段"
           value={seg}
-          onValueChange={setSeg}
+          onValueChange={(v) => setSeg(v as 'a' | 'b' | 'c')}
           options={[
             { value: 'a', label: '列表' },
             { value: 'b', label: '网格' },
@@ -239,7 +239,7 @@ export function ControlSample({ widget }: { widget: ControlWidget }) {
           ariaLabel="紧凑分段"
           size="compact"
           value={seg}
-          onValueChange={setSeg}
+          onValueChange={(v) => setSeg(v as 'a' | 'b' | 'c')}
           options={[
             { value: 'a', label: '日' },
             { value: 'b', label: '周' },
