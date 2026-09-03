@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.50](https://github.com/helixnow/deep-student/compare/v0.9.49...v0.9.50) (2026-09-03)
+
+
+### Bug Fixes
+
+* **release:** release-please extra-files 纳入 Cargo.lock 根版本——根治 --locked 构建门禁追逐移动版本的死循环 ([797abf2](https://github.com/helixnow/deep-student/commit/797abf2474a3bc10fccc245621c90fa8dda25f72))
+
 ## [0.9.49](https://github.com/helixnow/deep-student/compare/v0.9.48...v0.9.49) (2026-09-03)
 
 
