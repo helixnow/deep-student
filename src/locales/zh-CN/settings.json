@@ -539,8 +539,6 @@
     "adding": "正在添加…",
     "add_success": "成功添加 {{count}} 个模型",
     "add_failed": "添加模型失败: {{error}}",
-    "dialog_title": "从 API 获取可用模型",
-    "dialog_description": "{{vendor}}：选择要添加到模型列表的项",
     "search_placeholder_empty": "获取模型列表后即可搜索...",
     "add_all_new": "全部添加 ({{count}})",
     "click_fetch": "点击上方按钮获取可用模型列表",
