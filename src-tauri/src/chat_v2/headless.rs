@@ -484,6 +484,7 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
     ("automation_run_now", "write-risk"),
     ("settings_set", "write-risk"),
     ("model_assignments_set", "write-risk"),
+    ("model_profile_add", "write-risk"),
     ("backup_create", "write-risk"),
     ("sync_run", "write-risk"),
     ("index_rebuild", "write-risk"),

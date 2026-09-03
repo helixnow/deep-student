@@ -122,6 +122,11 @@ pub(crate) fn is_shell_runtime_tool(tool_name: &str) -> bool {
     )
 }
 
+/// `model_profile_add` 接收 API key；审批展示与任何跨边界输出必须脱敏。
+fn is_model_profile_add_tool(tool_name: &str) -> bool {
+    semantic_tool_short_name(tool_name) == "model_profile_add"
+}
+
 /// External MCP servers are free to name command executors however they want.
 /// Treat an MCP call carrying a string `command` argument as shell-capable so
 /// aliases such as `run_command` cannot bypass deny rules or precise approval.
@@ -356,6 +361,19 @@ pub fn ignores_broad_approval_bypass(tool_name: &str) -> bool {
 /// or persistence boundary. Environment key names remain visible so the user
 /// can understand that execution semantics are being changed.
 pub fn redact_tool_arguments_for_display(tool_name: &str, args: &Value) -> Value {
+    if is_model_profile_add_tool(tool_name) {
+        let mut redacted = args.clone();
+        if let Some(object) = redacted.as_object_mut() {
+            if object
+                .get("api_key")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.is_empty())
+            {
+                object.insert("api_key".to_string(), Value::String("<redacted>".to_string()));
+            }
+        }
+        return redacted;
+    }
     if !is_shell_runtime_tool_for_args(tool_name, args) {
         return args.clone();
     }

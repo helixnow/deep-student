@@ -935,6 +935,18 @@ impl ApprovalManager {
             return format!("将执行命令: {}", display);
         }
         match tool_name {
+            "model_profile_add" | "builtin-model_profile_add" => {
+                let model = arguments
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知模型");
+                match arguments.get("base_url").and_then(|v| v.as_str()) {
+                    Some(base_url) => {
+                        format!("将新增模型配置: {}（供应商地址 {}）", model, base_url)
+                    }
+                    None => format!("将在已有供应商下新增模型配置: {}", model),
+                }
+            }
             "note_set" => {
                 let note_id = arguments
                     .get("noteId")

@@ -74,4 +74,25 @@ describe('localized approval descriptions', () => {
       fallbackOnly,
     )).toBe('legacy backend description');
   });
+
+  it('describes model_profile_add without leaking the api key', () => {
+    const withUrl = getLocalizedApprovalDescription(
+      'builtin-model_profile_add',
+      { model: 'deepseek-chat', base_url: 'https://api.deepseek.com/v1', api_key: '<redacted>' },
+      'fallback',
+      translator(zh as typeof en),
+    );
+    expect(withUrl).toContain('deepseek-chat');
+    expect(withUrl).toContain('api.deepseek.com');
+    expect(withUrl).not.toContain('sk-');
+
+    const existingVendor = getLocalizedApprovalDescription(
+      'builtin-model_profile_add',
+      { model: 'gpt-4o', vendor_id: 'builtin-openai' },
+      'fallback',
+      translator(en),
+    );
+    expect(existingVendor).toContain('gpt-4o');
+    expect(existingVendor).toContain('existing vendor');
+  });
 });

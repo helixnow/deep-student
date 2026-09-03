@@ -228,6 +228,7 @@
     "mindmap_versions": "查看导图版本",
     "model_assignments_get": "获取模型分配",
     "model_assignments_set": "设置模型分配",
+    "model_profile_add": "新增模型配置",
     "note_delete": "删除笔记",
     "note_update_tags": "更新笔记标签",
     "notes_import": "导入笔记",

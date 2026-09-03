@@ -5,6 +5,7 @@ import i18n from '@/i18n';
 
 const SETTINGS_CHANGED_EVENT = 'chat_v2://settings_changed';
 const MODEL_ASSIGNMENTS_CHANGED_EVENT = 'chat_v2://model_assignments_changed';
+const MODEL_PROFILES_CHANGED_EVENT = 'chat_v2://model_profiles_changed';
 
 type SettingsChangedPayload = {
   action?: string;
@@ -14,6 +15,12 @@ type SettingsChangedPayload = {
 type ModelAssignmentsChangedPayload = {
   action?: string;
   slot?: string;
+};
+
+type ModelProfilesChangedPayload = {
+  action?: string;
+  vendor_id?: string;
+  profile_id?: string;
 };
 
 type BridgeWindow = Window & {
@@ -72,6 +79,11 @@ export async function installChatV2DomainEventBridge(): Promise<UnlistenFn[]> {
       }),
       listen<ModelAssignmentsChangedPayload>(MODEL_ASSIGNMENTS_CHANGED_EVENT, (event) => {
         dispatch('model_assignments_changed', event.payload ?? {});
+      }),
+      // Agent 新增模型配置后，复用设置页/模型面板已有的
+      // `api_configurations_changed` window 事件刷新各消费方。
+      listen<ModelProfilesChangedPayload>(MODEL_PROFILES_CHANGED_EVENT, (event) => {
+        dispatch('api_configurations_changed', event.payload ?? {});
       }),
     ]);
   } catch (error) {
