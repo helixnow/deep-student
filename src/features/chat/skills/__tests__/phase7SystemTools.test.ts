@@ -48,6 +48,22 @@ describe('phase 7 settings, usage and governance skill contracts', () => {
     expect(settingsToolsSkill.content).toContain('OCC');
   });
 
+  it('scopes the credential-bearing model_profile_add schema tightly', () => {
+    const add = tool(settingsToolsSkill, 'builtin-model_profile_add');
+
+    expect(add.inputSchema.additionalProperties).toBe(false);
+    expect(add.inputSchema.required).toEqual(['model']);
+    // 凭据只此一个入口：其余工具 schema 不得出现 api_key
+    expect(Object.keys(add.inputSchema.properties ?? {})).toContain('api_key');
+    for (const entry of settingsToolsSkill.embeddedTools ?? []) {
+      if (entry.name === 'builtin-model_profile_add') continue;
+      expect(JSON.stringify(entry.inputSchema)).not.toContain('api_key');
+    }
+    // 文档必须声明审批与脱敏语义
+    expect(settingsToolsSkill.content).toContain('必经用户审批');
+    expect(settingsToolsSkill.content).toContain('<redacted>');
+  });
+
   it('uses mutually exclusive usage action schemas and estimated-cost language', () => {
     const query = tool(llmUsageToolsSkill, 'builtin-llm_usage_query');
     expect(query.inputSchema.oneOf).toHaveLength(5);

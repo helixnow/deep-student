@@ -228,6 +228,7 @@
     "mindmap_versions": "List Mindmap Versions",
     "model_assignments_get": "Get Model Assignments",
     "model_assignments_set": "Set Model Assignments",
+    "model_profile_add": "Add Model Configuration",
     "note_delete": "Delete Note",
     "note_update_tags": "Update Note Tags",
     "notes_import": "Import Notes",

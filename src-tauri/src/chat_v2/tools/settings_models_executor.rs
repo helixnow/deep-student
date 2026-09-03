@@ -18,25 +18,51 @@ use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensi
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::database::Database;
-use crate::llm_manager::ApiConfig;
+use crate::llm_manager::{ApiConfig, ModelProfile, VendorConfig};
 use crate::models::ModelAssignments;
+use uuid::Uuid;
 
 const SETTINGS_GET_TOOL: &str = "settings_get";
 const SETTINGS_SET_TOOL: &str = "settings_set";
 const MODEL_ASSIGNMENTS_GET_TOOL: &str = "model_assignments_get";
 const MODEL_ASSIGNMENTS_SET_TOOL: &str = "model_assignments_set";
+const MODEL_PROFILE_ADD_TOOL: &str = "model_profile_add";
 
 pub const SETTINGS_CHANGED_EVENT: &str = "chat_v2://settings_changed";
 pub const MODEL_ASSIGNMENTS_CHANGED_EVENT: &str = "chat_v2://model_assignments_changed";
+pub const MODEL_PROFILES_CHANGED_EVENT: &str = "chat_v2://model_profiles_changed";
 
 const MAX_TOOL_STRING_CHARS: usize = 2_000;
 const MAX_MODEL_CONFIG_ID_CHARS: usize = 200;
 const MAX_SETTING_ROWS: usize = 20;
+const MAX_BASE_URL_CHARS: usize = 300;
+const MAX_API_KEY_CHARS: usize = 500;
+const MAX_PROVIDER_TYPE_CHARS: usize = 40;
 
 const SETTINGS_GET_FIELDS: &[&str] = &["prefix"];
 const SETTINGS_SET_FIELDS: &[&str] = &["key", "value"];
 const MODEL_ASSIGNMENTS_GET_FIELDS: &[&str] = &["page", "page_size"];
 const MODEL_ASSIGNMENTS_SET_FIELDS: &[&str] = &["slot", "config_id", "expected_current_config_id"];
+/// `model_profile_add` 是唯一被允许接收凭据字段的工具：`api_key` 是其正当
+/// 输入，因此它不走 `reject_sensitive_argument_fields`，字段白名单本身就是边界。
+/// 该工具的参数在进入事件流/持久化/审批展示前一律经 `redact_credential_arguments`。
+const MODEL_PROFILE_ADD_FIELDS: &[&str] = &[
+    "model",
+    "label",
+    "vendor_id",
+    "vendor_name",
+    "provider_type",
+    "base_url",
+    "api_key",
+    "is_multimodal",
+    "is_reasoning",
+    "is_embedding",
+    "is_reranker",
+    "is_image_generation",
+    "supports_tools",
+    "context_window",
+    "max_output_tokens",
+];
 
 /// Prefixes are the only values accepted by `settings_get`. The rows returned
 /// from the database are filtered once more through `SAFE_SETTING_KEYS`.
@@ -424,6 +450,208 @@ impl SettingsModelsToolExecutor {
             },
         }))
     }
+
+    async fn execute_model_profile_add(
+        &self,
+        arguments: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let arguments = arguments_object_allowing_credentials(arguments, MODEL_PROFILE_ADD_FIELDS)?;
+        let model = required_string(arguments, "model", MAX_MODEL_CONFIG_ID_CHARS)?;
+        let label = optional_string(arguments, "label", MAX_MODEL_CONFIG_ID_CHARS)?;
+        let vendor_id = optional_string(arguments, "vendor_id", MAX_MODEL_CONFIG_ID_CHARS)?;
+        let vendor_name = optional_string(arguments, "vendor_name", MAX_MODEL_CONFIG_ID_CHARS)?;
+        let provider_type = optional_string(arguments, "provider_type", MAX_PROVIDER_TYPE_CHARS)?;
+        let base_url = optional_string(arguments, "base_url", MAX_BASE_URL_CHARS)?;
+        let api_key = optional_string(arguments, "api_key", MAX_API_KEY_CHARS)?;
+        // 历史中的工具调用参数已脱敏为 "***"；若模型把它当真实 key 回放，
+        // 直接拒绝，避免静默保存一个凭据为占位符的坏配置。
+        if api_key
+            .as_deref()
+            .is_some_and(|key| !key.is_empty() && key.chars().all(|c| c == '*'))
+        {
+            return Err(tool_error(
+                "API_KEY_PLACEHOLDER_REJECTED",
+                "The api_key value is a redaction placeholder, not a real key.",
+                "The key shown in chat history is redacted. Ask the user to paste the real key again.",
+                false,
+            ));
+        }
+        let capabilities = ProfileCapabilityFlags::parse(arguments)?;
+
+        let manager = ctx.llm_manager.as_ref().ok_or_else(|| {
+            tool_error(
+                "DEPENDENCY_UNAVAILABLE",
+                "The model manager is unavailable.",
+                "Retry after the application finishes starting.",
+                true,
+            )
+        })?;
+
+        let mut vendors = manager.get_vendor_configs().await.map_err(|error| {
+            tool_error(
+                "VENDOR_DIRECTORY_READ_FAILED",
+                format!("Failed to read the vendor directory: {error}"),
+                "Retry after checking the model settings.",
+                true,
+            )
+        })?;
+
+        // —— 解析目标供应商：显式 vendor_id > 按 base_url+provider_type 去重 > 新建 ——
+        let mut vendor_reused = false;
+        let mut api_key_applied = false;
+        let resolved_vendor_id = if let Some(vendor_id) = vendor_id {
+            let Some(existing) = vendors.iter_mut().find(|vendor| vendor.id == vendor_id) else {
+                return Err(tool_error(
+                    "MODEL_VENDOR_NOT_FOUND",
+                    format!("Vendor '{vendor_id}' does not exist."),
+                    "Call model_assignments_get to list vendors, or omit vendor_id and pass vendor_name + base_url to create one.",
+                    false,
+                ));
+            };
+            vendor_reused = true;
+            // 显式给了 key 就一并轮换该供应商凭据（用户已在审批中确认参数）。
+            if let Some(key) = api_key.as_deref().filter(|key| !key.is_empty()) {
+                existing.api_key = key.to_string();
+                api_key_applied = true;
+            }
+            vendor_id
+        } else {
+            let vendor_name = vendor_name.ok_or_else(|| {
+                invalid_argument("vendor_name", "required when vendor_id is omitted")
+            })?;
+            let base_url = base_url.ok_or_else(|| {
+                invalid_argument("base_url", "required when vendor_id is omitted")
+            })?;
+            validate_base_url(&base_url)?;
+            let provider_type = provider_type.unwrap_or_else(|| "openai".to_string());
+            validate_provider_type(&provider_type)?;
+
+            if let Some(existing) = vendors.iter_mut().find(|vendor| {
+                urls_same_origin(&vendor.base_url, &base_url)
+                    && vendor.provider_type.eq_ignore_ascii_case(&provider_type)
+            }) {
+                // 与前端 ensureVendor 行为一致：复用同源同类型供应商，
+                // 仅在显式给了新 key 时替换其凭据（用户已在审批中确认）。
+                vendor_reused = true;
+                if let Some(key) = api_key.as_deref().filter(|key| !key.is_empty()) {
+                    existing.api_key = key.to_string();
+                    api_key_applied = true;
+                }
+                existing.id.clone()
+            } else {
+                let new_id = format!("agent-{}", Uuid::new_v4());
+                api_key_applied = api_key.as_deref().is_some_and(|key| !key.is_empty());
+                vendors.push(VendorConfig {
+                    id: new_id.clone(),
+                    name: vendor_name,
+                    provider_type,
+                    base_url,
+                    api_key: api_key.unwrap_or_default(),
+                    // api_protocol/supports_openai_responses 留 None，保存与运行期
+                    // 由 provider registry 归一化（与手动新建供应商同路径）。
+                    api_protocol: None,
+                    supports_openai_responses: None,
+                    ..VendorConfig::default()
+                });
+                new_id
+            }
+        };
+
+        let mut profiles = manager.get_model_profiles().await.map_err(|error| {
+            tool_error(
+                "MODEL_DIRECTORY_READ_FAILED",
+                format!("Failed to read the model directory: {error}"),
+                "Retry after checking the model settings.",
+                true,
+            )
+        })?;
+        if let Some(existing) = profiles.iter().find(|profile| {
+            profile.vendor_id == resolved_vendor_id && profile.model.eq_ignore_ascii_case(&model)
+        }) {
+            return Err(tool_error_with_fields(
+                "MODEL_PROFILE_EXISTS",
+                format!(
+                    "Model '{}' already exists on this vendor as '{}'.",
+                    model, existing.label
+                ),
+                "Use model_assignments_set to assign the existing model, or choose a different model name.",
+                false,
+                json!({ "existing_profile_id": existing.id }),
+            ));
+        }
+
+        let profile_id = format!("agent-{}", Uuid::new_v4());
+        let mut profile = ModelProfile {
+            id: profile_id.clone(),
+            vendor_id: resolved_vendor_id.clone(),
+            label: label.unwrap_or_else(|| model.clone()),
+            model,
+            is_multimodal: capabilities.multimodal,
+            is_reasoning: capabilities.reasoning,
+            is_embedding: capabilities.embedding,
+            is_reranker: capabilities.reranker,
+            is_image_generation: capabilities.image_generation,
+            supports_tools: capabilities.supports_tools,
+            context_window: capabilities.context_window,
+            ..ModelProfile::default()
+        };
+        if let Some(max_output_tokens) = capabilities.max_output_tokens {
+            profile.max_output_tokens = max_output_tokens;
+        }
+        profiles.push(profile);
+
+        manager
+            .save_vendor_model_configs(&vendors, &profiles)
+            .await
+            .map_err(|error| {
+                tool_error(
+                    "MODEL_PROFILE_ADD_FAILED",
+                    format!("Failed to save the model configuration: {error}"),
+                    "Retry after checking the local database.",
+                    true,
+                )
+            })?;
+
+        let event_emitted = ctx
+            .window_ref()
+            .app_handle()
+            .emit(
+                MODEL_PROFILES_CHANGED_EVENT,
+                json!({
+                    "action": "add",
+                    "vendor_id": resolved_vendor_id,
+                    "profile_id": profile_id,
+                }),
+            )
+            .is_ok();
+
+        let added = profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .expect("profile just pushed");
+        Ok(json!({
+            "profile_id": profile_id,
+            "vendor_id": resolved_vendor_id,
+            "vendor_reused": vendor_reused,
+            "api_key_applied": api_key_applied,
+            "label": added.label,
+            "model": added.model,
+            "enabled": added.enabled,
+            "capabilities": {
+                "multimodal": added.is_multimodal,
+                "reasoning": added.is_reasoning,
+                "embedding": added.is_embedding,
+                "reranker": added.is_reranker,
+                "image_generation": added.is_image_generation,
+                "supports_tools": added.supports_tools,
+            },
+            "event": MODEL_PROFILES_CHANGED_EVENT,
+            "event_emitted": event_emitted,
+            "runtime_sync": if event_emitted { "event_emitted" } else { "persisted_refresh_pending" },
+            "message_key": "chat.tools.settings_models.model_profile_add.success",
+        }))
+    }
 }
 
 impl Default for SettingsModelsToolExecutor {
@@ -441,6 +669,7 @@ impl ToolExecutor for SettingsModelsToolExecutor {
                 | SETTINGS_SET_TOOL
                 | MODEL_ASSIGNMENTS_GET_TOOL
                 | MODEL_ASSIGNMENTS_SET_TOOL
+                | MODEL_PROFILE_ADD_TOOL
         )
     }
 
@@ -451,7 +680,14 @@ impl ToolExecutor for SettingsModelsToolExecutor {
     ) -> Result<ToolResultInfo, String> {
         let started = Instant::now();
         let tool_name = strip_tool_namespace(&call.name);
-        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+        // 凭据脱敏：model_profile_add 的 api_key 只在执行期内使用，
+        // 进入事件流与 chat_v2 持久化的一律是脱敏副本。
+        let safe_arguments = if tool_name == MODEL_PROFILE_ADD_TOOL {
+            redact_credential_arguments(&call.arguments)
+        } else {
+            call.arguments.clone()
+        };
+        ctx.emit_tool_call_start(&call.name, safe_arguments.clone(), Some(&call.id));
 
         let output = match tool_name {
             SETTINGS_GET_TOOL => self.execute_settings_get(&call.arguments, ctx).await,
@@ -462,6 +698,10 @@ impl ToolExecutor for SettingsModelsToolExecutor {
             }
             MODEL_ASSIGNMENTS_SET_TOOL => {
                 self.execute_model_assignments_set(&call.arguments, ctx)
+                    .await
+            }
+            MODEL_PROFILE_ADD_TOOL => {
+                self.execute_model_profile_add(&call.arguments, ctx)
                     .await
             }
             _ => Err(tool_error(
@@ -483,7 +723,7 @@ impl ToolExecutor for SettingsModelsToolExecutor {
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
                     call.name.clone(),
-                    call.arguments.clone(),
+                    safe_arguments.clone(),
                     output,
                     duration_ms,
                 )
@@ -494,7 +734,7 @@ impl ToolExecutor for SettingsModelsToolExecutor {
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
                     call.name.clone(),
-                    call.arguments.clone(),
+                    safe_arguments.clone(),
                     error,
                     duration_ms,
                 )
@@ -512,6 +752,9 @@ impl ToolExecutor for SettingsModelsToolExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
+            // 新增模型配置涉及凭据写入：High => 每次都必经用户审批，
+            // 且永不进入"记住审批"（approval_manager 对 High 禁用 remember）。
+            MODEL_PROFILE_ADD_TOOL => ToolSensitivity::High,
             SETTINGS_SET_TOOL | MODEL_ASSIGNMENTS_SET_TOOL => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
@@ -585,6 +828,188 @@ fn arguments_object<'a>(
         ));
     }
     Ok(object)
+}
+
+/// `model_profile_add` 专用：字段白名单仍然生效，但允许白名单内的 `api_key`
+/// （这是该工具存在的意义）。其它敏感字段名依旧不在白名单内，天然被拒。
+fn arguments_object_allowing_credentials<'a>(
+    arguments: &'a Value,
+    allowed_fields: &[&str],
+) -> Result<&'a Map<String, Value>, String> {
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| invalid_argument("arguments", "expected a JSON object"))?;
+    if let Some(field) = object
+        .keys()
+        .find(|field| !allowed_fields.contains(&field.as_str()))
+    {
+        return Err(invalid_argument(
+            field,
+            "unknown field; additional properties are not allowed",
+        ));
+    }
+    Ok(object)
+}
+
+/// 凭据脱敏：跨事件/持久化边界前把 api_key 替换为占位符。
+fn redact_credential_arguments(arguments: &Value) -> Value {
+    let mut redacted = arguments.clone();
+    let Some(object) = redacted.as_object_mut() else {
+        return redacted;
+    };
+    if object
+        .get("api_key")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.is_empty())
+    {
+        object.insert("api_key".to_string(), json!("<redacted>"));
+    }
+    redacted
+}
+
+fn optional_string(
+    arguments: &Map<String, Value>,
+    field: &str,
+    max_chars: usize,
+) -> Result<Option<String>, String> {
+    let Some(value) = arguments.get(field) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let value = value
+        .as_str()
+        .ok_or_else(|| invalid_argument(field, "expected a string"))?
+        .trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.chars().count() > max_chars {
+        return Err(invalid_argument(
+            field,
+            format!("must contain at most {max_chars} characters"),
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn optional_bool(arguments: &Map<String, Value>, field: &str) -> Result<bool, String> {
+    match arguments.get(field) {
+        None | Some(Value::Null) => Ok(false),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| invalid_argument(field, "expected a boolean")),
+    }
+}
+
+fn optional_u32(
+    arguments: &Map<String, Value>,
+    field: &str,
+    maximum: u32,
+) -> Result<Option<u32>, String> {
+    match arguments.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => {
+            let parsed = value
+                .as_u64()
+                .and_then(|value| u32::try_from(value).ok())
+                .filter(|value| *value > 0 && *value <= maximum)
+                .ok_or_else(|| {
+                    invalid_argument(
+                        field,
+                        format!("expected an integer between 1 and {maximum}"),
+                    )
+                })?;
+            Ok(Some(parsed))
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ProfileCapabilityFlags {
+    multimodal: bool,
+    reasoning: bool,
+    embedding: bool,
+    reranker: bool,
+    image_generation: bool,
+    supports_tools: bool,
+    context_window: Option<u32>,
+    max_output_tokens: Option<u32>,
+}
+
+impl ProfileCapabilityFlags {
+    fn parse(arguments: &Map<String, Value>) -> Result<Self, String> {
+        let flags = Self {
+            multimodal: optional_bool(arguments, "is_multimodal")?,
+            reasoning: optional_bool(arguments, "is_reasoning")?,
+            embedding: optional_bool(arguments, "is_embedding")?,
+            reranker: optional_bool(arguments, "is_reranker")?,
+            image_generation: optional_bool(arguments, "is_image_generation")?,
+            supports_tools: optional_bool(arguments, "supports_tools")?,
+            context_window: optional_u32(arguments, "context_window", 10_000_000)?,
+            max_output_tokens: optional_u32(arguments, "max_output_tokens", 1_000_000)?,
+        };
+        // 互斥校验：embedding/reranker/image_generation 是专用模型，
+        // 与文本类能力共置几乎一定是调用方搞错了。
+        let specialist = flags.embedding as u8 + flags.reranker as u8 + flags.image_generation as u8;
+        if specialist > 1 {
+            return Err(invalid_argument(
+                "is_embedding",
+                "embedding/reranker/image_generation are mutually exclusive",
+            ));
+        }
+        if specialist == 1 && (flags.multimodal || flags.reasoning || flags.supports_tools) {
+            return Err(invalid_argument(
+                "is_embedding",
+                "specialist models cannot also be multimodal/reasoning/tool-capable",
+            ));
+        }
+        Ok(flags)
+    }
+}
+
+fn validate_base_url(value: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(value).map_err(|_| {
+        invalid_argument("base_url", "expected an absolute http(s) URL")
+    })?;
+    let scheme = parsed.scheme();
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return Err(invalid_argument("base_url", "only http/https URLs are allowed"));
+    }
+    if parsed.host_str().is_none() {
+        return Err(invalid_argument("base_url", "URL must include a host"));
+    }
+    Ok(())
+}
+
+fn validate_provider_type(value: &str) -> Result<(), String> {
+    let valid = !value.is_empty()
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'));
+    if valid {
+        Ok(())
+    } else {
+        Err(invalid_argument(
+            "provider_type",
+            "only ASCII letters, digits, '-', '_' and '.' are allowed",
+        ))
+    }
+}
+
+/// 与 llm_manager::api_origins_match 同语义（scheme+host+port 归一比较）。
+fn urls_same_origin(left: &str, right: &str) -> bool {
+    let (Ok(left), Ok(right)) = (
+        url::Url::parse(left.trim()),
+        url::Url::parse(right.trim()),
+    ) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 fn required_string(
@@ -1232,7 +1657,104 @@ mod tests {
             assert_eq!(executor.sensitivity_level(tool), ToolSensitivity::Medium);
             assert_eq!(executor.concurrency_class(tool), ToolConcurrency::Serial);
         }
+        // 新增模型配置：High（必经审批且永不记住）+ Serial
+        assert!(executor.can_handle(MODEL_PROFILE_ADD_TOOL));
+        assert!(executor.can_handle(&format!("builtin-{MODEL_PROFILE_ADD_TOOL}")));
+        assert_eq!(
+            executor.sensitivity_level(MODEL_PROFILE_ADD_TOOL),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.concurrency_class(MODEL_PROFILE_ADD_TOOL),
+            ToolConcurrency::Serial
+        );
         assert!(!executor.can_handle("builtin-api_key_set"));
+    }
+
+    #[test]
+    fn profile_add_arguments_redact_api_key_before_crossing_boundaries() {
+        let arguments = json!({
+            "model": "deepseek-chat",
+            "vendor_name": "DeepSeek",
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "sk-super-secret",
+        });
+        let redacted = redact_credential_arguments(&arguments);
+        let serialized = redacted.to_string();
+        assert!(!serialized.contains("sk-super-secret"));
+        assert_eq!(redacted["api_key"], "<redacted>");
+        assert_eq!(redacted["model"], "deepseek-chat");
+        assert_eq!(redacted["base_url"], "https://api.deepseek.com/v1");
+
+        // 无 key / 空 key 不产生占位符
+        let no_key = json!({"model": "m", "vendor_id": "v"});
+        assert!(redact_credential_arguments(&no_key).get("api_key").is_none());
+        let empty_key = json!({"model": "m", "api_key": ""});
+        assert_eq!(redact_credential_arguments(&empty_key)["api_key"], "");
+    }
+
+    #[test]
+    fn profile_add_fields_allow_api_key_but_nothing_else_sensitive() {
+        let valid = json!({
+            "model": "gpt-4o",
+            "api_key": "sk-xxx",
+            "supports_tools": true,
+        });
+        assert!(arguments_object_allowing_credentials(&valid, MODEL_PROFILE_ADD_FIELDS).is_ok());
+
+        let sneaky = json!({
+            "model": "gpt-4o",
+            "authorization": "Bearer x",
+        });
+        let error =
+            arguments_object_allowing_credentials(&sneaky, MODEL_PROFILE_ADD_FIELDS).unwrap_err();
+        assert!(error.contains("INVALID_ARGUMENT"));
+
+        // 通用路径依旧硬拒 api_key 字段
+        let error = arguments_object(&valid, SETTINGS_GET_FIELDS).unwrap_err();
+        assert!(error.contains("SENSITIVE_FIELD_REJECTED"));
+    }
+
+    #[test]
+    fn profile_add_validation_rules() {
+        assert!(validate_base_url("https://api.openai.com/v1").is_ok());
+        assert!(validate_base_url("http://127.0.0.1:11434/v1").is_ok());
+        assert!(validate_base_url("ftp://example.com").is_err());
+        assert!(validate_base_url("not-a-url").is_err());
+
+        assert!(validate_provider_type("openai").is_ok());
+        assert!(validate_provider_type("azure-openai").is_ok());
+        assert!(validate_provider_type("bad provider").is_err());
+
+        assert!(urls_same_origin("https://api.a.com/v1", "https://api.a.com/other"));
+        assert!(!urls_same_origin("https://api.a.com/v1", "https://api.b.com/v1"));
+        assert!(!urls_same_origin("https://a.com:8443/v1", "https://a.com/v1"));
+
+        let flags = Map::from_iter([
+            ("is_multimodal".to_string(), json!(true)),
+            ("supports_tools".to_string(), json!(true)),
+        ]);
+        let parsed = ProfileCapabilityFlags::parse(&flags).unwrap();
+        assert!(parsed.multimodal && parsed.supports_tools && !parsed.embedding);
+
+        let conflicting = Map::from_iter([
+            ("is_embedding".to_string(), json!(true)),
+            ("is_reranker".to_string(), json!(true)),
+        ]);
+        assert!(ProfileCapabilityFlags::parse(&conflicting).is_err());
+        let mixed = Map::from_iter([
+            ("is_reranker".to_string(), json!(true)),
+            ("supports_tools".to_string(), json!(true)),
+        ]);
+        assert!(ProfileCapabilityFlags::parse(&mixed).is_err());
+
+        let window = Map::from_iter([("context_window".to_string(), json!(128_000))]);
+        assert_eq!(
+            ProfileCapabilityFlags::parse(&window).unwrap().context_window,
+            Some(128_000)
+        );
+        let bad_window = Map::from_iter([("context_window".to_string(), json!(0))]);
+        assert!(ProfileCapabilityFlags::parse(&bad_window).is_err());
     }
 
     #[test]

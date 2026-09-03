@@ -1809,6 +1809,8 @@
       "customAgentApplyWithSummary": "Will write custom subagent persona {{fileName}}: {{summary}}",
       "customAgentRemove": "Will delete custom subagent persona: {{fileName}} (cannot be undone)",
       "customAgentRemoveWithTitle": "Will delete custom subagent persona: {{fileName}} ({{title}}; cannot be undone)",
+      "modelProfileAdd": "Will add a model configuration under an existing vendor: {{model}}",
+      "modelProfileAddWithBaseUrl": "Will add a model configuration: {{model}} (vendor URL {{baseUrl}}; key redacted here and encrypted on save)",
       "generic": "Will execute tool: {{tool}}"
     }
   },

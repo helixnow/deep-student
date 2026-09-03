@@ -1809,6 +1809,8 @@
       "customAgentApplyWithSummary": "将写入自定义子代理 persona {{fileName}}：{{summary}}",
       "customAgentRemove": "将删除自定义子代理 persona：{{fileName}}（不可恢复）",
       "customAgentRemoveWithTitle": "将删除自定义子代理 persona：{{fileName}}（{{title}}，不可恢复）",
+      "modelProfileAdd": "将在已有供应商下新增模型配置：{{model}}",
+      "modelProfileAddWithBaseUrl": "将新增模型配置：{{model}}（供应商地址 {{baseUrl}}；密钥已脱敏，确认后加密保存）",
       "generic": "将执行工具：{{tool}}"
     }
   },

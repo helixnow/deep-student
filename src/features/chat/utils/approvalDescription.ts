@@ -52,6 +52,14 @@ export function getLocalizedApprovalDescription(
   }
 
   switch (tool) {
+    case 'model_profile_add': {
+      const baseUrl = stringArg(args, 'base_url', 'baseUrl');
+      const params = {
+        model: stringArg(args, 'model') ?? '?',
+        baseUrl: baseUrl ?? '',
+      };
+      return value(baseUrl ? 'modelProfileAddWithBaseUrl' : 'modelProfileAdd', params);
+    }
     case 'note_set':
       return value('noteSet', { noteId: stringArg(args, 'noteId', 'note_id') ?? '?' });
     case 'note_replace':
