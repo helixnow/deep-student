@@ -133,12 +133,41 @@
   transform: scale(0.92);
 }
 
+/* 触屏：关闭钮升到 44×44 最小命中区；桌面细指针保持 24px 密度 */
+@media (pointer: coarse) {
+  .wb-cheat-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .wb-cheat-footer {
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   padding: 10px 20px 14px;
   font-size: 11.5px;
   text-align: center;
   opacity: 0.62;
+}
+
+/* 空桌面 tour 再入口（2026-08）：底部提示旁的文字按钮 */
+.wb-cheat-replay-tour {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wb-cheat-replay-tour:hover {
+  opacity: 0.85;
 }
 
 /* ==== 分组网格 ========================================================== */

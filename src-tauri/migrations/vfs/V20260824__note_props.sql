@@ -1,0 +1,21 @@
+-- ============================================================================
+-- V20260824: notes.props — 笔记任意键值属性（自定义 metadata）
+-- ============================================================================
+--
+-- 背景：属性页需要「任意键值 metadata」（Obsidian properties 同类能力），
+-- 而 dstu_set_metadata 的 notes 分支此前只透传 title/tags/isFavorite，
+-- 其余键被静默丢弃。本迁移为 notes 增加 props 列（JSON 对象文本，可空），
+-- 由 VfsNoteRepo::set_note_props 写入、row_to_note 按列名读出并透传到
+-- DstuNode.metadata.props，搜索 overlay 的 key:value 操作符据此过滤。
+--
+-- 幂等性说明：SQLite 不支持 ADD COLUMN IF NOT EXISTS；本迁移遵循仓库
+-- 现有约定（V20260523/V20260719/V20260726 同款）——迁移框架逐条执行并
+-- 立即记录 refinery_schema_history，coordinator 对 duplicate column 有
+-- 预修复兜底。无回填（历史行 props 为 NULL 即「无自定义属性」）。
+--
+-- 同步说明：notes 为 RowSync + FieldMerge（tags/is_favorite 字段级合并，
+-- 其余列行级 LWW），新列随整行同步，无需新增触发器或分类登记。
+-- ============================================================================
+-- @danger-ack: add_column_backfill reason="新列可空且无回填；失败重跑时 ADD COLUMN 由 coordinator 的 duplicate column 预修复兜底，不会留下不可恢复的半迁移状态"
+
+ALTER TABLE notes ADD COLUMN props TEXT;

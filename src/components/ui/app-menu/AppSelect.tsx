@@ -160,10 +160,10 @@ export function AppSelect({
     [onValueChange]
   );
 
-  // 尺寸样式
+  // 尺寸样式（coarse 指针下回归 44px 触控基线，桌面视觉不变）
   const sizeClasses = {
-    sm: 'h-7 px-2 text-xs',
-    default: 'h-9 px-3 text-sm',
+    sm: 'h-7 px-2 text-xs [@media(pointer:coarse)]:!h-11',
+    default: 'h-9 px-3 text-sm [@media(pointer:coarse)]:!h-11',
     lg: 'h-11 px-4 text-base',
   };
 

@@ -98,7 +98,8 @@ const lazyPDFViewer = (): Promise<{ default: EditorComponent }> =>
 /**
  * 懒加载题目集编辑器
  *
- * 实际组件路径：src/features/notes/preview/ExamPreview.tsx
+ * 实际组件：src/features/learning-hub/apps/views/ExamContentView.tsx
+ * （经 ExamEditorWrapper 包装；历史 notes/preview/ExamPreview 已删除）
  */
 const lazyExamEditor = (): Promise<{ default: EditorComponent }> =>
   import('./editors/ExamEditorWrapper').then((m) => ({ default: m.ExamEditorWrapper }));

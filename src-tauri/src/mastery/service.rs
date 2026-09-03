@@ -118,6 +118,10 @@ impl MasteryService {
 
     /// Atomically append the qbank event and refresh its aggregate using the
     /// caller's existing VFS transaction. Profile reflux remains post-commit.
+    ///
+    /// 幂等键 `me_qbank_{submission_id}` 只保证"首判恰好一次"；换判（true↔false）
+    /// 必须走 [`Self::record_qbank_verdict_correction_with_conn`]，否则
+    /// ON CONFLICT DO NOTHING 会把信号锁死在首判。
     pub fn record_qbank_answer_with_conn(
         &self,
         conn: &Connection,
@@ -261,6 +265,214 @@ impl MasteryService {
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
         self.sync_learner_profile(&state)?;
         Ok(Some(state))
+    }
+
+    /// 换判纠正（供 qbank 判分原语调用，append-only）：解决
+    /// `me_qbank_{submission_id}` + ON CONFLICT DO NOTHING 把换判停在首判信号的问题。
+    ///
+    /// 语义（参照 [`Self::revert_fsrs_rating_for_log`] 的 tombstone 范式）：
+    /// 1. 软删该 submission 事件链上仍存活的旧事件（首判 `me_qbank_{sid}` 与历史修订
+    ///    `_r{n}`）——只推进 `deleted_at/updated_at/local_version` 同步元数据，
+    ///    不 UPDATE 旧事件的 outcome/signal 等语义列；
+    /// 2. 追加修订事件 `me_qbank_{sid}_r{n+1}`（weight=1 直写，纠正不吃 60s 防刷衰减）；
+    /// 3. `recompute_state_with_conn` 按存活事件重算新旧 concept 聚合。
+    ///
+    /// 幂等：
+    /// - 存活末端事件方向已与 `new_is_correct` 一致 → 不追加，仅重算返回；
+    /// - 修订 id 冲突（同一纠正在事务重放）→ ON CONFLICT DO NOTHING 兜底；
+    /// - 链上无任何事件（如 AI 判分路从未写首判）→ 退化为首判 record。
+    ///
+    /// question_bank 侧已接线：`apply_submission_verdict_in_tx` 的换判分路
+    /// （`Some(old) != new`）统一调本函数，覆盖人工改判外壳与 AI 管线落库段；
+    /// 自持事务版 [`Self::record_qbank_verdict_correction`]（补偿脚本用）
+    /// 也经由此实现，故本函数保持 pub。
+    pub fn record_qbank_verdict_correction_with_conn(
+        &self,
+        conn: &Connection,
+        submission_id: &str,
+        question_id: &str,
+        tags: &[String],
+        new_is_correct: bool,
+    ) -> Result<MasteryState, AppError> {
+        struct ChainEvent {
+            revision: u32,
+            id: String,
+            concept_key: String,
+            outcome: String,
+            deleted: bool,
+        }
+
+        let submission_id = submission_id.trim();
+        let question_id = question_id.trim();
+        if submission_id.is_empty() || question_id.is_empty() {
+            return Err(AppError::validation(
+                "mastery correction requires non-empty submission_id and question_id",
+            ));
+        }
+        let concept = concept_key_from_tags(tags, question_id)
+            .ok_or_else(|| AppError::validation("mastery concept_key unavailable for question"))?;
+        let outcome = if new_is_correct {
+            MasteryOutcome::Correct
+        } else {
+            MasteryOutcome::Wrong
+        };
+        let base_id = format!("me_qbank_{submission_id}");
+        let revision_prefix = format!("{base_id}_r");
+
+        // 事件链（含 tombstone）：base + 合法 `_r{digits}` 修订。
+        // 用 substr 前缀匹配而非 LIKE，避免 submission_id 中 `_`/`%` 被当作通配符。
+        let mut chain: Vec<ChainEvent> = Vec::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, concept_key, outcome, deleted_at FROM mastery_events
+                     WHERE id = ?1 OR substr(id, 1, length(?2)) = ?2",
+                )
+                .map_err(|e| AppError::database(e.to_string()))?;
+            let rows = stmt
+                .query_map(params![base_id, revision_prefix], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(|e| AppError::database(e.to_string()))?;
+            for row in rows {
+                let (id, concept_key, outcome_db, deleted_at) =
+                    row.map_err(|e| AppError::database(e.to_string()))?;
+                let revision = if id == base_id {
+                    0
+                } else if let Some(suffix) = id.strip_prefix(&revision_prefix) {
+                    match suffix.parse::<u32>() {
+                        Ok(n) if n >= 1 => n,
+                        // 其它 submission 恰以 `{sid}_r` 开头 → 非本链，跳过
+                        _ => continue,
+                    }
+                } else {
+                    continue;
+                };
+                chain.push(ChainEvent {
+                    revision,
+                    id,
+                    concept_key,
+                    outcome: outcome_db,
+                    deleted: deleted_at.is_some(),
+                });
+            }
+        }
+
+        // 链上无事件（如 AI 判分路从未写首判）→ 退化为首判 record（含防刷权重）
+        if chain.is_empty() {
+            return self.record_event_with_conn(
+                conn,
+                Some(&base_id),
+                MasterySource::Qbank,
+                &concept,
+                question_id,
+                &outcome,
+            );
+        }
+
+        // 幂等：存活末端事件方向未变 → 不追加纠正事件
+        let latest_live = chain
+            .iter()
+            .filter(|event| !event.deleted)
+            .max_by_key(|event| event.revision);
+        if let Some(live) = latest_live {
+            if live.outcome == outcome.as_db_str() {
+                return Self::recompute_state_with_conn(conn, &concept);
+            }
+        }
+
+        let now = now_utc().to_rfc3339();
+        // tombstone 仍存活的旧事件（照抄 revert_fsrs_rating_for_log 的同步安全写法）
+        let mut stale_concepts: Vec<String> = Vec::new();
+        for event in chain.iter().filter(|event| !event.deleted) {
+            conn.execute(
+                "UPDATE mastery_events
+                 SET deleted_at = COALESCE(deleted_at, ?2), updated_at = ?2,
+                     local_version = COALESCE(local_version, 0) + CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END
+                 WHERE id = ?1",
+                params![event.id, now],
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+            if event.concept_key != concept && !stale_concepts.contains(&event.concept_key) {
+                stale_concepts.push(event.concept_key.clone());
+            }
+        }
+
+        let next_revision = chain.iter().map(|event| event.revision).max().unwrap_or(0) + 1;
+        let correction_id = format!("{revision_prefix}{next_revision}");
+        let signal = clamp01(outcome.target_signal());
+        // weight=1 直写：换判纠正不套 compute_event_weight_with_conn 的 60s 防刷衰减
+        conn.execute(
+            "INSERT INTO mastery_events
+                (id, created_at, source, concept_key, item_id, outcome, weight, signal, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1.0, ?7, ?2)
+             ON CONFLICT(id) DO NOTHING",
+            params![
+                correction_id,
+                now,
+                MasterySource::Qbank.as_str(),
+                concept,
+                question_id,
+                outcome.as_db_str(),
+                signal,
+            ],
+        )
+        .map_err(|e| AppError::database(format!("insert mastery correction event: {e}")))?;
+
+        // 旧事件可能挂在不同 concept（tags 漂移）：一并重算防止残留旧聚合
+        for stale in &stale_concepts {
+            Self::recompute_state_with_conn(conn, stale)?;
+        }
+        let state = Self::recompute_state_with_conn(conn, &concept)?;
+        info!(
+            "[Mastery] qbank verdict corrected submission={} -> {} ({}) concept={} score={:.3} total={}",
+            submission_id,
+            outcome.as_db_str(),
+            correction_id,
+            concept,
+            state.score,
+            state.total
+        );
+        Ok(state)
+    }
+
+    /// 自持事务版换判纠正：判分事务之外亦可直接调用（如补偿脚本）。
+    /// 事务提交后回流画像；回流失败仅告警，不回滚已提交纠正
+    /// （与 [`Self::record_fsrs_rating_for_log`] 同口径）。
+    pub fn record_qbank_verdict_correction(
+        &self,
+        submission_id: &str,
+        question_id: &str,
+        tags: &[String],
+        new_is_correct: bool,
+    ) -> Result<MasteryState, AppError> {
+        let mut conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let state = self.record_qbank_verdict_correction_with_conn(
+            &tx,
+            submission_id,
+            question_id,
+            tags,
+            new_is_correct,
+        )?;
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
+        if let Err(error) = self.sync_learner_profile(&state) {
+            warn!(
+                "[Mastery] qbank correction committed but profile reflux failed for submission {}: {}",
+                submission_id, error
+            );
+        }
+        Ok(state)
     }
 
     /// 写入一条事件并重算该 concept 的聚合状态
@@ -1241,6 +1453,169 @@ mod tests {
             )
             .unwrap();
         assert!(deleted_at.is_some());
+    }
+
+    /// R4-03：false→true 换判后状态按纠正事件重算，不被
+    /// `me_qbank_{sid}` + ON CONFLICT DO NOTHING 锁死在首判信号。
+    #[test]
+    fn qbank_verdict_correction_false_to_true_recomputes_state() {
+        let (_tmp, vfs, svc) = setup();
+        let concept = "换判概念";
+        let sid = "sub_corr_1";
+        let qid = "q_corr_1";
+        let t0 = Utc::now().timestamp_millis();
+
+        // 首判 wrong（模拟 submit_answer 主链的同事务写入）
+        set_now_override_ms(Some(t0));
+        {
+            let mut conn = vfs.get_conn_safe().unwrap();
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            svc.record_qbank_answer_with_conn(&tx, sid, qid, &[concept.to_string()], false)
+                .unwrap();
+            tx.commit().unwrap();
+        }
+
+        // 现状复现：换向仍走 record 路 → 同键 DO NOTHING，状态锁死首判
+        set_now_override_ms(Some(t0 + 30_000));
+        {
+            let mut conn = vfs.get_conn_safe().unwrap();
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            let locked = svc
+                .record_qbank_answer_with_conn(&tx, sid, qid, &[concept.to_string()], true)
+                .unwrap();
+            tx.commit().unwrap();
+            assert_eq!(
+                locked.wrong_count, 1,
+                "record 路换向应仍停在首判（锁死复现）"
+            );
+            assert!((locked.score - 0.35).abs() < 1e-9);
+        }
+
+        // 换判纠正：tombstone 首判 + 追加 _r1 + 按存活事件重算
+        set_now_override_ms(Some(t0 + 60_000));
+        let corrected = svc
+            .record_qbank_verdict_correction(sid, qid, &[concept.to_string()], true)
+            .unwrap();
+        set_now_override_ms(None);
+
+        // 仅存活 _r1(correct, weight=1)：0.5 + 0.3·(1.0 − 0.5) = 0.65
+        assert!(
+            (corrected.score - 0.65).abs() < 1e-9,
+            "corrected score should replay only the correction event, got {}",
+            corrected.score
+        );
+        assert_eq!(corrected.total, 1);
+        assert_eq!(corrected.wrong_count, 0);
+        assert_eq!(corrected.streak, 1);
+
+        let conn = vfs.get_conn_safe().unwrap();
+        let (old_deleted, old_outcome): (Option<String>, String) = conn
+            .query_row(
+                "SELECT deleted_at, outcome FROM mastery_events WHERE id = 'me_qbank_sub_corr_1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(old_deleted.is_some(), "首判事件应被 tombstone");
+        assert_eq!(
+            old_outcome, "wrong",
+            "append-only：旧事件语义列不得被 UPDATE"
+        );
+        let (rev_outcome, rev_weight, rev_deleted): (String, f64, Option<String>) = conn
+            .query_row(
+                "SELECT outcome, weight, deleted_at FROM mastery_events
+                 WHERE id = 'me_qbank_sub_corr_1_r1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(rev_outcome, "correct");
+        assert!(
+            (rev_weight - 1.0).abs() < 1e-9,
+            "纠正事件应绕过 60s 防刷衰减直写 weight=1"
+        );
+        assert!(rev_deleted.is_none());
+    }
+
+    /// R4-03：纠正幂等（同向重放不追加）、来回换判追加 _r2、
+    /// 链上无首判时退化为首判 record（AI 路未接线场景）。
+    #[test]
+    fn qbank_verdict_correction_is_idempotent_and_supports_reflip() {
+        let (_tmp, vfs, svc) = setup();
+        let concept = "换判幂等";
+        let sid = "sub_corr_2";
+        let qid = "q_corr_2";
+        let t0 = Utc::now().timestamp_millis();
+        let chain_count = |conn: &rusqlite::Connection| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM mastery_events
+                 WHERE id = 'me_qbank_sub_corr_2'
+                    OR substr(id, 1, length('me_qbank_sub_corr_2_r')) = 'me_qbank_sub_corr_2_r'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        // 链上无事件 → 退化为首判 record
+        set_now_override_ms(Some(t0));
+        let first = svc
+            .record_qbank_verdict_correction(sid, qid, &[concept.to_string()], false)
+            .unwrap();
+        assert_eq!(first.wrong_count, 1);
+        {
+            let conn = vfs.get_conn_safe().unwrap();
+            assert_eq!(chain_count(&conn), 1, "退化首判应只写 base 事件");
+        }
+
+        // 同向重放 → 不追加纠正事件
+        set_now_override_ms(Some(t0 + 30_000));
+        let replay = svc
+            .record_qbank_verdict_correction(sid, qid, &[concept.to_string()], false)
+            .unwrap();
+        assert_eq!(replay.total, 1);
+        {
+            let conn = vfs.get_conn_safe().unwrap();
+            assert_eq!(chain_count(&conn), 1, "同向重放不得追加纠正事件");
+        }
+
+        // false→true → _r1
+        set_now_override_ms(Some(t0 + 60_000));
+        let flip1 = svc
+            .record_qbank_verdict_correction(sid, qid, &[concept.to_string()], true)
+            .unwrap();
+        assert!((flip1.score - 0.65).abs() < 1e-9);
+        assert_eq!(flip1.wrong_count, 0);
+
+        // true→false → 追加 _r2，_r1 被 tombstone
+        set_now_override_ms(Some(t0 + 90_000));
+        let flip2 = svc
+            .record_qbank_verdict_correction(sid, qid, &[concept.to_string()], false)
+            .unwrap();
+        set_now_override_ms(None);
+        assert!((flip2.score - 0.35).abs() < 1e-9);
+        assert_eq!(flip2.total, 1);
+        assert_eq!(flip2.wrong_count, 1);
+
+        let conn = vfs.get_conn_safe().unwrap();
+        let live_ids: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id FROM mastery_events
+                     WHERE concept_key = ?1 AND deleted_at IS NULL ORDER BY id",
+                )
+                .unwrap();
+            stmt.query_map(params![concept], |row| row.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(live_ids, vec!["me_qbank_sub_corr_2_r2".to_string()]);
+        assert_eq!(chain_count(&conn), 3, "base + _r1 + _r2");
     }
 
     #[test]

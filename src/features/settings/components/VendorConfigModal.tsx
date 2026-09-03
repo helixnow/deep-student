@@ -386,7 +386,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           <div className="flex items-center gap-2">
             <Prohibit className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <div className="space-y-0.5">
-              <Label htmlFor="vendor-no-api-key" className="text-sm font-normal leading-none cursor-pointer">
+              <Label htmlFor="vendor-no-api-key" className="flex items-center text-sm font-normal leading-none cursor-pointer [@media(pointer:coarse)]:min-h-11">
                 {t('settings:vendor_modal.no_api_key_label')}
               </Label>
               <p className="text-xs text-muted-foreground">
@@ -430,7 +430,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="!text-destructive"
+                  className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     setForceClearApiKey(true);
                     setFormData(prev => ({ ...prev, apiKey: '' }));
@@ -518,10 +518,10 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           {formContent}
         </DsDialogBody>
         <DsDialogFooter className="!border-t-0">
-          <DsButton variant="ghost" size="sm" onClick={onClose}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</DsButton>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleSave}>{t('common:actions.save')}</DsButton>
         </DsDialogFooter>
     </DsDialog>
   );

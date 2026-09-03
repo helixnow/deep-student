@@ -28,6 +28,7 @@ import {
 import { requestWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { launchNewChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
@@ -37,8 +38,9 @@ import {
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
 
-/** 失败路径：assertive 公告（勿仅 console.warn） */
+/** 失败路径：可见 toast + assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
+  showGlobalNotification('warning', message);
   announceWorkbench(message, 'assertive');
 }
 

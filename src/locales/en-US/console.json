@@ -1,4 +1,16 @@
 {
-  "processing_failed": "Console processing failed: {{error}}"
+  "processing_failed": "Console processing failed: {{error}}",
+  "agent": {
+    "set_mode_unsupported": "The sandbox rendering surface is fixed to safe-preview; there is no switchable run mode, and the capability has been removed from the manifest",
+    "set_mode_undone": "{{label}} — {{reason}}",
+    "pause_check_failed": "Pause check failed: {{error}}",
+    "pacing_failed": "Pacing control failed: {{error}}",
+    "no_active_session": "{{label}} (no active session)",
+    "viewport_invalid": "{{label}} (invalid viewport)",
+    "open_invalid": "{{label}} (invalid open)",
+    "unsupported_op": "{{label}} (unsupported sandbox op)",
+    "op_aborted": "Sandbox operation aborted",
+    "run_ended": "Run has ended",
+    "run_not_found": "Sandbox run does not exist or has already ended"
+  }
 }
-

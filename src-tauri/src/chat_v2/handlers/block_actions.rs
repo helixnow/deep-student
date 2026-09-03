@@ -5,11 +5,10 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
-use crate::chat_v2::events::{event_phase, event_types, next_session_sequence_id};
 use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::handlers::manage_session::rebuild_session_skill_state_from_surviving_history;
 use crate::chat_v2::pipeline::ChatV2Pipeline;
@@ -1013,166 +1012,29 @@ fn upsert_block_in_db(
     Ok(())
 }
 
-// ============================================================================
-// Anki 卡片结果处理（CardAgent 回调）
-// ============================================================================
-
-/// Anki 卡片结果请求
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnkiCardsResultRequest {
-    /// 会话 ID
-    pub session_id: String,
-    /// 消息 ID（来自工具调用时传递的 messageId）
-    pub message_id: String,
-    /// 块 ID（来自工具调用时传递的 blockId，将被替换为新的 anki_cards 块）
-    pub tool_block_id: String,
-    /// 生成的卡片列表
-    pub cards: Vec<serde_json::Value>,
-    /// 文档 ID（用于后续查询进度）
-    pub document_id: Option<String>,
-    /// 模板 ID
-    pub template_id: Option<String>,
-    /// 是否成功
-    pub success: bool,
-    /// 错误信息（失败时）
-    pub error: Option<String>,
-}
-
-/// 接收 Anki 卡片生成结果
-///
-/// 由前端 CardAgent 在完成卡片生成后调用，用于：
-/// 1. 创建 anki_cards 块显示在聊天中
-/// 2. 持久化卡片数据到数据库
-/// 3. 发射事件通知前端 UI 更新
-///
-/// ## 参数
-/// - `request`: Anki 卡片结果请求
-/// - `db`: Chat V2 独立数据库
-/// - `app`: Tauri AppHandle（用于发射事件）
-///
-/// ## 返回
-/// - `Ok(String)`: 创建的 anki_cards 块 ID
-/// - `Err(String)`: 创建失败
-#[tauri::command]
-pub async fn chat_v2_anki_cards_result(
-    request: AnkiCardsResultRequest,
-    db: State<'_, Arc<ChatV2Database>>,
-    app: AppHandle,
-) -> Result<String, String> {
-    use tauri::Emitter;
-
-    log::info!(
-        "[ChatV2::handlers] chat_v2_anki_cards_result: session_id={}, message_id={}, cards_count={}, success={}",
-        request.session_id,
-        request.message_id,
-        request.cards.len(),
-        request.success
-    );
-
-    // 验证消息 ID 格式
-    if !request.message_id.starts_with("msg_") {
-        return Err(ChatV2Error::Validation(format!(
-            "Invalid message ID format: {}",
-            request.message_id
-        ))
-        .into());
-    }
-
-    // 生成新的 anki_cards 块 ID
-    let block_id = format!("blk_{}", uuid::Uuid::new_v4());
-    let now_ms = chrono::Utc::now().timestamp_millis();
-
-    // 构建 toolOutput（与前端 AnkiCardsBlockData 兼容）
-    let tool_output = serde_json::json!({
-        "cards": request.cards,
-        "documentId": request.document_id,
-        "templateId": request.template_id,
-        "syncStatus": "pending",
-        "businessSessionId": request.session_id,
-        "messageStableId": request.message_id,
-    });
-
-    // 确定块状态
-    let status = if request.success {
-        crate::chat_v2::types::block_status::SUCCESS.to_string()
-    } else {
-        crate::chat_v2::types::block_status::ERROR.to_string()
-    };
-
-    // 构建 anki_cards 块
-    let block = crate::chat_v2::types::MessageBlock {
-        id: block_id.clone(),
-        message_id: request.message_id.clone(),
-        block_type: crate::chat_v2::types::block_types::ANKI_CARDS.to_string(),
-        status: status.clone(),
-        content: None,
-        tool_name: Some("anki_generate_cards".to_string()),
-        tool_input: None,
-        tool_output: Some(tool_output.clone()),
-        citations: None,
-        error: request.error.clone(),
-        started_at: Some(now_ms),
-        ended_at: Some(now_ms),
-        first_chunk_at: Some(now_ms),
-        block_index: 1, // 放在 mcp_tool 块之后
-    };
-
-    // 保存到数据库
-    upsert_block_in_db(&block, &db).map_err(String::from)?;
-
-    // 🆕 2026-01: 发射 anki_cards 事件到前端，通知 UI 更新
-    // 使用会话特定的事件通道
-    let event_channel = format!("chat_v2_event_{}", request.session_id);
-
-    let start_sequence_id = next_session_sequence_id(&request.session_id);
-    // 发射 start 事件
-    let start_event = serde_json::json!({
-        "sequenceId": start_sequence_id,
-        "type": event_types::ANKI_CARDS,
-        "phase": event_phase::START,
-        "messageId": request.message_id,
-        "blockId": block_id,
-        "payload": {
-            "templateId": request.template_id,
-        },
-    });
-    if let Err(e) = app.emit(&event_channel, &start_event) {
-        log::warn!(
-            "[ChatV2::handlers] Failed to emit anki_cards start event: {}",
-            e
-        );
-    }
-
-    let end_sequence_id = next_session_sequence_id(&request.session_id);
-    // 发射 end 事件（带完整卡片数据）
-    let end_event = serde_json::json!({
-        "sequenceId": end_sequence_id,
-        "type": event_types::ANKI_CARDS,
-        "phase": event_phase::END,
-        "blockId": block_id,
-        "result": tool_output,
-        "status": status,
-        "error": request.error,
-    });
-    if let Err(e) = app.emit(&event_channel, &end_event) {
-        log::warn!(
-            "[ChatV2::handlers] Failed to emit anki_cards end event: {}",
-            e
-        );
-    }
-
-    log::info!(
-        "[ChatV2::handlers] Anki cards block created and event emitted: block_id={}, cards_count={}",
-        block_id,
-        request.cards.len()
-    );
-
-    Ok(block_id)
-}
-
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn removed_cardforge_callback_stays_off_command_surfaces() {
+        let removed_command = ["chat_v2_anki", "_cards_result"].concat();
+        let command_surfaces = [
+            ("block_actions.rs", include_str!("block_actions.rs")),
+            ("handlers/mod.rs", include_str!("mod.rs")),
+            ("lib.rs", include_str!("../../lib.rs")),
+            (
+                "permissions/application-commands.toml",
+                include_str!("../../../permissions/application-commands.toml"),
+            ),
+        ];
+
+        for (path, source) in command_surfaces {
+            assert!(
+                !source.contains(&removed_command),
+                "removed CardAgent callback must not be restored in {path}"
+            );
+        }
+    }
+
     #[test]
     fn test_block_id_validation() {
         assert!("blk_12345".starts_with("blk_"));

@@ -88,9 +88,11 @@ jobs:
           fi
 
           VERSION="${TAG#v}"
-          echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "source_ref=${SOURCE_REF}" >> $GITHUB_OUTPUT
+          {
+            echo "tag_name=${TAG}"
+            echo "version=${VERSION}"
+            echo "source_ref=${SOURCE_REF}"
+          } >> "$GITHUB_OUTPUT"
           echo "✅ Target release: ${TAG} (id=${RELEASE_ID}), building from: ${SOURCE_REF}"
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -119,6 +121,12 @@ jobs:
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 构建 Android APK (与 release.yml 共用 reusable workflow)
+  #
+  # WI-4 兼容性说明：这里有意不传 frontend_dist_artifact。GitHub Actions
+  # 的 artifact 只在同一 workflow run 内可见 —— 本 workflow 没有
+  # build-frontend job，无法引用 release.yml 那次 run 上传的 frontend-dist。
+  # 留空让 reusable-build-android.yml 走回退路径：beforeBuildCommand 在
+  # 构建 job 内完成前端构建，产物与主发布路径等价（门禁一致，只是慢一些）。
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build-android:
     needs: [preflight]
@@ -129,7 +137,8 @@ jobs:
       # ★ 2026-08-06：不再允许 lean 恢复构建作为正式发布。
       # v0.9.43 曾用 lean_recovery=true（opt-level=0）重建，产物
       # libdeep_student_lib.so 达 330MB，低内存设备启动 OOM 闪退。
-      # 恢复构建改为始终使用正常 release profile（opt-level=1）；
+      # 恢复构建改为始终使用正常 release profile（WI-6 R3 起为
+      # opt-level=z / codegen-units=16，见 reusable-build-android.yml）；
       # 若确需 lean 抢救 CI，请先修复构建时间问题，不要发版。
       lean_recovery: false
     secrets: inherit
@@ -160,7 +169,7 @@ jobs:
       # 只用于救活 CI，绝不能作为正式发布分发。
       - name: Guard — refuse to publish lean recovery build
         run: |
-          APK_FILE=$(ls android-output/*.apk | head -1)
+          APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
           if [ -z "$APK_FILE" ]; then
             echo "::error::No APK artifact found for publish"
             exit 1
@@ -211,7 +220,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
-          APK_FILE=$(ls android-output/*.apk | head -1)
+          APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
           APK_NAME=$(basename "$APK_FILE")
           echo "📤 Uploading ${APK_NAME} to release ${TAG}..."
           gh release upload "${TAG}" "$APK_FILE" --repo "${GH_REPO}" --clobber
@@ -229,7 +238,7 @@ jobs:
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
           R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
-          APK_FILE=$(ls android-output/*.apk | head -1)
+          APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
           APK_NAME=$(basename "$APK_FILE")
 
           echo "📤 Uploading APK to R2..."
@@ -280,7 +289,7 @@ jobs:
           CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
-          APK_NAME=$(basename "$(ls android-output/*.apk | head -1)")
+          APK_NAME=$(basename "$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)")
           {
             echo "https://download.deepstudent.cn/releases/${TAG}/${APK_NAME}"
             echo "https://download.deepstudent.cn/releases/latest.json"

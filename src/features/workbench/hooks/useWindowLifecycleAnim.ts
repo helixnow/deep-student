@@ -41,20 +41,52 @@ export const LIFEC_CLASS = {
 /** data-wb-lifec 属性名（React 不管理，免疫 className 覆写） */
 export const LIFEC_ATTR = 'data-wb-lifec';
 
-/**
- * 静态兜底上限（ms）：仅在 getComputedStyle 读不到 animationDuration 时使用。
- * 与当前 token 对齐：window-open 220 / window-close 110 / genie 400；倍率约 ×1.7 留余量。
- * 正常路径优先读壳上实际 animationDuration + FALLBACK_SLACK_MS。
- */
-const FALLBACK_MS: Record<WindowTransientPhase, number> = {
-  opening: 380, // --wb-motion-window-open 220 × ~1.7
-  closing: 190, // --wb-motion-window-close 110 × ~1.7
-  minimizing: 680, // --wb-motion-genie 400 × ~1.7
-  restoring: 680,
-};
-
 /** 读到真实时长后再加的余量，覆盖丢 animationend / 舍入 */
 const FALLBACK_SLACK_MS = 80;
+
+/**
+ * 兜底上限的运行时来源：CSS motion token（motion.css 是时长唯一真相源，
+ * reduced-motion / minimal / 各材质档的归零与调速自动生效，无双源漂移）。
+ * token 读不到（jsdom / 样式表未加载）才回退 STATIC_FALLBACK_MS。
+ */
+const PHASE_MOTION_TOKEN: Record<WindowTransientPhase, string> = {
+  opening: '--wb-motion-window-open',
+  closing: '--wb-motion-window-close',
+  minimizing: '--wb-motion-genie',
+  restoring: '--wb-motion-genie',
+};
+
+/** token 缺失时的静态兜底（与 motion.css 默认档一致：220 / 110 / 400） */
+const STATIC_FALLBACK_MS: Record<WindowTransientPhase, number> = {
+  opening: 220,
+  closing: 110,
+  minimizing: 400,
+  restoring: 400,
+};
+
+/** 兜底倍率：token 时长 × 1.7 留余量（覆盖丢 animationend / 帧调度延迟） */
+const FALLBACK_SCALE = 1.7;
+
+/**
+ * 兜底上限（ms）＝ motion token × FALLBACK_SCALE（冷路径，每次生命周期事件
+ * 至多读一次 computed style，不缓存——材质档 / reduced-motion 切换即时生效）。
+ */
+function fallbackMsForPhase(phase: WindowTransientPhase): number {
+  let tokenMs: number | null = null;
+  if (typeof document !== 'undefined') {
+    try {
+      tokenMs = parseCssDurationMs(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          PHASE_MOTION_TOKEN[phase],
+        ),
+      );
+    } catch {
+      /* jsdom / 无样式表 */
+    }
+  }
+  const base = tokenMs ?? STATIC_FALLBACK_MS[phase];
+  return Math.round(Math.max(0, base) * FALLBACK_SCALE);
+}
 
 export function resolveWindowShell(windowId: string): HTMLElement | null {
   if (typeof document === 'undefined') return null;
@@ -152,7 +184,7 @@ function parseCssDurationMs(raw: string): number | null {
 
 /**
  * 挂上 data-wb-lifec 后读取实际 animationDuration（含 0ms 归零），
- * 再加 slack；读失败则回退 FALLBACK_MS[phase]。
+ * 再加 slack；读失败则回退 motion token 派生的兜底上限。
  */
 export function resolveLifecFallbackMs(
   shell: HTMLElement,
@@ -164,16 +196,18 @@ export function resolveLifecFallbackMs(
   } catch {
     /* jsdom / 无样式表 */
   }
-  return FALLBACK_MS[phase];
+  return fallbackMsForPhase(phase);
 }
 
 /**
  * 无编排消费者时的收尾兜底：
  * - 无壳（快捷键单测等）→ 下一帧立即提交；
- * - 有壳 → 略晚于静态 FALLBACK_MS，若 hook 已收尾则 no-op，避免卡死。
+ * - 有壳 → 略晚于 motion token 派生的兜底上限，若 hook 已收尾则 no-op，避免卡死。
  */
 function scheduleOrphanPhaseFinish(windowId: string, phase: WindowTransientPhase): void {
-  const delay = resolveWindowShell(windowId) ? FALLBACK_MS[phase] + FALLBACK_SLACK_MS : 0;
+  const delay = resolveWindowShell(windowId)
+    ? fallbackMsForPhase(phase) + FALLBACK_SLACK_MS
+    : 0;
   const run = () => {
     const store = useWindowStore.getState();
     if (store.transientPhases?.[windowId] !== phase) return;
@@ -302,14 +336,18 @@ export function useWindowLifecycleAnim(windowId: string): void {
 
     const runId = ++runIdRef.current;
     const lifecValue = phaseLifecValue(phase);
+
+    // 先清上一相位标记并强制回流，再量测 Dock 源点：若旧动画（如 restoring
+    // 半途又 minimizing）仍挂在壳上，getBoundingClientRect 会读到含动画
+    // transform 的中间帧矩形，把收敛点百分比算偏（genie 斜向错位飞行）。
+    // 回流同时承担「同相重复标记时强制重启动画」的旧职责。
+    clearLifecAttr(shell);
+    void shell.offsetWidth;
+
     const win = useWindowStore.getState().windows[windowId];
     if (needsDockOrigin(phase) && win) {
       injectMinimizeOrigin(shell, win.typeId, dockOriginFallback(phase));
     }
-
-    clearLifecAttr(shell);
-    // 强制重启动画（同相重复标记时）
-    void shell.offsetWidth;
     shell.setAttribute(LIFEC_ATTR, lifecValue);
 
     const fallbackMs = resolveLifecFallbackMs(shell, phase);

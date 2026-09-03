@@ -4,6 +4,8 @@ import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
 import reactHooks from 'eslint-plugin-react-hooks';
 import noNativeButton from './eslint-rules/no-native-button.js';
+import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js';
+import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
 
 export default tseslint.config(
   // 基础 JS 推荐配置
@@ -22,7 +24,9 @@ export default tseslint.config(
     plugins: {
       'ds-components': {
         rules: {
-          'no-native-button': noNativeButton
+          'no-native-button': noNativeButton,
+          'no-arbitrary-font-size': noArbitraryFontSize,
+          'coarse-touch-target': coarseTouchTarget
         }
       },
       'react-hooks': reactHooks
@@ -105,6 +109,19 @@ export default tseslint.config(
       // 6. 禁止使用原生 <button> 元素 - 必须使用 DsButton（设为 warn 便于逐步修复）
       'ds-components/no-native-button': 'warn',
 
+      // 6.1 禁止 text-[Npx] 硬编码字号（不参与 --font-size-scale 缩放）。
+      // 全仓约 950 处历史欠账，先 warn；共享 UI 基元目录（src/components/ui/**）
+      // 已清零，在下方单独升为 error，防止按钮/对话框配方再退化。
+      'ds-components/no-arbitrary-font-size': 'warn',
+
+      // 6.2 coarse 触控目标必须走体系组件（DsButton / shad 原语 /
+      // min-h-[var(--touch-target-size)]），拦截业务组件里新增的
+      // [@media(pointer:coarse)]:!min-h-11 散点覆盖与裸 after:-inset 扩区。
+      // 存量散点较多，先 warn（白名单见 eslint-rules/coarse-touch-target.allowlist.json，
+      // 登记 WRAP-UP/ROUND-81~90 的有意折衷）；按目录逐步放量升 error
+      // （chat 输入条 input-bar 已在下方单独升为 error），清完存量后全局升 error。
+      'ds-components/coarse-touch-target': 'warn',
+
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
       'no-undef': 'off',
       'no-unused-vars': 'off',
@@ -134,6 +151,30 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': 'off',
       'ds-components/no-native-button': 'off'
+    }
+  },
+
+  // 共享 UI 基元（按钮/对话框/侧边栏配方）：字号必须走 token 类，
+  // 这里是字号缩放闭环的上游，退化一次就会扩散到全部消费方。
+  // coarse-touch-target 在这里整目录关闭：体系层（DsButton/DsDialog/shad
+  // Select/Sheet/Slider/SegmentedControl…）正是 coarse 44px 命中的集中实现处，
+  // [@media(pointer:coarse)]:!min-h-11 / after:-inset 在此目录是"体系本体"而非散点。
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'ds-components/no-arbitrary-font-size': 'error',
+      'ds-components/coarse-touch-target': 'off'
+    }
+  },
+
+  // 放量目录：chat 输入条（input-bar）。移动端触控整改的核心热区，
+  // coarse-touch-target 由全局 warn 升为 error，拦截新增散点覆盖回流；
+  // 全局其余目录仍 warn。注意保持本块位于测试文件 override 之前，
+  // 使 input-bar 下的 *.test.* / __tests__ 仍沿用整体关闭策略。
+  {
+    files: ['src/features/chat/components/input-bar/**/*.{js,jsx,ts,tsx}'],
+    rules: {
+      'ds-components/coarse-touch-target': 'error'
     }
   },
 
@@ -180,7 +221,10 @@ export default tseslint.config(
       'tests/**/*.{ts,tsx}'
     ],
     rules: {
-      'ds-components/no-native-button': 'off'
+      'ds-components/no-native-button': 'off',
+      // 契约/源码测试会把 coarse 类字符串当断言样本引用（如
+      // pdfMobilePanelTabs.source.test.ts），不是散点使用，关闭。
+      'ds-components/coarse-touch-target': 'off'
     }
   },
 

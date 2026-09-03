@@ -146,6 +146,9 @@
     "upload_partial": "Upload complete: {{success}} succeeded, {{failed}} failed",
     "processing_large_files": "Processing {{count}} large file(s), please wait..."
   },
+  "retrieve": {
+    "empty_query": "A retrieval request must include text, an image, or both"
+  },
   "rag_search": {
     "title": "Smart Search",
     "query_placeholder": "Enter search query...",

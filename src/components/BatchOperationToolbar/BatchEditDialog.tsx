@@ -170,7 +170,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
       <div className="batch-edit-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
           <h3>{t('batch_edit_title', { count: cards.length })}</h3>
-          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={onClose} aria-label={t('common:a11y.close')}>
             <X size={20} />
           </DsButton>
         </div>
@@ -349,7 +349,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                       {changes.tags!.value.map((tag, index) => (
                         <span key={index} className="tag">
                           {tag}
-                          <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label="remove">
+                          <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                             <X size={14} />
                           </DsButton>
                         </span>
@@ -368,11 +368,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 <h4>{t('preview_changes')}</h4>
                 {cards.length > 1 && (
                   <div className="preview-nav">
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label={t('common:a11y.prev')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:a11y.prev')}>
                       <CaretLeft size={16} />
                     </DsButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label={t('common:a11y.next')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:a11y.next')}>
                       <CaretRight size={16} />
                     </DsButton>
                   </div>
@@ -437,10 +437,10 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
         </div>
         
         <div className="dialog-footer">
-          <DsButton variant="default" size="sm" onClick={onClose}>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
             {t('cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={() => onSave(changes)} disabled={!hasChanges}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onSave(changes)} disabled={!hasChanges}>
             {t('apply_to_cards', { count: cards.length })}
           </DsButton>
         </div>

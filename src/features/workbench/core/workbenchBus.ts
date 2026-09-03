@@ -68,6 +68,38 @@ export interface ActivationDispatchResult {
   result: ActivationResult;
 }
 
+/**
+ * R5（Agent 结合-1）：支持按页跳转的应用 typeId——activation 通道
+ * `gotoPage` 最终都落到 apps/content/pdfFocusAck.requestPdfPageFocus
+ * （pdf-ref:focus + viewer ack + 超时 + stale 防双跳）。
+ */
+export const PDF_PAGE_ACTIVATION_TYPE_IDS = ['textbook', 'file', 'file-preview'] as const;
+export type PdfPageActivationTypeId = (typeof PDF_PAGE_ACTIVATION_TYPE_IDS)[number];
+
+export interface OpenNoteAnchorRequest {
+  /** 笔记资源 ID（note_xxx） */
+  noteId: string;
+  /** 目标标题文本（必填；无锚点的「仅打开笔记」请直接走 launch/activate openResource） */
+  heading: string;
+  /** 标题级别 1–6，可选；越界值按未提供处理 */
+  level?: number;
+  /** 笔记宿主未打开时是否自动打开（默认 true） */
+  fallbackLaunch?: boolean;
+}
+
+export interface OpenPdfPageRequest {
+  typeId: PdfPageActivationTypeId;
+  resourceId: string;
+  /** 1-based 页码；非整数向下取整（与 file-preview parsePage 口径一致） */
+  page: number;
+  /** 目标窗口未打开时是否自动打开（默认 true） */
+  fallbackLaunch?: boolean;
+}
+
+function invalidArgsResult(hint: string): ActivationDispatchResult {
+  return { delivered: false, result: { handled: false, code: 'INVALID_ARGS', hint } };
+}
+
 function settleActivationWaiters(windowId: string, ready: boolean): void {
   const waiters = activationWaiters.get(windowId);
   if (!waiters) return;
@@ -401,6 +433,81 @@ export const workbenchBus = {
     }
   },
 
+  /**
+   * 薄封装（R5 Agent 结合-1）：打开指定笔记并滚动到标题锚点。
+   *
+   * 纯接线、零新协议：委托 activateDetailed('note', 'scrollToHeading') →
+   * workspaceRegistry.activateWorkspaceResource → editor.scrollToHeading，
+   * ack / 幂等 / ACTIVATION_NOT_READY 语义均由既有链路提供。
+   * 能力表见 agent/integrationManifest.ts（open_note_anchor）。
+   */
+  async openNoteAnchor(req: OpenNoteAnchorRequest): Promise<ActivationDispatchResult> {
+    const noteId = req.noteId?.trim();
+    if (!noteId) return invalidArgsResult('openNoteAnchor 需要 noteId');
+    const heading = req.heading?.trim();
+    if (!heading) {
+      return invalidArgsResult('openNoteAnchor 需要 heading；无锚点打开请直接 launch');
+    }
+    const level = typeof req.level === 'number'
+      && Number.isInteger(req.level)
+      && req.level >= 1
+      && req.level <= 6
+      ? req.level
+      : undefined;
+    return workbenchBus.activateDetailed({
+      typeId: 'note',
+      instanceKey: noteId,
+      action: 'scrollToHeading',
+      payload: level != null ? { heading, level } : { heading },
+      ...(req.fallbackLaunch === false
+        ? {}
+        : {
+            fallbackLaunch: {
+              typeId: 'note',
+              instanceKey: noteId,
+              reason: 'api' as const,
+            },
+          }),
+    });
+  },
+
+  /**
+   * 薄封装（R5 Agent 结合-1）：打开 PDF 类资源并跳到指定页。
+   *
+   * 纯接线：委托 activateDetailed(typeId, 'gotoPage', { page }) →
+   * apps/content/pdfFocusAck.requestPdfPageFocus（pdf-ref:focus + viewer ack
+   * + 超时 + stale 防双跳——回执说失败就不会再发生迟到跳页）。
+   * 能力表见 agent/integrationManifest.ts（open_pdf_page）。
+   */
+  async openPdfPage(req: OpenPdfPageRequest): Promise<ActivationDispatchResult> {
+    if (!(PDF_PAGE_ACTIVATION_TYPE_IDS as readonly string[]).includes(req.typeId)) {
+      return invalidArgsResult(
+        `openPdfPage 仅支持 typeId=${PDF_PAGE_ACTIVATION_TYPE_IDS.join('/')}`,
+      );
+    }
+    const resourceId = req.resourceId?.trim();
+    if (!resourceId) return invalidArgsResult('openPdfPage 需要 resourceId');
+    const page = typeof req.page === 'number' && Number.isFinite(req.page) && req.page >= 1
+      ? Math.floor(req.page)
+      : null;
+    if (page == null) return invalidArgsResult('openPdfPage 需要 page ≥ 1');
+    return workbenchBus.activateDetailed({
+      typeId: req.typeId,
+      instanceKey: resourceId,
+      action: 'gotoPage',
+      payload: { page },
+      ...(req.fallbackLaunch === false
+        ? {}
+        : {
+            fallbackLaunch: {
+              typeId: req.typeId,
+              instanceKey: resourceId,
+              reason: 'api' as const,
+            },
+          }),
+    });
+  },
+
   /** 长活业务实例投射：实例出现 → 保证有窗；结束由宿主 closeWindow */
   project(req: ProjectRequest): string | null {
     if (!enabled) return null;
@@ -414,6 +521,7 @@ export const workbenchBus = {
       instanceKey: req.instanceKey,
       title: req.title,
       initialFrame: req.initialFrame,
+      background: req.background,
     });
   },
 

@@ -135,6 +135,31 @@ pub const V20260525_DROP_DAILY_CHANGE_LOG_TRIGGERS: MigrationDef = MigrationDef:
 )
 .idempotent();
 
+/// V20260824: llm_usage_logs 增加 cache_write_tokens（缓存写入 Token，
+/// NULL = 无测量），报表侧据此计算缓存 write/read 比
+pub const V20260824_ADD_CACHE_WRITE_TOKENS: MigrationDef = MigrationDef::new(
+    20260824,
+    "add_cache_write_tokens",
+    include_str!("../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"),
+)
+.with_expected_columns(&[("llm_usage_logs", "cache_write_tokens")]);
+
+/// V20260826: llm_usage_logs 增加 variant_id / run_id（遥测身份分列）。
+///
+/// model2 流式路径此前把 run-scoped stream_event 整体当 session_id 落库；
+/// 本迁移为分列后的 variant / run 维度补列（session_id 复用既有列，改为
+/// 写真实会话 ID）。NULL = 未知（历史数据 / 非 chat_v2 调用方）。
+pub const V20260826_ADD_STREAM_IDENTITY: MigrationDef = MigrationDef::new(
+    20260826,
+    "add_stream_identity",
+    include_str!("../../../migrations/llm_usage/V20260826__add_stream_identity.sql"),
+)
+.with_expected_columns(&[
+    ("llm_usage_logs", "variant_id"),
+    ("llm_usage_logs", "run_id"),
+])
+.with_expected_indexes(&["idx_llm_usage_logs_variant_id", "idx_llm_usage_logs_run_id"]);
+
 /// V20260201 同步字段索引
 const LLM_USAGE_V20260201_SYNC_INDEXES: &[&str] = &[
     // llm_usage_logs 表同步索引
@@ -161,6 +186,8 @@ pub const LLM_USAGE_MIGRATIONS: &[MigrationDef] = &[
     V20260202_FIX_CHANGE_LOG_RECORD_ID,
     V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     V20260525_DROP_DAILY_CHANGE_LOG_TRIGGERS,
+    V20260824_ADD_CACHE_WRITE_TOKENS,
+    V20260826_ADD_STREAM_IDENTITY,
 ];
 
 /// LLM Usage 数据库迁移集合
@@ -190,7 +217,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(LLM_USAGE_MIGRATION_SET.database_name, "llm_usage");
-        assert_eq!(LLM_USAGE_MIGRATION_SET.count(), 6); // + V20260202 + V20260524 + V20260525
+        assert_eq!(LLM_USAGE_MIGRATION_SET.count(), 8); // + V20260202 + V20260524 + V20260525 + V20260824 + V20260826
     }
 
     #[test]
@@ -217,40 +244,55 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(LLM_USAGE_MIGRATION_SET.latest_version(), 20260525);
+        assert_eq!(LLM_USAGE_MIGRATION_SET.latest_version(), 20260826);
     }
 
     #[test]
     fn test_pending_migrations() {
-        // 从版本 0 开始，应该有 6 个待执行
+        // 从版本 0 开始，应该有 8 个待执行
         let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(0).collect();
+        assert_eq!(pending.len(), 8);
+
+        // 从版本 20260130 开始，应该有 7 个待执行
+        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260130).collect();
+        assert_eq!(pending.len(), 7);
+
+        // 从版本 20260131 开始，应该有 6 个待执行
+        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260131).collect();
         assert_eq!(pending.len(), 6);
 
-        // 从版本 20260130 开始，应该有 5 个待执行
-        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260130).collect();
+        // 从版本 20260201 开始，应该有 5 个待执行
+        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260201).collect();
         assert_eq!(pending.len(), 5);
 
-        // 从版本 20260131 开始，应该有 4 个待执行
-        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260131).collect();
-        assert_eq!(pending.len(), 4);
-
-        // 从版本 20260201 开始，应该有 3 个待执行
-        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260201).collect();
-        assert_eq!(pending.len(), 3);
-
-        // 从版本 20260202 开始，应该有 2 个待执行
+        // 从版本 20260202 开始，应该有 4 个待执行
         let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260202).collect();
-        assert_eq!(pending.len(), 2);
+        assert_eq!(pending.len(), 4);
         assert_eq!(pending[0].refinery_version, 20260524);
         assert_eq!(pending[1].refinery_version, 20260525);
+        assert_eq!(pending[2].refinery_version, 20260824);
+        assert_eq!(pending[3].refinery_version, 20260826);
 
-        // 从版本 20260524 开始，应该有 1 个待执行
+        // 从版本 20260524 开始，应该有 3 个待执行
         let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260524).collect();
-        assert_eq!(pending.len(), 1);
+        assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].refinery_version, 20260525);
+        assert_eq!(pending[1].refinery_version, 20260824);
+        assert_eq!(pending[2].refinery_version, 20260826);
 
-        // 从版本 20260525 开始，应该没有待执行
+        // 从版本 20260525 开始，剩 cache_write_tokens + 遥测身份两列
         let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260525).collect();
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].refinery_version, 20260824);
+        assert_eq!(pending[1].refinery_version, 20260826);
+
+        // 从版本 20260824 开始，只剩遥测身份分列
+        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260824).collect();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].refinery_version, 20260826);
+
+        // 从版本 20260826 开始，应该没有待执行
+        let pending: Vec<_> = LLM_USAGE_MIGRATION_SET.pending(20260826).collect();
         assert_eq!(pending.len(), 0);
     }
 }

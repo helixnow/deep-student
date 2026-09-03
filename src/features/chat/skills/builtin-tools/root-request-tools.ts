@@ -62,19 +62,17 @@ export const rootRequestToolsSkill: SkillDefinition = {
     {
       name: 'builtin-runtime_root_request',
       description:
-        '请求用户授权一个本地目录为只读 authorized runtime root。path（绝对路径）与 purpose（一句话用途）会显示在审批卡参数中；用户批准后写入 Settings 同等 authorized root。critical 目录（盘符根、主目录、C:\\Users 等）agent 不代理授权；broad 目录（Desktop/Downloads/Documents 等）允许但范围较宽。不支持设置 workspace root；撤销仅在 Settings > 工具权限。',
+        '请求用户授权本地目录为只读 authorized runtime root；path 与 purpose 显示在审批卡供核对。critical 目录不代理授权，broad 目录允许但需先解释用途（见技能说明）。不支持 workspace root；撤销仅在 Settings > 工具权限。',
       inputSchema: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description:
-              '必填。待授权的本地目录绝对路径（会原样显示在审批卡参数中，请传真实路径）。',
+            description: '待授权目录的绝对路径（原样显示在审批卡）。',
           },
           purpose: {
             type: 'string',
-            description:
-              '必填。一句话说明为何需要访问该目录（显示在审批卡上，帮助用户决定是否批准）。',
+            description: '一句话说明访问用途，显示在审批卡。',
           },
         },
         required: ['path', 'purpose'],

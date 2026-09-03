@@ -352,7 +352,7 @@ export function LearningHeatmap({
           variant="ghost"
           size="sm"
           onClick={refresh}
-          className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]"
+          className="!px-3 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 text-xs font-medium hover:bg-[var(--interactive-hover)]"
         >
           <ArrowsClockwise size={12} />
           {t('heatmap.retry')}

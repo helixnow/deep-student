@@ -167,6 +167,7 @@ export const chatAnkiSkill: SkillDefinition = {
     'builtin-chatanki_undo_library_last_review',
     'builtin-chatanki_delete_library_card',
     'builtin-chatanki_retemplate',
+    'builtin-chatanki_transform',
     'builtin-chatanki_control',
     'builtin-chatanki_export',
     'builtin-chatanki_sync',
@@ -203,7 +204,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_run',
       description:
-        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。',
+        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。可选生成调优旋钮：outputProtocol/contentFormat/visualHint/maxImages/enableQaPass/enablePreferenceMemory（默认 auto/开启）、enableFsrsFeedback（默认关闭；复习画像随请求外送，需用户明确授权）及 enableCriticPass（默认关闭；仅当用户明确要求“质检/复审/critic”时开启）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -256,6 +257,57 @@ export const chatAnkiSkill: SkillDefinition = {
             maximum: 100,
             description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
           },
+          extraRequirements: {
+            type: 'string',
+            description:
+              '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
+          },
+          outputProtocol: {
+            type: 'string',
+            enum: ['auto', 'delimiter', 'json_object', 'json_schema'],
+            description:
+              '可选：卡片生成的流式输出协议。默认 auto=由管线按模型能力自选，绝大多数情况不要传；仅在用户明确要求或某模型持续产出坏卡时覆盖。非法值会被后端在启动前直接拒绝（不会静默回退成 delimiter）。',
+          },
+          visualHint: {
+            type: 'string',
+            description:
+              '可选：视觉重点提示（"看图看哪里"，如"重点提取第 3 页流程图的每个节点与箭头方向"）。仅 VLM 路由（vlm_light/vlm_full）生效，以数据块形式注入 VLM prompt（不是指令）；simple_text 路由与 chatanki_start 均忽略。卡片风格/语言约束不要写这里，放 extraRequirements。',
+          },
+          contentFormat: {
+            type: 'string',
+            enum: ['auto', 'glossary', 'prose'],
+            default: 'auto',
+            description:
+              '可选：材料形态覆盖。auto（默认）=启发式判定；明确是词汇表/术语清单（逐条条目型）时传 glossary，明确是叙述性文章时传 prose。与 chatanki_analyze 返回的 routing.glossaryMode 对应。',
+          },
+          enableQaPass: {
+            type: 'boolean',
+            description:
+              '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
+          },
+          enableCriticPass: {
+            type: 'boolean',
+            default: false,
+            description:
+              '可选：生成后 grounded LLM critic 质检/复审开关，默认 false（不传=关闭）。仅当用户明确要求“质检/复审/critic”时传 true；会增加一次模型评审调用。',
+          },
+          enableFsrsFeedback: {
+            type: 'boolean',
+            description:
+              '可选：FSRS 复习画像回流开关，默认 false（复习画像会随生成请求发送到所配置的模型端点，需用户明确授权）。仅在用户明确要求"根据我的复习记录调整"时传 true；缺省与 false 均不注入。',
+          },
+          maxImages: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 12,
+            description:
+              '可选：VLM 单次调用图片数上限（1~12；默认 vlm_light 6 / vlm_full 12）。仅 VLM 路由生效；超出范围会被后端 clamp 到 1~12。',
+          },
+          enablePreferenceMemory: {
+            type: 'boolean',
+            description:
+              '可选：历史制卡偏好记忆注入开关，默认 true。仅在用户明确要求"忽略我以前的偏好"时传 false。',
+          },
           debug: { type: 'boolean', description: '可选：输出更多调试信息（路由决策/分块统计等）' },
         },
         required: ['goal', 'maxCards', 'templateMode'],
@@ -266,12 +318,13 @@ export const chatAnkiSkill: SkillDefinition = {
             then: { required: ['templateIds'] },
           },
         ],
+        additionalProperties: false,
       },
     },
     {
       name: 'builtin-chatanki_start',
       description:
-        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。',
+        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。固定纯文本路径，不接受 route/resourceId/resourceIds，也没有 VLM 专属参数（visualHint/maxImages）；可选生成调优旋钮：outputProtocol/contentFormat/enableQaPass/enablePreferenceMemory（默认 auto/开启）、enableFsrsFeedback（默认关闭；复习画像随请求外送，需用户明确授权）及 enableCriticPass（默认关闭；仅当用户明确要求“质检/复审/critic”时开启）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -300,6 +353,45 @@ export const chatAnkiSkill: SkillDefinition = {
             maximum: 100,
             description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
           },
+          extraRequirements: {
+            type: 'string',
+            description:
+              '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
+          },
+          outputProtocol: {
+            type: 'string',
+            enum: ['auto', 'delimiter', 'json_object', 'json_schema'],
+            description:
+              '可选：卡片生成的流式输出协议。默认 auto=由管线按模型能力自选，绝大多数情况不要传；仅在用户明确要求或某模型持续产出坏卡时覆盖。非法值会被后端在启动前直接拒绝（不会静默回退成 delimiter）。',
+          },
+          contentFormat: {
+            type: 'string',
+            enum: ['auto', 'glossary', 'prose'],
+            default: 'auto',
+            description:
+              '可选：材料形态覆盖。auto（默认）=启发式判定；明确是词汇表/术语清单（逐条条目型）时传 glossary，明确是叙述性文章时传 prose。与 chatanki_analyze 返回的 routing.glossaryMode 对应。',
+          },
+          enableQaPass: {
+            type: 'boolean',
+            description:
+              '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
+          },
+          enableCriticPass: {
+            type: 'boolean',
+            default: false,
+            description:
+              '可选：生成后 grounded LLM critic 质检/复审开关，默认 false（不传=关闭）。仅当用户明确要求“质检/复审/critic”时传 true；会增加一次模型评审调用。',
+          },
+          enableFsrsFeedback: {
+            type: 'boolean',
+            description:
+              '可选：FSRS 复习画像回流开关，默认 false（复习画像会随生成请求发送到所配置的模型端点，需用户明确授权）。仅在用户明确要求"根据我的复习记录调整"时传 true；缺省与 false 均不注入。',
+          },
+          enablePreferenceMemory: {
+            type: 'boolean',
+            description:
+              '可选：历史制卡偏好记忆注入开关，默认 true。仅在用户明确要求"忽略我以前的偏好"时传 false。',
+          },
           debug: { type: 'boolean', description: '可选：输出更多调试信息' },
         },
         required: ['goal', 'content', 'maxCards', 'templateMode'],
@@ -310,6 +402,7 @@ export const chatAnkiSkill: SkillDefinition = {
             then: { required: ['templateIds'] },
           },
         ],
+        additionalProperties: false,
       },
     },
     {
@@ -456,6 +549,186 @@ export const chatAnkiSkill: SkillDefinition = {
           },
         },
         required: ['documentId', 'updates'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_transform',
+      description:
+        '对当前会话文档的卡片执行批量程序化变换（批量挖空、术语替换、格式清洗、批量增删标签）。transform.ops（声明式安全子集，纯 Rust，移动端可用，Medium）与 transform.script（沙箱 python/node 脚本，能力全集，High，由平台审批卡统一承接、审批卡会完整展示脚本正文，不要在正文自行索要确认）二选一。后端直接从数据库读取选中卡片的无截断全文快照做变换，不存在截断毒化，无需 allowTruncatedSource。script 模式：快照导出到会话 temp root 的 job 目录，脚本在本地硬沙箱内运行——网络恒禁、只能读 $CHATANKI_INPUT 指向的 JSON、把 {"cards":[{id, front?, back?, text?, tags?}]} 写到 $CHATANKI_OUTPUT，不能触达数据库；输出中的 version 一律被忽略（乐观锁只认后端快照时记录的版本），未提及的卡不修改，v1 禁止脚本新增/删除卡片（快照之外的 id 记入 unknownCardIds）。移动端或缺少沙箱/解释器时结构化返回 script_sandbox_unavailable / interpreter_unavailable，ops 模式不受影响。默认 mode=dry_run：只返回逐卡 diff 摘要不写库，用于向用户展示效果；确认后再用 mode=apply 经逐卡乐观锁写回，apply 必须携带与选择集精确一致的完整 expectedVersions（cardId -> version，来自最近一次 get_cards）。首次变换必须先 dry_run；一次 apply 影响超过 3 张卡前必须先用 ask_user 征得用户确认。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: {
+            type: 'string',
+            minLength: 1,
+            pattern: '\\S',
+            description: '目标制卡任务 documentId（当前会话拥有；来自 run/start/wait/import_apkg）',
+          },
+          selection: {
+            type: 'object',
+            description: '可选：变换范围。缺省为文档全部 live 非诊断卡。cardIds 与 filter 互斥。',
+            properties: {
+              cardIds: {
+                type: 'array',
+                items: { type: 'string', minLength: 1, pattern: '\\S' },
+                minItems: 1,
+                maxItems: 500,
+                uniqueItems: true,
+                description: '精确选择的真实卡片 ID（来自 get_cards，不得使用序号或临时 ID）',
+              },
+              filter: {
+                type: 'string',
+                enum: ['all', 'edited_only', 'error_only'],
+                description: '按状态筛选（与 get_cards 的 filter 同语义；all 含诊断卡）',
+              },
+            },
+            oneOf: [{ required: ['cardIds'] }, { required: ['filter'] }],
+            additionalProperties: false,
+          },
+          mode: {
+            type: 'string',
+            enum: ['dry_run', 'apply'],
+            default: 'dry_run',
+            description:
+              'dry_run：执行变换但不写库，返回逐卡 diff 摘要（before/after 仅展示用途截断，写库路径不经过它）；apply：校验 expectedVersions 后逐卡乐观锁写回。首次变换必须先 dry_run。',
+          },
+          transform: {
+            type: 'object',
+            description: '变换定义：script（沙箱脚本，能力全集，High 审批）或 ops（声明式安全子集，纯 Rust，移动端可用）二选一，不得同时提供。',
+            oneOf: [{ required: ['script'] }, { required: ['ops'] }],
+            properties: {
+              script: {
+                type: 'object',
+                description:
+                  '沙箱脚本变换。脚本合同：从环境变量 CHATANKI_INPUT 指向的 UTF-8 JSON 读 {documentId, cards:[{id,index,front,back,text,tags,templateId,extraFields,version}]}（全文无截断），把 {"cards":[{id, front?, back?, text?, tags?}]} 写到 CHATANKI_OUTPUT 指向的路径；null/缺省字段 = 不修改，空字符串会被逐卡拒绝（empty_field），修改 text 必须携带合法 {{cN::答案}} 挖空标记（invalid_cloze_text），未知字段逐卡拒绝（unknown_output_field），version 回传无效。stdout/stderr 仅用于日志（各保留末尾 16KB）。沙箱强制：网络恒禁、只挂载 job 目录可写、环境变量白名单。',
+                properties: {
+                  language: {
+                    type: 'string',
+                    enum: ['python', 'node'],
+                    description: '解释器。后端按固定安装目录 + PATH 探测本机可用解释器（python3/python 或 node），缺失时结构化返回 interpreter_unavailable。',
+                  },
+                  code: {
+                    type: 'string',
+                    minLength: 1,
+                    maxLength: 65536,
+                    pattern: '\\S',
+                    description: '脚本正文（python 以 -I 隔离模式运行）。禁止网络与文件系统漫游（沙箱强制，非君子协定）。',
+                  },
+                  timeoutMs: {
+                    type: 'integer',
+                    minimum: 1000,
+                    maximum: 120000,
+                    default: 30000,
+                    description: '脚本超时；超时终止整个进程组并返回 error=script_timed_out，不写库。',
+                  },
+                },
+                required: ['language', 'code'],
+                additionalProperties: false,
+              },
+              ops: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 20,
+                description: '声明式操作序列，按序应用到每张选中卡片。regex 采用 Rust regex crate 语法（无回溯灾难），编译失败整批返回 error=invalid_pattern 且不写库。',
+                items: {
+                  type: 'object',
+                  properties: {
+                    op: {
+                      type: 'string',
+                      enum: ['regex_replace', 'tag_add', 'tag_remove'],
+                      description:
+                        'regex_replace：字段内正则替换（替换串支持 $1/$name 捕获组引用）；tag_add / tag_remove：对整个选择集批量增删标签（tag_add 自动去重）。',
+                    },
+                    field: {
+                      type: 'string',
+                      enum: ['front', 'back', 'text'],
+                      description: 'regex_replace 的目标字段；text 为 null 的卡自动跳过',
+                    },
+                    pattern: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 1024,
+                      pattern: '\\S',
+                      description: 'Rust regex 语法，regex_replace 必填',
+                    },
+                    replacement: {
+                      type: 'string',
+                      maxLength: 4096,
+                      description: 'regex_replace 的替换串，支持 $1 捕获组引用；缺省为空串（删除匹配）',
+                    },
+                    tags: {
+                      type: 'array',
+                      items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+                      minItems: 1,
+                      maxItems: 50,
+                      description: 'tag_add / tag_remove 的标签列表',
+                    },
+                  },
+                  required: ['op'],
+                  oneOf: [
+                    {
+                      properties: {
+                        op: { const: 'regex_replace' },
+                        field: { type: 'string', enum: ['front', 'back', 'text'] },
+                        pattern: { type: 'string', minLength: 1, maxLength: 1024, pattern: '\\S' },
+                        replacement: { type: 'string', maxLength: 4096 },
+                      },
+                      required: ['op', 'field', 'pattern'],
+                      additionalProperties: false,
+                    },
+                    {
+                      properties: {
+                        op: { const: 'tag_add' },
+                        tags: {
+                          type: 'array',
+                          items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+                          minItems: 1,
+                          maxItems: 50,
+                        },
+                      },
+                      required: ['op', 'tags'],
+                      additionalProperties: false,
+                    },
+                    {
+                      properties: {
+                        op: { const: 'tag_remove' },
+                        tags: {
+                          type: 'array',
+                          items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+                          minItems: 1,
+                          maxItems: 50,
+                        },
+                      },
+                      required: ['op', 'tags'],
+                      additionalProperties: false,
+                    },
+                  ],
+                  additionalProperties: false,
+                },
+              },
+            },
+            additionalProperties: false,
+          },
+          expectedVersions: {
+            type: 'object',
+            minProperties: 1,
+            additionalProperties: { type: 'string', minLength: 1, pattern: '\\S' },
+            description:
+              'apply 模式必填：cardId -> version 完整映射，必须与本次选择集精确一致（与 retemplate 相同 CAS 语义）。dry_run 可省略。缺卡/多卡返回 expected_versions_mismatch；任一版本过期该卡返回 conflict，其余卡照常生效。',
+          },
+          purpose: {
+            type: 'string',
+            description: '变换目的的一句话说明，用于审计与用户确认展示。',
+          },
+        },
+        required: ['documentId', 'transform'],
+        allOf: [
+          {
+            if: { properties: { mode: { const: 'apply' } }, required: ['mode'] },
+            then: { required: ['expectedVersions'] },
+          },
+        ],
         additionalProperties: false,
       },
     },
@@ -838,7 +1111,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_retemplate',
       description:
-        '把当前会话中的整批或指定卡片更换为目标模板。必须携带 get_cards 读到的每张卡版本；返回逐卡映射结果与 missingFields，缺失字段由后续 update_card 补齐。',
+        '把当前会话中的整批或指定卡片更换为目标模板。必须携带 get_cards 读到的每张卡版本；返回逐卡映射结果与 missingFields。fill_missing_llm 会在换模板事务之后用 LLM 批量补缺失字段并按新版本 CAS 写回；其余策略的缺失字段由后续 update_card 补齐。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -862,8 +1135,9 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           strategy: {
             type: 'string',
-            enum: ['map_only', 'fill_missing'],
-            description: 'map_only 只映射已有字段；fill_missing 额外返回缺失字段与源卡内容，但不会自动生成字段值',
+            enum: ['map_only', 'fill_missing', 'fill_missing_llm'],
+            description:
+              'map_only 只映射已有字段；fill_missing 额外返回缺失字段与源卡内容，但不会自动生成字段值；fill_missing_llm 在换模板成功后追加 Phase 2：LLM 批量生成缺失字段值并逐卡 CAS 写回，逐卡返回 fillStatus/filledFields',
           },
           expectedVersions: {
             type: 'object',
@@ -925,14 +1199,39 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_analyze',
-      description: '预分析文本材料（不生成卡片），给出长度/词条密度估计、推荐 route/参数等。',
+      description:
+        '预分析学习材料（不生成卡片），路由决策与制卡管线同源：纯文本走启发式（simple_text）；传 resourceId/resourceIds 时按引用元数据走与 chatanki_run 相同的 LLM 路由规划（失败/低置信度自动回退启发式）。返回 routing（route、routeSource=forced|llm|heuristic、confidence、glossaryMode、reason）与 recommended。recommended 中只有 route（可作 run 的 route 强制）与 maxCards（1~100）能回传给 chatanki_run；temperature/segmentOverlapSize/maxOutputTokensOverride/pipelineDefaultMaxCards 由管线内部按同一函数自算，run/start 没有对应参数，仅供解释预估。',
       inputSchema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: '学习材料内容（文本/Markdown）' },
-          goal: { type: 'string', description: '可选：学习目标（用于更好推荐拆卡方式）' },
+          content: {
+            type: 'string',
+            minLength: 1,
+            pattern: '\\S',
+            description: '学习材料内容（文本/Markdown）。传 resourceIds 时可省略。',
+          },
+          goal: { type: 'string', description: '可选：学习目标。会进入路由规划提示词参与决策，不再只是回显。' },
+          route: {
+            type: 'string',
+            enum: ['simple_text', 'vlm_light', 'vlm_full'],
+            description: '可选：预演强制路由（routing.routeSource 将返回 forced）。',
+          },
+          resourceId: {
+            type: 'string',
+            minLength: 1,
+            pattern: '\\S',
+            description: '可选：要预分析的单个资源 ID（file_/att_/tb_/res_）。',
+          },
+          resourceIds: {
+            type: 'array',
+            items: { type: 'string', minLength: 1, pattern: '\\S' },
+            minItems: 1,
+            description:
+              '可选：要预分析的多个资源 ID。传入后按引用元数据（文件/图片计数 + 文本采样）走与 chatanki_run 同一条路由决策链；资源无法解析时降级为纯文本分析并在 warnings 中说明（不会硬失败）。',
+          },
         },
-        required: ['content'],
+        anyOf: [{ required: ['content'] }, { required: ['resourceIds'] }, { required: ['resourceId'] }],
+        additionalProperties: false,
       },
     },
     {
@@ -961,6 +1260,38 @@ export const chatAnkiSkill: SkillDefinition = {
 - 已有 APKG：\`builtin-chatanki_import_apkg\` -> 用返回的 \`documentId\` 调用 \`builtin-chatanki_get_cards\` 分页读回全部卡片 -> 必要时加工并再次验收。
 
 两条流程验收后都要向用户汇报并主动询问是否加入复习计划。只有用户同意后才调用 \`builtin-chatanki_enqueue_review\`；只有用户明确要求或确认后，才继续 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
+
+## 策展 → 生成 → 质检 决策树
+
+制卡是「策展（想清楚做什么卡）→ 生成（run/start）→ 质检（get_cards 验收修正）」三段闭环，按以下决策树走：
+
+1. **材料形态是否清楚？**（纯文本还是含图 PDF？词汇表还是叙述文？maxCards 该传多少？）
+   - 不清楚 → 先调用 \`builtin-chatanki_analyze\`（传 \`content\` 或 \`resourceIds\`，goal 一并传入）。它与制卡管线共用同一路由决策函数：
+     - \`routing.route\` / \`routing.routeSource\`（forced|llm|heuristic）/ \`routing.confidence\` / \`routing.reason\` 解释管线将走哪条导入路由、为什么；
+     - \`routing.glossaryMode=true\` 表示词汇表/术语清单：\`maxCards\` 直接采用 \`recommended.maxCards\`（条目数 + 余量），goal 写明「每条条目一张卡」；
+     - **能回传 run 的参数只有** \`recommended.route\`（需要固定路由时作 run 的 \`route\`）与 \`recommended.maxCards\`（1~100）；
+     - \`temperature\` / \`segmentOverlapSize\` / \`maxOutputTokensOverride\` / \`pipelineDefaultMaxCards\` 由管线内部按同一函数自算，run/start **没有**这些参数，禁止试图传入。
+   - 清楚 → 直接进入第 2 步。
+2. **策展**：goal 写成「学习目标 + 卡型偏好 + 粒度要求」；风格/语言/格式约束放 \`extraRequirements\`。材料多、知识点密集时先列制卡大纲（知识点清单/卡型/去重/优先级）再启动；环境安装了 \`content-curator\` 子代理档案且你有子代理委派工具时，可委派它产出大纲并把「建议 goal 文本」拼进 run。
+3. **生成**：\`builtin-chatanki_run\`（文件/引用）或 \`builtin-chatanki_start\`（已清洗文本）→ 下一轮 \`builtin-chatanki_wait\`。
+4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
+5. **交付**：向用户汇报生成/修改/删除统计 → 征求同意后再 enqueue_review / export / sync。
+
+## 生成调优参数（run/start 可选旋钮，何时用哪个）
+
+run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticPass\` 默认关闭外，其余保持 auto/开启，绝大多数调用一个都不用传。判别标准是"约束作用在哪一层"：
+
+- **goal**：学习目标 + 卡型偏好 + 粒度要求（"要做什么卡"）。永远必传。
+- **extraRequirements**：卡片成品的风格/语言/格式约束（"卡片长什么样"，如"答案统一用英文""每张卡背面附一个例句"）。作为高优先级规则注入生成提示；不要把学习目标或看图指引混进来。
+- **visualHint**（仅 run + VLM 路由）：视觉注意力引导（"看图看哪里"，如"重点提取第 3 页流程图的节点与箭头方向""忽略页眉水印"）。以数据块注入 VLM prompt、不是指令；simple_text 路由与 start 均忽略。材料是含图 PDF/截图且用户点名了某张图/某块区域时才传。
+- **contentFormat**：材料形态覆盖（"材料是什么体裁"）。auto（默认）走启发式；用户明确说是词汇表/术语清单（逐条条目、每条一张卡）时传 \`glossary\`，明确是叙述性文章、启发式却误判成清单时传 \`prose\`。与 \`chatanki_analyze\` 的 \`routing.glossaryMode\` 对应：analyze 判定为 glossary 而你要强制固化该行为时传 \`glossary\`。
+- **outputProtocol**：卡片生成的流式输出协议（\`auto|delimiter|json_object|json_schema\`，"管线怎么跟模型说话"）。与卡片内容无关，默认 auto 即可；仅在用户明确指定，或同一模型反复产出解析失败的坏卡需要换协议排障时覆盖。**非法值会被后端在启动前直接拒绝**（不会静默回退），拼写务必与 enum 一致。
+- **enableQaPass / enablePreferenceMemory**：两个默认开启的布尔开关（QA 校验留痕 \`_qa_flags\` / 历史制卡偏好注入）。只有用户明确说"不要 QA 标记""忽略我以前的偏好"时才传 false，禁止自行关闭。
+- **enableFsrsFeedback**：FSRS 复习画像回流，**默认关闭**——画像文本会随生成请求发送到所配置的模型端点，属于用户复习数据外送，必须用户明确说"根据我的复习记录调整"之类的授权语句才传 true，禁止自行开启。
+- **enableCriticPass**：生成后的 grounded LLM critic 质检/复审，默认关闭且不传即不运行。**仅当用户明确要求“质检/复审/critic”时才传 true**；不要因一般制卡、默认验收流程或 Agent 自行判断而开启。
+- **maxImages**（仅 run + VLM 路由）：单次 VLM 调用图片数上限 1~12（默认 vlm_light 6 / vlm_full 12）。图片特别多想控制成本、或用户只要求覆盖前几张图时下调；超出范围会被后端 clamp。
+
+速查：语言/风格/格式 → extraRequirements；看图重点 → visualHint；词汇表 vs 文章 → contentFormat；模型输出协议排障 → outputProtocol；其余保持默认。
 
 ## APKG 导入闭环（必须完整执行）
 
@@ -1000,11 +1331,23 @@ export const chatAnkiSkill: SkillDefinition = {
 - 删除：先 list 获取同一快照的 \`expectedVersion\` 与 \`reviewState.reviewVersion\`；未入队即 \`reviewState=null\` 时，\`expectedReviewVersion\` 必须显式传 \`null\`。一次删除超过 3 张库卡必须先 ask_user；即使单张，目标或删除意图不明确时也必须确认。冲突后重新 list，不得换用会话级删除绕过 CAS。
 - **Agent 禁止评分**：库级流程同样严禁 Agent 选择 Again/Hard/Good/Easy，工具清单没有任何 rate/score 工具。Agent 只能读取统计与状态，并在用户明确要求时入队、编辑、暂停/恢复、撤销或删除；实际评分必须由用户在复习 UI 中完成。
 
+## 批量程序化变换（chatanki_transform）
+
+- 用户要求对多张卡做**同构的机械变换**（统一术语替换、清理格式、批量加/删标签、批量挖空）时，优先一次 \`builtin-chatanki_transform\`，不要循环调用 update_card 或把 get_cards 的截断输出拼进 batch_update_cards。
+- 固定流程：\`builtin-chatanki_get_cards\`（收集选择集的 \`cardId -> version\`）-> \`transform(mode=dry_run)\` 查看逐卡 diff -> 向用户展示效果（影响超过 3 张卡时用 \`builtin-ask_user\` 确认）-> \`transform(mode=apply, expectedVersions=完整映射)\` -> \`get_cards\` 复核。
+- 后端直接读数据库全文快照做变换，**不受 2000 字符截断影响**；diff 里的 before/after 截断仅为展示，写库路径不经过它。
+- \`apply\` 的 \`expectedVersions\` 必须与选择集精确一致：缺卡/多卡返回 \`expected_versions_mismatch\`，任一版本过期该卡返回 \`conflict\`（其余卡照常生效）；冲突后必须重新 \`get_cards\` 重建映射，不得复用旧版本。
+- **模式选择**：能用声明式 \`ops\`（\`regex_replace\` / \`tag_add\` / \`tag_remove\`，≤20 个按序应用，正则用 Rust regex 语法，编译失败整批返回 \`invalid_pattern\` 且不写库）表达的变换**优先用 ops**（Medium，移动端可用）；需要真正编程逻辑（批量挖空、条件变换、跨字段推导）时才用 \`transform.script\` 现写 python/node 脚本（High，平台审批卡会完整展示脚本正文，不要在正文自行索要确认）。
+- **script 合同**：从 \`$CHATANKI_INPUT\` 读 \`{documentId, cards:[{id,index,front,back,text,tags,templateId,extraFields,version}]}\`，把 \`{"cards":[{id, front?, back?, text?, tags?}]}\` 写到 \`$CHATANKI_OUTPUT\`；null/缺省 = 不修改、空字符串逐卡拒绝、改 \`text\` 必须含合法 \`{{cN::答案}}\`、未知字段逐卡拒绝、\`version\` 回传无效（乐观锁只认后端快照）。v1 禁止脚本新增/删除卡（快照外 id 记入 \`unknownCardIds\`）；沙箱网络恒禁、只有 job 目录可写，stdout 只用于日志。
+- **script 失败处理**：\`script_sandbox_unavailable\`（移动端/无硬沙箱）与 \`interpreter_unavailable\` 时改用 ops 或告知用户；\`script_failed\` / \`script_timed_out\` / \`invalid_script_output\` 均未写库，按 \`stderrTail\`/\`detail\` 修脚本后重试。
+- dry_run 返回 \`wouldBeInvalid=true\` 或 \`invalid: true\` 的卡说明变换后内容不合法或脚本输出违反合同，apply 会逐卡拒绝；先调整 ops/脚本再 apply。
+
 ## 更换模板（必须完整走版本化流程）
 
 - 固定流程：\`builtin-chatanki_list_templates\` -> \`builtin-chatanki_get_cards\`（对完整选择分页读回，收集每张卡的 \`cardId -> version\`）-> \`builtin-chatanki_retemplate\`（先用 \`strategy=map_only\`）-> 检查返回的 \`missingFields\` -> 按卡逐一调用 \`builtin-chatanki_update_card\` 补齐 -> 再用 \`builtin-chatanki_get_cards\` 复核。
 - \`list_templates\` 返回 \`total/page/pageSize\`；目标模板未出现在当前页时必须继续翻页，不能把前 20 个结果当作完整模板库。
 - \`fill_missing\` **不会调用 LLM，也不会自动生成字段值**；它只报告 \`missingFields\` 和源卡内容，字段值必须由你判断后在后续 \`update_card\` 调用中写入。
+- \`fill_missing_llm\` 是两阶段策略：Phase 1 与 \`fill_missing\` 相同（同一事务换模板并映射字段），Phase 2 对仍缺字段的卡**批量调用 LLM 生成字段值并按 Phase 1 之后的新版本逐卡 CAS 写回**。返回逐卡 \`fillStatus\`（\`filled/partial/skipped/conflict/failed/not_needed\`）与 \`filledFields\`，顶层 \`fill\` 汇总各状态数量。用户明确要求自动补齐时才使用；调用后必须检查 \`fillStatus\`，对 \`partial/skipped/conflict/failed\` 的卡走 \`get_cards -> update_card\` 手工补齐，且换模板已生效、不会因补字段失败回滚。
 - Basic -> Cloze 前，必须先用 \`update_card\` 写入包含有效 \`{{cN::...}}\` 标记的 \`text\`，再调用 \`retemplate\`；没有合法 Cloze text 时不得强行更换。
 - 批量换模板会改变卡片外观，并可能覆盖字段映射。更换超过 3 张卡、覆盖用户已编辑卡片，或对整份 document 换模板前，必须先用 \`builtin-ask_user\` 明确确认。
 - 禁止使用过期 version。任何版本冲突后都必须重新调用 \`builtin-chatanki_get_cards\` 刷新完整选择，重建 \`expectedVersions\`，再决定是否重试；不得复用旧版本。
@@ -1014,6 +1357,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - **先预览后交付**：默认输出预览块，鼓励用户审核后再导出/同步。
 - **自动路由**：不传 \`route\` 时由系统自动选择：\`simple_text\` / \`vlm_light\` / \`vlm_full\`。
 - **可覆盖路由**：当用户明确知道材料形态时，可传 \`route\` 强制走指定路线。
+- **附加生成要求走 extraRequirements**：用户对卡片风格/语言/格式有明确附加约束（如“答案全部用英文”“每张卡背面附一个例句”）时，把这些约束放进 run/start 的可选参数 \`extraRequirements\`（后端会作为高优先级规则注入生成提示）；学习目标仍放 \`goal\`，不要把两者混写。
 - **禁止输出占位标签**：不要在回答正文输出 \`<anki_cards ... />\` 或任何“块标签”。预览块由系统事件自动渲染。
 - **观测后再修改**：用户说“第 N 张卡有问题”时，先用 \`builtin-chatanki_get_cards\` 定位真实 cardId/version，再调用 \`builtin-chatanki_update_card\`；除非用户明确要求，禁止整批重跑。
 - **删除使用双乐观锁**：调用 \`builtin-chatanki_delete_card\` 前必须重新用 \`builtin-chatanki_get_cards\` 取得同一卡片最新 \`cardId/version/reviewState\`，同时传 \`expectedVersion\` 与 \`expectedReviewVersion\`；未入队时后者显式传 \`null\`。任何 \`version_conflict\` / \`review_state_conflict\` 后都重新读取，不得复用旧 token。
@@ -1056,7 +1400,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - 当用户询问内置复习进度、今日到期量或近期记忆情况：用库级只读的 \`builtin-chatanki_review_stats\`。
 - 当用户明确要求撤销某张卡的最后一次评分：先 \`builtin-chatanki_get_cards\` 读取该卡最新 \`reviewState\`；仅在 \`latestReview.undoable=true\` 时，把同一快照的 \`reviewVersion\` 与 \`latestReview.logId\` 传给 \`builtin-chatanki_undo_last_review\`。
 - 当用户明确要求暂停或恢复某张已入队卡：先 \`builtin-chatanki_get_cards\` 读取最新 \`reviewState.reviewVersion\`，再调用 \`builtin-chatanki_set_suspended\`；Agent 不得自行决定暂停，也不得替用户评分。
-- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`；需要更换模板时严格执行上面的版本化 \`list_templates -> get_cards -> retemplate(map_only) -> update_card -> get_cards\` 流程。
+- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`（预估用法见上方「策展 → 生成 → 质检 决策树」；routing.routeSource 表明路由来源，recommended 中只有 route/maxCards 可回传 run）；需要更换模板时严格执行上面的版本化 \`list_templates -> get_cards -> retemplate(map_only) -> update_card -> get_cards\` 流程。
 ## 卡片数量（必须遵守）
 
 - \`maxCards\` 是**必传参数**，每次调用 \`chatanki_run\` / \`chatanki_start\` 都必须传入。

@@ -134,19 +134,37 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
 
       <div className="flex flex-wrap items-center justify-center gap-2">
         {canUndo ? (
-          <DsButton type="button" variant="default" disabled={busy} onClick={onUndo}>
+          <DsButton
+            type="button"
+            variant="default"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            disabled={busy}
+            onClick={onUndo}
+          >
             <ArrowCounterClockwise size={16} />
             {t('session.undo')}
           </DsButton>
         ) : null}
         {canResume ? (
-          <DsButton type="button" variant="default" disabled={busy} onClick={onResume}>
+          <DsButton
+            type="button"
+            variant="default"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            disabled={busy}
+            onClick={onResume}
+          >
             <Play size={16} />
             {t('session.resume')}
           </DsButton>
         ) : null}
         {showContinue ? (
-          <DsButton type="button" variant="primary" disabled={busy} onClick={onContinue}>
+          <DsButton
+            type="button"
+            variant="primary"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            disabled={busy}
+            onClick={onContinue}
+          >
             <Play size={16} />
             {t('session.continueReview', { count: remainingDue })}
           </DsButton>
@@ -154,6 +172,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
         <DsButton
           type="button"
           variant={showContinue ? 'default' : 'primary'}
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onBack}
         >
           {t('session.backToday')}

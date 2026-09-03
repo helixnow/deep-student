@@ -6,8 +6,7 @@ import type {
   SessionRestoreBaseline,
 } from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
-import { createDefaultChatParams, createDefaultPanelStates } from './types';
-import { COMPOSER_PANEL_KEYS } from '../types/common';
+import { createDefaultChatParams } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
@@ -23,6 +22,8 @@ import {
 } from '@/features/chat/utils/workbenchBlockRemap';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import { parsePendingContextRefsJson } from './pendingContextRefsParser';
+import { normalizeRestoredComposerState } from './composerStateMigration';
 import {
   browserToolsSkill,
   builtinToolSkills,
@@ -698,308 +699,36 @@ export function createRestoreActions(
             ...(state?.chatParams ?? {}),
           };
           const features = new Map(Object.entries(state?.features ?? {}));
-          // 只接收当前已知的面板 key，过滤旧持久化数据中已下线的幽灵面板
-          // （'rag'/'search'/'learn' 等），避免恢复出无渲染路径的 true 状态
-          const persistedPanelStates = (state?.panelStates ?? {}) as Record<string, unknown>;
-          const panelStates = createDefaultPanelStates();
-          COMPOSER_PANEL_KEYS.forEach((panel) => {
-            if (typeof persistedPanelStates[panel] === 'boolean') {
-              panelStates[panel] = persistedPanelStates[panel] as boolean;
-            }
-          });
+          // InputBar/Composer state is an external persistence boundary:
+          // preserve valid v0.9.44 fields, fill missing current keys, and drop
+          // retired or malformed values before render paths call string APIs.
+          const { inputValue, panelStates } = normalizeRestoredComposerState(state);
           const modeState = state?.modeState ?? null;
-          const inputValue = state?.inputValue ?? '';
 
           // 🆕 Prompt 7: 恢复待发送的上下文引用
           //
-          // 🛡️ 鲁棒性改造：多级降级解析，防止 JSON 异常导致引用丢失
-          //
-          // 策略：
-          // 1. 标准 JSON.parse
-          // 2. 逐个元素解析（处理数组部分损坏）
-          // 3. 字符串扫描提取 ContextRef 对象（安全的非正则方法，防止 ReDoS）
-          // 4. 详细日志记录 + 用户通知
+          // 🛡️ 鲁棒性改造：多级降级解析（标准 → 逐元素 → 字符串扫描），
+          // 防止 JSON 异常导致引用丢失。解析细节已抽出为可单测的纯模块
+          // pendingContextRefsParser；此处只保留技能引用迁移与用户通知。
           let pendingContextRefs: import('../../context/types').ContextRef[] = [];
           let parseResult: 'success' | 'partial' | 'failed' = 'success';
 
           if (state?.pendingContextRefsJson) {
-            // 📊 解析统计
-            const stats = {
-              originalLength: state.pendingContextRefsJson.length,
-              parsedCount: 0,
-              failedCount: 0,
-              method: '' as 'standard' | 'incremental' | 'string-scan' | 'none',
-            };
+            const parsed = parsePendingContextRefsJson(state.pendingContextRefsJson);
+            parseResult = parsed.parseResult;
+            const stats = parsed.stats;
 
-            try {
-              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              // 第一级：标准 JSON.parse
-              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-              const parsed = JSON.parse(state.pendingContextRefsJson);
-
-              // 验证是否为数组
-              if (!Array.isArray(parsed)) {
-                throw new Error('Parsed result is not an array');
-              }
-
-              // 验证并过滤有效的 ContextRef
-              const validated = parsed.filter((item: unknown): item is import('../../context/types').ContextRef => {
-                return isValidContextRef(item);
-              });
-
-              // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-              // - legacy skill_instruction 仅作历史兼容读取，不再作为运行时真相源
-              pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(validated.map((ref) => {
+            // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
+            // - legacy skill_instruction 仅作历史兼容读取，不再作为运行时真相源
+            pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(
+              parsed.refs.map((ref) => {
                 if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
                   return { ...ref, isSticky: true };
                 }
                 return ref;
-              }), state);
-              stats.parsedCount = validated.length;
-              stats.failedCount = parsed.length - validated.length;
-              stats.method = 'standard';
-
-              console.log('[ChatStore] ✅ Restored pendingContextRefs (standard):', {
-                total: validated.length,
-                failed: stats.failedCount,
-              });
-
-            } catch (standardError) {
-              console.warn('[ChatStore] ⚠️ Standard JSON.parse failed, trying incremental parse...', standardError);
-
-              try {
-                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                // 第二级：逐个元素解析（处理数组部分损坏）
-                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                const jsonStr = state.pendingContextRefsJson.trim();
-
-                // 检查是否是数组格式
-                if (!jsonStr.startsWith('[') || !jsonStr.endsWith(']')) {
-                  throw new Error('Not an array format');
-                }
-
-                // 提取数组内容（去除首尾方括号）
-                const arrayContent = jsonStr.slice(1, -1).trim();
-
-                if (arrayContent) {
-                  // 尝试提取每个对象
-                  // 使用更健壮的方法：查找所有顶层的 {...} 对象
-                  const objectMatches: string[] = [];
-                  let depth = 0;
-                  let startIdx = -1;
-
-                  for (let i = 0; i < arrayContent.length; i++) {
-                    const char = arrayContent[i];
-
-                    if (char === '{') {
-                      if (depth === 0) {
-                        startIdx = i;
-                      }
-                      depth++;
-                    } else if (char === '}') {
-                      depth--;
-                      if (depth === 0 && startIdx !== -1) {
-                        objectMatches.push(arrayContent.substring(startIdx, i + 1));
-                        startIdx = -1;
-                      }
-                    }
-                  }
-
-                  if (objectMatches && objectMatches.length > 0) {
-                    const incrementalRefs: import('../../context/types').ContextRef[] = [];
-
-                    for (const objStr of objectMatches) {
-                      try {
-                        const obj = JSON.parse(objStr);
-                        if (isValidContextRef(obj)) {
-                          incrementalRefs.push(obj);
-                          stats.parsedCount++;
-                        } else {
-                          stats.failedCount++;
-                          console.warn('[ChatStore] Invalid ContextRef object:', obj);
-                        }
-                      } catch (itemError) {
-                        stats.failedCount++;
-                        console.warn('[ChatStore] Failed to parse individual item:', objStr, itemError);
-                      }
-                    }
-
-                    if (incrementalRefs.length > 0) {
-                      // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-                      pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(incrementalRefs.map((ref) => {
-                        if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
-                          return { ...ref, isSticky: true };
-                        }
-                        return ref;
-                      }), state);
-                      stats.method = 'incremental';
-                      parseResult = stats.failedCount > 0 ? 'partial' : 'success';
-
-                      console.log('[ChatStore] ✅ Restored pendingContextRefs (incremental):', {
-                        total: incrementalRefs.length,
-                        failed: stats.failedCount,
-                      });
-                    } else {
-                      throw new Error('No valid objects found in incremental parse');
-                    }
-                  } else {
-                    throw new Error('No object patterns found');
-                  }
-                } else {
-                  // 空数组
-                  pendingContextRefs = [];
-                  stats.method = 'incremental';
-                  console.log('[ChatStore] Empty array detected');
-                }
-
-              } catch (incrementalError) {
-                console.warn('[ChatStore] ⚠️ Incremental parse failed, trying string scanning extraction...', incrementalError);
-
-                try {
-                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                  // 第三级：字符串扫描提取 ContextRef（安全的非正则方法）
-                  //
-                  // 安全设计说明：
-                  // 1. 完全避免复杂正则表达式，防止 ReDoS 攻击
-                  // 2. 使用简单的字符扫描，时间复杂度 O(n)
-                  // 3. 添加超时保护机制，防止长时间运行
-                  // 4. 对每个候选对象进行安全的 JSON 解析
-                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-                  // 性能监控：记录开始时间
-                  const scanStartTime = performance.now();
-                  const SCAN_TIMEOUT_MS = 5000; // 5秒超时保护
-
-                  /**
-                   * 从字符串中提取可能的 ContextRef 对象
-                   * 使用简单的字符扫描，避免正则表达式回溯问题
-                   */
-                  const extractPossibleContextRefs = (jsonString: string): import('../../context/types').ContextRef[] => {
-                    const refs: import('../../context/types').ContextRef[] = [];
-                    let i = 0;
-                    let objectsScanned = 0;
-                    const maxObjectsToScan = 10000; // 最多扫描10000个对象，防止无限循环
-
-                    while (i < jsonString.length) {
-                      // 超时检查
-                      if (performance.now() - scanStartTime > SCAN_TIMEOUT_MS) {
-                        console.warn('[ChatStore] ⚠️ String scanning timeout, returning partial results');
-                        break;
-                      }
-
-                      // 对象数量限制检查
-                      if (objectsScanned >= maxObjectsToScan) {
-                        console.warn('[ChatStore] ⚠️ Max objects scanned limit reached, returning partial results');
-                        break;
-                      }
-
-                      // 查找对象开始位置
-                      const start = jsonString.indexOf('{', i);
-                      if (start === -1) break;
-
-                      // 查找匹配的结束大括号（使用深度计数）
-                      let depth = 0;
-                      let end = start;
-                      let foundEnd = false;
-
-                      // 扫描最多1000个字符，防止单个对象过大
-                      const maxScanLength = 1000;
-                      const scanLimit = Math.min(start + maxScanLength, jsonString.length);
-
-                      for (let j = start; j < scanLimit; j++) {
-                        const char = jsonString[j];
-
-                        if (char === '{') {
-                          depth++;
-                        } else if (char === '}') {
-                          depth--;
-                          if (depth === 0) {
-                            end = j + 1;
-                            foundEnd = true;
-                            break;
-                          }
-                        }
-                      }
-
-                      if (foundEnd) {
-                        const candidate = jsonString.substring(start, end);
-                        objectsScanned++;
-
-                        // 快速预检：必须包含所有必需字段
-                        if (
-                          candidate.includes('"resourceId"') &&
-                          candidate.includes('"hash"') &&
-                          candidate.includes('"typeId"')
-                        ) {
-                          // 尝试安全解析
-                          try {
-                            const obj = JSON.parse(candidate);
-
-                            // 验证是否为有效的 ContextRef
-                            if (isValidContextRef(obj)) {
-                              refs.push(obj);
-                              stats.parsedCount++;
-                            } else {
-                              stats.failedCount++;
-                            }
-                          } catch (parseError) {
-                            // JSON 解析失败，继续扫描
-                            stats.failedCount++;
-                          }
-                        }
-
-                        // 移动到下一个位置
-                        i = end;
-                      } else {
-                        // 没有找到匹配的结束大括号，跳过这个开始位置
-                        i = start + 1;
-                      }
-                    }
-
-                    return refs;
-                  };
-
-                  // 执行字符串扫描提取
-                  const scanRefs = extractPossibleContextRefs(state.pendingContextRefsJson);
-                  const scanDuration = performance.now() - scanStartTime;
-
-                  if (scanRefs.length > 0) {
-                    // ★ P0-03 补齐旧数据迁移：历史数据可能没有 isSticky 字段
-                    pendingContextRefs = filterSkillInstructionRefsWhenStructuredStateExists(scanRefs.map((ref) => {
-                      if (ref.typeId === SKILL_INSTRUCTION_TYPE_ID) {
-                        return { ...ref, isSticky: true };
-                      }
-                      return ref;
-                    }), state);
-                    stats.method = 'string-scan';
-                    parseResult = 'partial'; // 字符串扫描一定是部分恢复
-
-                    console.log('[ChatStore] ✅ Restored pendingContextRefs (string-scan):', {
-                      total: scanRefs.length,
-                      failed: stats.failedCount,
-                      durationMs: scanDuration.toFixed(2),
-                      performance: scanDuration < 100 ? '🚀 excellent' : scanDuration < 500 ? '✅ good' : '⚠️ slow',
-                    });
-                  } else {
-                    throw new Error('No valid refs extracted by string scanning');
-                  }
-
-                } catch (scanError) {
-                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                  // 所有方法都失败
-                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                  stats.method = 'none';
-                  parseResult = 'failed';
-
-                  console.error('[ChatStore] ❌ All parse methods failed:', {
-                    standardError,
-                    incrementalError,
-                    scanError,
-                    originalJson: state.pendingContextRefsJson.substring(0, 500) + '...', // 只记录前500字符
-                  });
-                }
-              }
-            }
+              }),
+              state,
+            );
 
             // 📊 最终统计日志
             console.log('[ChatStore] Pending context refs parse summary:', {
@@ -1026,42 +755,6 @@ export function createRestoreActions(
                 showGlobalNotification('error', message);
               }, 1000);
             }
-          }
-
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          // 辅助函数：验证 ContextRef 有效性
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          function isValidContextRef(obj: unknown): obj is import('../../context/types').ContextRef {
-            if (!obj || typeof obj !== 'object') {
-              return false;
-            }
-
-            const ref = obj as Record<string, unknown>;
-
-            // 检查必需字段
-            if (typeof ref.resourceId !== 'string' || !ref.resourceId.trim()) {
-              return false;
-            }
-            if (typeof ref.hash !== 'string' || !ref.hash.trim()) {
-              return false;
-            }
-            if (typeof ref.typeId !== 'string' || !ref.typeId.trim()) {
-              return false;
-            }
-
-            // 额外验证：resourceId 格式（res_{nanoid(10)}）
-            if (!/^res_[a-zA-Z0-9_-]{10}$/.test(ref.resourceId)) {
-              console.warn('[ChatStore] Invalid resourceId format:', ref.resourceId);
-              return false;
-            }
-
-            // 额外验证：hash 格式（SHA-256 hex）
-            if (!/^[a-f0-9]{64}$/.test(ref.hash)) {
-              console.warn('[ChatStore] Invalid hash format:', ref.hash);
-              return false;
-            }
-
-            return true;
           }
 
           // 5. 设置状态（重置运行时状态）
@@ -1374,18 +1067,24 @@ export function createRestoreActions(
               const currentRefsForValidation = getState().pendingContextRefs;
               if (currentRefsForValidation.length > 0) {
                 const { resourceStoreApi } = await import('../../resources');
-                const invalidRefs: string[] = [];
 
-                for (const ref of currentRefsForValidation) {
-                  try {
-                    const exists = await resourceStoreApi.exists(ref.resourceId);
-                    if (!exists) {
-                      invalidRefs.push(ref.resourceId);
+                // ★ 性能：exists 校验原为逐个 await 的串行 IPC（N 个引用 = N 次
+                // 往返排队）；改为 Promise.all 并行发出，总时延 ≈ 单次最慢往返。
+                // 单个校验失败仍保留引用（宁可多保留，避免丢失用户数据）。
+                const validationResults = await Promise.all(
+                  currentRefsForValidation.map(async (ref) => {
+                    try {
+                      const exists = await resourceStoreApi.exists(ref.resourceId);
+                      return exists ? null : ref.resourceId;
+                    } catch {
+                      // 验证失败时保留引用（宁可多保留，避免丢失用户数据）
+                      return null;
                     }
-                  } catch {
-                    // 验证失败时保留引用（宁可多保留，避免丢失用户数据）
-                  }
-                }
+                  }),
+                );
+                const invalidRefs = validationResults.filter(
+                  (resourceId): resourceId is string => resourceId !== null,
+                );
 
                 if (invalidRefs.length > 0 && !isRestoreStale()) {
                   // 🔧 P1: 写回时基于最新 state 只剔除已确认无效的引用，

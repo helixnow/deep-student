@@ -48,6 +48,13 @@
   cursor: not-allowed;
 }
 
+/* 触屏设备：tab 升到 44px 触控目标标准 */
+@media (pointer: coarse) {
+  .skill-tap-tab {
+    height: 44px;
+  }
+}
+
 .skill-market-verify-badge {
   display: inline-flex;
   align-items: center;

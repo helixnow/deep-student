@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CaretDown, CaretUp, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import Z_INDEX from '@/config/zIndex';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 export interface MessageSearchBarProps {
   placement?: 'floating' | 'header';
@@ -33,13 +35,41 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   onNavigate,
 }) => {
   const { t } = useTranslation('chatV2');
+  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
+  }, []);
+
+  // 📱 Android 系统返回键 = 关闭搜索条（自绘浮层，协调器 Radix 兜底覆盖不到），
+  // 与 InputBarUI 组合面板、InlineImageViewer 的 overlay 语义一致。
+  useEffect(() => {
+    return registerBackHandler(() => {
+      // 保活守卫：宿主视图在被隐藏的保活层里仍保持挂载时，搜索条也随之滞留——
+      // 此时不消费返回键、不触发关闭回调，交还给当前活跃视图
+      // （对照 EnhancedPdfViewer 的同款守卫）。visibility:hidden 不清布局盒
+      // （getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
+
+  // 两种形态都 portal 在宿主视图之外（body / 桌面壳顶栏），视图被切走
+  // （visibility:hidden）时不会随之隐藏；监听全局视图切换事件收起搜索条，
+  // 避免悬浮在新视图上方（对照 InputBarUI 组合面板的处理）。
+  useEffect(() => {
+    const handleViewSwitched = () => onCloseRef.current();
+    window.addEventListener('app:view-switched', handleViewSwitched);
+    return () => window.removeEventListener('app:view-switched', handleViewSwitched);
   }, []);
 
   useEffect(() => {
@@ -73,8 +103,9 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   const isHeaderPlacement = placement === 'header';
   const hasQuery = query.trim().length > 0;
 
-  return (
+  const content = (
     <div
+      ref={rootRef}
       className={cn(
         isHeaderPlacement
           ? 'relative flex h-full min-w-0 w-full items-center justify-end'
@@ -110,7 +141,8 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={t('messageList.search.placeholder')}
           aria-label={t('messageList.search.open')}
-          className="min-w-0 flex-1 appearance-none bg-transparent px-1.5 py-1.5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
+          // 📱 16px 输入契约：15px 在 iOS WKWebView 聚焦时会触发页面自动放大
+          className="min-w-0 flex-1 appearance-none bg-transparent px-1.5 py-1.5 text-[15px] [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-muted-foreground/70"
         />
         {hasQuery ? (
           <>
@@ -158,11 +190,17 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           onClick={onClose}
           aria-label={t('messageList.search.close')}
           title={t('messageList.search.close')}
-          className="!size-8 !rounded-full text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!size-10"
+          className="!size-8 !rounded-full text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!size-11"
         >
           <X size={17} weight="regular" aria-hidden="true" />
         </DsButton>
       </div>
     </div>
   );
+
+  // header 形态由调用方（MessageList）portal 到桌面壳顶栏插槽；floating 形态
+  // 用 fixed 定位，必须 portal 到 body——MobileSlidingLayout 的 track 常驻
+  // transform（containing block 约定），in-tree fixed 会以 track 为包含块错位。
+  if (isHeaderPlacement) return content;
+  return createPortal(content, document.body);
 };

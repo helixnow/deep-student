@@ -50,6 +50,7 @@ export function useBrowserSession(options?: {
   const back = useBrowserSessionStore((s) => s.back);
   const forward = useBrowserSessionStore((s) => s.forward);
   const reload = useBrowserSessionStore((s) => s.reload);
+  const stopLoading = useBrowserSessionStore((s) => s.stopLoading);
   const takeOver = useBrowserSessionStore((s) => s.takeOver);
   const showContent = useBrowserSessionStore((s) => s.showContent);
   const setAddressDraft = useBrowserSessionStore((s) => s.setAddressDraft);
@@ -110,6 +111,7 @@ export function useBrowserSession(options?: {
     back,
     forward,
     reload,
+    stopLoading,
     takeOver,
     showContent,
     setAddressDraft,

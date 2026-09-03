@@ -21,6 +21,24 @@ import {
 } from '@phosphor-icons/react';
 import { isMobilePlatform } from '@/utils/platform';
 
+/**
+ * 设置导航的分类 accent（窄屏导航图标色）。
+ *
+ * 只写 token 引用，不写 hex：色值本体（亮色 / 暗色 / prefers-contrast 三档）
+ * 定义在 src/styles/theme-colors.css 的 --settings-nav-accent-* 里。曾经这里
+ * 直接写死浅色 hex（#e5ad3d 等），暗色下图标亮度不足且不随主题走。
+ */
+export const SETTINGS_NAV_ACCENT = {
+  amber: 'var(--settings-nav-accent-amber)',
+  blue: 'var(--settings-nav-accent-blue)',
+  slate: 'var(--settings-nav-accent-slate)',
+  purple: 'var(--settings-nav-accent-purple)',
+  orange: 'var(--settings-nav-accent-orange)',
+  green: 'var(--settings-nav-accent-green)',
+  sky: 'var(--settings-nav-accent-sky)',
+  pink: 'var(--settings-nav-accent-pink)',
+} as const;
+
 export type SettingsSidebarNavItem = {
   value: string;
   label: string;
@@ -52,7 +70,7 @@ export function useSettingsNavigation() {
         label: t('settings:tabs.api_config'),
         tourId: 'settings-tab-apis',
         mobileDescription: t('settings:mobile_descriptions.apis'),
-        mobileAccent: '#e5ad3d',
+        mobileAccent: SETTINGS_NAV_ACCENT.amber,
       },
       {
         value: 'models',
@@ -60,7 +78,7 @@ export function useSettingsNavigation() {
         label: t('settings:tabs.model_assignment'),
         tourId: 'settings-tab-models',
         mobileDescription: t('settings:mobile_descriptions.models'),
-        mobileAccent: '#4d86df',
+        mobileAccent: SETTINGS_NAV_ACCENT.blue,
       },
     ],
     [
@@ -69,7 +87,7 @@ export function useSettingsNavigation() {
         icon: SlidersHorizontal,
         label: t('settings:tabs.general'),
         mobileDescription: t('settings:mobile_descriptions.general'),
-        mobileAccent: '#6f7785',
+        mobileAccent: SETTINGS_NAV_ACCENT.slate,
       },
       {
         value: 'voice-input',
@@ -97,14 +115,14 @@ export function useSettingsNavigation() {
         icon: Palette,
         label: t('settings:tabs.appearance'),
         mobileDescription: t('settings:mobile_descriptions.appearance'),
-        mobileAccent: '#a35de1',
+        mobileAccent: SETTINGS_NAV_ACCENT.purple,
       },
       {
         value: 'automation',
         icon: ClockCountdown,
         label: t('settings:tabs.automation'),
         mobileDescription: t('settings:mobile_descriptions.automation'),
-        mobileAccent: '#eb8d42',
+        mobileAccent: SETTINGS_NAV_ACCENT.orange,
       },
     ],
     [
@@ -113,14 +131,14 @@ export function useSettingsNavigation() {
         icon: Plug,
         label: t('settings:tabs.mcp_tools'),
         mobileDescription: t('settings:mobile_descriptions.mcp'),
-        mobileAccent: '#1db77c',
+        mobileAccent: SETTINGS_NAV_ACCENT.green,
       },
       {
         value: 'search',
         icon: Globe,
         label: t('settings:tabs.external_search'),
         mobileDescription: t('settings:mobile_descriptions.search'),
-        mobileAccent: '#4b9fe8',
+        mobileAccent: SETTINGS_NAV_ACCENT.sky,
       },
       ...(!hidePlugins
         ? [{
@@ -128,7 +146,7 @@ export function useSettingsNavigation() {
             icon: PuzzlePiece,
             label: t('settings:tabs.plugins'),
             mobileDescription: t('settings:mobile_descriptions.plugins'),
-            mobileAccent: '#a35de1',
+            mobileAccent: SETTINGS_NAV_ACCENT.purple,
           }]
         : []),
     ],
@@ -138,14 +156,14 @@ export function useSettingsNavigation() {
         icon: ChartBar,
         label: t('settings:tabs.statistics'),
         mobileDescription: t('settings:mobile_descriptions.statistics'),
-        mobileAccent: '#4b9fe8',
+        mobileAccent: SETTINGS_NAV_ACCENT.sky,
       },
       {
         value: 'data-governance',
         icon: Shield,
         label: t('settings:tabs.data_governance'),
         mobileDescription: t('settings:mobile_descriptions.data_governance'),
-        mobileAccent: '#4f9ecf',
+        mobileAccent: SETTINGS_NAV_ACCENT.sky,
       },
     ],
     [
@@ -154,7 +172,7 @@ export function useSettingsNavigation() {
         icon: Wrench,
         label: t('settings:tabs.params'),
         mobileDescription: t('settings:mobile_descriptions.params'),
-        mobileAccent: '#e1a642',
+        mobileAccent: SETTINGS_NAV_ACCENT.amber,
       },
       {
         value: 'document-processing',
@@ -169,7 +187,7 @@ export function useSettingsNavigation() {
             icon: Keyboard,
             label: t('settings:tabs.shortcuts'),
             mobileDescription: t('settings:mobile_descriptions.shortcuts'),
-            mobileAccent: '#7d8490',
+            mobileAccent: SETTINGS_NAV_ACCENT.slate,
           }]
         : []),
       {
@@ -177,7 +195,7 @@ export function useSettingsNavigation() {
         icon: BookOpen,
         label: t('settings:tabs.about'),
         mobileDescription: t('settings:mobile_descriptions.about'),
-        mobileAccent: '#d978ae',
+        mobileAccent: SETTINGS_NAV_ACCENT.pink,
       },
     ],
   ]), [t, hidePlugins, hideShortcuts]);

@@ -116,6 +116,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           iconOnly
           onClick={() => setShowInfo(!showInfo)}
           aria-label={t('lance_optimization.title')}
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Question size={14} />
         </DsButton>
@@ -173,7 +174,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="outline"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3"
+          className="flex flex-col items-center gap-1 h-auto py-3 [@media(pointer:coarse)]:!min-h-11"
         >
           {optimizing.chat ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -187,7 +188,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="outline"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
-          className="flex flex-col items-center gap-1 h-auto py-3"
+          className="flex flex-col items-center gap-1 h-auto py-3 [@media(pointer:coarse)]:!min-h-11"
         >
           {optimizing.vfs ? (
             <CircleNotch size={16} className="animate-spin" />
@@ -203,6 +204,7 @@ export const LanceOptimizationPanel: React.FC = () => {
         variant="outline"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
+        className="[@media(pointer:coarse)]:!min-h-11"
       >
         {Object.values(optimizing).some(v => v) ? (
           <>

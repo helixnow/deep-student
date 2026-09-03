@@ -33,6 +33,7 @@ pub mod resource_repo; // DEPRECATED (owner: platform-chat, remove: vNext): reso
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
 pub mod role_packs;
 pub mod runtime_roots;
+pub mod session_export; // 🆕 WI-12: session JSONL 导出（规范见 docs/dev/optimization0824/WI-12-session-jsonl-spec.md）
 pub mod shell_command_policy;
 pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测

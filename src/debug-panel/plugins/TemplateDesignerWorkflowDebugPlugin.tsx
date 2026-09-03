@@ -484,7 +484,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
         <div className="relative flex-1 min-w-[220px]">
           <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
-            className="w-full h-8 pl-8 pr-2 rounded bg-slate-900 border border-slate-700 text-xs"
+            className="w-full h-8 [@media(pointer:coarse)]:min-h-11 pl-8 pr-2 rounded bg-slate-900 border border-slate-700 text-xs [@media(pointer:coarse)]:text-[16px]"
             placeholder="搜索 tool/templateId/blockId"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -492,7 +492,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
         </div>
 
         <select
-          className="h-8 px-2 rounded bg-slate-900 border border-slate-700 text-xs"
+          className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded bg-slate-900 border border-slate-700 text-xs"
           value={levelFilter}
           onChange={(e) => setLevelFilter(e.target.value as TemplateDebugLevel | 'all')}
         >
@@ -504,7 +504,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
         </select>
 
         <select
-          className="h-8 px-2 rounded bg-slate-900 border border-slate-700 text-xs"
+          className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded bg-slate-900 border border-slate-700 text-xs"
           value={phaseFilter}
           onChange={(e) => setPhaseFilter(e.target.value as TemplateDebugPhase | 'all')}
         >
@@ -522,16 +522,16 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
           <option value="system">system</option>
         </select>
 
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700" onClick={() => setAutoScroll((v) => !v)}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700" onClick={() => setAutoScroll((v) => !v)}>
           自动滚动: {autoScroll ? '开' : '关'}
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleCopy}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleCopy}>
           <Copy size={14} /> 复制
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleDownload}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleDownload}>
           <Download size={14} /> 下载
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={() => { clearLogs(); setLogs([]); }}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={() => { clearLogs(); setLogs([]); }}>
           <Trash size={14} /> 清空
         </button>
       </div>
@@ -548,7 +548,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
             <div key={log.id} className="rounded border border-slate-800 bg-slate-900/70">
               <button
                 type="button"
-                className="w-full flex items-center gap-1 px-2 py-1 text-left hover:bg-slate-800/80"
+                className="w-full flex items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-left hover:bg-slate-800/80"
                 onClick={() => hasDetail && toggleExpand(log.id)}
               >
                 {hasDetail ? (expanded ? <CaretDown size={12} className="text-slate-500" /> : <CaretRight size={12} className="text-slate-500" />) : <span className="w-3" />}

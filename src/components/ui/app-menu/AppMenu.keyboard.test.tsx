@@ -1,7 +1,7 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   AppMenu,
@@ -59,7 +59,11 @@ describe('AppMenu submenu keyboard contract', () => {
     await user.keyboard(key);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus());
+    // 打开后焦点落在菜单容器上（不预聚焦任何菜单项，避免"假悬浮"高亮）；
+    // 方向键从容器进入导航，第一次 ArrowDown 聚焦第一项。
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus();
   });
 
   it.each(['Enter', ' ', 'ArrowRight'])('%s opens the default hover submenu and focuses its first item', async (key) => {
@@ -85,10 +89,10 @@ describe('AppMenu submenu keyboard contract', () => {
       </AppMenu>
     );
     const view = render(renderMenu(1));
-    const first = await screen.findByRole('menuitem', { name: 'First action' });
+    await screen.findByRole('menuitem', { name: 'First action' });
     const second = screen.getByRole('menuitem', { name: 'Second action' });
-    first.focus();
-    await waitFor(() => expect(first).toHaveFocus());
+    // 打开后焦点先落在菜单容器上；随后模拟用户把焦点移到某个菜单项
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
     second.focus();
 
     view.rerender(renderMenu(2));
@@ -175,6 +179,39 @@ describe('AppMenu submenu keyboard contract', () => {
     fireEvent.keyDown(trigger, { key: 'ArrowRight' });
 
     await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Alpha' })).toHaveFocus());
+  });
+
+  it('opens the default submenu by click for a coarse pointer', () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    try {
+      const trigger = renderSubmenu();
+      fireEvent.click(trigger);
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('menuitem', { name: 'Alpha' })).toBeInTheDocument();
+    } finally {
+      cleanup();
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      });
+    }
   });
 
   it('cancels a pending focus handoff when the submenu closes immediately', async () => {

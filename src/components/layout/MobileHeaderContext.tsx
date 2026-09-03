@@ -177,6 +177,9 @@ export function useSetMobileDrawerOpen(): (open: boolean) => void {
  * @param viewId - 视图 ID（如 'learning-hub', 'chat-v2'），用于配置隔离
  * @param config - 顶栏配置
  * @param deps - 依赖数组，当依赖变化时更新配置
+ * @param enabled - 是否启用（默认 true）。false 时既不写入配置，卸载时也不清除
+ *   该 viewId 的缓存 —— 用于组件以嵌入形态复用时，避免覆盖/清掉真正
+ *   活跃视图实例在同名 viewId 下的配置
  *
  * @example
  * ```tsx
@@ -193,19 +196,29 @@ export function useSetMobileDrawerOpen(): (open: boolean) => void {
  * useMobileHeader('chat-v2', {
  *   title: currentSession?.title || '聊天',
  * }, [currentSession?.title]);
+ *
+ * // 嵌入形态时禁用（不接管顶栏）
+ * useMobileHeader('data-management', { title: '数据管理' }, [embedded], !embedded);
  * ```
  */
-export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps: React.DependencyList = []): void {
+export function useMobileHeader(
+  viewId: string,
+  config: MobileHeaderConfig,
+  deps: React.DependencyList = [],
+  enabled: boolean = true,
+): void {
   // 只订阅写操作 context：引用稳定，config 更新不会触发调用方重渲染
   const ctx = useContext(MobileHeaderActionsContext);
   const configRef = useRef(config);
   configRef.current = config;
   const viewIdRef = useRef(viewId);
   viewIdRef.current = viewId;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   // 使用 useLayoutEffect 同步更新配置
   useLayoutEffect(() => {
-    if (ctx) {
+    if (ctx && enabledRef.current) {
       ctx.setConfig(viewIdRef.current, configRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,11 +226,15 @@ export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps
 
   // 首次挂载时立即设置配置；卸载时清除缓存（防止 LRU 驱逐后配置滞留，见 clearConfig 注释）
   useLayoutEffect(() => {
-    if (ctx) {
+    if (ctx && enabledRef.current) {
       ctx.setConfig(viewIdRef.current, configRef.current);
     }
     return () => {
-      ctx?.clearConfig(viewIdRef.current);
+      // enabled=false 的实例从未写入配置，不能清同名 viewId 的缓存，
+      // 否则会误删真正活跃视图实例的配置
+      if (enabledRef.current) {
+        ctx?.clearConfig(viewIdRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 仅首次挂载/卸载时执行

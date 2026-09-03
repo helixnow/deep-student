@@ -240,7 +240,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     className={cn(
       'relative !p-2 !h-auto min-h-11 !rounded-md flex-col !items-center !gap-1',
       // 触屏拇指可达：coarse 指针放大到 ≥56px 命中高度（桌面不受影响）
-      '[@media(pointer:coarse)]:min-h-14',
+      '[@media(pointer:coarse)]:!min-h-14',
       'border ui-press',
       'disabled:opacity-50 disabled:cursor-not-allowed',
       color
@@ -393,12 +393,16 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       {/* 操作按钮 */}
       <div className="flex items-center gap-3">
         {onRestart && (
-          <DsButton variant="ghost" onClick={onRestart} className="gap-2">
+          <DsButton
+            variant="ghost"
+            onClick={onRestart}
+            className="gap-2 [@media(pointer:coarse)]:!min-h-11"
+          >
             <ArrowCounterClockwise size={16} />
             {t('review:complete.reviewAgain')}
           </DsButton>
         )}
-        <DsButton onClick={onClose} className="gap-2">
+        <DsButton onClick={onClose} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
           {t('review:complete.finish')}
           <ArrowRight size={16} />
         </DsButton>
@@ -642,7 +646,12 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           {t('review:session.otherExamDescription')}
         </p>
         {onClose && (
-          <DsButton variant="ghost" size="sm" onClick={onClose} className="mt-1">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="mt-1 [@media(pointer:coarse)]:!min-h-11"
+          >
             {t('common:close')}
           </DsButton>
         )}
@@ -680,7 +689,11 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         <p className="text-muted-foreground">
           {t('review:session.noItems')}
         </p>
-        <DsButton variant="ghost" onClick={handleClose} className="mt-4">
+        <DsButton
+          variant="ghost"
+          onClick={handleClose}
+          className="mt-4 [@media(pointer:coarse)]:!min-h-11"
+        >
           {t('common:close')}
         </DsButton>
       </div>
@@ -726,7 +739,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             size="sm"
             onClick={handleClose}
             aria-label={t('review:session.exitTitle')}
-            className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto"
+            className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <X size={20} />
           </DsButton>
@@ -868,7 +881,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             <DsButton
               variant="outline"
               onClick={handleSkip}
-              className="min-h-11 shrink-0 gap-2 [@media(pointer:coarse)]:min-h-12"
+              className="min-h-11 shrink-0 gap-2 [@media(pointer:coarse)]:!min-h-12"
             >
               <SkipForward size={16} />
               {t('review:action.skip')}
@@ -877,7 +890,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               variant="primary"
               size="sm"
               onClick={() => setShowAnswer(true)}
-              className="min-h-11 flex-1 gap-2 min-w-[160px] sm:flex-initial [@media(pointer:coarse)]:min-h-12"
+              className="min-h-11 flex-1 gap-2 min-w-[160px] sm:flex-initial [@media(pointer:coarse)]:!min-h-12"
             >
               <Eye size={16} />
               {t('review:action.showAnswer')}

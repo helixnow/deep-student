@@ -15,14 +15,17 @@ import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
+import i18n from '@/i18n';
 import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { useMobileSubviewChrome } from '@/components/layout';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import type { CrepeEditorApi } from '@/components/crepe';
@@ -41,7 +44,10 @@ import {
   registerNoteEditor,
   unregisterNoteEditor,
 } from '@/features/workbench/agent/drivers/noteDriver';
-import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  isContentDirty,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 // 顶部 SWR 刷新条依赖 progress-indeterminate 关键帧（设计系统 Progress 样式），
 // 显式引入确保本视图独立加载时关键帧可用
@@ -143,13 +149,28 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
+  // （isActive 守卫：保活隐藏的笔记 tab 不注册，避免消费当前活跃视图的返回键）
   useEffect(() => {
-    if (!isSmallScreen || !mobilePanelOpen) return;
+    if (!isActive || !isSmallScreen || !mobilePanelOpen) return;
     return registerBackHandler(() => {
       setMobilePanelOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, mobilePanelOpen]);
+  }, [isActive, isSmallScreen, mobilePanelOpen]);
+
+  // 📱 小屏 learning-hub 承载：上下文子屏的标题/返回上移 App 级统一顶栏，
+  // 页内不再自绘第二条返回行（同 QuestionBankExportDialog / QuestionHistoryView /
+  // ImageCropDialog 的 subview chrome 通道）。返回箭头与上方系统返回键同语义。
+  // 无宿主（桌面分栏 / workbench 窗口等无统一顶栏的承载）返回 false，保持自绘返回行。
+  // 注意：通道只接管顶栏，不注册返回键——上面的 registerBackHandler 必须保留。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('notes:contextPanel.title'),
+      onBack: () => setMobilePanelOpen(false),
+    },
+    [t],
+    isActive && isSmallScreen && mobilePanelOpen,
+  );
 
   const toggleRightPanel = useCallback(() => {
     setRightPanelVisible((visible) => !visible);
@@ -241,7 +262,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       // dstu API 均为 Result 语义、正常不抛异常；此处兜底防止
       // 意外 throw 让 isLoading 永远卡住（无重试入口的死加载态）
       if (loadingNoteIdRef.current !== currentNoteId) return;
-      setError(toVfsError(unexpected, '加载笔记内容失败'));
+      setError(toVfsError(unexpected, i18n.t('backend_errors:note_content.load_note_failed', { defaultValue: '加载笔记内容失败' })));
       setIsLoading(false);
       return;
     }
@@ -254,7 +275,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     if (!result.ok) {
       console.error('[NoteContentView] ❌ 加载笔记内容失败:', result.error);
       if (result.error.code !== VfsErrorCode.NOT_FOUND) {
-        reportError(result.error, '加载笔记内容');
+        reportError(result.error, i18n.t('backend_errors:note_content.load_note_action', { defaultValue: '加载笔记内容' }));
       }
       setError(result.error);
       setIsLoading(false);
@@ -378,9 +399,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         if (isContentDirty('note', currentNoteId)) {
           showGlobalNotification(
             'warning',
-            t(
-              'notes:editor.deleted_with_unsaved_changes',
-              '资源已被删除；窗口保留未保存内容，请复制内容后再关闭。',
+            i18n.t(
+              'backend_errors:note_content.deleted_with_unsaved_changes',
+              { defaultValue: '资源已被删除；窗口保留未保存内容，请复制内容后再关闭。' },
             ),
           );
           return;
@@ -647,7 +668,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       }
 
       console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
-      reportError(result.error, '保存笔记');
+      reportError(result.error, i18n.t('backend_errors:note_content.save_note_action', { defaultValue: '保存笔记' }));
       throw new Error(result.error.toUserMessage());
     } finally {
       // 并发保存（强制保存 + 自动保存）时避免误清对方的标志
@@ -672,7 +693,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const result = await dstu.setMetadata(node.path, { title: newTitle });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update title:', result.error);
-      reportError(result.error, '更新标题');
+      reportError(result.error, i18n.t('backend_errors:note_content.update_title_action', { defaultValue: '更新标题' }));
       throw new Error(result.error.toUserMessage());
     }
     // ★ R4：await 期间可能已切换笔记，禁止把旧笔记标题回写进当前视图
@@ -689,7 +710,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const result = await dstu.setMetadata(node.path, { tags: newTags });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update tags:', result.error);
-      reportError(result.error, '更新标签');
+      reportError(result.error, i18n.t('backend_errors:note_content.update_tags_action', { defaultValue: '更新标签' }));
       throw new Error(result.error.toUserMessage());
     }
     if (loadingNoteIdRef.current !== savedNoteId) return;
@@ -734,16 +755,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         isDocumentWindowed: () => markdownWindowRef.current?.hasMore === true,
         replaceFullMarkdown: async (markdown, options) => {
           if (loadingNoteIdRef.current !== node.id) {
-            throw new Error('笔记实例已切换，拒绝写入过期编辑器');
+            throw new Error(i18n.t('backend_errors:note_content.stale_editor_write_rejected', { defaultValue: '笔记实例已切换，拒绝写入过期编辑器' }));
           }
           if (api.isReadonly()) {
-            throw new Error('笔记编辑器为只读状态');
+            throw new Error(i18n.t('backend_errors:note_content.editor_readonly', { defaultValue: '笔记编辑器为只读状态' }));
           }
 
           const previousFull = getLiveFullMarkdown();
           const previousBackingFull = fullContentRef.current;
           if (previousFull !== options.expectedMarkdown) {
-            throw new Error('笔记正文已变化，全文写入 OCC 校验失败');
+            throw new Error(i18n.t('backend_errors:note_content.full_write_occ_failed', { defaultValue: '笔记正文已变化，全文写入 OCC 校验失败' }));
           }
 
           const previousWindow = markdownWindowRef.current;
@@ -768,15 +789,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setContent(previousBackingFull);
             setMarkdownWindow(previousWindow);
             if (previousWindow) api.setMarkdown(previousWindow.loadedMarkdown);
-            throw new Error('编辑器未确认全文替换');
+            throw new Error(i18n.t('backend_errors:note_content.full_replace_not_confirmed', { defaultValue: '编辑器未确认全文替换' }));
           }
           if (!api.flushPendingSave) {
-            throw new Error('编辑器未提供持久化确认能力');
+            throw new Error(i18n.t('backend_errors:note_content.flush_capability_missing', { defaultValue: '编辑器未提供持久化确认能力' }));
           }
 
           await api.flushPendingSave();
           if (persistedContentRef.current !== markdown) {
-            throw new Error('笔记全文替换未通过持久化验证');
+            throw new Error(i18n.t('backend_errors:note_content.full_replace_persist_failed', { defaultValue: '笔记全文替换未通过持久化验证' }));
           }
           return true;
         },
@@ -792,6 +813,24 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       if (registeredApi) unregisterNoteEditor(node.id, registeredApi, hostWindowId);
     }
   }, [hostWindowId, node.id, setMarkdownWindow]);
+
+  // 「保存并关闭」挂点：把编辑器现有 flushPendingSave（自动保存队列冲刷）接到
+  // contentDirtyRegistry；不新增保存路径、不动 OCC/保存队列。flush 后若仍 dirty
+  //（保存被拒/失败，或标题等其他编辑面未落盘——flush 只覆盖正文），
+  // 则抛错让 saveContentNow 报失败、窗口保持打开（fail-closed，不静默丢数据）。
+  useEffect(() => {
+    const noteKey = node.id;
+    return registerContentSaveHandler('note', noteKey, async () => {
+      const editor = editorApiRef.current;
+      if (!editor?.flushPendingSave) {
+        throw new Error('[NoteContentView] editor flush capability unavailable');
+      }
+      await editor.flushPendingSave();
+      if (isContentDirty('note', noteKey)) {
+        throw new Error('[NoteContentView] note still dirty after flush');
+      }
+    });
+  }, [node.id]);
 
   const handleRetryLoadMore = useCallback(() => {
     setLoadMoreError(null);
@@ -884,11 +923,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         {/* 📱 长错误信息（含路径/ID）在 375px 窄屏必须可换行，避免横向溢出 */}
         <span className="text-destructive text-center break-words max-w-md">{message}</span>
         <div className="flex flex-wrap justify-center gap-2 mt-3">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => loadNoteContent()}>
+          <DsButton variant="primary" onClick={() => loadNoteContent()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" onClick={onClose}>
               {t('common:close')}
             </DsButton>
           )}
@@ -932,7 +971,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
-            // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（对齐 NotesHome 用法）；
+            // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（沿用历史 NotesHome——已下线——的用法）；
             // tab 不活跃时同样抑制（P0 泄漏修复的同步兜底，编辑器内部另有壳层可见性观察器异步兜底）
             suppressMobileToolbar={(isSmallScreen && mobilePanelOpen) || !isActive}
             headerActions={propertiesPanelDisabled ? undefined : (
@@ -943,9 +982,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   size="sm"
                   className={cn(
                     'h-7 w-7 text-muted-foreground hover:text-foreground',
-                    // 📱 触屏：视觉尺寸与编辑器工具栏其余 h-7 按钮保持一致，
-                    // 用透明伪元素外扩命中区达到 ≥44px 触控目标（仓库既有约定）
-                    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
+                    // 📱 编辑器工具栏高度固定，28px 视觉按钮走共享 coarseHit 逃生舱。
+                    coarseHitClassFor28,
                     (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground',
                   )}
                   onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
@@ -980,24 +1018,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         </aside>
       )}
 
-      {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + 顶部返回 + Android 返回键 */}
+      {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + Android 返回键；
+          标题/返回由 App 级统一顶栏接管（subview chrome 通道），无宿主时回退页内自绘返回行 */}
       {!propertiesPanelDisabled && isSmallScreen && mobilePanelOpen && (
         <div className="absolute inset-0 z-40 flex flex-col bg-background">
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setMobilePanelOpen(false)}
-              aria-label={t('common:back')}
-              className="gap-1 min-h-11 px-2"
-            >
-              <CaretLeft size={16} aria-hidden="true" />
-              {t('common:back')}
-            </DsButton>
-            <span className="text-sm font-medium truncate text-foreground/90">
-              {t('notes:contextPanel.title')}
-            </span>
-          </div>
+          {!subviewChromeHosted && (
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobilePanelOpen(false)}
+                aria-label={t('common:back')}
+                className="gap-1 min-h-11 px-2"
+              >
+                <CaretLeft size={16} aria-hidden="true" />
+                {t('common:back')}
+              </DsButton>
+              <span className="text-sm font-medium truncate text-foreground/90">
+                {t('notes:contextPanel.title')}
+              </span>
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-hidden pb-[var(--mobile-safe-area-bottom,0px)]">
             <NotesContextPanel
               noteId={noteId}

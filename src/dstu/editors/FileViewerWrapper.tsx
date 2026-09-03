@@ -152,7 +152,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
             onClick={() => void loadFileInfo()}
           >
             <ArrowClockwise size={16} />
@@ -160,7 +160,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -182,7 +182,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
         </div>
         {'onClose' in props && props.onClose && (
           <button
-            className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
+            className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             onClick={props.onClose}
           >
             {t('common:actions.close')}
@@ -225,7 +225,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
 
           {/* 下载按钮 */}
           <button
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed [@media(pointer:coarse)]:min-h-11"
             onClick={handleDownload}
             disabled={isDownloading || !fileInfo?.sourcePath}
           >

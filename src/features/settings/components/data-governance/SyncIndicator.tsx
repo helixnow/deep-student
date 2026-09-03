@@ -22,7 +22,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
   compact = false,
   refreshSignal,
 }) => {
-  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+  const [counts, setCounts] = useState<DataGovernanceApi.RecordConflictCounts | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,30 +51,31 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
 
   if (loading || !counts) return null;
 
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // 徽章展示未解决的记录组数（与冲突面板"待解决冲突"分组口径一致）
+  const total = counts.total_groups;
 
   if (total === 0) {
     if (compact) return null;
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1 text-xs text-success">
         <CheckCircle size={12} />
         无冲突
       </span>
     );
   }
 
-  const perDb = Object.entries(counts)
-    .filter(([, n]) => n > 0)
-    .map(([db, n]) => `${db}: ${n}`)
+  const perDb = Object.entries(counts.per_database)
+    .filter(([, entry]) => entry.groups > 0)
+    .map(([db, entry]) => `${db}: ${entry.groups} 组（${entry.rows} 行）`)
     .join(', ');
 
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30"
+      className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30"
       title={`未解决冲突：${perDb}`}
     >
       <Warning size={12} />
-      {total} 条冲突
+      {total} 组冲突
     </span>
   );
 };

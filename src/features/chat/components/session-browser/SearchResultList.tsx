@@ -62,7 +62,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           <DsButton
             variant="default"
             size="sm"
-            className="mt-3 min-h-11 gap-1.5"
+            className="mt-3 !min-h-11 gap-1.5"
             onClick={onRetry}
           >
             <ArrowClockwise size={15} />
@@ -111,7 +111,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           <div key={sessionId} className="space-y-1">
             <button
               onClick={() => onSelectResult(sessionId)}
-              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors group"
+              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors group [@media(pointer:coarse)]:min-h-11"
             >
               <Chat size={14} className="text-muted-foreground/60 shrink-0" />
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
@@ -126,7 +126,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
                 <button
                   key={item.blockId}
                   onClick={() => onSelectResult(item.sessionId)}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="w-full text-left px-2 py-1 rounded hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center"
                 >
                   <div className="flex items-start gap-1.5">
                     {item.role === 'user' ? (
@@ -144,7 +144,8 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               {hasMore && (
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleExpanded(sessionId); }}
-                  className="flex items-center gap-1 px-2 py-0.5 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  // min-h 保证触屏可点（coarse 下达到 44px 触控目标）
+                  className="flex items-center gap-1 px-2 py-0.5 min-h-7 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors [@media(pointer:coarse)]:min-h-11"
                 >
                   <CaretDown size={12} className={cn('transition-transform', isExpanded && 'rotate-180')} />
                   {isExpanded

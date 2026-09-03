@@ -159,13 +159,13 @@ export const qbankToolsSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-qbank_list',
-      description: '分页列出用户的题目集（Low，只读），返回基本信息、可选学习统计以及 total、limit、offset、has_more、truncated。无需 session_id；单次最多 20 条，按 has_more 继续读取。',
+      description: '分页列出用户的题目集（Low，只读），返回基本信息、可选统计与 total/limit/offset/has_more/truncated；单次最多 20 条。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          limit: { type: 'integer', default: 20, minimum: 1, maximum: 20, description: '返回数量限制；单次最多 20 条' },
-          offset: { type: 'integer', default: 0, minimum: 0, description: '偏移量（用于分页）' },
+          limit: { type: 'integer', default: 20, minimum: 1, maximum: 20, description: '返回数量' },
+          offset: { type: 'integer', default: 0, minimum: 0, description: '分页偏移量' },
           search: { type: 'string', description: '搜索关键词（匹配题目集名称）' },
           include_stats: { type: 'boolean', default: true, description: '是否包含统计信息' },
         },
@@ -173,69 +173,69 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_list_questions',
-      description: '分页列出题目集中的题目（Low，只读）。支持按状态、难度、标签筛选，返回 total、page、page_size、questions、has_more、truncated。必须提供 session_id；单页最多 20 条。',
+      description: '分页列出题目集中的题目（Low，只读），支持按状态、难度、标签筛选；返回 total/page/page_size/questions/has_more/truncated，单页最多 20 条。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
           status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '筛选状态' },
           difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'], description: '筛选难度' },
           tags: { type: 'array', items: { type: 'string' }, description: '筛选标签' },
           page: { type: 'integer', default: 1, minimum: 1, description: '页码' },
-          page_size: { type: 'integer', default: 20, minimum: 1, maximum: 20, description: '每页数量；单页最多 20 条' },
+          page_size: { type: 'integer', default: 20, minimum: 1, maximum: 20, description: '每页数量' },
         },
         required: ['session_id'],
       },
     },
     {
       name: 'builtin-qbank_get_question',
-      description: '获取单个题目的详细信息和 updated_at OCC 基线。update_question 前必须读取并原样传入该版本。必须提供 session_id 和 card_id。questions 表来源时额外返回 question_id（delete_questions/batch_update_questions 的版本映射以它为键）、structured_data（新题型判分数据）、is_favorite/is_bookmarked 和最近 5 条 recent_submissions（完整历史用 qbank_get_submissions）。',
+      description: '获取单题详情与 updated_at OCC 基线（写操作前必读）。questions 表来源时额外返回 question_id（批量删除/更新的版本映射键）、structured_data、is_favorite/is_bookmarked 与最近 5 条 recent_submissions。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_id: { type: 'string', description: '【必填】题目卡片 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_id: { type: 'string', description: '题目卡片 ID' },
         },
         required: ['session_id', 'card_id'],
       },
     },
     {
       name: 'builtin-qbank_submit_answer',
-      description: '提交用户明确提供的答案并判断正误（写操作）。Agent 不得生成、猜测或代替用户作答；必须提供 session_id、card_id 和 user_answer。自动更新题目状态和统计。判分由后端按题型完成（含 true_false/numeric/fill_blank 多空/matching/ordering）。',
+      description: '提交用户明确提供的答案（写操作）。Agent 不得生成、猜测或代替用户作答；判分由后端按题型完成，并自动更新状态与统计。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_id: { type: 'string', description: '【必填】题目卡片 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_id: { type: 'string', description: '题目卡片 ID' },
           user_answer: {
             type: 'string',
             description:
-              '【必填】用户提交的答案（字符串）。按题型序列化：选择题选项字母（"A"/"ABD"）；true_false 为 "true"/"false"；numeric 为数字串（"3.14"）；fill_blank 多空为 JSON 数组串（"[\\"答案1\\",\\"答案2\\"]"）；matching 为 "{\\"pairs\\":[{\\"left\\":\\"L1\\",\\"right\\":\\"R1\\"}]}"；ordering 为 JSON 数组串（"[\\"S2\\",\\"S1\\"]"）',
+              '用户提交的答案（字符串）；各题型序列化格式见技能说明「user_answer 序列化格式」',
           },
-          is_correct: { type: 'boolean', description: '是否正确（可选，如果不提供则自动判断）' },
+          is_correct: { type: 'boolean', description: '是否正确（省略则自动判断）' },
         },
         required: ['session_id', 'card_id', 'user_answer'],
       },
     },
     {
       name: 'builtin-qbank_update_question',
-      description: '更新题目信息（Medium，OCC 反向更新）。支持题干、选项、题型和 structured_data（切换到 matching/ordering/numeric 必须同调用提供对应 structured_data）。必须先调用 qbank_get_question 取得最新 updated_at，并原样作为 expected_updated_at 传入；冲突后重新读取，禁止盲重试。成功返回 bounded question、bounded previous、changed_fields、updated_at、reversible=false、reversibleWithOcc=true 与 undo 提示；两份题目中长字段用 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明截断，previous 的可空字段不保证能自动清空。',
+      description: '更新题目信息（Medium，OCC 反向更新）。支持题干、选项、题型和 structured_data（切换到 matching/ordering/numeric 必须同调用提供对应 structured_data）。必须先调用 qbank_get_question 取得最新 updated_at，并原样作为 expected_updated_at 传入；冲突后重新读取，禁止盲重试。成功返回 bounded question、bounded previous、changed_fields、updated_at、reversible=false、reversibleWithOcc=true 与 undo 提示；两份题目中长字段用 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明截断（fieldsTruncated 可含 structured_data 嵌套路径），previous 的可空字段不保证能自动清空。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_id: { type: 'string', description: '【必填】题目卡片 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_id: { type: 'string', description: '题目卡片 ID' },
           content: { type: 'string', minLength: 1, maxLength: 50000, description: '更新题干' },
           question_type: {
             type: 'string',
             enum: ['single_choice', 'multiple_choice', 'indefinite_choice', 'fill_blank', 'true_false', 'matching', 'ordering', 'numeric', 'short_answer', 'essay', 'calculation', 'proof', 'other'],
-            description: '更新题型；选择题必须同时提供结构化 options；切换到 matching/ordering/numeric 必须同调用提供 structured_data',
+            description: '更新题型；选择题须同时提供 options，切到 matching/ordering/numeric 须同调用提供 structured_data',
           },
           structured_data: {
             type: 'object',
             description:
-              '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许）。fill_blank：{"blanks":[{"answers":["答案1","备选"],"case_sensitive":false,"trim":true}]}；matching：{"left":[{"key":"L1","content":"..."}],"right":[{"key":"R1","content":"..."}],"pairs":[{"left":"L1","right":"R1"}]}；ordering：{"items":[{"key":"S1","content":"..."}],"correct_order":["S2","S1"]}（correct_order 是 items key 的排列）；numeric：{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}（tolerance_mode 可选 absolute/relative）',
+              '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许）；各题型 JSON 格式见技能说明「出题格式要求」',
           },
           options: {
             type: 'array',
@@ -258,7 +258,7 @@ export const qbankToolsSkill: SkillDefinition = {
             type: 'array',
             maxItems: 50,
             items: { type: 'string', minLength: 1, maxLength: 100 },
-            description: '更新完整标签列表；最多 50 个',
+            description: '更新完整标签列表',
           },
           images: {
             type: 'array',
@@ -273,14 +273,14 @@ export const qbankToolsSkill: SkillDefinition = {
               },
               required: ['id'],
             },
-            description: '更新关联图片（结构化附件列表）。传空数组表示清空。',
+            description: '更新关联图片；空数组表示清空',
           },
           user_note: { type: 'string', maxLength: 50000, description: '更新用户笔记' },
           status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '更新学习状态' },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】qbank_get_question 返回的 updated_at OCC 基线',
+            description: 'qbank_get_question 返回的 updated_at OCC 基线',
           },
         },
         required: ['session_id', 'card_id', 'expected_updated_at'],
@@ -289,22 +289,22 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_get_stats',
-      description: '获取题目集的学习统计信息，包括总题数、各状态数量、正确率等。必须提供 session_id。',
+      description: '获取题目集学习统计：总题数、各状态数量、正确率等。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
         },
         required: ['session_id'],
       },
     },
     {
       name: 'builtin-qbank_get_next_question',
-      description: '获取下一道推荐题目（Low，只读）。支持顺序、随机、错题优先、知识点聚焦；review_only=true 时只从错题/待复习题中选择。必须提供 session_id。',
+      description: '获取下一道推荐题目（Low，只读）。支持顺序、随机、错题优先、按标签；review_only=true 只选错题/待复习题。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
           mode: {
             type: 'string',
             enum: ['sequential', 'random', 'review_first', 'by_tag'],
@@ -312,7 +312,7 @@ export const qbankToolsSkill: SkillDefinition = {
             description: '推题模式',
           },
           tag: { type: 'string', description: '当 mode=by_tag 时，指定要练习的标签' },
-          current_card_id: { type: 'string', description: '当前题目 ID（用于顺序模式获取下一题）' },
+          current_card_id: { type: 'string', description: '当前题目 ID（顺序模式用）' },
           review_only: { type: 'boolean', default: false, description: '只选择 status=review 的错题/待复习题' },
         },
         required: ['session_id'],
@@ -320,12 +320,12 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_generate_variant',
-      description: '基于原题生成变式题。AI 会保持题目结构和考点，但改变具体数值或情境。必须提供 session_id 和 card_id。',
+      description: '基于原题生成变式题：保持结构和考点，改变数值或情境。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_id: { type: 'string', description: '【必填】原题卡片 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_id: { type: 'string', description: '原题卡片 ID' },
           variant_type: {
             type: 'string',
             enum: ['similar', 'harder', 'easier', 'different_context'],
@@ -339,7 +339,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_batch_import',
-      description: '批量导入题目到题目集（单次最多 200 道，校验失败整批不写入）。支持 JSON 格式的题目数据。必须提供 questions 数组。导入成功后，在回复中使用 [题目集:返回的session_id:名称] 格式让用户可点击查看。',
+      description: '批量导入题目（单次最多 200 道，校验失败整批不写入）。导入成功后在回复中用 [题目集:返回的session_id:名称] 引用。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -353,30 +353,30 @@ export const qbankToolsSkill: SkillDefinition = {
             items: {
               type: 'object',
               properties: {
-                content: { type: 'string', description: '【必填】题干内容（不要把选项写在题干里，选项放 options 数组）' },
-                answer: { type: 'string', description: '答案。选择题填选项字母（如 "A" 或 "ABD"），填空题填答案文本，true_false 填小写 "true"/"false"' },
+                content: { type: 'string', description: '题干（选项放 options 数组，不得写入题干）' },
+                answer: { type: 'string', description: '答案；选择题填选项字母，true_false 填小写 true/false' },
                 explanation: { type: 'string', description: '解析' },
                 question_type: {
                   type: 'string',
                   enum: ['single_choice', 'multiple_choice', 'indefinite_choice', 'fill_blank', 'true_false', 'matching', 'ordering', 'numeric', 'short_answer', 'essay', 'calculation', 'proof', 'other'],
-                  description: '【重要】题型。有 A/B/C/D 选项的必须设为 single_choice 或 multiple_choice，不要设为 other；matching/ordering/numeric 必须同时提供 structured_data',
+                  description: '题型；有选项的题必须设为选择题型而非 other，matching/ordering/numeric 须同时提供 structured_data',
                 },
                 options: {
                   type: 'array',
                   items: {
                     type: 'object',
                     properties: {
-                      key: { type: 'string', description: '选项标识，如 A、B、C、D' },
+                      key: { type: 'string', description: '选项标识，如 A' },
                       content: { type: 'string', description: '选项内容' },
                     },
                     required: ['key', 'content'],
                   },
-                  description: '选择题选项（question_type 为 single_choice/multiple_choice/indefinite_choice 时必填且不得为空）',
+                  description: '选择题选项；三种选择题型必填且不得为空',
                 },
                 structured_data: {
                   type: 'object',
                   description:
-                    '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许；matching/ordering/numeric 必填）。fill_blank：{"blanks":[{"answers":["答案1","备选"],"case_sensitive":false,"trim":true}]}；matching：{"left":[{"key","content"}],"right":[...],"pairs":[{"left":"L1","right":"R1"}]}；ordering：{"items":[{"key","content"}],"correct_order":["S2","S1"]}；numeric：{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}',
+                    '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许，后三者必填）；格式见技能说明「出题格式要求」',
                 },
                 difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'] },
                 tags: { type: 'array', items: { type: 'string' } },
@@ -392,24 +392,24 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_reset_progress',
-      description: '重置题目集的学习进度（Medium，写操作）。可以重置全部或指定题目；必须提供 session_id。指定 card_ids 时返回 reset_count 与 missing_card_ids（不存在的题目不会被静默忽略；全部不存在则报错）。',
+      description: '重置学习进度（Medium）。可重置全部或指定题目；指定 card_ids 时返回 reset_count 与 missing_card_ids，全部不存在则报错。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          card_ids: { type: 'array', items: { type: 'string' }, description: '要重置的题目 ID 列表（可选，不提供则重置全部）' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_ids: { type: 'array', items: { type: 'string' }, description: '要重置的题目 ID（省略则重置全部）' },
         },
         required: ['session_id'],
       },
     },
     {
       name: 'builtin-qbank_export',
-      description: '导出题目集为 JSON、Markdown 或 DOCX 文件。必须提供 session_id。文件真实写入应用数据目录并返回 exportPath、fileSize 与最多 20 道题的截断预览；不会把完整 Markdown、JSON 或 DOCX base64 注入对话上下文。DOCX 含标题/粗体/斜体。',
+      description: '导出题目集为 JSON/Markdown/DOCX。文件真实写入应用数据目录，返回 exportPath、fileSize 与最多 20 道题的截断预览；不把完整内容注入对话上下文。',
       inputSchema: {
         type: 'object',
         properties: {
-          session_id: { type: 'string', description: '【必填】题目集 ID' },
-          format: { type: 'string', enum: ['json', 'markdown', 'docx'], default: 'json', description: '导出格式。docx 会生成 Word 文档。' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          format: { type: 'string', enum: ['json', 'markdown', 'docx'], default: 'json', description: '导出格式' },
           include_stats: { type: 'boolean', default: true, description: '是否包含学习统计' },
           filter_status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '只导出指定状态的题目' },
         },
@@ -419,12 +419,12 @@ export const qbankToolsSkill: SkillDefinition = {
     {
       name: 'builtin-qbank_import_document',
       description:
-        '从文档导入题目到题目集。支持 DOCX、TXT、MD、CSV 格式。超长文档将自动分块处理，每块独立调用 AI 解析，最后合并结果。当用户上传题目文档、想要批量导入题目时使用。导入成功后，在回复中使用 [题目集:返回的session_id:名称] 格式让用户可点击查看。',
+        '从文档（DOCX/TXT/MD/CSV）导入题目，超长文档自动分块 AI 解析后合并。导入成功后在回复中用 [题目集:返回的session_id:名称] 引用。',
       inputSchema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: '【必填】文档内容（纯文本或 base64 编码；csv 直接传文本）' },
-          format: { type: 'string', enum: ['txt', 'md', 'docx', 'json', 'csv'], default: 'txt', description: '文档格式。csv 走与 txt/md 相同的 AI 结构化解析路径。' },
+          content: { type: 'string', description: '文档内容（纯文本或 base64；csv 直接传文本）' },
+          format: { type: 'string', enum: ['txt', 'md', 'docx', 'json', 'csv'], default: 'txt', description: '文档格式' },
           name: { type: 'string', description: '题目集名称（可选，不提供则自动生成）' },
           session_id: { type: 'string', description: '目标题目集 ID（可选，不提供则创建新题目集）' },
           folder_id: { type: 'string', description: '目标文件夹 ID（创建新题目集时使用）' },
@@ -434,7 +434,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_ai_grade',
-      description: '对已经提交的题目执行真实 AI 评判（grade）或解析（analyze），返回完整反馈；grade 会持久化 verdict/score 并更新题目统计。先调用 qbank_submit_answer 获取 submission_id。',
+      description: '对已提交答案执行真实 AI 评判（grade，持久化 verdict/score 并更新统计）或解析（analyze）。先 qbank_submit_answer 取得 submission_id。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -443,41 +443,41 @@ export const qbankToolsSkill: SkillDefinition = {
           { required: ['session_id', 'card_id'] },
         ],
         properties: {
-          question_id: { type: 'string', description: 'questions 表题目 ID；与 session_id+card_id 二选一' },
-          session_id: { type: 'string', description: '题目集 ID；与 card_id 同时提供' },
-          card_id: { type: 'string', description: '题目卡片 ID；与 session_id 同时提供' },
-          submission_id: { type: 'string', minLength: 1, description: '【必填】qbank_submit_answer 返回的提交记录 ID' },
+          question_id: { type: 'string', description: 'questions 表题目 ID' },
+          session_id: { type: 'string', description: '题目集 ID' },
+          card_id: { type: 'string', description: '题目卡片 ID' },
+          submission_id: { type: 'string', minLength: 1, description: 'qbank_submit_answer 返回的提交记录 ID' },
           mode: {
             type: 'string',
             enum: ['grade', 'analyze'],
             default: 'grade',
             description: 'grade 判定正误并评分；analyze 只生成解析',
           },
-          model_config_id: { type: 'string', description: '可选模型配置 ID；省略则使用题库 AI 评判分配模型' },
+          model_config_id: { type: 'string', description: '可选模型配置 ID' },
         },
         required: ['submission_id'],
       },
     },
     {
       name: 'builtin-qbank_create_question',
-      description: '在现有题目集中创建一道题（Medium）。session_id 即题目集 exam_id；返回 success、bounded question、previous=null、reversible=false、reversibleWithApproval=true 和精确 undo。question 的 content/answer/explanation/user_note/ai_feedback 单字段最多 2000 字符，以 <field>_truncated 和 fieldsTruncated 标明；options[i] 用 content_truncated。undo 指向 High 批删，仍须重新 ask_user 审批，并非无条件撤销。选择题必须传非空结构化 options。',
+      description: '在题目集（session_id 即 exam_id）中创建一道题（Medium）。返回 bounded question、reversible=false、reversibleWithApproval=true 与精确 undo（指向 High 批删，仍须 ask_user 审批）。长字段按 2000 字符截断并带 truncated 标记；选择题必须传非空结构化 options。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '【必填】目标题目集 ID（exam_id）' },
-          content: { type: 'string', minLength: 1, maxLength: 50000, description: '【必填】题干' },
+          session_id: { type: 'string', minLength: 1, description: '目标题目集 ID（exam_id）' },
+          content: { type: 'string', minLength: 1, maxLength: 50000, description: '题干' },
           question_label: { type: 'string', maxLength: 120, description: '题号或短标签' },
           question_type: {
             type: 'string',
             enum: ['single_choice', 'multiple_choice', 'indefinite_choice', 'fill_blank', 'true_false', 'matching', 'ordering', 'numeric', 'short_answer', 'essay', 'calculation', 'proof', 'other'],
             default: 'other',
-            description: '题型；三种选择题必须提供非空 options；matching/ordering/numeric 必须提供 structured_data；true_false 的 answer 只能是小写 "true"/"false"',
+            description: '题型；选择题须提供非空 options，matching/ordering/numeric 须提供 structured_data，true_false 答案为小写 true/false',
           },
           structured_data: {
             type: 'object',
             description:
-              '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许；matching/ordering/numeric 必填）。fill_blank：{"blanks":[{"answers":["答案1","备选"],"case_sensitive":false,"trim":true}]}（blanks 与题干 ____ 空位一一对应）；matching：{"left":[{"key":"L1","content":"..."}],"right":[{"key":"R1","content":"..."}],"pairs":[{"left":"L1","right":"R1"}]}；ordering：{"items":[{"key":"S1","content":"..."}],"correct_order":["S2","S1"]}（correct_order 是 items key 的排列）；numeric：{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}（tolerance_mode 可选 absolute/relative）',
+              '新题型结构化数据（仅 fill_blank/matching/ordering/numeric 允许，后三者必填）；各题型 JSON 格式见技能说明「出题格式要求」',
           },
           options: {
             type: 'array',
@@ -500,7 +500,7 @@ export const qbankToolsSkill: SkillDefinition = {
             type: 'array',
             maxItems: 50,
             items: { type: 'string', minLength: 1, maxLength: 100 },
-            description: '标签，最多 50 个',
+            description: '标签',
           },
           images: {
             type: 'array',
@@ -536,14 +536,14 @@ export const qbankToolsSkill: SkillDefinition = {
             minItems: 1,
             maxItems: 20,
             items: { type: 'string', minLength: 1, maxLength: 200 },
-            description: '【必填】questions 表题目 ID，精确列明本次删除范围',
+            description: 'questions 表题目 ID，精确列明本次删除范围',
           },
           expected_updated_at_by_id: {
             type: 'object',
             minProperties: 1,
             additionalProperties: { type: 'string', minLength: 1 },
             properties: {},
-            description: '【必填】question_id 到最近一次 qbank_get_question.updated_at 的完整映射',
+            description: 'question_id 到最新 updated_at 的完整映射',
           },
         },
         required: ['question_ids', 'expected_updated_at_by_id'],
@@ -557,63 +557,63 @@ export const qbankToolsSkill: SkillDefinition = {
         additionalProperties: false,
         anyOf: [{ required: ['question_id'] }, { required: ['session_id', 'card_id'] }],
         properties: {
-          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID；与 session_id+card_id 二选一' },
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID；与 card_id 同时提供' },
-          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID；与 session_id 同时提供' },
-          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】最近一次 qbank_get_question 返回的 updated_at' },
+          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
+          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '最近一次 qbank_get_question 返回的 updated_at' },
         },
         required: ['expected_updated_at'],
       },
     },
     {
       name: 'builtin-qbank_toggle_bookmark',
-      description: '切换一道题的书签状态（Medium，OCC，可撤销）。书签与收藏是两个独立标记位。用 question_id，或用同一题目集的 session_id+card_id 定位；先读最新 updated_at。返回 bounded question、previous.is_bookmarked、reversible=true 与精确 undo；长字段以 <field>_truncated 和 fieldsTruncated 标明 2000 字符截断。',
+      description: '切换一道题的书签状态（Medium，OCC，可撤销）；书签与收藏是独立标记位。先读最新 updated_at。返回 bounded question、previous.is_bookmarked、reversible=true 与精确 undo；长字段按 2000 字符截断并标记。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         anyOf: [{ required: ['question_id'] }, { required: ['session_id', 'card_id'] }],
         properties: {
-          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID；与 session_id+card_id 二选一' },
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID；与 card_id 同时提供' },
-          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID；与 session_id 同时提供' },
-          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】最近一次 qbank_get_question 返回的 updated_at' },
+          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
+          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '最近一次 qbank_get_question 返回的 updated_at' },
         },
         required: ['expected_updated_at'],
       },
     },
     {
       name: 'builtin-qbank_get_submissions',
-      description: '读取一道题的完整作答历史（Low，只读）。qbank_get_question 只带最近 5 条；本工具最多一次 20 条，按 submitted_at 倒序。返回 submissions（含 submission_id、user_answer、is_correct、grading_method、submitted_at）；user_answer 超 2000 字符时以 user_answer_truncated 标明；count 等于 limit 时可能还有更早记录（has_more=true 为近似值）。',
+      description: '读取一道题的完整作答历史（Low，只读），按 submitted_at 倒序，一次最多 20 条。返回 submissions（submission_id/user_answer/is_correct/grading_method/submitted_at）；user_answer 超 2000 字符截断标记；count 等于 limit 时可能还有更早记录。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         anyOf: [{ required: ['question_id'] }, { required: ['session_id', 'card_id'] }],
         properties: {
-          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID；与 session_id+card_id 二选一' },
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID；与 card_id 同时提供' },
-          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID；与 session_id 同时提供' },
-          limit: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '返回条数，最多 20' },
+          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
+          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '返回条数' },
         },
       },
     },
     {
       name: 'builtin-qbank_get_question_history',
-      description: '读取一道题的字段变更历史（Low，只读），按时间倒序最多 20 条。返回 history（field_name、old_value/new_value 为 {text,truncated} 或 null、operator、reason、changed_at）；count 等于 limit 时可能还有更早记录。用于回答"这道题被改过什么"。',
+      description: '读取一道题的字段变更历史（Low，只读），按时间倒序最多 20 条。返回 history（field_name、old/new_value、operator、reason、changed_at）；old_value/new_value 为 {text,truncated}（2000 字符截断）或 null；count 等于 limit 时可能还有更早记录。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         anyOf: [{ required: ['question_id'] }, { required: ['session_id', 'card_id'] }],
         properties: {
-          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID；与 session_id+card_id 二选一' },
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID；与 card_id 同时提供' },
-          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID；与 session_id 同时提供' },
-          limit: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '返回条数，最多 20' },
+          question_id: { type: 'string', minLength: 1, description: 'questions 表题目 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
+          card_id: { type: 'string', minLength: 1, description: '题目卡片 ID' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '返回条数' },
         },
       },
     },
     {
       name: 'builtin-qbank_batch_update_questions',
-      description: '批量更新 1-20 道题的学习元数据（Medium，逐题 OCC，非原子）。只支持 updates.difficulty/status/tags（tags 为完整替换）；题干/答案等内容修改请逐题用 qbank_update_question。必须以 question_id 为键传入完整 expected_updated_at_by_id。逐题独立提交：返回 updated_count/conflict_count/failed_count 与逐题 results；冲突题未被修改并附 current，须重新读取后规划，禁止盲重试。',
+      description: '批量更新 1-20 道题的 difficulty/status/tags（Medium，逐题 OCC，非原子；tags 整体替换）。内容修改逐题用 qbank_update_question。以 question_id 为键传完整 expected_updated_at_by_id；返回 updated_count/conflict_count/failed_count 与逐题 results，冲突题未被修改并附 current，重读后再规划。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -623,14 +623,14 @@ export const qbankToolsSkill: SkillDefinition = {
             minItems: 1,
             maxItems: 20,
             items: { type: 'string', minLength: 1, maxLength: 200 },
-            description: '【必填】questions 表题目 ID 列表（1-20 个）',
+            description: 'questions 表题目 ID 列表（1-20 个）',
           },
           expected_updated_at_by_id: {
             type: 'object',
             minProperties: 1,
             additionalProperties: { type: 'string', minLength: 1 },
             properties: {},
-            description: '【必填】question_id 到最近一次 qbank_get_question.updated_at 的完整映射',
+            description: 'question_id 到最新 updated_at 的完整映射',
           },
           updates: {
             type: 'object',
@@ -646,7 +646,7 @@ export const qbankToolsSkill: SkillDefinition = {
                 description: '统一替换完整标签列表（不是追加）',
               },
             },
-            description: '【必填】要统一应用到所有题目的字段，至少一项',
+            description: '要统一应用到所有题目的字段，至少一项',
           },
         },
         required: ['question_ids', 'expected_updated_at_by_id', 'updates'],
@@ -654,12 +654,12 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_list_source_images',
-      description: '分页列出题目集原始导入图片的元数据（Low，只读）。只返回 blob_hash 与 page_index，不含 base64 图片正文（data_included=false）；需要查看图片时引导用户在题库 UI 打开。返回 total/page/page_size/has_more/truncated，单页最多 20 条。',
+      description: '分页列出题目集原始导入图片元数据（Low，只读）：仅 blob_hash 与 page_index，不含图片正文；查看图片请引导用户在题库 UI 打开。返回 total/page/page_size/has_more/truncated，单页最多 20 条。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },
@@ -673,7 +673,7 @@ export const qbankToolsSkill: SkillDefinition = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
           duration_minutes: { type: 'integer', minimum: 1, maximum: 480, default: 30, description: '限时分钟数' },
           question_count: { type: 'integer', minimum: 1, maximum: 100, default: 20, description: '抽取题数' },
         },
@@ -687,7 +687,7 @@ export const qbankToolsSkill: SkillDefinition = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
           config: {
             type: 'object',
             additionalProperties: false,
@@ -698,7 +698,7 @@ export const qbankToolsSkill: SkillDefinition = {
                 type: 'object',
                 properties: {},
                 additionalProperties: { type: 'integer', minimum: 1, maximum: 100 },
-                description: '题型到题数的映射，总和最多 100；键限 single_choice/multiple_choice/indefinite_choice/fill_blank/true_false/matching/ordering/numeric/short_answer/essay/calculation/proof/other',
+                description: '题型到题数的映射，总和最多 100；键取 question_type 枚举值（见 qbank_search_questions）',
               },
               difficulty_distribution: {
                 type: 'object',
@@ -712,7 +712,7 @@ export const qbankToolsSkill: SkillDefinition = {
                 type: 'array',
                 maxItems: 20,
                 items: { type: 'string', minLength: 1, maxLength: 100 },
-                description: '可选标签筛选，最多 20 个',
+                description: '标签筛选',
               },
             },
           },
@@ -728,14 +728,14 @@ export const qbankToolsSkill: SkillDefinition = {
         additionalProperties: false,
         properties: {
           session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
-          count: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '每日练习题数，最多 20' },
+          count: { type: 'integer', minimum: 1, maximum: 50, default: 10, description: '每日练习题数，最多 50（与练习面板的每日目标范围一致）' },
         },
         required: ['session_id'],
       },
     },
     {
       name: 'builtin-qbank_get_check_in_calendar',
-      description: '分页读取指定月份的做题打卡日历（Low，只读）。可限定题目集；返回 days、连续打卡/月统计以及 total/page/page_size/has_more/truncated，单页最多 20 天。',
+      description: '分页读取指定月份做题打卡日历（Low，只读）。可限定题目集；返回 days、连续打卡/月统计与 total/page/page_size/has_more/truncated，单页最多 20 天。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -743,6 +743,7 @@ export const qbankToolsSkill: SkillDefinition = {
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为全局' },
           year: { type: 'integer', minimum: 1970, maximum: 9999, description: '【必填】年份' },
           month: { type: 'integer', minimum: 1, maximum: 12, description: '【必填】月份' },
+          daily_target: { type: 'integer', minimum: 1, maximum: 50, description: '可选达标判定目标题数（缺省 10，跟随用户每日一练目标）' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },
@@ -756,7 +757,7 @@ export const qbankToolsSkill: SkillDefinition = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
           config: {
             type: 'object',
             additionalProperties: false,
@@ -766,11 +767,11 @@ export const qbankToolsSkill: SkillDefinition = {
                 type: 'object',
                 properties: {},
                 additionalProperties: { type: 'integer', minimum: 1, maximum: 100 },
-                description: '题型到题数的映射，总和最多 100；键限 single_choice/multiple_choice/indefinite_choice/fill_blank/true_false/matching/ordering/numeric/short_answer/essay/calculation/proof/other',
+                description: '题型到题数的映射，总和最多 100；键取 question_type 枚举值（见 qbank_search_questions）',
               },
               question_count: { type: 'integer', minimum: 1, maximum: 100, default: 20, description: 'type_selection 为空时随机选题并截断到此数量' },
               difficulty_filter: { type: 'array', maxItems: 4, items: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'] }, description: '难度筛选' },
-              tags_filter: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 100 }, description: '标签筛选，最多 20 个' },
+              tags_filter: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 100 }, description: '标签筛选' },
               shuffle: { type: 'boolean', default: true, description: '是否打乱' },
               include_answers: { type: 'boolean', default: true, description: '是否包含答案' },
               include_explanations: { type: 'boolean', default: true, description: '是否包含解析' },
@@ -788,7 +789,7 @@ export const qbankToolsSkill: SkillDefinition = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          keyword: { type: 'string', minLength: 1, maxLength: 200, description: '【必填】全文检索关键词' },
+          keyword: { type: 'string', minLength: 1, maxLength: 200, description: '全文检索关键词' },
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为跨题目集检索' },
           status: { type: 'string', enum: ['new', 'in_progress', 'mastered', 'review'], description: '学习状态' },
           difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'], description: '难度' },
@@ -804,14 +805,14 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_get_learning_trend',
-      description: '分页读取日期范围内的每日做题次数、正确数与正确率（Low，只读）。日期必须 YYYY-MM-DD、正序且跨度不超过 367 天；返回 points/total/page/page_size/has_more/truncated，单页最多 20 天。',
+      description: '分页读取日期范围内每日做题数、正确数与正确率（Low，只读）。日期 YYYY-MM-DD、正序、跨度≤367 天；返回 points/total/page/page_size/has_more/truncated，单页最多 20 天。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为全局' },
-          start_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: '【必填】开始日期 YYYY-MM-DD' },
-          end_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: '【必填】结束日期 YYYY-MM-DD；跨度最多 367 天' },
+          start_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: '开始日期 YYYY-MM-DD' },
+          end_date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: '结束日期 YYYY-MM-DD' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },
@@ -826,7 +827,7 @@ export const qbankToolsSkill: SkillDefinition = {
         additionalProperties: false,
         properties: {
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为全局' },
-          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '【必填】年份' },
+          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '年份' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },

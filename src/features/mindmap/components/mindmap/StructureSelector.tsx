@@ -405,6 +405,8 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             'flex items-center gap-2 px-2 h-7 rounded',
+            // 触控目标：视觉保持 28px（工具栏空间受限），触屏用透明伪元素把命中区扩到 ≥44px（28 + 2×8）
+            "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
             'bg-transparent border border-transparent',
             'hover:bg-[var(--mm-bg-hover)]',
             'transition-colors duration-100',

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, useSyncExternalStore, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -80,10 +80,16 @@ const getFileExtension = (name: string): string =>
 const IndexStatusView = lazy(() => import('./views/IndexStatusView'));
 // ★ 2026-01-19: 懒加载 VFS 记忆管理视图
 const MemoryView = lazy(() => import('./views/MemoryView'));
-// ★ 2026-01-31: 懒加载桌面视图
-import { DesktopView, type CreateResourceType } from './components/finder';
-import type { DesktopRootConfig } from './stores/desktopStore';
-import { useFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
+import { useDesktopStore, type DesktopRootConfig } from './stores/desktopStore';
+import {
+  useFinderStoreFor,
+  setActiveFinderHostId,
+  getActiveFinderHostId,
+  resolveFinderHostId,
+  DEFAULT_FINDER_HOST_ID,
+  type FinderPath,
+  type QuickAccessType,
+} from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -94,13 +100,27 @@ import {
   FinderQuickAccess,
   FinderFileList,
   FinderBatchToolbar,
+  FinderQuickLook,
   FolderPickerDialog,
+  DesktopView,
+  type CreateResourceType,
 } from './components/finder';
+import {
+  finderUndoStack,
+  type FinderMoveUndoEntry,
+} from './utils/finderUndoStack';
+import {
+  finderClipboard,
+  toClipboardEntries,
+  buildCopySrcPath,
+  buildPasteDstPath,
+  type FinderClipboardEntry,
+} from './utils/finderClipboard';
 import { dstu, type DstuNode, folderApi, createEmpty, trashApi } from '@/dstu';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
-import { dstuNodeToResourceListItem } from './types';
+import { dstuNodeToResourceListItem, mapDstuTypeToFolderItemType } from './types';
 import type { LearningHubSidebarProps, ResourceListItem } from './types';
-import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
+import type { FolderTreeNode } from '@/dstu/types/folder';
 import { VfsError, VfsErrorCode, err, ok, reportError } from '@/shared/result';
 import { LearningHubContextMenu, type ContextMenuTarget } from './components/LearningHubContextMenu';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
@@ -139,12 +159,6 @@ const CANVAS_FALLBACK_PATH = {
   folderId: null as string | null,
   typeFilter: null as null,
 };
-const createCanvasFinderPath = (): FinderPath => ({
-  viewKind: 'folder',
-  breadcrumbs: [],
-  folderId: null,
-  typeFilter: null,
-});
 const PENDING_FOLDER_ID_PREFIX = '__pending_new_folder__';
 
 type SoftDeleteTarget = { id: string; type: string; name: string };
@@ -160,6 +174,7 @@ interface PendingFolderDraft {
 export function LearningHubSidebar({
   mode,
   onOpenApp,
+  onOpenPreview,
   onClose,
   onReferenceToChat,
   className,
@@ -174,7 +189,7 @@ export function LearningHubSidebar({
   toolbarPortalTarget,
   toolbarPortalMode = 'window',
   highlightedIds,
-  hostId: _hostId,
+  hostId,
   sessionActive,
   commandsEnabled,
   onMultiSelectModeChange,
@@ -189,6 +204,9 @@ export function LearningHubSidebar({
 
   // ========== 页面生命周期监控 ==========
   usePageMount('learning-hub-sidebar', 'LearningHubSidebar');
+
+  // ★ LH-HOST：每个宿主一份访达状态（currentPath / searchQuery / selectedIds / viewMode）
+  const finderStore = useFinderStoreFor(hostId);
 
   // Store state
   const {
@@ -223,11 +241,12 @@ export function LearningHubSidebar({
     navigateTo: storeNavigateTo,
     quickAccessNavigate: storeQuickAccessNavigate,
     queryItemsForPath,
-  } = useFinderStore();
+  } = finderStore();
 
-  const [canvasPath, setCanvasPath] = useState<FinderPath>(createCanvasFinderPath);
-  const [canvasHistory, setCanvasHistory] = useState<FinderPath[]>(() => [createCanvasFinderPath()]);
-  const [canvasHistoryIndex, setCanvasHistoryIndex] = useState(0);
+  // ★ LH-HOST Step2：canvas 宿主的「导航位置」不再是组件本地 state，而是
+  // hostId 桶内的 store。外部顶栏（ChatV2Page 移动端面包屑）因此能读到画布
+  // 自己的落点，不再串到学习中心那一桶。
+  // 列表 / 选中 / 搜索仍留在本地：canvas 走本地活名过滤而非后端搜索。
   const [canvasItems, setCanvasItems] = useState<DstuNode[]>([]);
   const [canvasIsLoading, setCanvasIsLoading] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
@@ -236,10 +255,10 @@ export function LearningHubSidebar({
   const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
   const canvasRequestIdRef = useRef(0);
 
-  // Canvas uses an isolated file-browser state: never reuse the global path/items/search.
-  const currentPath = mode === 'canvas' ? canvasPath : storeCurrentPath;
-  const history = mode === 'canvas' ? canvasHistory : storeHistory;
-  const historyIndex = mode === 'canvas' ? canvasHistoryIndex : storeHistoryIndex;
+  // 导航位置统一由宿主桶 store 承载（canvas 与 fullscreen 桶不同，天然隔离）。
+  const currentPath = storeCurrentPath;
+  const history = storeHistory;
+  const historyIndex = storeHistoryIndex;
   const items = mode === 'canvas' ? canvasItems : storeItems;
   const isLoading = mode === 'canvas' ? canvasIsLoading : storeIsLoading;
   const error = mode === 'canvas' ? canvasError : storeError;
@@ -306,9 +325,15 @@ export function LearningHubSidebar({
   // 📱 移动端顶部工具栏「新建」菜单：受控 + Android 返回键关闭（契约第 4 条）。
   // AppMenu 是自绘浮层（无 data-state="open"），androidBackCoordinator 的 Radix 兜底匹配不到。
   const [mobileCreateMenuOpen, setMobileCreateMenuOpen] = useState(false);
+  // 可见性锚点用触发按钮：菜单内容 portal 到 body，判定不了保活视图的隐藏态
+  const mobileCreateMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!mobileCreateMenuOpen) return;
     return registerBackHandler(() => {
+      // 视图离屏时（MobileSlidingLayout 给非可见屏加 inert / display:none 隐藏保活视图）
+      // 让行给当前活跃层：不吞返回键、也不关用户看不见的菜单（对照 IndexStatusView 守卫）
+      const el = mobileCreateMenuTriggerRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
       setMobileCreateMenuOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -333,6 +358,12 @@ export function LearningHubSidebar({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTarget>({ type: 'empty' });
+
+  // ★ Quick Look：空格快速预览的当前项（null = 关闭）
+  const [quickLookItem, setQuickLookItem] = useState<DstuNode | null>(null);
+
+  // ★ 快捷访问「收藏」徽标真数据（undefined = 未加载，不显示假 0）
+  const [favoriteCount, setFavoriteCount] = useState<number | undefined>(undefined);
 
   // ★ 删除确认对话框状态：仅永久删 / 清空 / 回收站批永久删（软删走 Undo toast）
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -366,7 +397,7 @@ export function LearningHubSidebar({
     inlineEdit,
     startInlineEdit,
     cancelInlineEdit,
-  } = useFinderStore();
+  } = finderStore();
   
   // Container ref for keyboard shortcuts scope
   const containerRef = useRef<HTMLDivElement>(null);
@@ -389,89 +420,50 @@ export function LearningHubSidebar({
     };
   }, []);
 
-  const navigateCanvasTo = useCallback((path: FinderPath) => {
-    setCanvasHistory((previous) => {
-      const next = [...previous.slice(0, canvasHistoryIndex + 1), path];
-      setCanvasHistoryIndex(next.length - 1);
-      return next;
-    });
-    setCanvasPath(path);
+  // canvas 的列表/选中/搜索仍是本地态，导航后需要跟着清一次
+  const resetCanvasLocalSelection = useCallback(() => {
     setCanvasSelectedIds(new Set());
     setCanvasLastSelectedId(null);
+  }, []);
+  const resetCanvasLocalState = useCallback(() => {
+    resetCanvasLocalSelection();
     setCanvasSearchQuery('');
-  }, [canvasHistoryIndex]);
+  }, [resetCanvasLocalSelection]);
 
-  const enterCanvasFolder = useCallback(async (folderId: string, _folderName?: string, _folderPath?: string) => {
-    const breadcrumbsResult = await folderApi.getBreadcrumbs(folderId);
-    const breadcrumbs = breadcrumbsResult.ok
-      ? breadcrumbsResult.value.map((crumb, index, all) => ({
-          id: crumb.id,
-          name: crumb.name,
-          dstuPath: `/${all.slice(0, index + 1).map((item) => item.name).join('/')}`,
-        }))
-      : [];
-    navigateCanvasTo({
-      viewKind: 'folder',
-      folderId,
-      breadcrumbs,
-      typeFilter: null,
-    });
-  }, [navigateCanvasTo]);
+  const navigateCanvasTo = useCallback((path: FinderPath) => {
+    storeNavigateTo(path);
+    resetCanvasLocalState();
+  }, [storeNavigateTo, resetCanvasLocalState]);
+
+  const enterCanvasFolder = useCallback(async (folderId: string, folderName?: string, folderPath?: string) => {
+    await storeEnterFolder(folderId, folderName, folderPath);
+    resetCanvasLocalState();
+  }, [storeEnterFolder, resetCanvasLocalState]);
 
   const goCanvasBack = useCallback(() => {
-    if (canvasHistoryIndex <= 0) return;
-    const index = canvasHistoryIndex - 1;
-    setCanvasHistoryIndex(index);
-    setCanvasPath(canvasHistory[index]);
-    setCanvasSelectedIds(new Set());
-    setCanvasLastSelectedId(null);
-  }, [canvasHistory, canvasHistoryIndex]);
+    storeGoBack();
+    resetCanvasLocalSelection();
+  }, [storeGoBack, resetCanvasLocalSelection]);
 
   const goCanvasForward = useCallback(() => {
-    if (canvasHistoryIndex >= canvasHistory.length - 1) return;
-    const index = canvasHistoryIndex + 1;
-    setCanvasHistoryIndex(index);
-    setCanvasPath(canvasHistory[index]);
-    setCanvasSelectedIds(new Set());
-    setCanvasLastSelectedId(null);
-  }, [canvasHistory, canvasHistoryIndex]);
+    storeGoForward();
+    resetCanvasLocalSelection();
+  }, [storeGoForward, resetCanvasLocalSelection]);
 
   const jumpCanvasToBreadcrumb = useCallback((index: number) => {
-    if (index === -1) {
-      navigateCanvasTo(createCanvasFinderPath());
-      return;
-    }
-    if (index < 0 || index >= canvasPath.breadcrumbs.length - 1) return;
-    const breadcrumbs = canvasPath.breadcrumbs.slice(0, index + 1);
-    navigateCanvasTo({
-      viewKind: 'folder',
-      folderId: breadcrumbs[index].id,
-      breadcrumbs,
-      typeFilter: null,
-    });
-  }, [canvasPath, navigateCanvasTo]);
+    storeJumpToBreadcrumb(index);
+    resetCanvasLocalState();
+  }, [storeJumpToBreadcrumb, resetCanvasLocalState]);
 
   const navigateCanvasQuickAccess = useCallback((type: QuickAccessType) => {
-    const target = getQuickAccessTarget(type);
-    navigateCanvasTo({
-      viewKind: target.viewKind,
-      breadcrumbs: [],
-      folderId: null,
-      typeFilter: target.typeFilter,
-    });
-  }, [navigateCanvasTo]);
+    storeQuickAccessNavigate(type);
+    resetCanvasLocalState();
+  }, [storeQuickAccessNavigate, resetCanvasLocalState]);
 
   const goCanvasUp = useCallback(() => {
-    if (canvasPath.breadcrumbs.length === 0) return;
-    const breadcrumbs = canvasPath.breadcrumbs.slice(0, -1);
-    const parent = breadcrumbs[breadcrumbs.length - 1] ?? null;
-    navigateCanvasTo({
-      viewKind: 'folder',
-      breadcrumbs,
-      folderId: parent ? parent.id : null,
-      typeFilter: null,
-    });
-  }, [canvasPath.breadcrumbs, navigateCanvasTo]);
+    storeGoUp();
+    resetCanvasLocalState();
+  }, [storeGoUp, resetCanvasLocalState]);
 
   const goBack = mode === 'canvas' ? goCanvasBack : storeGoBack;
   const goForward = mode === 'canvas' ? goCanvasForward : storeGoForward;
@@ -527,7 +519,7 @@ export function LearningHubSidebar({
   const refreshCanvas = useCallback(async () => {
     if (!isMountedRef.current) return;
     const requestId = ++canvasRequestIdRef.current;
-    const pathSnapshot = canvasPath;
+    const pathSnapshot = currentPath;
     const querySnapshot = canvasSearchQuery.trim();
     setCanvasIsLoading(true);
     setCanvasError(null);
@@ -552,12 +544,12 @@ export function LearningHubSidebar({
       setCanvasError(result.error.message);
     }
     setCanvasIsLoading(false);
-  }, [canvasLastSelectedId, canvasPath, canvasSearchQuery, queryItemsForPath]);
+  }, [canvasLastSelectedId, currentPath, canvasSearchQuery, queryItemsForPath]);
 
   useEffect(() => {
     if (mode !== 'canvas' || sessionActive === false) return;
     void refreshCanvas();
-  }, [mode, canvasPath, canvasSearchQuery, refreshCanvas, sessionActive]);
+  }, [mode, currentPath, canvasSearchQuery, refreshCanvas, sessionActive]);
 
   // ★ 2025-12-31: 移除组件挂载时的 reset() 调用
   // 原因: finderStore 使用 persist 中间件保存导航状态到 localStorage
@@ -568,6 +560,19 @@ export function LearningHubSidebar({
 
   // ★ 文档28 Prompt 8: 同步 finderStore 与 LearningHubNavigationContext
   useLearningHubNavigationSafe();
+
+  // ★ LH-HOST：把本宿主注册为「活跃访达」，让 App 级前进/后退壳层作用在本桶上。
+  // canvas 宿主自带局部列表状态，不参与全局导航壳层。
+  useEffect(() => {
+    if (mode === 'canvas' || sessionActive === false) return;
+    const bucketId = resolveFinderHostId(hostId);
+    setActiveFinderHostId(bucketId);
+    return () => {
+      if (getActiveFinderHostId() === bucketId) {
+        setActiveFinderHostId(DEFAULT_FINDER_HOST_ID);
+      }
+    };
+  }, [mode, hostId, sessionActive]);
 
   // ★ 2026-01-15: 完全移除双向同步逻辑
   // 原因：LearningHubNavigationContext 现在直接使用 finderStore 的历史栈（goBack/goForward）
@@ -614,7 +619,7 @@ export function LearningHubSidebar({
             'learning-hub-sidebar',
             'LearningHubSidebar',
             'data_ready',
-            `${useFinderStore.getState().items.length} items`,
+            `${finderStore.getState().items.length} items`,
             { duration: Date.now() - start }
           );
         }
@@ -629,7 +634,7 @@ export function LearningHubSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
+  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh, finderStore]);
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
@@ -660,22 +665,44 @@ export function LearningHubSidebar({
       enterFolder(item.id, item.name, item.path);
     } else {
       if (onOpenApp) {
-        // Map DstuNodeType to FolderItemType
-        let itemType: FolderItemType = 'note';
-        switch (item.type) {
-            case 'textbook': itemType = 'textbook'; break;
-            case 'exam': itemType = 'exam'; break;
-            case 'translation': itemType = 'translation'; break;
-            case 'essay': itemType = 'essay'; break;
-            case 'image': itemType = 'image'; break;
-            case 'file': itemType = 'file'; break;
-            case 'mindmap': itemType = 'mindmap'; break;
-            default: itemType = 'note';
-        }
-
-        const resourceItem = dstuNodeToResourceListItem(item, itemType);
+        const resourceItem = dstuNodeToResourceListItem(item, mapDstuTypeToFolderItemType(item.type));
         onOpenApp(resourceItem);
       }
+    }
+  };
+
+  // ★ Quick Look「打开」：非文件夹优先走 onOpenPreview（全屏预览契约），
+  // 未提供时回退 handleOpen（onOpenApp）；文件夹直接导航。
+  const handleQuickLookOpen = (item: DstuNode) => {
+    setQuickLookItem(null);
+    if (item.type !== 'folder' && onOpenPreview) {
+      if (currentPath.viewKind !== 'trash') {
+        addRecent({ id: item.id, path: item.path, name: item.name, type: item.type });
+      }
+      onOpenPreview(dstuNodeToResourceListItem(item, mapDstuTypeToFolderItemType(item.type)));
+      return;
+    }
+    handleOpen(item);
+  };
+
+  // ★ 多选 + Enter：打开全部选中项（访达语义）。
+  // 文件夹无法并行导航：仅当选中项全是文件夹时进入第一个；
+  // 资源打开数量设上限，避免一次 Enter 炸出几十个窗口。
+  const OPEN_ALL_LIMIT = 12;
+  const handleOpenMany = (itemsToOpen: DstuNode[]) => {
+    const resources = itemsToOpen.filter((item) => item.type !== 'folder');
+    if (resources.length === 0) {
+      const firstFolder = itemsToOpen.find((item) => item.type === 'folder');
+      if (firstFolder) handleOpen(firstFolder);
+      return;
+    }
+    const toOpen = resources.slice(0, OPEN_ALL_LIMIT);
+    toOpen.forEach((item) => handleOpen(item));
+    if (resources.length > toOpen.length) {
+      showGlobalNotification(
+        'info',
+        t('finder.multiSelect.openAllLimited', { count: toOpen.length, total: resources.length })
+      );
     }
   };
 
@@ -726,7 +753,7 @@ export function LearningHubSidebar({
           // R2-04：内联重命名进行中延迟 silent refresh（非永久跳过），避免丢 agent 变更
           const trySilentRefresh = () => {
             // canvas 宿主有独立列表；勿被全局 fullscreen 的 inlineEdit 卡住刷新
-            if (mode !== 'canvas' && useFinderStore.getState().inlineEdit.editingId) {
+            if (mode !== 'canvas' && finderStore.getState().inlineEdit.editingId) {
               watchDebounceRef.current = setTimeout(() => {
                 watchDebounceRef.current = null;
                 trySilentRefresh();
@@ -747,7 +774,61 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode]);
+  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode, finderStore]);
+
+  // ★ 快捷访问「收藏」徽标：接真数据（此前硬编码 0 是假徽标）。
+  // 挂载时查询一次，之后跟随 DSTU 资源变化事件（收藏切换会发 updated）防抖刷新。
+  // canvas 宿主不渲染快捷访问栏，跳过查询。
+  useEffect(() => {
+    if (mode === 'canvas' || sessionActive === false) return;
+
+    let cancelled = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const fetchFavoriteCount = async () => {
+      const result = await dstu.list('/', { isFavorite: true });
+      if (cancelled || !isMountedRef.current) return;
+      if (result.ok) {
+        setFavoriteCount(result.value.length);
+      }
+    };
+
+    void fetchFavoriteCount();
+
+    const unwatch = dstu.watch('*', (event) => {
+      if (
+        event.type === 'created' ||
+        event.type === 'updated' ||
+        event.type === 'deleted' ||
+        event.type === 'moved' ||
+        event.type === 'restored' ||
+        event.type === 'purged'
+      ) {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          void fetchFavoriteCount();
+        }, 800);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unwatch();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, [mode, sessionActive]);
+
+  // ★ Quick Look 与列表同步：项被删除/移出视图时关闭，改名/刷新时更新引用
+  useEffect(() => {
+    if (!quickLookItem) return;
+    const updated = items.find((item) => item.id === quickLookItem.id);
+    if (!updated) {
+      setQuickLookItem(null);
+    } else if (updated !== quickLookItem) {
+      setQuickLookItem(updated);
+    }
+  }, [items, quickLookItem]);
 
   const ensureCreatableView = useCallback(() => {
     if (canCreateInCurrentView) {
@@ -1670,17 +1751,8 @@ export function LearningHubSidebar({
         folder: folderNode
       });
     } else {
-      // Map to ResourceListItem
-      let itemType: FolderItemType = 'note';
-      switch (item.type) {
-        case 'textbook': itemType = 'textbook'; break;
-        case 'exam': itemType = 'exam'; break;
-        case 'translation': itemType = 'translation'; break;
-        case 'essay': itemType = 'essay'; break;
-        case 'mindmap': itemType = 'mindmap'; break;
-        default: itemType = 'note';
-      }
-      const resourceItem = dstuNodeToResourceListItem(item, itemType);
+      // Map to ResourceListItem（共用映射：此前这里漏掉 image/file，导致附件右键动作按 note 处理）
+      const resourceItem = dstuNodeToResourceListItem(item, mapDstuTypeToFolderItemType(item.type));
       setContextMenuTarget({ type: 'resource', resource: resourceItem });
     }
     setContextMenuOpen(true);
@@ -1712,6 +1784,12 @@ export function LearningHubSidebar({
     if (targets.length === 0) return;
     const generation = ++softDeleteUndoGenRef.current;
 
+    // ★ 悬挂引用清理：资源/文件夹入回收站即移除对应桌面快捷方式；
+    // 快照被移除的快捷方式，Undo 恢复资源时原样放回（不丢用户桌面布局）。
+    const prunedShortcuts = useDesktopStore
+      .getState()
+      .pruneShortcutsForTargets(targets.map((target) => target.id));
+
     const message = opts?.refCount && opts.refCount > 0
       ? t('finder.movedToTrashWithRefs', { count: opts.refCount })
       : targets.length === 1
@@ -1734,6 +1812,18 @@ export function LearningHubSidebar({
                   limit(async () => trashApi.restoreItem(target.id, target.type))
                 )
               );
+              // 恢复成功的目标：放回其桌面快捷方式
+              if (prunedShortcuts.length > 0) {
+                const restoredIds = new Set(
+                  targets.filter((_, index) => results[index]?.ok).map((target) => target.id)
+                );
+                useDesktopStore.getState().restoreShortcuts(
+                  prunedShortcuts.filter((shortcut) => {
+                    const targetId = shortcut.target.resourceId ?? shortcut.target.folderId;
+                    return targetId != null && restoredIds.has(targetId);
+                  })
+                );
+              }
               if (!isMountedRef.current) return;
               const failed = results.filter((r) => !r.ok).length;
               if (failed === 0) {
@@ -1945,6 +2035,18 @@ export function LearningHubSidebar({
       renameResult = await dstu.rename(resourcePath, newName.trim());
     }
 
+    // ★ Cmd+Z 撤销：记录重命名（组件卸载与否不影响入栈）
+    if (renameResult.ok && mode !== 'canvas') {
+      finderUndoStack.push({
+        kind: 'rename',
+        targetType: editingType === 'folder' ? 'folder' : 'resource',
+        id: itemId,
+        path: item.path ?? null,
+        oldName: item.name,
+        newName: newName.trim(),
+      });
+    }
+
     // ★ MEDIUM-005: 检查组件是否已卸载
     if (!isMountedRef.current) return;
 
@@ -1957,7 +2059,7 @@ export function LearningHubSidebar({
       // 出错时也需要刷新以恢复原始状态
       await handleRefresh();
     }
-  }, [items, inlineEdit.editingType, t, handleRefresh, cancelInlineEdit]);
+  }, [items, inlineEdit.editingType, t, handleRefresh, cancelInlineEdit, mode]);
 
   // 内联编辑取消处理
   const handleInlineEditCancel = useCallback((itemId: string) => {
@@ -1966,16 +2068,16 @@ export function LearningHubSidebar({
       pendingFolderDraftRef.current = null;
       setPendingFolderDraft(null);
     }
-    if (useFinderStore.getState().inlineEdit.editingId === itemId) {
+    if (finderStore.getState().inlineEdit.editingId === itemId) {
       cancelInlineEdit();
     }
-  }, [cancelInlineEdit]);
+  }, [cancelInlineEdit, finderStore]);
 
   useEffect(() => {
     if (!pendingFolderDraft) return;
     setPendingFolderDraft(null);
     pendingFolderDraftRef.current = null;
-    if (isPendingFolderId(useFinderStore.getState().inlineEdit.editingId)) {
+    if (isPendingFolderId(finderStore.getState().inlineEdit.editingId)) {
       cancelInlineEdit();
     }
     // 路径变化后草稿不应跟随到另一个文件夹。
@@ -1987,6 +2089,13 @@ export function LearningHubSidebar({
     [items, pendingFolderDraft]
   );
 
+  // ★ Cmd+Z 撤销：仅当来源文件夹可确定时记录移动操作。
+  // 文件夹视图的非搜索列表 = 当前文件夹的直接子项，来源即 folderId；
+  // 收藏/最近/搜索结果里的项来源未知（path 是名称链，无 ID），不记录。
+  const canRecordMoveUndo =
+    mode !== 'canvas' && effectivePath.viewKind === 'folder' && !isSearching;
+  const moveUndoSourceFolderId = effectivePath.folderId;
+
   // 拖拽移动单个项目
   const handleMoveItem = useCallback(async (itemId: string, targetFolderId: string | null) => {
     const item = items.find(i => i.id === itemId);
@@ -1997,20 +2106,21 @@ export function LearningHubSidebar({
     if (item.type === 'folder') {
       result = await folderApi.moveFolder(itemId, targetFolderId ?? undefined);
     } else {
-      // 非文件夹使用 moveItem
-      // P1-13: 修复 image/file 类型拖拽移动失败
-      let itemType: FolderItemType = 'note';
-      switch (item.type) {
-        case 'textbook': itemType = 'textbook'; break;
-        case 'exam': itemType = 'exam'; break;
-        case 'translation': itemType = 'translation'; break;
-        case 'essay': itemType = 'essay'; break;
-        case 'image': itemType = 'image'; break;
-        case 'file': itemType = 'file'; break;
-        case 'mindmap': itemType = 'mindmap'; break;
-        default: itemType = 'note';
-      }
-      result = await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined);
+      // 非文件夹使用 moveItem（共用映射，P1-13 image/file 支持随之保留）
+      result = await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), itemId, targetFolderId ?? undefined);
+    }
+
+    if (result.ok && canRecordMoveUndo && targetFolderId !== moveUndoSourceFolderId) {
+      finderUndoStack.push({
+        kind: 'move',
+        entries: [{
+          id: itemId,
+          isFolder: item.type === 'folder',
+          itemType: item.type === 'folder' ? null : mapDstuTypeToFolderItemType(item.type),
+          fromFolderId: moveUndoSourceFolderId,
+        }],
+        toFolderId: targetFolderId,
+      });
     }
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -2023,7 +2133,7 @@ export function LearningHubSidebar({
       reportError(result.error, 'move item');
       showGlobalNotification('error', result.error.toUserMessage());
     }
-  }, [items, t, handleRefresh]);
+  }, [items, t, handleRefresh, canRecordMoveUndo, moveUndoSourceFolderId]);
 
   // 拖拽移动多个项目（多选拖拽）
   const handleMoveItems = useCallback(async (itemIds: string[], targetFolderId: string | null) => {
@@ -2047,19 +2157,8 @@ export function LearningHubSidebar({
         if (item.type === 'folder') {
           return await folderApi.moveFolder(itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
         } else {
-          // P1-13: 修复 image/file 类型拖拽移动失败
-          let itemType: FolderItemType = 'note';
-          switch (item.type) {
-            case 'textbook': itemType = 'textbook'; break;
-            case 'exam': itemType = 'exam'; break;
-            case 'translation': itemType = 'translation'; break;
-            case 'essay': itemType = 'essay'; break;
-            case 'image': itemType = 'image'; break;
-            case 'file': itemType = 'file'; break;
-            case 'mindmap': itemType = 'mindmap'; break;
-            default: itemType = 'note';
-          }
-          return await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
+          // 共用映射（P1-13 image/file 支持随之保留）
+          return await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
         }
       })
     ));
@@ -2071,6 +2170,25 @@ export function LearningHubSidebar({
         debugLog.log('[LearningHub] 批量移动后统一刷新缓存:', cacheResult.value, '项');
       } else {
         debugLog.warn('[LearningHub] 批量移动后缓存刷新失败:', cacheResult.error.message);
+      }
+    }
+
+    // ★ Cmd+Z 撤销：仅记录移动成功的项
+    if (canRecordMoveUndo && targetFolderId !== moveUndoSourceFolderId) {
+      const undoEntries: FinderMoveUndoEntry[] = [];
+      itemIds.forEach((itemId, index) => {
+        if (!moveResults[index]?.ok) return;
+        const item = items.find(i => i.id === itemId);
+        if (!item) return;
+        undoEntries.push({
+          id: itemId,
+          isFolder: item.type === 'folder',
+          itemType: item.type === 'folder' ? null : mapDstuTypeToFolderItemType(item.type),
+          fromFolderId: moveUndoSourceFolderId,
+        });
+      });
+      if (undoEntries.length > 0) {
+        finderUndoStack.push({ kind: 'move', entries: undoEntries, toFolderId: targetFolderId });
       }
     }
 
@@ -2093,7 +2211,120 @@ export function LearningHubSidebar({
     }
     clearSelection();
     handleRefresh();
-  }, [items, t, clearSelection, handleRefresh]);
+  }, [items, t, clearSelection, handleRefresh, canRecordMoveUndo, moveUndoSourceFolderId]);
+
+  // ==========================================================================
+  // ★ 复制 / 粘贴 / 制造副本（Finder 内部剪贴板，对标访达 Duplicate）
+  // ==========================================================================
+  const clipboardState = useSyncExternalStore(
+    finderClipboard.subscribe,
+    finderClipboard.get,
+    finderClipboard.get,
+  );
+  const clipboardCount = clipboardState?.entries.length ?? 0;
+
+  // 粘贴/制造副本门禁：仅真实文件夹导航（root / 子文件夹）。
+  // 智能文件夹（typeFilter）目的地会退化为根目录且可能被过滤隐藏，不开放。
+  const canPasteHere =
+    mode !== 'canvas' &&
+    canCreateInCurrentView &&
+    effectivePath.viewKind === 'folder' &&
+    !effectivePath.typeFilter;
+
+  /** 当前选中的真实节点（排除待创建文件夹草稿） */
+  const getSelectedNodes = useCallback(
+    () => displayedItems.filter((item) => selectedIds.has(item.id) && !isPendingFolderId(item.id)),
+    [displayedItems, selectedIds],
+  );
+
+  // 右键目标解析：目标在多选集合内时作用于整组（访达语义），否则只作用于该项
+  const resolveContextTargetNodes = useCallback((target: ContextMenuTarget): DstuNode[] => {
+    const targetId = target.type === 'folder'
+      ? target.folder.folder.id
+      : target.type === 'resource'
+        ? target.resource.id
+        : null;
+    if (!targetId || isPendingFolderId(targetId)) return [];
+    if (selectedIds.has(targetId) && selectedIds.size > 1) {
+      return getSelectedNodes();
+    }
+    const item = displayedItems.find((i) => i.id === targetId);
+    return item ? [item] : [];
+  }, [displayedItems, selectedIds, getSelectedNodes]);
+
+  const handleCopyNodes = useCallback((nodes: DstuNode[]) => {
+    const entries = toClipboardEntries(nodes);
+    if (entries.length === 0) return;
+    finderClipboard.copy(entries);
+    showGlobalNotification('success', t('finder.clipboard.copied', { count: entries.length }));
+  }, [t]);
+
+  const handleCopyFromContextMenu = useCallback((target: ContextMenuTarget) => {
+    handleCopyNodes(resolveContextTargetNodes(target));
+  }, [handleCopyNodes, resolveContextTargetNodes]);
+
+  const handleCopySelection = useCallback(() => {
+    handleCopyNodes(getSelectedNodes());
+  }, [getSelectedNodes, handleCopyNodes]);
+
+  // 粘贴与制造副本共用执行体：批量 dstu_copy 到目标文件夹（后端追加「(副本)」）
+  const executeCopyEntries = useCallback(async (
+    entries: FinderClipboardEntry[],
+    destFolderId: string | null,
+    successKey: 'finder.clipboard.pasteSuccess' | 'finder.clipboard.duplicateSuccess',
+  ) => {
+    if (entries.length === 0) return;
+    setIsBatchProcessing(true);
+    try {
+      const limit = pLimit(3);
+      const results = await Promise.all(entries.map((entry) =>
+        limit(() => dstu.copy(buildCopySrcPath(entry), buildPasteDstPath(destFolderId)))
+      ));
+      if (!isMountedRef.current) return;
+      const failedResults = results.filter((r) => !r.ok);
+      const succeeded = results.length - failedResults.length;
+      if (failedResults.length === 0) {
+        showGlobalNotification('success', t(successKey, { count: succeeded }));
+      } else if (succeeded > 0) {
+        showGlobalNotification('warning', t('finder.clipboard.copyPartial', {
+          succeeded,
+          failed: failedResults.length,
+        }));
+      } else {
+        const firstError = failedResults[0];
+        if (firstError && !firstError.ok) {
+          reportError(firstError.error, 'copy items');
+          showGlobalNotification('error', firstError.error.toUserMessage());
+        }
+      }
+      if (succeeded > 0) handleRefresh();
+    } finally {
+      if (isMountedRef.current) setIsBatchProcessing(false);
+    }
+  }, [t, handleRefresh]);
+
+  const handlePaste = useCallback(() => {
+    if (!canPasteHere) return;
+    const state = finderClipboard.get();
+    if (!state || state.entries.length === 0) return;
+    void executeCopyEntries(state.entries, currentCreatableFolderId, 'finder.clipboard.pasteSuccess');
+  }, [canPasteHere, currentCreatableFolderId, executeCopyEntries]);
+
+  // 制造副本：不经剪贴板，原地复制（目的地 = 当前文件夹，副本落在原件旁）
+  const handleDuplicateNodes = useCallback((nodes: DstuNode[]) => {
+    if (!canPasteHere) return;
+    const entries = toClipboardEntries(nodes);
+    if (entries.length === 0) return;
+    void executeCopyEntries(entries, currentCreatableFolderId, 'finder.clipboard.duplicateSuccess');
+  }, [canPasteHere, currentCreatableFolderId, executeCopyEntries]);
+
+  const handleDuplicateFromContextMenu = useCallback((target: ContextMenuTarget) => {
+    handleDuplicateNodes(resolveContextTargetNodes(target));
+  }, [handleDuplicateNodes, resolveContextTargetNodes]);
+
+  const handleDuplicateSelection = useCallback(() => {
+    handleDuplicateNodes(getSelectedNodes());
+  }, [getSelectedNodes, handleDuplicateNodes]);
 
   // 拖拽时可放置的面包屑祖先（含根目录）——对齐访达「拖到路径栏」
   const parentDropTargets = useMemo(() => {
@@ -2430,6 +2661,11 @@ export function LearningHubSidebar({
   const executePermanentDelete = useCallback(async (id: string, itemType: string) => {
     const result = await trashApi.permanentlyDelete(id, itemType);
 
+    // ★ 悬挂引用清理：永久删除后移除对应桌面快捷方式（不可恢复，无需快照）
+    if (result.ok) {
+      useDesktopStore.getState().pruneShortcutsForTargets([id]);
+    }
+
     // ★ MEDIUM-005: 检查组件是否已卸载
     if (!isMountedRef.current) return;
 
@@ -2461,13 +2697,18 @@ export function LearningHubSidebar({
 
     if (result.ok) {
       softDeleteUndoGenRef.current += 1;
+      // ★ 悬挂引用清理：清空回收站后按当前回收站列表移除桌面快捷方式
+      //（列表可能被分页截断，属尽力清理；残余悬挂项打开时仍有 resourceNotFound 提示）
+      if (isTrashView && items.length > 0) {
+        useDesktopStore.getState().pruneShortcutsForTargets(items.map((item) => item.id));
+      }
       showGlobalNotification('success', t('finder.trash.emptySuccess') + ` (${result.value})`);
       handleRefresh();
     } else {
       reportError(result.error, 'empty trash');
       showGlobalNotification('error', result.error.toUserMessage());
     }
-  }, [t, handleRefresh]);
+  }, [t, handleRefresh, isTrashView, items]);
 
   // ★ AlertDialog 确认删除处理
   const handleConfirmDelete = useCallback(async () => {
@@ -2482,11 +2723,16 @@ export function LearningHubSidebar({
             const idsArray = Array.from(deleteTarget.batchIds);
             let succeeded = 0;
             let failed = 0;
+            const succeededIds: string[] = [];
             for (const id of idsArray) {
               const item = items.find(i => i.id === id);
               if (!item) { failed++; continue; }
               const result = await trashApi.permanentlyDelete(id, item.type);
-              if (result.ok) { succeeded++; } else { failed++; }
+              if (result.ok) { succeeded++; succeededIds.push(id); } else { failed++; }
+            }
+            // ★ 悬挂引用清理：批量永久删除后移除对应桌面快捷方式
+            if (succeededIds.length > 0) {
+              useDesktopStore.getState().pruneShortcutsForTargets(succeededIds);
             }
             if (!isMountedRef.current) break;
             if (failed === 0) {
@@ -2720,19 +2966,8 @@ export function LearningHubSidebar({
               error: result.ok ? null : result.error.toUserMessage()
             };
           } else {
-            // P1-13: 修复 image/file 类型拖拽移动失败
-            let itemType: FolderItemType = 'note';
-            switch (item.type) {
-              case 'textbook': itemType = 'textbook'; break;
-              case 'exam': itemType = 'exam'; break;
-              case 'translation': itemType = 'translation'; break;
-              case 'essay': itemType = 'essay'; break;
-              case 'image': itemType = 'image'; break;
-              case 'file': itemType = 'file'; break;
-              case 'mindmap': itemType = 'mindmap'; break; // 🔒 审计修复: 添加遗漏的 mindmap 类型映射
-              default: itemType = 'note';
-            }
-            const result = await folderApi.moveItem(itemType, id, targetFolderId ?? undefined, { skipCacheRefresh: true });
+            // 共用映射（P1-13 image/file 支持随之保留）
+            const result = await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), id, targetFolderId ?? undefined, { skipCacheRefresh: true });
             return {
               id,
               ok: result.ok,
@@ -2750,6 +2985,25 @@ export function LearningHubSidebar({
           debugLog.log('[LearningHub] 批量移动确认后统一刷新缓存:', cacheResult.value, '项');
         } else {
           debugLog.warn('[LearningHub] 批量移动确认后缓存刷新失败:', cacheResult.error.message);
+        }
+      }
+
+      // ★ Cmd+Z 撤销：仅记录移动成功的项
+      if (canRecordMoveUndo && targetFolderId !== moveUndoSourceFolderId) {
+        const undoEntries: FinderMoveUndoEntry[] = [];
+        idsArray.forEach((id, index) => {
+          if (!moveResults[index]?.ok) return;
+          const item = items.find(i => i.id === id);
+          if (!item) return;
+          undoEntries.push({
+            id,
+            isFolder: item.type === 'folder',
+            itemType: item.type === 'folder' ? null : mapDstuTypeToFolderItemType(item.type),
+            fromFolderId: moveUndoSourceFolderId,
+          });
+        });
+        if (undoEntries.length > 0) {
+          finderUndoStack.push({ kind: 'move', entries: undoEntries, toFolderId: targetFolderId });
         }
       }
 
@@ -2797,7 +3051,70 @@ export function LearningHubSidebar({
         setMoveTargetIds(null);
       }
     }
-  }, [moveTargetIds, selectedIds, items, t, clearSelection, setSelectedIds, handleRefresh]);
+  }, [moveTargetIds, selectedIds, items, t, clearSelection, setSelectedIds, handleRefresh, canRecordMoveUndo, moveUndoSourceFolderId]);
+
+  // ★ Cmd+Z：撤销最近一次移动/重命名（LIFO 操作栈；非完整事务系统）
+  const handleUndoLastOperation = useCallback(async () => {
+    const op = finderUndoStack.pop();
+    if (!op) return;
+
+    if (op.kind === 'rename') {
+      let result;
+      if (op.targetType === 'folder') {
+        result = await folderApi.renameFolder(op.id, op.oldName);
+      } else {
+        // 重命名会改变 path 叶子：按 id 重新解析当前路径再反向 rename
+        const nodeResult = await dstu.get(`/${op.id}`);
+        const livePath = nodeResult.ok ? nodeResult.value.path : null;
+        result = await dstu.rename(livePath || op.path || `/${op.id}`, op.oldName);
+      }
+      if (!isMountedRef.current) return;
+      if (result.ok) {
+        showGlobalNotification('success', t('finder.undoRenameSuccess', { name: op.oldName }));
+        handleRefresh();
+      } else {
+        // 失败塞回栈顶：允许用户处理冲突后重试
+        finderUndoStack.push(op);
+        reportError(result.error, 'undo rename');
+        showGlobalNotification('error', t('finder.undoFailed'));
+      }
+      return;
+    }
+
+    // 移动撤销：批量把各项移回原文件夹
+    const limit = pLimit(3);
+    const results = await Promise.all(op.entries.map((entry) =>
+      limit(async () => {
+        if (entry.isFolder) {
+          return folderApi.moveFolder(entry.id, entry.fromFolderId ?? undefined, { skipCacheRefresh: true });
+        }
+        return folderApi.moveItem(entry.itemType ?? 'note', entry.id, entry.fromFolderId ?? undefined, { skipCacheRefresh: true });
+      })
+    ));
+
+    // 统一刷新涉及到的原文件夹缓存
+    const sourceFolderIds = new Set(
+      op.entries.map((entry) => entry.fromFolderId).filter((id): id is string => id != null)
+    );
+    for (const folderId of sourceFolderIds) {
+      const cacheResult = await updatePathCacheV2(folderId);
+      if (!cacheResult.ok) {
+        debugLog.warn('[LearningHub] 撤销移动后缓存刷新失败:', cacheResult.error.message);
+      }
+    }
+
+    if (!isMountedRef.current) return;
+    const failed = results.filter((r) => !r.ok).length;
+    if (failed === 0) {
+      showGlobalNotification('success', t('finder.undoMoveSuccess', { count: op.entries.length }));
+    } else if (failed < results.length) {
+      showGlobalNotification('warning', t('finder.undoMovePartial', { failed }));
+    } else {
+      finderUndoStack.push(op);
+      showGlobalNotification('error', t('finder.undoFailed'));
+    }
+    handleRefresh();
+  }, [t, handleRefresh]);
 
   // 键盘快捷键
   useEffect(() => {
@@ -2813,18 +3130,93 @@ export function LearningHubSidebar({
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
-      
+
+      const cmdOrCtrl = e.metaKey || e.ctrlKey;
+
       // Cmd/Ctrl + A：全选
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+      // ★ code 优先：Caps Lock 开启时 e.key 为 'A'，非拉丁布局下 e.key 可能不是字母
+      if (cmdOrCtrl && !e.shiftKey && !e.altKey && (e.code === 'KeyA' || e.key.toLowerCase() === 'a')) {
         e.preventDefault();
         handleSelectAll();
       }
 
+      // Cmd/Ctrl + Z：撤销最近一次移动/重命名（canvas 宿主不产生这类操作）
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyZ' || e.key.toLowerCase() === 'z') &&
+        mode !== 'canvas'
+      ) {
+        if (finderUndoStack.size() > 0) {
+          e.preventDefault();
+          void handleUndoLastOperation();
+        }
+        return;
+      }
+
+      // ★ Cmd/Ctrl + C：复制选中项到 Finder 剪贴板。
+      // 页面上有文本选区时不拦截（用户可能在复制文字）。
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyC' || e.key.toLowerCase() === 'c') &&
+        mode !== 'canvas'
+      ) {
+        if (selectedIds.size > 0 && !window.getSelection()?.toString()) {
+          e.preventDefault();
+          handleCopySelection();
+        }
+        return;
+      }
+
+      // ★ Cmd/Ctrl + V：粘贴剪贴板内容到当前文件夹
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyV' || e.key.toLowerCase() === 'v') &&
+        mode !== 'canvas'
+      ) {
+        if (canPasteHere && clipboardCount > 0) {
+          e.preventDefault();
+          handlePaste();
+        }
+        return;
+      }
+
+      // ★ Cmd/Ctrl + D：制造副本（访达 Duplicate 同键位）
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyD' || e.key.toLowerCase() === 'd') &&
+        mode !== 'canvas'
+      ) {
+        if (canPasteHere && selectedIds.size > 0) {
+          e.preventDefault();
+          handleDuplicateSelection();
+        }
+        return;
+      }
+
       // Cmd/Ctrl + ↑：返回上一级（访达）
-      if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
+      if (cmdOrCtrl && e.key === 'ArrowUp') {
         if (currentPath.viewKind === 'folder' && (currentPath.folderId || currentPath.breadcrumbs.length > 0)) {
           e.preventDefault();
           goUp();
+        }
+      }
+
+      // ★ 空格：Quick Look 快速预览（访达）。
+      // FinderFileList 的 type-ahead 输入若已消费空格（defaultPrevented）不重复触发；
+      // 浮层打开期间的空格由浮层 capture 关闭，不会到达这里。
+      if (
+        e.key === ' ' && !cmdOrCtrl && !e.altKey &&
+        !e.defaultPrevented && !quickLookItem && selectedIds.size > 0
+      ) {
+        const anchorId = mode === 'canvas' ? canvasLastSelectedId : finderStore.getState().lastSelectedId;
+        const anchor =
+          (anchorId && selectedIds.has(anchorId)
+            ? displayedItems.find((item) => item.id === anchorId)
+            : undefined)
+          ?? displayedItems.find((item) => selectedIds.has(item.id));
+        if (anchor && !isPendingFolderId(anchor.id)) {
+          e.preventDefault();
+          setQuickLookItem(anchor);
         }
       }
       
@@ -2834,21 +3226,31 @@ export function LearningHubSidebar({
         e.preventDefault();
         handleBatchDelete();
       }
-      if (e.key === 'Backspace' && (e.metaKey || e.ctrlKey) && selectedIds.size > 0 && canDeleteInCurrentView) {
+      if (e.key === 'Backspace' && cmdOrCtrl && selectedIds.size > 0 && canDeleteInCurrentView) {
         e.preventDefault();
         handleBatchDelete();
       }
-      
-      // Escape：清除选择
-      if (e.key === 'Escape' && selectedIds.size > 0) {
-        e.preventDefault();
-        handleClearSelection();
+
+      // ★ Escape 优先级：Quick Look 关闭（浮层 capture 自行消费，不会到达此处）
+      // > 清除选择 > 退出多选模式 > 清空搜索
+      if (e.key === 'Escape') {
+        if (quickLookItem) return;
+        if (selectedIds.size > 0) {
+          e.preventDefault();
+          handleClearSelection();
+        } else if (isMultiSelectMode) {
+          e.preventDefault();
+          toggleMultiSelect();
+        } else if (searchQuery) {
+          e.preventDefault();
+          setSearchQuery('');
+        }
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView]);
+  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView, mode, quickLookItem, displayedItems, canvasLastSelectedId, isMultiSelectMode, toggleMultiSelect, searchQuery, setSearchQuery, handleUndoLastOperation, handleCopySelection, handlePaste, handleDuplicateSelection, canPasteHere, clipboardCount]);
 
   const shouldRenderQuickAccess = mode !== 'canvas' && (!isSmallScreen || Boolean(quickAccessPortalTarget));
   const quickAccessNode = shouldRenderQuickAccess ? (
@@ -2873,7 +3275,7 @@ export function LearningHubSidebar({
       onNewEssay={handleNewEssay}
       onNewMindMap={handleNewMindMap}
       createDisabled={!canCreateInCurrentView}
-      favoriteCount={0}
+      favoriteCount={favoriteCount}
       fillContainer={Boolean(quickAccessPortalTarget)}
     />
   ) : null;
@@ -2921,15 +3323,15 @@ export function LearningHubSidebar({
                   aria-label={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
-                  className="h-11 text-[16px] flex-1"
+                  // iOS 保留 16px 地板，同时继续响应界面字号缩放。
+                  className="h-[var(--touch-target-size)] text-[max(16px,var(--font-size-lg))] flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className="h-11 w-11 p-0"
+                  size="icon"
+                  iconOnly
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
@@ -2944,8 +3346,8 @@ export function LearningHubSidebar({
               <>
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className="h-11 w-11 p-0"
+                  size="icon"
+                  iconOnly
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title')}
                   aria-label={t('finder.search.title')}
@@ -2956,9 +3358,10 @@ export function LearningHubSidebar({
                 <AppMenu open={mobileCreateMenuOpen} onOpenChange={setMobileCreateMenuOpen}>
                   <AppMenuTrigger asChild>
                     <DsButton
+                      ref={mobileCreateMenuTriggerRef}
                       variant="ghost"
-                      size="sm"
-                      className="h-11 w-11 p-0"
+                      size="icon"
+                      iconOnly
                       title={t('finder.toolbar.new')}
                       aria-label={t('finder.toolbar.new')}
                       disabled={!canCreateInCurrentView}
@@ -3023,8 +3426,9 @@ export function LearningHubSidebar({
                 {isTrashView && (
                   <DsButton
                     variant="ghost"
-                    size="sm"
-                    className="h-11 w-11 p-0 text-destructive hover:text-destructive"
+                    size="icon"
+                    iconOnly
+                    className="text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash')}
                     aria-label={t('finder.actions.emptyTrash')}
@@ -3048,8 +3452,9 @@ export function LearningHubSidebar({
             {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
             <DsButton
               variant="ghost"
-              size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              size="icon"
+              iconOnly
+              className={cn('p-0 shrink-0', !isSmallScreen && 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back')}
@@ -3058,8 +3463,9 @@ export function LearningHubSidebar({
             </DsButton>
             <DsButton
               variant="ghost"
-              size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              size="icon"
+              iconOnly
+              className={cn('p-0 shrink-0', !isSmallScreen && 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward')}
@@ -3068,7 +3474,7 @@ export function LearningHubSidebar({
             </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', !isSmallScreen && '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </DsButton>
               {effectivePath.breadcrumbs.map((crumb, index) => (
@@ -3077,7 +3483,17 @@ export function LearningHubSidebar({
                   {index === effectivePath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <DsButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => jumpToBreadcrumb(index)}
+                      className={cn(
+                        '!h-auto !p-0 truncate text-muted-foreground hover:text-foreground',
+                        isSmallScreen
+                          ? '!px-2'
+                          : '[@media(pointer:coarse)]:!px-2',
+                      )}
+                    >
                       {crumb.name}
                     </DsButton>
                   )}
@@ -3141,10 +3557,11 @@ export function LearningHubSidebar({
               {/* 多选模式切换按钮 */}
               <DsButton
                 variant="ghost"
-                size="sm"
+                size="icon"
+                iconOnly
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
+                  !isSmallScreen && 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={toggleMultiSelect}
@@ -3156,8 +3573,9 @@ export function LearningHubSidebar({
               {onClose && (
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7')}
+                  size="icon"
+                  iconOnly
+                  className={cn('p-0', !isSmallScreen && 'h-7 w-7')}
                   onClick={onClose}
                   title={t('common:close')}
                 >
@@ -3310,7 +3728,7 @@ export function LearningHubSidebar({
           ) : (
           <>
           {isSearching && searchMeta?.truncated && (
-            <div className="shrink-0 px-3 py-1.5 text-[12px] text-muted-foreground border-b border-border/40">
+            <div className="shrink-0 px-3 py-1.5 text-caption text-muted-foreground border-b border-border/40">
               {t('finder.search.truncatedHint', { limit: searchMeta.limit })}
             </div>
           )}
@@ -3337,6 +3755,7 @@ export function LearningHubSidebar({
                 ? (item) => { if (item.type === 'folder') handleOpen(item); }
                 : handleOpen
             }
+            onOpenMany={mode === 'canvas' ? undefined : handleOpenMany}
             onContextMenu={mode === 'canvas' ? undefined : handleContextMenu}
             multiSelectMode={multiSelectActive}
             onContainerClick={mode === 'canvas' ? (isMultiSelectMode ? clearSelection : undefined) : clearSelection}
@@ -3389,6 +3808,8 @@ export function LearningHubSidebar({
                     }
                   }
             }
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery('')}
           />
           </>
           )}
@@ -3495,6 +3916,10 @@ export function LearningHubSidebar({
           }
         } : undefined}
         onToggleFavorite={handleToggleFavorite}
+        onCopy={isTrashView ? undefined : handleCopyFromContextMenu}
+        onDuplicate={canPasteHere ? handleDuplicateFromContextMenu : undefined}
+        onPaste={canPasteHere ? handlePaste : undefined}
+        pasteCount={clipboardCount}
         onExportResource={handleExportResource}
         onExportFolder={handleExportFolder}
         onRestoreItem={handleRestoreItem}
@@ -3546,6 +3971,15 @@ export function LearningHubSidebar({
       />
 
       {/* Rename Dialog - Replaced with Inline Editing */}
+
+      {/* ★ Quick Look：空格快速预览浮层（空格/Esc/点遮罩关闭） */}
+      {quickLookItem && (
+        <FinderQuickLook
+          item={quickLookItem}
+          onClose={() => setQuickLookItem(null)}
+          onOpen={handleQuickLookOpen}
+        />
+      )}
 
       {/* ★ 教材导入进度模态框 */}
       <ImportProgressModal

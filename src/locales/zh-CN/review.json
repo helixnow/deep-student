@@ -212,6 +212,18 @@
     "noAnswerRecorded": "未作答",
     "redo": "重做此题",
     "explanation": "解析",
+    "generateCards": "生成卡片（{{count}}）",
+    "generateCardsRunning": "正在提交制卡…",
+    "generateCardsNeedSelection": "先勾选要生成卡片的错题",
+    "generateCardsTooShort": "选中错题的内容太少，无法生成有效卡片",
+    "generateCardsStarted": "已开始制卡，可在制卡任务台查看进度",
+    "generateCardsFailed": "制卡启动失败",
+    "openTaskDashboard": "打开任务台",
+    "cardSource": {
+      "question": "题目",
+      "deckName": "错题卡片",
+      "requirements": "根据错题的题干、正确答案与解析生成记忆卡片，优先覆盖用户答错的知识点，不要照抄用户的错误答案。"
+    },
     "sortLabel": "排序",
     "sortDefault": "默认",
     "sortByErrors": "错误次数",

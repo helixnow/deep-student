@@ -107,14 +107,14 @@ describe('DataGovernanceDashboard scoped loading', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = screen.getByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeEnabled();
     });
 
-    const overviewTab = screen.getByRole('button', { name: /概览|data:governance\.tab_overview/i });
+    const overviewTab = screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i });
     fireEvent.click(overviewTab);
 
     const runHealthCheckButton = await screen.findByRole('button', {

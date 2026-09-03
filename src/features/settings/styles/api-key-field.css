@@ -114,3 +114,22 @@
     width: var(--button-height);
   }
 }
+
+/* 触屏（含宽屏 iPad）恢复可点按高度，避免 lg 收窄留下的小热区 */
+@media (pointer: coarse) {
+  .api-key-field {
+    height: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
+
+  /* iOS 对 <16px 输入聚焦时会强制放大页面 */
+  .api-key-field__input {
+    font-size: 16px;
+  }
+
+  .api-key-field__action,
+  .api-key-field__toggle {
+    flex-basis: var(--touch-target-size);
+    width: var(--touch-target-size);
+  }
+}

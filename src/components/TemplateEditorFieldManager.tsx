@@ -99,7 +99,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
             }
           }}
           placeholder={tTemplate('field_name_placeholder')}
-          className="md:!h-7 text-sm flex-1 min-w-0 [@media(pointer:coarse)]:text-base"
+          className="md:!h-7 text-sm flex-1 min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-base"
           aria-invalid={!!error}
         />
         {used && (
@@ -112,7 +112,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
       <div className="flex items-center gap-0.5 shrink-0">
         <button
           type="button"
-          className={`template-editor-required-toggle ${required ? 'active' : ''}`}
+          className={`template-editor-required-toggle [@media(pointer:coarse)]:!min-h-11 ${required ? 'active' : ''}`}
           aria-pressed={required}
           title={t('templateEditor.toggleRequired') as string}
           onClick={() => onToggleRequired(!required)}
@@ -123,6 +123,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveUp}
           disabled={index === 0}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.moveFieldUp') as string}
         >
           <ArrowUp size={14} />
@@ -131,6 +132,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveDown}
           disabled={index === total - 1}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.moveFieldDown') as string}
         >
           <ArrowDown size={14} />
@@ -139,7 +141,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onRemove}
           disabled={total <= 1}
-          className="text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.deleteField') as string}
         >
           <Trash size={14} />
@@ -196,7 +198,10 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
         ))}
       </div>
       <div className="flex items-center justify-between mt-3">
-        <DsButton type="button" variant="ghost" size="sm" onClick={onAddField}>
+        <DsButton
+          type="button" variant="ghost" size="sm" onClick={onAddField}
+          className="[@media(pointer:coarse)]:!min-h-11"
+        >
           <Plus size={14} className="mr-1.5" />
           {tTemplate('add_field')}
         </DsButton>

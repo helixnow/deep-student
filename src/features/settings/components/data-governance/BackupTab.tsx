@@ -40,6 +40,7 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { localizeCloudStorageError } from './localizeCloudError';
 import type {
   BackupInfoResponse,
   BackupVerifyResponse,
@@ -76,12 +77,14 @@ export interface BackupTabProps {
     tiers?: BackupTier[];
     includeAssets?: boolean;
     assetTypes?: AssetType[];
+    /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
+    encryptionPassword?: string;
   }) => void;
   onDeleteBackup: (backupId: string) => void;
   onVerifyBackup: (backupId: string) => void;
   onRestoreBackup: (backupId: string) => void;
-  onExportZip: (backupId: string, compressionLevel: number) => void;
-  onImportZip: () => void;
+  onExportZip: (backupId: string, compressionLevel: number, encryptionPassword?: string) => void;
+  onImportZip: (password?: string) => void;
   // 后台任务相关
   backupProgress?: BackupJobEvent | null;
   isBackupRunning?: boolean;
@@ -90,7 +93,7 @@ export interface BackupTabProps {
   currentJobOperation?: BackupJobOperation | null;
   // 可恢复任务相关
   resumableJobs?: ResumableJob[];
-  onResumeJob?: (jobId: string) => void;
+  onResumeJob?: (jobId: string, password?: string) => void;
   // 恢复完成后重启对话框
   showRestartDialog?: boolean;
   onRestartNow?: () => void;
@@ -152,7 +155,7 @@ const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, pr
       {phaseLabels.map((label, idx) => (
         <div key={idx} className="flex items-center gap-2">
           {idx < currentPhaseIndex ? (
-            <CheckCircle size={12} className="text-green-500 shrink-0" />
+            <CheckCircle size={12} className="text-success shrink-0" />
           ) : idx === currentPhaseIndex ? (
             <CircleNotch size={12} className="text-primary animate-spin shrink-0" />
           ) : (
@@ -194,7 +197,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   verificationStatusMap,
   lastAutoVerifyResult,
 }) => {
-  const { t } = useTranslation(['data', 'common', 'settings']);
+  const { t } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
 
   // 备份设置状态
@@ -327,14 +330,43 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 分层备份状态
   const [useTieredBackup, setUseTieredBackup] = useState(false);
   const [addToBackupList, setAddToBackupList] = useState(true);
-  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core']);
-  const [includeAssets, setIncludeAssets] = useState(false);
+  // R04-backup-defaults：默认勾选 core + important 且包含资产，
+  // 使默认分层导出覆盖 vfs_blobs（文件库原始文件）等重要资产目录；用户仍可自由增减。
+  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core', 'important']);
+  const [includeAssets, setIncludeAssets] = useState(true);
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<AssetType[]>([]);
   const [compressionLevel, setCompressionLevel] = useState(6);
   const [isActionRunning, setIsActionRunning] = useState(false);
+  // 备份密码（可选）：非空时密封凭据等敏感材料，使全保真包可整槽恢复。
+  // 外层业务归档仍为明文，用户可见文案必须明确这一边界。
+  const [encryptionPassword, setEncryptionPassword] = useState('');
+  // 导入密码对话框
+  const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
+  const [resumeImportJobId, setResumeImportJobId] = useState<string | null>(null);
+
+  /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS / `chars().count()` 对齐（按 Unicode 标量，不是 UTF-16）。 */
+  const MIN_E2EE_PASSWORD_CHARS = 8;
+
+  /** 校验可选 E2EE 密码：为空视为不加密；非空则必须满足最小长度 */
+  const validateOptionalPassword = (password: string): boolean => {
+    if (password === '') return true;
+    const trimmed = password.trim();
+    if (trimmed.length === 0 || [...trimmed].length < MIN_E2EE_PASSWORD_CHARS) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.e2ee_password_too_short', { min: MIN_E2EE_PASSWORD_CHARS })
+      );
+      return false;
+    }
+    return true;
+  };
 
   const handleAction = async () => {
     if (!selectedBackup || !actionType || isActionRunning) return;
+    if (actionType === 'export' && !validateOptionalPassword(encryptionPassword)) {
+      return;
+    }
     setIsActionRunning(true);
     try {
       if (actionType === 'delete') {
@@ -342,13 +374,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       } else if (actionType === 'restore') {
         await onRestoreBackup(selectedBackup);
       } else if (actionType === 'export') {
-        await onExportZip(selectedBackup, compressionLevel);
+        await onExportZip(selectedBackup, compressionLevel, encryptionPassword || undefined);
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
       showGlobalNotification(
         'error',
-        message,
+        localizeCloudStorageError(error, t),
         t('data:governance.action_failed')
       );
     } finally {
@@ -372,12 +403,22 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     );
   };
 
+  // vfs_blobs（文件库原始文件）只由 important 层的资产目录提供（见后端 BackupTier::asset_directories）：
+  // 必须勾选 important 层并开启“包含资产文件”，且资产类型过滤为空（=全部）或显式包含 vfs_blobs。
+  const tieredSelectionCoversVfsBlobs =
+    includeAssets &&
+    selectedTiers.includes('important') &&
+    (selectedAssetTypes.length === 0 || selectedAssetTypes.includes('vfs_blobs'));
+
   const handleBackupAndExport = () => {
     if (useTieredBackup && selectedTiers.length === 0) {
       showGlobalNotification(
         'warning',
         t('data:governance.tiered_backup_select_tier_first')
       );
+      return;
+    }
+    if (!validateOptionalPassword(encryptionPassword)) {
       return;
     }
 
@@ -388,7 +429,124 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       tiers: useTieredBackup ? selectedTiers : undefined,
       includeAssets: useTieredBackup ? includeAssets : true,
       assetTypes: useTieredBackup && selectedAssetTypes.length > 0 ? selectedAssetTypes : undefined,
+      encryptionPassword: encryptionPassword || undefined,
     });
+  };
+
+  // 导入是对既有密文的解密：故意不做最小长度校验。v0.9.44 允许任意长度的
+  // 备份密码，换机/重装用户必须能用存量短口令解开旧加密 ZIP；口令错误由
+  // 解封层 fail-closed（E_BACKUP_SEALED_DECRYPT_FAILED）。最小长度只约束
+  // 导出（新设口令）路径。
+  const handleImportConfirm = () => {
+    if (resumeImportJobId && importPassword === '') {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.import_sealed_password_required')
+      );
+      return;
+    }
+    setShowImportPasswordDialog(false);
+    if (resumeImportJobId) {
+      onResumeJob?.(resumeImportJobId, importPassword);
+      setResumeImportJobId(null);
+    } else {
+      onImportZip(importPassword || undefined);
+    }
+    setImportPassword('');
+  };
+
+  const handleResumeJob = (job: ResumableJob) => {
+    if (job.kind === 'import' && job.requires_password) {
+      setResumeImportJobId(job.job_id);
+      setImportPassword('');
+      setShowImportPasswordDialog(true);
+      return;
+    }
+    onResumeJob?.(job.job_id);
+  };
+
+  // 恢复入口的前置校验：桌面表格行与移动卡片共用
+  const handleRestoreClick = (backup: BackupInfoResponse) => {
+    if (backup.backup_type === 'incremental') {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_incremental_not_supported')
+      );
+      return;
+    }
+    if (!isRestorableBackup(backup)) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_non_full_not_supported')
+      );
+      return;
+    }
+    setSelectedBackup(backup.path);
+    setActionType('restore');
+  };
+
+  // 备份类型徽标：桌面表格与移动卡片共用（仅展示层）
+  const renderBackupTypeBadge = (backup: BackupInfoResponse) => (
+    <Badge
+      variant={
+        backup.backup_type === 'full'
+          ? 'default'
+          : backup.backup_type === 'incremental'
+            ? 'destructive'
+            : 'secondary'
+      }
+      className="rounded-sm font-normal whitespace-nowrap"
+      title={
+        backup.backup_type === 'incremental'
+          ? t('data:governance.incremental_legacy_unsupported')
+          : undefined
+      }
+    >
+      {backup.recovery_kind === 'partial_archive'
+        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
+        : backup.backup_type === 'full'
+        ? t('data:governance.full')
+        : backup.backup_type === 'incremental'
+        ? t('data:governance.incremental_legacy_unsupported')
+        : backup.backup_type === 'partial_overlay'
+        ? t('data:governance.partial_overlay')
+        : t('data:governance.legacy_unknown')}
+    </Badge>
+  );
+
+  // 验证状态徽标：桌面表格与移动卡片共用（仅展示层）
+  const renderVerificationBadge = (backup: BackupInfoResponse) => {
+    const status = verificationStatusMap?.[backup.path];
+    if (status === 'verified') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs whitespace-nowrap">
+          <CheckCircle size={12} className="shrink-0" />
+          {t('data:governance.verification_verified')}
+        </div>
+      );
+    }
+    if (status === 'failed') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs whitespace-nowrap">
+          <Warning size={12} className="shrink-0" />
+          {t('data:governance.verification_failed')}
+        </div>
+      );
+    }
+    if (status === 'verifying') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-info/10 text-info text-xs whitespace-nowrap">
+          <CircleNotch size={12} className="shrink-0 animate-spin" />
+          {t('data:governance.verification_verifying')}
+        </div>
+      );
+    }
+    return (
+      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs whitespace-nowrap">
+        <Shield className="h-3 w-3 shrink-0" />
+        {t('data:governance.verification_unverified')}
+      </div>
+    );
   };
 
   return (
@@ -405,7 +563,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <DsButton size="sm" variant="outline" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" variant="outline" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => handleResumeJob(job)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
               </DsButton>
@@ -438,7 +596,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={onCancelBackup}
-                className="!text-destructive"
+                className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
@@ -489,36 +647,93 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <p className="text-sm text-muted-foreground">
             {t('data:governance.export_backup_desc')}
           </p>
+          {encryptionPassword ? (
+            <p className="text-xs text-success">
+              {t('data:governance.e2ee_export_note', {
+                defaultValue:
+                  '已设置备份密码：API 凭据、密钥等敏感材料会被加密保护，输入同一密码后可整槽恢复；聊天记录、错题、文件等归档内容本身未加密，请勿通过不可信渠道传播。丢失密码后业务数据仍可读取，但凭据和整槽恢复资格将丢失。',
+              })}
+            </p>
+          ) : (
+            <p className="text-xs text-warning">
+              {t('data:governance.portable_zip_honest_note', {
+                defaultValue:
+                  '未加密的导出 ZIP 是便携归档：不包含本地加密密钥与审计记录，在其他设备导入后不能整槽恢复，API 密钥等凭据需要重新录入。',
+              })}
+            </p>
+          )}
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="add-to-backup-list"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={addToBackupList}
               onCheckedChange={(checked) => setAddToBackupList(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="add-to-backup-list" className="text-sm">
+            <Label htmlFor="add-to-backup-list" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.add_to_backup_list')}
             </Label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="use-tiered-backup"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={useTieredBackup}
               onCheckedChange={(checked) => setUseTieredBackup(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="use-tiered-backup" className="text-sm">
+            <Label htmlFor="use-tiered-backup" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.use_tiered_backup')}
             </Label>
+          </div>
+
+          {/* E2EE 备份密码（可选）：非空时导出加密全保真换机包 */}
+          <div className="space-y-1.5">
+            <Label htmlFor="e2ee-export-password" className="text-sm">
+              {t('data:governance.e2ee_password_label')}
+            </Label>
+            <Input
+              id="e2ee-export-password"
+              type="password"
+              autoComplete="new-password"
+              className="max-w-sm h-8 text-sm"
+              value={encryptionPassword}
+              placeholder={t('data:governance.e2ee_password_placeholder')}
+              disabled={loading || isBackupRunning}
+              onChange={(e) => setEncryptionPassword(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('data:governance.e2ee_password_hint', { min: MIN_E2EE_PASSWORD_CHARS })}
+            </p>
           </div>
         </div>
 
         {useTieredBackup && (
           <div className="space-y-4 pl-4 border-l-2 border-border/40">
+            <p className="text-xs text-warning">
+              {t('data:governance.tiered_backup_honest_note', {
+                defaultValue:
+                  '分层备份（包括默认的核心层）只覆盖所选层级，产物是部分归档，不能整槽恢复，仅支持导出与检查。',
+              })}
+            </p>
+            {!tieredSelectionCoversVfsBlobs && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
+              >
+                <Warning size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('data:governance.tiered_backup_vfs_blobs_missing_warning', {
+                    defaultValue:
+                      '当前选择不包含文件库原始文件（vfs_blobs）：导出的部分归档不能整槽恢复，vfs_blobs 中的文件也无法从该归档找回。如需覆盖，请勾选「重要数据 (P1)」层级并开启「包含资产文件」（若筛选了资产类型，需保留 vfs_blobs）。',
+                  })}
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {BACKUP_TIERS.map((tier) => (
                 <div
@@ -551,7 +766,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {t('data:governance.include_assets_desc')}
                 </p>
               </div>
-              <Switch checked={includeAssets} onCheckedChange={setIncludeAssets} />
+              <Switch
+                checked={includeAssets}
+                onCheckedChange={setIncludeAssets}
+                aria-label={t('data:governance.include_assets')}
+              />
             </div>
 
             {includeAssets && (
@@ -563,7 +782,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {ASSET_TYPES.map((asset) => (
                     <div
                       key={asset.value}
-                      className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 p-2 [@media(pointer:coarse)]:min-h-11 rounded-md border cursor-pointer transition-colors ${
                         selectedAssetTypes.includes(asset.value)
                           ? 'border-primary/50 bg-primary/5'
                           : 'border-border/60 hover:border-border hover:bg-[color:var(--sidebar-quiet-hover)]'
@@ -611,6 +830,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={handleBackupAndExport}
             disabled={loading || isBackupRunning}
+            className="[@media(pointer:coarse)]:!h-11"
           >
             {isBackupRunning ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -622,13 +842,17 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <DsButton
             variant="outline"
             size="sm"
-            onClick={onImportZip}
+            onClick={() => {
+              setResumeImportJobId(null);
+              setShowImportPasswordDialog(true);
+            }}
             disabled={loading || isBackupRunning}
+            className="[@media(pointer:coarse)]:!h-11"
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
           </DsButton>
-          <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
+          <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading} className="[@media(pointer:coarse)]:!h-11">
             <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
           </DsButton>
@@ -657,6 +881,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <DsButton
               variant="outline"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => void loadBackupConfig(true)}
             >
               <ArrowClockwise size={14} className="mr-1.5" />
@@ -731,7 +956,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   type="number"
                   min={1}
                   max={100}
-                  className="w-20 h-8 text-sm"
+                  className="w-20 h-8 [@media(pointer:coarse)]:h-11 text-sm"
                   value={backupConfig.maxBackupCount ?? ''}
                   placeholder={t('data:governance.max_backup_count_unlimited')}
                   disabled={configSaving}
@@ -774,6 +999,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </p>
         </div>
 
+        {/* ≥md：原宽表；<md：下方卡片列表（同 DimensionManagement 的响应式模式，仅展示层） */}
+        <div className="hidden md:block">
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
@@ -797,31 +1024,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     {formatTimestamp(backup.created_at)}
                   </TableCell>
                   <TableCell className="py-3">
-                    <Badge
-                      variant={
-                        backup.backup_type === 'full'
-                          ? 'default'
-                          : backup.backup_type === 'incremental'
-                            ? 'destructive'
-                            : 'secondary'
-                      }
-                      className="rounded-sm font-normal whitespace-nowrap"
-                      title={
-                        backup.backup_type === 'incremental'
-                          ? t('data:governance.incremental_legacy_unsupported')
-                          : undefined
-                      }
-                    >
-                      {backup.recovery_kind === 'partial_archive'
-                        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
-                        : backup.backup_type === 'full'
-                        ? t('data:governance.full')
-                        : backup.backup_type === 'incremental'
-                        ? t('data:governance.incremental_legacy_unsupported')
-                        : backup.backup_type === 'partial_overlay'
-                        ? t('data:governance.partial_overlay')
-                        : t('data:governance.legacy_unknown')}
-                    </Badge>
+                    {renderBackupTypeBadge(backup)}
                   </TableCell>
                   <TableCell className="py-3 font-mono text-xs whitespace-nowrap">{formatBytes(backup.size)}</TableCell>
                   <TableCell className="py-3">
@@ -830,47 +1033,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       {t('data:governance.databases_count')}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3">
-                    {(() => {
-                      const status = verificationStatusMap?.[backup.path];
-                      if (status === 'verified') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
-                            <CheckCircle size={12} className="shrink-0" />
-                            {t('data:governance.verification_verified')}
-                          </div>
-                        );
-                      }
-                      if (status === 'failed') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
-                            <Warning size={12} className="shrink-0" />
-                            {t('data:governance.verification_failed')}
-                          </div>
-                        );
-                      }
-                      if (status === 'verifying') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
-                            <CircleNotch size={12} className="shrink-0 animate-spin" />
-                            {t('data:governance.verification_verifying')}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs whitespace-nowrap">
-                          <Shield className="h-3 w-3 shrink-0" />
-                          {t('data:governance.verification_unverified')}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
+                  <TableCell className="py-3">{renderVerificationBadge(backup)}</TableCell>
                   <TableCell className="text-right py-3">
                     <div className="flex justify-end gap-1">
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
@@ -881,7 +1050,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('export');
@@ -895,25 +1064,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => {
-                          if (backup.backup_type === 'incremental') {
-                            showGlobalNotification(
-                              'warning',
-                              t('data:governance.restore_incremental_not_supported')
-                            );
-                            return;
-                          }
-                          if (!isRestorableBackup(backup)) {
-                            showGlobalNotification(
-                              'warning',
-                              t('data:governance.restore_non_full_not_supported')
-                            );
-                            return;
-                          }
-                          setSelectedBackup(backup.path);
-                          setActionType('restore');
-                        }}
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                        onClick={() => handleRestoreClick(backup)}
                         disabled={isBackupRunning}
                         title={
                           isRestorableBackup(backup)
@@ -929,7 +1081,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('delete');
@@ -961,6 +1113,87 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </TableBody>
           </Table>
         </CustomScrollArea>
+        </div>
+
+        {/* <md：卡片列表（信息与动作同上表；动作按钮走 DsButton icon 契约，<lg 天然 44px） */}
+        <div className="space-y-2 md:hidden">
+          {backups.map((backup) => (
+            <div
+              key={backup.path}
+              className="rounded-md border border-border/40 bg-background/50 p-3 space-y-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{formatTimestamp(backup.created_at)}</span>
+                {renderBackupTypeBadge(backup)}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="font-mono text-xs text-muted-foreground">{formatBytes(backup.size)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {backup.databases.length} {t('data:governance.databases_count')}
+                </span>
+                {renderVerificationBadge(backup)}
+              </div>
+              <div className="flex items-center gap-1 border-t border-border/40 pt-1.5">
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onVerifyBackup(backup.path)}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.verify')}
+                >
+                  <Shield className="h-4 w-4" />
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setSelectedBackup(backup.path);
+                    setActionType('export');
+                  }}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.export_zip')}
+                >
+                  <FileArrowDown size={16} />
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRestoreClick(backup)}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.restore')}
+                >
+                  <ArrowCounterClockwise size={16} />
+                </DsButton>
+                <div className="flex-1" />
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    setSelectedBackup(backup.path);
+                    setActionType('delete');
+                  }}
+                  disabled={isBackupRunning}
+                  aria-label={t('common:actions.delete')}
+                >
+                  <Trash size={16} />
+                </DsButton>
+              </div>
+            </div>
+          ))}
+          {backups.length === 0 && (
+            <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <CircleNotch size={16} className="animate-spin" />
+                  {t('common:status.loading')}
+                </div>
+              ) : (
+                t('data:governance.no_backups')
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 确认对话框 */}
@@ -981,7 +1214,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           actionType === 'delete'
             ? t('data:governance.delete_warning')
             : actionType === 'export'
-            ? t('data:governance.export_warning', { level: compressionLevel })
+            ? encryptionPassword
+              ? t('data:governance.export_warning_encrypted', { level: compressionLevel })
+              : t('data:governance.export_warning', { level: compressionLevel })
             : t('data:governance.restore_warning')
         }
         confirmText={
@@ -992,26 +1227,105 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             : t('data:governance.restore')
         }
         cancelText={t('common:actions.cancel')}
-        confirmVariant={actionType === 'delete' ? 'danger' : 'primary'}
+        // [R10-ux] 恢复会用备份覆盖当前数据槽（重启后切换），与云端恢复
+        // （CloudStorageSection warning）、库级冲突覆盖（SyncTab warning/danger）
+        // 同级，不能用 primary；导出不改动数据保持 primary。
+        confirmVariant={
+          actionType === 'delete'
+            ? 'danger'
+            : actionType === 'restore'
+            ? 'warning'
+            : 'primary'
+        }
         onConfirm={handleAction}
         loading={isActionRunning}
         disabled={isActionRunning}
       />
 
+      {/* 导入 ZIP：新导入可留空；密封敏感材料包的续传必须重新输入密码 */}
+      <DsDialog
+        open={showImportPasswordDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowImportPasswordDialog(false);
+            setImportPassword('');
+            setResumeImportJobId(null);
+          }
+        }}
+        maxWidth="max-w-md"
+      >
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-primary" />
+            {t(resumeImportJobId
+              ? 'data:governance.resume_import_password_title'
+              : 'data:governance.import_password_title')}
+          </DsDialogTitle>
+          <DsDialogDescription>
+            {t(resumeImportJobId
+              ? 'data:governance.resume_import_password_desc'
+              : 'data:governance.import_password_desc')}
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="e2ee-import-password" className="text-sm">
+              {t('data:governance.import_password_label')}
+            </Label>
+            <Input
+              id="e2ee-import-password"
+              type="password"
+              autoComplete="current-password"
+              className="h-8 text-sm"
+              value={importPassword}
+              placeholder={t('data:governance.import_password_placeholder')}
+              required={resumeImportJobId !== null}
+              onChange={(e) => setImportPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleImportConfirm();
+              }}
+            />
+          </div>
+        </DsDialogBody>
+        <DsDialogFooter>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setShowImportPasswordDialog(false);
+              setImportPassword('');
+              setResumeImportJobId(null);
+            }}
+          >
+            {t('common:actions.cancel')}
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleImportConfirm}>
+            {resumeImportJobId ? (
+              <Play className="h-4 w-4 mr-1.5" />
+            ) : (
+              <Upload className="h-4 w-4 mr-1.5" />
+            )}
+            {t(resumeImportJobId
+              ? 'data:governance.resume'
+              : 'data:governance.import_button')}
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
+
       {/* Task 3: 恢复完成后重启提示对话框 */}
       <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
-            <CheckCircle size={20} className="text-green-500" />
+            <CheckCircle size={20} className="text-success" />
             {t('data:governance.restore_complete_title')}
           </DsDialogTitle>
           <DsDialogDescription>
             <p>{t('data:governance.restore_complete_desc')}</p>
-            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+            <p className="text-warning font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="primary" size="sm" onClick={onRestartNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestartNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}
           </DsButton>
@@ -1027,14 +1341,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogTitle>
           <DsDialogDescription>
             <p>{t('data:governance.import_complete_desc')}</p>
-            <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
+            <p className="text-warning font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" onClick={onRestoreLater}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreLater}>
             {t('data:governance.restore_later')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={onRestoreNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restore_now')}
           </DsButton>
@@ -1061,8 +1375,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               {/* 总体状态 */}
               <div className={`flex items-center gap-2 p-2 rounded-md ${
                 verifyResult.is_valid
-                  ? 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400'
-                  : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-destructive/10 text-destructive'
               }`}>
                 {verifyResult.is_valid ? (
                   <CheckCircle size={16} />
@@ -1092,15 +1406,15 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                           <div className="flex items-center gap-1.5">
                             {db.is_valid ? (
                               <>
-                                <CheckCircle size={14} className="text-green-500" />
-                                <span className="text-xs text-green-600 dark:text-green-400">
+                                <CheckCircle size={14} className="text-success" />
+                                <span className="text-xs text-success">
                                   {t('data:governance.verify_db_pass')}
                                 </span>
                               </>
                             ) : (
                               <>
-                                <XCircle className="h-3.5 w-3.5 text-red-500" />
-                                <span className="text-xs text-red-600 dark:text-red-400">
+                                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                                <span className="text-xs text-destructive">
                                   {t('data:governance.verify_db_fail')}
                                 </span>
                               </>
@@ -1158,7 +1472,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="outline" size="sm" onClick={onCloseVerifyDialog}>
+          <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCloseVerifyDialog}>
             {t('common:actions.close')}
           </DsButton>
         </DsDialogFooter>

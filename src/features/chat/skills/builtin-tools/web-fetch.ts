@@ -52,14 +52,14 @@ export const webFetchSkill: SkillDefinition = {
     {
       name: 'builtin-web_fetch',
       description:
-        '抓取网页内容并转换为 Markdown；PDF、DOCX、图片、音视频响应经最终跳转域名、MIME、magic 和大小校验后物化为 session artifacts 文件句柄，不按文本解码。支持用 start_index 和 max_length 分页读取长文本。',
+        '抓取网页转 Markdown；PDF/DOCX/图片/音视频经最终跳转域名、MIME、magic、大小校验后物化为 session artifacts 文件句柄，不按文本解码。start_index/max_length 分页读取长文本。',
       inputSchema: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: '【必填】要抓取的 URL（必须是 http:// 或 https:// 开头）' },
-          max_length: { type: 'integer', description: '最大返回字符数，默认 5000。如果内容超过此长度，可使用 start_index 分页读取。', default: 5000, minimum: 100, maximum: 50000 },
-          start_index: { type: 'integer', description: '从第几个字符开始返回，默认 0。用于分页读取长内容。', default: 0, minimum: 0 },
-          raw: { type: 'boolean', description: '是否返回原始内容（不转换为 Markdown）。默认 false。' },
+          url: { type: 'string', description: '要抓取的 URL（http:// 或 https:// 开头）' },
+          max_length: { type: 'integer', description: '最大返回字符数；超长时用 start_index 分页。', default: 5000, minimum: 100, maximum: 50000 },
+          start_index: { type: 'integer', description: '起始字符偏移，用于分页读取。', default: 0, minimum: 0 },
+          raw: { type: 'boolean', description: '返回原始内容（不转 Markdown）。' },
         },
         required: ['url'],
       },

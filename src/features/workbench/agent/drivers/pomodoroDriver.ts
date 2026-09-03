@@ -6,6 +6,7 @@
  *
  * 设计：docs/dev/acr/DESIGN.md §5.5
  */
+import i18n from '@/i18n';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import type {
   AcrReceipt,
@@ -39,7 +40,14 @@ function flashTimerEntity(): void {
   }
 }
 
-const STRICT_MODE_HINT = '严格模式下专注中不可暂停';
+// 用户可见文案统一走 i18n；defaultValue 兜底 namespace 异步加载窗口期。
+// 语言可运行时切换，故用函数而非模块级常量。
+// 严格模式提示复用番茄钟 UI 的既有 key（workbench:pomodoro.strictHint）。
+function strictModeHint(): string {
+  return i18n.t('workbench:pomodoro.strictHint', {
+    defaultValue: '严格模式下专注不可暂停',
+  });
+}
 
 async function flushRecords(): Promise<void> {
   await usePomodoroStore.getState().flushPendingRecords();
@@ -138,7 +146,9 @@ function cancelledReceipt(state: ActiveRunSnapshot): AcrReceipt {
       entityIds: [],
       done: [...state.done],
       undone: [...state.undone],
-      message: '运行已中止',
+      message: i18n.t('workspace:agent.pomodoro.run_aborted', {
+        defaultValue: '运行已中止',
+      }),
     },
     TYPE_ID,
   );
@@ -198,7 +208,12 @@ export const pomodoroDriver: CollabDriver & {
         pauseDecision = state.aborted ? 'abort' : await run.checkPaused();
       } catch (err) {
         state.aborted = true;
-        state.undone.push(`暂停检查失败（${err instanceof Error ? err.message : String(err)}）`);
+        state.undone.push(
+          i18n.t('workspace:agent.pomodoro.pause_check_failed', {
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: '暂停检查失败（{{error}}）',
+          }),
+        );
         return cancelledReceipt(state);
       }
       if (pauseDecision === 'abort') {
@@ -219,7 +234,12 @@ export const pomodoroDriver: CollabDriver & {
           usePomodoroStore.getState().start(taskId, taskTitle);
           const after = usePomodoroStore.getState();
           if (!controlStateChanged(before, after)) {
-            undone.push(`${label}（当前状态无需启动或恢复）`);
+            undone.push(
+              i18n.t('workspace:agent.pomodoro.start_noop', {
+                label,
+                defaultValue: '{{label}}（当前状态无需启动或恢复）',
+              }),
+            );
             break;
           }
           done.push(label);
@@ -242,7 +262,7 @@ export const pomodoroDriver: CollabDriver & {
             messages.push(
               JSON.stringify({
                 code: ACR_ERROR_CODES.STRICT_MODE,
-                hint: STRICT_MODE_HINT,
+                hint: strictModeHint(),
               }),
             );
             break;
@@ -250,7 +270,12 @@ export const pomodoroDriver: CollabDriver & {
           const beforeStatus = usePomodoroStore.getState().status;
           usePomodoroStore.getState().pause();
           if (usePomodoroStore.getState().status === beforeStatus) {
-            undone.push(`${label}（当前状态不可暂停）`);
+            undone.push(
+              i18n.t('workspace:agent.pomodoro.pause_noop', {
+                label,
+                defaultValue: '{{label}}（当前状态不可暂停）',
+              }),
+            );
             break;
           }
           done.push(label);
@@ -270,7 +295,12 @@ export const pomodoroDriver: CollabDriver & {
           const beforeStatus = usePomodoroStore.getState().status;
           usePomodoroStore.getState().resume();
           if (usePomodoroStore.getState().status === beforeStatus) {
-            undone.push(`${label}（当前状态无需恢复）`);
+            undone.push(
+              i18n.t('workspace:agent.pomodoro.resume_noop', {
+                label,
+                defaultValue: '{{label}}（当前状态无需恢复）',
+              }),
+            );
             break;
           }
           done.push(label);
@@ -290,7 +320,12 @@ export const pomodoroDriver: CollabDriver & {
           const beforeMode = usePomodoroStore.getState().mode;
           usePomodoroStore.getState().stop(true);
           if (usePomodoroStore.getState().mode === beforeMode) {
-            undone.push(`${label}（当前未运行番茄钟）`);
+            undone.push(
+              i18n.t('workspace:agent.pomodoro.stop_noop', {
+                label,
+                defaultValue: '{{label}}（当前未运行番茄钟）',
+              }),
+            );
             break;
           }
           done.push(label);
@@ -304,14 +339,24 @@ export const pomodoroDriver: CollabDriver & {
         }
         default: {
           undone.push(label);
-          messages.push(`不支持的 pomodoro op: ${op.kind}`);
+          messages.push(
+            i18n.t('workspace:agent.pomodoro.unsupported_op', {
+              kind: op.kind,
+              defaultValue: '不支持的 pomodoro op: {{kind}}',
+            }),
+          );
           break;
         }
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         persistenceFailed = true;
-        messages.push(`后端记录保存失败: ${detail}`);
+        messages.push(
+          i18n.t('workspace:agent.pomodoro.persist_failed', {
+            error: detail,
+            defaultValue: '后端记录保存失败: {{error}}',
+          }),
+        );
       }
       if (state.applied > appliedBefore) flashTimerEntity();
 
@@ -321,7 +366,10 @@ export const pomodoroDriver: CollabDriver & {
       } catch (err) {
         state.aborted = true;
         messages.push(
-          `节奏控制失败: ${err instanceof Error ? err.message : String(err)}`,
+          i18n.t('workspace:agent.pomodoro.pacing_failed', {
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: '节奏控制失败: {{error}}',
+          }),
         );
         return cancelledReceipt(state);
       }

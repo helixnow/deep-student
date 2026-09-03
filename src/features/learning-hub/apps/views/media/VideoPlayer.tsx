@@ -29,7 +29,8 @@ import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
-import { isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
 
@@ -45,7 +46,7 @@ export interface VideoPlayerProps {
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
 const overlayButtonClass =
-  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11';
+  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
@@ -173,8 +174,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, []);
 
+  // Android 系统返回键：全屏时先退出全屏，而不是退出预览/页面
+  useEffect(() => {
+    if (!isFullscreen) return;
+    return registerBackHandler(() => {
+      void document.exitFullscreen().catch(() => {
+        // 全屏 API 不可用时静默降级
+      });
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isFullscreen]);
+
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // 组合键留给壳层/系统（⌘F 搜索、⌘M 最小化、⌘R 刷新等）
+      if (hasShortcutModifier(event)) return;
       const onControl = isInteractiveShortcutTarget(event.target);
       switch (event.key) {
         case ' ':

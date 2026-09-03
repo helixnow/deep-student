@@ -158,7 +158,7 @@
 
 .app-menu-group-label {
   padding: 4px 10px 2px;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 500;
   color: var(--menu-shell-muted-foreground);
   text-transform: uppercase;
@@ -253,7 +253,7 @@
   flex-shrink: 0;
   margin-left: 12px;
   padding: 1px 5px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-family: system-ui, -apple-system, sans-serif;
   color: var(--menu-shell-muted-foreground);
   background-color: color-mix(in hsl, var(--menu-shell-surface) 80%, var(--menu-shell-row-hover) 20%);
@@ -358,7 +358,7 @@
 
 .app-menu-label {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--menu-shell-muted-foreground);
 }
@@ -369,7 +369,7 @@
   padding: 6px 10px;
   margin-top: 2px;
   border-top: 1px solid var(--menu-shell-border);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--menu-shell-muted-foreground);
   line-height: 1.5;
 }
@@ -478,7 +478,7 @@
   border-radius: var(--menu-shell-row-radius);
   background-color: transparent;
   color: var(--menu-shell-foreground);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   /* 显式属性过渡（原 transition: all 会连带 layout 属性） */
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
@@ -495,13 +495,13 @@
 }
 
 .app-menu-option-label {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 500;
   line-height: 1.2;
 }
 
 .app-menu-option-description {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--menu-shell-muted-foreground);
   margin-top: 2px;
 }
@@ -520,7 +520,7 @@
 /* ============ Shortcut 快捷键 ============ */
 
 .app-menu-shortcut {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-family: system-ui, -apple-system, sans-serif;
   color: var(--menu-shell-muted-foreground);
 }
@@ -528,6 +528,13 @@
 /* ============ 响应式 - 移动端适配 ============ */
 
 @media (max-width: 639.98px) {
+  .app-menu-content,
+  .app-menu-sub-content {
+    max-height: var(--app-menu-available-height, calc(100dvh - 16px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   .app-menu-content {
     min-width: 160px;
     max-width: calc(100vw - 24px);
@@ -540,12 +547,32 @@
   .app-menu-item-shortcut {
     display: none;
   }
+
+  /* 移动端 caption 下限为 12px；桌面密集菜单仍保留 xs/2xs token。 */
+  .app-menu-group-label,
+  .app-menu-label,
+  .app-menu-footer,
+  .app-menu-option-item,
+  .app-menu-option-description {
+    font-size: var(--m-text-caption);
+  }
 }
 
-/* 触屏设备（无 hover）：菜单项触控目标 ≥40px（移动端契约），
-   用 pointer:coarse 而非视口宽度判定，覆盖 640-767px 触屏平板 */
-@media (hover: none) and (pointer: coarse) {
+/* 触屏设备：菜单项触控目标 ≥44px（iOS HIG 基线）。
+   只判定 pointer:coarse，不叠加 hover:none——iPad 外接触控板时
+   hover:hover 与 pointer:coarse 并存，叠加条件会导致规则失效 */
+@media (pointer: coarse) {
   .app-menu-item {
-    min-height: 40px;
+    min-height: var(--touch-target-size);
+  }
+
+  /* 选项组按钮不复用 .app-menu-item（16px 标签 + 10px 描述 ≈ 34px），单独补 44 */
+  .app-menu-option-item {
+    min-height: var(--touch-target-size);
+  }
+
+  /* iOS 对 <16px 输入聚焦时会强制放大页面（token 基线 13px） */
+  .app-menu-search-input {
+    font-size: max(16px, var(--font-size-lg));
   }
 }

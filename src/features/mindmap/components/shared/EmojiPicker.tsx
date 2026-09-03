@@ -73,7 +73,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
             aria-selected={activeTab === i}
             className={cn(
               "text-sm px-1.5 py-0.5 rounded transition-colors motion-reduce:transition-none",
-              "[@media(pointer:coarse)]:min-w-10 [@media(pointer:coarse)]:min-h-10",
+              "[@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:min-h-11",
               activeTab === i
                 ? "bg-[var(--mm-bg-active)]"
                 : "text-muted-foreground hover:bg-[var(--mm-bg-hover)]"

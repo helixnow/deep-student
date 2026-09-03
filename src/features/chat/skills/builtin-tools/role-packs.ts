@@ -2,13 +2,13 @@ import type { SkillDefinition } from '../types';
 
 const PACK_ID = {
   type: 'string' as const,
-  description: 'Role pack id returned by role_pack_list',
+  description: 'Pack id from role_pack_list',
 };
 
 const VERSION = {
   type: 'string' as const,
   pattern: '^[0-9]+\\.[0-9]+\\.[0-9]+$',
-  description: 'Exact immutable pack version. Omit only when latest is explicitly acceptable.',
+  description: 'Exact immutable version; omit only if latest is acceptable.',
 };
 
 export const rolePacksSkill: SkillDefinition = {
@@ -40,7 +40,7 @@ invoice reconcile、contract review、resume batch、mail merge、operations rep
   embeddedTools: [
     {
       name: 'builtin-role_pack_list',
-      description: '只读列出 Role Pack registry。默认包含历史/废弃版本，保证旧任务可以继续精确选择旧版本。',
+      description: '只读列出 registry，默认含历史/废弃版本以便旧任务精确选版。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -55,7 +55,7 @@ invoice reconcile、contract review、resume batch、mail merge、operations rep
     },
     {
       name: 'builtin-role_pack_get',
-      description: '只读取得一个 Role Pack。传 version 时严格精确匹配，并返回 task provenance/audit manifest。',
+      description: '只读取得单个 Role Pack；传 version 时精确匹配，返回 provenance/audit manifest。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -66,7 +66,7 @@ invoice reconcile、contract review、resume batch、mail merge、operations rep
     {
       name: 'builtin-role_pack_validate',
       description:
-        '只读校验 inputs 是否满足精确 Role Pack 版本，并生成带 input digest 的 task provenance/audit manifest。通过 schema 不等于专业终审通过。',
+        '只读校验 inputs 是否满足精确版本，生成带 input digest 的 audit manifest；通过 schema 不等于专业终审通过。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

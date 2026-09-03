@@ -112,7 +112,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="sb-btn sb-btn-ghost"
+              className="sb-btn sb-btn-ghost [@media(pointer:coarse)]:!min-h-11"
               onClick={(e) => { e.stopPropagation(); generateSummary(); }}
               title={t('summaryBox.generateSummary')}
             >
@@ -123,7 +123,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="sb-btn sb-btn-icon"
+              className="sb-btn sb-btn-icon [@media(pointer:coarse)]:!min-h-11"
               onClick={(e) => { e.stopPropagation(); onClose(); }}
               title={t('summaryBox.closeSummary')}
               aria-label={t('summaryBox.closeSummary')}

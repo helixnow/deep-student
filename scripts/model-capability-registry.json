@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-07-20",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-07-20 刷新：新增 GPT-5.6、Kimi K3、Grok 4.5、Mistral Medium 3.5/Small 4、MiniMax M2.7，并修正 Claude 5、Doubao Evolving 等上下文能力。",
+  "updated_at": "2026-08-23",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。",
   "records": [
     {
       "vendor": "OpenAI",
@@ -592,8 +592,34 @@
     },
     {
       "vendor": "Anthropic",
-      "series": "Claude 2026 (Opus 4.7/4.8, Sonnet 5, Fable 5)",
+      "series": "Claude 2026 (Opus 5, Sonnet 5, Fable 5, Opus 4.7/4.8)",
       "models": [
+        {
+          "model_id": "claude-opus-5",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "notes": "官方 2026.8 旗舰；思考仅支持 thinking:{type:\"adaptive\"} + output_config.effort（low/medium/high/xhigh/max），thinking:{type:\"enabled\", budget_tokens} 直接 400。"
+          },
+          "quirks": [
+            "非默认 temperature/top_p/top_k 一律 400，适配层不应下发采样参数。",
+            "stop_reason 可能为 refusal（HTTP 200 正常响应），需识别 stop_details.category。"
+          ]
+        },
         {
           "model_id": "claude-fable-5",
           "release_date": "2026-06",
@@ -808,6 +834,36 @@
           ]
         },
         {
+          "model_id": "claude-haiku-4-5",
+          "provider_model_id": "claude-haiku-4-5-20251001",
+          "release_date": "2025-10-15",
+          "status": "confirmed",
+          "source_url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "verified_at": "2026-08-23",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "stream", "stream_options", "stop_sequences"],
+            "notes": "Haiku 产线现役型号；Claude API 别名 claude-haiku-4-5 指向日期版 claude-haiku-4-5-20251001（Bedrock：anthropic.claude-haiku-4-5-20251001-v1:0）。"
+          },
+          "quirks": [
+            "截至 2026-08-23，Anthropic 官方模型总览未发布 claude-haiku-5 的模型 ID，Haiku 产线最新官方型号即 4.5；前端 claude-haiku-5 规则暂无官方 registry 对应。",
+            "具备 context awareness（API 自动注入剩余 token budget 标签），客户端无需也不应自行发送相关标签。",
+            "输入支持文本与图像；不支持音频/视频输入（Bedrock 模型卡 2026-08-23 核验）。"
+          ]
+        },
+        {
           "model_id": "claude-opus-4-1",
           "release_date": "2025-06",
           "status": "confirmed",
@@ -887,6 +943,34 @@
           "quirks": [
             "适配器需优先识别 customtools 变体，避免将其误识别为普通 Pro Preview。"
           ]
+        },
+        {
+          "model_id": "gemini-3.1-flash-lite",
+          "release_date": "2026-05-07",
+          "status": "confirmed",
+          "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
+          "verified_at": "2026-08-23",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "低延迟低成本多模态型号（Stable，GA 2026-05-07）；输入支持文本/图像/视频/音频/PDF，输出仅文本；Thinking Supported。"
+          },
+          "quirks": [
+            "Gemini 3 系列用 thinking_level 控制推理深度，与旧 thinking_budget 参数互斥（同请求并用返回 400）。",
+            "官方模型页 token 上限为 1,048,576 输入 / 65,536 输出（开发指南简写 1M/64k 指同一数值）。"
+          ]
         }
       ]
     },
@@ -917,6 +1001,33 @@
           },
           "quirks": [
             "是否启用 near-zero thinking 层在不同客户端可能有开关差异。"
+          ]
+        },
+        {
+          "model_id": "gemini-3.5-flash-lite",
+          "release_date": "2026-07-21",
+          "status": "confirmed",
+          "source_url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite",
+          "verified_at": "2026-08-23",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "google_gemini_api_native",
+            "required_fields": ["contents"],
+            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "notes": "Gemini 3.x Flash-Lite 最新稳定版（Stable，GA 2026-07-21）；输入支持文本/图像/视频/音频/PDF，输出仅文本；Thinking Supported。"
+          },
+          "quirks": [
+            "官方模型页 token 上限为 1,048,576 输入 / 65,536 输出。"
           ]
         }
       ]
@@ -2541,7 +2652,7 @@
     },
     {
       "vendor": "MiniMax",
-      "series": "M3/M2.7",
+      "series": "M3/M2.7/M2",
       "models": [
         {
           "model_id": "minimax-m3",
@@ -2617,6 +2728,35 @@
           },
           "quirks": [
             "官方已归类为 Legacy Models，仍可调用"
+          ]
+        },
+        {
+          "model_id": "MiniMax-M2",
+          "release_date": "2025-10-27",
+          "status": "confirmed",
+          "source_url": "https://platform.minimax.io/docs/api-reference/api-overview",
+          "verified_at": "2026-08-23",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 204800,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "minimax_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_split", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "stream"],
+            "notes": "面向 Agent 与代码的文本模型；OpenAI 兼容接口 max_completion_tokens 对非 M3 型号推荐 65536、上限 204800；另提供 Anthropic 兼容端点。"
+          },
+          "quirks": [
+            "官方 ID 为大小写敏感写法 MiniMax-M2（区别于 minimax-m2.7 等小写记录）。",
+            "M2.x 不使用 M3 的 adaptive/disabled thinking 开关。",
+            "2025-10-27 发布并开源权重（Hugging Face MiniMaxAI/MiniMax-M2）；M2.x 系列 top_p 默认 0.9。"
           ]
         }
       ]
@@ -2694,62 +2834,6 @@
           },
           "quirks": [
             "旧快照 doubao-seed-1-8-251215 已失效(NotFound)"
-          ]
-        }
-      ]
-    },
-    {
-      "vendor": "腾讯混元",
-      "series": "Hunyuan 2.0",
-      "models": [
-        {
-          "model_id": "hunyuan-2.0-think",
-          "release_date": "2025-11-09",
-          "status": "confirmed",
-          "capabilities": {
-            "text": true,
-            "vision": true,
-            "audio": false,
-            "video": false,
-            "function_calling": true,
-            "reasoning": true,
-            "coding_agent": true,
-            "max_context_tokens": 256000,
-            "max_output_tokens": null
-          },
-          "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "最新明确版本主要在 2025 末，2026 未见新独立代号。"
-          },
-          "quirks": [
-            "产品动态页更新到 2025-12，后续若有 2026 patch 先在此列表添加新条目。"
-          ]
-        },
-        {
-          "model_id": "hunyuan-2.0-instruct",
-          "release_date": "2025-11-11",
-          "status": "confirmed",
-          "capabilities": {
-            "text": true,
-            "vision": false,
-            "audio": false,
-            "video": false,
-            "function_calling": true,
-            "reasoning": true,
-            "coding_agent": false,
-            "max_context_tokens": 256000,
-            "max_output_tokens": null
-          },
-          "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "偏指令跟随，作为 Instruct 侧替代。"
-          },
-          "quirks": [
-            "2026 若仅是版本微调，不要重命名为新型号。"
           ]
         }
       ]

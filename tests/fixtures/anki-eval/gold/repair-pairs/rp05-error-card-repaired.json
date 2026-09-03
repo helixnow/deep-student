@@ -1,0 +1,18 @@
+{
+  "id": "rp05-error-card-repaired",
+  "label": "error_card_repaired",
+  "source": "synthetic-style-rewrite",
+  "description": "解析失败的错误卡（单引号 JSON 原文塞进 front、back 为空）被用户手工修好。改前应命中 empty_back，改后零命中。对应 plan §1 的\"错误卡被用户手工修好\"通道。",
+  "original": {
+    "front": "{'front': '什么是纯函数？', 'back': '无副作用且相同输入恒得相同输出的函数",
+    "back": ""
+  },
+  "edited": {
+    "front": "什么是纯函数？",
+    "back": "无副作用且相同输入恒得相同输出的函数。"
+  },
+  "expected": {
+    "originalCodes": ["empty_back"],
+    "editedCodes": []
+  }
+}

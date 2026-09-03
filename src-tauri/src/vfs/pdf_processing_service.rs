@@ -222,6 +222,21 @@ impl Default for ProcessingProgress {
     }
 }
 
+impl ProcessingProgress {
+    /// 是否存在可重试的失败阶段（`completed_with_issues` 状态下判定用）
+    ///
+    /// ★ #64：图片 OCR 阶段一次性调用失败（移动端弱网/引擎暂不可用）后，
+    /// 流水线以 completed_with_issues 收尾并记录 retriable 问题。
+    /// 该状态此前被上传链路当作稳定终态，重新引用同一文件不会续跑流水线，
+    /// OCR 永久停在「未就绪」。用此判定放行自动续跑。
+    pub fn has_retriable_failure(&self) -> bool {
+        self.failed_stages
+            .as_ref()
+            .map(|issues| issues.iter().any(|i| i.retriable))
+            .unwrap_or(false)
+    }
+}
+
 /// 处理状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3587,5 +3602,65 @@ mod tests {
         assert_eq!(progress.stage, "pending");
         assert_eq!(progress.percent, 0.0);
         assert!(progress.ready_modes.is_empty());
+    }
+
+    // ★ #64 回归：completed_with_issues + retriable OCR 失败必须被判定为可续跑，
+    // 否则重新引用同一图片永远不会重试 OCR（内容去重命中同一条死状态）。
+    #[test]
+    fn test_has_retriable_failure_with_retriable_ocr_issue() {
+        let progress = ProcessingProgress {
+            stage: "completed_with_issues".to_string(),
+            failed_stages: Some(vec![ProcessingIssue {
+                stage: "ocr_processing".to_string(),
+                message: "OCR API call failed: network timeout".to_string(),
+                retriable: true,
+            }]),
+            ..Default::default()
+        };
+        assert!(progress.has_retriable_failure());
+    }
+
+    #[test]
+    fn test_has_retriable_failure_without_issues() {
+        assert!(!ProcessingProgress::default().has_retriable_failure());
+
+        let progress = ProcessingProgress {
+            stage: "completed_with_issues".to_string(),
+            failed_stages: Some(vec![]),
+            ..Default::default()
+        };
+        assert!(!progress.has_retriable_failure());
+    }
+
+    #[test]
+    fn test_has_retriable_failure_ignores_non_retriable() {
+        let progress = ProcessingProgress {
+            stage: "completed_with_issues".to_string(),
+            failed_stages: Some(vec![ProcessingIssue {
+                stage: "ocr_processing".to_string(),
+                message: "unsupported image format".to_string(),
+                retriable: false,
+            }]),
+            ..Default::default()
+        };
+        assert!(!progress.has_retriable_failure());
+    }
+
+    // 持久化到 files.processing_progress 的 JSON（camelCase failedStages）
+    // 必须能反序列化并保留 retriable 语义——上传续跑判定读的就是这份 JSON。
+    #[test]
+    fn test_has_retriable_failure_from_persisted_json() {
+        let json = r#"{
+            "stage": "completed_with_issues",
+            "percent": 100.0,
+            "readyModes": ["image"],
+            "mediaType": "image",
+            "failedStages": [
+                {"stage": "ocr_processing", "message": "OCR API call failed", "retriable": true}
+            ]
+        }"#;
+        let progress: ProcessingProgress = serde_json::from_str(json).unwrap();
+        assert!(progress.has_retriable_failure());
+        assert!(!progress.ready_modes.contains(&"ocr".to_string()));
     }
 }

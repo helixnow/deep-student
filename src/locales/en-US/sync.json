@@ -20,8 +20,29 @@
   "confirm": "Confirm",
   "cancel": "Cancel",
   "confirmConflictResolveTitle": "Confirm Conflict Resolution",
-  "confirmConflictResolveDescription": "{{strategy}} will be applied, replacing the other version. This cannot be undone.",
+  "confirmConflictResolveDescription": "\"{{strategy}}\" will be applied, overwriting the other version's data. This cannot be undone. We recommend creating a local backup first.",
   "confirmConflictBatchResolveDescription": "{{strategy}} will be applied to {{count}} conflicts, replacing the other versions. This cannot be undone.",
+  "experimentalBadgeTooltip": "Experimental feature. We recommend backing up your data first.",
+  "autoSync": {
+    "label": "Auto Sync",
+    "description": "Off by default. When enabled, a bidirectional sync (keep-latest strategy) runs at the selected interval; failures back off exponentially. When the cloud is not configured, a password is missing, or the sync lease is held by another device, the run is silently skipped without error popups.",
+    "intervalLabel": "Sync interval",
+    "interval": {
+      "15m": "Every 15 minutes",
+      "1h": "Every hour",
+      "6h": "Every 6 hours"
+    },
+    "lastRun": "Last auto sync",
+    "neverRan": "Never ran",
+    "outcome": {
+      "success": "Succeeded",
+      "failure": "Failed (will retry with backoff)",
+      "skippedUnconfigured": "Skipped: cloud not configured or password missing",
+      "skippedBusy": "Skipped: another sync is in progress",
+      "skippedLeaseHeld": "Skipped: sync lease held by another device"
+    },
+    "consecutiveFailures": "{{count}} consecutive failures"
+  },
   "severity_low": "Low",
   "severity_medium": "Medium",
   "severity_high": "High",
@@ -100,6 +121,10 @@
   "resource": {
     "create_resource_failed": "Failed to create resource: {{error}}"
   },
+  "record_conflict_panel": {
+    "title": "Record Conflicts ({{count}})",
+    "undoable_hint": "You can act with confidence: before bulk resolution or a database-wide policy override, the affected records are automatically snapshotted on this device (never uploaded). If something goes wrong, roll back with one click in the Automatic Snapshots section below."
+  },
   "conflict_type": {
     "schema_mismatch": "Schema Version Mismatch",
     "schema_mismatch_desc": "Local and cloud database schema versions differ, migration needed",
@@ -128,6 +153,54 @@
     "data_version": "Data Version:",
     "update_time": "Updated:",
     "checksum": "Checksum:"
+  },
+  "errors": {
+    "legacyPlaintextRejected": "The cloud directory still contains unencrypted data uploaded before encryption was enabled. To keep end-to-end encryption from being bypassed, this sync stopped without reading that data. To fix it: temporarily clear the encryption password in the cloud sync settings, run one download sync to merge the cloud data into this device, then empty that cloud directory (or switch to a new one), set the password again, and run a full upload.",
+    "encryptionPasswordMissing": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
+    "wrongEncryptionPassword": "The cloud data could not be decrypted: the encryption password is incorrect (or the cloud data is corrupted). Update the password in the cloud sync settings to match your other devices and try again; every device connected to the same cloud directory must use the same encryption password.",
+    "leaseHeld": "Another device is syncing to the same cloud directory. This run stopped safely to prevent concurrent writes from corrupting sync state. Wait for that device to finish, then retry. If it crashed, the lease will be reclaimed automatically after its timeout; retry later and do not overwrite cloud sync files manually.",
+    "technicalDetail": "Technical detail:"
+  },
+  "unsynced": {
+    "title": "Unsynced files ({{count}})",
+    "description": "A read-only comparison of the cloud manifest against local files: objects that exist in the cloud but not on this device, with the reason and how to fix it. Nothing is written or deleted.",
+    "checkNow": "Check again",
+    "notConfigured": "Cloud sync is not configured yet, so there is no cloud manifest to compare against.",
+    "empty": "Every file in the cloud manifest is present on this device.",
+    "loadFailed": "Failed to load the unsynced list: {{error}}",
+    "truncated": "Too many entries; showing the first {{shown}} of {{total}} unsynced items.",
+    "retrySync": "Retry download sync",
+    "technicalDetail": "Technical detail",
+    "counterpart": "Conflicts with: {{key}}",
+    "scopeBlob": "Attachment",
+    "scopeAsset": "Asset",
+    "kind": {
+      "downloadPending": {
+        "label": "Not downloaded yet",
+        "reason": "These files exist in the cloud but have not been downloaded to this device — either the last download failed or a download sync has not run yet.",
+        "suggestion": "What to do: use \"Download\" in the Cloud Sync section above to retry fetching them; if it keeps failing, check your network and cloud credentials, then retry."
+      },
+      "legacyPlaintext": {
+        "label": "Legacy unencrypted (rejected)",
+        "reason": "These are old files uploaded before encryption was enabled. This device uses end-to-end encryption, so downloading them was refused to keep encryption from being bypassed.",
+        "suggestion": "What to do: on a device that still has these files, set the same encryption password and run one upload sync — the files will be re-encrypted and re-uploaded automatically; this device can then download them normally."
+      },
+      "caseConflict": {
+        "label": "Filename case conflict (skipped)",
+        "reason": "These files differ from another file only by letter case. On case-insensitive systems (Windows/macOS defaults) they would overwrite each other, so the download was skipped.",
+        "suggestion": "What to do: rename one of the files to a clearly different name on the source device, then sync again."
+      },
+      "sanitizedNameConflict": {
+        "label": "Legacy filename mapping conflict (skipped)",
+        "reason": "These cloud entries use different generations of filename mapping and resolve to the same local path with different content. The new mapping can restore names losslessly, but it cannot guess an old entry's original name, so the download was skipped to prevent overwriting.",
+        "suggestion": "What to do: rename one file on a source device that still has the originals, then sync again. Once its content changes, the entry is migrated to the new reversible name."
+      },
+      "invalidKey": {
+        "label": "Invalid path (rejected)",
+        "reason": "These entries declare a malformed or out-of-bounds cloud path, so writing them to the local disk was refused for safety.",
+        "suggestion": "What to do: move or rename the file into a normal folder on the source device and sync again; if this keeps appearing, the cloud data may have been modified by a third-party tool."
+      }
+    }
   },
   "notifications": {
     "conflictResolveFailed": "Failed to resolve conflict: {{error}}",

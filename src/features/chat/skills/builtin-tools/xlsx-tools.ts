@@ -97,16 +97,13 @@ spec 是一个 JSON 对象，支持两种格式：
   embeddedTools: [
     {
       name: 'builtin-xlsx_read_structured',
-      description:
-        '结构化读取 XLSX 电子表格，输出文本格式。按工作表分节显示，行数据制表符分隔。' +
-        '当用户需要快速了解 Excel 文件内容时使用。',
+      description: '结构化读取 XLSX，按工作表分节输出文本，行数据制表符分隔，用于快速了解内容。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】XLSX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'XLSX 资源 ID，可经 resource_list 或 attachment_list 获取。',
           },
         },
         required: ['resource_id'],
@@ -115,16 +112,13 @@ spec 是一个 JSON 对象，支持两种格式：
     {
       name: 'builtin-xlsx_extract_tables',
       description:
-        '提取 XLSX 中所有工作表的结构化数据，返回 JSON 格式。' +
-        '每个工作表包含 sheet_name、row_count、col_count 和 rows 二维数组。' +
-        '当用户需要精确分析表格数据、进行数据处理时使用。',
+        '提取全部工作表为 JSON：每表含 sheet_name、row_count、col_count、rows 二维数组，用于精确分析数据。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】XLSX 文件的资源 ID（如 file_xxx）。',
+            description: 'XLSX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -132,16 +126,13 @@ spec 是一个 JSON 对象，支持两种格式：
     },
     {
       name: 'builtin-xlsx_get_metadata',
-      description:
-        '读取 XLSX 电子表格的元数据信息：工作表数量、各工作表名称及行列数。' +
-        '当用户询问"这个 Excel 有几个工作表"、"表格有多少行"时使用。',
+      description: '读取 XLSX 元数据：工作表数量、名称及行列数。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】XLSX 文件的资源 ID（如 file_xxx）。',
+            description: 'XLSX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -150,16 +141,13 @@ spec 是一个 JSON 对象，支持两种格式：
     {
       name: 'builtin-xlsx_to_spec',
       description:
-        '将已有 XLSX 电子表格转换为 JSON spec 格式（与 xlsx_create 互逆）。' +
-        '返回的 spec 可被修改后传给 xlsx_create 生成新文件，实现 round-trip 编辑闭环。' +
-        '当用户要求"修改这个 Excel"时，先用此工具读取结构。',
+        '将已有 XLSX 转为 JSON spec（与 xlsx_create 互逆）；修改 spec 后再 xlsx_create 即完成 round-trip 编辑。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】XLSX 文件的资源 ID（如 file_xxx）。',
+            description: 'XLSX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -167,16 +155,13 @@ spec 是一个 JSON 对象，支持两种格式：
     },
     {
       name: 'builtin-xlsx_edit_cells',
-      description:
-        '直接编辑 XLSX 中指定单元格的值，保存为新文件。' +
-        '支持同时编辑多个单元格，保留原文件的其他内容和格式。' +
-        '当用户要求"把 A1 改为 100"、"更新某个单元格"时使用。',
+      description: '批量编辑指定单元格的值并保存为新文件，保留原文件其余内容与格式。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description: '【必填】源 XLSX 文件的资源 ID。',
+            description: '源 XLSX 资源 ID。',
           },
           edits: {
             type: 'array',
@@ -185,25 +170,25 @@ spec 是一个 JSON 对象，支持两种格式：
               properties: {
                 sheet: {
                   type: 'string',
-                  description: '工作表名称，默认 "Sheet1"',
+                  description: '工作表名称',
                   default: 'Sheet1',
                 },
                 cell: {
                   type: 'string',
-                  description: '单元格引用（如 "A1"、"B3"、"C10"）',
+                  description: '单元格引用，如 A1',
                 },
                 value: {
                   type: 'string',
-                  description: '新值（数字字符串会自动识别为数字类型）',
+                  description: '新值；数字字符串自动按数字写入',
                 },
               },
               required: ['cell', 'value'],
             },
-            description: '【必填】编辑操作数组，每项包含 sheet（可选）、cell 和 value。',
+            description: '编辑操作数组。',
           },
           file_name: {
             type: 'string',
-            description: '编辑后的文件名（含 .xlsx 后缀），默认 "edited.xlsx"',
+            description: '输出文件名（含 .xlsx 后缀）',
             default: 'edited.xlsx',
           },
         },
@@ -212,43 +197,40 @@ spec 是一个 JSON 对象，支持两种格式：
     },
     {
       name: 'builtin-xlsx_replace_text',
-      description:
-        '在已有 XLSX 电子表格中执行批量文本查找替换，保存为新文件。' +
-        '遍历所有工作表的所有单元格，替换匹配的文本。' +
-        '当用户要求"把表格里的 XXX 替换为 YYY"时使用。',
+      description: '遍历全部工作表批量查找替换文本，保存为新文件。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description: '【必填】源 XLSX 文件的资源 ID。',
+            description: '源 XLSX 资源 ID。',
           },
           replacements: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                find: { type: 'string', description: '要查找的文本' },
-                replace: { type: 'string', description: '替换为的文本' },
+                find: { type: 'string', description: '查找文本' },
+                replace: { type: 'string', description: '替换文本' },
               },
               required: ['find', 'replace'],
             },
-            description: '【必填】替换对数组，每项包含 find 和 replace 字段。',
+            description: '替换对数组。',
           },
           file_name: {
             type: 'string',
-            description: '替换后的文件名（含 .xlsx 后缀），默认 "edited.xlsx"',
+            description: '输出文件名（含 .xlsx 后缀）',
             default: 'edited.xlsx',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
@@ -258,38 +240,34 @@ spec 是一个 JSON 对象，支持两种格式：
     {
       name: 'builtin-xlsx_create',
       description:
-        '从 JSON spec 生成格式化 XLSX；默认保存到学习资源，也可安全写入已授权 workspace。' +
-        '支持多工作表、表头加粗、数字自动识别。' +
-        '当用户要求"生成 Excel 文件"、"导出为表格"、"做一个成绩表"时使用。' +
-        '返回 TaskObjectHandle；workspace 输出同时返回可撤销的 mutation receipt/change set。',
+        '从 JSON spec 生成格式化 XLSX（多工作表、表头加粗、数字自动识别），默认存学习资源，也可写入已授权 workspace。' +
+        '返回 TaskObjectHandle；workspace 输出附带可撤销的 mutation receipt/change set。',
       inputSchema: {
         type: 'object',
         properties: {
           spec: {
             type: 'object',
             description:
-              '【必填】表格规格 JSON。支持两种格式：' +
-              '1) 多工作表：{sheets: [{name, headers, rows}]}；' +
-              '2) 单工作表简写：{name, headers, rows}。',
+              '表格规格 JSON：多工作表 {sheets:[{name,headers,rows}]} 或单工作表简写 {name,headers,rows}。',
           },
           file_name: {
             type: 'string',
-            description: '生成的文件名（含 .xlsx 后缀），默认 "generated.xlsx"',
+            description: '生成文件名（含 .xlsx 后缀）',
             default: 'generated.xlsx',
           },
           folder_id: {
             type: 'string',
-            description: '可选：保存到的文件夹 ID。不指定则保存到根目录。',
+            description: '保存目标文件夹 ID，缺省为根目录。',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },

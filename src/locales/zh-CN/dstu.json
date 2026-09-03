@@ -190,5 +190,17 @@
       "searchImageAttachments": "搜索图片附件",
       "searchFileAttachments": "搜索文件附件"
     }
+  },
+  "agent": {
+    "user_patch": {
+      "default": "用户进行了手动编辑",
+      "mindmap": "用户在导图中进行了手动编辑",
+      "note": "用户在笔记正文中进行了手动编辑",
+      "todo": "用户在待办列表中进行了手动编辑",
+      "files": "用户在文件管理器中进行了手动导航或编辑",
+      "flashcards": "用户在复习队列中进行了手动操作",
+      "exam": "用户在题库中进行了手动编辑",
+      "pomodoro": "用户手动操作了番茄钟"
+    }
   }
 }

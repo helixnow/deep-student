@@ -809,7 +809,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               size="sm"
               onClick={() => void handleCancelImport()}
               disabled={isCancelling}
-              className="text-muted-foreground hover:text-destructive"
+              className="text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
             >
               {isCancelling ? (
                 <CircleNotch size={16} className="mr-1.5 animate-spin" />
@@ -960,6 +960,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           variant="outline"
           onClick={handleCancel}
           disabled={isCancelling}
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           {isImporting
             ? (isCancelling
@@ -975,7 +976,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
         {/* 重试按钮（错误或已取消时显示） */}
         {canRetry && (
-          <DsButton variant="ghost" onClick={handleRetry}>
+          <DsButton variant="ghost" onClick={handleRetry} className="[@media(pointer:coarse)]:!min-h-11">
             <ArrowClockwise size={16} className="mr-2" />
             {t('common:retry')}
           </DsButton>
@@ -983,7 +984,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
         {/* 上一步按钮 */}
         {!isFirstStep && !showResult && !isImporting && (
-          <DsButton variant="ghost" onClick={handlePrev}>
+          <DsButton variant="ghost" onClick={handlePrev} className="[@media(pointer:coarse)]:!min-h-11">
             <CaretLeft size={16} className="mr-1" />
             {t('common:prev')}
           </DsButton>
@@ -993,7 +994,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
         {!showResult && (
           <>
             {currentStep === 'strategy' ? (
-              <DsButton onClick={handleStartImport} disabled={isImporting}>
+              <DsButton onClick={handleStartImport} disabled={isImporting} className="[@media(pointer:coarse)]:!min-h-11">
                 {isImporting ? (
                   <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
@@ -1005,6 +1006,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               <DsButton
                 onClick={handleNext}
                 disabled={currentStep === 'mapping' && !isMappingValid}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:next')}
                 <CaretRight size={16} className="ml-1" />

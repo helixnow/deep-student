@@ -25,7 +25,7 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
-import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { useFinderStoreFor, FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 import { useNotesOptional } from '@/features/notes/NotesContext';
 import { lazy, Suspense } from 'react';
 
@@ -49,6 +49,8 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/Desk
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
+import { rebuildSessionBranchIndex } from '../core/session/sessionBranchIndex';
+import { invalidatePendingChatNavigation } from '../navigation/pendingChatNavigation';
 import { useUIStore } from '@/stores/uiStore';
 
 // 懒加载统一应用面板
@@ -58,7 +60,7 @@ const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedA
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
-import { useChatPageLayout } from './useChatPageLayout';
+import { useChatPageLayout, openAppInLearningHubRef } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
@@ -210,8 +212,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // 移动端：分组已关联资源 ID 集合（用于右面板高亮显示）
   const [groupPinnedIds, setGroupPinnedIds] = useState<Set<string>>(new Set());
   // 📱 移动端资源库面包屑导航（用于应用顶栏）
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
+  // ★ LH-HOST：必须读右屏资源库自己的宿主桶；读全局单例会串到学习中心页 /
+  // workbench Files 窗口的落点上。
+  const useCanvasFinderStore = useFinderStoreFor(FINDER_HOST_IDS.canvasMobile);
+  const finderCurrentPath = useCanvasFinderStore(state => state.currentPath);
+  const finderJumpToBreadcrumb = useCanvasFinderStore(state => state.jumpToBreadcrumb);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const [isLoading, setIsLoading] = useState(false);
   // 🔧 防闪烁：首次加载会话列表期间为 true，避免短暂显示全空状态
@@ -413,6 +418,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
+
+  // 「已从此处分支」角标索引：会话列表变化时用 metadata.branchedFrom 重建
+  useEffect(() => {
+    rebuildSessionBranchIndex(sessions);
+  }, [sessions]);
 
   // P2-4 fix: Prune stale collapsed state when groups change
   useEffect(() => {
@@ -700,12 +710,19 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   useChatPageEvents({
     notesContext, t, loadSessions, isInitialLoading, currentSessionId,
     createSession, createAnalysisSession,
-    setSessions, setCurrentSessionId, loadUngroupedCount,
+    setSessions, setCurrentSessionId,
     canvasSidebarOpen, toggleCanvasSidebar, setPendingOpenResource,
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
   });
+
+  // 用户手动点选会话：先作废导航握手里挂起的意图（冷启动期的自动导航
+  // 不得在就绪后把用户拽回目标会话），再执行常规切换
+  const setCurrentSessionIdByUser = useCallback<typeof setCurrentSessionId>((value) => {
+    invalidatePendingChatNavigation();
+    setCurrentSessionId(value);
+  }, [setCurrentSessionId]);
 
   // ===== 会话项渲染 hook =====
   const {
@@ -713,7 +730,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   } = useSessionItemRenderer({
     editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
     editingTitle, renamingSessionId, renameError, groups: visibleGroups, sessions, totalSessionCount,
-    t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
+    t, resetDeleteConfirmation, setCurrentSessionId: setCurrentSessionIdByUser, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,
@@ -742,7 +759,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     resetDeleteConfirmation,
     createSession, loadMoreSessions,
     renderSessionItem,
-    // 会话拖入分组（hello-pangea DnD；handleDragEnd 识别 session-group:/session-ungrouped）
+    // 会话拖入分组（dnd-kit DnD；handleDragEnd 识别 session-group:/session-ungrouped）
     onSessionDragEnd: handleDragEnd,
   });
 
@@ -870,7 +887,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         >
           <LearningHubSidebar
             mode="canvas"
-            hostId="canvas"
+            hostId={FINDER_HOST_IDS.canvas}
             sessionActive={canvasSidebarOpen}
             commandsEnabled={false}
             onClose={toggleCanvasSidebar}
@@ -885,7 +902,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         {/* 应用面板（当有 openApp 时显示） */}
         {openApp && (
           <>
-            <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
+            <PanelResizeHandle
+              hitAreaMargins={{ coarse: 19, fine: 5 }}
+              className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center"
+            >
               <DotsSixVertical size={12} className="text-muted-foreground/50" />
             </PanelResizeHandle>
             <Panel
@@ -955,6 +975,16 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setMobileResourcePanelOpen(false);
   }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
 
+  // 移动端右屏资源预览顶栏「在学习中心打开」：挂载期间写入桥接句柄
+  //（与 groupEditorSubmitRef 同模式，见 useChatPageLayout）
+  useEffect(() => {
+    openAppInLearningHubRef.current = handleOpenInLearningHub;
+    return () => {
+      openAppInLearningHubRef.current = null;
+    };
+  }, [handleOpenInLearningHub]);
+
+
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
@@ -962,7 +992,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
-    mobileSandboxOpen, closeMobileSandbox,
+    mobileSandboxOpen, closeMobileSandbox, sandboxOwnerKey,
     openAppTitle: openApp ? (openApp.title ?? '') : null,
     closeMobileOpenApp,
     groupEditorOpen,
@@ -1015,10 +1045,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <X size={16} className="text-muted-foreground" />
             </DsButton>
           </div>
@@ -1087,15 +1117,15 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             title={t('page.welcome')}
             brandIcon={<Chat size={26} weight="duotone" />}
             description={t('page.emptyPage.subtitle')}
-            hint={t('page.emptyPage.hint')}
+            hint={isSmallScreen ? undefined : t('page.emptyPage.hint')}
             actions={
               <>
-                <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
+                <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void createSession()}>
                   <Plus size={14} />
                   {t('page.newChat')}
                 </DsButton>
                 {!isSmallScreen && sessions.length > 0 && (
-                  <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setViewMode('browser')}>
                     <SquaresFour size={14} />
                     {t('browser.title')}
                   </DsButton>
@@ -1130,11 +1160,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           variant="ghost"
           size="sm"
           autoFocus
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={() => setPendingArchiveGroup(null)}
         >
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+        <DsButton variant="warning" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void confirmArchiveGroup()}>
           {t('page.archiveGroupConfirm')}
         </DsButton>
       </div>
@@ -1229,6 +1260,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               {sandboxWorkbenchOpen && sandboxActiveSession ? (
                 <SandboxWorkbenchSurface
                   embedded
+                  // 移动端右屏已有统一顶栏（useChatPageLayout 的 mobileSandboxOpen
+                  // 分支，含刷新/检查器动作），再画 SandboxToolbar 会形成双顶栏
+                  //（与 SandboxWorkbenchPage 独立视图的小屏处理对齐）
+                  hideToolbar
                   className="h-full"
                   onClose={handleCloseSandbox}
                   ownerKey={sandboxOwnerKey}
@@ -1241,7 +1276,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               ) : (
                 <LearningHubSidebar
                   mode="canvas"
-                  hostId="canvas-mobile"
+                  hostId={FINDER_HOST_IDS.canvasMobile}
                   sessionActive={mobileResourcePanelOpen}
                   commandsEnabled={false}
                   onClose={() => setMobileResourcePanelOpen(false)}
@@ -1371,7 +1406,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               iconOnly
               onClick={toggleSandboxWorkbench}
               className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg',
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                 sandboxWorkbenchOpen
                   ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
                   : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'

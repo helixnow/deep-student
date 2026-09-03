@@ -12,6 +12,11 @@
  * - 背景使用 §0.3 契约类 `wb-expose-backdrop`；动效仅 transform/opacity；
  * - App Exposé（P2）：overlay store 的 exposeAppTypeId 非 null 时只俯瞰该
  *   应用的窗口，其余应用窗口原位淡出（`data-expose-dimmed`，退出时还原）。
+ * - 重窗降级（2026-08）：进入时给非焦点的重应用窗（memoryWeight ≥ 2）打
+ *   `data-expose-degrade`，关闭其 backdrop-filter / box-shadow（CSS 见
+ *   ExposeOverlay.css），缓解全窗同屏缩放期间的合成/内存压力；退出恢复。
+ * - a11y（2026-08）：进入/退出/方向键选中窗名统一在本组件经
+ *   announceWorkbench 播报（所有入口——快捷键 / 右键菜单 / Dock——共用）。
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +25,7 @@ import { useWorkbenchOverlay } from '../core/shortcuts';
 import { appRegistry } from '../core/appRegistry';
 import type { Frame, Size, WorkbenchWindow } from '../core/types';
 import { requestCloseAnimated } from '../hooks/useWindowLifecycleAnim';
-import { useFocusReturn } from '../hooks/useWorkbenchA11y';
+import { announceWorkbench, useFocusReturn } from '../hooks/useWorkbenchA11y';
 import {
   beginExposeHeavyContentPause,
   endExposeHeavyContentPause,
@@ -176,6 +181,29 @@ function clearOrphanedExposeTransforms() {
   // App Exposé 模式给非目标应用窗口打的淡出标记同样兜底清理
   document.querySelectorAll<HTMLElement>('[data-wb-window-id][data-expose-dimmed]')
     .forEach((el) => el.removeAttribute('data-expose-dimmed'));
+  // 重窗降级标记兜底清理
+  document.querySelectorAll<HTMLElement>('[data-wb-window-id][data-expose-degrade]')
+    .forEach((el) => el.removeAttribute('data-expose-degrade'));
+}
+
+/**
+ * 俯瞰期间把真实窗口层整体设为 inert + aria-hidden：
+ * 缩略窗只是「被 transform 缩小的真实 DOM」，读屏会把背后每个窗口的完整内容
+ * 都念一遍；命中层（role=dialog）才是本会话唯一的可交互 / 可朗读界面。
+ * 直接操作 DOM（与本组件的 transform 注入同一路数），避免 WorkbenchDesktop
+ * 因俯瞰开合而整树重渲染。
+ */
+function setWindowLayerInert(inert: boolean): void {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll<HTMLElement>('[data-wb-window-layer]').forEach((layer) => {
+    if (inert) {
+      layer.setAttribute('inert', '');
+      layer.setAttribute('aria-hidden', 'true');
+    } else {
+      layer.removeAttribute('inert');
+      layer.removeAttribute('aria-hidden');
+    }
+  });
 }
 
 function parseCssDurationMs(raw: string): number | null {
@@ -374,6 +402,12 @@ const ExposeOverlayComponent: React.FC = () => {
   const dimmedRef = useRef<Set<HTMLElement>>(new Set());
   /** 本会话是否持有重内容暂停（begin/end 必须严格配对） */
   const heavyPauseHeldRef = useRef(false);
+  /** 被降级（关 backdrop-filter/阴影）的非焦点重窗壳（退出时还原） */
+  const degradedRef = useRef<Set<HTMLElement>>(new Set());
+  /** 本会话是否已播报「俯瞰已打开」（进入/退出各播一次） */
+  const announcedOpenRef = useRef(false);
+  /** 上一次已播报的选中项（会话首个选中不重复播，进入播报已含数量） */
+  const prevSelectedRef = useRef<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
@@ -410,6 +444,9 @@ const ExposeOverlayComponent: React.FC = () => {
     pending.el.style.transition = pending.transition;
     pending.el.style.transformOrigin = pending.origin;
     pending.el.style.willChange = pending.willChange;
+    // 飞回完成后再恢复阴影/玻璃（飞行途中保持降级，避免动画帧叠加大模糊重绘）
+    pending.el.removeAttribute('data-expose-degrade');
+    degradedRef.current.delete(pending.el);
     restoreTimersRef.current.delete(id);
     appliedRef.current.delete(id);
     sourceRectsRef.current.delete(id);
@@ -432,6 +469,8 @@ const ExposeOverlayComponent: React.FC = () => {
       el.style.transition = entry.prevTransition;
       el.style.transformOrigin = entry.prevOrigin;
       el.style.willChange = entry.prevWillChange;
+      el.removeAttribute('data-expose-degrade');
+      degradedRef.current.delete(el);
       appliedRef.current.delete(id);
       sourceRectsRef.current.delete(id);
       return;
@@ -462,6 +501,7 @@ const ExposeOverlayComponent: React.FC = () => {
       exitTimerRef.current = null;
     }
     setRendered(true);
+    setWindowLayerInert(true);
 
     // App Exposé（P2）：exposeAppTypeId 非 null 时只俯瞰该应用的窗口。
     // 最小化窗口两种模式统一排除：macOS App Exposé 会显示最小化窗口，
@@ -521,6 +561,11 @@ const ExposeOverlayComponent: React.FC = () => {
     const layout = computeExposeLayout(items, desktopSize);
     const duration = getMotionDurationMs(rootRef.current);
 
+    // 非焦点重窗降级：缩略态下玻璃模糊 / 大阴影不可辨却持续占合成内存，
+    // 焦点窗保持原效果（观感锚点），其余 memoryWeight ≥ 2 的窗口关掉。
+    const focusStack = useWindowStore.getState().focusStack;
+    const focusedId = [...focusStack].reverse().find((fid) => liveIds.has(fid)) ?? null;
+
     for (const target of layout) {
       const el = elements.get(target.id);
       if (!el) continue;
@@ -548,6 +593,17 @@ const ExposeOverlayComponent: React.FC = () => {
       el.style.transform = `translate(${tx}px, ${ty}px) scale(${target.scale})`;
       el.setAttribute('data-expose-transform', 'true');
       el.classList.add('wb-expose-flip');
+
+      const win = windows[target.id];
+      const heavy = win ? (appRegistry.get(win.typeId)?.memoryWeight ?? 1) >= 2 : false;
+      if (heavy && target.id !== focusedId) {
+        el.setAttribute('data-expose-degrade', 'true');
+        degradedRef.current.add(el);
+      } else if (el.hasAttribute('data-expose-degrade')) {
+        // 会话中焦点窗变化 / 窗口集合重排：不再命中降级条件的即时还原
+        el.removeAttribute('data-expose-degrade');
+        degradedRef.current.delete(el);
+      }
     }
 
     const titleById = new Map(visibleWindows.map((w) => {
@@ -560,6 +616,14 @@ const ExposeOverlayComponent: React.FC = () => {
     }));
     const nextTargets = layout.map((tg) => ({ ...tg, title: titleById.get(tg.id) ?? '' }));
     setTargets(nextTargets);
+
+    // aria-live：进入播报一次（所有入口统一在此，快捷键路径不再重复播报）
+    if (!announcedOpenRef.current) {
+      announcedOpenRef.current = true;
+      announceWorkbench(
+        translateRef.current('workbench:a11y.exposeOpened', { count: visibleWindows.length }),
+      );
+    }
 
     // 选中：保留仍存在的选中项；否则取焦点栈顶；再否则首项
     setSelectedId((prev) => {
@@ -595,6 +659,15 @@ const ExposeOverlayComponent: React.FC = () => {
     if (exposeOpen || !rendered) return;
     setPhase('closing');
     setHoveredId(null);
+    // 退场即解除窗口层 inert：飞回途中窗口就该重新可聚焦（handlePick 随后
+    // 会把焦点落回目标窗壳），不能等退场计时器
+    setWindowLayerInert(false);
+    // aria-live：退出播报一次；重置会话播报状态
+    if (announcedOpenRef.current) {
+      announcedOpenRef.current = false;
+      prevSelectedRef.current = null;
+      announceWorkbench(translateRef.current('workbench:a11y.exposeClosed'));
+    }
     // 退出即开始把非目标应用窗口淡回（transition 由 CSS 提供）
     clearDimmed();
     restoreAll(true);
@@ -627,6 +700,7 @@ const ExposeOverlayComponent: React.FC = () => {
     restoreAll(false);
     for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
     clearDimmed();
+    setWindowLayerInert(false);
     clearOrphanedExposeTransforms();
     releaseHeavyPause();
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
@@ -772,6 +846,20 @@ const ExposeOverlayComponent: React.FC = () => {
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [exposeOpen, phase, closeExpose, handlePick, targets, desktopSize]);
+
+  // aria-live：会话内选中项变化播报窗名（首个选中不播，进入播报已含数量）
+  useEffect(() => {
+    if (!exposeOpen) return;
+    const prev = prevSelectedRef.current;
+    prevSelectedRef.current = selectedId;
+    if (!selectedId || prev === null || prev === selectedId) return;
+    const title = targets.find((tg) => tg.id === selectedId)?.title;
+    if (title) {
+      announceWorkbench(
+        translateRef.current('workbench:a11y.exposeSelected', { title }),
+      );
+    }
+  }, [exposeOpen, selectedId, targets]);
 
   // 选中项变化时把焦点落到对应 pick 按钮（焦点环 + 键盘可达）
   useEffect(() => {

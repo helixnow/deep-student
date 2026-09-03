@@ -15,8 +15,10 @@ const TOKEN_GROUPS: TokenGroup[] = [
       { name: 'surface-elevated', var: '--surface-elevated', type: 'color' },
       { name: 'surface-muted', var: '--surface-muted', type: 'color' },
       { name: 'surface-overlay', var: '--surface-overlay', type: 'color' },
+      { name: 'surface-panel', var: '--surface-panel', type: 'color' },
       { name: 'surface-panel-muted', var: '--surface-panel-muted', type: 'color' },
       { name: 'surface-panel-strong', var: '--surface-panel-strong', type: 'color' },
+      { name: 'accent-primary', var: '--accent-primary', type: 'color' },
     ],
   },
   {
@@ -83,6 +85,7 @@ const TOKEN_GROUPS: TokenGroup[] = [
     title: 'Button Tonal / Outline / Plain',
     tokens: [
       { name: 'button-tonal-bg', var: '--button-tonal-bg', type: 'color' },
+      { name: 'button-secondary-surface', var: '--button-secondary-surface', type: 'color' },
       { name: 'button-tonal-hover-bg', var: '--button-tonal-hover-bg', type: 'color' },
       { name: 'button-tonal-border', var: '--button-tonal-border', type: 'color' },
       { name: 'button-outline-bg', var: '--button-outline-bg', type: 'color' },
@@ -205,7 +208,7 @@ export function TokenInspectorTab() {
         placeholder="搜索 token 名称…"
         value={filter}
         onChange={e => setFilter(e.target.value)}
-        className="w-full max-w-sm rounded-md border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] focus:outline-none focus:border-[color:var(--button-primary-border)]"
+        className="w-full max-w-sm rounded-md border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] placeholder:text-[color:var(--text-muted)] focus:outline-none focus:border-[color:var(--button-primary-border)] [@media(pointer:coarse)]:min-h-11"
       />
 
       <p className="text-xs text-[color:var(--text-muted)]">
@@ -275,7 +278,7 @@ export function TokenInspectorTab() {
                 <button
                   key={token.var}
                   type="button"
-                  className="flex items-center gap-2.5 rounded-[var(--radius-shell-row)] px-2.5 py-1.5 hover:bg-[color:var(--interactive-hover)] transition-colors text-left group"
+                  className="flex items-center gap-2.5 rounded-[var(--radius-shell-row)] px-2.5 py-1.5 hover:bg-[color:var(--interactive-hover)] transition-colors text-left group [@media(pointer:coarse)]:min-h-11"
                   onClick={() => handleCopy(token.var)}
                   title={`点击复制 var(${token.var})`}
                 >

@@ -9,6 +9,7 @@
  * @see 22-VFS与DSTU访达协议层改造任务分配.md Prompt 10
  */
 
+import i18next from 'i18next';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuListOptions } from '../types';
@@ -138,7 +139,7 @@ export const examDstuAdapter = {
     console.log(LOG_PREFIX, 'listExams via DSTU:', path, 'typeFilter: exam');
     const result = await dstu.list(path, { ...options, typeFilter: 'exam' });
     if (!result.ok) {
-      reportError(result.error, 'List question sets');
+      reportError(result.error, i18next.t('mcp:dstu_exam.listQuestionSets', { defaultValue: 'List question sets' }));
     }
     return result;
   },
@@ -163,7 +164,7 @@ export const examDstuAdapter = {
     console.log(LOG_PREFIX, 'getExam via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, 'Get question set detail');
+      reportError(result.error, i18next.t('mcp:dstu_exam.getQuestionSetDetail', { defaultValue: 'Get question set detail' }));
     }
     return result;
   },
@@ -176,7 +177,7 @@ export const examDstuAdapter = {
     console.log(LOG_PREFIX, 'deleteExam via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, 'Delete question set');
+      reportError(result.error, i18next.t('mcp:dstu_exam.deleteQuestionSet', { defaultValue: 'Delete question set' }));
     }
     return result;
   },
@@ -202,7 +203,7 @@ export const examDstuAdapter = {
       return ok(result);
     } catch (error: unknown) {
       const vfsError = toVfsError(error);
-      reportError(vfsError, 'Get question set session detail');
+      reportError(vfsError, i18next.t('mcp:dstu_exam.getQuestionSetSessionDetail', { defaultValue: 'Get question set session detail' }));
       return err(vfsError);
     }
   },

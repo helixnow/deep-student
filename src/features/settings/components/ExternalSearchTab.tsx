@@ -130,7 +130,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '180', 10) || 180;
                     setConfig(prev => ({ ...prev, webSearchInjectSnippetMax: Math.min(2000, Math.max(50, v)) }));
                   }}
-                  className="!w-28 md:!w-24"
+                  className="!w-28 md:!w-24 [@media(pointer:coarse)]:min-h-11"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
@@ -149,7 +149,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                     const v = parseInt(e.target.value || '1900', 10) || 1900;
                     setConfig(prev => ({ ...prev, webSearchInjectTotalMax: Math.min(20000, Math.max(200, v)) }));
                   }}
-                  className="!w-28 md:!w-24"
+                  className="!w-28 md:!w-24 [@media(pointer:coarse)]:min-h-11"
                 />
                 <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
@@ -179,6 +179,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.whitelist_example')}
+                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               />
             </SettingRow>
             <SettingRow
@@ -196,6 +197,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }
                 }}
                 placeholder={t('settings:placeholders.blacklist_example')}
+                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               />
             </SettingRow>
           </div></div>

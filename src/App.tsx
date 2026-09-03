@@ -35,6 +35,7 @@ import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
 import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MobilePageScaffold } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
+import { ensureAutoSyncSchedulerStarted, useAutoSyncStore } from '@/stores/syncStatusStore';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
@@ -164,6 +165,22 @@ import {
 import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
 import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
+// 停用事务（缝一）：模式开关 / 应用退出统一逐窗 canClose 预检；轻依赖，可深路径引入
+import {
+  hasDirtyWorkbenchWindows,
+  runWorkbenchDeactivationTransaction,
+} from '@/features/workbench/core/deactivationTransaction';
+import { flushSnapshot } from '@/features/workbench/core/snapshot';
+// P3 handoff（r5 handoff-2 消费侧）：经典壳 → Workbench 切回时复用 bus 打开
+// 同一资源。descriptor 形状 { version, appType, resourceId, innerRoute?, savedAt }，
+// sanitize 与新鲜度窗口（默认 15min）在模块内完成；consume 总是先删再判，
+// 一次即清，不残留跨次交接的陈旧描述符。
+import {
+  PDF_PAGE_ACTIVATION_TYPE_IDS,
+  workbenchBus,
+  type PdfPageActivationTypeId,
+} from '@/features/workbench/core/workbenchBus';
+import { consumeHandoffDescriptor } from '@/features/workbench/core/handoffDescriptor';
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
@@ -447,6 +464,23 @@ function DesktopHeaderNavControls({
 }
 
 type CurrentView = NavigationCurrentView;
+
+/**
+ * P3 handoff 兜底：经典壳视图 → Workbench 应用 typeId。
+ * 与 legacyNavigationMap 的 VIEW_BY_TYPE_ID（禁改文件）互为反向；仅收录有明确
+ * 对应桌面应用的视图。chat-v2 不进表（需要活跃会话 id，见消费 effect 单独处理）；
+ * pdf-reader / template-json-preview 等上下文视图的资源状态不在 App 层，
+ * 其「同一资源」交接依赖 handoff descriptor 主通道。
+ */
+const WORKBENCH_APP_BY_CLASSIC_VIEW: Partial<Record<CurrentView, string>> = {
+  'learning-hub': 'files',
+  'settings': 'settings',
+  'todo': 'todo',
+  'skills-management': 'skills',
+  'template-management': 'templates',
+  'task-dashboard': 'taskDashboard',
+  'sandbox-workbench': 'sandbox',
+};
 
 const BRIDGE_COMPLETION_REASONS = new Set([
   'stream-complete',
@@ -781,6 +815,31 @@ function App() {
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
   useEffect(() => initReminderScheduler(), []);
 
+  // ☁️ 自动同步调度器（应用级主启动点，与 initReminderScheduler 同模式）：
+  //   持久化开关为开时，重启后无需进设置页即恢复排程。必须等 persist
+  //   hydration 完成后再 start——否则会用默认 enabled:false 误判为 no-op，
+  //   或在持久化状态读入前误读开关。start() 本身防重（已排程/执行中直接
+  //   return），ensureAutoSyncSchedulerStarted 幂等，StrictMode 双调用与
+  //   设置页的兼容性调用都不会起第二个 timer；开关关闭时 start 为 no-op。
+  useEffect(() => {
+    const persistApi = useAutoSyncStore.persist as
+      | typeof useAutoSyncStore.persist
+      | undefined;
+    // 极端环境（localStorage 不可用）下 persist 中间件未接 storage，
+    // 无 hydration 阶段可等，直接按内存默认态启动（enabled:false → no-op）
+    if (!persistApi) {
+      ensureAutoSyncSchedulerStarted();
+      return;
+    }
+    if (persistApi.hasHydrated()) {
+      ensureAutoSyncSchedulerStarted();
+      return;
+    }
+    return persistApi.onFinishHydration(() => {
+      ensureAutoSyncSchedulerStarted();
+    });
+  }, []);
+
   // ★ 4.2 制卡完成通知（应用级，后台时发系统通知）
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -849,22 +908,55 @@ function App() {
   }, []);
 
   // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）；
-  // 屏宽之外再按平台护栏：宽屏 Android 平板 / iPad 也不进 OS 模式
+  // 平台护栏：宽屏 Android 平板 / iPad 同样不进 OS 模式（isMobilePlatform 永真拦截）。
   //
-  // 迟滞（250ms 宽度稳定确认）：isSmallScreen 在 768 边界即时翻转会整壳硬切，
-  // WorkbenchDesktop 连同所有窗口立刻卸载，绕过 ResourceAppWorkspace 的未保存
-  // 确认与 windowCloseGuard。拖拽窗口宽度瞬间穿越 768 再回来时不应误卸载整棵树。
-  // 仅工作台壳切换用稳定值；页面内布局仍用即时 isSmallScreen，不受影响。
-  const [shellStableSmallScreen, setShellStableSmallScreen] = useState(isSmallScreen);
-  useEffect(() => {
-    if (isSmallScreen === shellStableSmallScreen) return;
-    const timer = window.setTimeout(() => {
-      // 250ms 后仍是新值才提交（期间弹回则本 effect 已被 cleanup 取消）
-      setShellStableSmallScreen(isSmallScreen);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [isSmallScreen, shellStableSmallScreen]);
-  const workbenchActive = workbenchMode && !shellStableSmallScreen && !isMobilePlatform();
+  // 桌面窄窗（<768px）不再卸载 Workbench（0824 评审建议 2，本轮裁决落地）：
+  // 此前用 shellStableSmallScreen（250ms 宽度稳定迟滞）在持续窄窗时整壳硬切。
+  // 迟滞只是渲染防抖，不是数据安全措施——250ms 到期后照样绕过逐窗 canClose /
+  // windowCloseGuard 直接卸载所有窗口，未保存草稿静默丢失（快照契约只存壳，
+  // 见 docs/0824-quality-review/workbench-fg.md 接缝一）。窄窗是布局问题而非
+  // 生命周期问题：子应用已按容器宽度支持 compact，桌面平台恒保持 Workbench；
+  // 需要停用工作台的路径（模式开关 / 应用退出）统一走
+  // runWorkbenchDeactivationTransaction 逐窗预检，可取消、可回滚。
+  // 页面内布局仍用即时 isSmallScreen，不受影响。
+  const workbenchActive = workbenchMode && !isMobilePlatform();
+
+  // 应用退出护栏（缝一 · app-exit 路径）：Workbench 激活期间若存在脏窗
+  // （未保存更改），beforeunload 至少 preventDefault 触发系统级「确认离开」
+  // 对话框——浏览器 / WebView 不允许在卸载时刻 await 自定义逐窗确认，事务
+  // 只能异步补跑：用户选择留下后，逐窗保存 / 放弃对话框继续可用。
+  // pagehide 不可取消，仅作快照兜底落盘（退出时 WorkbenchDesktop 的卸载
+  // cleanup 不保证执行）。main.tsx 既有 beforeunload（MCP / ChatV2 紧急保存）
+  // 与本钩子互不冲突，无需改 main.tsx。
+  useEventRegistry(
+    workbenchActive
+      ? [
+          {
+            target: 'window' as const,
+            type: 'beforeunload',
+            listener: (event: Event) => {
+              const beforeUnload = event as BeforeUnloadEvent;
+              if (!hasDirtyWorkbenchWindows()) return;
+              beforeUnload.preventDefault();
+              // Chromium 系需要 returnValue 非空才可靠弹出原生确认；自定义文案不会被展示
+              beforeUnload.returnValue = i18n.t('workbench:deactivation.dirtyBlocked', {
+                defaultValue:
+                  '有窗口存在未保存的更改，已阻止直接退出 / Unsaved changes in open windows blocked the exit.',
+              });
+              void runWorkbenchDeactivationTransaction('app-exit');
+            },
+          },
+          {
+            target: 'window' as const,
+            type: 'pagehide',
+            listener: () => {
+              void flushSnapshot();
+            },
+          },
+        ]
+      : [],
+    [workbenchActive, i18n],
+  );
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
@@ -2184,6 +2276,96 @@ function App() {
   const [currentChatHeaderSessionId, setCurrentChatHeaderSessionId] = useState<string | null>(null);
   const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
   const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
+  // ★ P3 handoff · 经典壳 → Workbench 消费侧：workbenchMode 在会话内从 false
+  //   翻 true（设置页 / 侧边栏开关切回学习桌面）时，复用 workbenchBus 在桌面上
+  //   重新打开用户正在使用的资源，保证「同一资源」连续性：
+  //   1) 优先消费 handoffDescriptor 的最近交接描述符（读取即消费，一次即清）；
+  //   2) 无描述符时按 currentView 推导资源上下文兜底（chat 活跃会话 /
+  //      WORKBENCH_APP_BY_CLASSIC_VIEW 页面级应用映射）。
+  //   仅处理会话内 false→true 切换——冷启动进桌面走快照恢复链路，不在此重放；
+  //   移动平台不启 Workbench：workbenchActive 已含 isMobilePlatform 永真拦截，
+  //   下方再显式护栏一次，杜绝 launch 在 bus 未启用时误入 legacy 降级导航。
+  //   时序依据：事件路径 persistWorkbenchModeEnabled 在派发 mode-changed 前已
+  //   setEnabled(true)；冷启动纠偏路径（localStorage 预读 false → 设置库 true）
+  //   由 AgentBridge 的 layoutEffect 在同一次提交先行 setEnabled(true)，本被动
+  //   effect 晚于两者。WorkbenchDesktop 稍后挂载时 hydrate 带 preserveExisting，
+  //   先行 launch 的窗口不会被快照覆盖。effect 因 currentView / 会话 id 变化的
+  //   重跑被 prevRef 短路（wasActive=true），不会重复交接。
+  const prevWorkbenchActiveRef = useRef(workbenchActive);
+  useEffect(() => {
+    const wasActive = prevWorkbenchActiveRef.current;
+    prevWorkbenchActiveRef.current = workbenchActive;
+    if (wasActive || !workbenchActive || isMobilePlatform()) return;
+
+    // 消费一次即清（模块内先删再判 + 15min 新鲜度窗口）：典型来源是
+    // handoffWorkbenchToLegacyShell 在 Workbench→经典壳时落盘的焦点窗上下文，
+    // 用户切回学习桌面即恢复到离开时的资源（round-trip 连续性）。
+    const handoff = consumeHandoffDescriptor();
+    let target: { typeId: string; instanceKey?: string; innerRoute?: string } | null = null;
+    if (handoff) {
+      target = {
+        typeId: handoff.appType,
+        // resourceId 可为 null（如焦点曾是 files / 无选中资源的单实例工作区）：
+        // 此时仍按「同一应用」交接，仅退化资源级精度
+        instanceKey: handoff.resourceId ?? undefined,
+        innerRoute: handoff.innerRoute,
+      };
+    } else if (currentView === 'chat-v2') {
+      // 兜底：chat 仅在有活跃会话时交接（避免凭空新建会话窗）
+      if (currentChatHeaderSessionId) {
+        target = { typeId: 'chat', instanceKey: currentChatHeaderSessionId };
+      }
+    } else {
+      // 其余视图查映射表，无对应桌面应用则静默（空桌面 + Dock 已足够）
+      const mapped = WORKBENCH_APP_BY_CLASSIC_VIEW[currentView];
+      if (mapped) target = { typeId: mapped };
+    }
+    const launchTarget = target;
+    if (!launchTarget) return;
+
+    // 应用注册在 WorkbenchDesktop chunk 内（registerAll 模块求值即注册）。
+    // 经典壳启动（localStorage 预读 false）时该 chunk 未预热，直接 launch 会让
+    // note/mindmap 因 notes 工作区未注册落错分支、single 去重与 defaultFrame
+    // 拿不到定义——先动态引入补齐注册（与桌面壳挂载命中同一 chunk 家族）再发。
+    void (async () => {
+      try {
+        await import('@/features/workbench/apps/registerAll');
+        // 等待期间模式又被关掉：放弃交接，避免 launch 误入 legacy 降级导航
+        if (!workbenchBus.isEnabled()) return;
+        if (launchTarget.typeId === 'chat' && launchTarget.instanceKey) {
+          // chat 走既有入口：聚焦单例 + navigate-to-session 导航握手
+          const { openChatSession } = await import('@/features/workbench/apps/chat/newSession');
+          openChatSession(launchTarget.instanceKey, 'api');
+          return;
+        }
+        // innerRoute 尽力恢复（descriptor 契约：按前缀识别，不认识则忽略）：
+        // page:<n> + PDF 类 typeId → openPdfPage 薄封装（fallbackLaunch 打开
+        // 同一资源 + gotoPage ack/超时/stale 防双跳；页跳失败仅降级为资源级交接）
+        const pageMatch = launchTarget.innerRoute?.match(/^page:(\d+)$/);
+        if (
+          pageMatch
+          && launchTarget.instanceKey
+          && (PDF_PAGE_ACTIVATION_TYPE_IDS as readonly string[]).includes(launchTarget.typeId)
+        ) {
+          await workbenchBus.openPdfPage({
+            typeId: launchTarget.typeId as PdfPageActivationTypeId,
+            resourceId: launchTarget.instanceKey,
+            page: Number(pageMatch[1]),
+          });
+          return;
+        }
+        workbenchBus.launch({
+          typeId: launchTarget.typeId,
+          instanceKey: launchTarget.instanceKey,
+          // 未识别的 innerRoute 以瞬态载荷透传（不进快照），应用侧自行消费
+          payload: launchTarget.innerRoute ? { innerRoute: launchTarget.innerRoute } : undefined,
+          reason: 'api',
+        });
+      } catch (error) {
+        console.warn('[workbench] classic→workbench handoff failed:', error);
+      }
+    })();
+  }, [workbenchActive, currentView, currentChatHeaderSessionId]);
   const desktopHeaderNewSessionTooltipLabel = currentChatHeaderGroupName
     ? t('chatV2:page.newSessionInGroup', {
       groupName: currentChatHeaderGroupName,
@@ -2672,12 +2854,12 @@ function App() {
                 className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
                 style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
               >
-                {currentView === 'learning-hub' ? (
+                {currentView === 'learning-hub' || currentView === 'todo' || currentView === 'skills-management' ? (
                   <div
                     ref={setDesktopPageHeaderTarget}
                     className="h-full min-w-0 flex-1"
                     data-no-drag
-                    data-shell-slot="learning-hub-toolbar"
+                    data-shell-slot={currentView === 'learning-hub' ? 'learning-hub-toolbar' : currentView === 'todo' ? 'todo-toolbar' : 'skills-toolbar'}
                   />
                 ) : currentView === 'chat-v2' && currentChatHeaderSessionId && currentChatHeaderTitle ? (
                   <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -2795,7 +2977,7 @@ function App() {
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs"
+                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   if (maintenanceRequiresRestart) {
                     void (async () => {
@@ -2883,8 +3065,7 @@ function App() {
 
               {/* ★ 废弃视图已移除（2026-01 清理）：irec, irec-management, irec-service-switcher, math-workflow */}
 
-              {/* 笔记模块已整合到 Learning Hub，通过 DSTU 协议访问，不再需要独立入口 */}
-              {/* {renderViewLayer('notes', <NotesHome />)} */}
+              {/* 笔记模块已整合到 Learning Hub，通过 DSTU 协议访问；历史 NotesHome 视图已下线删除 */}
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}
@@ -2942,8 +3123,8 @@ function App() {
       {/* 命令面板 */}
       <CommandPalette />
 
-      {/* Global Pomodoro Timer */}
-      <GlobalPomodoroWidget />
+      {/* Global Pomodoro Timer（workbench 激活时药丸让位给菜单栏/番茄窗投射） */}
+      <GlobalPomodoroWidget workbenchActive={workbenchActive} />
 
       {/* 🆕 首启欢迎引导（协议同意后、未配置 AI 服务时展示一次） */}
       {welcomeOnboardingOpen && (

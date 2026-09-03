@@ -427,7 +427,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={triggerSnapshot}
-            className="px-3 py-1 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600"
             title="手动捕获 DOM 快照"
           >
             <Eye size={16} className="inline mr-1" />
@@ -435,21 +435,21 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={() => setErrorsOnly(!errorsOnly)}
-            className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
             <Funnel size={16} />
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`px-3 py-1 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="自动滚动到底部"
           >
             自动滚动
           </button>
           <button
             onClick={copyAllLogs}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
@@ -457,7 +457,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={exportLogs}
-            className="px-3 py-1 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
@@ -465,7 +465,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={clearLogs}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
             title="清空日志"
           >
             <Trash size={16} />
@@ -581,7 +581,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
               <button
                 key={key}
                 onClick={() => setSelectedCategory(selectedCategory === key ? 'all' : key as EventCategory)}
-                className={`px-3 py-1 text-xs rounded-full transition-all ${
+                className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ${
                   selectedCategory === key 
                     ? 'ring-2 ring-offset-1' 
                     : 'opacity-75 hover:opacity-100'
@@ -607,7 +607,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索消息、详情..."
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm [@media(pointer:coarse)]:text-[16px] border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         
@@ -616,7 +616,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部分类</option>
             {Object.entries(CATEGORY_LABELS).map(([key, { label }]) => (
@@ -630,7 +630,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部级别</option>
             <option value="debug">调试</option>
@@ -701,7 +701,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                         
                         {log.details && Object.keys(log.details).length > 0 && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
                               查看详细信息 ({Object.keys(log.details).length} 项)
                             </summary>
                             <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
@@ -712,7 +712,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                         
                         {log.domSnapshot && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-orange-600 hover:text-orange-800">
+                            <summary className="cursor-pointer text-orange-600 hover:text-orange-800 [@media(pointer:coarse)]:min-h-11">
                               DOM 快照
                             </summary>
                             <pre className="mt-2 p-2 bg-orange-50 rounded overflow-auto text-xs max-h-48">
@@ -723,7 +723,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
 
                         {log.editorSnapshot && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
                               编辑器快照
                             </summary>
                             <pre className="mt-2 p-2 bg-blue-50 rounded overflow-auto text-xs max-h-48">
@@ -735,7 +735,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                       
                       <button
                         onClick={() => copyLog(log)}
-                        className="p-1 text-gray-400 hover:text-gray-600"
+                        className="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         title="复制日志"
                       >
                         <Copy size={16} />

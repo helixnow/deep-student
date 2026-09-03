@@ -3,6 +3,7 @@
 //! High 敏感度：审批通过后写入 `mcp.tools.list`（secure store），可选自动连测与失败回滚。
 //! Secret 值全程不经 agent 之手；`env_required` 只收变量名。
 
+#[cfg(feature = "mcp")]
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -102,8 +103,18 @@ pub(crate) fn sanitize_test_error(raw: &str) -> String {
     out
 }
 
+/// MCP 未编译时的兜底实现：直接返回失败结果（mobile-slim 等裁剪构建）
+#[cfg(not(feature = "mcp"))]
+pub(crate) async fn run_connection_test(_transport: McpTransport, _entry: &Value) -> Value {
+    json!({
+        "success": false,
+        "error": "MCP 功能未启用（当前构建未包含 mcp feature）",
+    })
+}
+
 /// 对一条 server entry 做一次真实连测（propose / manage 共用）。
 /// env 中的占位符不会作为真实环境变量传给子进程。
+#[cfg(feature = "mcp")]
 pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) -> Value {
     let noop_progress = |_: &str| {};
     let test_future = async {

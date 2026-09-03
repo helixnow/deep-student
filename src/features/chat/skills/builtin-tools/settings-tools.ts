@@ -114,8 +114,7 @@ API key、token、OAuth、password、secret、credential、private/access key、
   embeddedTools: [
     {
       name: 'builtin-settings_get',
-      description:
-        '按显式安全前缀读取应用设置（Low）。最多返回 20 项，每项含 key/value/updated_at/truncated；安全词与非白名单键会在 Rust 层再次拒绝或过滤。不是通用 get_setting，绝不返回密钥或凭据。',
+      description: '按安全前缀读取白名单设置（Low，最多 20 项，绝不返回密钥）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -124,7 +123,6 @@ API key、token、OAuth、password、secret、credential、private/access key、
           prefix: {
             type: 'string',
             enum: [...safeSettingPrefixes],
-            description: '要读取的安全设置前缀；返回结果仍会按精确 key 白名单二次过滤',
           },
         },
       },
@@ -132,13 +130,13 @@ API key、token、OAuth、password、secret、credential、private/access key、
     {
       name: 'builtin-settings_set',
       description:
-        '修改一个显式允许的低风险设置（Medium）。schema 按 key 约束 value 类型/枚举/范围；返回 previous_value、changed 和刷新事件名。API key、OAuth、云凭据、MCP、权限/审批设置永不开放。',
+        '修改一个白名单低风险设置（Medium）；value 约束由 key 的 oneOf 分支决定。密钥、MCP、审批永不开放。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           key: { type: 'string', enum: [...safeSettingKeys] },
-          value: { description: '设置值；具体类型与范围由所选 key 的 oneOf 分支约束' },
+          value: {},
         },
         oneOf: [
           {
@@ -209,8 +207,7 @@ API key、token、OAuth、password、secret、credential、private/access key、
     },
     {
       name: 'builtin-model_assignments_get',
-      description:
-        '读取模型职责分配与分页的脱敏可选模型目录（Low）。目录每页最多 20 项，只含 id/name/provider/model_type/enabled/capabilities，不含 api_key、base_url、headers、auth_mode 或原始配置。',
+      description: '读取模型职责分配与分页脱敏模型目录（Low，每页最多 20 项）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -223,7 +220,7 @@ API key、token、OAuth、password、secret、credential、private/access key、
     {
       name: 'builtin-model_assignments_set',
       description:
-        '按 OCC 原子修改一个模型职责 slot（Medium）。config_id 与 expected_current_config_id 都必须显式提供且可为 null；非空模型必须存在、启用并满足 slot 能力。冲突返回当前值，须重新读取后再决定。',
+        '按 OCC 修改一个模型职责 slot（Medium）；模型须启用且满足能力，冲突须重新 get。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -232,15 +229,14 @@ API key、token、OAuth、password、secret、credential、private/access key、
           slot: {
             type: 'string',
             enum: [...modelAssignmentSlots],
-            description: '要修改的真实 ModelAssignments 字段',
           },
           config_id: {
             ...nullableConfigId,
-            description: '新模型配置 ID；null 表示清空该 slot',
+            description: 'null=清空该 slot',
           },
           expected_current_config_id: {
             ...nullableConfigId,
-            description: '刚由 get 读到的当前 ID；当前为空时必须传 null',
+            description: 'get 读到的当前 ID；空传 null',
           },
         },
       },

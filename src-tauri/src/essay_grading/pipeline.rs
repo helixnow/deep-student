@@ -40,10 +40,10 @@ const CONFIG_DEFAULT_TEMPERATURE: f32 = 0.7;
 
 /// 多模态图片上限：每类（作文原图/题目参考图）最多张数
 const MAX_IMAGES_PER_KIND: usize = 6;
-/// 单张图片 base64 解码后最大字节数（10MB）
-const MAX_IMAGE_DECODED_BYTES: usize = 10 * 1024 * 1024;
-/// 两类图片解码后合计最大字节数（40MB）
-const MAX_TOTAL_IMAGE_DECODED_BYTES: usize = 40 * 1024 * 1024;
+/// 单张图片 base64 解码后最大字节数（50MB，与前端图片上限一致）
+const MAX_IMAGE_DECODED_BYTES: usize = 50 * 1024 * 1024;
+/// 两类图片解码后合计最大字节数（100MB）
+const MAX_TOTAL_IMAGE_DECODED_BYTES: usize = 100 * 1024 * 1024;
 
 /// 流式响应空闲超时（秒）：距上一个数据块超过该时长判定为服务端/网络挂起。
 /// 略小于前端 useEssayGradingStream 的 120s 滑动超时，保证后端先给出明确错误。
@@ -1317,13 +1317,30 @@ where
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        // R4 #3：GLM/Qwen 协议包装 token 过滤，与 chat 主链路
+        // （ChatV2LLMAdapter.wrap_token_filter）同源同策略。本函数是作文批改
+        // 唯一的流式内容出口：chunk 既发前端展示（emit_data）又累积供
+        // <score> 等标签解析，泄漏的 <|im_start|> 类 token 两侧都会污染，
+        // 故在源头过滤。非 GLM/Qwen 路由 policy 为 Disabled，恒等直通。
+        let mut wrap_filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                config.provider_type.as_deref(),
+                config.provider_scope.as_deref(),
+                &config.model,
+            ),
+        );
         let mut handle_sse_block = |block: &str| -> bool {
             if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(block) {
                 return true;
             }
             for event in adapter.parse_stream(block) {
                 match event {
-                    crate::providers::StreamEvent::ContentChunk(content) => on_chunk(content),
+                    crate::providers::StreamEvent::ContentChunk(content) => {
+                        let filtered = wrap_filter.process(&content);
+                        if !filtered.is_empty() {
+                            on_chunk(filtered);
+                        }
+                    }
                     crate::providers::StreamEvent::Done => return true,
                     _ => {}
                 }
@@ -1402,6 +1419,14 @@ where
                     break;
                 }
             }
+        }
+
+        // 结束态冲刷：释放过滤器暂扣的尾部（不完整 token 前缀 / 行首候选），
+        // 粘在流尾的 close token 按停符失败伪影剥除（与 chat 主链路 flush 一致）。
+        // Incomplete 也冲刷：含 </score> 的部分结果会按完成处理并落库。
+        let wrap_tail = wrap_filter.flush();
+        if !wrap_tail.is_empty() {
+            on_chunk(wrap_tail);
         }
 
         // ★ M-064: 区分正常完成和流意外中断
@@ -1694,7 +1719,7 @@ mod tests {
             Some("count")
         );
 
-        // 单张体积超限（构造超过 10MB 解码体积的 base64 长度，不实际解码）
+        // 单张体积超限（构造超过单张上限解码体积的 base64 长度，不实际解码）
         let oversized = "A".repeat((MAX_IMAGE_DECODED_BYTES / 3 + 1) * 4);
         let err =
             validate_image_payloads(&[oversized.as_str()], &[]).expect_err("单张体积超限应报错");

@@ -333,10 +333,10 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
             </div>
             {/* 操作按钮 */}
             <div className="flex flex-wrap gap-2 pt-2">
-              <DsButton onClick={handleGenerate} disabled={isGenerating} size="sm">
+              <DsButton onClick={handleGenerate} disabled={isGenerating} size="sm" className="[@media(pointer:coarse)]:!min-h-11">
                 {isGenerating ? t('knowledge_graph.tag_tree.generating') : t('knowledge_graph.tag_tree.generate_preview')}
               </DsButton>
-              <DsButton onClick={handleImport} disabled={!canImport || importing} size="sm" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
+              <DsButton onClick={handleImport} disabled={!canImport || importing} size="sm" className="[@media(pointer:coarse)]:!min-h-11" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
                 {t('knowledge_graph.tag_tree.confirm_import')}
               </DsButton>
             </div>

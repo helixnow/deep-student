@@ -429,7 +429,7 @@ describe('ChatV2TauriAdapter', () => {
       await adapter.setup();
 
       // Use reflection to access private method
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options).toMatchObject({
         modelId: 'test-model',
@@ -452,7 +452,7 @@ describe('ChatV2TauriAdapter', () => {
         multimodalLibraryIds: ['folder-a'],
       };
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options).toMatchObject({
         multimodalRagEnabled: true,
@@ -472,7 +472,7 @@ describe('ChatV2TauriAdapter', () => {
         thinkingBudget: undefined,
       };
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options).toMatchObject({
         enableThinking: true,
@@ -492,7 +492,7 @@ describe('ChatV2TauriAdapter', () => {
         thinkingBudget: undefined,
       };
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options).toMatchObject({
         modelId: 'builtin-codex-gpt-5.6-sol',
@@ -512,7 +512,7 @@ describe('ChatV2TauriAdapter', () => {
         thinkingBudget: 32768,
       };
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options).toMatchObject({
         enableThinking: true,
@@ -551,7 +551,7 @@ describe('ChatV2TauriAdapter', () => {
         maxTokens: 4096,
       };
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options.contextLimit).toBe(41_904);
     });
@@ -572,7 +572,7 @@ describe('ChatV2TauriAdapter', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       });
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options.groupId).toBe('group-math');
       expect(options.groupName).toBe('Math');
@@ -599,7 +599,7 @@ describe('ChatV2TauriAdapter', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       });
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options.groupDefaultRuntimeRootId).toBe('authorized_physics_root');
     });
@@ -623,7 +623,7 @@ describe('ChatV2TauriAdapter', () => {
         updatedAt: '2026-01-01T00:00:00Z',
       });
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options.groupDefaultRuntimeRootId).toBe('authorized_live_root');
     });
@@ -665,7 +665,7 @@ describe('ChatV2TauriAdapter', () => {
         version: 5,
       });
 
-      const options = (adapter as any).buildSendOptions();
+      const options = await (adapter as any).buildSendOptions();
 
       expect(options.activeSkillIds).toEqual(['manual-skill']);
       expect(options.skillStateVersion).toBe(5);
@@ -706,7 +706,7 @@ describe('ChatV2TauriAdapter', () => {
           version: 6,
         });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         expect(options.mcpToolSchemas).toEqual(
           expect.arrayContaining([
@@ -755,7 +755,7 @@ describe('ChatV2TauriAdapter', () => {
           version: 13,
         });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         // 嵌入式工具 schema 仍由前端注入；执行白名单由后端从技能状态推导
         expect(options.mcpToolSchemas).toEqual(
@@ -806,7 +806,7 @@ describe('ChatV2TauriAdapter', () => {
         });
         syncLoadedSkillsFromBackend('test-session-id', [skillId], { replace: true });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         expect(options.skillContents).toMatchObject({
           [skillId]: 'runtime loaded instructions',
@@ -873,7 +873,7 @@ describe('ChatV2TauriAdapter', () => {
           version: 15,
         });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         expect(options.skillPackageRoots).toEqual({
           [activeSkillId]: 'E:/study/.skills/active-package-skill',
@@ -923,7 +923,7 @@ describe('ChatV2TauriAdapter', () => {
           version: 14,
         });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         // ★ 白名单裁剪已收归后端执行策略：前端如实上报选中服务器的全部 schema，
         // 不发送 skillAllowedTools；越权调用由后端 tool_policy 在执行时拦截
@@ -962,7 +962,7 @@ describe('ChatV2TauriAdapter', () => {
           version: 12,
         });
 
-        const options = (adapter as any).buildSendOptions();
+        const options = await (adapter as any).buildSendOptions();
 
         expect(options.activeSkillIds).toEqual([skillId]);
         expect(options.skillAllowedTools).toBeUndefined();

@@ -270,6 +270,19 @@ export interface TodoRepeatRule {
    * 如「每周一三五」= [1,3,5]。旧版本客户端忽略该字段降级为普通每周。
    */
   byWeekday?: number[];
+  /**
+   * monthly 专用：多选月内日（1-31），如「每月1号和15号」= [1,15]。
+   * ★ 当前仅前端解析 + 展示：后端 compute_next_due_date 尚不识别该字段
+   * （serde 忽略未知字段自然降级为普通每月），推进语义对齐属跨波工作
+   * （见 docs/dev/wave2-B-r1-smallapps-gap.md T3）。前端 stepRepeatDate
+   * 刻意保持与后端一致（同样忽略），避免预览与实际滚动结果分叉。
+   */
+  byMonthDay?: number[];
+  /**
+   * 重复结束日期（YYYY-MM-DD，含当天），如「每天直到2026-09-30」。
+   * ★ 同 byMonthDay：仅前端解析 + 展示，后端滚动逻辑尚不消费（T2 跨波）。
+   */
+  until?: string;
 }
 
 const VALID_REPEAT_FREQS: TodoRepeatFreq[] = ['daily', 'weekly', 'monthly', 'yearly', 'weekdays'];
@@ -281,6 +294,8 @@ export function parseRepeatRule(repeatJson?: string | null): TodoRepeatRule | nu
       freq?: unknown;
       interval?: unknown;
       byWeekday?: unknown;
+      byMonthDay?: unknown;
+      until?: unknown;
     };
     if (typeof raw.freq !== 'string' || !VALID_REPEAT_FREQS.includes(raw.freq as TodoRepeatFreq)) {
       return null;
@@ -298,6 +313,17 @@ export function parseRepeatRule(repeatJson?: string | null): TodoRepeatRule | nu
       )].sort((a, b) => a - b);
       if (days.length > 0) rule.byWeekday = days;
     }
+    if (raw.freq === 'monthly' && Array.isArray(raw.byMonthDay)) {
+      const days = [...new Set(
+        raw.byMonthDay.filter(
+          (d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 1 && d <= 31,
+        ),
+      )].sort((a, b) => a - b);
+      if (days.length > 0) rule.byMonthDay = days;
+    }
+    if (typeof raw.until === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.until)) {
+      rule.until = raw.until;
+    }
     return rule;
   } catch {
     return null;
@@ -305,14 +331,19 @@ export function parseRepeatRule(repeatJson?: string | null): TodoRepeatRule | nu
 }
 
 export function serializeRepeatRule(rule: TodoRepeatRule): string {
+  // 可选字段仅在有值时写入：后端 serde 忽略未知字段（byMonthDay/until
+  // 当前仅前端消费），旧客户端 parseRepeatRule 白名单同样自然降级
+  const out: Record<string, unknown> = { freq: rule.freq, interval: rule.interval };
   if (rule.freq === 'weekly' && rule.byWeekday && rule.byWeekday.length > 0) {
-    return JSON.stringify({
-      freq: rule.freq,
-      interval: rule.interval,
-      byWeekday: rule.byWeekday,
-    });
+    out.byWeekday = rule.byWeekday;
   }
-  return JSON.stringify({ freq: rule.freq, interval: rule.interval });
+  if (rule.freq === 'monthly' && rule.byMonthDay && rule.byMonthDay.length > 0) {
+    out.byMonthDay = rule.byMonthDay;
+  }
+  if (rule.until) {
+    out.until = rule.until;
+  }
+  return JSON.stringify(out);
 }
 
 /** 重复频率选项（'none' 表示不重复，序列化为清空 repeatJson） */
@@ -346,17 +377,27 @@ export function repeatRuleLabel(
   rule: TodoRepeatRule,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
+  let base: string;
   if (rule.freq === 'weekly' && rule.byWeekday && rule.byWeekday.length > 0) {
     const dayNames = rule.byWeekday
       .map((d) => t(`todo:repeat.weekdayShort.${d}`))
       .join(t('todo:repeat.weekdayJoin'));
-    if (rule.interval <= 1) {
-      return t('todo:repeat.weeklyOn', { days: dayNames });
-    }
-    return t('todo:repeat.everyNWeeksOn', { count: rule.interval, days: dayNames });
+    base =
+      rule.interval <= 1
+        ? t('todo:repeat.weeklyOn', { days: dayNames })
+        : t('todo:repeat.everyNWeeksOn', { count: rule.interval, days: dayNames });
+  } else if (rule.freq === 'monthly' && rule.byMonthDay && rule.byMonthDay.length > 0) {
+    const dayList = rule.byMonthDay.join(t('todo:repeat.monthDayJoin'));
+    base =
+      rule.interval <= 1
+        ? t('todo:repeat.monthlyOn', { days: dayList })
+        : t('todo:repeat.everyNMonthsOn', { count: rule.interval, days: dayList });
+  } else {
+    const { key, count } = repeatRuleI18n(rule);
+    base = count !== undefined ? t(key, { count }) : t(key);
   }
-  const { key, count } = repeatRuleI18n(rule);
-  return count !== undefined ? t(key, { count }) : t(key);
+  // until 仅作展示后缀（后端滚动暂不消费，见 TodoRepeatRule.until 注释）
+  return rule.until ? t('todo:repeat.withUntil', { label: base, date: rule.until }) : base;
 }
 
 // ============================================================================

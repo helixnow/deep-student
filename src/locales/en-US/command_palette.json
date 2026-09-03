@@ -3,6 +3,7 @@
   "search_placeholder": "Search commands...",
   "session_search_placeholder": "Search sessions...",
   "no_results": "No matching commands found",
+  "results_label": "Command results",
   "placeholder": "Type a command or search notes...",
   "no_results_simple": "No results found",
   "command_disabled": "This command is currently unavailable",

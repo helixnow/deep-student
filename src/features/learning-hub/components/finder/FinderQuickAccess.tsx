@@ -34,6 +34,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { QuickAccessType } from '../../learningHubContracts';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { IndexStatusMiniBar } from './IndexStatusMiniBar';
@@ -104,6 +105,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 }: FinderQuickAccessProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  // 触屏设备清除钮需要 44px 命中区（同 FinderFileItem N-4）
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 禁用时给出原因（此前直接 disabled 无解释，用户不知为何不可用）
   const resolvedSearchPlaceholder = searchDisabled
     ? t('finder.search.placeholderDisabled')
@@ -161,7 +164,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           onClick={isActive ? undefined : () => onNavigate(type)}
           leftSlot={renderedIcon}
           rightSlot={count !== undefined && count > 0 ? (
-            <span className="text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
+            <span className="text-xs tabular-nums text-[color:var(--shell-navigation-muted)]">
               {count}
             </span>
           ) : null}
@@ -193,7 +196,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             </span>
             {count !== undefined && count > 0 && (
               <span className={cn(
-                "text-[11px] tabular-nums px-1.5 py-0.5 rounded-full",
+                "text-xs tabular-nums px-1.5 py-0.5 rounded-full",
                 isActive 
                   ? "bg-primary/15 text-primary" 
                   : "text-muted-foreground/60"
@@ -331,6 +334,9 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     disabled={searchDisabled}
                     className={cn(
                       'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
+                      // 📱 16px 输入契约：.text-ui（typography.css 在 Tailwind 后加载）12px 会压过
+                      // 非 important 的 coarse text-base，须带 ! 防 iOS 聚焦缩放（同 FinderToolbar）
+                      '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!text-[16px]',
                       'pl-8 pr-8 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                       'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                       '[&::-webkit-search-cancel-button]:hidden'
@@ -352,12 +358,25 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     disabled={searchDisabled}
-                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20"
+                    // 📱 16px 输入契约：.text-ui 12px 会压过 Input 外壳的非 important coarse
+                    // text-base（typography.css 在 Tailwind 后加载），须带 ! 防 iOS 聚焦缩放
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui [@media(pointer:coarse)]:!text-[16px] placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:!h-11"
                   />
                 )}
                 {searchQuery && (
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
-                    <X size={14} className="text-muted-foreground/60" />
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={() => onSearchChange?.('')}
+                    className={cn(
+                      'absolute right-2 top-1/2 -translate-y-1/2 hover:bg-[var(--interactive-hover)]',
+                      // 触屏 44px 命中区，负 margin 抵消宽度差、图标视觉位置与桌面一致
+                      isTouchPrimary ? '!h-11 !w-11 !p-2.5 !-mr-3' : '!h-5 !w-5 !p-0.5'
+                    )}
+                    aria-label={t('common:clear')}
+                  >
+                    <X size={isTouchPrimary ? 16 : 14} className="text-muted-foreground/60" />
                   </DsButton>
                 )}
               </div>
@@ -368,6 +387,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     size="icon" 
                     className={cn(
                       "h-8 w-8 rounded-lg shrink-0",
+                      "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']",
                       "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]",
                       "transition-all duration-150"
                     )}
@@ -388,7 +408,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 <DsButton 
                   variant="ghost" 
                   size="icon" 
-                  className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                  className="relative h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']"
                   title={t('finder.toolbar.new')}
                   disabled={createDisabled}
                 >
@@ -432,7 +452,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
-            <DsButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
+            <DsButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <CaretRight size={16} />
               ) : (

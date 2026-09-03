@@ -619,5 +619,13 @@
   "editor": {
     "discardDraftDescription": "Discard Draft Description",
     "discardDraftTitle": "Discard Draft Title"
+  },
+  "agent": {
+    "question_not_visible": "{{label}} (question not found in the visible question bank)",
+    "focus_question_done": "Focus question {{questionId}}",
+    "undo_question_missing": "Cannot restore question {{questionId}}: it no longer exists",
+    "unsupported_hint": "The qbank driver only supports navigation ops (qbank_focus_question); use domain tools to modify data",
+    "nav_aborted": "Qbank navigation aborted",
+    "run_not_found": "run {{runId}} aborted"
   }
 }

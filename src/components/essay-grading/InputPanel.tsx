@@ -42,9 +42,13 @@ const INLINE_CONFIRM_TIMEOUT_MS = 3000;
 const COARSE_HIT =
   "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
 
-/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ~40px */
+/** 同上，但适配 24px（h-6）图标钮：-inset-2.5 扩到 ≥44px（平板等 sm+ coarse 设备可见的小钮） */
+const COARSE_HIT_SM =
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
+
+/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ≥44px */
 const COARSE_HIT_BADGE =
-  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']";
+  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']";
 
 /** Unicode 字符计数（避免 UTF-16 length 偏差，与父级统计口径一致） */
 const getUnicodeCharCount = (text: string): number => Array.from(text).length;
@@ -426,14 +430,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {/* 非移动端：轮次显示 */}
           {currentRound > 0 && (
-            <span className="hidden sm:inline text-xs text-muted-foreground/60 whitespace-nowrap tabular-nums">
+            <span className="hidden md:inline text-xs text-muted-foreground/60 whitespace-nowrap tabular-nums">
               {t('essay_grading:round.label', { number: currentRound })}
             </span>
           )}
 
           {roundNavigation && roundNavigation.total > 1 && (
-            <div className="hidden sm:flex items-center gap-1">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+            <div className="hidden md:flex items-center gap-1">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretLeft size={14} />
               </DsButton>
               <div className="flex items-center">
@@ -451,7 +455,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     disabled={isGrading}
                     aria-label={t('essay_grading:round_navigation.go_to_round', { number: i + 1 })}
                     aria-current={i === roundNavigation.currentIndex ? 'true' : undefined}
-                    className="group/dot flex items-center justify-center w-3.5 h-6 disabled:cursor-not-allowed"
+                    /* coarse：相邻圆点的伪元素横向扩展会被后一个兄弟盖住，改为实际尺寸放大到 44×44（视觉圆点不变） */
+                    className="group/dot flex items-center justify-center w-3.5 h-6 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 disabled:cursor-not-allowed"
                   >
                     <span
                       className={cn(
@@ -464,14 +469,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </button>
                 ))}
               </div>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretRight size={14} />
               </DsButton>
             </div>
           )}
 
           {/* 移动端：清空 + 批改按钮（字数统计移到输入区右下角悬浮条，避免顶栏拥挤截断） */}
-          <div className="sm:hidden flex min-w-0 items-center gap-1">
+          <div className="md:hidden flex min-w-0 items-center gap-1">
             {hasClearableContent && !isGrading && (
               mobileClearConfirm.armed ? (
                 <DsButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className={cn(COARSE_HIT, "!h-7 shrink-0 px-2 text-xs transition-colors duration-150")}>
@@ -500,7 +505,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 size="sm"
                 onClick={onGrade}
                 disabled={!canGrade}
-                className="shrink-0"
+                className={cn(COARSE_HIT, "shrink-0")}
               >
                 {t('essay_grading:actions.grade')}
               </DsButton>
@@ -575,7 +580,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onClick={() => setShowTopicSection(!showTopicSection)}
             aria-expanded={showTopicSection}
             className={cn(
-              'flex items-center gap-2 w-full px-4 py-2 text-xs transition-colors duration-150',
+              'flex items-center gap-2 w-full px-4 py-2 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors duration-150',
               showTopicSection
                 ? 'text-foreground bg-muted/25'
                 : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -730,11 +735,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </span>
                 </div>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
+                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
                     <Image size={14} />
                     {t('essay_grading:empty_state.ocr_hint')}
                   </DsButton>
-                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
+                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
                     <Sparkle size={14} />
                     {t('essay_grading:workbench.sample.fill_button')}
                   </DsButton>
@@ -779,15 +784,15 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             </span>
             {/* 清空钮仅桌面端悬浮显示（移动端已在顶栏提供） */}
             {hasClearableContent && !isGrading && (
-              <div className="hidden sm:flex items-center">
+              <div className="hidden md:flex items-center">
                 {desktopClearConfirm.armed ? (
-                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className="!h-6 px-2 text-xs transition-colors duration-150">
+                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
                     <Trash size={12} />
                     {t('essay_grading:confirm.clear')}
                   </DsButton>
                 ) : (
                   <CommonTooltip content={t('essay_grading:actions.clear')}>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150")}>
                       <Trash size={14} />
                     </DsButton>
                   </CommonTooltip>
@@ -799,7 +804,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       </div>
 
       {/* Action Bar - 桌面端 简洁风格 */}
-      <div className="hidden sm:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
+      <div className="hidden md:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
         {/* 左侧：模型选择 - 向上展开 */}
         {models.length > 0 && (
           <div className="min-w-0">
@@ -822,11 +827,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         <div className="flex items-center gap-2 shrink-0">
           {isGrading ? (
             desktopCancelConfirm.armed ? (
-              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150">
+              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
                 {t('essay_grading:confirm.cancel')}
               </DsButton>
             ) : (
-              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
                 <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                 {t('common:cancel')}
               </DsButton>
@@ -837,6 +842,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               size="lg"
               onClick={onGrade}
               disabled={!canGrade}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('essay_grading:actions.grade')}
             </DsButton>

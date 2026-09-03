@@ -25,6 +25,7 @@ static PLAIN_HTTP_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r##"https?://[^\s<>\]\)"']+"##).expect("http 链接正则字面量非法"));
 
 /// 从笔记内容中提取纯文本（支持 ProseMirror JSON 和 Markdown）
+#[cfg(feature = "lance")]
 fn extract_clean_text_from_note_content(content: &str) -> String {
     // 尝试解析为 ProseMirror JSON；失败则按原样返回（Markdown/纯文本）
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(content) {
@@ -2091,6 +2092,7 @@ impl NotesManager {
     }
 }
 
+#[cfg(feature = "lance")]
 const LANCE_FTS_SCORE_COL: &str = "_score";
 
 // ==================== Canvas AI 工具单元测试 ====================

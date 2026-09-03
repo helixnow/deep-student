@@ -317,6 +317,26 @@ pub struct FsrsEnqueuedCard {
     pub error_content: Option<String>,
 }
 
+/// FSRS 复习数据回流用的只读联表行（调度状态 + 卡片内容摘要）。
+///
+/// 由 [`FsrsReviewService::list_feedback_rows`] 产出，供 `anki_fsrs_feedback`
+/// 模块的纯函数聚合成用户复习画像。所有数据只在本地 SQLite 读取。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsFeedbackRow {
+    pub anki_card_id: String,
+    pub front: String,
+    pub template_id: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub state: i32,
+    pub stability: Option<f64>,
+    pub lapses: i32,
+    pub reps: i32,
+    pub due_ms: i64,
+    pub last_review_ms: Option<i64>,
+}
+
 /// 统计
 ///
 /// `due` 为“现在可复习”的数量：Review 卡按本地日切窗口计（今天到期即可复习），
@@ -1056,7 +1076,7 @@ impl FsrsReviewService {
     ) -> Result<Vec<FsrsEnqueuedCard>> {
         let mut stmt = conn
             .prepare(
-                "SELECT front, back, tags_json, text, template_id,
+                "SELECT front, back, COALESCE(tags_json, '[]'), text, template_id,
                         COALESCE(extra_fields_json, '{}'), COALESCE(images_json, '[]'),
                         COALESCE(is_error_card, 0), error_content
                  FROM anki_cards ac
@@ -1069,14 +1089,15 @@ impl FsrsReviewService {
             .map_err(|error| AppError::database(format!("准备入队卡片正文查询失败: {}", error)))?;
         let mut review_cards = Vec::with_capacity(states.len());
         for state in states {
+            // 前 3 列与第 6/7 列在历史/导入行中可能为 NULL，读成 Option 再兜底。
             let content: Option<(
-                String,
-                String,
-                String,
                 Option<String>,
                 Option<String>,
-                String,
-                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
                 i32,
                 Option<String>,
             )> = stmt
@@ -1117,30 +1138,45 @@ impl FsrsReviewService {
                     state.anki_card_id
                 )));
             };
-            let tags = serde_json::from_str::<Vec<String>>(&tags_json).map_err(|error| {
-                AppError::database(format!(
-                    "解析入队卡片标签失败 ({}): {}",
-                    state.anki_card_id, error
-                ))
-            })?;
-            let extra_fields = serde_json::from_str::<HashMap<String, String>>(&extra_fields_json)
+            // NULL 视为空集合；非法 JSON 仍保持原有的硬错误语义。
+            let tags = tags_json
+                .as_deref()
+                .map(serde_json::from_str::<Vec<String>>)
+                .transpose()
+                .map_err(|error| {
+                    AppError::database(format!(
+                        "解析入队卡片标签失败 ({}): {}",
+                        state.anki_card_id, error
+                    ))
+                })?
+                .unwrap_or_default();
+            let extra_fields = extra_fields_json
+                .as_deref()
+                .map(serde_json::from_str::<HashMap<String, String>>)
+                .transpose()
                 .map_err(|error| {
                     AppError::database(format!(
                         "解析入队卡片扩展字段失败 ({}): {}",
                         state.anki_card_id, error
                     ))
-                })?;
-            let images = serde_json::from_str::<Vec<String>>(&images_json).map_err(|error| {
-                AppError::database(format!(
-                    "解析入队卡片图片失败 ({}): {}",
-                    state.anki_card_id, error
-                ))
-            })?;
+                })?
+                .unwrap_or_default();
+            let images = images_json
+                .as_deref()
+                .map(serde_json::from_str::<Vec<String>>)
+                .transpose()
+                .map_err(|error| {
+                    AppError::database(format!(
+                        "解析入队卡片图片失败 ({}): {}",
+                        state.anki_card_id, error
+                    ))
+                })?
+                .unwrap_or_default();
             review_cards.push(FsrsEnqueuedCard {
                 id: state.id.clone(),
                 anki_card_id: state.anki_card_id.clone(),
-                front,
-                back,
+                front: front.unwrap_or_default(),
+                back: back.unwrap_or_default(),
                 tags,
                 text,
                 template_id,
@@ -1461,15 +1497,24 @@ impl FsrsReviewService {
         };
         let map_due_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<FsrsDueCard> {
             let state = Self::map_state_row(row)?;
-            let front: String = row.get(19)?;
-            let back: String = row.get(20)?;
-            let tags_json: String = row.get(21)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-            let extra_fields_json: String = row.get(24)?;
-            let extra_fields: HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
-            let images_json: String = row.get(25)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            // 防御历史/导入行的 NULL：SQL 已 COALESCE，这里再兜底一次。
+            let front: String = row.get::<_, Option<String>>(19)?.unwrap_or_default();
+            let back: String = row.get::<_, Option<String>>(20)?.unwrap_or_default();
+            let tags_json: Option<String> = row.get(21)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(24)?;
+            let extra_fields: HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let images_json: Option<String> = row.get(25)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
             Ok(FsrsDueCard {
                 state,
                 front,
@@ -1898,6 +1943,60 @@ impl FsrsReviewService {
             return Ok(Vec::new());
         };
         Ok(serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default())
+    }
+
+    /// FSRS 复习数据回流（Round 3 #5）：一次性读出「调度状态 + 卡片内容摘要」联表行。
+    ///
+    /// 只读查询，供 `anki_fsrs_feedback` 模块在制卡开始前构建用户复习画像与
+    /// 同批次语义干扰预警。行按 `lapses DESC, due_ms ASC` 排序，`limit` 上限 2000。
+    /// 包含 suspended 卡（leech 自动暂停的卡恰是最需要反馈的薄弱点），
+    /// 排除已删除卡、错误卡与已删除任务。
+    pub fn list_feedback_rows(&self, limit: u32) -> Result<Vec<FsrsFeedbackRow>> {
+        let limit = limit.min(2000) as i64;
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.anki_card_id, COALESCE(a.front, ''), a.template_id,
+                        COALESCE(a.tags_json, '[]'), s.state, s.stability, s.lapses,
+                        s.reps, s.due_ms, s.last_review_ms
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL
+                   AND COALESCE(a.is_error_card, 0) = 0
+                 ORDER BY s.lapses DESC, s.due_ms ASC
+                 LIMIT ?1",
+            )
+            .map_err(|e| AppError::database(format!("准备反馈回流查询失败: {}", e)))?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                // 防御历史/导入行的 NULL：SQL 已 COALESCE，这里再兜底一次。
+                let tags_json: Option<String> = row.get(3)?;
+                Ok(FsrsFeedbackRow {
+                    anki_card_id: row.get(0)?,
+                    front: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    template_id: row.get(2)?,
+                    tags: tags_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
+                    state: row.get(4)?,
+                    stability: row.get(5)?,
+                    lapses: row.get(6)?,
+                    reps: row.get(7)?,
+                    due_ms: row.get(8)?,
+                    last_review_ms: row.get(9)?,
+                })
+            })
+            .map_err(|e| AppError::database(format!("执行反馈回流查询失败: {}", e)))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| AppError::database(format!("读取反馈回流行失败: {}", e)))?;
+        Ok(rows)
     }
 
     pub fn pending_mastery_reviews(&self, limit: usize) -> Result<Vec<FsrsPendingMasteryReview>> {
@@ -6703,7 +6802,12 @@ mod tests {
              DROP INDEX IF EXISTS idx_fsrs_review_logs_sync_updated_at;
              DROP INDEX IF EXISTS idx_fsrs_review_logs_device_version;
              DROP INDEX IF EXISTS idx_fsrs_review_logs_updated_not_deleted;
-             DROP INDEX IF EXISTS idx_fsrs_logs_state_active;",
+             DROP INDEX IF EXISTS idx_fsrs_logs_state_active;
+             -- V20260720 的 mastery 索引 WHERE 引用 deleted_at；history 删除
+             -- 范围包含 V20260720，对象需一并清理，否则 DROP COLUMN 被拒绝。
+             DROP INDEX IF EXISTS idx_fsrs_review_logs_mastery_pending;
+             -- V20260722 的 review_ms 索引同样 WHERE deleted_at IS NULL。
+             DROP INDEX IF EXISTS idx_fsrs_logs_review_ms;",
         )
         .expect("remove V20260711 history and runtime objects");
     }
@@ -6910,7 +7014,17 @@ mod tests {
                     |row| row.get(0),
                 )
                 .expect("count migration backfill change");
-            assert_eq!(pending, 1, "missing or duplicate backfill for {record_id}");
+            // fsrs_review_logs 额外携带 V20260720 mastery 回填 UPDATE 触发器
+            // 登记的 1 条 pending（mastery_synced_at 初始同步是有意的）。
+            let expected = if table_name == "fsrs_review_logs" {
+                2
+            } else {
+                1
+            };
+            assert_eq!(
+                pending, expected,
+                "missing or duplicate backfill for {record_id}"
+            );
         }
         drop(conn);
 
@@ -6939,15 +7053,38 @@ mod tests {
             ("fsrs_card_states", "state-recovery-soft"),
             ("fsrs_review_logs", "log-recovery-soft"),
         ] {
-            let pending: i64 = conn
+            // 核心幂等契约：V20260711 的 backfill 带 NOT EXISTS 去重，
+            // 重放不得新增 INSERT pending。
+            let inserts: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM __change_log
-                     WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+                     WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0
+                       AND operation = 'INSERT'",
                     params![table_name, record_id],
                     |row| row.get(0),
                 )
-                .expect("count repeated migration backfill change");
-            assert_eq!(pending, 1, "replay duplicated change for {record_id}");
+                .expect("count repeated migration backfill insert");
+            assert_eq!(inserts, 1, "replay duplicated backfill for {record_id}");
+
+            // V20260720 的 mastery 回填 UPDATE 无 WHERE 幂等护栏，且该迁移已在
+            // main 的 migration-lock 锁定（不可再改）：每次恢复重放会再触发一次
+            // update 触发器，追加 1 条 UPDATE pending（首次恢复 2 条、第二次重放
+            // 3 条）。同步消费方按当前状态覆盖，冗余但无害；此处锁定「有界」
+            // 语义，防止失控增长。
+            if table_name == "fsrs_review_logs" {
+                let total: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM __change_log
+                         WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+                        params![table_name, record_id],
+                        |row| row.get(0),
+                    )
+                    .expect("count repeated migration total pending");
+                assert_eq!(
+                    total, 3,
+                    "replay must add at most one mastery UPDATE pending for {record_id}"
+                );
+            }
         }
     }
 

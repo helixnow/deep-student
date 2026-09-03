@@ -50,7 +50,7 @@ export const PdfSettingsSection: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={handleReset}
-            className="gap-1"
+            className="gap-1 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
@@ -220,7 +220,7 @@ export const PdfSettingsSection: React.FC = () => {
               { value: 'dual', label: t('settings:pdf.defaultView.dual') },
             ]}
             variant="outline"
-            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"
             width={80}
           />
         </SettingRow>

@@ -614,6 +614,9 @@ mod tests {
         assert!(POST_WRITE_TRUST_NEXT_STEP.contains("expected_package_sha256"));
         assert!(POST_WRITE_TRUST_NEXT_STEP.contains("declared_risk_level"));
         assert!(POST_WRITE_TRUST_NEXT_STEP.contains("Skills management UI is only a backup"));
-        assert!(POST_WRITE_TRUST_NEXT_STEP.contains("After trust is granted, load_skills"));
+        // grant 后不能在同一 tool loop 内 load_skills（运行时目录快照是授权前的）
+        assert!(
+            POST_WRITE_TRUST_NEXT_STEP.contains("After grant succeeds, do not call load_skills")
+        );
     }
 }

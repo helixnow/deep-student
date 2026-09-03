@@ -49,7 +49,7 @@ interface RagPanelProps {
 // ============================================================================
 
 export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
-  const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
+  const { t } = useTranslation(['chat_host', 'common', 'chatV2', 'enhanced_rag']);
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
@@ -134,7 +134,14 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             {t('chat_host:rag.panel.vfs_subtitle')}
           </span>
         </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onClose}
+          aria-label={t('common:actions.cancel')}
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
           <X size={16} />
         </DsButton>
       </div>
@@ -173,7 +180,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
               size="sm"
               onClick={resetTopK}
               disabled={ragControlsDisabled}
-              className="h-5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="h-5 px-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               {t('common:actions.reset')}
             </DsButton>
@@ -182,7 +189,8 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
 
         {/* Rerank 开关 */}
         <div className="rounded-md border border-border bg-card p-2">
-          <label className="flex items-center justify-between">
+          {/* ★ 触控目标：label 点击即切换 Switch，触屏行高兜底 ≥44px */}
+          <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <span className="text-ui text-foreground">
               {t('enhanced_rag:enable_reranking')}
             </span>
@@ -200,7 +208,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
         </div>
 
         <div className="rounded-md border border-border bg-card p-2">
-          <label className="flex items-center justify-between">
+          <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
             <div className="flex items-center gap-1.5">
               <Image size={13} className="text-muted-foreground" />
               <span className="text-ui text-foreground">
@@ -254,20 +262,20 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
                 </p>
                 {/* 多模态精排开关（默认跟随全局 Rerank） */}
                 <div className="mt-2 border-t border-border/50 pt-2">
-                  <label className="flex items-center justify-between">
+                  <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
                     <span className="text-[12px] text-foreground">
-                      {t('chatV2:ragPanel.multimodalRerankLabel')}
+                      {t('enhanced_rag:enable_reranking')}
                     </span>
                     <Switch
                       size="sm"
                       checked={multimodalEnableReranking}
                       onCheckedChange={toggleMultimodalReranking}
                       disabled={ragControlsDisabled || !multimodalEnabled}
-                      aria-label={t('chatV2:ragPanel.multimodalRerankLabel')}
+                      aria-label={t('enhanced_rag:enable_reranking')}
                     />
                   </label>
                   <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    {t('chatV2:ragPanel.multimodalRerankHelper')}
+                    {t('chat_host:rag.panel.rerank_helper')}
                   </p>
                 </div>
               </div>

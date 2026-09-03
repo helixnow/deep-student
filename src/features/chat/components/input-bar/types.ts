@@ -341,8 +341,12 @@ export interface InputBarUIProps {
   /** 会话 ID（用于审批响应） */
   sessionId?: string;
 
+  authorityMode?: 'ask' | 'plan' | 'craft';
+  onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
   permissionPreset?: PermissionPreset;
   onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
+  /** ask 模式下被拦截时的提示标记（用于 ComposerToolbar 展示） */
+  authorityAskBlockedHint?: boolean;
 
   /** 知识库主动检索开关（加号菜单 → 知识库） */
   knowledgeBaseProactive?: boolean;

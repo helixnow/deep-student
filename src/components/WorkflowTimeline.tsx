@@ -128,7 +128,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
                     type="button"
                     onClick={() => setFocusedStep(meta.step)}
                     className={cn(
-                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+                      'group relative flex min-w-[80px] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:min-h-11',
                       meta.status === 'done' && 'text-emerald-500',
                       meta.status === 'active' && 'text-primary',
                       meta.status === 'pending' && 'text-muted-foreground/70',

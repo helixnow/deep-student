@@ -1,0 +1,2 @@
+{"front": "快速排序的平均时间复杂度是多少？答案是 O(n log n)。", "back": "O(n log n)", "tags": ["算法"]}
+<<<ANKI_CARD_JSON_END>>>

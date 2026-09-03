@@ -55,8 +55,7 @@ describe('phase 6 translation tool surface', () => {
       },
     });
     expect(translate.description).toContain('Low');
-    expect(translate.description).toContain('100000');
-    expect(translate.description).toContain('500000');
+    expect(translationToolsSkill.content).toContain('单段最多 100000');
   });
 
   it('accepts only strict inline term pairs and never advertises glossary_id', () => {
@@ -83,15 +82,10 @@ describe('phase 6 translation tool surface', () => {
     const translate = getTool('builtin-translate_text');
     for (const field of [
       'translation_result_id',
-      'source_lang',
-      'target_lang',
-      'translated_preview（最多 2000 字符）',
+      'translated_preview',
       'translated_truncated',
-      'source_chars',
-      'translated_chars',
       'segment_count',
       'expires_in_seconds',
-      'consumed_after_successful_save',
       'translated',
     ]) {
       expect(translate.description).toContain(field);
@@ -143,25 +137,12 @@ describe('phase 6 translation tool surface', () => {
       'translation_id',
       'resource_id',
       'path',
-      'title',
-      'folder_id',
-      'source_lang',
-      'target_lang',
-      'engine',
-      'model',
-      'created_at',
-      'updated_at',
-      'source_chars',
-      'translated_chars',
-      'source_mode',
-      'translation_result_consumed',
-      'reversible=true',
       'undo',
       'builtin-dstu_delete',
-      'soft_delete_to_trash',
     ]) {
       expect(save.description).toContain(field);
     }
+    expect(save.description).toContain('软删除');
   });
 
   it('documents translation and persistence as two truthful steps', () => {

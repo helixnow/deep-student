@@ -22,6 +22,19 @@ let currentMarkdown = 'current markdown';
 let latestOnChange: ((markdown: string) => void) | null = null;
 let crepeMountCount = 0;
 
+// jsdom 未实现 IntersectionObserver；NotesCrepeEditor 挂载时会为壳层可见性
+// 监听构造实例（observe/disconnect），这里提供无操作的局部 shim。
+class IntersectionObserverStub implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = '';
+  readonly thresholds: readonly number[] = [];
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] { return []; }
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
 const setMarkdown = vi.fn((markdown: string) => {
   currentMarkdown = markdown;
   latestOnChange?.(markdown);

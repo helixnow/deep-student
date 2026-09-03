@@ -82,6 +82,17 @@ export interface ReviewReceipt {
   rating?: FsrsRating;
 }
 
+/** 会话内撤销栈深度上限（Anki 为无限撤销；这里按快照内存开销取有界值） */
+export const REVIEW_UNDO_LIMIT = 20;
+
+/** 单次作答用时上限：超过按上限截断（对齐 Anki max answer time：挂机不应污染用时统计） */
+export const MAX_ANSWER_DURATION_MS = 10 * 60_000;
+
+function pushReviewReceipt(history: ReviewReceipt[], receipt: ReviewReceipt): ReviewReceipt[] {
+  const next = [...history, receipt];
+  return next.length > REVIEW_UNDO_LIMIT ? next.slice(next.length - REVIEW_UNDO_LIMIT) : next;
+}
+
 export interface SuspendedReviewReceipt {
   cardStateId: string;
   queueIndex: number;
@@ -126,12 +137,17 @@ interface FsrsReviewState {
   queue: ReviewCard[];
   queueIndex: number;
   flipped: boolean;
+  /** 翻到背面的时刻（ms）；随评分上报作答用时，收面/评分后清空 */
+  flippedAtMs: number | null;
   loading: boolean;
   ratingBusy: boolean;
   error: string | null;
   errorKind: ReviewSessionErrorKind | null;
   lastRated: FsrsRating | null;
+  /** 撤销栈栈顶（保留字段名兼容既有 UI 消费方；与 reviewHistory 末元素同步） */
   lastReview: ReviewReceipt | null;
+  /** 会话内评分回执栈（多级撤销；上限 REVIEW_UNDO_LIMIT） */
+  reviewHistory: ReviewReceipt[];
   lastSuspended: SuspendedReviewReceipt | null;
   retryBatchRequest: BatchReviewRequest | null;
   sessionRatedCount: number;
@@ -592,12 +608,14 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   queue: [],
   queueIndex: 0,
   flipped: false,
+  flippedAtMs: null,
   loading: false,
   ratingBusy: false,
   error: null,
   errorKind: null,
   lastRated: null,
   lastReview: null,
+  reviewHistory: [],
   lastSuspended: null,
   retryBatchRequest: null,
   sessionRatedCount: 0,
@@ -684,8 +702,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         queue: [],
         queueIndex: 0,
         flipped: false,
+        flippedAtMs: null,
         lastRated: null,
         lastReview: null,
+        reviewHistory: [],
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
@@ -708,8 +728,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       queueIndex: nextReviewableIndex(dueCards, 0),
       sessionMode: 'due',
       flipped: false,
+      flippedAtMs: null,
       lastRated: null,
       lastReview: null,
+      reviewHistory: [],
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
@@ -749,7 +771,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       queue: [],
       queueIndex: 0,
       flipped: false,
+      flippedAtMs: null,
       lastReview: null,
+      reviewHistory: [],
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
@@ -783,8 +807,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         queue: enqueued,
         queueIndex: nextReviewableIndex(enqueued, 0),
         flipped: false,
+        flippedAtMs: null,
         lastRated: null,
         lastReview: null,
+        reviewHistory: [],
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
@@ -806,6 +832,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         queue: [],
         queueIndex: 0,
         flipped: false,
+        flippedAtMs: null,
         loading: false,
         error: errorMessage(error, i18n.t('flashcards:session.prepareFailed')),
         errorKind: 'prepare',
@@ -873,12 +900,15 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       let queueIndex = state.queueIndex;
       let flipped = state.flipped;
       let lastRated = state.lastRated;
-      let lastReview = state.lastReview;
+      // 外部（Agent）动过的卡，其本窗撤销回执已过期：整体从撤销栈剔除
+      let reviewHistory = state.reviewHistory;
       let lastSuspended = state.lastSuspended;
 
       for (const { card, change, index } of affected) {
         const wasSuspended = card.suspended === true;
-        const affectsLastReview = lastReview?.cardStateId === change.cardStateId;
+        const affectsLastReview = reviewHistory.some(
+          (receipt) => receipt.cardStateId === change.cardStateId,
+        );
         const affectsLastSuspended = lastSuspended?.cardStateId === change.cardStateId;
 
         if (action === 'undo_last_review') {
@@ -888,14 +918,18 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             lastRated = null;
           }
           if (affectsLastReview) {
-            lastReview = null;
+            reviewHistory = reviewHistory.filter(
+              (receipt) => receipt.cardStateId !== change.cardStateId,
+            );
             lastRated = null;
           }
           continue;
         }
 
         if (affectsLastReview) {
-          lastReview = null;
+          reviewHistory = reviewHistory.filter(
+            (receipt) => receipt.cardStateId !== change.cardStateId,
+          );
           lastRated = null;
         }
         if (change.suspended) {
@@ -921,8 +955,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         queue,
         queueIndex,
         flipped,
+        ...(flipped === state.flipped ? {} : { flippedAtMs: null }),
         lastRated,
-        lastReview,
+        lastReview: reviewHistory[reviewHistory.length - 1] ?? null,
+        reviewHistory,
         lastSuspended,
       };
     });
@@ -1020,15 +1056,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       let queueIndex = Math.max(0, state.queueIndex - removedBefore);
       let flipped = state.flipped;
       let lastRated = state.lastRated;
-      let lastReview = state.lastReview;
       let ratingPreviews = state.ratingPreviews;
+      // 他端已评的卡：本窗回执过期，从撤销栈剔除；其余回执的快照也剔掉该卡，
+      // 防止后续 undo 用旧快照把已评卡"复活"回本轮队列
+      const reviewHistory = state.reviewHistory
+        .filter((receipt) => !idSet.has(receipt.cardStateId))
+        .map((receipt) => (
+          receipt.queueSnapshot
+            ? { ...receipt, queueSnapshot: receipt.queueSnapshot.filter((card) => !idSet.has(card.id)) }
+            : receipt
+        ));
       if (removedCurrent) {
         flipped = false;
         lastRated = null;
         ratingPreviews = null;
-        if (lastReview && idSet.has(lastReview.cardStateId)) {
-          lastReview = null;
-        }
       }
       queueIndex = nextReviewableIndex(queue, queueIndex);
       const sessionDone = queue.length > 0 && queueIndex >= queue.length;
@@ -1036,8 +1077,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         queue,
         queueIndex,
         flipped,
+        ...(removedCurrent ? { flippedAtMs: null } : {}),
         lastRated,
-        lastReview,
+        lastReview: reviewHistory[reviewHistory.length - 1] ?? null,
+        reviewHistory,
         ratingPreviews,
         remainingDueAfterSession: sessionDone
           ? Math.max(0, state.dueTotal - state.sessionRatedCount)
@@ -1072,10 +1115,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   flip: () => {
     const nextFlipped = !get().flipped;
     if (!nextFlipped) {
-      set({ flipped: false, ratingPreviews: null });
+      set({ flipped: false, flippedAtMs: null, ratingPreviews: null });
       return;
     }
-    set({ flipped: true });
+    // 记录翻面时刻：评分时上报"看到答案 → 作出评分"的真实作答用时
+    set({ flipped: true, flippedAtMs: Date.now() });
     void get().loadRatingPreviews();
   },
 
@@ -1103,10 +1147,16 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   rate: async (rating) => {
-    const { queue, queueIndex, ratingBusy, flipped } = get();
+    const { queue, queueIndex, ratingBusy, flipped, flippedAtMs } = get();
     if (ratingBusy || !flipped) return;
     const current = queue[queueIndex];
     if (!current) return;
+
+    // 作答用时 = 看到答案 → 给出评分；写入 review log 的 duration_ms，
+    // 供统计口径使用。超过上限按上限截断，避免挂机污染用时数据。
+    const durationMs = flippedAtMs != null
+      ? Math.min(Math.max(0, Date.now() - flippedAtMs), MAX_ANSWER_DURATION_MS)
+      : null;
 
     const queueSnapshot = queue.map((card) => ({ ...card }));
     set({ ratingBusy: true, lastRated: rating, error: null, errorKind: null });
@@ -1127,6 +1177,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const result = await invoke<unknown>('fsrs_rate', {
         cardStateId: current.id,
         rating,
+        durationMs,
         clientOpId,
         enforceExpectedLastReview: current.lastReviewMs !== undefined,
         expectedLastReviewMs:
@@ -1211,20 +1262,25 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           ? Math.max(0, state.dueTotal - sessionRatedCount)
           : state.remainingDueAfterSession;
 
+        const receipt: ReviewReceipt = {
+          logId,
+          cardStateId: current.id,
+          queueIndex: baseIndex,
+          queueSnapshot,
+          rating,
+        };
+        const reviewHistory = pushReviewReceipt(state.reviewHistory, receipt);
+
         return {
           queue: nextQueue,
           queueIndex: nextIndex,
           ratingBusy: false,
           flipped: false,
+          flippedAtMs: null,
           ratingPreviews: null,
           lastRated: null,
-          lastReview: {
-            logId,
-            cardStateId: current.id,
-            queueIndex: baseIndex,
-            queueSnapshot,
-            rating,
-          },
+          lastReview: receipt,
+          reviewHistory,
           lastSuspended: null,
           lastSchedule:
             dueMs != null && scheduledDays != null
@@ -1337,13 +1393,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           sessionRatingCounts[lastReview.rating] =
             Math.max(0, sessionRatingCounts[lastReview.rating] - 1);
         }
+        // 弹栈：按 logId 剔除本次撤销的回执（await 期间 reconcile 可能已改栈），
+        // 新栈顶成为下一次可撤销的评分（多级撤销）。
+        const reviewHistory = s.reviewHistory.filter(
+          (receipt) => receipt.logId !== lastReview.logId,
+        );
         return {
           queue: snapshot,
           queueIndex,
           flipped: false,
+          flippedAtMs: null,
           ratingBusy: false,
           lastRated: null,
-          lastReview: null,
+          lastReview: reviewHistory[reviewHistory.length - 1] ?? null,
+          reviewHistory,
           lastSchedule: null,
           remainingDueAfterSession: null,
           ratingPreviews: null,
@@ -1476,6 +1539,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           queue,
           queueIndex: nextReviewableIndex(queue, baseIndex + (liveIndex >= 0 ? 1 : 0)),
           flipped: false,
+          flippedAtMs: null,
           ratingBusy: false,
           lastRated: null,
           ratingPreviews: null,
@@ -1524,6 +1588,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         )),
         queueIndex: lastSuspended.queueIndex,
         flipped: false,
+        flippedAtMs: null,
         ratingBusy: false,
         lastSuspended: null,
         error: null,
@@ -1548,7 +1613,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     if (!current) return;
     // 已是最后一张：无处可挪，仅收起背面
     if (queueIndex >= queue.length - 1) {
-      set({ flipped: false, ratingPreviews: null, lastRated: null });
+      set({ flipped: false, flippedAtMs: null, ratingPreviews: null, lastRated: null });
       return;
     }
     const next = [...queue];
@@ -1558,6 +1623,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       queue: next,
       queueIndex: nextReviewableIndex(next, queueIndex),
       flipped: false,
+      flippedAtMs: null,
       ratingPreviews: null,
       lastRated: null,
     });
@@ -1568,12 +1634,14 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       screen: 'today',
       sessionMode: null,
       flipped: false,
+      flippedAtMs: null,
       lastRated: null,
       ratingBusy: false,
       loading: false,
       error: null,
       errorKind: null,
       lastReview: null,
+      reviewHistory: [],
       lastSuspended: null,
       retryBatchRequest: null,
       sessionRatedCount: 0,
@@ -1589,5 +1657,5 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     requestFlashcardsDueRefresh();
   },
 
-  resetFlip: () => set({ flipped: false, ratingPreviews: null }),
+  resetFlip: () => set({ flipped: false, flippedAtMs: null, ratingPreviews: null }),
 }));

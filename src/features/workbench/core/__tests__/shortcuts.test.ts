@@ -73,8 +73,8 @@ describe('matchWorkbenchShortcut — 非 macOS（历史行为不变）', () => {
       matchWorkbenchShortcut(keydown({ key: '?', shiftKey: true, code: 'Slash' }))?.id,
     ).toBe('cheatsheet');
     expect(matchWorkbenchShortcut(keydown({ key: '?', code: 'Slash' }))?.id).toBe('cheatsheet');
-    // 布局兜底：e.key 为 '/' 但物理键是 Slash
-    expect(matchWorkbenchShortcut(keydown({ key: '/', code: 'Slash' }))?.id).toBe('cheatsheet');
+    // 单独一个 `/` 不再命中：Slash code 兜底已移除（误触修复）
+    expect(matchWorkbenchShortcut(keydown({ key: '/', code: 'Slash' }))).toBeNull();
   });
 
   it('Ctrl+Alt+Shift+E → expose-app（不带 Shift 仍是 expose）', () => {
@@ -149,7 +149,9 @@ describe('matchWorkbenchShortcut — macOS（⌘ 基底映射）', () => {
     expect(
       matchWorkbenchShortcut(keydown({ key: '?', shiftKey: true, code: 'Slash' }))?.id,
     ).toBe('cheatsheet');
-    expect(matchWorkbenchShortcut(keydown({ key: '/', code: 'Slash' }))?.id).toBe('cheatsheet');
+    expect(matchWorkbenchShortcut(keydown({ key: '?', code: 'Slash' }))?.id).toBe('cheatsheet');
+    // `/` 单键不再误触速查表
+    expect(matchWorkbenchShortcut(keydown({ key: '/', code: 'Slash' }))).toBeNull();
   });
 
   it('code 优先匹配策略保持：⌥ 产生替代字符时按 code 命中', () => {

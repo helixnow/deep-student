@@ -36,6 +36,7 @@ import {
   detectFormat,
   importFromFile,
   importFromMmOutline,
+  importFromMmapZip,
   importFromMarkdown,
   importFromXmindZip,
   importMindMap,
@@ -298,7 +299,7 @@ describe('.xmind import report (P3, dropped items)', () => {
 
     const report = createXmindImportReport();
     await importFromXmindZip(bytes, report);
-    expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0 });
+    expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0, embeddedImages: 0 });
   });
 });
 
@@ -354,10 +355,140 @@ describe('detectFormat / importMindMap routing', () => {
     expect(detectFormat('PK\u0003\u0004rest-of-zip')).toBe('xmind');
   });
 
-  it('importMindMap routes mm and rejects string xmind', () => {
+  it('importMindMap routes mm and rejects string xmind/mmap', () => {
     const document = importMindMap('<map version="1.0.1"><node TEXT="a"/></map>');
     expect(document.root.text).toBe('a');
     expect(() => importMindMap('anything', 'xmind')).toThrow('binary data');
+    expect(() => importMindMap('anything', 'mmap')).toThrow('binary data');
+  });
+
+  it('classifies non-opml XML as unknown-xml instead of falling back to opml', () => {
+    expect(detectFormat('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>')).toBe('unknown-xml');
+    expect(detectFormat('<!DOCTYPE html><html><body>hi</body></html>')).toBe('unknown-xml');
+    // 前置注释/声明不影响真实根元素识别
+    expect(detectFormat('<?xml version="1.0"?><!-- exported --><opml version="2.0"><body/></opml>')).toBe('opml');
+  });
+
+  it('reports a clear error for unrecognized XML instead of "Invalid OPML"', () => {
+    let message = '';
+    try {
+      importMindMap('<?xml version="1.0"?><workbook><sheet/></workbook>');
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('Unrecognized XML');
+    expect(message).not.toContain('Invalid OPML');
+  });
+});
+
+describe('.mmap (MindManager) import', () => {
+  const MMAP_DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8"?>
+    <ap:Map xmlns:ap="http://schemas.mindjet.com/MindManager/Application/2003">
+      <ap:OneTopic>
+        <ap:Topic OId="r1">
+          <ap:Text PlainText="MindManager Root"/>
+          <ap:SubTopics>
+            <ap:Topic OId="c1">
+              <ap:Text PlainText="Child A"/>
+              <ap:SubTopics>
+                <ap:Topic OId="g1"><ap:Text PlainText="Grandchild"/></ap:Topic>
+              </ap:SubTopics>
+            </ap:Topic>
+            <ap:Topic OId="c2"><ap:Text PlainText="Child B"/></ap:Topic>
+          </ap:SubTopics>
+        </ap:Topic>
+      </ap:OneTopic>
+    </ap:Map>`;
+
+  async function buildMmapZip(documentXml: string = MMAP_DOCUMENT_XML): Promise<Uint8Array> {
+    const zip = new JSZip();
+    zip.file('Document.xml', documentXml);
+    return zip.generateAsync({ type: 'uint8array' });
+  }
+
+  it('imports the OneTopic tree with the root promoted to id "root"', async () => {
+    const document = await importFromMmapZip(await buildMmapZip());
+    expect(document.root.id).toBe('root');
+    expect(document.root.text).toBe('MindManager Root');
+    expect(document.root.children.map((n) => n.text)).toEqual(['Child A', 'Child B']);
+    expect(document.root.children[0].children[0].text).toBe('Grandchild');
+  });
+
+  it('rejects archives without Document.xml or OneTopic', async () => {
+    const emptyZip = new JSZip();
+    emptyZip.file('other.xml', '<x/>');
+    await expect(importFromMmapZip(await emptyZip.generateAsync({ type: 'uint8array' })))
+      .rejects.toThrow('Document.xml not found');
+
+    await expect(importFromMmapZip(await buildMmapZip('<ap:Map xmlns:ap="urn:x"/>')))
+      .rejects.toThrow('missing OneTopic');
+  });
+
+  it('routes .mmap files through importFromFile', async () => {
+    const file = makeFile([await buildMmapZip()], 'plan.mmap');
+    const document = await importFromFile(file);
+    expect(document.root.text).toBe('MindManager Root');
+  });
+
+  it('falls back to .mmap parsing for extensionless zips that are not .xmind', async () => {
+    const file = makeFile([await buildMmapZip()], 'exported-map-noext');
+    const document = await importFromFile(file);
+    expect(document.root.text).toBe('MindManager Root');
+  });
+});
+
+describe('.xmind image placeholder + multi-sheet meta', () => {
+  it('keeps a note placeholder for dropped images instead of silently discarding them', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{
+      rootTopic: {
+        id: 'r',
+        title: 'WithImage',
+        image: { src: 'xap:resources/pic.png' },
+        notes: { plain: { content: 'existing note' } },
+      },
+    }]));
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const report = createXmindImportReport();
+    const imported = await importFromXmindZip(bytes, report);
+    expect(report.droppedImages).toBe(1);
+    // mock t(key, params) => `${key} ${values}`：断言占位行进入备注且原备注保留
+    expect(imported.root.note).toContain('existing note');
+    expect(imported.root.note).toContain('mindmap:import.imagePlaceholderNote 1');
+  });
+
+  it('adds the image placeholder even without an import report', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{
+      rootTopic: { id: 'r', title: 'NoReport', image: { src: 'xap:r.png' } },
+    }]));
+    const imported = await importFromXmindZip(await zip.generateAsync({ type: 'uint8array' }));
+    expect(imported.root.note).toContain('mindmap:import.imagePlaceholderNote 1');
+  });
+
+  it('records per-sheet origins in meta.sheets when merging multi-sheet files', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([
+      { title: 'Sheet One', rootTopic: { id: 's1', title: 'Alpha' } },
+      { title: 'Sheet Two', rootTopic: { id: 's2', title: 'Beta' } },
+    ]));
+    const imported = await importFromXmindZip(await zip.generateAsync({ type: 'uint8array' }));
+
+    expect(imported.root.children.map((n) => n.text)).toEqual(['Alpha', 'Beta']);
+    expect(imported.meta.sheets).toHaveLength(2);
+    expect(imported.meta.sheets?.map((sheet) => sheet.title)).toEqual(['Sheet One', 'Sheet Two']);
+    // sheet → 虚拟根一级子节点的对应关系必须闭合
+    expect(imported.meta.sheets?.map((sheet) => sheet.rootNodeId))
+      .toEqual(imported.root.children.map((n) => n.id));
+    expect(new Set(imported.meta.sheets?.map((sheet) => sheet.id)).size).toBe(2);
+  });
+
+  it('keeps meta.sheets absent for single-sheet imports (single-tree model untouched)', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([{ rootTopic: { id: 'r', title: 'Solo' } }]));
+    const imported = await importFromXmindZip(await zip.generateAsync({ type: 'uint8array' }));
+    expect(imported.meta.sheets).toBeUndefined();
   });
 });
 

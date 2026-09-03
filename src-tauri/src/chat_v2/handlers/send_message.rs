@@ -1298,8 +1298,15 @@ pub async fn chat_v2_edit_and_resend(
                 let mut updated_block = block.clone();
                 updated_block.content = Some(new_content.clone());
                 ChatV2Repo::update_block_with_conn(&tx, &updated_block).map_err(String::from)?;
+                // 🔧 V20260806 P0：正文已改写，旧 `llm_content`（编辑前的
+                // <user_query> 包装）随之失效。update_block_with_conn 在
+                // content 变更时已置 NULL，这里再显式清空以覆盖「新旧正文
+                // 相同但注入上下文已变化」的编辑；管线首个保存点会按
+                // skip_user 补写路径重写本轮 live 编译的新包装。
+                ChatV2Repo::clear_block_llm_content_with_conn(&tx, &block.id)
+                    .map_err(String::from)?;
                 log::debug!(
-                    "[ChatV2::handlers] Updated content block: block_id={}",
+                    "[ChatV2::handlers] Updated content block (stale llm_content cleared): block_id={}",
                     block.id
                 );
                 break;

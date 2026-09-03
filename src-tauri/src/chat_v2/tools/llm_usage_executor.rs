@@ -788,6 +788,15 @@ mod tests {
             "../../../migrations/llm_usage/V20260130__init.sql"
         ))
         .expect("initialize usage schema");
+        // V20260824：get_recent_usage_page 读取 cache_write_tokens 列
+        conn.execute_batch(include_str!(
+            "../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .expect("apply cache_write_tokens migration");
+        conn.execute_batch(include_str!(
+            "../../../migrations/llm_usage/V20260826__add_stream_identity.sql"
+        ))
+        .expect("apply stream identity migration");
         conn
     }
 

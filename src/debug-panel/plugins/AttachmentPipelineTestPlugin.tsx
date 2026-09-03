@@ -345,7 +345,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">测试图片</label>
-              <Button variant="outline" size="sm" className="w-full justify-start gap-2"
+              <Button variant="outline" size="sm" className="w-full justify-start gap-2 [@media(pointer:coarse)]:min-h-11"
                 onClick={async () => {
                   const path = await fileManager.pickSingleFile({
                     title: '选择测试图片',
@@ -365,7 +365,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">测试 PDF</label>
-              <Button variant="outline" size="sm" className="w-full justify-start gap-2"
+              <Button variant="outline" size="sm" className="w-full justify-start gap-2 [@media(pointer:coarse)]:min-h-11"
                 onClick={async () => {
                   const path = await fileManager.pickSingleFile({
                     title: '选择测试 PDF',
@@ -389,7 +389,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">文本模型</label>
-              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm [@media(pointer:coarse)]:min-h-11"
                 value={textModelId} onChange={e => { setTextModelId(e.target.value); saveConfig({ textModelId: e.target.value }); }}
                 disabled={status === 'running'}>
                 <option value="">选择文本模型...</option>
@@ -402,7 +402,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">多模态模型</label>
-              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm [@media(pointer:coarse)]:min-h-11"
                 value={multimodalModelId} onChange={e => { setMultimodalModelId(e.target.value); saveConfig({ multimodalModelId: e.target.value }); }}
                 disabled={status === 'running'}>
                 <option value="">选择多模态模型...</option>
@@ -417,25 +417,25 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           {/* 选项 + 控制 */}
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label className="flex items-center gap-2 text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
               <Switch size="sm" checked={skipSend} onCheckedChange={(checked) => { setSkipSend(checked); saveConfig({ skipSend: checked }); }}
                 disabled={status === 'running'} />
               仅上传（跳过发送）
             </label>
             <div className="flex items-center gap-2">
               {status === 'running' ? (
-                <Button size="sm" variant="destructive" onClick={handleAbort}>
+                <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleAbort}>
                   <Square size={16} className="mr-1" /> 中止
                 </Button>
               ) : (
                 <>
-                  <Button size="sm" onClick={() => handleStart('image')} disabled={!canStartImage}>
+                  <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => handleStart('image')} disabled={!canStartImage}>
                     <FileImage size={16} className="mr-1" /> 图片测试 ({imageMatrixCount})
                   </Button>
-                  <Button size="sm" onClick={() => handleStart('pdf')} disabled={!canStartPdf}>
+                  <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => handleStart('pdf')} disabled={!canStartPdf}>
                     <FileText size={16} className="mr-1" /> PDF 测试 ({pdfMatrixCount})
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={handlePdfDiag}
+                  <Button size="sm" variant="secondary" className="[@media(pointer:coarse)]:min-h-11" onClick={handlePdfDiag}
                     disabled={!pdfFile || isDiagRunning}
                     title="PDF 提取诊断：对比不加盐/加盐的文本提取结果">
                     {isDiagRunning ? <CircleNotch size={16} className="mr-1 animate-spin" /> : <Warning size={16} className="mr-1" />}
@@ -443,13 +443,13 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   </Button>
                 </>
               )}
-              <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0}>
+              <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleDownload} disabled={results.length === 0}>
                 <Download size={16} />
               </Button>
-              <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0}>
+              <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs} disabled={liveLogs.length === 0}>
                 <Copy size={16} />
               </Button>
-              <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaningUp || status === 'running'}
+              <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCleanup} disabled={isCleaningUp || status === 'running'}
                 title="批量清理测试会话和关联附件">
                 {isCleaningUp ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
                 {isCleaningUp && <span className="ml-1 text-xs">清理中...</span>}
@@ -616,7 +616,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">PDF 提取诊断（不加盐 vs 加盐）</span>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => { setDiagResult(null); setDiagLogs([]); }}>
+            <Button size="sm" variant="ghost" className="h-5 px-1 [@media(pointer:coarse)]:min-h-11" onClick={() => { setDiagResult(null); setDiagLogs([]); }}>
               <Trash size={12} />
             </Button>
           </div>
@@ -662,7 +662,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="h-32 flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
+            <Button size="sm" variant="ghost" className="h-5 px-1 [@media(pointer:coarse)]:min-h-11" onClick={() => setLiveLogs([])}>
               <Trash size={12} />
             </Button>
           </div>

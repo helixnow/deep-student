@@ -3535,7 +3535,9 @@ impl QBankExecutor {
     ) -> Result<Value, String> {
         let service = self.require_service(ctx)?;
         let exam_id = required_non_empty_string(&call.arguments, "session_id")?;
-        let count = read_strict_u32(&call.arguments, "count", 10, 1, 20)?;
+        // 上限对齐 UI 的每日目标范围（5..=50）；此前 Agent 侧封顶 20，
+        // 用户在面板设 21-50 的目标无法交给 Agent 续练
+        let count = read_strict_u32(&call.arguments, "count", 10, 1, 50)?;
         let practice = service
             .get_daily_practice(&exam_id, count)
             .map_err(|error| error.to_string())?;
@@ -3582,11 +3584,25 @@ impl QBankExecutor {
                 )
             })? as i32;
         let month = read_strict_u32(&call.arguments, "month", 1, 1, 12)?;
+        // 达标阈值跟随用户目标（缺省 10），与 UI 的每日一练目标范围 5..=50 兼容
+        let daily_target = match call.arguments.get("daily_target") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(value.as_u64().filter(|n| (1..=50).contains(n)).ok_or_else(
+                || {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        "daily_target 必须是 1..=50 的整数",
+                        "修正每日目标后重试",
+                    )
+                },
+            )? as u32),
+        };
         let calendar = service
             .get_check_in_calendar(
                 call.arguments.get("session_id").and_then(Value::as_str),
                 year,
                 month,
+                daily_target,
             )
             .map_err(|error| error.to_string())?;
         let (page, page_size, start, end) =

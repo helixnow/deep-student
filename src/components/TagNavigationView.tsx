@@ -234,7 +234,7 @@ const TagGroupCard: React.FC<{
               }}
               placeholder={t('learningHub:exam.library.renameTagPlaceholder')}
               disabled={renameBusy}
-              className="h-7 flex-1 min-w-0 bg-background text-sm"
+              className="h-7 flex-1 min-w-0 bg-background text-sm [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               aria-label={t('learningHub:exam.library.renameTag')}
             />
             <DsButton
@@ -299,7 +299,7 @@ const TagGroupCard: React.FC<{
               size="icon"
               iconOnly
               onClick={(e) => { e.stopPropagation(); onRenameStart(); }}
-              className="!h-5 !w-5 !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-5 !w-5 !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               aria-label={t('learningHub:exam.library.renameTag')}
               title={t('learningHub:exam.library.renameTag')}
             >
@@ -344,7 +344,7 @@ const TagGroupCard: React.FC<{
           {/* 操作按钮 - 内联式 */}
           <div className="flex items-center gap-2 py-1.5 mb-1">
             {onStartPractice && (
-              <DsButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
+              <DsButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5">
                 <Play size={12} />
                 {t('tagNav.practice')}
               </DsButton>
@@ -371,7 +371,7 @@ const TagGroupCard: React.FC<{
                   variant="ghost" size="sm"
                   onClick={() => onQuestionClick?.(q.id)}
                   disabled={!onQuestionClick}
-                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 !text-left hover:bg-accent [content-visibility:auto] [contain-intrinsic-size:auto_32px]"
+                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!min-h-11 !text-left hover:bg-accent [content-visibility:auto] [contain-intrinsic-size:auto_32px]"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />
@@ -659,7 +659,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('tagNav.searchPlaceholder')}
             className={cn(
-              'pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+              'pl-9 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
               '[&::-webkit-search-cancel-button]:hidden',
               searchQuery && 'pr-8'
             )}
@@ -670,7 +670,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
               size="icon"
               iconOnly
               onClick={() => setSearchQuery('')}
-              className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!right-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!right-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               aria-label={t('learningHub:exam.library.clearSearch')}
               title={t('learningHub:exam.library.clearSearch')}
             >
@@ -685,7 +685,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('tree')}
-            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10', viewMode === 'tree' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'tree' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.treeView')}
             title={t('learningHub:exam.library.treeView')}
           >
@@ -695,7 +695,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('cloud')}
-            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10', viewMode === 'cloud' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'cloud' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.cloudView')}
             title={t('learningHub:exam.library.cloudView')}
           >
@@ -710,7 +710,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             size="icon"
             iconOnly
             onClick={toggleExpandAll}
-            className="!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            className="!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             aria-label={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
             title={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
           >
@@ -729,7 +729,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                 ? t('learningHub:exam.library.noMatchFor', { query: searchQuery.trim() })
                 : t('tagNav.noResults')}
             </p>
-            <DsButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5">
               {t('common:clear')}
             </DsButton>
           </div>
@@ -748,7 +748,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                     onClick={() => setCloudSelectedTag(isActive ? null : group.tag)}
                     style={{ ...staggerStyle(index), fontSize: `${Math.round(12 + ratio * 8)}px` }}
                     className={cn(
-                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border',
+                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3.5',
                       isActive
                         ? 'border-primary/50 bg-primary/10 text-primary font-medium'
                         : 'border-border/60 text-foreground/80 hover:border-primary/40 hover:bg-primary/5'

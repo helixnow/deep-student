@@ -100,7 +100,7 @@ function ButtonCompareSection() {
             <button
               key={s}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', size === s ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', size === s ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setSize(s)}
             >
               {s.toUpperCase()}
@@ -128,7 +128,7 @@ function ButtonCompareSection() {
               <tr key={v.label} className="border-b border-[color:var(--border-soft)]">
                 <td className="py-3 pr-4 text-[color:var(--text-secondary)]">{v.label}</td>
                 <td className="py-3 pr-4">
-                  <DsButton variant={v.cardVariant as any} size={size} disabled={disabled}>
+                  <DsButton variant={v.cardVariant as any} size={size} disabled={disabled} className="[@media(pointer:coarse)]:!min-h-11">
                     {v.label}
                   </DsButton>
                 </td>
@@ -141,7 +141,7 @@ function ButtonCompareSection() {
                   <button
                     type="button"
                     disabled={disabled}
-                    className="px-3 py-1.5 rounded border text-xs disabled:opacity-50"
+                    className="px-3 py-1.5 rounded border text-xs disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                   >
                     {v.label}
                   </button>
@@ -216,7 +216,7 @@ function FormControlsCompareSection() {
                   onChange={e => setInputValue(e.target.value)}
                   placeholder="native <input>"
                   disabled={disabled}
-                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50"
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
 />
               </td>
             </tr>
@@ -243,7 +243,7 @@ function FormControlsCompareSection() {
                   onChange={e => setTextareaValue(e.target.value)}
                   placeholder="native <textarea>"
                   disabled={disabled}
-                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y"
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y [@media(pointer:coarse)]:min-h-11"
 />
               </td>
             </tr>
@@ -366,7 +366,7 @@ function FormControlsCompareSection() {
                   value={selectValue}
                   onChange={e => setSelectValue(e.target.value)}
                   disabled={disabled}
-                  className="w-full px-2 py-1.5 rounded border text-sm disabled:opacity-50"
+                  className="w-full px-2 py-1.5 rounded border text-sm disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                 >
                   <option value="a">选项 A</option>
                   <option value="b">选项 B</option>
@@ -410,7 +410,7 @@ function TooltipCompareSection() {
             <button
               key={p}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', position === p ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', position === p ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setPosition(p)}
             >
               {p}
@@ -423,7 +423,7 @@ function TooltipCompareSection() {
             <button
               key={t}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', theme === t ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', theme === t ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setTheme(t)}
             >
               {t}
@@ -436,7 +436,7 @@ function TooltipCompareSection() {
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">CommonTooltip (目标)</p>
           <CommonTooltip content="这是 CommonTooltip" position={position} theme={theme}>
-            <DsButton variant="outline" size="sm">Hover me</DsButton>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
           </CommonTooltip>
         </div>
 
@@ -445,7 +445,7 @@ function TooltipCompareSection() {
           <ShadTooltipProvider>
             <ShadTooltip>
               <ShadTooltipTrigger asChild>
-                <DsButton variant="outline" size="sm">Hover me</DsButton>
+                <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
               </ShadTooltipTrigger>
               <ShadTooltipContent side={position === 'left' ? 'left' : position === 'right' ? 'right' : position === 'bottom' ? 'bottom' : 'top'}>
                 这是 shad Tooltip
@@ -456,7 +456,7 @@ function TooltipCompareSection() {
 
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">原生 title (对照)</p>
-          <DsButton variant="outline" size="sm" title="这是原生 title">Hover me</DsButton>
+          <DsButton variant="outline" size="sm" title="这是原生 title" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
         </div>
       </div>
     </div>
@@ -532,7 +532,7 @@ function ToastCompareSection() {
             <button
               key={opt.label}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', iconIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', iconIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setIconIdx(idx)}
             >
               {opt.label}
@@ -545,7 +545,7 @@ function ToastCompareSection() {
             <button
               key={opt.label}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', progressIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', progressIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setProgressIdx(idx)}
             >
               {opt.label}
@@ -558,7 +558,7 @@ function ToastCompareSection() {
             <button
               key={b ?? 'auto'}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', borderTone === b ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', borderTone === b ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setBorderTone(b)}
             >
               {b ?? 'auto'}
@@ -573,6 +573,7 @@ function ToastCompareSection() {
             key={sample.label}
             variant="outline"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => fireToast(sample)}
           >
             触发 {sample.label}
@@ -620,7 +621,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <DsButton variant="outline" size="sm">打开 Popover</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">打开 Popover</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8}>
                       <div className="space-y-2 p-2">
@@ -642,7 +643,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <DsButton variant="outline" size="sm">日期筛选</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">日期筛选</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8} className="w-56">
                       <div className="space-y-2 p-2">
@@ -698,7 +699,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadDialog>
                     <ShadDialogTrigger asChild>
-                      <DsButton variant="outline" size="sm">shad Dialog</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">shad Dialog</DsButton>
                     </ShadDialogTrigger>
                     <ShadDialogContent>
                       <ShadDialogHeader>
@@ -709,14 +710,14 @@ function PopupCompareSection() {
                         内容区域示例。shad Dialog 基于自定义 portal 实现，使用 framer-motion 动画。
                       </p>
                       <ShadDialogFooter>
-                        <DsButton variant="ghost" size="sm">取消</DsButton>
-                        <DsButton variant="primary" size="sm">确认</DsButton>
+                        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11">取消</DsButton>
+                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11">确认</DsButton>
                       </ShadDialogFooter>
                     </ShadDialogContent>
                   </ShadDialog>
                 </td>
                 <td className="py-3 pr-4 align-top">
-                  <DsButton variant="outline" size="sm" onClick={() => setDsDialogOpen(true)}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setDsDialogOpen(true)}>
                     DsDialog
                   </DsButton>
                   <DsDialog
@@ -746,7 +747,7 @@ function PopupCompareSection() {
             <button
               key={side}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', sheetSide === side ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', sheetSide === side ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setSheetSide(side)}
             >
               {side}
@@ -773,7 +774,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadSheet>
                     <ShadSheetTrigger asChild>
-                      <DsButton variant="outline" size="sm">打开 Sheet ({sheetSide})</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">打开 Sheet ({sheetSide})</DsButton>
                     </ShadSheetTrigger>
                     <ShadSheetContent side={sheetSide}>
                       <ShadSheetHeader>
@@ -787,7 +788,7 @@ function PopupCompareSection() {
                         <p className="mt-2">基于 Radix Dialog 原语实现，支持四方向滑入动画。</p>
                       </div>
                       <ShadSheetFooter>
-                        <DsButton variant="primary" size="sm">完成</DsButton>
+                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11">完成</DsButton>
                       </ShadSheetFooter>
                     </ShadSheetContent>
                   </ShadSheet>
@@ -898,7 +899,7 @@ function SegmentedCompareSection() {
 
       {/* 遗留形态 — 迁移基线，视觉弱化 */}
       <details className="rounded-[var(--radius-shell-row)] border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface-muted)]/50 px-4 py-3 group">
-        <summary className="cursor-pointer list-none text-[11px] text-[color:var(--text-muted)] flex items-center gap-2">
+        <summary className="cursor-pointer list-none text-[11px] text-[color:var(--text-muted)] flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--text-muted)]" />
           <span>遗留形态（手写 div + button，禁止新增）</span>
           <span className="ml-auto text-[10px] opacity-60 group-open:hidden">展开查看</span>
@@ -919,7 +920,7 @@ function SegmentedCompareSection() {
                   aria-checked={selected}
                   onClick={() => setLegacyThemeMode(mode)}
                   className={cn(
-                    'px-3 py-1 rounded-full text-xs transition-colors',
+                    'px-3 py-1 rounded-full text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
                     selected
                       ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]'
                       : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]',
@@ -980,7 +981,7 @@ export function ComponentCompareTab() {
             key={s.id}
             type="button"
             className={cn(
-              'px-3 py-1.5 text-xs rounded-t-md transition-colors -mb-px border-b-2',
+              'px-3 py-1.5 text-xs rounded-t-md transition-colors -mb-px border-b-2 [@media(pointer:coarse)]:min-h-11',
               activeSection === s.id
                 ? 'border-[color:var(--button-primary-foreground)] text-[color:var(--text-primary)] bg-[color:var(--surface-elevated)]'
                 : 'border-transparent text-[color:var(--text-muted)] hover:text-[color:var(--text-secondary)]',

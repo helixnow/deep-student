@@ -5,7 +5,179 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18next from 'i18next';
+import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { getErrorMessage } from './errorUtils';
+
+export const FTP_UNSUPPORTED_ON_ANDROID_CODE = 'E_FTP_UNSUPPORTED_ON_ANDROID';
+export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
+export const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT';
+export const CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK';
+export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
+  'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
+export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
+export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
+export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
+export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
+export const SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE = 'E_SYNC_E2EE_MEMORY_PERSIST_FAILED';
+export const SYNC_E2EE_DOWNGRADE_REJECTED_CODE = 'E_SYNC_E2EE_DOWNGRADE_REJECTED';
+export const SYNC_E2EE_CLAIM_CONFLICT_CODE = 'E_SYNC_E2EE_CLAIM_CONFLICT';
+export const SYNC_BAD_OBJECT_FAIL_CLOSED_CODE = 'E_SYNC_BAD_OBJECT_FAIL_CLOSED';
+export const DG_TOMBSTONE_LIMITER_BUSY_CODE = 'E_DG_TOMBSTONE_LIMITER_BUSY';
+export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
+export const SEALED_BACKUP_PASSWORD_REQUIRED_CODE = 'E_BACKUP_SEALED_PASSWORD_REQUIRED';
+export const SEALED_BACKUP_DECRYPT_FAILED_CODE = 'E_BACKUP_SEALED_DECRYPT_FAILED';
+export const ATOMIC_RESTORE_UNAVAILABLE_CODE = 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE';
+export const BACKUP_DIR_MISSING_CODE = 'E_BACKUP_DIR_MISSING';
+export const RESTORE_DISK_BUDGET_OVERFLOW_CODE = 'E_RESTORE_DISK_BUDGET_OVERFLOW';
+export const ZIP_EXPORT_TEMP_MISSING_CODE = 'E_ZIP_EXPORT_TEMP_MISSING';
+export const ZIP_EXPORT_COPY_TARGET_FAILED_CODE = 'E_ZIP_EXPORT_COPY_TARGET_FAILED';
+
+/**
+ * Whether an imported ZIP's job stats say the archive can replace the data slot.
+ *
+ * Missing stats (older backends) return true so `restoreBackup` still decides.
+ * `partial_archive` or explicit `restorable: false` must not start slot restore.
+ */
+export function isImportedArchiveSlotRestorable(
+  stats: { recovery_kind?: unknown; restorable?: unknown } | null | undefined,
+): boolean {
+  if (!stats || typeof stats !== 'object') return true;
+  if (stats.recovery_kind === 'partial_archive') return false;
+  if (stats.restorable === false) return false;
+  return true;
+}
+
+type ErrorWithCode = Error & { code?: string };
+
+function asErrorRecord(raw: unknown): Record<string, unknown> | null {
+  let candidate = raw instanceof Error ? raw.message : raw;
+  if (typeof candidate === 'string') {
+    const text = candidate.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      candidate = JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+  return typeof candidate === 'object' && candidate !== null
+    ? candidate as Record<string, unknown>
+    : null;
+}
+
+/**
+ * Extract the backend's stable cloud-storage code from either the canonical
+ * CommandError envelope or the legacy AppError `{ details: { code } }` shape.
+ * Messages are intentionally ignored for dispatch.
+ */
+export function getCloudStorageErrorCode(error: unknown): string | undefined {
+  const envelope = parseCommandErrorEnvelope(error)
+    ?? (error instanceof Error ? parseCommandErrorEnvelope(error.message) : null);
+  if (envelope) return envelope.code;
+
+  const record = asErrorRecord(error);
+  if (record) {
+    if (typeof record.code === 'string') return record.code;
+    if (typeof record.errorCode === 'string') return record.errorCode;
+
+    const details = typeof record.details === 'object' && record.details !== null
+      ? record.details as Record<string, unknown>
+      : null;
+    if (typeof details?.code === 'string') return details.code;
+    if (typeof details?.errorCode === 'string') return details.errorCode;
+  }
+  return codeFromDiagnosticText(getErrorMessage(error));
+}
+
+function codeFromDiagnosticText(text: string): string | undefined {
+  // [R5-i18n] 后端用户可见错误的通用惯例是 `[E_...] 中文诊断`（对齐
+  // restore_codes.rs / ATOMIC_RESTORE_UNAVAILABLE_CODE 的用法）：优先提取
+  // 方括号里的稳定码，新码无须逐个登记即可参与 code-only 映射。
+  const bracketed = /\[(E_[A-Z0-9_]+)\]/.exec(text);
+  if (bracketed) return bracketed[1];
+  // 兜底：旧诊断可能不带方括号、码出现在文案中间。
+  if (text.includes(CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE)) {
+    return CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE;
+  }
+  if (text.includes(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE)) {
+    return STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_MARKER_CORRUPTED_CODE)) {
+    return SYNC_E2EE_MARKER_CORRUPTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_WRONG_PASSWORD_CODE)) {
+    return SYNC_E2EE_WRONG_PASSWORD_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE)) {
+    return SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PASSWORD_REQUIRED_CODE)) {
+    return SYNC_E2EE_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE)) {
+    return PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE;
+  }
+  if (text.includes(SEALED_BACKUP_PASSWORD_REQUIRED_CODE)) {
+    return SEALED_BACKUP_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(SEALED_BACKUP_DECRYPT_FAILED_CODE)) {
+    return SEALED_BACKUP_DECRYPT_FAILED_CODE;
+  }
+  if (text.includes(ATOMIC_RESTORE_UNAVAILABLE_CODE)) {
+    return ATOMIC_RESTORE_UNAVAILABLE_CODE;
+  }
+  return undefined;
+}
+
+/**
+ * Keep a stable backend code when legacy API wrappers normalize an invoke
+ * rejection into `Error`; CloudStorageSection can then localize by code.
+ */
+export function normalizeCloudStorageError(error: unknown): ErrorWithCode {
+  const normalized = new Error(getErrorMessage(error)) as ErrorWithCode;
+  normalized.code = getCloudStorageErrorCode(error);
+  return normalized;
+}
+
+export type CloudPlatformErrorI18nKey =
+  | 'cloudStorage:errors.ftpDisabledAndroid'
+  | 'cloudStorage:errors.s3DisabledInBuild';
+
+export type CloudEncryptionErrorI18nKey =
+  | 'cloudStorage:encryption.tooShort'
+  | 'cloudStorage:encryption.tooWeak'
+  | 'cloudStorage:encryption.storedPasswordRequired';
+
+/** Platform capability errors are localized exclusively by stable backend code. */
+export function getCloudPlatformErrorI18nKey(
+  error: unknown,
+): CloudPlatformErrorI18nKey | undefined {
+  switch (getCloudStorageErrorCode(error)) {
+    case FTP_UNSUPPORTED_ON_ANDROID_CODE:
+      return 'cloudStorage:errors.ftpDisabledAndroid';
+    case S3_UNSUPPORTED_IN_BUILD_CODE:
+      return 'cloudStorage:errors.s3DisabledInBuild';
+    default:
+      return undefined;
+  }
+}
+
+/** Short-password / stored-password refusals prefer stable code, then message token. */
+export function getCloudEncryptionErrorI18nKey(
+  error: unknown,
+): CloudEncryptionErrorI18nKey | undefined {
+  switch (getCloudStorageErrorCode(error)) {
+    case CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE:
+      return 'cloudStorage:encryption.tooShort';
+    case CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE:
+      return 'cloudStorage:encryption.tooWeak';
+    case STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE:
+      return 'cloudStorage:encryption.storedPasswordRequired';
+    default:
+      return undefined;
+  }
+}
 
 // ============== 类型定义 ==============
 
@@ -110,7 +282,7 @@ export interface CloudConfigSsotResponse {
 export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudStorageConfig {
   switch (config.provider) {
     case 'webdav': {
-      if (!config.webdav) throw new Error('Missing WebDAV configuration');
+      if (!config.webdav) throw new Error(i18next.t('backend_errors:cloud_storage.missing_webdav_config'));
       return {
         provider: 'webdav',
         webdav: {
@@ -122,7 +294,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
       };
     }
     case 's3': {
-      if (!config.s3) throw new Error('Missing S3 configuration');
+      if (!config.s3) throw new Error(i18next.t('backend_errors:cloud_storage.missing_s3_config'));
       return {
         provider: 's3',
         s3: {
@@ -279,6 +451,78 @@ export async function clearCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
   return invoke<CloudConfigSsotResponse>('cloud_config_ssot_clear');
 }
 
+// ============== 草稿测试 / 发布（配置事务边界） ==============
+
+/** `cloud_config_test_connection_draft` 的返回。连接失败走 rejection。 */
+export interface CloudConfigDraftTestResponse {
+  ok: boolean;
+  /** 当前 active 凭据 generation；草稿测试只读，绝不 bump。 */
+  generation: number;
+}
+
+/**
+ * `cloud_config_publish` 的返回：后端在一次逻辑提交内写入凭据与非敏感
+ * 配置（任何一步失败保持旧 generation 与旧 SSOT）。secret 值不回传；
+ * 凭据存在旗标另经只读的 `getCredentialStatus` 获取。
+ */
+export interface CloudConfigPublishResponse {
+  ok: boolean;
+  /** 提交成功后的新 active generation。 */
+  generation: number;
+  provider: StorageProvider;
+  root?: string;
+  config: SafeCloudStorageConfig;
+}
+
+/**
+ * 草稿试连：把当前表单的非敏感配置与凭据一次性传给后端做连接测试。
+ * 后端不写安全存储、不改 active SSOT/generation——测试失败的配置只存在
+ * 于表单草稿中，永远不会成为「已发布」配置。
+ *
+ * 凭据空字段表示「草稿缺该凭据」；「空=保留」的合并语义只属于 publish，
+ * 不属于草稿测试。
+ *
+ * 保留后端 CommandError envelope，调用方按稳定 code（SECURE_STORE_* /
+ * 平台能力 code）展示可行动提示。
+ */
+export async function testConnectionDraft(
+  config: CloudStorageConfig,
+  credentials: CloudStorageCredentials,
+  options?: {
+    /** 声明草稿携带的是存量加密口令（换机/重装重输），放行 8 字符门。 */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
+): Promise<CloudConfigDraftTestResponse> {
+  return invoke<CloudConfigDraftTestResponse>('cloud_config_test_connection_draft', {
+    config: toSafeCloudStorageConfig(config),
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
+}
+
+/**
+ * 发布配置：凭据+非敏感配置由后端 `cloud_config_publish` 作为单个逻辑
+ * 提交写入；失败保持旧 generation（旧凭据与旧 SSOT 原样生效），绝不留
+ * 「凭据已换、配置还旧」的半更新态。凭据空字段=保留已发布值的合并语义
+ * 仅在本命令生效。
+ *
+ * 保留后端 CommandError envelope，调用方按稳定 code 展示可行动提示。
+ */
+export async function publishCloudConfig(
+  config: CloudStorageConfig,
+  credentials: CloudStorageCredentials,
+  options?: {
+    /** 声明提交的是存量加密口令（换机/重装重输），放行 8 字符门。 */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
+): Promise<CloudConfigPublishResponse> {
+  return invoke<CloudConfigPublishResponse>('cloud_config_publish', {
+    config: toSafeCloudStorageConfig(config),
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
+}
+
 function credentialsFromLegacyConfig(config: CloudStorageConfig): CloudStorageCredentials {
   return {
     webdavPassword: config.webdav?.password || undefined,
@@ -340,7 +584,9 @@ export async function resolveCloudStorageConfig(
   const safe = toSafeCloudStorageConfig(candidate);
   const credentials = credentialsFromLegacyConfig(candidate);
   if (hasCredentials(credentials)) {
-    await saveCredentials(credentials);
+    // 迁移携带的是 v0.9.44 时代已经在用的存量口令：按「新设口令」的最小长度
+    // 拒绝它会让整个 resolveCloudStorageConfig 抛错，云配置直接解析失败。
+    await saveCredentials(credentials, { encryptionPasswordIsPreexisting: true });
   }
   const migrated = await saveCloudConfigSsot(candidate);
   if (!migrated.configured || !migrated.config) {
@@ -395,6 +641,35 @@ export interface BackupVersion {
   appVersion?: string;
   /** 备注 */
   note?: string;
+  /**
+   * 导入后能否整槽恢复。旧云端清单没有该字段，按未知处理。
+   * `partial_archive` 表示便携/部分归档，不能替换数据槽。
+   */
+  recoveryKind?: 'disaster_recovery' | 'partial_archive' | string;
+}
+
+export function findCloudBackupVersion(
+  versionId: string | null | undefined,
+  versions: readonly BackupVersion[],
+  latest?: BackupVersion | null,
+): BackupVersion | undefined {
+  if (!versionId) return undefined;
+  return versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined);
+}
+
+export function isKnownPortableCloudBackup(
+  version: Pick<BackupVersion, 'recoveryKind'> | null | undefined,
+): boolean {
+  return version?.recoveryKind === 'partial_archive';
+}
+
+/** [P11] 「本机加密目录记忆」（第二道明文防线）持久化失败状态 */
+export interface EncryptionMemoryPersistFailure {
+  /** 稳定错误码（恒为 SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE；文案走 i18n） */
+  code: string;
+  /** 失败发生时间（RFC3339） */
+  at: string;
 }
 
 /** 同步状态 */
@@ -409,6 +684,8 @@ export interface SyncStatus {
   lastSyncTime?: string;
   /** 错误信息 */
   error?: string;
+  /** [P11] 上次「本机加密目录记忆」持久化失败（缺省 = 无失败） */
+  encryptionMemoryPersistFailure?: EncryptionMemoryPersistFailure;
 }
 
 /** 上传结果 */
@@ -430,7 +707,11 @@ export interface DownloadResult {
 // ============== 存储层 API ==============
 
 /**
- * 检查云存储连接
+ * 检查云存储连接（同步引擎内部使用）
+ *
+ * 该命令由后端从已发布 SSOT + 安全存储 hydrate 凭据，只能验证「已发布」
+ * 配置。设置页的测试按钮不要再走这里——草稿测试必须用 `testConnectionDraft`，
+ * 否则会拿旧凭据得出与表单草稿无关的结论。
  */
 export async function checkConnection(config: CloudStorageConfig): Promise<boolean> {
   try {
@@ -438,7 +719,7 @@ export async function checkConnection(config: CloudStorageConfig): Promise<boole
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -457,7 +738,7 @@ export async function putFile(
       data: Array.from(data),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -475,7 +756,7 @@ export async function getFile(
     });
     return data ? new Uint8Array(data) : null;
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -492,7 +773,7 @@ export async function listFiles(
       prefix,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -509,7 +790,7 @@ export async function deleteFile(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -526,7 +807,7 @@ export async function statFile(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -543,7 +824,7 @@ export async function fileExists(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -558,7 +839,7 @@ export async function getSyncStatus(config: CloudStorageConfig): Promise<SyncSta
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -571,7 +852,7 @@ export async function listVersions(config: CloudStorageConfig): Promise<BackupVe
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -582,7 +863,8 @@ export async function uploadBackup(
   config: CloudStorageConfig,
   zipPath: string,
   appVersion?: string,
-  note?: string
+  note?: string,
+  recoveryKind?: string,
 ): Promise<UploadResult> {
   try {
     return await invoke<UploadResult>('cloud_sync_upload', {
@@ -590,9 +872,10 @@ export async function uploadBackup(
       zipPath,
       appVersion,
       note,
+      recoveryKind,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -600,20 +883,26 @@ export async function uploadBackup(
  * 从云端下载备份
  * @param versionId 版本 ID（null 表示下载最新版本）
  * @param localDir 本地保存目录
+ * @param allowPlaintextHistory [R6-downgrade-optin] 仅本次下载生效的显式确认：
+ *   「我知道这是启用加密前的旧明文版本，仍要恢复」。缺省 = 拒绝（后端防降级
+ *   默认拒明文，E_SYNC_E2EE_DOWNGRADE_REJECTED）。调用方必须来自用户当次的
+ *   显式勾选 + 二次确认，禁止持久化该值或默认传 true。
  */
 export async function downloadBackup(
   config: CloudStorageConfig,
   versionId: string | null,
-  localDir: string
+  localDir: string,
+  allowPlaintextHistory?: boolean
 ): Promise<DownloadResult> {
   try {
     return await invoke<DownloadResult>('cloud_sync_download', {
       config: toRuntimeCloudStorageConfig(config),
       versionId,
       localDir,
+      allowPlaintextHistory: allowPlaintextHistory === true,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -630,7 +919,7 @@ export async function deleteVersion(
       versionId,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -641,7 +930,7 @@ export async function getDeviceId(): Promise<string> {
   try {
     return await invoke<string>('cloud_sync_get_device_id');
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -775,9 +1064,20 @@ export interface CloudStorageCredentialStatus {
  */
 export async function saveCredentials(
   credentials: CloudStorageCredentials,
+  options?: {
+    /**
+     * 声明提交的是存量加密口令（换机/重装重输、legacy 配置迁移）。
+     * 8 字符下限只是新设口令的准入；v0.9.44 从未限制长度，存量口令必须
+     * 放行，否则既有云端密文在产品内永远打不开。
+     */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
 ): Promise<CloudStorageCredentialStatus> {
   // 保留后端 CommandError envelope，调用方需要稳定 code 展示可行动的密钥库提示。
-  return await invoke<CloudStorageCredentialStatus>('secure_save_cloud_credentials', { credentials });
+  return await invoke<CloudStorageCredentialStatus>('secure_save_cloud_credentials', {
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
 }
 
 /**
@@ -788,13 +1088,23 @@ export async function getCredentialStatus(): Promise<CloudStorageCredentialStatu
 }
 
 /**
+ * 显式停用端到端加密：仅从系统安全存储删除加密密码，
+ * WebDAV/S3/FTP 传输凭据保持不变。
+ *
+ * 保留后端 CommandError envelope，调用方按 SECURE_STORE_* code 展示可行动提示。
+ */
+export async function clearEncryptionPassword(): Promise<CloudStorageCredentialStatus> {
+  return await invoke<CloudStorageCredentialStatus>('secure_clear_cloud_encryption_password');
+}
+
+/**
  * 删除云存储凭据
  */
 export async function deleteCredentials(): Promise<void> {
   try {
     await invoke('secure_delete_cloud_credentials');
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 

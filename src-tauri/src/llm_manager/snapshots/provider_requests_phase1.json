@@ -1,0 +1,266 @@
+[
+  {
+    "case": "openai_chat_completions/official/reasoning=false",
+    "url": "https://api.mistral.ai/v1/chat/completions",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "max_tokens",
+      "messages",
+      "model",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_chat_completions/official/reasoning=true",
+    "url": "https://api.mistral.ai/v1/chat/completions",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "max_tokens",
+      "messages",
+      "model",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_chat_completions/third_party/reasoning=false",
+    "url": "https://proxy.example.com/v1/chat/completions",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "max_tokens",
+      "messages",
+      "model",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_chat_completions/third_party/reasoning=true",
+    "url": "https://proxy.example.com/v1/chat/completions",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "max_tokens",
+      "messages",
+      "model",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_responses/official/reasoning=false",
+    "url": "https://api.openai.com/v1/responses",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "include",
+      "input",
+      "instructions",
+      "max_output_tokens",
+      "model",
+      "prompt_cache_key",
+      "reasoning",
+      "store",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_responses/official/reasoning=true",
+    "url": "https://api.openai.com/v1/responses",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "include",
+      "input",
+      "instructions",
+      "max_output_tokens",
+      "model",
+      "prompt_cache_key",
+      "reasoning",
+      "store",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_responses/third_party/reasoning=false",
+    "url": "https://responses.example.com/v1/responses",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "include",
+      "input",
+      "instructions",
+      "max_output_tokens",
+      "model",
+      "prompt_cache_key",
+      "reasoning",
+      "store",
+      "stream"
+    ]
+  },
+  {
+    "case": "openai_responses/third_party/reasoning=true",
+    "url": "https://responses.example.com/v1/responses",
+    "header_keys": [
+      "authorization",
+      "content-type",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "include",
+      "input",
+      "instructions",
+      "max_output_tokens",
+      "model",
+      "prompt_cache_key",
+      "reasoning",
+      "store",
+      "stream"
+    ]
+  },
+  {
+    "case": "anthropic_messages/official/reasoning=false",
+    "url": "https://api.anthropic.com/v1/messages",
+    "header_keys": [
+      "anthropic-version",
+      "content-type",
+      "x-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "cache_control",
+      "max_tokens",
+      "messages",
+      "model",
+      "system"
+    ]
+  },
+  {
+    "case": "anthropic_messages/official/reasoning=true",
+    "url": "https://api.anthropic.com/v1/messages",
+    "header_keys": [
+      "anthropic-version",
+      "content-type",
+      "x-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "cache_control",
+      "max_tokens",
+      "messages",
+      "model",
+      "system"
+    ]
+  },
+  {
+    "case": "anthropic_messages/third_party/reasoning=false",
+    "url": "https://anthropic-proxy.example.com/v1/messages",
+    "header_keys": [
+      "anthropic-version",
+      "content-type",
+      "x-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "cache_control",
+      "max_tokens",
+      "messages",
+      "model",
+      "system"
+    ]
+  },
+  {
+    "case": "anthropic_messages/third_party/reasoning=true",
+    "url": "https://anthropic-proxy.example.com/v1/messages",
+    "header_keys": [
+      "anthropic-version",
+      "content-type",
+      "x-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "cache_control",
+      "max_tokens",
+      "messages",
+      "model",
+      "system"
+    ]
+  },
+  {
+    "case": "google_generate_content/official/reasoning=false",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=<api-key>",
+    "header_keys": [
+      "content-type",
+      "x-goog-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "contents",
+      "generationConfig",
+      "systemInstruction"
+    ]
+  },
+  {
+    "case": "google_generate_content/official/reasoning=true",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=<api-key>",
+    "header_keys": [
+      "content-type",
+      "x-goog-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "contents",
+      "generationConfig",
+      "systemInstruction"
+    ]
+  },
+  {
+    "case": "google_generate_content/third_party/reasoning=false",
+    "url": "https://gemini-proxy.example.com/v1beta/models/gemini-3-flash:generateContent?key=<api-key>",
+    "header_keys": [
+      "content-type",
+      "x-goog-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "contents",
+      "generationConfig",
+      "systemInstruction"
+    ]
+  },
+  {
+    "case": "google_generate_content/third_party/reasoning=true",
+    "url": "https://gemini-proxy.example.com/v1beta/models/gemini-3-flash:generateContent?key=<api-key>",
+    "header_keys": [
+      "content-type",
+      "x-goog-api-key",
+      "x-snapshot-route"
+    ],
+    "body_keys": [
+      "contents",
+      "generationConfig",
+      "systemInstruction"
+    ]
+  }
+]

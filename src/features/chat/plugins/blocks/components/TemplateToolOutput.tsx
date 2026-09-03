@@ -254,10 +254,10 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
 
       {/* 正面/背面切换 */}
       <div className="flex gap-1 mb-2">
-        <DsButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
+        <DsButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn('[@media(pointer:coarse)]:!min-h-11', side === 'front' && 'bg-primary/15 text-primary')}>
           {t('templateTool.front')}
         </DsButton>
-        <DsButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn(side === 'back' && 'bg-primary/15 text-primary')}>
+        <DsButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn('[@media(pointer:coarse)]:!min-h-11', side === 'back' && 'bg-primary/15 text-primary')}>
           {t('templateTool.back')}
         </DsButton>
       </div>
@@ -390,7 +390,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         </div>
 
         {/* 切换原始 JSON */}
-        <DsButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
+        <DsButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)} className="[@media(pointer:coarse)]:!min-h-11">
           <FileJs size={12} />
           {showRawJson
             ? t('templateTool.hideJson')

@@ -11,7 +11,20 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { CaretRight, DotsSixVertical, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
@@ -95,6 +108,122 @@ const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
   return vendor.name || providerLabel;
 };
 
+// --- Sortable Row ---
+
+interface SortableVendorRowProps {
+  vendor: VendorConfig;
+  isActive: boolean;
+  modelCount: number;
+  vendorDisplayName: string;
+  isSmallScreen: boolean;
+  openAICodexAuthenticated: boolean;
+  onSelect: () => void;
+}
+
+/** 可拖拽供应商行：整行既是点击目标也是拖拽 handle（与迁移前 hello-pangea 行为一致） */
+const SortableVendorRow: React.FC<SortableVendorRowProps> = ({
+  vendor,
+  isActive,
+  modelCount,
+  vendorDisplayName,
+  isSmallScreen,
+  openAICodexAuthenticated,
+  onSelect,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: vendor.id,
+    // P1-8 触屏禁拖：整行拖拽在触屏上与滚动/点按冲突，小屏直接关闭拖拽排序
+    disabled: isSmallScreen,
+  });
+
+  // P2-9 键盘激活：桌面端 Space/方向键被 dnd 拖拽占用（先转发给 dnd 监听器），仅补 Enter；
+  // 移动端拖拽关闭（无 attributes/listeners，需补 role/tabIndex），Enter/Space 都可激活
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || (isSmallScreen && e.key === ' ')) {
+      e.preventDefault();
+      onSelect();
+    }
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...(isSmallScreen
+        ? { role: 'button' as const, tabIndex: 0, onKeyDown: onRowKeyDown }
+        : {
+            ...attributes,
+            ...listeners,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              (listeners?.onKeyDown as ((ev: React.KeyboardEvent) => void) | undefined)?.(e);
+              onRowKeyDown(e);
+            },
+          })}
+      onClick={onSelect}
+      className={cn(
+        'px-3 py-2 text-left w-full flex items-center gap-2 group',
+        // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 disabled 关闭）
+        isSmallScreen ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
+        isActive
+          ? settingsQuietSelectedRowClassName
+          : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
+        // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
+        // P1-8 触控目标：小屏行高提升到 44px、字号同步放大到 16px（可读性）；触屏平板按 coarse pointer 兜底
+        isSmallScreen ? 'min-h-11 text-base' : 'min-h-[32px] text-sm [@media(pointer:coarse)]:min-h-11',
+        'rounded-[var(--shell-nav-row-radius,14px)]',
+        isDragging && 'relative shadow-lg ring-1 ring-border bg-card z-50'
+      )}
+    >
+      <span
+        data-testid={`vendor-icon-${vendor.id}`}
+        data-icon-tone={getVendorIconTone(vendor, openAICodexAuthenticated)}
+        data-icon-chrome="badge"
+        className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
+        style={getVendorIconBadgeStyle(vendor, openAICodexAuthenticated)}
+      >
+        <ProviderIcon
+          modelId={vendor.providerType || vendor.name || ''}
+          size={14}
+          showTooltip={false}
+          variant="color"
+          renderMode="glyph"
+        />
+      </span>
+      <div className="flex-1 min-w-0 text-left">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="truncate">{vendorDisplayName}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {modelCount > 0 && (
+              <span className="text-2xs text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
+                {modelCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      {/* 移动端：chevron 暗示可进入详情；桌面端：hover 显示拖拽指示 */}
+      {isSmallScreen ? (
+        <span className="shrink-0 text-muted-foreground/40" aria-hidden="true">
+          <CaretRight size={14} />
+        </span>
+      ) : (
+        <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
+          <DotsSixVertical size={12} />
+        </span>
+      )}
+    </div>
+  );
+};
+
 // --- Skeleton Loading ---
 
 const VendorSidebarSkeleton: React.FC = () => (
@@ -134,15 +263,17 @@ export const VendorSidebar: React.FC = () => {
     setLocalOrder(null);
   }, [sortedVendors]);
 
-  const handleDragEnd = useCallback((result: DropResult) => {
-    if (!result.destination) return;
-    const sourceIndex = result.source.index;
-    const destIndex = result.destination.index;
-    if (sourceIndex === destIndex) return;
+  // DND-1 统一传感器：鼠标 8px 起拖（保留行点击）、触屏长按、键盘可访问排序
+  const sensors = useTouchFriendlyDndSensors();
 
-    const reordered = [...displayVendors];
-    const [removed] = reordered.splice(sourceIndex, 1);
-    reordered.splice(destIndex, 0, removed);
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const sourceIndex = displayVendors.findIndex((vendor) => vendor.id === active.id);
+    const destIndex = displayVendors.findIndex((vendor) => vendor.id === over.id);
+    if (sourceIndex < 0 || destIndex < 0 || sourceIndex === destIndex) return;
+
+    const reordered = arrayMove(displayVendors, sourceIndex, destIndex);
 
     // 立即更新本地顺序（乐观）
     setLocalOrder(reordered);
@@ -150,94 +281,11 @@ export const VendorSidebar: React.FC = () => {
     onReorderVendors(reordered);
   }, [displayVendors, onReorderVendors]);
 
-  // 渲染可拖拽供应商行（统一处理所有供应商）
-  const renderVendorRow = (vendor: VendorConfig, provided: any, snapshot: any) => {
-    const isActive = selectedVendor?.id === vendor.id;
-    const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-    const providerLabel = getProviderDisplayName(vendor.providerType, t);
-    const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
-
-    const activateRow = () => {
-      setSelectedVendorId(vendor.id);
-      // P1-6 移动端两级导航：点击行即进入供应商详情屏
-      if (isSmallScreen) openMobileVendorDetail?.();
-    };
-
-    // P2-9 键盘激活：桌面端 Space/方向键被 dnd 拖拽占用，仅补 Enter；
-    // 移动端拖拽关闭（dragHandleProps 为 null，行无 role/tabIndex），Enter/Space 都可激活
-    const onRowKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || (isSmallScreen && e.key === ' ')) {
-        e.preventDefault();
-        activateRow();
-      }
-    };
-
-    return (
-      <div
-        ref={provided.innerRef}
-        {...provided.draggableProps}
-        {...provided.dragHandleProps}
-        style={provided.draggableProps.style}
-        role="button"
-        tabIndex={0}
-        onClick={activateRow}
-        onKeyDown={onRowKeyDown}
-        className={cn(
-          'px-3 py-2 text-left w-full flex items-center gap-2 group',
-          // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 isDragDisabled 关闭）
-          isSmallScreen ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
-          isActive
-            ? settingsQuietSelectedRowClassName
-            : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
-          // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
-          // P1-8 触控目标：小屏行高提升到 44px；小屏字号同步放大到 16px（可读性）
-          isSmallScreen ? 'min-h-11 text-base' : 'min-h-[32px] text-sm',
-          'rounded-[var(--shell-nav-row-radius,14px)]',
-          snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
-        )}
-      >
-        <span
-          data-testid={`vendor-icon-${vendor.id}`}
-          data-icon-tone={getVendorIconTone(vendor, openAICodexAuthenticated)}
-          data-icon-chrome="badge"
-          className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-          style={getVendorIconBadgeStyle(vendor, openAICodexAuthenticated)}
-        >
-          <ProviderIcon
-            modelId={vendor.providerType || vendor.name || ''}
-            size={14}
-            showTooltip={false}
-            variant="color"
-            renderMode="glyph"
-          />
-        </span>
-        <div className="flex-1 min-w-0 text-left">
-          <div className="flex flex-wrap items-center justify-between gap-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className="truncate">{vendorDisplayName}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {modelCount > 0 && (
-                <span className="text-2xs text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
-                  {modelCount}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {/* 移动端：chevron 暗示可进入详情；桌面端：hover 显示拖拽指示 */}
-        {isSmallScreen ? (
-          <span className="shrink-0 text-muted-foreground/40" aria-hidden="true">
-            <CaretRight size={14} />
-          </span>
-        ) : (
-          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <DotsSixVertical size={12} />
-          </span>
-        )}
-      </div>
-    );
-  };
+  const handleSelectVendor = useCallback((vendorId: string) => {
+    setSelectedVendorId(vendorId);
+    // P1-6 移动端两级导航：点击行即进入供应商详情屏
+    if (isSmallScreen) openMobileVendorDetail?.();
+  }, [isSmallScreen, openMobileVendorDetail, setSelectedVendorId]);
 
   return (
     <div className="space-y-3 w-full min-w-0 pr-0 md:border-r md:border-border/40 md:pr-6 md:sticky md:top-4 md:self-start">
@@ -252,6 +300,7 @@ export const VendorSidebar: React.FC = () => {
               variant="ghost"
               size="sm"
               iconOnly
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={() => handleOpenVendorModal(null)}
               title={t('settings:vendor_panel.add_vendor_button')}
               aria-label={t('settings:vendor_panel.add_vendor_button')}
@@ -270,27 +319,36 @@ export const VendorSidebar: React.FC = () => {
             <div className="mt-1 text-xs">{t('settings:vendor_panel.empty_vendors_desc')}</div>
           </div>
         ) : (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable
-              droppableId="vendor-list"
-              renderClone={(provided, snapshot, rubric) => {
-                const vendor = displayVendors[rubric.source.index];
-                return renderVendorRow(vendor, provided, snapshot);
-              }}
+          <DndContext
+            sensors={sensors}
+            autoScroll={SHELL_SAFE_AUTO_SCROLL}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={displayVendors.map((vendor) => vendor.id)}
+              strategy={verticalListSortingStrategy}
             >
-              {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5 rounded-2xl bg-muted p-1.5">
-                  {displayVendors.map((vendor, index) => (
-                    // P1-8 触屏禁拖：整行拖拽在触屏上与滚动/点按冲突，小屏直接关闭拖拽排序
-                    <Draggable key={vendor.id} draggableId={vendor.id} index={index} isDragDisabled={isSmallScreen}>
-                      {(provided, snapshot) => renderVendorRow(vendor, provided, snapshot)}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+              <div className="flex flex-col gap-0.5 rounded-2xl bg-muted p-1.5">
+                {displayVendors.map((vendor) => {
+                  const providerLabel = getProviderDisplayName(vendor.providerType, t);
+                  return (
+                    <SortableVendorRow
+                      key={vendor.id}
+                      vendor={vendor}
+                      isActive={selectedVendor?.id === vendor.id}
+                      modelCount={profileCountByVendor.get(vendor.id) ?? 0}
+                      vendorDisplayName={getVendorDisplayName(vendor, providerLabel)}
+                      isSmallScreen={isSmallScreen}
+                      openAICodexAuthenticated={openAICodexAuthenticated}
+                      onSelect={() => handleSelectVendor(vendor.id)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>

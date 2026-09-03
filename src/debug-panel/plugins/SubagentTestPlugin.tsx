@@ -356,7 +356,7 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
               size="sm"
               variant={filter === type ? 'default' : 'outline'}
               onClick={() => setFilter(type)}
-              className="h-7 text-xs"
+              className="h-7 [@media(pointer:coarse)]:min-h-11 text-xs"
             >
               {type === 'all' ? '全部' : type}
               {type !== 'all' && (

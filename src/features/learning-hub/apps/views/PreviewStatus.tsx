@@ -192,7 +192,7 @@ export const PreviewStatus: React.FC<PreviewStatusProps> = ({
               size="sm"
               onClick={action.onClick}
               disabled={action.disabled || action.loading}
-              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
+              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
             >
               {action.loading && (
                 <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

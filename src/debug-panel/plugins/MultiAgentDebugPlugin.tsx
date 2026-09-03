@@ -591,14 +591,14 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleRefresh} disabled={!currentWorkspaceId}>
+          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleRefresh} disabled={!currentWorkspaceId}>
             <ArrowClockwise size={16} />
           </Button>
-          <Button size="sm" variant="outline" onClick={handleCopyLogs}>
+          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs}>
             <Copy size={16} className="mr-1" />
             复制日志
           </Button>
-          <Button size="sm" variant="destructive" onClick={handleClearLogs}>
+          <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClearLogs}>
             <Trash size={16} />
           </Button>
         </div>
@@ -609,6 +609,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Button
           size="sm"
           variant={activeTab === 'monitor' ? 'default' : 'ghost'}
+          className="[@media(pointer:coarse)]:min-h-11"
           onClick={() => setActiveTab('monitor')}
         >
           <Folder size={16} className="mr-1" />
@@ -617,6 +618,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Button
           size="sm"
           variant={activeTab === 'prompts' ? 'default' : 'ghost'}
+          className="[@media(pointer:coarse)]:min-h-11"
           onClick={() => setActiveTab('prompts')}
         >
           <Play size={16} className="mr-1" />
@@ -625,6 +627,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Button
           size="sm"
           variant={activeTab === 'logs' ? 'default' : 'ghost'}
+          className="[@media(pointer:coarse)]:min-h-11"
           onClick={() => setActiveTab('logs')}
         >
           <FileText size={16} className="mr-1" />
@@ -789,6 +792,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   <Button
                     size="sm"
                     variant="outline"
+                    className="[@media(pointer:coarse)]:min-h-11"
                     onClick={() => handleExecutePrompt(preset.prompt)}
                     disabled={isExecuting}
                   >
@@ -816,7 +820,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 className="min-h-[100px] text-sm"
               />
               <Button
-                className="w-full"
+                className="w-full [@media(pointer:coarse)]:min-h-11"
                 onClick={() => handleExecutePrompt(customPrompt)}
                 disabled={isExecuting || !customPrompt.trim()}
               >

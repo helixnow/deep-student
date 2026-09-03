@@ -34,7 +34,10 @@ export type DisplayMode =
   | 'tiled-tl'
   | 'tiled-tr'
   | 'tiled-bl'
-  | 'tiled-br';
+  | 'tiled-br'
+  // 上/下半屏（2026-08 扩展：新增联合成员，既有成员与语义不变）
+  | 'tiled-top'
+  | 'tiled-bottom';
 
 /** 由 scheduler 派生，绝不持久化 */
 export type WindowLifecycle = 'focused' | 'visible' | 'background' | 'frozen';
@@ -462,10 +465,42 @@ export interface AppDefinition {
   /** 关闭拦截（未保存提示）；返回 false 阻止关闭。缺省 = 直接关 */
   canClose?: (instanceKey: string | null) => boolean | Promise<boolean>;
   /**
+   * suspend 契约（2026-08 Wave2 扩展，新增可选字段）：
+   * 调度器把 background 窗降为 frozen（卸载 React 子树）前询问本回调；
+   * 返回 false = 本窗当前不可冻（典型：有未保存编辑，冻结会丢内存态）。
+   *
+   * 约定：调度器热路径【不 await】——dirty 类查询必须同步返回 boolean
+   * （isContentDirty / isWindowDirty 均为同步）；返回 Promise 时热路径
+   * 视为「可冻」，异步结果仅供非热路径调用方参考。缺省 = 总是可冻。
+   */
+  canSuspend?: (instanceKey: string | null) => boolean | Promise<boolean>;
+  /**
+   * 可选的冻结前保存挂点：返回 true 表示已保存、随后可安全冻结。
+   * 仅供非热路径在「窗口脏但有保存能力、且调用方明确要冻」时使用；
+   * 调度器本身绝不自动调用（默认策略：脏窗保持 background，永不 frozen）。
+   */
+  prepareSuspend?: (instanceKey: string | null) => boolean | Promise<boolean>;
+  /**
    * Ctrl+W is normally owned by the workbench window manager. Tabbed apps can
    * opt in to receive it themselves, for example to close their active tab.
    */
   handlesCloseShortcut?: boolean;
+  /**
+   * Ctrl+Tab / Ctrl+Shift+Tab 让位协议（分层实现见 useWorkbenchShortcuts）：
+   * 默认归工作台窗口切换器；带内部标签页的应用（编辑器 / 浏览器等）声明
+   * 本标志后接管这组按键做内部标签循环。
+   *
+   * 分层规则（自上而下短路）：
+   * 1. 焦点在可编辑目标 / IME 组合中 → 壳层输入守卫本就不响应，谁也不抢；
+   * 2. 切换器会话已开启（按住 Ctrl 循环中）→ 壳层保持所有权直至松开 Ctrl，
+   *    壳层会 preventDefault —— 应用侧监听器必须跳过 defaultPrevented 事件；
+   * 3. 会话未开启且焦点应用声明本标志 → 壳层让位（不 preventDefault、
+   *    不开切换器），应用自持的 keydown 监听器消费并 preventDefault。
+   *
+   * 声明后该应用聚焦期间不可再用 Ctrl+Tab 呼出窗口切换器；窗口切换仍有
+   * Dock / 俯瞰（Ctrl+Alt+E）/ 同应用循环（Ctrl+`）等入口。
+   */
+  handlesTabCycleShortcut?: boolean;
 }
 
 // ============================================================================
@@ -498,6 +533,8 @@ export interface ProjectRequest {
   instanceKey: string;
   title: string;
   initialFrame?: Partial<Frame>;
+  /** true = 在后台开窗（不夺取焦点窗的顶层地位）；投射管理器默认走后台 */
+  background?: boolean;
 }
 
 // ============================================================================
@@ -552,6 +589,12 @@ export interface OpenWindowInput {
   initialFrame?: Partial<Frame>;
   /** 桌面坐标系落点；仅新建窗口生效。非法坐标忽略并回退级联落位。 */
   dropPoint?: { x: number; y: number };
+  /**
+   * true = 后台开窗：新窗创建后仍让当前焦点窗保持栈顶（投射类自动开窗
+   * 不打断用户正在操作的窗口）。仅对「真的新建」生效；命中去重复用时
+   * 维持既有 focus 语义。
+   */
+  background?: boolean;
 }
 
 export interface WorkbenchStoreState {
@@ -627,6 +670,10 @@ export type SnapZone =
   | 'left' | 'right'
   | 'tl' | 'tr' | 'bl' | 'br'
   | 'top-maximize'
+  // 上/下半屏热区（2026-08 扩展）：top-half 仅在 ⌥ 拖到顶缘时命中
+  //（对齐 macOS Sequoia：普通拖顶缘 = Fill，⌥ 拖顶缘 = 上半屏）；
+  // bottom-half 为底缘中段（角区之外）。
+  | 'top-half' | 'bottom-half'
   | null;
 
 export interface WindowPointerCallbacks {

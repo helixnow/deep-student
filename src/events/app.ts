@@ -47,6 +47,7 @@ export const APP_EVENTS = {
   NAVIGATE_TO_TRANSLATION: 'navigateToTranslation',
   NAVIGATE_TO_ESSAY: 'navigateToEssay',
   NAVIGATE_TO_NOTE: 'navigateToNote',
+  WB_PREVIEW_QUICK_LOOK: 'wb-preview:quick-look',
 } as const;
 
 export type AppEventName = (typeof APP_EVENTS)[keyof typeof APP_EVENTS];
@@ -184,6 +185,17 @@ export interface NavigateToNoteDetail {
   source?: string;
 }
 
+/** preview 壳 Quick Look 浮层（宿主见 workbench/apps/preview/quickLook.tsx） */
+export interface WbPreviewQuickLookDetail {
+  /** 目标资源 id；null 表示关闭 */
+  resourceId: string | null;
+  /**
+   * 再次请求当前已打开的资源时是否关闭（空格 Quick Look 的开关语义）。
+   * 默认 true；传 false 表示"确保打开"（如方向键切换选中项时跟随刷新）。
+   */
+  toggle?: boolean;
+}
+
 export interface AppEventPayloads {
   [APP_EVENTS.SYSTEM_SETTINGS_CHANGED]: SystemSettingsChangedDetail;
   [APP_EVENTS.WORKBENCH_MODE_CHANGED]: WorkbenchModeChangedDetail;
@@ -217,6 +229,7 @@ export interface AppEventPayloads {
   [APP_EVENTS.NAVIGATE_TO_TRANSLATION]: NavigateToTranslationDetail;
   [APP_EVENTS.NAVIGATE_TO_ESSAY]: NavigateToEssayDetail;
   [APP_EVENTS.NAVIGATE_TO_NOTE]: NavigateToNoteDetail;
+  [APP_EVENTS.WB_PREVIEW_QUICK_LOOK]: WbPreviewQuickLookDetail;
 }
 
 type DetailArgs<K extends AppEventName> = [AppEventPayloads[K]] extends [void]

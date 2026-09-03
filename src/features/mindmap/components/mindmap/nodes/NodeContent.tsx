@@ -5,7 +5,7 @@ import { BlankedText } from '../../shared/BlankedText';
 import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
 import TextareaAutosize from 'react-textarea-autosize';
-import type { BlankRange, MindMapNodeRef } from '../../../types';
+import type { BlankRange, MindMapImage, MindMapNodeRef } from '../../../types';
 import { getMindMapPreferences } from '../../../utils/mindmapPreferences';
 import { NodeRefList } from '../../shared/NodeRefCard';
 import { useTextSelectionBubble } from '../../../hooks/useTextSelectionBubble';
@@ -23,6 +23,8 @@ export interface NodeContentProps {
   text: string;
   note?: string;
   refs?: MindMapNodeRef[];
+  /** 内嵌图片（导入内联小图）：正文上方渲染缩略图条 */
+  images?: MindMapImage[];
   icon?: string;
   bgColor?: string;
   isRoot?: boolean;
@@ -56,6 +58,8 @@ export interface NodeContentProps {
   /** 编辑中 Tab：提交正文后新建子节点并进入编辑 */
   onCommitAndCreateChild?: () => void;
   onRevealBlank?: (rangeIndex: number) => void;
+  /** 背诵会话统计：遮盖态挖空实际渲染进视口时上报（透传 BlankedText） */
+  onBlanksPresented?: (rangeIndices: number[]) => void;
   onAddBlank?: (range: BlankRange) => void;
   onRemoveBlank?: (rangeIndex: number) => void;
   onToggleBold?: () => void;
@@ -68,6 +72,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   text,
   note,
   refs,
+  images,
   icon,
   bgColor,
   isRoot = false,
@@ -91,6 +96,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   onCommitAndCreateSibling,
   onCommitAndCreateChild,
   onRevealBlank,
+  onBlanksPresented,
   onAddBlank,
   onRemoveBlank,
   onToggleBold,
@@ -272,6 +278,29 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       )}
       onDoubleClick={handleDoubleClick}
     >
+      {images && images.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1 justify-start" data-testid="mm-node-images">
+          {images.map((image, index) => (
+            <img
+              key={index}
+              src={image.src}
+              alt={image.name || t('node.imageAlt', { defaultValue: '节点图片' })}
+              title={image.name}
+              loading="lazy"
+              draggable={false}
+              className="rounded border border-[var(--mm-border)] object-contain select-none"
+              style={{
+                // 保留导入宽高比例信息但限制缩略尺寸，超限时按 max 约束等比缩放
+                maxWidth: 160,
+                maxHeight: 90,
+                ...(image.width && image.height
+                  ? { aspectRatio: `${image.width} / ${image.height}` }
+                  : {}),
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div className="relative flex items-center gap-1">
         {showCheckbox && !isEditing && (
           <CompletedCheckbox
@@ -297,6 +326,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             allowSelectionActions={!reciteMode}
             isBold={isBold}
             onRevealBlank={onRevealBlank}
+            onBlanksPresented={onBlanksPresented}
             onAddBlank={text.length > 0 ? onAddBlank : undefined}
             onRemoveBlank={onRemoveBlank}
             onToggleBold={onToggleBold}

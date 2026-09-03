@@ -215,7 +215,7 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
-          className="mt-1 !h-auto !px-1.5 !py-0.5 text-[11px] text-muted-foreground hover:text-foreground relative after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-['']"
+          className="mt-1 !h-auto !px-1.5 !py-0.5 text-[11px] text-muted-foreground hover:text-foreground relative after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] [@media(pointer:coarse)]:!min-h-11"
         >
           {expanded
             ? t('blocks.mcpTool.collapseLongOutput')

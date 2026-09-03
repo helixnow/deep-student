@@ -91,9 +91,17 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
     const switchSource = readSource('src/components/ui/shad/Switch.tsx');
     const buttonCss = readSource('src/components/ui/shad/Button.css');
 
-    expect(contract).toMatch(/default:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*lg:h-\[var\(--button-height\)\]/);
-    expect(contract).toMatch(/sm:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*lg:h-\[var\(--button-height-sm\)\]/);
-    expect(contract).toMatch(/icon:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*w-\[var\(--touch-target-size\)\]/);
+    // lg:h-* 之后必须跟 [@media(pointer:coarse)]:min-h-*：宽视口 + 粗指针
+    // （iPad 横屏）不再被 lg 压缩到 32px 命中区；细指针宽屏仍走 lg 压缩。
+    expect(contract).toMatch(
+      /default:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*lg:h-\[var\(--button-height\)\][^'"]*\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/
+    );
+    expect(contract).toMatch(
+      /sm:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*lg:h-\[var\(--button-height-sm\)\][^'"]*\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/
+    );
+    expect(contract).toMatch(
+      /icon:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*w-\[var\(--touch-target-size\)\][^'"]*\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\][^'"]*\[@media\(pointer:coarse\)\]:min-w-\[var\(--touch-target-size\)\]/
+    );
     expect(input).toContain('min-h-[var(--touch-target-size)]');
     expect(input).toContain('lg:min-h-[var(--button-height)]');
     expect(switchSource).toContain('data-size={size}');

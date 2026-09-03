@@ -37,8 +37,9 @@ const CHAT_CAPABILITIES: Readonly<Record<string, CapabilityState>> = {
   'chat.retry': 'ready',
   'chat.clear': 'ready',
 
-  // 内容操作 — 无监听，隐藏
-  'chat.copy-last-response': 'hidden',
+  // 内容操作
+  // copy-last-response：useChatPageEvents 已补 CHAT_COPY_LAST_RESPONSE 监听
+  'chat.copy-last-response': 'ready',
   'chat.share': 'hidden',
   'chat.export': 'hidden',
   'chat.import': 'hidden',
@@ -66,8 +67,9 @@ const CHAT_CAPABILITIES: Readonly<Record<string, CapabilityState>> = {
   'chat.show-history': 'hidden',
   'chat.bookmark': 'ready',
 
-  // 高级功能 — 无监听，隐藏
-  'chat.ai-continue': 'hidden',
+  // 高级功能
+  // ai-continue：useChatPageEvents 已补 CHAT_AI_CONTINUE 监听（continueMessage 链路）
+  'chat.ai-continue': 'ready',
   'chat.quick-prompt': 'hidden',
   'chat.multi-turn-edit': 'hidden',
   'chat.branch-conversation': 'hidden',

@@ -35,7 +35,7 @@ jobs:
       - name: Resolve tag
         id: tag
         run: |
-          echo "value=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           echo "📌 Tag: ${{ github.event.inputs.tag }}"
 
       - name: Download Release Assets
@@ -92,7 +92,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Upload complete ($(ls release-assets/ | wc -l | tr -d ' ') files)"
+          echo "✅ Upload complete ($(find release-assets -maxdepth 1 -type f | wc -l | tr -d ' ') files)"
 
       - name: Generate R2 latest.json for auto-updater
         env:
@@ -109,7 +109,7 @@ jobs:
 
           echo "📝 Rewriting latest.json URLs to R2..."
           # 查找 APK 文件名
-          APK_NAME=$(ls release-assets/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          APK_NAME=$(find release-assets -maxdepth 1 -name '*.apk' -printf '%f\n' | sort | head -1)
           APK_URL=""
           if [ -n "$APK_NAME" ]; then
             APK_URL="${R2_BASE}/${APK_NAME}"

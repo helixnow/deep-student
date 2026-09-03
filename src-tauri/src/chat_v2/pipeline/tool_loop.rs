@@ -1,3 +1,59 @@
+//! 工具环执行（`execute_with_tools`）与 prompt-cache「工具面冻结」原语区。
+//!
+//! # 冻结矩阵速查（完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`，
+//! 冻/不冻 + 清/不清终稿见 `docs/dev/wave2-A/r9-clear-freeze-matrix.md`）
+//!
+//! **冻什么**（三层，粒度由粗到细）：
+//! - **tools 名字序** —— 会话级、append-only 首见序基线
+//!   （[`freeze_tool_schema_order_for_prompt_cache`] +
+//!   [`merge_frozen_tool_schema_order_baseline`]，经 helpers 的
+//!   `load/store_session_frozen_tool_schema_order` 持久化到
+//!   session.metadata `frozenToolSchemaOrder` 键）：已发出工具的相对
+//!   顺序跨轮、跨进程不变，新工具只按首见轮次追加末尾，禁止字母序
+//!   插入已发出前缀中段（对 Anthropic 那是 tools 第 0 字节起变化）；
+//! - **已发出 schema 字节** —— 窗口级（一次 `execute_with_tools` 工具环
+//!   或一个多变体变体环 = 一个稳定窗口，
+//!   [`freeze_tool_schemas_for_prompt_cache`]）：同名 schema 窗口内变化
+//!   （MCP 刷新 / load_skills 披露不同版本）时继续发送首见冻结字节，
+//!   变更延迟到下一稳定窗口生效；摘要见 [`tool_schema_digest`]
+//!   （持久化键 `toolSchemaDigest`，缺省 None 不构成变更）；
+//! - **generation 代号** —— 会话级单调（`helpers::ToolFaceBaseline`，
+//!   持久化键 `toolFacePrefixGeneration`）：本文件只随基线原样透传，
+//!   任何单变体路径都无权 bump。
+//!
+//! **不冻什么**（明确豁免，勿在本文件加冻结）：
+//! - 技能正文（transient 注入消息体）—— 正文字节仍不落库；本文件只做
+//!   轮内位置锚定（P1-8 `frozen_turn_skill_injection`）并随锚点持久化
+//!   正文摘要（anchors `skill_content_digests` / `skill_content_rev`，
+//!   r3 落地）。重放由 history 侧 digest 门禁把关：mismatch →
+//!   warn+skip+切代信号，绝不用当轮新正文伪装旧历史；删除 / 正文缺失
+//!   同样 warn+skip 但**不进信号**（r5 刻意收窄，反例留档见
+//!   skill_replay_edit_delete_tests）；
+//! - available_skills 目录换代 —— 首写冻结快照（repo
+//!   `freeze_session_available_skills_snapshot`）+ 独立目录代
+//!   `availableSkillsSnapshotGeneration` / 换代声明
+//!   `availableSkillsSnapshotPendingGeneration`（r4–r5 落地）。目录
+//!   换代走目录代，**不走**本文件的 tool-face generation，两套代际
+//!   互不搭线；
+//! - system 前缀内 user_profile 等易变段 —— prompt_builder 侧语义，
+//!   每轮可随记忆库变化，明确不冻。
+//!
+//! **代际何时切**（唯一切代点 = fan-out join 收敛
+//! `helpers::converge_session_tool_face_prefix`）：
+//! - ≥2 变体本地 order 互异、不可 append-only 对齐（存在变体本地
+//!   order 不是收敛结果的前缀）→ 真分叉，`generation += 1`；这仍是
+//!   tool-face generation **唯一** bump 来源；
+//! - 单变体纯前缀扩展 / 窗口 digest 变化 → **不切代**：本文件单变体
+//!   路径只打日志（见 [`freeze_tool_face_for_prompt_cache`] 调用处），
+//!   变更随下一稳定窗口 / 多变体 converge 评估；
+//! - digest 共识采纳（r6 接线）：converge 仅当存在「本地 order ==
+//!   收敛 order」的变体、且这些变体报告的 digest 全部一致，才把该
+//!   digest 写入基线；真分叉 / digest 互异 / 全空（None）保持既有值，
+//!   None 永不抹掉——采纳本身绝不触发 bump；
+//! - 技能 digest mismatch 信号不在这里切代：走 available_skills 目录代
+//!   （`helpers::record_skill_digest_prefix_generation_signal` → pending
+//!   generation 声明），绝不伪造工具面分叉逼 converge +1。
+
 use super::*;
 
 use super::super::context::{DoomLoopGuard, DoomLoopVerdict, DOOM_LOOP_ABORT_THRESHOLD};
@@ -8,27 +64,224 @@ pub(crate) struct ExternalToolRoute {
     pub preferred_server_id: Option<String>,
 }
 
-fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
-    sensitivity != Some(ToolSensitivity::Low)
+/// G6 排序键：工具 schema 为 OpenAI function 格式
+/// `{"type":"function","function":{"name":...}}`，名字在 `function.name`；
+/// 顶层 `name` 仅作非标准 schema 的回退。此前只读顶层 name，
+/// function 格式下恒为 ""，排序退化为 no-op。
+pub(crate) fn tool_schema_sort_key(tool: &Value) -> &str {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(|name| name.as_str())
+        .or_else(|| tool.get("name").and_then(|name| name.as_str()))
+        .unwrap_or("")
 }
 
-/// 判断错误串中是否出现独立的 HTTP 状态码数字（前后均非数字字符），
-/// 兼容 "status: 429" / "LLM 响应错误 429: …" / "API 返回错误 (503): …" /
-/// "HTTP 502" 等各适配器的实际错误格式。`lower` 必须已转小写。
-fn mentions_http_status_code(lower: &str, code: u32) -> bool {
-    let needle = code.to_string();
-    let mut start = 0usize;
-    while let Some(pos) = lower.get(start..).and_then(|s| s.find(&needle)) {
-        let abs = start + pos;
-        let before_ok = abs == 0 || !lower.as_bytes()[abs - 1].is_ascii_digit();
-        let after = abs + needle.len();
-        let after_ok = after >= lower.len() || !lower.as_bytes()[after].is_ascii_digit();
-        if before_ok && after_ok {
-            return true;
-        }
-        start = abs + 1;
+/// Prompt cache（G6）：工具 schema 确定性排序。Anthropic 等 provider 将
+/// tools 纳入缓存前缀，顺序跨轮漂移会整段打爆缓存；对不计前缀的
+/// provider 稳定排序亦无害。
+pub(crate) fn sort_tool_schemas_for_prompt_cache(tools: &mut [Value]) {
+    tools.sort_by(|a, b| tool_schema_sort_key(a).cmp(tool_schema_sort_key(b)));
+}
+
+/// Prompt cache（P0，DESIGN「tools 会话内冻结 + append-only」）：工具环
+/// 生命周期内 tools 顺序冻结。首轮按名字排序建立基线（G6 确定性）；
+/// 后续轮次已发出的工具严格保持基线相对顺序（前缀字节不变），环内
+/// load_skills 渐进披露的新工具按首见轮次追加到末尾（同轮新增按名字
+/// 排序保证确定性），并记入基线供之后轮次复用。禁止按字母序插入中段
+/// —— 对 Anthropic 那是 tools 第 0 字节起变化，整段缓存前缀失效。
+///
+/// `frozen_names` 由调用方在环外持有（append-only 首见序基线），
+/// 空表示首轮尚未建立基线。
+pub(crate) fn freeze_tool_schema_order_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+) {
+    if frozen_names.is_empty() {
+        sort_tool_schemas_for_prompt_cache(tools);
+    } else {
+        let frozen_index: std::collections::HashMap<&str, usize> = frozen_names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.as_str(), index))
+            .collect();
+        // stable sort：基线内按冻结序，新工具排在全部基线之后、彼此按名字
+        tools.sort_by(|a, b| {
+            let key_a = tool_schema_sort_key(a);
+            let key_b = tool_schema_sort_key(b);
+            match (frozen_index.get(key_a), frozen_index.get(key_b)) {
+                (Some(index_a), Some(index_b)) => index_a.cmp(index_b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => key_a.cmp(key_b),
+            }
+        });
     }
-    false
+    for tool in tools.iter() {
+        let key = tool_schema_sort_key(tool);
+        if key.is_empty() {
+            continue;
+        }
+        if !frozen_names.iter().any(|name| name == key) {
+            frozen_names.push(key.to_string());
+        }
+    }
+}
+
+/// P0 tools 会话冻结：把一次执行推进后的局部基线合并回会话级基线。
+/// append-only：只把 `entry` 缺失的名字按 `baseline` 顺序追加到末尾，
+/// 绝不删除或重排 `entry` 已有条目 —— 并行变体各自写回时共享基线保持
+/// 单调，已发出的 tools 前缀序不被打乱。
+pub(crate) fn merge_frozen_tool_schema_order_baseline(
+    entry: &mut Vec<String>,
+    baseline: &[String],
+) {
+    for name in baseline {
+        if !entry.iter().any(|existing| existing == name) {
+            entry.push(name.clone());
+        }
+    }
+}
+
+/// P0 tools 冻结（字节级加强）：在名字序冻结之上，把已发出工具的
+/// **schema 序列化字节**在稳定窗口内冻结。
+///
+/// - 首见工具：记入 `frozen_schemas`（名字 → 首次发出的完整 schema）；
+/// - 已发出工具：无条件回写冻结副本 —— 同名 schema 在窗口内变化
+///   （MCP 服务器刷新、load_skills 重复披露不同版本）时本窗口继续发送
+///   冻结字节，变更延迟到下一稳定窗口（`frozen_schemas` 重建时）生效。
+///   注意 serde_json 开启 preserve_order：键序不同的 Value 可以 `==` 相等
+///   但序列化字节不同，所以不能只在 `!=` 时回写，必须无条件回写才能
+///   保证已发出前缀逐字节不变；
+/// - 新工具只追加：顺序由 `freeze_tool_schema_order_for_prompt_cache`
+///   的 append-only 首见序基线保证，禁止插入已发出前缀中段。
+///
+/// `frozen_schemas` 由调用方按稳定窗口持有（一次 `execute_with_tools`
+/// 工具环 = 一个稳定窗口）：窗口内字节冻结，跨窗口允许采纳新字节。
+/// 名字序基线（`frozen_names`）仍按会话级持有/持久化，两者分工不同。
+///
+/// digest 计算见 [`tool_schema_digest`]；单变体路径 digest 变化**不切代**
+/// （generation 不 bump），变更随下一稳定窗口 / 多变体 converge 评估。
+pub(crate) fn freeze_tool_schemas_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+    frozen_schemas: &mut HashMap<String, Value>,
+) {
+    freeze_tool_schema_order_for_prompt_cache(tools, frozen_names);
+    for tool in tools.iter_mut() {
+        let key = tool_schema_sort_key(tool).to_string();
+        if key.is_empty() {
+            continue;
+        }
+        match frozen_schemas.get(&key) {
+            Some(frozen) => {
+                if frozen != tool {
+                    log::info!(
+                        "[ChatV2::pipeline] Tool schema for '{}' changed mid-window; \
+                         serving frozen bytes, deferring change to next stable window",
+                        key
+                    );
+                }
+                *tool = frozen.clone();
+            }
+            None => {
+                frozen_schemas.insert(key, tool.clone());
+            }
+        }
+    }
+}
+
+/// 代际统一冻结原语（Wave2-A r2，供本文件与 #3 统一入口复用）：
+/// 当前稳定窗口字节冻结快照（`frozen_schemas`）的 schema digest。
+///
+/// 算法：按工具**名字序**遍历冻结副本，逐项以
+/// `名字 + 0x1f + schema JSON 序列化字节 + 0x1e` 喂入 sha256
+/// （复用 `DoomLoopGuard::fingerprint` 的 0x1f 分隔骨架；serde_json
+/// preserve_order 下冻结副本的序列化字节窗口内稳定，digest 可靠），
+/// 输出小写十六进制。名字序遍历保证与 HashMap 迭代序无关，同一冻结
+/// 内容恒得同一 digest。
+///
+/// 空窗口（本窗口尚未发出任何工具）返回 `None` —— 与
+/// `ToolFacePrefixSnapshot::schema_digest` 的缺省语义对齐（缺 digest
+/// 不构成变更，不得抹掉已持久化值）。
+pub(crate) fn tool_schema_digest(frozen_schemas: &HashMap<String, Value>) -> Option<String> {
+    if frozen_schemas.is_empty() {
+        return None;
+    }
+    let mut entries: Vec<(&String, &Value)> = frozen_schemas.iter().collect();
+    entries.sort_by_key(|(name, _)| *name);
+    let mut hasher = Sha256::new();
+    for (name, schema) in entries {
+        hasher.update(name.as_bytes());
+        hasher.update(b"\x1f");
+        hasher.update(serde_json::to_string(schema).unwrap_or_default().as_bytes());
+        hasher.update(b"\x1e");
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// 统一冻结原语（Wave2-A r2 #3 门面）：单变体 tool_loop 与多变体
+/// variant 环共用的「名字序冻结 + 字节冻结 + digest」单入口。
+///
+/// 内部即 [`freeze_tool_schemas_for_prompt_cache`]（append-only 首见序
+/// 基线 + 已发出 schema 窗口内字节回写，语义逐字不变），随后返回
+/// [`tool_schema_digest`] 计算的当前窗口冻结快照摘要：
+/// - `Some(digest)`：本窗口已发出至少一个工具，digest 为名字序稳定哈希；
+/// - `None`：空窗口（尚未发出任何工具），与
+///   `ToolFacePrefixSnapshot::schema_digest` 缺省语义对齐 —— 调用方
+///   不得用 None 抹掉已有 digest。
+///
+/// 这是新门面而非替代：[`freeze_tool_schema_order_for_prompt_cache`] /
+/// [`freeze_tool_schemas_for_prompt_cache`] 仍为公开原语（测试与其他
+/// 调用方在用）。digest 变化的处置由调用方决定：单变体只打日志不切代，
+/// 多变体写入 `VariantMeta.tool_face_prefix` 交 join 收敛点评估。
+pub(crate) fn freeze_tool_face_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+    frozen_schemas: &mut HashMap<String, Value>,
+) -> Option<String> {
+    freeze_tool_schemas_for_prompt_cache(tools, frozen_names, frozen_schemas);
+    tool_schema_digest(frozen_schemas)
+}
+
+/// Responses reasoning items 工具轮写入：adapter 已按「相邻后继
+/// function_call」配好 `(tool_call_id, item)`，逐条按 tool_call_id 键控
+/// 写入（禁止全部绑到本批第一个 tool id）。未配对残留条目（provider
+/// 把 reasoning item 发在所有 function_call 之后等异常时序）兜底挂到
+/// `fallback_tool_call_id`（本批第一个 tool_call），用 `or_insert` 只在
+/// 该 id 尚无 reasoning item 时写入 —— 绝不覆盖已配对条目。
+pub(crate) fn assign_tool_round_reasoning_items(
+    dest: &mut HashMap<String, Value>,
+    items: Vec<(Option<String>, Value)>,
+    fallback_tool_call_id: Option<&str>,
+) {
+    for (paired_tool_call_id, item) in items {
+        match paired_tool_call_id {
+            Some(tool_call_id) => {
+                dest.insert(tool_call_id, item);
+            }
+            None => {
+                if let Some(fallback_id) = fallback_tool_call_id {
+                    dest.entry(fallback_id.to_string()).or_insert(item);
+                }
+            }
+        }
+    }
+}
+
+/// Responses reasoning items 纯文本终轮写入：无 tool_call_id 可键控的
+/// 未配对条目挂到哨兵键 [`crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY`]
+/// 持久化；history 重放附到最终 assistant 文本消息 metadata，下一轮
+/// Responses input 原样回传 encrypted reasoning。多条未配对时后到覆盖
+/// （最贴近最终正文的 item 生效）；已配对条目仍按 tool_call_id 写入。
+pub(crate) fn assign_final_round_reasoning_items(
+    dest: &mut HashMap<String, Value>,
+    items: Vec<(Option<String>, Value)>,
+) {
+    for (paired_tool_call_id, item) in items {
+        let key = paired_tool_call_id
+            .unwrap_or_else(|| crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY.to_string());
+        dest.insert(key, item);
+    }
 }
 
 /// Retain usage reported before a failed terminal event. Responses providers
@@ -175,7 +428,46 @@ impl ChatV2Pipeline {
         // （此前每个检查点都 new 一个注入器，节流形同虚设）
         let mut workspace_injection_throttle =
             super::super::workspace::injector::InjectionThrottle::new();
+        // ============================================================
+        // P1-8 技能锚定：本轮注入首轮构建后冻结（位置 = 历史末尾、当前 user
+        // 之前），后续轮次逐字节复用；环内 load_skills 新加载的技能按
+        // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
+        // ============================================================
+        let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
+        // P0（DESIGN「tools 会话内冻结」）+ P1 代际（方案 A）：会话权威
+        // 工具面基线 `(g, B_g, digest)` 经 load_session_tool_face_prefix
+        // 载入（含跨进程恢复 + 加锁回填）—— 同一 session 内已发出的 tools
+        // 顺序跨轮（跨 execute_with_tools 调用 / 下一稳定窗口）保持，禁止
+        // 每轮重建字母序。会话首轮基线为空，首次 freeze 按字母序建立；
+        // 环内 load_skills 新工具只追加末尾，推进后写回会话级状态。
+        let tool_face_baseline = self.load_session_tool_face_prefix(&ctx.session_id);
+        let mut frozen_tool_schema_order: Vec<String> = tool_face_baseline.order;
+        // 代际纪律（方案 A，fan-out 统一代际）：单变体路径**永不**因纯前缀
+        // 扩展或 schema digest 变化 bump generation；代际切换只发生在多变体
+        // converge（互异不可 append-only 对齐的尾部）。这里只透传会话当前
+        // 代号供日志观测。
+        let prefix_generation: u64 = tool_face_baseline.generation;
+        // 会话基线 digest（对应 ToolFacePrefixSnapshot::schema_digest）：
+        // 从持久化基线起步，本窗口 freeze 后与窗口 digest 对账，变化仅
+        // 打日志（不切代、不中途写回）。
+        let mut baseline_schema_digest: Option<String> = tool_face_baseline.schema_digest;
+        // P0 字节级冻结：已发出工具的 schema 序列化字节在本稳定窗口
+        // （本次 execute_with_tools 工具环）内不变。同名 schema 中途变化
+        // （MCP 刷新 / load_skills 披露不同版本）时本窗口继续发送首见
+        // 字节，变更延迟到下一稳定窗口生效；新工具只追加末尾。
+        // 窗口级持有（不随名字序基线持久化）：跨窗口允许采纳新字节。
+        let mut frozen_tool_schemas: HashMap<String, Value> = HashMap::new();
+        let mut injected_skill_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+        let mut cumulative_skill_audit = SkillInjectionAudit::default();
         loop {
+            // WI-13: PipelineHook 回合边界 —— 每轮迭代开头、doom-loop/上限检查
+            // 与本轮 LLM 调用之前触发（内置 TaskAuditHook 在此落审计日志）。
+            for hook in self.hooks.iter() {
+                hook.before_turn(self, ctx, recursion_depth).await?;
+            }
+
             // ============================================================
             // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
             // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
@@ -293,6 +585,10 @@ impl ChatV2Pipeline {
             // 保证（与回合末路径复用同一把锁）。
             // ============================================================
             if ctx.needs_compaction {
+                // WI-13: PipelineHook 压缩边界 —— 环内 compaction 真正执行前触发。
+                for hook in self.hooks.iter() {
+                    hook.before_compaction(self, ctx, recursion_depth).await;
+                }
                 match self.run_compaction(ctx).await {
                     Ok(outcome) if outcome.did_compact() => {
                         // 压缩已落盘：重新加载历史并重编译冻结上下文，让本轮 prompt
@@ -372,12 +668,24 @@ impl ChatV2Pipeline {
                 enable_thinking,
                 ctx.options.enable_thinking
             );
+            let wrap_token_policy = self
+                .resolve_active_api_config(ctx)
+                .await
+                .map(|config| {
+                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                        config.provider_type.as_deref(),
+                        config.provider_scope.as_deref(),
+                        &config.model,
+                    )
+                })
+                .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
             let adapter = Arc::new(ChatV2LLMAdapter::new(
                 emitter.clone(),
                 ctx.assistant_message_id.clone(),
                 enable_thinking,
                 ctx.options.skill_state_version,
                 Some(format!("tool-round-{}", recursion_depth)),
+                wrap_token_policy,
             ));
 
             // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容
@@ -388,31 +696,71 @@ impl ChatV2Pipeline {
             // ============================================================
             let mut messages = ctx.chat_history.clone();
 
-            let skill_state =
-                self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
-            let empty_skill_contents = std::collections::HashMap::new();
-            let skill_contents = ctx
-                .options
-                .replay_skill_contents
+            // P1-8 技能锚定：本轮注入只在首轮构建并冻结。已锚定在可回放历史中
+            // 的技能（history.rs 按 meta.skill_injection_anchors 还原）不再重复
+            // 注入，注入点因此在首次注入后冻结，跨轮 [history][skills][userN]
+            // live == replay；同轮后续轮次逐字节复用冻结结果。
+            if frozen_turn_skill_injection.is_none() {
+                let skill_state =
+                    self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+                let empty_skill_contents = std::collections::HashMap::new();
+                let skill_contents = ctx
+                    .options
+                    .replay_skill_contents
+                    .as_ref()
+                    .or(ctx.options.skill_contents.as_ref())
+                    .unwrap_or(&empty_skill_contents);
+                injected_skill_ids = anchored_skill_ids_in_history(&ctx.chat_history);
+                let built = build_transient_skill_messages_with_audit_excluding(
+                    &skill_state,
+                    skill_contents,
+                    ctx.options.skill_dependencies.as_ref(),
+                    // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+                    ctx.options.context_limit.map(|v| v as usize),
+                    &injected_skill_ids,
+                );
+                injected_skill_ids.extend(built.audit.injected_skill_ids.iter().cloned());
+                cumulative_skill_audit = built.audit.clone();
+                if !built.audit.injected_skill_ids.is_empty() {
+                    // Wave2-A r3：锚定时刻立刻记录正文 digest。正文来源即上面
+                    // 渲染注入消息所用的同一 `skill_contents`（replay_skill_contents
+                    // 优先、退回 options.skill_contents）——digest 与发出的字节
+                    // 严格同源。正文不可得的 id 不写（重放侧按「旧锚点无 digest」
+                    // 走兼容分支），绝不编造假 digest；anchors 只存 hash 不存正文。
+                    let content_digests: Vec<(String, String)> = built
+                        .audit
+                        .injected_skill_ids
+                        .iter()
+                        .filter_map(|id| {
+                            skill_contents.get(id).map(|body| {
+                                (
+                                    id.clone(),
+                                    crate::chat_v2::types::skill_body_digest(id, body),
+                                )
+                            })
+                        })
+                        .collect();
+                    let anchors = ctx
+                        .options
+                        .skill_injection_anchors
+                        .get_or_insert_with(Default::default);
+                    anchors.turn_skill_ids = built.audit.injected_skill_ids.clone();
+                    anchors.before_turn_user = ctx.options.is_continue != Some(true);
+                    for (id, digest) in content_digests {
+                        anchors.skill_content_digests.insert(id, digest);
+                    }
+                }
+                frozen_turn_skill_injection = Some(built);
+            }
+            let frozen_skill_messages = frozen_turn_skill_injection
                 .as_ref()
-                .or(ctx.options.skill_contents.as_ref())
-                .unwrap_or(&empty_skill_contents);
-            let transient_skill_messages = build_transient_skill_messages_with_audit(
-                &skill_state,
-                skill_contents,
-                ctx.options.skill_dependencies.as_ref(),
-                // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-                ctx.options.context_limit.map(|v| v as usize),
-            );
-            let skill_audit = transient_skill_messages.audit.clone();
+                .map(|built| built.messages.clone())
+                .unwrap_or_default();
+            let skill_audit = cumulative_skill_audit.clone();
             let injected_skill_count = skill_audit.injected_skill_ids.len();
             let round_id = format!("tool-round-{}", recursion_depth);
             let insertion_index = messages.len();
-            insert_transient_skill_messages(
-                &mut messages,
-                insertion_index,
-                transient_skill_messages.messages,
-            );
+            insert_transient_skill_messages(&mut messages, insertion_index, frozen_skill_messages);
             emitter.emit_skill_injection_audit(
                 &ctx.assistant_message_id,
                 json!({
@@ -455,6 +803,16 @@ impl ChatV2Pipeline {
                 let tool_messages = ctx.all_tool_results_to_messages();
                 let tool_count = tool_messages.len();
                 messages.extend(tool_messages);
+
+                // P1-8：环内 load_skills 新加载的技能按记录顺序回放到对应
+                // tool result 之后，当前 user 之前的内存前缀保持逐字节不变。
+                for (anchor_call_id, batch) in &in_loop_skill_batches {
+                    insert_skill_messages_after_tool_result(
+                        &mut messages,
+                        anchor_call_id,
+                        batch.clone(),
+                    );
+                }
 
                 log::debug!(
                 "[ChatV2::pipeline] Added ALL {} tool result messages to chat history (tool_results count: {})",
@@ -757,20 +1115,48 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。
-            // Anthropic 等 provider 将 tools 纳入缓存前缀，顺序跨轮漂移会
-            // 整段打爆缓存；DeepSeek/OpenAI 虽不把 tools 计入消息前缀，
-            // 稳定排序亦无害。custom_tools 由客户端 schema_tool_ids（注入器）
-            // 与 MCP 追加合并而来，顺序依赖客户端与发现时序，必须收敛。
+            // 🔧 Prompt cache（G6 + P0 冻结）：custom_tools 由客户端
+            // schema_tool_ids（注入器）与 MCP 追加合并而来，顺序依赖客户端与
+            // 发现时序。首轮按名字排序建立基线；后续轮次冻结基线相对顺序，
+            // 且已发出工具的 schema 序列化字节窗口内冻结（同名变更延迟到
+            // 下一稳定窗口），环内 load_skills 新工具只追加末尾，禁止
+            // 字母序插入中段打爆 Anthropic 缓存前缀。
             if let Some(custom_tools) = llm_context
                 .get_mut("custom_tools")
                 .and_then(|v| v.as_array_mut())
             {
-                custom_tools.sort_by(|a, b| {
-                    let name_a = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let name_b = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    name_a.cmp(name_b)
-                });
+                // 代际统一（Wave2-A r2 #3）：统一冻结原语 = 名字序冻结 +
+                // 字节冻结 + 当前窗口冻结快照 digest（名字序稳定哈希，见
+                // tool_schema_digest）。digest 变化 = 窗口内首建或前缀追加
+                // 新工具（已发出条目字节冻结，不可能原地变）—— 单变体
+                // **不 bump generation**，只记日志并把新 digest 写入本地
+                // 快照，变更随下一稳定窗口 / 多变体 converge 评估。
+                let window_schema_digest = freeze_tool_face_for_prompt_cache(
+                    custom_tools,
+                    &mut frozen_tool_schema_order,
+                    &mut frozen_tool_schemas,
+                );
+                if window_schema_digest.is_some() && window_schema_digest != baseline_schema_digest
+                {
+                    log::info!(
+                        "[ChatV2::pipeline] Tool schema digest changed (session_id={}, generation={}, {:?} -> {:?}); \
+                         single-variant path keeps generation unchanged — 变更随下一稳定窗口/多变体 converge 评估",
+                        ctx.session_id,
+                        prefix_generation,
+                        baseline_schema_digest.as_deref().map(|d| &d[..12.min(d.len())]),
+                        window_schema_digest.as_deref().map(|d| &d[..12.min(d.len())]),
+                    );
+                    baseline_schema_digest = window_schema_digest;
+                }
+                // 名字序基线推进后写回会话级状态，下一轮（下一稳定窗口）复用；
+                // 纯前缀扩展**不切代**（generation 不随写回变动，store 沿用
+                // 会话当前代号）；字节冻结（frozen_tool_schemas）保持窗口级
+                // 不写回，窗口 digest 变化只打上方日志、不随 store 持久化
+                // —— digest 推进只发生在多变体 converge 收敛点。
+                self.store_session_frozen_tool_schema_order(
+                    &ctx.session_id,
+                    &frozen_tool_schema_order,
+                );
             }
 
             // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
@@ -881,13 +1267,10 @@ impl ChatV2Pipeline {
                     || lower.contains("broken pipe")
                     || lower.contains("connect")
                     || lower.contains("temporarily unavailable")
-                    // 🔧 原 "status: NNN" 模式与实际错误格式不匹配（死代码）。
-                    // 实际格式："LLM 响应错误 429: …" / "API 返回错误 (503): …" /
-                    // "HTTP 502 …"——按独立数字 token 匹配状态码。
-                    || mentions_http_status_code(&lower, 429)
-                    || mentions_http_status_code(&lower, 502)
-                    || mentions_http_status_code(&lower, 503)
-                    || mentions_http_status_code(&lower, 504)
+                    || lower.contains("status: 429")
+                    || lower.contains("status: 502")
+                    || lower.contains("status: 503")
+                    || lower.contains("status: 504")
             };
 
             let mut call_result = {
@@ -1141,11 +1524,12 @@ impl ChatV2Pipeline {
 
                     // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
                     // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
-                    if !ctx.needs_compaction {
-                        let cfg = self.resolve_active_api_config(ctx).await;
-                        if super::compaction::should_compact(ctx, cfg.as_ref()) {
-                            ctx.needs_compaction = true;
-                        }
+                    // （配置只解析一次，同时供压缩判断与用量记录的协议归属使用）
+                    let active_cfg = self.resolve_active_api_config(ctx).await;
+                    if !ctx.needs_compaction
+                        && super::compaction::should_compact(ctx, active_cfg.as_ref())
+                    {
+                        ctx.needs_compaction = true;
                     }
 
                     // 记录 LLM 使用量到数据库
@@ -1155,17 +1539,27 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    crate::llm_usage::record_llm_usage_cache_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         round_usage.prompt_tokens,
                         round_usage.completion_tokens,
                         round_usage.reasoning_tokens,
                         round_usage.cached_tokens,
+                        // 缓存写入量（Anthropic cache_creation / Responses
+                        // cache_write_tokens）；无测量落 NULL，报表算 write/read 比
+                        round_usage.cache_write_tokens,
                         Some(ctx.session_id.clone()),
                         None, // duration_ms - 在 adapter 层面已记录
                         true,
                         None,
+                        // 生效协议（openai_chat_completions / openai_responses / ...），
+                        // 配置无法解析时留 NULL 而不是猜测
+                        active_cfg
+                            .as_ref()
+                            .map(crate::llm_manager::effective_api_protocol_for_config),
+                        // 真实 token 来源：API 精确值 / tiktoken / heuristic 估算
+                        Some(round_usage.source.to_string()),
                     );
                 }
                 Err(e) => {
@@ -1202,7 +1596,12 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    let failed_round_protocol = self
+                        .resolve_active_api_config(ctx)
+                        .await
+                        .as_ref()
+                        .map(crate::llm_manager::effective_api_protocol_for_config);
+                    crate::llm_usage::record_llm_usage_cache_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         failed_round_usage
@@ -1219,6 +1618,11 @@ impl ChatV2Pipeline {
                         failed_round_usage
                             .as_ref()
                             .and_then(|usage| usage.cached_tokens),
+                        // 失败轮已上报的缓存写入量同样入账（Responses 常在
+                        // failed/incomplete 终态前发 usage）；无测量落 NULL
+                        failed_round_usage
+                            .as_ref()
+                            .and_then(|usage| usage.cache_write_tokens),
                         Some(ctx.session_id.clone()),
                         None,
                         false,
@@ -1227,6 +1631,11 @@ impl ChatV2Pipeline {
                         } else {
                             error_message.clone()
                         }),
+                        failed_round_protocol,
+                        // 失败轮保留到的部分 usage 同样带真实来源；无 usage 时留空
+                        failed_round_usage
+                            .as_ref()
+                            .map(|usage| usage.source.to_string()),
                     );
 
                     if externally_cancelled {
@@ -1322,6 +1731,19 @@ impl ChatV2Pipeline {
                     );
                     ctx.retrieved_sources.web_search = Some(web_sources);
                 }
+            }
+
+            // P2-13 收尾：服务端 web_search_call 完整 item 累积到 ctx，随
+            // assistant 消息 meta 持久化（键 openai_responses_web_search_items），
+            // history 重放时原样回传 input（DeepSeek Responses 无状态恢复搜索结果）
+            let web_search_items = adapter.take_web_search_items();
+            if !web_search_items.is_empty() {
+                log::debug!(
+                    "[ChatV2::pipeline] Collected {} server-side web_search_call item(s) for replay (session={})",
+                    web_search_items.len(),
+                    ctx.session_id
+                );
+                ctx.merge_response_web_search_items(web_search_items);
             }
 
             // 如果有工具调用，执行并递归
@@ -1529,6 +1951,88 @@ impl ChatV2Pipeline {
                                         }
                                     }
                                 }
+
+                                // ============================================================
+                                // P1-8 环内技能锚定：新加载技能（差集）锚到本次
+                                // load_skills 的 tool result 之后追加，禁止删光后
+                                // 整包重插到当前 user 之前（那会改写同轮内存前缀）。
+                                // ============================================================
+                                if let Some(anchor_call_id) =
+                                    tool_result.tool_call_id.clone().filter(|id| !id.is_empty())
+                                {
+                                    let empty_skill_contents = std::collections::HashMap::new();
+                                    let batch_contents = ctx
+                                        .options
+                                        .replay_skill_contents
+                                        .as_ref()
+                                        .or(ctx.options.skill_contents.as_ref())
+                                        .unwrap_or(&empty_skill_contents);
+                                    let batch = build_in_loop_skill_messages(
+                                        &loaded_skill_ids,
+                                        batch_contents,
+                                        ctx.options.skill_dependencies.as_ref(),
+                                        ctx.options.context_limit.map(|v| v as usize),
+                                        &injected_skill_ids,
+                                        ctx.options.skill_state_version.unwrap_or(0),
+                                    );
+                                    cumulative_skill_audit
+                                        .missing_skill_ids
+                                        .extend(batch.audit.missing_skill_ids.clone());
+                                    cumulative_skill_audit
+                                        .dropped_skill_ids
+                                        .extend(batch.audit.dropped_skill_ids.clone());
+                                    if !batch.audit.injected_skill_ids.is_empty() {
+                                        injected_skill_ids
+                                            .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                        cumulative_skill_audit
+                                            .injected_skill_ids
+                                            .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                        cumulative_skill_audit.estimated_tokens +=
+                                            batch.audit.estimated_tokens;
+                                        // Wave2-A r3：环内锚定同样在写锚点时立刻记
+                                        // digest，正文来源即渲染本批消息的同一
+                                        // `batch_contents`（replay_skill_contents 优先、
+                                        // 退回 options.skill_contents）。tool 级与 turn
+                                        // 级共用消息级 skill_content_digests map（按
+                                        // skill_id 键，同轮同 id 必同体）。正文不可得
+                                        // 不写假 digest；不 bump prefix generation。
+                                        let content_digests: Vec<(String, String)> = batch
+                                            .audit
+                                            .injected_skill_ids
+                                            .iter()
+                                            .filter_map(|id| {
+                                                batch_contents.get(id).map(|body| {
+                                                    (
+                                                        id.clone(),
+                                                        crate::chat_v2::types::skill_body_digest(
+                                                            id, body,
+                                                        ),
+                                                    )
+                                                })
+                                            })
+                                            .collect();
+                                        let anchors = ctx
+                                            .options
+                                            .skill_injection_anchors
+                                            .get_or_insert_with(Default::default);
+                                        anchors.tool_anchored.push(
+                                            crate::chat_v2::types::ToolAnchoredSkills {
+                                                tool_call_id: anchor_call_id.clone(),
+                                                skill_ids: batch.audit.injected_skill_ids.clone(),
+                                            },
+                                        );
+                                        for (id, digest) in content_digests {
+                                            anchors.skill_content_digests.insert(id, digest);
+                                        }
+                                        log::info!(
+                                            "[ChatV2::pipeline] P1-8: anchored {} in-loop skill(s) after load_skills tool_call_id={}",
+                                            batch.audit.injected_skill_ids.len(),
+                                            anchor_call_id
+                                        );
+                                        in_loop_skill_batches
+                                            .push((anchor_call_id, batch.messages));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1622,15 +2126,20 @@ impl ChatV2Pipeline {
                         result
                     })
                     .collect();
-                if let (Some(item), Some(first_tool_call_id)) = (
-                    adapter.get_response_reasoning_item(),
-                    tool_results_with_reasoning
+                // Responses reasoning items 按相邻配对写入：一次响应可含多个
+                // reasoning item（每个 function_call 各带一个），按 adapter 已
+                // 配好的 tool_call_id 键控（禁止全部绑到本批第一个 tool id）。
+                // 未配对的残留条目兜底挂到第一个尚无 reasoning item 的 tool_call。
+                {
+                    let fallback_tool_call_id = tool_results_with_reasoning
                         .first()
                         .and_then(|r| r.tool_call_id.clone())
-                        .filter(|id| !id.is_empty()),
-                ) {
-                    ctx.response_reasoning_by_tool_call_id
-                        .insert(first_tool_call_id, item);
+                        .filter(|id| !id.is_empty());
+                    assign_tool_round_reasoning_items(
+                        &mut ctx.response_reasoning_by_tool_call_id,
+                        adapter.get_response_reasoning_items(),
+                        fallback_tool_call_id.as_deref(),
+                    );
                 }
                 // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
                 // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
@@ -1763,6 +2272,15 @@ impl ChatV2Pipeline {
             // 无工具调用，这是最后一轮 LLM 调用
             // 收集最终的 thinking 和 content 块
             // ============================================================
+            // Responses reasoning item：纯文本轮无 tool_call_id 可键控，挂到
+            // 哨兵键持久化；history 重放附到最终 assistant 文本消息 metadata，
+            // 下一轮 Responses input 原样回传 encrypted reasoning。
+            // 多条时后到覆盖（最贴近最终正文的 item 生效）。
+            assign_final_round_reasoning_items(
+                &mut ctx.response_reasoning_by_tool_call_id,
+                adapter.get_response_reasoning_items(),
+            );
+
             ctx.collect_round_blocks(
                 adapter.get_thinking_block_id(),
                 adapter.get_accumulated_reasoning(),
@@ -2521,28 +3039,6 @@ impl ChatV2Pipeline {
         !self.tool_may_require_approval(&tc.name, &tc.arguments)
     }
 
-    /// 🆕 2026-07: 保守判断工具是否可能进入审批流程
-    ///
-    /// 与 `execute_single_tool` 内的 effective_sensitivity 逻辑共用同一个解析器：
-    /// - 最终敏感度非 Low（或无执行器）→ 可能审批 → 串行；
-    /// - 来源、能力域或单工具规则把 Low 升级后，也会自动转为串行。
-    fn tool_may_require_approval(&self, tool_name: &str, arguments: &Value) -> bool {
-        let base_sensitivity = self
-            .executor_registry
-            .get_sensitivity_for_call(tool_name, arguments);
-        let effective_sensitivity = if let Some(ref db) = self.main_db {
-            crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
-                base_sensitivity,
-                tool_name,
-                arguments,
-                |key| db.get_setting(key).ok().flatten(),
-            )
-        } else {
-            base_sensitivity
-        };
-        effective_sensitivity != Some(ToolSensitivity::Low)
-    }
-
     /// 🆕 2026-07: 带瞬时失败自动重试的单工具执行封装
     ///
     /// - `allow_transient_retry=true` 仅用于 ReadOnly 工具：错误信息匹配瞬时失败
@@ -2860,731 +3356,30 @@ impl ChatV2Pipeline {
             tool_call.id
         );
 
-        let build_preflight_blocked_result = |error_message: String| {
-            let display_arguments =
-                crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
-                    &tool_call.name,
-                    &tool_call.arguments,
-                );
-            let payload = json!({
-                "toolName": tool_call.name,
-                "toolInput": display_arguments.clone(),
-                "toolCallId": tool_call.id,
-            });
-            emitter.emit_start_with_meta(
-                event_types::TOOL_CALL,
-                message_id,
-                Some(block_id),
-                Some(payload),
-                variant_id,
-                skill_state_version,
-                round_id,
-            );
-            emitter.emit_error_with_meta(
-                event_types::TOOL_CALL,
-                block_id,
-                &error_message,
-                variant_id,
-                skill_state_version,
-                round_id,
-            );
-            ToolResultInfo {
-                tool_call_id: Some(tool_call.id.clone()),
-                block_id: Some(block_id.to_string()),
-                tool_name: tool_call.name.clone(),
-                input: display_arguments,
-                output: json!(null),
-                success: false,
-                error: Some(error_message),
-                duration_ms: None,
-                reasoning_content: None,
-                thought_signature: None,
-            }
-        };
-
-        // Kill Switch first: blocks every new tool execution regardless of Ask/Plan/Craft.
-        if let Some(kill_switch) = &self.kill_switch {
-            if let Err(message) = kill_switch.ensure_allowed() {
-                log::warn!(
-                    "[ChatV2::pipeline] KillSwitch blocked tool '{}' before authority/approval",
-                    tool_call.name
-                );
-                let display_arguments =
-                    crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
-                        &tool_call.name,
-                        &tool_call.arguments,
-                    );
-                let payload = json!({
-                    "toolName": tool_call.name,
-                    "toolInput": display_arguments.clone(),
-                    "toolCallId": tool_call.id,
-                    "killSwitchBlocked": true,
-                });
-                emitter.emit_start_with_meta(
-                    event_types::TOOL_CALL,
-                    message_id,
-                    Some(block_id),
-                    Some(payload),
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
-                emitter.emit_error_with_meta(
-                    event_types::TOOL_CALL,
-                    block_id,
-                    &message,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
-                return Ok(ToolResultInfo {
-                    tool_call_id: Some(tool_call.id.clone()),
-                    block_id: Some(block_id.to_string()),
-                    tool_name: tool_call.name.clone(),
-                    input: display_arguments,
-                    output: json!({
-                        "killSwitchBlocked": true,
-                        "message": message,
-                    }),
-                    success: false,
-                    error: Some(message),
-                    duration_ms: None,
-                    reasoning_content: None,
-                    thought_signature: None,
-                });
-            }
-        }
-
-        // Feature flag checks (memory, RAG, web search)
-        let short_name = Self::canonical_tool_short_name(&tool_call.name);
-
-        if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
-            &tool_call.name,
-            &tool_call.arguments,
-            execution_allowed_tools,
-        ) {
-            let allowed_count = execution_allowed_tools
-                .as_ref()
-                .map(|tools| tools.len())
-                .unwrap_or(0);
-            log::warn!(
-                "[ChatV2::pipeline] Tool blocked by runtime execution allowlist: tool={}, allowed_count={}",
-                tool_call.name,
-                allowed_count
-            );
-            return Ok(build_preflight_blocked_result(format!(
-                "当前运行时未允许调用工具 '{}'，工具调用已被后端拦截",
-                tool_call.name
-            )));
-        }
-        if let Err(error) = crate::chat_v2::headless::validate_trusted_automation_tool_call(
-            session_id,
-            &tool_call.name,
-            &tool_call.arguments,
-        ) {
-            log::warn!(
-                "[ChatV2::pipeline] Trusted automation profile blocked tool '{}': {}",
-                tool_call.name,
-                error
-            );
-            return Ok(build_preflight_blocked_result(error));
-        }
-
-        let is_memory_tool = short_name.starts_with("memory_");
-        // 🔧 P0-2：rag_enabled 开关必须覆盖所有知识库检索工具。
-        // unified_search / multimodal_search 与 rag_search 同走 VFS 检索管线，
-        // 仅匹配 "rag_" 前缀会导致用户关闭 RAG 后仍可通过前两者检索知识库。
-        // web_search 不受 rag_enabled 控制，由 web_search_enabled 单独把关。
-        let is_rag_tool = short_name.starts_with("rag_")
-            || matches!(short_name, "unified_search" | "multimodal_search");
-        let is_web_search_tool = short_name == "web_search";
-
-        if is_memory_tool && !memory_enabled {
-            return Ok(build_preflight_blocked_result(
-                "memory 功能已关闭，工具调用被拦截".to_string(),
-            ));
-        }
-        if is_rag_tool && !rag_enabled {
-            return Ok(build_preflight_blocked_result(
-                "RAG 功能已关闭，工具调用被拦截".to_string(),
-            ));
-        }
-        if is_web_search_tool && !web_search_enabled {
-            return Ok(build_preflight_blocked_result(
-                "WebSearch 功能已关闭，工具调用被拦截".to_string(),
-            ));
-        }
-
-        let is_local_shell = crate::chat_v2::approval_scope::is_local_shell_execute_tool(
-            &tool_call.name,
-            &tool_call.arguments,
-        );
-        let is_external_mcp = crate::chat_v2::tool_approval_policy::is_external_mcp_call(
-            &tool_call.name,
-            &tool_call.arguments,
-        );
-        // The immutable catastrophe guard applies to the backend-owned local
-        // shell before user rules or any preset bypass. External MCP execution
-        // is remote/uncontrolled and is explicitly not claimed to be protected
-        // by this local command parser.
-        let immutable_command_guard = if is_local_shell {
-            // The pipeline checkpoint does not know the runtime cwd/roots yet
-            // (the executor re-checks with full context before spawn), but
-            // HOME is always protected and cheap to resolve here.
-            let guard_roots: Vec<std::path::PathBuf> = dirs::home_dir().into_iter().collect();
-            tool_call
-                .arguments
-                .get("command")
-                .and_then(Value::as_str)
-                .map(|command| {
-                    crate::chat_v2::approval_scope::immutable_shell_command_guard(
-                        command,
-                        None,
-                        &guard_roots,
-                    )
-                })
-        } else {
-            None
-        };
-        if immutable_command_guard.as_ref().is_some_and(|decision| {
-            decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
-        }) {
-            return Ok(build_preflight_blocked_result(
-                "终端命令被不可覆盖的灾难命令守卫拒绝".to_string(),
-            ));
-        }
-
-        // User command-list denies apply before remembered approval. Its Allow
-        // remains advisory and cannot override the immutable guard above.
-        let shell_command_decision =
-            if crate::chat_v2::approval_scope::is_shell_runtime_tool_for_args(
-                &tool_call.name,
-                &tool_call.arguments,
-            ) {
-                tool_call
-                    .arguments
-                    .get("command")
-                    .and_then(Value::as_str)
-                    .map(|command| {
-                        let raw_policy = self.main_db.as_ref().and_then(|db| {
-                            db.get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
-                                .ok()
-                                .flatten()
-                        });
-                        crate::chat_v2::shell_command_policy::enforce_for_call(
-                            raw_policy.as_deref(),
-                            command,
-                            is_local_shell,
-                        )
-                    })
-            } else {
-                None
-            };
-        if shell_command_decision.as_ref().is_some_and(|decision| {
-            decision.effective_effect == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
-        }) {
-            return Ok(build_preflight_blocked_result(
-                "终端命令被用户配置的拒绝规则拦截".to_string(),
-            ));
-        }
-
-        // Shell approval is bound to backend-resolved filesystem authority,
-        // never to model-supplied root labels. The original ToolCall remains
-        // untouched and is the only value passed to the executor.
-        let approval_arguments = match self.resolve_local_shell_approval_arguments(
+        // WI-13: 审批/授权准入与审计标记已迁至内置 PipelineHook（pipeline/hooks.rs）。
+        // 默认注册 ApprovalGateHook（准入，可拦截）+ TaskAuditHook（审计注记），
+        // 行为与迁移前的内联实现等价；hook 链拦截时直接返回被拦截结果。
+        let hook_ctx = ToolHookContext {
             tool_call,
+            block_id,
             emitter,
             session_id,
-            skill_package_roots.as_ref(),
-        ) {
-            Ok(Some(arguments)) => arguments,
-            Ok(None) => tool_call.arguments.clone(),
-            Err(error) => {
-                return Ok(build_preflight_blocked_result(format!(
-                    "无法绑定本地终端审批作用域: {error}"
-                )))
-            }
-        };
-        let expected_runtime_binding =
-            crate::chat_v2::approval_scope::runtime_root_binding_from_args(&approval_arguments)
-                .map(str::to_string);
-        let expected_runtime_scope_key = expected_runtime_binding.as_ref().map(|_| {
-            crate::chat_v2::approval_scope::make_runtime_scope_key(
-                &tool_call.name,
-                &approval_arguments,
-            )
-        });
-
-        // 🆕 文档 29 P1-3：检查工具敏感等级，决定是否需要用户审批
-        let sensitivity = self
-            .executor_registry
-            .get_sensitivity_for_call(&tool_call.name, &tool_call.arguments);
-
-        // Resolve source-qualified tool, legacy tool, source, domain, and global
-        // rules in one place. Precise runtime-authority approvals remain locked.
-        let mut effective_sensitivity = if let Some(ref db) = self.main_db {
-            crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
-                sensitivity,
-                &tool_call.name,
-                &tool_call.arguments,
-                |key| db.get_setting(key).ok().flatten(),
-            )
-        } else {
-            sensitivity
-        };
-        if let Some(decision) = shell_command_decision.as_ref() {
-            effective_sensitivity = crate::chat_v2::shell_command_policy::apply_to_sensitivity(
-                decision,
-                effective_sensitivity,
-            );
-        }
-
-        // AuthorityGate (Ask / Plan / Craft): after sensitivity, before ApprovalManager.
-        let plan_binding_key = super::authority_mode::plan_call_binding_key(
-            &tool_call.name,
-            &approval_arguments,
+            message_id,
+            variant_id,
+            skill_state_version,
             round_id,
-        );
-        let authority_state = match ChatV2Repo::get_session_authority_state(&self.db, session_id) {
-            Ok(state) => state,
-            Err(err) => {
-                log::error!(
-                    "[ChatV2::pipeline] Failed to load authority mode for {}: {}; refusing tool",
-                    session_id,
-                    err
-                );
-                return Ok(build_preflight_blocked_result(
-                    "无法读取会话权限状态，已安全阻止工具执行".to_string(),
-                ));
-            }
+            skill_package_roots,
+            execution_allowed_tools,
+            cancellation_token: cancellation_token.as_ref(),
+            memory_enabled,
+            rag_enabled,
+            web_search_enabled,
         };
-        let authority_decision = super::authority_mode::evaluate_authority_gate(
-            &authority_state,
-            &tool_call.name,
-            effective_sensitivity,
-            Some(&plan_binding_key),
-            chrono::Utc::now(),
-        );
-        let mut plan_gate_just_approved = false;
-        match authority_decision {
-            super::authority_mode::AuthorityGateDecision::Allow => {}
-            super::authority_mode::AuthorityGateDecision::BlockAsk { message, tool_name } => {
-                log::info!(
-                    "[ChatV2::pipeline] AuthorityGate Ask blocked write tool '{}'",
-                    tool_name
-                );
-                let display_arguments =
-                    crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
-                        &tool_call.name,
-                        &tool_call.arguments,
-                    );
-                let payload = json!({
-                    "toolName": tool_call.name,
-                    "toolInput": display_arguments.clone(),
-                    "toolCallId": tool_call.id,
-                    "authorityBlocked": true,
-                    "authorityMode": "ask",
-                    "suggestedMode": "plan",
-                });
-                emitter.emit_start_with_meta(
-                    event_types::TOOL_CALL,
-                    message_id,
-                    Some(block_id),
-                    Some(payload),
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
-                emitter.emit_error_with_meta(
-                    event_types::TOOL_CALL,
-                    block_id,
-                    &message,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
-                return Ok(ToolResultInfo {
-                    tool_call_id: Some(tool_call.id.clone()),
-                    block_id: Some(block_id.to_string()),
-                    tool_name: tool_call.name.clone(),
-                    input: display_arguments,
-                    output: super::authority_mode::ask_block_structured_output(&tool_name),
-                    success: false,
-                    error: Some(message),
-                    duration_ms: None,
-                    reasoning_content: None,
-                    thought_signature: None,
-                });
-            }
-            super::authority_mode::AuthorityGateDecision::WaitPlanGate { summary } => {
-                let plan_outcome = self
-                    .request_plan_gate(
-                        tool_call,
-                        &approval_arguments,
-                        &summary,
-                        emitter,
-                        session_id,
-                        message_id,
-                        cancellation_token.as_ref(),
-                        &plan_binding_key,
-                        round_id,
-                    )
-                    .await;
-                match plan_outcome {
-                    ApprovalOutcome::Approved => {
-                        // Plan batch approved for this binding — skip secondary TOOL_APPROVAL
-                        // for the same binding (privilege escalation still asks below).
-                        plan_gate_just_approved = true;
-                    }
-                    ApprovalOutcome::Rejected { reason } => {
-                        let message = match reason {
-                            Some(user_reason) => {
-                                format!("用户拒绝了计划执行。用户说明：{}", user_reason)
-                            }
-                            None => "用户拒绝了计划执行".to_string(),
-                        };
-                        return Ok(build_preflight_blocked_result(message));
-                    }
-                    ApprovalOutcome::Timeout => {
-                        return Ok(build_preflight_blocked_result(
-                            "计划确认等待超时，请重试".to_string(),
-                        ));
-                    }
-                    ApprovalOutcome::ChannelClosed => {
-                        return Ok(build_preflight_blocked_result(
-                            "计划确认通道异常关闭，请重试".to_string(),
-                        ));
-                    }
-                    ApprovalOutcome::Cancelled => {
-                        return Ok(build_preflight_blocked_result(
-                            "流已取消，计划确认中止".to_string(),
-                        ));
-                    }
-                }
-            }
-        }
-
-        let immutable_guard_asks = immutable_command_guard.as_ref().is_some_and(|decision| {
-            decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Ask
-        });
-        let privilege_escalation =
-            crate::chat_v2::approval_scope::is_privilege_escalation_tool_for_args(
-                &tool_call.name,
-                &tool_call.arguments,
-            );
-        let plan_binding_covers_tool_approval =
-            super::authority_mode::plan_binding_satisfies_tool_approval(
-                &authority_state,
-                &plan_binding_key,
-                privilege_escalation,
-                plan_gate_just_approved,
-                chrono::Utc::now(),
-            );
-        let approval_required = if plan_binding_covers_tool_approval {
-            false
-        } else {
-            super::authority_mode::requires_tool_approval(
-                &authority_state,
-                sensitivity,
-                effective_sensitivity,
-                immutable_guard_asks,
-                is_external_mcp,
-                privilege_escalation,
-            )
-        };
-        if privilege_escalation
-            && approval_required
-            && authority_state.authority_mode == crate::chat_v2::types::AuthorityMode::Craft
-            && matches!(
-                authority_state.permission_preset,
-                crate::chat_v2::types::PermissionPreset::FullAccess
-                    | crate::chat_v2::types::PermissionPreset::DangerFullAccess
-            )
-        {
-            log::info!(
-                "[ChatV2::audit] privilege_escalation=true approval_forced=true permission_preset={} session={} tool_call_id={} tool={}",
-                authority_state.permission_preset.as_str(),
-                session_id,
-                tool_call.id,
-                tool_call.name
-            );
-        }
-        let mut approval_requirement_satisfied = false;
-
-        // trusted automation: begin —— 预授权旁路（无人值守定时任务）。
-        // 安全判定全部集中在 headless::is_trusted_automation_preauthorized：仅当
-        // 会话安装了 TrustedAutomationSessionGuard（headless runner 显式安装的
-        // pinned profile），且本次调用以【原始参数】重新通过 profile 全部校验
-        // （工具白名单、root 读写、shell 前缀/操作符、网络域、输出预算、回滚
-        // 证据）时才返回 true；任何校验不满足或异常一律 false → 走下方原有
-        // ApprovalManager 人工审批路径（fail-closed）。普通交互会话无 profile，
-        // 恒为 false，此段对非自动化路径零行为变化。
-        let trusted_automation_preauthorized = !immutable_guard_asks
-            && crate::chat_v2::headless::is_trusted_automation_preauthorized(
-                session_id,
-                &tool_call.name,
-                &tool_call.arguments,
-            );
-        if trusted_automation_preauthorized && approval_required {
-            approval_requirement_satisfied = true;
-            log::info!(
-                "[ChatV2::pipeline] trusted_automation_preauthorized: skipping ApprovalManager for tool '{}' (session={}, tool_call_id={}, sensitivity={:?})",
-                tool_call.name,
-                session_id,
-                tool_call.id,
-                effective_sensitivity
-            );
-        }
-        // trusted automation: end（下一行条件中的 !trusted_automation_preauthorized
-        // 是本次改造对既有审批判定的唯一侵入点）
-        if approval_required && !trusted_automation_preauthorized {
-            let Some(approval_manager) = &self.approval_manager else {
-                log::error!(
-                    "[ChatV2::pipeline] Refusing {:?} tool '{}' because ApprovalManager is unavailable",
-                    effective_sensitivity,
-                    tool_call.name
-                );
-                return Ok(build_preflight_blocked_result(
-                    "审批服务不可用，已阻止中高风险工具执行".to_string(),
-                ));
-            };
-            // 🔧 F8/F9 修复说明：session_id 必须是真实会话 ID（多变体路径不再传
-            // "{session}:{variant}" 复合键）。前端审批响应携带真实 session_id，
-            // ApprovalManager 按 (session_id, tool_call_id) 精确匹配 pending 项，
-            // 若此处键不一致，用户点击"允许"将永远匹配不到等待者（approval_expired），
-            // 工具只能等到超时被拒。
-
-            // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
-            // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
-            // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
-            // ADR-B2：权限类工具跳过一切 remember 路径（不可绕过人工审批）。
-            let irreversible = crate::chat_v2::approval_scope::never_remember_approval_for_args(
-                &tool_call.name,
-                &approval_arguments,
-            );
-            let can_use_session_remember = !immutable_guard_asks
-                && authority_state.authority_mode == crate::chat_v2::types::AuthorityMode::Craft
-                && authority_state.permission_preset
-                    == crate::chat_v2::types::PermissionPreset::Relaxed
-                && sensitivity == Some(ToolSensitivity::Medium)
-                && effective_sensitivity == Some(ToolSensitivity::Medium)
-                && !irreversible;
-
-            // Presets are session-only. Persistent/global remembers are
-            // deliberately ignored; Craft/relaxed may reuse only Medium approvals.
-            let remembered = can_use_session_remember
-                .then(|| {
-                    approval_manager.check_session_remembered(
-                        session_id,
-                        &tool_call.name,
-                        &approval_arguments,
-                    )
-                })
-                .flatten();
-
-            if let Some(is_allowed) = remembered {
-                log::info!(
-                    "[ChatV2::pipeline] Tool {} approval remembered: {} (persisted={})",
-                    tool_call.name,
-                    is_allowed,
-                    false
-                );
-                if !is_allowed {
-                    // 用户之前选择了"始终拒绝"
-                    return Ok(build_preflight_blocked_result(
-                        "用户已拒绝此工具执行".to_string(),
-                    ));
-                }
-                // 用户之前选择了"始终允许"，继续执行
-                approval_requirement_satisfied = true;
-            } else {
-                // 需要请求用户审批
-                let actual_sensitivity = if immutable_guard_asks
-                    || sensitivity == Some(ToolSensitivity::High)
-                    || effective_sensitivity == Some(ToolSensitivity::High)
-                {
-                    ToolSensitivity::High
-                } else {
-                    effective_sensitivity
-                        .or(sensitivity)
-                        .unwrap_or(ToolSensitivity::Medium)
-                };
-                let approval_preset = if authority_state.authority_mode
-                    == crate::chat_v2::types::AuthorityMode::Craft
-                {
-                    authority_state.permission_preset
-                } else {
-                    // Presets are Craft-only. Plan approvals remain
-                    // single-use and cannot seed a later Craft remember.
-                    crate::chat_v2::types::PermissionPreset::Cautious
-                };
-                let approval_outcome = self
-                    .request_tool_approval(
-                        tool_call,
-                        &approval_arguments,
-                        emitter,
-                        session_id,
-                        message_id,
-                        block_id,
-                        &actual_sensitivity,
-                        approval_preset,
-                        approval_manager,
-                        cancellation_token.as_ref(),
-                    )
-                    .await;
-
-                match approval_outcome {
-                    ApprovalOutcome::Approved => {
-                        // 用户同意，继续执行
-                        approval_requirement_satisfied = true;
-                    }
-                    ApprovalOutcome::Rejected { reason } => {
-                        let message = match reason {
-                            Some(user_reason) => {
-                                format!("用户拒绝执行此工具。用户说明：{}", user_reason)
-                            }
-                            None => "用户拒绝执行此工具".to_string(),
-                        };
-                        return Ok(build_preflight_blocked_result(message));
-                    }
-                    ApprovalOutcome::Timeout => {
-                        return Ok(build_preflight_blocked_result(
-                            "工具审批等待超时，请重试".to_string(),
-                        ));
-                    }
-                    ApprovalOutcome::ChannelClosed => {
-                        return Ok(build_preflight_blocked_result(
-                            "工具审批通道异常关闭，请重试".to_string(),
-                        ));
-                    }
-                    ApprovalOutcome::Cancelled => {
-                        return Ok(build_preflight_blocked_result(
-                            "流已取消，工具审批中止".to_string(),
-                        ));
-                    }
-                }
-            }
-        }
-        if let Some(expected_binding) = expected_runtime_binding.as_deref() {
-            let rebound = match self.resolve_local_shell_approval_arguments(
-                tool_call,
-                emitter,
-                session_id,
-                skill_package_roots.as_ref(),
-            ) {
-                Ok(Some(arguments)) => arguments,
-                Ok(None) => {
-                    return Ok(build_preflight_blocked_result(
-                        "本地终端审批绑定在执行前丢失".to_string(),
-                    ))
-                }
-                Err(error) => {
-                    return Ok(build_preflight_blocked_result(format!(
-                        "本地终端运行时作用域在审批后发生变化: {error}"
-                    )))
-                }
-            };
-            let current_binding =
-                crate::chat_v2::approval_scope::runtime_root_binding_from_args(&rebound);
-            let current_scope_key =
-                crate::chat_v2::approval_scope::make_runtime_scope_key(&tool_call.name, &rebound);
-            if current_binding != Some(expected_binding)
-                || expected_runtime_scope_key.as_deref() != Some(current_scope_key.as_str())
-            {
-                log::warn!(
-                    "[ChatV2::pipeline] Runtime-root approval binding changed before shell exec: tool_call_id={}",
-                    tool_call.id
-                );
-                return Ok(build_preflight_blocked_result(
-                    "本地终端运行时目录、访问权限、环境或可读范围在审批后发生变化，请重新审批"
-                        .to_string(),
-                ));
-            }
-        }
-
-        // Re-check all revocable authority immediately before the executor. The
-        // preceding plan/tool approvals can wait for user input, during which an
-        // emergency stop or mode change must take effect.
-        if let Some(kill_switch) = &self.kill_switch {
-            if let Err(message) = kill_switch.ensure_allowed() {
-                return Ok(build_preflight_blocked_result(message));
-            }
-        }
-        if cancellation_token
-            .as_ref()
-            .is_some_and(|token| token.is_cancelled())
-        {
-            return Ok(build_preflight_blocked_result(
-                "流已取消，工具执行中止".to_string(),
-            ));
-        }
-        let current_authority = match ChatV2Repo::get_session_authority_state(&self.db, session_id)
-        {
-            Ok(state) => state,
-            Err(error) => {
-                log::error!(
-                    "[ChatV2::pipeline] Authority re-check failed for {}: {}",
-                    session_id,
-                    error
-                );
-                return Ok(build_preflight_blocked_result(
-                    "执行前无法复核会话权限，已安全阻止工具执行".to_string(),
-                ));
-            }
-        };
-        let current_approval_required = super::authority_mode::requires_tool_approval(
-            &current_authority,
-            sensitivity,
-            effective_sensitivity,
-            immutable_guard_asks,
-            is_external_mcp,
-            privilege_escalation,
-        );
-        if current_approval_required && !approval_requirement_satisfied {
-            return Ok(build_preflight_blocked_result(
-                "会话审批策略在执行前发生变化，当前调用需要重新审批".to_string(),
-            ));
-        }
-        match super::authority_mode::evaluate_authority_gate(
-            &current_authority,
-            &tool_call.name,
-            effective_sensitivity,
-            Some(&plan_binding_key),
-            chrono::Utc::now(),
-        ) {
-            super::authority_mode::AuthorityGateDecision::Allow => {
-                if current_authority.authority_mode == crate::chat_v2::types::AuthorityMode::Plan {
-                    match ChatV2Repo::consume_session_plan_binding(
-                        &self.db,
-                        session_id,
-                        &plan_binding_key,
-                        chrono::Utc::now(),
-                    ) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            return Ok(build_preflight_blocked_result(
-                                "计划批准已被消费或与当前调用不匹配，请重新确认".to_string(),
-                            ));
-                        }
-                        Err(error) => {
-                            log::error!(
-                                "[ChatV2::pipeline] Failed to consume plan approval: {}",
-                                error
-                            );
-                            return Ok(build_preflight_blocked_result(
-                                "无法原子消费计划批准，已安全阻止工具执行".to_string(),
-                            ));
-                        }
-                    }
-                }
-            }
-            super::authority_mode::AuthorityGateDecision::BlockAsk { message, .. } => {
-                return Ok(build_preflight_blocked_result(message));
-            }
-            super::authority_mode::AuthorityGateDecision::WaitPlanGate { .. } => {
-                return Ok(build_preflight_blocked_result(
-                    "计划批准已过期或与当前工具调用不匹配，请重新确认".to_string(),
-                ));
+        let mut admission = ToolAdmission::new(&tool_call.arguments);
+        for hook in self.hooks.iter() {
+            match hook.before_tool(self, &hook_ctx, &mut admission).await {
+                ToolGateOutcome::Proceed => {}
+                ToolGateOutcome::Block(result) => return Ok(*result),
             }
         }
 
@@ -3617,16 +3412,11 @@ impl ChatV2Pipeline {
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
         .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
-        .with_shell_guard_approved(super::authority_mode::shell_guard_admitted(
-            immutable_guard_asks,
-            approval_required,
-            approval_requirement_satisfied,
-        ))
-        .with_shell_authority_admission(
-            current_authority.authority_mode,
-            current_authority.permission_preset,
-        )
+        .with_shell_guard_approved(admission.shell_guard_admitted())
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
+        if let Some((authority_mode, permission_preset)) = admission.authority_admission() {
+            ctx = ctx.with_shell_authority_admission(authority_mode, permission_preset);
+        }
 
         ctx.emitter.register_block_event_meta(
             &ctx.block_id,
@@ -3649,75 +3439,30 @@ impl ChatV2Pipeline {
         // must not leave a window where emergency stop can still start effects.
         if let Some(kill_switch) = &self.kill_switch {
             if let Err(message) = kill_switch.ensure_allowed() {
-                return Ok(build_preflight_blocked_result(message));
+                return Ok(preflight_blocked_result(&hook_ctx, message));
             }
         }
         if cancellation_token
             .as_ref()
             .is_some_and(|token| token.is_cancelled())
         {
-            return Ok(build_preflight_blocked_result(
+            return Ok(preflight_blocked_result(
+                &hook_ctx,
                 "流已取消，工具执行中止".to_string(),
             ));
         }
 
         // 🆕 委托给 ExecutorRegistry 执行
         match self.executor_registry.execute(tool_call, &ctx).await {
-            // trusted automation: begin —— 预授权执行的可审计标记。
-            // 仅当本次调用经 trusted profile 预授权跳过了人工审批时，在持久化的
-            // 工具输出（JSON 对象时）补写 trusted_automation_preauthorized=true，
-            // 供事后审计区分"用户点了允许"与"profile 预授权放行"。
+            // WI-13: 审计记录（external MCP 安全边界注记 + trusted automation
+            // 预授权标记）已迁至 TaskAuditHook::after_tool（pipeline/hooks.rs）。
             Ok(mut result) => {
-                if is_external_mcp
-                    && current_authority.authority_mode
-                        == crate::chat_v2::types::AuthorityMode::Craft
-                    && matches!(
-                        current_authority.permission_preset,
-                        crate::chat_v2::types::PermissionPreset::FullAccess
-                            | crate::chat_v2::types::PermissionPreset::DangerFullAccess
-                    )
-                {
-                    // Audit contract: remote MCP implementations are outside
-                    // the local shell sandbox, runtime-root enforcement and
-                    // immutable command-guard guarantee.
-                    log::info!(
-                        "[ChatV2::audit] external_mcp=true approval_bypassed=true permission_preset={} local_shell_sandbox_guaranteed=false runtime_roots_guaranteed=false command_guard_guaranteed=false session={} tool_call_id={} tool={} success={}",
-                        current_authority.permission_preset.as_str(),
-                        session_id,
-                        tool_call.id,
-                        tool_call.name,
-                        result.success
-                    );
-                    if let Some(output) = result.output.as_object_mut() {
-                        output.insert(
-                            "external_mcp_security_boundary".to_string(),
-                            json!({
-                                "approval_bypassed": true,
-                                "permission_preset": current_authority.permission_preset.as_str(),
-                                "local_shell_sandbox_guaranteed": false,
-                                "runtime_roots_guaranteed": false,
-                                "command_guard_guaranteed": false,
-                            }),
-                        );
-                    }
-                }
-                if trusted_automation_preauthorized {
-                    if let Some(output) = result.output.as_object_mut() {
-                        output
-                            .entry("trusted_automation_preauthorized".to_string())
-                            .or_insert(json!(true));
-                    }
-                    log::info!(
-                        "[ChatV2::pipeline] tool '{}' executed under trusted_automation_preauthorized (session={}, tool_call_id={}, success={})",
-                        tool_call.name,
-                        session_id,
-                        tool_call.id,
-                        result.success
-                    );
+                for hook in self.hooks.iter() {
+                    hook.after_tool(self, &hook_ctx, &admission, &mut result)
+                        .await;
                 }
                 Ok(result)
             }
-            // trusted automation: end
             Err(error_msg) => {
                 ctx.emitter.emit_error_with_meta(
                     event_types::TOOL_CALL,
@@ -3748,415 +3493,6 @@ impl ChatV2Pipeline {
                     reasoning_content: None,
                     thought_signature: None,
                 })
-            }
-        }
-    }
-
-    fn resolve_local_shell_approval_arguments(
-        &self,
-        tool_call: &ToolCall,
-        emitter: &Arc<ChatV2EventEmitter>,
-        session_id: &str,
-        skill_package_roots: Option<&std::collections::HashMap<String, String>>,
-    ) -> Result<Option<Value>, String> {
-        if !crate::chat_v2::approval_scope::is_local_shell_execute_tool(
-            &tool_call.name,
-            &tool_call.arguments,
-        ) {
-            return Ok(None);
-        }
-
-        use serde_json::json;
-        use tauri::Manager;
-
-        let window = emitter.window();
-        let state = window.state::<crate::commands::AppState>();
-        // Inject group preferred root into approval args (not ToolCall) before
-        // binding/scope so approval sees the same root execute will resolve.
-        let explicit =
-            crate::chat_v2::runtime_roots::explicit_runtime_root_id_from_args(&tool_call.arguments);
-        let effective_root_id =
-            crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
-                window.app_handle(),
-                &state.database,
-                Some(self.db.as_ref()),
-                session_id,
-                skill_package_roots,
-                explicit.as_deref(),
-            );
-        let mut approval_args = tool_call.arguments.clone();
-        if explicit.is_none() {
-            if let Some(object) = approval_args.as_object_mut() {
-                object.insert("root_id".to_string(), json!(effective_root_id));
-            }
-        }
-        let (root_id, cwd) =
-            crate::chat_v2::approval_scope::normalized_shell_runtime_location(&approval_args);
-        let support_readable_roots =
-            LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?;
-        // 完全信任档（craft + full/danger-full-access）允许绝对路径 cwd——审批
-        // 绑定需要与 execute 侧 resolve_absolute_cwd_unsandboxed 同一语义，
-        // 否则模型在绑定阶段就被 "Path must be relative" 劝退。
-        let allow_absolute_cwd =
-            ChatV2Repo::get_session_authority_state(&self.db, session_id)
-                .map(|state| {
-                    matches!(
-                        (state.authority_mode, state.permission_preset),
-                        (
-                            crate::chat_v2::types::AuthorityMode::Craft,
-                            crate::chat_v2::types::PermissionPreset::FullAccess
-                                | crate::chat_v2::types::PermissionPreset::DangerFullAccess
-                        )
-                    )
-                })
-                .unwrap_or(false);
-        let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
-            window.app_handle(),
-            &state.database,
-            session_id,
-            skill_package_roots,
-            Some(&root_id),
-            Some(&cwd),
-            &support_readable_roots,
-            allow_absolute_cwd,
-        )?;
-        let scoped = crate::chat_v2::approval_scope::attach_runtime_root_approval_binding(
-            &approval_args,
-            &binding,
-        )?;
-        let env_facts = LocalShellExecuteExecutor::env_policy_facts(&approval_args)?;
-        crate::chat_v2::approval_scope::attach_shell_env_policy_facts(&scoped, &env_facts).map(Some)
-    }
-
-    fn canonical_tool_short_name(tool_name: &str) -> &str {
-        tool_name
-            .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
-            .or_else(|| tool_name.strip_prefix("builtin:"))
-            .or_else(|| tool_name.strip_prefix("mcp.tools."))
-            .or_else(|| tool_name.strip_prefix("mcp_"))
-            .unwrap_or(tool_name)
-    }
-
-    /// 请求用户审批敏感工具
-    ///
-    /// 🆕 文档 29 P1-3：发射审批事件并等待用户响应
-    ///
-    /// 返回 `ApprovalOutcome` 以区分用户同意、拒绝、超时、通道异常等情况。
-    async fn request_tool_approval(
-        &self,
-        tool_call: &ToolCall,
-        approval_arguments: &Value,
-        emitter: &Arc<ChatV2EventEmitter>,
-        session_id: &str,
-        message_id: &str,
-        block_id: &str,
-        sensitivity: &ToolSensitivity,
-        permission_preset: crate::chat_v2::types::PermissionPreset,
-        approval_manager: &Arc<ApprovalManager>,
-        cancellation_token: Option<&CancellationToken>,
-    ) -> ApprovalOutcome {
-        let timeout_seconds = approval_manager.default_timeout();
-        let approval_block_id = format!("approval_{}", tool_call.id);
-        let sensitivity_label = match sensitivity {
-            ToolSensitivity::Low => "low",
-            ToolSensitivity::Medium => "medium",
-            ToolSensitivity::High => "high",
-        };
-
-        // 构建审批请求
-        let request = ApprovalRequest {
-            session_id: session_id.to_string(),
-            tool_call_id: tool_call.id.clone(),
-            tool_name: tool_call.name.clone(),
-            arguments: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
-                &tool_call.name,
-                approval_arguments,
-            ),
-            sensitivity: sensitivity_label.to_string(),
-            permission_preset,
-            description: ApprovalManager::generate_description(&tool_call.name, approval_arguments),
-            timeout_seconds,
-            runtime_scope: crate::chat_v2::approval_scope::make_runtime_approval_scope(
-                &tool_call.name,
-                approval_arguments,
-                sensitivity_label,
-            ),
-        };
-
-        // 注册等待
-        let rx = approval_manager.register_with_permission_preset(
-            session_id,
-            &tool_call.id,
-            &tool_call.name,
-            approval_arguments,
-            permission_preset,
-            *sensitivity,
-        );
-
-        // 发射审批请求事件到前端
-        log::info!(
-            "[ChatV2::pipeline] Emitting tool approval request: tool={}, sensitivity={:?}",
-            tool_call.name,
-            sensitivity
-        );
-        let payload = serde_json::to_value(&request).ok();
-        log::debug!(
-            "[ChatV2::pipeline] tool approval block mapping: tool_block_id={}, approval_block_id={}",
-            block_id,
-            approval_block_id
-        );
-        emitter.emit_start(
-            event_types::TOOL_APPROVAL_REQUEST,
-            message_id,
-            Some(&approval_block_id),
-            payload,
-            None, // variant_id
-        );
-
-        // 等待响应或超时
-        // 🔧 F7 修复：同时监听流取消信号 —— 用户停止生成时立即清理 pending 审批
-        // 并退出等待，不再让审批 sender 残留到 60s 超时
-        let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
-        let wait_result = if let Some(cancel_token) = cancellation_token {
-            tokio::select! {
-                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
-                _ = cancel_token.cancelled() => None,
-            }
-        } else {
-            Some(tokio::time::timeout(timeout_duration, rx).await)
-        };
-
-        let Some(timeout_result) = wait_result else {
-            // 流被取消：清理 pending 审批并通知前端关闭审批卡片
-            log::info!(
-                "[ChatV2::pipeline] Stream cancelled while waiting approval for tool: {}",
-                tool_call.name
-            );
-            approval_manager.cancel_with_session(session_id, &tool_call.id);
-            emitter.emit_error(
-                event_types::TOOL_APPROVAL_REQUEST,
-                &approval_block_id,
-                "approval_cancelled",
-                None,
-            );
-            return ApprovalOutcome::Cancelled;
-        };
-
-        match timeout_result {
-            Ok(Ok(response)) => {
-                log::info!(
-                    "[ChatV2::pipeline] Received approval response: approved={}",
-                    response.approved
-                );
-                let result_payload = serde_json::json!({
-                    "toolCallId": tool_call.id,
-                    "approved": response.approved,
-                    "reason": response.reason,
-                });
-                emitter.emit_end(
-                    event_types::TOOL_APPROVAL_REQUEST,
-                    &approval_block_id,
-                    Some(result_payload),
-                    None,
-                );
-                if response.approved {
-                    ApprovalOutcome::Approved
-                } else {
-                    // 'user_rejected' / 'timeout' 是前端哨兵值，不算用户填写的理由
-                    let reason = response.reason.filter(|r| {
-                        let trimmed = r.trim();
-                        !trimmed.is_empty() && trimmed != "user_rejected" && trimmed != "timeout"
-                    });
-                    ApprovalOutcome::Rejected { reason }
-                }
-            }
-            Ok(Err(_)) => {
-                // channel 被关闭（不应该发生）
-                log::warn!("[ChatV2::pipeline] Approval channel closed unexpectedly");
-                emitter.emit_error(
-                    event_types::TOOL_APPROVAL_REQUEST,
-                    &approval_block_id,
-                    "approval_channel_closed",
-                    None,
-                );
-                approval_manager.cancel_with_session(session_id, &tool_call.id);
-                ApprovalOutcome::ChannelClosed
-            }
-            Err(_) => {
-                // 超时
-                log::warn!(
-                    "[ChatV2::pipeline] Approval timeout for tool: {}",
-                    tool_call.name
-                );
-                approval_manager.cancel_with_session(session_id, &tool_call.id);
-                emitter.emit_error(
-                    event_types::TOOL_APPROVAL_REQUEST,
-                    &approval_block_id,
-                    "approval_timeout",
-                    None,
-                );
-                ApprovalOutcome::Timeout
-            }
-        }
-    }
-
-    /// Plan mode write gate: emit `plan_gate`, wait for user confirm, then bind planId.
-    /// Approval here must never upgrade to remember / global_bypass.
-    async fn request_plan_gate(
-        &self,
-        tool_call: &ToolCall,
-        approval_arguments: &Value,
-        summary: &str,
-        emitter: &Arc<ChatV2EventEmitter>,
-        session_id: &str,
-        message_id: &str,
-        cancellation_token: Option<&CancellationToken>,
-        binding_key: &str,
-        round_id: Option<&str>,
-    ) -> ApprovalOutcome {
-        use super::authority_mode::{
-            default_plan_ttl_secs, global_plan_gate_manager, PlanGateRequest,
-        };
-        use crate::chat_v2::types::PlanAuthorityState;
-
-        let manager = global_plan_gate_manager();
-        let timeout_seconds = manager.default_timeout();
-        let mut pending_plan = PlanAuthorityState::new_pending(summary);
-        pending_plan.bind_to_call(binding_key.to_string());
-        let plan_id = pending_plan.plan_id.clone();
-        let plan_block_id = format!("plan_gate_{}", tool_call.id);
-
-        // Persist pending plan so UI can show summary even before approval.
-        if let Err(err) =
-            ChatV2Repo::set_session_plan_state(&self.db, session_id, Some(pending_plan.clone()))
-        {
-            log::warn!(
-                "[ChatV2::pipeline] Failed to persist pending plan for {}: {}",
-                session_id,
-                err
-            );
-        }
-
-        let request = PlanGateRequest {
-            session_id: session_id.to_string(),
-            plan_id: plan_id.clone(),
-            tool_call_id: tool_call.id.clone(),
-            tool_name: tool_call.name.clone(),
-            summary: summary.to_string(),
-            timeout_seconds,
-            arguments: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
-                &tool_call.name,
-                approval_arguments,
-            ),
-        };
-
-        let rx = manager.register(session_id, &tool_call.id, &plan_id);
-        log::info!(
-            "[ChatV2::pipeline] Emitting plan_gate: planId={}, tool={}, round={:?}",
-            plan_id,
-            tool_call.name,
-            round_id
-        );
-        let payload = serde_json::to_value(&request).ok();
-        emitter.emit_start(
-            event_types::PLAN_GATE,
-            message_id,
-            Some(&plan_block_id),
-            payload,
-            None,
-        );
-
-        let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
-        let wait_result = if let Some(cancel_token) = cancellation_token {
-            tokio::select! {
-                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
-                _ = cancel_token.cancelled() => None,
-            }
-        } else {
-            Some(tokio::time::timeout(timeout_duration, rx).await)
-        };
-
-        let Some(timeout_result) = wait_result else {
-            log::info!(
-                "[ChatV2::pipeline] Stream cancelled while waiting plan_gate for tool: {}",
-                tool_call.name
-            );
-            manager.cancel(session_id, &tool_call.id);
-            let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
-            emitter.emit_error(
-                event_types::PLAN_GATE,
-                &plan_block_id,
-                "plan_gate_cancelled",
-                None,
-            );
-            return ApprovalOutcome::Cancelled;
-        };
-
-        match timeout_result {
-            Ok(Ok(response)) => {
-                let result_payload = json!({
-                    "planId": plan_id,
-                    "toolCallId": tool_call.id,
-                    "approved": response.approved,
-                    "reason": response.reason,
-                });
-                emitter.emit_end(
-                    event_types::PLAN_GATE,
-                    &plan_block_id,
-                    Some(result_payload),
-                    None,
-                );
-                if response.approved {
-                    // Plan approval binds only this planId batch — never remember/global_bypass.
-                    pending_plan.mark_approved(default_plan_ttl_secs());
-                    if let Err(err) =
-                        ChatV2Repo::set_session_plan_state(&self.db, session_id, Some(pending_plan))
-                    {
-                        log::error!(
-                            "[ChatV2::pipeline] Failed to persist approved plan {}: {}",
-                            plan_id,
-                            err
-                        );
-                        return ApprovalOutcome::Rejected {
-                            reason: Some("failed to persist plan approval".to_string()),
-                        };
-                    }
-                    ApprovalOutcome::Approved
-                } else {
-                    let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
-                    let reason = response.reason.filter(|r| {
-                        let trimmed = r.trim();
-                        !trimmed.is_empty() && trimmed != "user_rejected" && trimmed != "timeout"
-                    });
-                    ApprovalOutcome::Rejected { reason }
-                }
-            }
-            Ok(Err(_)) => {
-                log::warn!("[ChatV2::pipeline] Plan gate channel closed unexpectedly");
-                manager.cancel(session_id, &tool_call.id);
-                let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
-                emitter.emit_error(
-                    event_types::PLAN_GATE,
-                    &plan_block_id,
-                    "plan_gate_channel_closed",
-                    None,
-                );
-                ApprovalOutcome::ChannelClosed
-            }
-            Err(_) => {
-                log::warn!(
-                    "[ChatV2::pipeline] Plan gate timeout for tool: {}",
-                    tool_call.name
-                );
-                manager.cancel(session_id, &tool_call.id);
-                let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
-                emitter.emit_error(
-                    event_types::PLAN_GATE,
-                    &plan_block_id,
-                    "plan_gate_timeout",
-                    None,
-                );
-                ApprovalOutcome::Timeout
             }
         }
     }
@@ -4435,6 +3771,553 @@ mod tests {
     }
 
     #[test]
+    fn tool_schema_sort_key_reads_function_name_and_falls_back_to_top_level() {
+        let openai_format = json!({
+            "type": "function",
+            "function": { "name": "builtin-web_search" }
+        });
+        assert_eq!(tool_schema_sort_key(&openai_format), "builtin-web_search");
+
+        let top_level = json!({ "name": "legacy_tool" });
+        assert_eq!(tool_schema_sort_key(&top_level), "legacy_tool");
+
+        let nameless = json!({ "type": "function" });
+        assert_eq!(tool_schema_sort_key(&nameless), "");
+    }
+
+    #[test]
+    fn tool_schema_sort_orders_openai_function_schemas_deterministically() {
+        // G6 回归：此前排序键只读顶层 name，OpenAI function 格式下恒为 ""，
+        // 排序退化为 no-op，跨轮顺序漂移会打爆 provider 的 prompt cache 前缀。
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta" } }),
+            json!({ "name": "mid_legacy" }),
+            json!({ "type": "function", "function": { "name": "alpha" } }),
+        ];
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha", "mid_legacy", "zeta"]);
+
+        // 幂等：再次排序不改变顺序（缓存前缀跨轮稳定）
+        let before = tools.clone();
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        assert_eq!(tools, before);
+    }
+
+    #[test]
+    fn frozen_tool_order_appends_new_tools_without_touching_sent_prefix() {
+        // P0 回归（DESIGN「tools 会话内冻结」）：先发 tools A,B；环内
+        // load_skills 追加 C（字母序落在 A、B 之间）后，A,B 前缀字节
+        // 必须逐字节不变，C 只能追加到末尾 —— 字母序插入中段不得发生。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "zeta_tool"]);
+        let sent_prefix_bytes: Vec<Vec<u8>> = tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+
+        // 环内渐进披露追加 beta_tool（字母序在 alpha 与 zeta 之间）
+        tools.push(json!({ "type": "function", "function": { "name": "beta_tool" } }));
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新技能工具必须追加末尾，禁止字母序插入中段"
+        );
+        for (index, expected) in sent_prefix_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "已发出的 tools 前缀第 {} 项字节漂移",
+                index
+            );
+        }
+    }
+
+    #[test]
+    fn frozen_tool_order_survives_full_rebuild_and_stays_idempotent() {
+        // 多变体 refreshed_tools 场景：环内从 mcp_tool_schemas 全量重建
+        // （源顺序可能与已发出顺序不同），冻结基线必须还原已发出顺序，
+        // 同轮多个新工具按名字排序后一并追加到末尾。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        assert_eq!(frozen, vec!["mid_tool", "zeta_tool"]);
+
+        let mut rebuilt = vec![
+            json!({ "type": "function", "function": { "name": "delta_tool" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "aardvark_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
+        // aardvark 字母序在最前，但只能追加末尾（同轮新增按名字排序）
+        assert_eq!(
+            names,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+
+        // 幂等：再次冻结不改变顺序（后续轮次前缀字节稳定）
+        let before = rebuilt.clone();
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        assert_eq!(rebuilt, before);
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+    }
+
+    #[test]
+    fn frozen_tool_order_persists_across_turns_via_session_baseline() {
+        // P0 回归（跨轮会话冻结）：第一轮结束后基线写回会话级状态；
+        // 第二轮（下一稳定窗口）从会话级状态载入，即便来源顺序不同、
+        // 且新增了字母序落在中段的工具，已发出 tools 的序列化字节必须
+        // 逐字节不变，新工具只追加末尾 —— 禁止跨轮重建字母序。
+        let mut session_baseline: Vec<String> = Vec::new();
+
+        // ===== 第一轮：空基线，首次 freeze 按字母序建立 =====
+        let mut turn1_local = merge_load(&session_baseline);
+        let mut turn1_tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn1_tools, &mut turn1_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn1_local);
+        let sent_bytes: Vec<Vec<u8>> = turn1_tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+        assert_eq!(session_baseline, vec!["alpha_tool", "zeta_tool"]);
+
+        // ===== 第二轮：全量重建（来源顺序打乱 + 新工具 beta 字母序在中段）=====
+        let mut turn2_local = merge_load(&session_baseline);
+        let mut turn2_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn2_tools, &mut turn2_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn2_local);
+
+        let names: Vec<&str> = turn2_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "跨轮基线必须还原已发出顺序，新工具只追加末尾"
+        );
+        for (index, expected) in sent_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&turn2_tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "两轮请求之间已发出 tools 的序列化字节必须逐字节不变"
+            );
+        }
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+
+        // ===== 第三轮：某工具（zeta）被移除，剩余顺序仍按基线保持 =====
+        let mut turn3_local = merge_load(&session_baseline);
+        let mut turn3_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn3_tools, &mut turn3_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn3_local);
+        let names: Vec<&str> = turn3_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "beta_tool"]);
+        // 基线不因工具消失而删除条目（append-only），后续恢复时顺序仍稳定
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+    }
+
+    #[test]
+    fn session_baseline_merge_is_append_only_across_parallel_variants() {
+        // 并行变体各自推进局部基线后写回：合并只追加缺失名，绝不删除
+        // 或重排共享基线已有条目。
+        let mut shared: Vec<String> = vec!["alpha_tool".into(), "zeta_tool".into()];
+        // 变体 A 环内追加了 beta_tool
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into(), "beta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+        // 变体 B 写回时还没见过 beta_tool：不得把它从共享基线抹掉
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+    }
+
+    /// 模拟 load_session_frozen_tool_schema_order：会话级基线的克隆载入。
+    fn merge_load(session_baseline: &[String]) -> Vec<String> {
+        session_baseline.to_vec()
+    }
+
+    #[test]
+    fn frozen_tool_schema_bytes_survive_append_and_same_name_change() {
+        // P0 字节级冻结回归：A,B 发出后环内追加 C（字母序落在中段），
+        // A,B 的序列化字节必须逐字节不变；同名 schema 变更（zeta 描述被
+        // MCP 刷新改写为 v2）不得改动已发出前缀 —— 本窗口继续发送冻结
+        // 字节，变更延迟到下一稳定窗口。
+        let mut frozen_names: Vec<String> = Vec::new();
+        let mut frozen_schemas: HashMap<String, Value> = HashMap::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v1",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(&mut tools, &mut frozen_names, &mut frozen_schemas);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "zeta_tool"]);
+        let sent_bytes: Vec<Vec<u8>> = tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+
+        // 环内全量重建：zeta 同名 schema 变更（v2）+ 新工具 beta 追加
+        let mut rebuilt = vec![
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v2 CHANGED",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "beta_tool", "description": "B v1"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(&mut rebuilt, &mut frozen_names, &mut frozen_schemas);
+        let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新工具只能追加末尾"
+        );
+        for (index, expected) in sent_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&rebuilt[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "已发出的 tools 前缀第 {} 项字节漂移",
+                index
+            );
+        }
+        assert_eq!(
+            rebuilt[1]["function"]["description"],
+            json!("Z v1"),
+            "同名 schema 变更必须延迟到下一稳定窗口，本窗口发送冻结字节"
+        );
+
+        // 追加的 C（beta）自首见轮起字节同样冻结
+        let beta_bytes = serde_json::to_vec(&rebuilt[2]).expect("serialize tool schema");
+        let mut third_round = vec![
+            json!({ "type": "function", "function": {
+                "name": "beta_tool", "description": "B v2 CHANGED"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v2 CHANGED",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(
+            &mut third_round,
+            &mut frozen_names,
+            &mut frozen_schemas,
+        );
+        assert_eq!(
+            serde_json::to_vec(&third_round[2]).expect("serialize tool schema"),
+            beta_bytes,
+            "环内追加的新工具在后续轮次同样按首见字节冻结"
+        );
+    }
+
+    #[test]
+    fn same_name_schema_change_applies_at_next_stable_window() {
+        // 稳定窗口边界回归：窗口 1 冻结 v1 字节，窗口内出现 v2 仍发 v1；
+        // 下一稳定窗口（新的 execute_with_tools，字节映射重建）采纳 v2
+        // 并随即冻结。名字序基线跨窗口保留（会话级），字节映射窗口级。
+        let v1 = json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A v1"
+        } });
+        let v2 = json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A v2"
+        } });
+        let mut session_names: Vec<String> = Vec::new();
+
+        // ===== 窗口 1 =====
+        let mut w1_schemas: HashMap<String, Value> = HashMap::new();
+        let mut w1_round1 = vec![v1.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w1_round1, &mut session_names, &mut w1_schemas);
+        let mut w1_round2 = vec![v2.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w1_round2, &mut session_names, &mut w1_schemas);
+        assert_eq!(w1_round2[0], v1, "窗口内同名 schema 变更必须延迟");
+
+        // ===== 窗口 2：字节映射重建，名字序沿用会话级基线 =====
+        let mut w2_schemas: HashMap<String, Value> = HashMap::new();
+        let mut w2_round1 = vec![v2.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w2_round1, &mut session_names, &mut w2_schemas);
+        assert_eq!(w2_round1[0], v2, "变更应在下一稳定窗口生效");
+        assert_eq!(session_names, vec!["alpha_tool"]);
+
+        // 窗口 2 内 v2 字节随即冻结（旧 v1 再次出现也不得回退）
+        let mut w2_round2 = vec![v1];
+        freeze_tool_schemas_for_prompt_cache(&mut w2_round2, &mut session_names, &mut w2_schemas);
+        assert_eq!(w2_round2[0], v2, "新窗口首见字节冻结后不得再回退");
+    }
+
+    #[test]
+    fn frozen_tool_schema_bytes_normalize_key_order_permutation() {
+        // preserve_order 下键序不同的 Value `==` 相等但序列化字节不同：
+        // 同一 schema 以不同键序重建时必须回写冻结副本，仅在 `!=` 时回写
+        // 会漏掉这类字节漂移。
+        let mut frozen_names: Vec<String> = Vec::new();
+        let mut frozen_schemas: HashMap<String, Value> = HashMap::new();
+        let mut tools = vec![json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A"
+        } })];
+        freeze_tool_schemas_for_prompt_cache(&mut tools, &mut frozen_names, &mut frozen_schemas);
+        let sent = serde_json::to_vec(&tools[0]).expect("serialize tool schema");
+
+        // 键序扰动：function 前置 / description 与 name 互换
+        let mut permuted = vec![json!({ "function": {
+            "description": "A", "name": "alpha_tool"
+        }, "type": "function" })];
+        assert_eq!(permuted[0], tools[0], "前置条件：语义相等（仅键序不同）");
+        assert_ne!(
+            serde_json::to_vec(&permuted[0]).expect("serialize tool schema"),
+            sent,
+            "前置条件：键序不同导致序列化字节不同"
+        );
+        freeze_tool_schemas_for_prompt_cache(&mut permuted, &mut frozen_names, &mut frozen_schemas);
+        assert_eq!(
+            serde_json::to_vec(&permuted[0]).expect("serialize tool schema"),
+            sent,
+            "冻结回写后必须恢复已发出字节"
+        );
+    }
+
+    #[test]
+    fn in_loop_load_skills_keeps_memory_prefix_byte_stable_within_turn() {
+        // 同轮回归（P1-8 + 内存前缀连续）：轮 N 消息 = history.clone()
+        // + 冻结的轮首技能注入 + 当前 user + 全量工具结果 + 环内
+        // load_skills 批次（锚到对应 tool result 之后）。
+        // 断言 1：环内 load_skills 不改当前 user 之前的任何字节；
+        // 断言 2：每一轮的消息序列都是上一轮的严格字节前缀延伸。
+        let history = vec![
+            make_empty_message("user", "turn 0 user".to_string()),
+            make_empty_message("assistant", "turn 0 reply".to_string()),
+        ];
+        let turn_skills = vec![make_transient_skill_message(
+            "skill-turn",
+            "turn skill body",
+        )];
+        let current_user = make_empty_message("user", "turn 1 user".to_string());
+
+        // 模拟 execute_with_tools 每轮的消息组装
+        let build_round = |tool_msgs: &[LegacyChatMessage],
+                           in_loop_batches: &[(String, Vec<LegacyChatMessage>)]|
+         -> Vec<LegacyChatMessage> {
+            let mut messages = history.clone();
+            let insertion_index = messages.len();
+            insert_transient_skill_messages(&mut messages, insertion_index, turn_skills.clone());
+            messages.push(current_user.clone());
+            messages.extend(tool_msgs.to_vec());
+            for (anchor_call_id, batch) in in_loop_batches {
+                insert_skill_messages_after_tool_result(
+                    &mut messages,
+                    anchor_call_id,
+                    batch.clone(),
+                );
+            }
+            messages
+        };
+        let serialize = |messages: &[LegacyChatMessage]| -> Vec<Vec<u8>> {
+            messages
+                .iter()
+                .map(|m| serde_json::to_vec(m).expect("serialize message"))
+                .collect()
+        };
+
+        // ===== 轮 0：无工具结果 =====
+        let round0 = build_round(&[], &[]);
+        let round0_bytes = serialize(&round0);
+        let user_index = round0.len() - 1;
+        assert_eq!(round0[user_index].content, "turn 1 user");
+
+        // ===== 轮 1：load_skills 完成，新技能批次锚到其 tool result 之后 =====
+        let mut load_call = make_empty_message("assistant", String::new());
+        load_call.tool_call = Some(crate::models::ToolCall {
+            id: "call-load".to_string(),
+            tool_name: "builtin-load_skills".to_string(),
+            args_json: json!({ "skill_ids": ["skill-lazy"] }),
+        });
+        let mut load_result = make_empty_message("tool", "loaded".to_string());
+        load_result.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-load".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "loaded_skill_ids": ["skill-lazy"] })),
+            usage: None,
+            citations: None,
+        });
+        let tool_round1 = vec![load_call.clone(), load_result.clone()];
+        let batches = vec![(
+            "call-load".to_string(),
+            vec![make_transient_skill_message(
+                "skill-lazy",
+                "lazy skill body",
+            )],
+        )];
+
+        let round1 = build_round(&tool_round1, &batches);
+        let round1_bytes = serialize(&round1);
+
+        // 断言 1：当前 user 及其之前的前缀逐字节不变
+        for index in 0..=user_index {
+            assert_eq!(
+                round1_bytes[index], round0_bytes[index],
+                "同轮 load_skills 改写了当前 user 之前的第 {} 条消息",
+                index
+            );
+        }
+        // 断言 2：轮 0 全量是轮 1 的严格字节前缀
+        assert_eq!(&round1_bytes[..round0_bytes.len()], &round0_bytes[..]);
+        // 新技能批次必须落在 load_skills tool result 之后（当前 user 之后）
+        assert!(is_transient_skill_message(
+            round1.last().expect("non-empty")
+        ));
+
+        // ===== 轮 2：追加下一批工具结果，环内批次位置不得漂移 =====
+        let mut next_call = make_empty_message("assistant", String::new());
+        next_call.tool_call = Some(crate::models::ToolCall {
+            id: "call-next".to_string(),
+            tool_name: "builtin-web_search".to_string(),
+            args_json: json!({ "q": "x" }),
+        });
+        let mut next_result = make_empty_message("tool", "ok".to_string());
+        next_result.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-next".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "ok": true })),
+            usage: None,
+            citations: None,
+        });
+        let tool_round2 = vec![load_call, load_result, next_call, next_result];
+        let round2 = build_round(&tool_round2, &batches);
+        let round2_bytes = serialize(&round2);
+        assert_eq!(
+            &round2_bytes[..round1_bytes.len()],
+            &round1_bytes[..],
+            "同轮内存前缀连续性被破坏：轮 1 全量必须是轮 2 的字节前缀"
+        );
+        assert_eq!(round2.len(), round1.len() + 2);
+    }
+
+    #[test]
+    fn tool_round_reasoning_items_pair_by_tool_call_id() {
+        // 双 tool_call：两条已配对条目各写各的 tool_call_id，
+        // 禁止全部绑到本批第一个 tool id。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_1" })),
+                (Some("call_2".to_string()), json!({ "id": "rs_2" })),
+            ],
+            Some("call_1"),
+        );
+        assert_eq!(dest.len(), 2);
+        assert_eq!(dest["call_1"], json!({ "id": "rs_1" }));
+        assert_eq!(dest["call_2"], json!({ "id": "rs_2" }));
+    }
+
+    #[test]
+    fn tool_round_unpaired_fallback_never_overwrites_paired_item() {
+        // 未配对残留兜底挂 fallback；fallback id 已有配对条目时不得覆盖。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_paired" })),
+                (None, json!({ "id": "rs_orphan" })),
+            ],
+            Some("call_1"),
+        );
+        assert_eq!(dest.len(), 1);
+        assert_eq!(
+            dest["call_1"],
+            json!({ "id": "rs_paired" }),
+            "or_insert 不得覆盖已配对条目"
+        );
+
+        // fallback 尚无条目时，残留条目挂上去
+        let mut dest2: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest2,
+            vec![(None, json!({ "id": "rs_orphan" }))],
+            Some("call_9"),
+        );
+        assert_eq!(dest2["call_9"], json!({ "id": "rs_orphan" }));
+
+        // 无 fallback（本批无有效 tool_call_id）：未配对条目安全丢弃
+        let mut dest3: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(&mut dest3, vec![(None, json!({ "id": "x" }))], None);
+        assert!(dest3.is_empty());
+    }
+
+    #[test]
+    fn final_round_reasoning_unpaired_items_use_sentinel_key_last_wins() {
+        // 纯文本哨兵：未配对条目挂哨兵键；多条时后到覆盖
+        // （最贴近最终正文的 item 生效）；已配对条目仍按 tool_call_id 写入。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_final_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_tool" })),
+                (None, json!({ "id": "rs_first" })),
+                (None, json!({ "id": "rs_last" })),
+            ],
+        );
+        assert_eq!(dest.len(), 2);
+        assert_eq!(dest["call_1"], json!({ "id": "rs_tool" }));
+        assert_eq!(
+            dest[crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY],
+            json!({ "id": "rs_last" }),
+            "多条未配对时哨兵键后到覆盖"
+        );
+    }
+
+    #[test]
     fn failed_round_retains_and_accumulates_reported_partial_usage() {
         let mut accumulated = TokenUsage::from_api_with_cache(100, 10, Some(2), Some(4));
         let partial = TokenUsage::from_api_with_cache(20, 5, Some(3), Some(7));
@@ -4461,213 +4344,6 @@ mod tests {
         assert_eq!(accumulated.prompt_tokens, before.prompt_tokens);
         assert_eq!(accumulated.completion_tokens, before.completion_tokens);
         assert_eq!(accumulated.total_tokens, before.total_tokens);
-    }
-
-    #[test]
-    fn missing_approval_manager_is_fail_closed_for_non_low_sensitivity() {
-        assert!(!approval_manager_required(Some(ToolSensitivity::Low)));
-        assert!(approval_manager_required(Some(ToolSensitivity::Medium)));
-        assert!(approval_manager_required(Some(ToolSensitivity::High)));
-        assert!(approval_manager_required(None));
-    }
-
-    #[test]
-    fn http_status_code_matching_covers_real_adapter_error_formats() {
-        // 各适配器的真实错误格式（此前 "status: NNN" 模式对其全部失配）
-        assert!(mentions_http_status_code(
-            "llm 响应错误 429: rate limited",
-            429
-        ));
-        assert!(mentions_http_status_code(
-            "deepseek api 返回错误 (503): service unavailable",
-            503
-        ));
-        assert!(mentions_http_status_code(
-            "模型二api请求失败 http 502 ...",
-            502
-        ));
-        assert!(mentions_http_status_code("status: 504", 504));
-        // 不误伤：端口号、位数不同的数字、拼接在数字内的子串
-        assert!(!mentions_http_status_code(
-            "connect to 127.0.0.1:1429 failed",
-            429
-        ));
-        assert!(!mentions_http_status_code("status: 500", 503));
-        assert!(!mentions_http_status_code("4299 tokens", 429));
-        assert!(!mentions_http_status_code("error 14293", 429));
-    }
-
-    #[test]
-    fn phase9_non_low_tools_enter_the_fail_closed_approval_path() {
-        use crate::chat_v2::tools::ToolExecutor;
-
-        let memory = crate::chat_v2::tools::MemoryToolExecutor::new();
-        let essay = crate::chat_v2::tools::EssayGradingExecutor::new();
-        let temp_dir = tempfile::tempdir().expect("create workspace directory");
-        let subagent = crate::chat_v2::tools::SubagentExecutor::new(Arc::new(
-            crate::chat_v2::workspace::WorkspaceCoordinator::new(temp_dir.path().to_path_buf()),
-        ));
-
-        for (tool, sensitivity) in [
-            (
-                "builtin-memory_batch_move",
-                memory.sensitivity_level("builtin-memory_batch_move"),
-            ),
-            (
-                "builtin-memory_add_relation",
-                memory.sensitivity_level("builtin-memory_add_relation"),
-            ),
-            (
-                "builtin-memory_remove_relation",
-                memory.sensitivity_level("builtin-memory_remove_relation"),
-            ),
-            (
-                "builtin-memory_update_tags",
-                memory.sensitivity_level("builtin-memory_update_tags"),
-            ),
-            (
-                "builtin-memory_export_all",
-                memory.sensitivity_level("builtin-memory_export_all"),
-            ),
-            (
-                "builtin-essay_grade",
-                essay.sensitivity_level("builtin-essay_grade"),
-            ),
-            (
-                "builtin-subagent_call",
-                subagent.sensitivity_level("builtin-subagent_call"),
-            ),
-        ] {
-            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
-            assert!(
-                approval_manager_required(Some(sensitivity)),
-                "{tool} must be blocked when ApprovalManager is unavailable"
-            );
-        }
-
-        assert!(!approval_manager_required(Some(
-            essay.sensitivity_level("builtin-essay_list_modes")
-        )));
-    }
-
-    #[test]
-    fn phase2_phase3_and_phase8_non_low_tools_fail_closed_without_approval_manager() {
-        use crate::chat_v2::tools::ToolExecutor;
-
-        let canvas = crate::chat_v2::tools::CanvasToolExecutor::new();
-        let dstu = crate::chat_v2::tools::DstuToolExecutor::new();
-        let session = crate::chat_v2::tools::SessionToolExecutor::new();
-        let index = crate::chat_v2::tools::IndexWebpageToolExecutor::new();
-
-        let cases = [
-            (
-                "builtin-note_delete",
-                canvas.sensitivity_level("builtin-note_delete"),
-            ),
-            (
-                "builtin-note_update_tags",
-                canvas.sensitivity_level("builtin-note_update_tags"),
-            ),
-            (
-                "builtin-dstu_folder_create",
-                dstu.sensitivity_level("builtin-dstu_folder_create"),
-            ),
-            (
-                "builtin-dstu_folder_rename",
-                dstu.sensitivity_level("builtin-dstu_folder_rename"),
-            ),
-            (
-                "builtin-dstu_rename",
-                dstu.sensitivity_level("builtin-dstu_rename"),
-            ),
-            (
-                "builtin-dstu_move",
-                dstu.sensitivity_level("builtin-dstu_move"),
-            ),
-            (
-                "builtin-dstu_delete",
-                dstu.sensitivity_level("builtin-dstu_delete"),
-            ),
-            (
-                "builtin-dstu_restore",
-                dstu.sensitivity_level("builtin-dstu_restore"),
-            ),
-            (
-                "builtin-dstu_purge",
-                dstu.sensitivity_level("builtin-dstu_purge"),
-            ),
-            (
-                "builtin-dstu_upload_file",
-                dstu.sensitivity_level("builtin-dstu_upload_file"),
-            ),
-            (
-                "builtin-session_export",
-                session.sensitivity_level("builtin-session_export"),
-            ),
-            (
-                "builtin-session_tag_add",
-                session.sensitivity_level("builtin-session_tag_add"),
-            ),
-            (
-                "builtin-session_tag_remove",
-                session.sensitivity_level("builtin-session_tag_remove"),
-            ),
-            (
-                "builtin-session_move",
-                session.sensitivity_level("builtin-session_move"),
-            ),
-            (
-                "builtin-session_rename",
-                session.sensitivity_level("builtin-session_rename"),
-            ),
-            (
-                "builtin-session_restore",
-                session.sensitivity_level("builtin-session_restore"),
-            ),
-            (
-                "builtin-group_create",
-                session.sensitivity_level("builtin-group_create"),
-            ),
-            (
-                "builtin-group_update",
-                session.sensitivity_level("builtin-group_update"),
-            ),
-            (
-                "builtin-session_archive",
-                session.sensitivity_level("builtin-session_archive"),
-            ),
-            (
-                "builtin-index_rebuild",
-                index.sensitivity_level("builtin-index_rebuild"),
-            ),
-            (
-                "builtin-webpage_save",
-                index.sensitivity_level("builtin-webpage_save"),
-            ),
-        ];
-        for (tool, sensitivity) in cases {
-            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
-            assert!(
-                approval_manager_required(Some(sensitivity)),
-                "{tool} must be blocked when ApprovalManager is unavailable"
-            );
-        }
-
-        let learning = crate::chat_v2::tools::LearningOverviewExecutor::new();
-        for tool in [
-            "builtin-learning_overview",
-            "builtin-pomodoro_today_stats",
-            "builtin-pomodoro_daily_stats",
-        ] {
-            assert_eq!(
-                learning.sensitivity_level(tool),
-                ToolSensitivity::Low,
-                "{tool}"
-            );
-            assert!(!approval_manager_required(Some(
-                learning.sensitivity_level(tool)
-            )));
-        }
     }
 
     #[test]
@@ -4917,20 +4593,9 @@ mod tests {
         );
     }
 
-    /// Behaviour-level Plan-mode test driven through the **real persisted
-    /// session authority state + AuthorityGate**.
-    ///
-    /// Note on scope: the final tool *execution* step builds an
-    /// `ExecutionContext` that requires a live Tauri `Window`, which a unit
-    /// test cannot construct (two `generate_context!()` expansions collide on
-    /// the embedded Info.plist symbol, and the mock runtime yields a
-    /// `Window<MockRuntime>` incompatible with the `Wry`-typed emitter/context).
-    /// We therefore assert the security-relevant contract — the gate suspends
-    /// writes without approval, allows them only for an approved+unexpired
-    /// plan batch, and re-blocks after expiry — against the state that is
-    /// actually round-tripped through `ChatV2Repo`. The "executor is not
-    /// invoked while blocked" half is proven end-to-end by
-    /// `ask_mode_blocks_medium_write_without_calling_executor` above.
+    /// Behaviour-level Plan-mode state lifecycle test driven through the real
+    /// persisted session authority state + AuthorityGate. The full
+    /// `execute_single_tool` wiring is locked by the C4 regression test below.
     #[tokio::test]
     async fn plan_mode_suspends_then_allows_once_then_reblocks_after_expiry() {
         use crate::chat_v2::pipeline::authority_mode::{
@@ -5186,6 +4851,83 @@ mod tests {
             )
             .await
             .expect("execute_single_tool")
+    }
+
+    #[tokio::test]
+    async fn approved_plan_binding_reaches_executor_without_secondary_approval() {
+        use crate::chat_v2::types::PlanAuthorityState;
+
+        let harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Plan);
+        let binding = crate::chat_v2::pipeline::authority_mode::plan_call_binding_key(
+            "builtin-authority_probe_write",
+            &json!({"path": "/tmp/c4-probe"}),
+            None,
+        );
+        let mut plan = PlanAuthorityState::new_pending("execute approved probe");
+        plan.bind_to_call(binding);
+        plan.mark_approved(600);
+        ChatV2Repo::set_session_plan_state(&harness.pipeline.db, &harness.session_id, Some(plan))
+            .expect("persist approved plan");
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "call_plan_approved",
+            "blk_plan_approved",
+            None,
+        )
+        .await;
+
+        assert!(result.success, "approved Plan call was blocked: {result:?}");
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "approved Plan call must reach the executor exactly once"
+        );
+        let state =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("reload consumed plan");
+        assert!(
+            state.plan.is_none(),
+            "the approved Plan binding must be consumed before execution"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_approval_manager_blocks_required_tool_before_executor() {
+        let mut harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Craft);
+        ChatV2Repo::set_session_permission_preset(
+            &harness.pipeline.db,
+            &harness.session_id,
+            crate::chat_v2::types::PermissionPreset::Cautious,
+        )
+        .expect("set cautious preset");
+        harness.pipeline.approval_manager = None;
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "call_missing_approval",
+            "blk_missing_approval",
+            None,
+        )
+        .await;
+
+        assert!(!result.success);
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "executor must not run when required approval service is absent"
+        );
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("审批服务不可用")),
+            "missing approval service must return the fail-closed reason: {result:?}"
+        );
     }
 
     async fn c4_seed_remembered_allow(

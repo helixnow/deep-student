@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DisplayMode } from '../core/types';
+import { MOVE_ARM_THRESHOLD_PX } from '../core/pointerEngine';
 import { useWindowDirty } from '../core/windowCloseGuard';
 import { toggleImmersive, useWindowImmersive } from '../core/immersiveMode';
 import {
@@ -23,9 +24,12 @@ import {
 } from '../hooks/useWindowLifecycleAnim';
 import { TileMenuPopover, type TileMenuAction } from './TileMenuPopover';
 import { useTitleBarDoubleClickAction } from './titleBarBehaviorStore';
+import { TITLEBAR_HEIGHT } from '../core/metrics';
 import './WindowTitleBar.css';
 
-export const TITLEBAR_HEIGHT = 38;
+// 单一来源在 core/metrics（TS）与 --wb-titlebar-height token（CSS）；
+// 此处 re-export 维持既有 import 路径（index.ts / WindowShell 等）。
+export { TITLEBAR_HEIGHT };
 
 /** 缩放键悬停多久弹出平铺菜单（ms） */
 export const TILE_MENU_HOVER_DELAY = 350;
@@ -155,6 +159,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const rippleIdRef = useRef(0);
   /** 标题栏拖拽视觉态启动阈值（与 pointerEngine MOVE_ARM_THRESHOLD_PX 对齐） */
   const dragArmRef = useRef<{ x: number; y: number; armed: boolean } | null>(null);
+  /** 本轮视觉拖拽监听清理；失焦 / 重入 / 卸载均须摘掉，避免 class 卡住 */
+  const dragArmCleanupRef = useRef<(() => void) | null>(null);
 
   const clearTimers = useCallback(() => {
     if (openTimer.current) {
@@ -320,6 +326,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
+      dragArmCleanupRef.current?.();
       // 视觉 dragging 过 3px 阈值才挂 class（DOM 直写，避免 React 重渲染抢首帧）
       const startX = e.clientX;
       const startY = e.clientY;
@@ -327,10 +334,10 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       // 每次按下重置"拖过"标记：仅当本次双击序列中发生拖拽才抑制 zoom
       recentDragRef.current = false;
       const bar = barRef.current;
-      // 3px（9px²）：触控板/高分屏双击常伴随 1–2px 微抖，1px 阈值会把双击
-      // 误判成「拖过」而吞掉 zoom；与内核 pointerEngine MOVE_ARM_THRESHOLD_PX
-      // （同步放宽到 3–4px）协同，视觉 dragging 态与真实起拖近似同刻武装。
-      const THRESHOLD_SQ = 9; // 3px²
+      // 直接共用内核 pointerEngine 的 MOVE_ARM_THRESHOLD_PX（3px）：
+      // 视觉 dragging 态与真实起拖同刻武装；触控板/高分屏双击的 1–2px 微抖
+      // 不会被误判成「拖过」而吞掉 zoom。
+      const THRESHOLD_SQ = MOVE_ARM_THRESHOLD_PX * MOVE_ARM_THRESHOLD_PX;
       const onMove = (ev: PointerEvent) => {
         const arm = dragArmRef.current;
         if (!arm || arm.armed) return;
@@ -347,14 +354,20 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onUp);
+        window.removeEventListener('blur', onUp);
+        if (dragArmCleanupRef.current === onUp) dragArmCleanupRef.current = null;
       };
+      dragArmCleanupRef.current = onUp;
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
+      window.addEventListener('blur', onUp);
       onMovePointerDown?.(e);
     },
     [onMovePointerDown],
   );
+
+  useEffect(() => () => dragArmCleanupRef.current?.(), []);
 
   /** 悬停预提升壳层合成层（wb-shell-lift）；离开后短延迟拆除，避免划过 thrash */
   const liftLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,7 +414,9 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       ? t('a11y.immersiveExit')
       : t('a11y.immersiveEnter');
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
-  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat';
+  // todo/skills 工具栏整体 portal 进窗口标题栏（应用名已由菜单栏承接，居中标题冗余）
+  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat' || appTypeId === 'todo' || appTypeId === 'skills';
+  const suppressCenteredTitle = hostsAppTabs || appTypeId === 'todo' || appTypeId === 'skills';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
 
@@ -547,7 +562,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         />
       ) : null}
       {/* 标题绝对居中（不受左侧三键宽度影响）；溢出时 mask 渐隐 */}
-      {!hostsAppTabs ? (
+      {!suppressCenteredTitle ? (
         <div
           className="pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
           aria-hidden={title === ''}

@@ -329,8 +329,8 @@
   }
 
   .unified-notification-action {
-    min-height: 32px;
-    padding: 0 6px;
+    min-height: 44px;
+    padding: 0 10px; /* keep readable, do not shrink hit */
   }
 }
 

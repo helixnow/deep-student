@@ -79,9 +79,11 @@ export const SETTLE_MIN_MS = 40;
 export const SETTLE_MAX_MS = 90;
 /**
  * move 启动阈值（px）：pointerdown 只武装捕获，超过后才跟手 / 触发 onMoveArmed。
- * 保持极小阈值以区分单击与拖动（最大化标题栏单击不 tear-out）。
+ * 3px：触控板/高分屏单击、双击常伴随 1–2px 微抖，1px 阈值会把单击误判成拖动
+ * （吞掉双击 zoom / 误触 tear-out）；3px 仍足够小，起拖无可感知迟滞。
+ * WindowTitleBar 的视觉 dragging 态与此常量共用，保证同刻武装。
  */
-export const MOVE_ARM_THRESHOLD_PX = 1;
+export const MOVE_ARM_THRESHOLD_PX = 3;
 
 /**
  * iOS 式 rubber band：输入越界量，返回衰减后的视觉溢出（0 ≤ 返回值 < max）。
@@ -259,7 +261,10 @@ function magnetVector(zone: SnapZone): { x: number; y: number } {
     case 'right':
       return { x: 1, y: 0 };
     case 'top-maximize':
+    case 'top-half':
       return { x: 0, y: -1 };
+    case 'bottom-half':
+      return { x: 0, y: 1 };
     case 'tl':
       return { x: -DIAG, y: -DIAG };
     case 'tr':

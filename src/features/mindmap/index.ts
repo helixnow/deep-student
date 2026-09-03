@@ -26,6 +26,7 @@ export type {
   ThemeId,
   NodeStyle,
   MindMapNodeStyle,
+  MindMapImage,
   MindMapNode,
   CreateNodeParams,
   UpdateNodeParams,

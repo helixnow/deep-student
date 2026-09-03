@@ -6,7 +6,7 @@
  *    备注序列化为 `> ` 前缀的缩进续行（与 pasteMarkdown 的续行解析约定一致），
  *    可直接粘贴到任意大纲工具或文本编辑器；
  * 2. 结构化 JSON（application/x-deep-student-mindmap）—— 保留样式 / 挖空 /
- *    完成态 / 备注 / 资源引用等全部字段，供跨导图粘贴时无损还原。
+ *    完成态 / 备注 / 资源引用 / 内嵌图片等全部字段，供跨导图粘贴时无损还原。
  *
  * Tauri WebView 对 navigator.clipboard.write 与自定义 MIME 的支持参差不齐
  * （WebKit 基本不支持自定义类型，Chromium 需要 `web ` 前缀），因此结构化载荷
@@ -19,6 +19,11 @@ import { nanoid } from 'nanoid';
 import type { BlankRange, MindMapNode, MindMapNodeRef, NodeStyle } from '../types';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
 import { htmlOutlineToMarkdown, looksLikeMarkdownList } from './pasteMarkdown';
+import {
+  createImageSanitizeBudget,
+  sanitizeNodeImages,
+  type ImageSanitizeBudget,
+} from './imageSanitize';
 
 // ============================================================================
 // 数据契约
@@ -183,6 +188,7 @@ function sanitizeNode(
   raw: unknown,
   depth: number,
   counter: { count: number },
+  imageBudget: ImageSanitizeBudget,
 ): MindMapNode | null {
   if (!raw || typeof raw !== 'object' || depth > MAX_CLIPBOARD_DEPTH) return null;
   const source = raw as Record<string, unknown>;
@@ -193,7 +199,7 @@ function sanitizeNode(
 
   const children = Array.isArray(source.children)
     ? source.children
-        .map((child) => sanitizeNode(child, depth + 1, counter))
+        .map((child) => sanitizeNode(child, depth + 1, counter, imageBudget))
         .filter((child): child is MindMapNode => child !== null)
     : [];
 
@@ -211,14 +217,20 @@ function sanitizeNode(
   if (blankedRanges) node.blankedRanges = blankedRanges;
   const refs = sanitizeRefs(source.refs);
   if (refs) node.refs = refs;
+  // 内嵌图片随结构化载荷保留（M1：复制含图节点不再丢图）；
+  // src 白名单 + 体积预算与 JSON 导入同一清洗口径，外来载荷不能借剪贴板绕过。
+  const images = sanitizeNodeImages(source.images, imageBudget);
+  if (images) node.images = images;
   return node;
 }
 
 function sanitizeForest(nodes: unknown): MindMapNode[] {
   if (!Array.isArray(nodes)) return [];
   const counter = { count: 0 };
+  // 图片预算按整片森林共享（与导入侧「整次导入一份预算」同一原则）
+  const imageBudget = createImageSanitizeBudget();
   return nodes
-    .map((node) => sanitizeNode(node, 0, counter))
+    .map((node) => sanitizeNode(node, 0, counter, imageBudget))
     .filter((node): node is MindMapNode => node !== null);
 }
 

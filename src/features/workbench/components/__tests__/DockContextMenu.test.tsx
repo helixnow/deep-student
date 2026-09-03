@@ -107,15 +107,21 @@ describe('DockContextMenu', () => {
     expect(itemB).not.toHaveClass('app-menu-item-checked');
   });
 
-  it('键盘 ContextMenu 打开并聚焦首个可用项，方向键跳过禁用项', async () => {
+  it('键盘 ContextMenu 打开聚焦菜单容器，方向键从选中项进入并跳过禁用项', async () => {
     openWin('files', 'f', '资源库');
     render(<Dock />);
     const trigger = dockButton('files');
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'ContextMenu' });
     const menu = await screen.findByRole('menu');
+    // 当前契约：打开后焦点落在菜单容器（tabIndex=-1）上，不预聚焦任何菜单项，
+    // 避免鼠标打开时的「假悬浮」高亮；方向键从容器进入导航
+    await waitFor(() => expect(menu).toHaveFocus());
+
+    // 容器上按 ArrowDown：从当前选中项（前台窗口「资源库」带 checked）开始
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
     const firstEnabled = within(menu).getByText('资源库').closest('button')!;
-    await waitFor(() => expect(firstEnabled).toHaveFocus());
+    expect(firstEnabled).toHaveFocus();
 
     fireEvent.keyDown(firstEnabled, { key: 'ArrowDown' });
     expect(within(menu).getByText('固定到 Dock').closest('button')).toHaveFocus();

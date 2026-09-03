@@ -119,6 +119,8 @@
     "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
     "markersNote": ".xmind 标记：{{markers}}",
+    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
+    "importing": "正在导入导图，请稍候…",
     "saveAndImport": "保存并导入"
   },
   "presentation": {
@@ -169,6 +171,7 @@
     "panCanvasKeysPanMode": "拖拽空白处",
     "associationEntryKeys": "右键节点",
     "associationAdd": "添加关联线（再点目标）",
+    "associationStart": "添加关联线（点击目标完成，Esc 取消）",
     "groupRecite": "背诵模式",
     "reciteNavigate": "在节点间导航",
     "reciteReveal": "揭示下一个挖空",
@@ -415,7 +418,13 @@
     "openLink": "打开链接",
     "priorityBadge": "优先级 {{level}}",
     "progressLabel": "进度 {{percent}}%",
-    "toggleComplete": "切换完成状态"
+    "toggleComplete": "切换完成状态",
+    "imageAlt": "节点图片"
+  },
+  "sheets": {
+    "switcherLabel": "切换 Sheet",
+    "switcherHint": "多 Sheet 导入：切换聚焦到对应画布分支",
+    "all": "全部 Sheet"
   },
   "errorDetails": "查看错误详情",
   "canvas": {
@@ -449,7 +458,18 @@
     "clearBlanks": "清除所有挖空",
     "emptyHint": "选择文字后点击「挖空」创建填空题",
     "createBlankCta": "退出背诵并创建挖空",
-    "progress": "{{revealed}}/{{total}} 已揭示"
+    "progress": "{{revealed}}/{{total}} 已揭示",
+    "remaining": "剩余 {{count}}",
+    "blankBranch": "挖空整个分支",
+    "blankBranchDone": "已挖空 {{count}} 个节点",
+    "clearBranchBlanks": "清除分支挖空",
+    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空",
+    "reviewStart": "难点优先",
+    "reviewStartHint": "按历史错误率从难到易逐节点复习（翻开=没背出来）",
+    "reviewNavLabel": "难点优先复习导航",
+    "reviewPrev": "上一个难点",
+    "reviewNext": "下一个难点",
+    "reviewStop": "结束复习"
   },
   "errors": {
     "notFound": "未找到思维导图"
@@ -491,5 +511,64 @@
     "embed": {
       "retry": "重试"
     }
+  },
+  "agent": {
+    "suggestion_pending": "目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，或提示用户保存/结束编辑后重试。",
+    "validation_children_not_array": "data.children 必须是数组",
+    "validation_item_not_node": "children 中每一项都必须是节点对象",
+    "validation_cycle": "children 中存在循环引用",
+    "validation_shared_node": "同一节点对象不能属于多个父节点",
+    "validation_invalid_id": "子节点 id 必须是非空字符串",
+    "validation_existing_id": "子节点 id {{id}} 已存在",
+    "validation_duplicate_id": "children 中存在重复 id {{id}}",
+    "validation_invalid_text": "子节点 {{id}} 的 text 必须是字符串",
+    "validation_invalid_children": "子节点 {{id}} 的 children 必须是数组",
+    "validation_node_limit": "节点总数不能超过 {{max}}",
+    "validation_depth_limit": "节点深度不能达到或超过 {{max}}",
+    "missing_parent_id": "缺少 parent_id",
+    "missing_node_id": "缺少 node_id",
+    "missing_new_parent_id": "缺少 new_parent_id",
+    "parent_not_found": "父节点 {{id}} 不存在",
+    "node_not_found": "节点 {{id}} 不存在",
+    "new_parent_not_found": "新父节点 {{id}} 不存在",
+    "cannot_delete_root": "不能删除根节点",
+    "cannot_move_root": "不能移动根节点",
+    "cannot_move_to_self": "不能把节点移动到自身",
+    "cannot_move_to_descendant": "不能把节点移动到自己的后代",
+    "move_depth_limit": "移动后节点深度会达到或超过 {{max}}",
+    "unknown_op_kind": "未知操作 kind={{kind}}",
+    "resource_not_held": "导图 {{resourceId}} 已不再由原 store 持有",
+    "nested_children_validation_failed": "嵌套 children 校验失败",
+    "add_node_failed": "添加节点失败（深度/数量限制）",
+    "undo_add_conflict": "撤销添加冲突：节点 {{id}} 已被继续编辑",
+    "undo_add_save_failed": "撤销添加失败：更改未能保存",
+    "undo_update_missing": "撤销更新失败：节点 {{id}} 不存在",
+    "undo_update_conflict": "撤销更新冲突：节点 {{id}} 已被继续编辑",
+    "undo_update_save_failed": "撤销更新失败：更改未能保存",
+    "parent_missing": "找不到父节点",
+    "undo_delete_parent_missing": "撤销删除失败：父节点 {{id}} 不存在",
+    "undo_delete_conflict": "撤销删除冲突：节点 id {{id}} 已被其他内容占用",
+    "undo_delete_save_failed": "撤销删除失败：更改未能保存",
+    "old_parent_missing": "找不到原父节点",
+    "move_node_failed": "移动节点失败",
+    "move_location_unconfirmed": "移动后无法确认节点位置",
+    "undo_move_missing": "撤销移动失败：节点 {{id}} 不存在",
+    "undo_move_conflict": "撤销移动冲突：节点 {{id}} 已被再次移动",
+    "undo_move_restore_failed": "撤销移动失败：节点 {{id}} 无法返回原位置",
+    "undo_move_save_failed": "撤销移动失败：更改未能保存",
+    "store_not_loaded": "导图 store 未加载目标资源（mindmapId≠resourceId 或未打开），无法前端演出；请回落后端路径",
+    "aborted": "已中止（abort）",
+    "aborted_by_user": "已中止（用户停止或取消）",
+    "op_undone_target_switched": "{{label}}（目标资源已切换）",
+    "target_switched": "目标导图在执行期间已切换，剩余操作未应用",
+    "anchor_resolve_failed": "锚点解析失败",
+    "op_undone_with_reason": "{{label}}（{{reason}}）",
+    "op_skipped_progress": "跳过：{{label}} — {{reason}}",
+    "suggestion_save_failed": "前序操作已写入当前导图，但保存失败；建议仍等待用户确认，请先重试保存或撤销",
+    "save_failed": "操作已写入当前导图，但保存失败；请重试保存或撤销",
+    "all_ops_failed": "全部操作未能应用（锚点缺失或限制）",
+    "partially_applied": "部分操作已应用（自动保存）；未执行项见 undone",
+    "applied": "已应用（自动保存）",
+    "no_active_run": "无活跃 run"
   }
 }

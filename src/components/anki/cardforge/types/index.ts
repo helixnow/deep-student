@@ -35,7 +35,11 @@ export interface GenerateCardsInput {
   content: string;
   /** 可选，指定使用的模板 ID 列表 */
   templates?: string[];
-  /** 可选，最大卡片数量 */
+  /**
+   * 可选，本次生成的卡片**总数**上限（跨全部分段的全局额度，
+   * 写入后端 max_cards_total，由后端按分段分配）。
+   * 必须是 ≥1 的有限数；0/负数/NaN 非法，非法或缺省时回退默认 50。
+   */
   maxCards?: number;
   /** 高级选项 */
   options?: {
@@ -43,6 +47,14 @@ export interface GenerateCardsInput {
     noteType?: string;
     maxConcurrency?: number;
     customRequirements?: string;
+    /**
+     * 是否将本地 FSRS 复习画像注入制卡 prompt（0824 隐私收口）。
+     * 注入文本会随生成请求发送到所配置的模型端点（远端模型下即离开本机），
+     * 因此默认 **false**；只有调用方显式传 true 才向后端发出授权
+     * （后端同样只认显式 Some(true)，注入内容默认仅匿名聚合统计，
+     * 不含历史卡片原文摘要）。
+     */
+    fsrsFeedback?: boolean;
   };
 }
 
@@ -187,24 +199,24 @@ export interface AnalyzeContentOutput {
 // 分段引擎类型
 // ============================================================================
 
-/** 分段配置 */
+/**
+ * 分段配置
+ *
+ * 注意：前端 SegmentEngine 只做纯数学的 token 估算分段；LLM 语义定界
+ * 由后端生成管线执行，历史上的 boundaryContext/boundaryModel 配置项
+ * 已随前端 LLM 定界死代码一起删除。
+ */
 export interface SegmentConfig {
   /** 每个子任务的目标大小（tokens） */
   chunkSize: number;
-  /** 定界时的上下文窗口（tokens） */
-  boundaryContext: number;
   /** 最小分段大小（tokens） */
   minSegmentSize: number;
-  /** 定界任务使用的模型 */
-  boundaryModel: 'fast' | 'standard';
 }
 
 /** 默认分段配置 */
 export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   chunkSize: 50000,
-  boundaryContext: 1000,
   minSegmentSize: 5000,
-  boundaryModel: 'fast',
 };
 
 /** 硬分割点 */
@@ -213,30 +225,6 @@ export interface HardSplitPoint {
   position: number;
   /** 原始索引 */
   index: number;
-}
-
-/** 边界检测请求 */
-export interface BoundaryDetectionRequest {
-  /** 分割点前的上下文 */
-  beforeContext: string;
-  /** 分割点后的上下文 */
-  afterContext: string;
-  /** 原始位置 */
-  originalPosition: number;
-  /** 请求索引 */
-  index: number;
-}
-
-/** 边界检测结果 */
-export interface BoundaryDetectionResult {
-  /** 请求索引 */
-  index: number;
-  /** 最佳分割位置偏移量 */
-  offset: number;
-  /** 选择原因 */
-  reason: string;
-  /** 置信度 (0-1) */
-  confidence: number;
 }
 
 /** 文档分段 */
@@ -414,9 +402,7 @@ export type CardForgeEventType =
   | 'document:complete'
   | 'document:paused'
   | 'document:cancelled'
-  | 'rate:limit'
-  | 'tool:result'
-  | 'tool:error';
+  | 'rate:limit';
 
 /** API 频率限制警告事件 payload（对齐后端 RateLimitWarning） */
 export interface RateLimitWarningPayload {

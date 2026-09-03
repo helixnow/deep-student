@@ -74,6 +74,9 @@ export function useQbankAiGrading() {
   // executor 外的路径也能结束 Promise，避免 startGrading 的 await 永久挂起。
   const settleRef = useRef<((result: 'completed' | 'cancelled') => void) | null>(null);
   const failRef = useRef<((error: Error) => void) | null>(null);
+  // #56: 流式累积文本的同步镜像。complete 事件的 payload.feedback 为空时
+  // （如网关终态不回传全文），以已累积文本兜底，保证 onComplete 不发空串。
+  const accumulatedFeedbackRef = useRef('');
   const lastRequestRef = useRef<{
     questionId: string;
     submissionId: string;
@@ -156,6 +159,7 @@ export function useQbankAiGrading() {
         // 生成新的 stream session ID
         const streamSessionId = nanoid(12);
         currentStreamSessionIdRef.current = streamSessionId;
+        accumulatedFeedbackRef.current = '';
 
         // 清理旧状态
         cleanup();
@@ -201,6 +205,9 @@ export function useQbankAiGrading() {
             resetTimeout();
 
             if (payload.type === 'data') {
+              if (payload.accumulated) {
+                accumulatedFeedbackRef.current = payload.accumulated;
+              }
               setState((prev) => ({
                 ...prev,
                 feedback: payload.accumulated || prev.feedback,
@@ -211,17 +218,22 @@ export function useQbankAiGrading() {
               cleanup();
               const finalVerdict = payload.verdict as QbankVerdict | undefined;
               const finalScore = payload.score;
+              // #56: 终态文本 = 非空 payload.feedback，否则回退到已累积的流式文本。
+              // state 与 onComplete 使用同一份终态文本——此前 onComplete 在
+              // payload.feedback 为空时传 ''，父组件（解析缓存等）拿到空串后
+              // 已渲染的流式内容会在切题回来时整段消失。
+              const finalFeedback = payload.feedback || accumulatedFeedbackRef.current;
               setState((prev) => ({
                 ...prev,
                 isGrading: false,
-                feedback: payload.feedback || prev.feedback,
+                feedback: finalFeedback || prev.feedback,
                 verdict: finalVerdict,
                 score: finalScore,
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
               // 直接回调，避免闭包过时值问题
-              onComplete?.(finalVerdict, finalScore, payload.feedback || '');
+              onComplete?.(finalVerdict, finalScore, finalFeedback);
               settle('completed');
             }
 
@@ -336,6 +348,7 @@ export function useQbankAiGrading() {
     cleanup();
     setState(INITIAL_STATE);
     currentStreamSessionIdRef.current = null;
+    accumulatedFeedbackRef.current = '';
     isActiveRef.current = false;
     isStartingRef.current = false;
     lastRequestRef.current = null;

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 import { useEventRegistry } from './useEventRegistry';
 
 // 系统设置接口
@@ -175,32 +176,32 @@ export const useSystemSettings = () => {
     return success;
   }, [saveSetting]);
 
-  // 验证设置
+  // 验证设置（返回当前语言的 i18n 文案，见 forms:system_validation.*）
   const validateSettings = useCallback((settingsToValidate: Partial<SystemSettings>) => {
     const errors: string[] = [];
     
     if (settingsToValidate.maxChatHistory !== undefined) {
       if (settingsToValidate.maxChatHistory < 10 || settingsToValidate.maxChatHistory > 1000) {
-        errors.push('最大聊天历史记录数量必须在10-1000之间');
+        errors.push(i18n.t('forms:system_validation.max_chat_history'));
       }
     }
     
     if (settingsToValidate.theme !== undefined) {
       // 支持所有主题模式
       if (!['light', 'dark', 'auto'].includes(settingsToValidate.theme)) {
-        errors.push('主题必须是 light、dark 或 auto');
+        errors.push(i18n.t('forms:system_validation.theme'));
       }
     }
     
     if (settingsToValidate.language !== undefined) {
       if (!['zh-CN', 'en-US'].includes(settingsToValidate.language)) {
-        errors.push('语言必须是zh-CN或en-US');
+        errors.push(i18n.t('forms:system_validation.language'));
       }
     }
 
     if (settingsToValidate.markdownRendererMode !== undefined) {
       if (!['legacy', 'enhanced'].includes(settingsToValidate.markdownRendererMode)) {
-        errors.push('Markdown 渲染模式必须是 legacy 或 enhanced');
+        errors.push(i18n.t('forms:system_validation.markdown_renderer_mode'));
       }
     }
     

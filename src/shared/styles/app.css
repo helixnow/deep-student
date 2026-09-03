@@ -1192,11 +1192,11 @@ main {
   outline-offset: 1px;
 }
 
-/* N-5: 触屏上预览工具栏按钮放大到 ≥36px */
+/* N-5: 触屏上预览工具栏按钮放大到 ≥44px 触控目标 */
 @media (pointer: coarse) {
   .modern-viewer-icon-button {
-    min-width: 36px;
-    height: 36px;
+    min-width: 44px;
+    height: 44px;
     padding: 6px;
   }
 }

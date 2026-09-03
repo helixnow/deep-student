@@ -11,7 +11,6 @@ describe('secondary surface shell migration contract', () => {
   const chatPageSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
   const skillsPageSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsManagementPage.tsx'), 'utf-8');
   const skillsListSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsList.tsx'), 'utf-8');
-  const notesSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/notes/NotesSidebarV2.tsx'), 'utf-8');
 
   it('routes template management through workbench-aligned wb-tm surfaces', () => {
     expect(templateAppSource).toContain('wb-tm-root');
@@ -34,17 +33,16 @@ describe('secondary surface shell migration contract', () => {
     expect(ankiTasksSource).toMatch(/study-shell-segmented|SegmentedControl/);
   });
 
-  it('routes skills and notes secondary surfaces through shared shell classes', () => {
+  it('routes skills secondary surfaces through shared shell classes', () => {
     expect(skillsPageSource).toContain('study-shell-toolbar');
     expect(skillsListSource).toContain('study-shell-secondary-card');
-    expect(notesSidebarSource).toContain('study-shell-sidebar-frame');
-    expect(notesSidebarSource).toContain('sidebar-shell-item');
   });
 
   it('renders the chat main pane flush with the desktop header shell', () => {
     expect(chatPageSource).toContain('study-shell-page chat-v2 absolute inset-0 flex overflow-hidden');
     expect(chatPageSource).toContain('renderMainContent()');
     expect(chatPageSource).toContain('study-shell-panel h-full flex flex-col');
-    expect(chatPageSource).toContain('study-shell-toolbar flex items-center justify-between');
+    // 移动端全屏时工具栏隐藏（hidden/flex 由条件类切换），flex 不再写死在基类串里
+    expect(chatPageSource).toContain('study-shell-toolbar items-center justify-between');
   });
 });

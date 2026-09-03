@@ -138,6 +138,25 @@
     }
   },
   "agent": {
-    "you": "You"
+    "you": "You",
+    "fsrs": {
+      "queue_not_reset": "Interrupted by user; the review queue was not reset",
+      "enqueue_requires_session": "No applicable fsrs_enqueue (requires an active review session)",
+      "enqueued_cards": "Enqueued {{count}} cards",
+      "already_in_queue": "{{kind}} (all cards already in queue)",
+      "abort_queue_not_reset": "Flashcards enqueue aborted (queue was not reset)",
+      "abort_run_not_found": "Run {{runId}} aborted (flashcards queue was not reset)"
+    },
+    "pomodoro": {
+      "run_aborted": "Run aborted",
+      "pause_check_failed": "Pause check failed ({{error}})",
+      "start_noop": "{{label}} (nothing to start or resume in the current state)",
+      "pause_noop": "{{label}} (cannot pause in the current state)",
+      "resume_noop": "{{label}} (nothing to resume in the current state)",
+      "stop_noop": "{{label}} (no pomodoro is currently running)",
+      "unsupported_op": "Unsupported pomodoro op: {{kind}}",
+      "persist_failed": "Failed to save backend records: {{error}}",
+      "pacing_failed": "Pacing control failed: {{error}}"
+    }
   }
 }

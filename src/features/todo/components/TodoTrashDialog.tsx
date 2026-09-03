@@ -19,6 +19,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { create } from 'zustand';
 import { AnimatePresence } from 'framer-motion';
@@ -35,6 +36,12 @@ import { AnimatedListRow } from '@/components/ui/AnimatedListRow';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useTodoStore } from '../stores/useTodoStore';
+import { useTodoToolbarPortalTarget } from './todoToolbarPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 
 // ============================================================================
 // 回收站视图开关（侧栏与内容区分属不同挂载点，经模块级 store 协调）
@@ -122,7 +129,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             variant="danger"
             size="sm"
             onClick={onConfirmPurge}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {purgeLabel}
           </DsButton>
@@ -130,7 +137,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             variant="ghost"
             size="sm"
             onClick={onCancelPurge}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -143,7 +150,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             onClick={onRestore}
             title={restoreLabel}
             aria-label={restoreLabel}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:!px-3"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3"
           >
             <ArrowCounterClockwise size={13} />
             <span>{restoreLabel}</span>
@@ -155,7 +162,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             onClick={onRequestPurge}
             title={purgeLabel}
             aria-label={purgeLabel}
-            className="!p-1.5 [@media(pointer:coarse)]:!p-3 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+            className="!p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
           >
             <Trash size={13} />
           </DsButton>
@@ -303,7 +310,7 @@ const TrashSections: React.FC = () => {
             disabled={isLoadingTrash}
             onClick={() => void loadMoreTrash()}
             aria-busy={isLoadingTrash || undefined}
-            className="text-sm text-muted-foreground [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="text-sm text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingTrash ? (
               <>
@@ -348,7 +355,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
             setConfirming(false);
             void emptyTrash();
           }}
-          className="[@media(pointer:coarse)]:min-h-[2.5rem]"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           {t('todo:trash.confirmEmptyAll')}
         </DsButton>
@@ -356,7 +363,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
           variant="ghost"
           size="sm"
           onClick={() => setConfirming(false)}
-          className="[@media(pointer:coarse)]:min-h-[2.5rem]"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           {t('common:actions.cancel')}
         </DsButton>
@@ -371,7 +378,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
       disabled={isEmpty}
       onClick={() => setConfirming(true)}
       className={cn(
-        'text-[color:hsl(var(--destructive))] disabled:opacity-40 [@media(pointer:coarse)]:min-h-[2.5rem]',
+        'text-[color:hsl(var(--destructive))] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11',
         className,
       )}
     >
@@ -384,10 +391,12 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
 // TodoTrashWorkspace — 桌面端主内容区内联回收站视图（带返回）
 // ============================================================================
 
-export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className }) => {
+export const TodoTrashWorkspace: React.FC<{ className?: string; titlebarPortalTarget?: HTMLElement | null }> = ({ className, titlebarPortalTarget }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { loadTrash } = useTodoStore();
   const close = useTodoTrashView((s) => s.close);
+  // 桌面端：头部迁入全局顶栏（workbench 窗口标题栏槽位 / legacy 壳标题栏）
+  const headerPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
 
   useEffect(() => {
     void loadTrash();
@@ -412,6 +421,38 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [close]);
 
+  const headerClusters = (
+    <>
+      <div className={cn('flex min-w-0 items-center gap-2', headerPortalTarget && 'pointer-events-auto')}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={close}
+          aria-label={t('todo:trash.back')}
+          title={t('todo:trash.back')}
+          className={headerPortalTarget
+            ? TITLEBAR_ICON_CONTROL_CLASS
+            : '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'}
+        >
+          <ArrowLeft size={16} />
+        </DsButton>
+        <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <h2 className={headerPortalTarget
+            ? TITLEBAR_TITLE_CLASS
+            : 'truncate text-[15px] font-semibold leading-tight text-foreground'}>
+            {t('todo:trash.title')}
+          </h2>
+          <p className="hidden truncate text-sm text-muted-foreground md:block">
+            {t('todo:trash.description')}
+          </p>
+        </div>
+      </div>
+      <TrashEmptyAllButton className={cn('shrink-0', headerPortalTarget && `pointer-events-auto ${TITLEBAR_CONTROL_CLASS}`)} />
+    </>
+  );
+
   return (
     <div
       ref={workspaceRef}
@@ -420,30 +461,18 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
         className,
       )}
     >
-      <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={close}
-            aria-label={t('todo:trash.back')}
-            title={t('todo:trash.back')}
-          >
-            <ArrowLeft size={16} />
-          </DsButton>
-          <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">
-              {t('todo:trash.title')}
-            </h2>
-            <p className="hidden truncate text-sm text-muted-foreground md:block">
-              {t('todo:trash.description')}
-            </p>
-          </div>
-        </div>
-        <TrashEmptyAllButton className="shrink-0" />
-      </header>
+      {headerPortalTarget ? (
+        createPortal(
+          <div className="pointer-events-none flex h-full min-w-0 items-center justify-between gap-3 px-2">
+            {headerClusters}
+          </div>,
+          headerPortalTarget,
+        )
+      ) : (
+        <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-6">
+          {headerClusters}
+        </header>
+      )}
 
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 pb-4 sm:px-4">
         <TrashSections />
@@ -473,7 +502,8 @@ export const TodoTrashScreen: React.FC<{ className?: string }> = ({ className })
         <TrashSections />
       </CustomScrollArea>
 
-      <div className="flex flex-shrink-0 items-center justify-end px-4 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+      {/* 底部安全区由 MobileDetailOverlay 容器统一兜底，此处不再重复叠加 */}
+      <div className="flex flex-shrink-0 items-center justify-end px-4 py-2">
         <TrashEmptyAllButton />
       </div>
     </div>

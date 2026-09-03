@@ -427,7 +427,7 @@ const MarkdownCodeBlock: React.FC<{ language: string | null; code: string }> = (
   return (
     <div className="not-prose my-3 overflow-hidden rounded-lg border border-border bg-muted/30">
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/50 py-1 pl-3 pr-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+        <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
           {language || 'text'}
         </span>
         <CopyTextButton text={code} />

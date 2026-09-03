@@ -407,7 +407,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={toggleEnabled}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors [@media(pointer:coarse)]:min-h-11 ${
               isEnabled 
                 ? 'bg-green-600 text-white hover:bg-green-700' 
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -422,27 +422,27 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <label className="flex items-center gap-1 text-xs text-gray-400 mr-2">
+          <label className="flex items-center gap-1 text-xs text-gray-400 mr-2 [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
           <button
             onClick={handleClear}
-            className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-700 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title="清空日志"
           >
             <Trash size={16} className="text-gray-400" />
           </button>
           <button
             onClick={handleCopyReport}
-            className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-700 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title="复制报告"
           >
             <Copy className={`w-4 h-4 ${copied ? 'text-green-400' : 'text-gray-400'}`} />
           </button>
           <button
             onClick={handleDownloadReport}
-            className="p-1.5 rounded hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-700 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title="下载报告"
           >
             <Download size={16} className="text-gray-400" />
@@ -455,7 +455,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Funnel size={16} className="text-gray-500 mr-1 flex-shrink-0" />
         <button
           onClick={() => setFilter('all')}
-          className={`px-2 py-0.5 rounded text-xs whitespace-nowrap transition-colors ${
+          className={`px-2 py-0.5 rounded text-xs whitespace-nowrap transition-colors [@media(pointer:coarse)]:min-h-11 ${
             filter === 'all' ? 'bg-gray-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
           }`}
         >
@@ -465,7 +465,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <button
             key={phase}
             onClick={() => setFilter(phase)}
-            className={`px-2 py-0.5 rounded text-xs whitespace-nowrap transition-colors ${
+            className={`px-2 py-0.5 rounded text-xs whitespace-nowrap transition-colors [@media(pointer:coarse)]:min-h-11 ${
               filter === phase ? PHASE_COLORS[phase] : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
@@ -531,7 +531,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             {snapshots.map((snap, i) => (
               <button
                 key={i}
-                className="px-2 py-1 bg-gray-800 rounded text-[10px] text-gray-300 hover:bg-gray-700 whitespace-nowrap"
+                className="px-2 py-1 bg-gray-800 rounded text-[10px] text-gray-300 hover:bg-gray-700 whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
                 onClick={() => console.log('快照详情:', snap)}
               >
                 {snap.label}

@@ -59,7 +59,7 @@ export const ChatCollapsible: React.FC<ChatCollapsibleProps> = ({
         tabIndex={0}
         aria-expanded={open}
         className={cn(
-          'flex items-center justify-between cursor-pointer select-none px-3 py-2.5',
+          'flex items-center justify-between cursor-pointer select-none px-3 py-2.5 [@media(pointer:coarse)]:min-h-11',
           'bg-muted/90 border-b border-border/60'
         )}
         onClick={() => onOpenChange(!open)}

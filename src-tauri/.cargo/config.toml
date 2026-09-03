@@ -12,7 +12,8 @@ rustflags = ["-C", "link-arg=/INCREMENTAL:NO", "-C", "link-arg=/STACK:16777216",
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-C","link-arg=-fuse-ld=lld"]
+# lld 仅在开发机已安装时通过环境变量启用，避免 CI / 干净 runner 链接失败：
+#   export RUSTFLAGS="-C link-arg=-fuse-ld=lld"
 
 # macOS: uncomment to speed up link & debug info handling
 # [target.x86_64-apple-darwin]

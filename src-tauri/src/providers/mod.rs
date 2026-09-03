@@ -68,9 +68,34 @@ pub trait ProviderAdapter: Send + Sync {
     }
     /// 解析流式响应行，返回事件列表
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent>;
+    /// Resolve protocol state when the transport reaches EOF. Stateful
+    /// adapters can use this to accept a provider that sent a terminal choice
+    /// but omitted its protocol sentinel without truncating trailing chunks.
+    fn finish_stream(&self) -> Vec<StreamEvent> {
+        Vec::new()
+    }
 }
 
-pub struct OpenAIAdapter;
+pub struct OpenAIAdapter {
+    /// Chat Completions marks the final choice before the optional usage-only
+    /// chunk. Remember that marker, but do not terminate consumers until
+    /// `[DONE]` or transport EOF.
+    saw_finish_reason: std::sync::atomic::AtomicBool,
+}
+
+impl Default for OpenAIAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OpenAIAdapter {
+    pub fn new() -> Self {
+        Self {
+            saw_finish_reason: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
 
 fn openai_endpoint_url(base_url: &str, endpoint: &str) -> String {
     let tail_start = base_url.find(['?', '#']).unwrap_or(base_url.len());
@@ -102,6 +127,13 @@ fn sse_data_payload(block: &str) -> Option<String> {
     crate::utils::sse_buffer::extract_stream_data_payload(block)
 }
 
+fn is_official_openai_api_endpoint(base_url: &str) -> bool {
+    url::Url::parse(base_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| host == "api.openai.com")
+}
+
 impl ProviderAdapter for OpenAIAdapter {
     fn requires_explicit_stream_completion(&self) -> bool {
         true
@@ -117,7 +149,27 @@ impl ProviderAdapter for OpenAIAdapter {
         let url = openai_endpoint_url(base_url, "chat/completions");
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
-        let sanitized_body = sanitize_openai_request_body(body);
+        let mut sanitized_body = sanitize_openai_request_body(body);
+        self.saw_finish_reason
+            .store(false, std::sync::atomic::Ordering::Release);
+
+        // 流式请求补 stream_options.include_usage=true：OpenAI Chat Completions
+        // 默认不在流中返回 usage，缓存命中（prompt_tokens_details.cached_tokens）
+        // 因此不可见。该扩展只对已确认支持它的 OpenAI 官方端点自动启用；
+        // 未知兼容网关默认不注入，避免严格网关因未知字段返回 400。
+        // 调用方已显式设置 stream_options 时尊重原值。
+        if let Some(obj) = sanitized_body.as_object_mut() {
+            let is_stream = obj.get("stream").and_then(Value::as_bool).unwrap_or(false);
+            if is_stream
+                && is_official_openai_api_endpoint(base_url)
+                && !obj.contains_key("stream_options")
+            {
+                obj.insert(
+                    "stream_options".to_string(),
+                    json!({ "include_usage": true }),
+                );
+            }
+        }
 
         let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
         if !trimmed_key.is_empty() {
@@ -145,6 +197,8 @@ impl ProviderAdapter for OpenAIAdapter {
         // 否则这些流的所有数据行会被静默丢弃（表现为"健康连接但无任何输出"）
         if let Some(data) = sse_data_payload(line) {
             if data.trim() == "[DONE]" {
+                self.saw_finish_reason
+                    .store(false, std::sync::atomic::Ordering::Release);
                 events.push(StreamEvent::Done);
                 return events;
             }
@@ -160,6 +214,8 @@ impl ProviderAdapter for OpenAIAdapter {
                             "reason": "stream_error",
                             "details": error.clone()
                         })));
+                        self.saw_finish_reason
+                            .store(false, std::sync::atomic::Ordering::Release);
                         events.push(StreamEvent::Done);
                         return events;
                     }
@@ -244,17 +300,29 @@ impl ProviderAdapter for OpenAIAdapter {
                 if let Some(usage) = json_data["usage"].as_object() {
                     events.push(StreamEvent::Usage(Value::Object(usage.clone())));
                 }
-                // 部分 OpenAI 兼容网关（one-api/sub2api 等）在最后一个 JSON
-                // 块中只发送 finish_reason，不再发送 `[DONE]`。必须等本块的
-                // content/reasoning/tool/usage 全部入队后再发 Done，避免调用方
-                // 提前退出而丢失同块事件。
+                // `finish_reason` only completes choices. OpenAI may still send
+                // `choices: []` with usage before `[DONE]`, so emitting Done here
+                // would make the requested usage unreachable. Gateways that omit
+                // `[DONE]` are accepted by finish_stream() when transport EOF arrives.
                 if choices_finished {
-                    events.push(StreamEvent::Done);
+                    self.saw_finish_reason
+                        .store(true, std::sync::atomic::Ordering::Release);
                 }
             }
         }
 
         events
+    }
+
+    fn finish_stream(&self) -> Vec<StreamEvent> {
+        if self
+            .saw_finish_reason
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
+        {
+            vec![StreamEvent::Done]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -418,11 +486,35 @@ fn normalize_openai_function_name(name: &str) -> Option<String> {
     }
 }
 
+/// 工具是否声明了空白名称（扁平 `name` 或嵌套 `function.name`）。
+///
+/// OpenAI 兼容网关（如 cliproxyapi，issue #53）会以 HTTP 400 拒绝空工具名：
+/// `Invalid 'tools[0].name': empty string`。这类残缺工具必须在请求发出前
+/// 整体丢弃。未声明任何名称字段的内置工具（如 `{"type":"web_search"}`）不受影响。
+fn tool_declares_blank_name(tool: &Value) -> bool {
+    let flat_name_blank = tool
+        .get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.trim().is_empty());
+    let nested_name_blank = tool
+        .get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.trim().is_empty());
+    flat_name_blank || nested_name_blank
+}
+
 fn sanitize_openai_tools_array(tools: &[Value]) -> Vec<Value> {
     let mut seen_names = HashSet::new();
     let mut sanitized = Vec::new();
 
     for tool in tools {
+        // 空名工具（扁平或嵌套）直接丢弃：非 function 工具的透传和
+        // function 工具的 clone 否则都会把空 `name` 原样送上线路
+        if tool_declares_blank_name(tool) {
+            continue;
+        }
+
         // 非 function 类型的工具（内置工具/服务端工具，如 web_search、openrouter:web_search）
         // 原样透传，不做名称/参数归一化
         let tool_type = tool
@@ -584,6 +676,24 @@ pub struct OpenAIResponsesAdapter {
     /// sources. A source-less completed event may be upgraded by the terminal
     /// response fallback that extracts annotations from the final message.
     emitted_web_search_with_sources_ids: Mutex<HashSet<String>>,
+    /// In-flight function_call items announced by `response.output_item.added`,
+    /// keyed by item id. `response.function_call_arguments.delta` events only
+    /// carry `item_id`, so name/call_id/output_index and the accumulated
+    /// argument buffer must be tracked here (对齐 Codex SSE 桥，P2-14)。
+    pending_function_calls: Mutex<HashMap<String, PendingResponseFunctionCall>>,
+    /// Ids of reasoning items already emitted (streaming `output_item.done` or
+    /// terminal fallback). Per-id dedup lets a response carry multiple
+    /// reasoning items (one per function_call round) without double emission.
+    emitted_reasoning_item_ids: Mutex<HashSet<String>>,
+}
+
+/// Streaming state for one Responses `function_call` output item.
+#[derive(Debug, Clone, Default)]
+struct PendingResponseFunctionCall {
+    call_id: String,
+    name: String,
+    output_index: i64,
+    arguments: String,
 }
 
 impl Default for OpenAIResponsesAdapter {
@@ -608,6 +718,47 @@ impl OpenAIResponsesAdapter {
             || host == "api.deepseek.com"
     }
 
+    /// GPT-5.6 起提供显式 `prompt_cache_breakpoint`。只解析完整的 GPT 型号段，
+    /// 避免 `not-gpt-6` 或部署别名中偶然出现的子串被当成模型能力。
+    pub(crate) fn model_supports_prompt_cache_breakpoint(model: &str) -> bool {
+        let lower = model.trim().to_ascii_lowercase();
+        let model_segment = lower.rsplit('/').next().unwrap_or_default();
+        let Some(rest) = model_segment.strip_prefix("gpt-") else {
+            return false;
+        };
+        let major_digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        let Ok(major) = major_digits.parse::<u32>() else {
+            return false;
+        };
+        let after_major = &rest[major_digits.len()..];
+        if major > 5 {
+            return after_major.is_empty()
+                || after_major.starts_with('-')
+                || after_major.starts_with('_')
+                || after_major
+                    .strip_prefix('.')
+                    .and_then(|minor| minor.chars().next())
+                    .is_some_and(|digit| digit.is_ascii_digit());
+        }
+        if major != 5 {
+            return false;
+        }
+        let Some(minor_part) = after_major.strip_prefix('.') else {
+            return false;
+        };
+        let minor_digits: String = minor_part
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        let suffix = &minor_part[minor_digits.len()..];
+        minor_digits.parse::<u32>().is_ok_and(|minor| minor >= 6)
+            && (suffix.is_empty() || suffix.starts_with('-') || suffix.starts_with('_'))
+    }
+
+    fn endpoint_supports_prompt_cache_breakpoint(base_url: &str) -> bool {
+        is_official_openai_api_endpoint(base_url)
+    }
+
     pub fn new() -> Self {
         Self {
             saw_content_delta: std::sync::atomic::AtomicBool::new(false),
@@ -618,6 +769,8 @@ impl OpenAIResponsesAdapter {
             emitted_tool_call_ids: Mutex::new(HashSet::new()),
             emitted_web_search_ids: Mutex::new(HashSet::new()),
             emitted_web_search_with_sources_ids: Mutex::new(HashSet::new()),
+            pending_function_calls: Mutex::new(HashMap::new()),
+            emitted_reasoning_item_ids: Mutex::new(HashSet::new()),
         }
     }
 
@@ -625,21 +778,69 @@ impl OpenAIResponsesAdapter {
         item.get("type").and_then(|v| v.as_str()) == Some("reasoning")
     }
 
-    fn emit_reasoning_items_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
-        if self
-            .saw_reasoning_item
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            return;
+    /// Emit one reasoning item at most once. Items carrying an `id` are deduped
+    /// per id（一次响应可含多个 reasoning item，各自只发一次）；id 缺失的 item
+    /// 由 `allow_unidentified` 控制（终态兜底仅在整个流未发过任何 reasoning
+    /// item 时才允许，避免与流式 `output_item.done` 重复）。
+    fn try_emit_reasoning_item(
+        &self,
+        item: &Value,
+        allow_unidentified: bool,
+        events: &mut Vec<StreamEvent>,
+    ) -> bool {
+        if !Self::is_reasoning_item(item) {
+            return false;
         }
+        match item.get("id").and_then(Value::as_str) {
+            Some(id) => {
+                let is_new = self
+                    .emitted_reasoning_item_ids
+                    .lock()
+                    .map(|mut emitted| emitted.insert(id.to_string()))
+                    .unwrap_or(true);
+                if !is_new {
+                    return false;
+                }
+            }
+            None => {
+                if !allow_unidentified {
+                    return false;
+                }
+            }
+        }
+        self.saw_reasoning_item
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        events.push(StreamEvent::ResponseReasoningItem(item.clone()));
+        true
+    }
 
+    fn emit_reasoning_items_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
+        let allow_unidentified = !self
+            .saw_reasoning_item
+            .load(std::sync::atomic::Ordering::Relaxed);
         if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
             for item in output {
-                if Self::is_reasoning_item(item) {
-                    events.push(StreamEvent::ResponseReasoningItem(item.clone()));
-                    self.saw_reasoning_item
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                }
+                self.try_emit_reasoning_item(item, allow_unidentified, events);
+            }
+        }
+    }
+
+    /// 终态兜底：按 `response.output` 的原始顺序**交错**发射 reasoning item 与
+    /// function_call，保持「reasoning 紧邻其后继 function_call」的相邻语义。
+    /// 禁止两遍扫描（先全量 reasoning 再全量 tool_call）——那会让下游无法按
+    /// 相邻关系把每个 reasoning item 配对到正确的 function_call。
+    fn emit_reasoning_and_tool_calls_from_response(
+        &self,
+        response: &Value,
+        events: &mut Vec<StreamEvent>,
+    ) {
+        let allow_unidentified = !self
+            .saw_reasoning_item
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(output) = response.get("output").and_then(Value::as_array) {
+            for (index, item) in output.iter().enumerate() {
+                self.try_emit_reasoning_item(item, allow_unidentified, events);
+                self.emit_response_tool_call(item, index as i64, events);
             }
         }
     }
@@ -913,12 +1114,126 @@ impl OpenAIResponsesAdapter {
         }
     }
 
-    fn emit_tool_calls_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
-        if let Some(output) = response.get("output").and_then(Value::as_array) {
-            for (index, item) in output.iter().enumerate() {
-                self.emit_response_tool_call(item, index as i64, events);
-            }
+    /// `response.output_item.added`（function_call）：登记进行中的工具调用，
+    /// 并向上游发射「开始」分块（带 id/name、空 arguments）。上游管线以
+    /// 「有 id = 新调用开始」语义聚合分块（对齐 Codex SSE 桥，P2-14）。
+    fn begin_streaming_function_call(
+        &self,
+        item: &Value,
+        output_index: i64,
+        events: &mut Vec<StreamEvent>,
+    ) {
+        let Some(item_id) = item.get("id").and_then(Value::as_str) else {
+            return;
+        };
+        let call_id = item
+            .get("call_id")
+            .and_then(Value::as_str)
+            .unwrap_or(item_id)
+            .to_string();
+        let name = item
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let initial_arguments = item
+            .get("arguments")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+
+        let is_new = self
+            .pending_function_calls
+            .lock()
+            .map(|mut pending| {
+                pending
+                    .insert(
+                        item_id.to_string(),
+                        PendingResponseFunctionCall {
+                            call_id: call_id.clone(),
+                            name: name.clone(),
+                            output_index,
+                            arguments: initial_arguments.clone(),
+                        },
+                    )
+                    .is_none()
+            })
+            .unwrap_or(true);
+        // 终态已发射（arguments.done / output_item.done 先到）或重复 added：不再发开始分块
+        let already_terminal = self
+            .emitted_tool_call_ids
+            .lock()
+            .map(|emitted| emitted.contains(&call_id))
+            .unwrap_or(false);
+        if is_new && !already_terminal && !name.is_empty() {
+            events.push(StreamEvent::ToolCall(json!({
+                "index": output_index,
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": initial_arguments,
+                }
+            })));
         }
+    }
+
+    /// `response.function_call_arguments.delta`：累积参数并发射 id-less 参数分块
+    /// （上游按 index 追加，驱动前端实时预览；对齐 Codex SSE 桥，P2-14）。
+    fn append_function_call_arguments_delta(&self, parsed: &Value, events: &mut Vec<StreamEvent>) {
+        let Some(delta) = parsed
+            .get("delta")
+            .and_then(Value::as_str)
+            .filter(|delta| !delta.is_empty())
+        else {
+            return;
+        };
+        let Some(item_id) = parsed
+            .get("item_id")
+            .or_else(|| parsed.get("call_id"))
+            .and_then(Value::as_str)
+        else {
+            return;
+        };
+
+        let output_index = {
+            let Ok(mut pending) = self.pending_function_calls.lock() else {
+                return;
+            };
+            let Some(entry) = pending.get_mut(item_id) else {
+                // 未见 added：无 name/call_id 可用，只缓冲等 arguments.done 兜底
+                pending.insert(
+                    item_id.to_string(),
+                    PendingResponseFunctionCall {
+                        arguments: delta.to_string(),
+                        output_index: parsed
+                            .get("output_index")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0),
+                        ..Default::default()
+                    },
+                );
+                return;
+            };
+            entry.arguments.push_str(delta);
+            parsed
+                .get("output_index")
+                .and_then(Value::as_i64)
+                .unwrap_or(entry.output_index)
+        };
+        events.push(StreamEvent::ToolCall(json!({
+            "index": output_index,
+            "type": "function",
+            "function": { "arguments": delta }
+        })));
+    }
+
+    /// 取走（并移除）item 对应的进行中工具调用状态。
+    fn take_pending_function_call(&self, item_id: &str) -> Option<PendingResponseFunctionCall> {
+        self.pending_function_calls
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(item_id))
     }
 
     /// 从 web_search_call item / 事件载荷中提取来源列表。
@@ -1004,6 +1319,30 @@ impl OpenAIResponsesAdapter {
         sources
     }
 
+    /// 把事件里的 web_search_call item 规整为可原样回传下一轮 `input` 的完整形态。
+    /// DeepSeek Responses 无状态：服务端靠回传的 web_search_call item 恢复搜索结果，
+    /// 因此完整 item 必须随流事件上抛、挂到 assistant 消息 meta（P2-13）。
+    /// 合成聚合载荷（如终端 annotations 兜底的 `resp_web_search`）没有 status/type，
+    /// 不可回传，返回 None。
+    fn full_web_search_item_for_replay(item: &Value) -> Option<Value> {
+        match item.get("type").and_then(Value::as_str) {
+            Some("web_search_call") => Some(item.clone()),
+            Some(_) => None,
+            None => {
+                let looks_like_item = item.get("id").and_then(Value::as_str).is_some()
+                    && item.get("status").is_some();
+                if looks_like_item {
+                    // 事件名已保证条目类型；补上 type 使 item 可直接作为 input 回传
+                    let mut full = item.clone();
+                    full["type"] = json!("web_search_call");
+                    Some(full)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     /// 组装 web_search_call 载荷并去重发射。
     fn emit_web_search_item(&self, item: &Value, stage: &str, events: &mut Vec<StreamEvent>) {
         let id = item
@@ -1045,6 +1384,11 @@ impl OpenAIResponsesAdapter {
         });
         if stage == "completed" {
             payload["sources"] = json!(sources);
+        }
+        // 完整 item 随载荷上抛，供上游挂到 assistant 消息 meta 并在下一轮
+        // 原样回传 input（DeepSeek Responses 无状态恢复搜索结果，P2-13）
+        if let Some(full_item) = Self::full_web_search_item_for_replay(item) {
+            payload["item"] = full_item;
         }
         events.push(StreamEvent::WebSearchCall(payload));
     }
@@ -1159,6 +1503,19 @@ impl OpenAIResponsesAdapter {
                             input_blocks.push(item.clone());
                         }
                     }
+                    // 服务端 web_search_call：完整 item 原样回传（DeepSeek Responses
+                    // 无状态，服务端靠该 item 恢复搜索结果；顺序对齐响应 output：
+                    // reasoning → web_search_call → message，P2-13）
+                    if let Some(items) = message
+                        .get("response_web_search_items")
+                        .and_then(Value::as_array)
+                    {
+                        for item in items {
+                            if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
+                                input_blocks.push(item.clone());
+                            }
+                        }
+                    }
                 }
 
                 let mut parts: Vec<Value> = Vec::new();
@@ -1188,6 +1545,27 @@ impl OpenAIResponsesAdapter {
             }));
         }
 
+        // GPT-5.6+ 是「断点处精确匹配」缓存：顶层 instructions 打不了
+        // prompt_cache_breakpoint，稳定指令改放 input 首位的 developer
+        // input_text 并显式打断点（ROUND-02 P2-12）。其他模型（含 DeepSeek
+        // Responses，官方无该字段且靠自动前缀缓存）保持顶层 instructions 不变。
+        let instructions_as_developer_breakpoint = !instructions.is_empty()
+            && Self::model_supports_prompt_cache_breakpoint(model)
+            && Self::endpoint_supports_prompt_cache_breakpoint(base_url);
+        if instructions_as_developer_breakpoint {
+            input_blocks.insert(
+                0,
+                json!({
+                    "role": "developer",
+                    "content": [{
+                        "type": "input_text",
+                        "text": instructions.join("\n\n"),
+                        "prompt_cache_breakpoint": { "mode": "explicit" }
+                    }]
+                }),
+            );
+        }
+
         // 尊重调用方 body 中的 stream 值：非流式路径（标题生成/OCR 等）显式传
         // stream:false 时必须透传，否则收到 SSE 流导致 JSON 解析失败；缺省仍为 true
         let stream_enabled = body.get("stream").and_then(|v| v.as_bool()).unwrap_or(true);
@@ -1201,7 +1579,7 @@ impl OpenAIResponsesAdapter {
         // 调用方未显式指定时默认关闭服务端留存（研报 01 要点 10）
         payload["store"] = body.get("store").cloned().unwrap_or(json!(false));
 
-        if !instructions.is_empty() {
+        if !instructions.is_empty() && !instructions_as_developer_breakpoint {
             payload["instructions"] = json!(instructions.join("\n\n"));
         }
 
@@ -1557,19 +1935,65 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         }
                     }
                 }
-            "response.output_item.done" => {
+            // 部分实现（DeepSeek Responses 等）在 added 时就给出 function_call 的
+            // id/name，参数走 arguments.delta 增量；web_search_call 也可能只经由
+            // output_item.added 通告进行中状态（对齐 Codex SSE 桥，P2-14）
+            "response.output_item.added" => {
                 if let Some(item) = parsed.get("item") {
-                    if Self::is_reasoning_item(item) {
-                        self.saw_reasoning_item
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
-                        events.push(StreamEvent::ResponseReasoningItem(item.clone()));
-                    }
                     let output_index = parsed
                         .get("output_index")
                         .and_then(Value::as_i64)
                         .or_else(|| item.get("index").and_then(Value::as_i64))
                         .unwrap_or(0);
-                    self.emit_response_tool_call(item, output_index, &mut events);
+                    if item.get("type").and_then(Value::as_str) == Some("function_call") {
+                        self.begin_streaming_function_call(item, output_index, &mut events);
+                    }
+                    if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
+                        let stage = item
+                            .get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("in_progress");
+                        self.emit_web_search_item(item, stage, &mut events);
+                    }
+                }
+            }
+            "response.output_item.done" => {
+                if let Some(item) = parsed.get("item") {
+                    // 流式路径按响应顺序逐个发射；id 去重防止服务端重发或
+                    // 终态兜底再次发射同一 item
+                    self.try_emit_reasoning_item(item, true, &mut events);
+                    let output_index = parsed
+                        .get("output_index")
+                        .and_then(Value::as_i64)
+                        .or_else(|| item.get("index").and_then(Value::as_i64))
+                        .unwrap_or(0);
+                    // added + arguments.delta 流式路径：done item 缺失 arguments 时
+                    // 以累积缓冲兜底（终态仍走 emit_response_tool_call 去重）
+                    let pending = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .and_then(|item_id| self.take_pending_function_call(item_id));
+                    let has_item_arguments = item
+                        .get("arguments")
+                        .and_then(Value::as_str)
+                        .map(|arguments| !arguments.is_empty())
+                        .unwrap_or(false);
+                    if item.get("type").and_then(Value::as_str) == Some("function_call")
+                        && !has_item_arguments
+                    {
+                        if let Some(pending) = pending
+                            .as_ref()
+                            .filter(|pending| !pending.arguments.is_empty())
+                        {
+                            let mut enriched = item.clone();
+                            enriched["arguments"] = json!(pending.arguments);
+                            self.emit_response_tool_call(&enriched, output_index, &mut events);
+                        } else {
+                            self.emit_response_tool_call(item, output_index, &mut events);
+                        }
+                    } else {
+                        self.emit_response_tool_call(item, output_index, &mut events);
+                    }
                     if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
                         // 以 item 自身状态为准：output_item.done 时搜索可能仍在进行
                         let stage = item
@@ -1580,12 +2004,19 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     }
                 }
             }
-            // 服务端联网搜索状态事件（DeepSeek Responses web_search 工具）
+            // 服务端联网搜索状态事件（DeepSeek Responses web_search 工具）。
+            // 官方事件无 stage 字段：缺省阶段必须按事件名区分，
+            // in_progress 不得误标为 searching（研报 ROUND-01-responses-adapter 要点 4）
             "response.web_search_call.in_progress" | "response.web_search_call.searching" => {
+                let default_stage = if event_type.ends_with(".in_progress") {
+                    "in_progress"
+                } else {
+                    "searching"
+                };
                 let stage = parsed
                     .get("stage")
                     .and_then(Value::as_str)
-                    .unwrap_or("searching");
+                    .unwrap_or(default_stage);
                 let id = parsed
                     .get("call_id")
                     .or_else(|| parsed.get("item_id"))
@@ -1600,12 +2031,43 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 let item = parsed.get("item").unwrap_or(&parsed);
                 self.emit_web_search_item(item, "completed", &mut events);
             }
+            "response.function_call_arguments.delta" | "response.function_call.arguments.delta" => {
+                self.append_function_call_arguments_delta(&parsed, &mut events);
+            }
             "response.function_call_arguments.done" | "response.function_call.arguments.done" => {
-                let name = parsed.get("name").and_then(|v| v.as_str());
-                let arguments = parsed.get("arguments").and_then(|v| v.as_str());
+                // 事件本身可能只带 item_id + arguments：name/call_id/index 从
+                // output_item.added 登记的进行中状态兜底（对齐 Codex SSE 桥）
+                let pending = parsed
+                    .get("item_id")
+                    .and_then(Value::as_str)
+                    .and_then(|item_id| self.take_pending_function_call(item_id));
+                let name = parsed
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        pending
+                            .as_ref()
+                            .map(|pending| pending.name.as_str())
+                            .filter(|name| !name.is_empty())
+                    });
+                let arguments = parsed
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        pending
+                            .as_ref()
+                            .map(|pending| pending.arguments.as_str())
+                            .filter(|arguments| !arguments.is_empty())
+                    });
                 let call_id = parsed
                     .get("call_id")
                     .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        pending
+                            .as_ref()
+                            .map(|pending| pending.call_id.as_str())
+                            .filter(|call_id| !call_id.is_empty())
+                    })
                     .or_else(|| parsed.get("item_id").and_then(|v| v.as_str()));
                 if let (Some(name), Some(call_id)) = (name, call_id) {
                     let item = json!({
@@ -1617,6 +2079,7 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     let output_index = parsed
                         .get("output_index")
                         .and_then(Value::as_i64)
+                        .or_else(|| pending.as_ref().map(|pending| pending.output_index))
                         .unwrap_or(0);
                     self.emit_response_tool_call(&item, output_index, &mut events);
                 }
@@ -1650,11 +2113,11 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 if let Some(usage) = response.get("usage") {
                     events.push(StreamEvent::Usage(usage.clone()));
                 }
-                // Keep the complete encrypted reasoning item available for stateless tool
-                // continuation, but emit it after user-visible reasoning/usage so existing
-                // stream consumers retain their established event ordering.
-                self.emit_reasoning_items_from_response(response, &mut events);
-                self.emit_tool_calls_from_response(response, &mut events);
+                // Keep the complete encrypted reasoning items available for stateless tool
+                // continuation, emitted after user-visible reasoning/usage. Reasoning items
+                // and function_calls interleave in output order so downstream consumers can
+                // pair each reasoning item with its adjacent function_call.
+                self.emit_reasoning_and_tool_calls_from_response(response, &mut events);
                 self.emit_web_search_from_response(response, &mut events);
                 events.push(StreamEvent::Done);
             }
@@ -1726,9 +2189,10 @@ pub struct AnthropicAdapter {
     /// thinking 块的 signature_delta 累积缓冲（按 content block index）
     /// content_block_stop 时以 StreamEvent::ThoughtSignature 上抛
     pending_signatures: Arc<Mutex<HashMap<i32, String>>>,
-    /// message_start 中的 input_tokens（message_delta 的 usage 通常只有 output_tokens，
-    /// 需要合并后再上报，否则输入用量统计缺失）
-    input_tokens_from_start: Arc<Mutex<Option<i64>>>,
+    /// message_start 中的完整 usage 对象（message_delta 的 usage 通常只有 output_tokens，
+    /// 需要字段级合并后再上报，否则 input_tokens 与
+    /// cache_read_input_tokens / cache_creation_input_tokens 会被终态覆盖丢失）
+    usage_from_start: Arc<Mutex<Option<Value>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1750,29 +2214,41 @@ impl AnthropicAdapter {
         Self {
             pending_tool_calls: Arc::new(Mutex::new(HashMap::new())),
             pending_signatures: Arc::new(Mutex::new(HashMap::new())),
-            input_tokens_from_start: Arc::new(Mutex::new(None)),
+            usage_from_start: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// 构建 usage 事件，若本次 usage 缺失 input_tokens 则合并 message_start 缓存值
+    /// 构建 usage 事件，与 message_start 缓存的 usage 做字段级合并。
+    ///
+    /// Anthropic 流式协议中 message_start 携带 input_tokens 与
+    /// cache_read_input_tokens / cache_creation_input_tokens，而 message_delta
+    /// 的终态 usage 通常只有 output_tokens。若直接以终态覆盖，缓存命中信息全部丢失。
+    /// 合并规则：本次 usage 中缺失或为 0 的字段，以 message_start 的非零值回填。
     fn build_merged_usage_event(&self, usage: &Value) -> Option<Value> {
-        let missing_input = usage
-            .get("input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0)
-            == 0;
-        if missing_input {
-            if let Some(input_tokens) = self
-                .input_tokens_from_start
-                .lock()
-                .ok()
-                .and_then(|guard| *guard)
-            {
-                if let Value::Object(mut merged) = usage.clone() {
-                    merged.insert("input_tokens".to_string(), json!(input_tokens));
-                    return build_usage_event(&Value::Object(merged));
+        const MERGE_FIELDS: [&str; 3] = [
+            "input_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ];
+
+        let start_usage = self
+            .usage_from_start
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+
+        if let (Value::Object(mut merged), Some(start)) = (usage.clone(), start_usage) {
+            for field in MERGE_FIELDS {
+                let current = merged.get(field).and_then(|v| v.as_i64()).unwrap_or(0);
+                if current == 0 {
+                    if let Some(start_value) = start.get(field).and_then(|v| v.as_i64()) {
+                        if start_value != 0 {
+                            merged.insert(field.to_string(), json!(start_value));
+                        }
+                    }
                 }
             }
+            return build_usage_event(&Value::Object(merged));
         }
         build_usage_event(usage)
     }
@@ -1850,7 +2326,7 @@ impl AnthropicAdapter {
             body.get("top_k").and_then(|v| v.as_i64()).map(|v| v as i32)
         };
 
-        let mut system_segments: Vec<String> = Vec::new();
+        let mut system_blocks: Vec<Value> = Vec::new();
         let mut messages: Vec<AnthropicMessage> = Vec::new();
 
         if let Some(items) = body.get("messages").and_then(|v| v.as_array()) {
@@ -1858,9 +2334,9 @@ impl AnthropicAdapter {
                 let role = item.get("role").and_then(|v| v.as_str()).unwrap_or("");
                 match role {
                     "system" | "developer" => {
-                        if let Some(texts) = extract_text_segments(item) {
-                            system_segments.extend(texts);
-                        }
+                        // 保留调用方块级 cache_control 标记（如 model2_pipeline 在
+                        // 稳定段尾打的 ephemeral），不要剥掉（ROUND-02 P2-11）
+                        system_blocks.extend(extract_system_text_blocks(item));
                     }
                     "user" => {
                         if let Some(content) = convert_user_message(item) {
@@ -1899,22 +2375,49 @@ impl AnthropicAdapter {
             }
         }
 
-        let system = if system_segments.is_empty() {
-            None
-        } else {
-            Some(system_segments.join("\n\n"))
-        };
+        // system 尾保险断点（ROUND-02 P2-11）：顶层 automatic cache_control 保留，
+        // 另在 system 稳定段末尾补一个显式 ephemeral。调用方已有块级标记时视为
+        // 稳定段尾由上游指定，原样保留、不再追加。
+        let has_block_level_marker = system_blocks
+            .iter()
+            .any(|block| block.get("cache_control").is_some());
+        if !has_block_level_marker {
+            if let Some(last) = system_blocks.last_mut() {
+                last["cache_control"] = json!({ "type": "ephemeral" });
+            }
+        }
 
-        let tools = body
+        let mut tools = body
             .get("tools")
             .and_then(|v| v.as_array())
             .map(|items| {
-                items
+                let mut converted = items
                     .iter()
                     .filter_map(convert_tool_definition)
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                // tools 尾保险断点（ROUND-02 P2-11）：tools 序列化在 system 之前，
+                // 单独打点可在 system 变化时仍命中工具定义前缀。调用方已透传
+                // 块级 marker（convert_tool_definition 保留，ROUND-05 P2）时
+                // 视为断点位置由上游指定，不再追加。
+                let has_marker = converted.iter().any(|tool| tool.cache_control.is_some());
+                if !has_marker {
+                    if let Some(last) = converted.last_mut() {
+                        last.cache_control = Some(json!({ "type": "ephemeral" }));
+                    }
+                }
+                converted
             })
             .filter(|v: &Vec<AnthropicTool>| !v.is_empty());
+
+        // 四槽预算守卫（ROUND-05 P2）：顶层 automatic 占 1 槽，块级断点
+        // （tools + system）合计超出剩余 3 槽时从最靠前的 marker 开始剥除。
+        enforce_anthropic_cache_breakpoint_budget(tools.as_mut(), &mut system_blocks);
+
+        let system = if system_blocks.is_empty() {
+            None
+        } else {
+            Some(Value::Array(system_blocks))
+        };
 
         let stop_sequences = body.get("stop").and_then(|stop| match stop {
             Value::String(s) if !s.is_empty() => Some(vec![s.clone()]),
@@ -2203,12 +2706,12 @@ impl ProviderAdapter for AnthropicAdapter {
                 }
             }
             "message_start" => {
-                // message_start 含初始 usage（input_tokens）；message_delta 的 usage
-                // 通常只有 output_tokens，缓存 input_tokens 供后续合并（研报 02 §2.2）
+                // message_start 含初始 usage（input_tokens 与 cache_read/cache_creation）；
+                // message_delta 的 usage 通常只有 output_tokens，缓存完整对象供后续
+                // 字段级合并（研报 02 §2.2）
                 if let Some(usage) = json_data.get("message").and_then(|m| m.get("usage")) {
-                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64());
-                    if let Ok(mut guard) = self.input_tokens_from_start.lock() {
-                        *guard = input_tokens;
+                    if let Ok(mut guard) = self.usage_from_start.lock() {
+                        *guard = Some(usage.clone());
                     }
                     if let Some(usage_value) = build_usage_event(usage) {
                         events.push(StreamEvent::Usage(usage_value));
@@ -2279,7 +2782,7 @@ impl ProviderAdapter for AnthropicAdapter {
                 if let Ok(mut guard) = self.pending_signatures.lock() {
                     guard.clear();
                 }
-                if let Ok(mut guard) = self.input_tokens_from_start.lock() {
+                if let Ok(mut guard) = self.usage_from_start.lock() {
                     *guard = None;
                 }
                 events.push(StreamEvent::Done);
@@ -2296,8 +2799,10 @@ struct AnthropicRequest {
     model: String,
     max_tokens: i32,
     messages: Vec<AnthropicMessage>,
+    /// system 提示：text block 数组形态，尾块可携带显式 cache_control 断点
+    /// （字符串形态无法打块级断点，ROUND-02 P2-11）
     #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
+    system: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<AnthropicTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2408,28 +2913,87 @@ struct AnthropicTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     input_schema: Value,
+    /// 显式 prompt caching 断点（tools 尾保险断点，ROUND-02 P2-11）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<Value>,
 }
 
-fn extract_text_segments(message: &Value) -> Option<Vec<String>> {
-    let content = message.get("content").cloned()?;
+/// Anthropic Prompt Caching 硬上限：一个请求最多 4 个 cache_control 断点。
+/// 参考: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+const ANTHROPIC_CACHE_BREAKPOINT_BUDGET: usize = 4;
+
+/// 四槽预算守卫（ROUND-05 P2）：顶层 automatic cache_control 恒注入、占 1 槽，
+/// 块级断点（tools + system；消息块转换不承接 cache_control，无第三来源）
+/// 合计不得超过剩余 3 槽。超载时按 prompt 序（tools 序列化在 system 之前）
+/// 从最靠前的 marker 开始剥除——越靠后的断点覆盖的稳定前缀越长、
+/// 命中价值越高，优先保留尾部标记。
+fn enforce_anthropic_cache_breakpoint_budget(
+    mut tools: Option<&mut Vec<AnthropicTool>>,
+    system_blocks: &mut [Value],
+) {
+    let block_budget = ANTHROPIC_CACHE_BREAKPOINT_BUDGET - 1; // automatic 占 1 槽
+
+    let tool_marker_count = tools.as_deref().map_or(0, |tools| {
+        tools
+            .iter()
+            .filter(|tool| tool.cache_control.is_some())
+            .count()
+    });
+    let system_marker_count = system_blocks
+        .iter()
+        .filter(|block| block.get("cache_control").is_some())
+        .count();
+    let mut overflow = (tool_marker_count + system_marker_count).saturating_sub(block_budget);
+    if overflow == 0 {
+        return;
+    }
+
+    if let Some(tools) = tools.as_deref_mut() {
+        for tool in tools.iter_mut() {
+            if overflow == 0 {
+                break;
+            }
+            if tool.cache_control.take().is_some() {
+                overflow -= 1;
+            }
+        }
+    }
+    for block in system_blocks.iter_mut() {
+        if overflow == 0 {
+            break;
+        }
+        if let Some(map) = block.as_object_mut() {
+            if map.remove("cache_control").is_some() {
+                overflow -= 1;
+            }
+        }
+    }
+}
+
+/// 把 system/developer 消息内容规整为 Anthropic system block 数组，
+/// 保留调用方已打的块级 cache_control 标记（不要剥掉，ROUND-02 P2-11）。
+fn extract_system_text_blocks(message: &Value) -> Vec<Value> {
+    let Some(content) = message.get("content") else {
+        return Vec::new();
+    };
     match content {
-        Value::String(s) => Some(vec![s]),
+        Value::String(s) => vec![json!({ "type": "text", "text": s })],
         Value::Array(parts) => {
             let mut out = Vec::new();
             for part in parts {
                 if part.get("type").and_then(|v| v.as_str()) == Some("text") {
                     if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                        out.push(text.to_string());
+                        let mut block = json!({ "type": "text", "text": text });
+                        if let Some(cache_control) = part.get("cache_control") {
+                            block["cache_control"] = cache_control.clone();
+                        }
+                        out.push(block);
                     }
                 }
             }
-            if out.is_empty() {
-                None
-            } else {
-                Some(out)
-            }
+            out
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
@@ -2764,10 +3328,15 @@ fn convert_tool_definition(value: &Value) -> Option<AnthropicTool> {
             map.insert("type".to_string(), json!("object"));
         }
     }
+    // ROUND-05 P2：透传调用方在 OpenAI 形状 tools[] 条目上打的块级缓存标记。
+    // 此前恒 None，调用方 marker 被静默丢弃，convert_openai_to_anthropic 的
+    // has_marker 检查是永假死分支，尾部保险断点无条件追加。
+    let cache_control = value.get("cache_control").cloned();
     Some(AnthropicTool {
         name,
         description,
         input_schema,
+        cache_control,
     })
 }
 
@@ -2892,24 +3461,75 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
     let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     let openai_cached = usage
         .get("prompt_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
+    // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
+    let responses_cached = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     let gemini_cached = usage
         .get("cached_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
-    let cached_tokens = anthropic_cache_hit
-        .max(openai_cached)
-        .max(deepseek_cached)
-        .max(gemini_cached);
+        .filter(|v| *v >= 0);
+    let cached_tokens = [
+        anthropic_cache_hit,
+        openai_cached,
+        responses_cached,
+        deepseek_cached,
+        gemini_cached,
+    ]
+    .into_iter()
+    .flatten()
+    .max();
+
+    // 缓存写入 token（计费元数据，不计入命中；观测用）
+    // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
+    let cache_write_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
+    let responses_cache_write = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cache_write_tokens"))
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
+    let gateway_cache_write = usage
+        .get("cache_write_tokens")
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
+    let cache_write_tokens = [
+        cache_write_tokens,
+        responses_cache_write,
+        gateway_cache_write,
+    ]
+    .into_iter()
+    .flatten()
+    .max();
+
+    // reasoning token：顶层 / OpenAI CC completion_tokens_details / Responses output_tokens_details
+    let reasoning_tokens = usage
+        .get("reasoning_tokens")
+        .or_else(|| {
+            usage
+                .get("completion_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+        })
+        .or_else(|| {
+            usage
+                .get("output_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+        })
+        .and_then(|v| v.as_i64());
 
     Some(json!({
         "input_tokens": input_tokens,
@@ -2917,7 +3537,9 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         "total_tokens": total_tokens,
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,
-        "cached_tokens": if cached_tokens > 0 { json!(cached_tokens) } else { Value::Null },
+        "cached_tokens": cached_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
+        "cache_write_tokens": cache_write_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
+        "reasoning_tokens": reasoning_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
         "total_tokens_openai": total_tokens,
         "original": usage
     }))
@@ -3010,11 +3632,26 @@ pub fn convert_anthropic_response_to_openai(response: &Value, model: &str) -> Op
             .and_then(|v| v.as_i64())
             .unwrap_or((prompt_tokens + completion_tokens) as i64)
             as i32;
-        json!({
+        let mut usage_obj = json!({
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens
-        })
+        });
+        // 非流式响应透传缓存字段，供 parse_api_usage / extract_usage_tokens 观测
+        // cache_read_input_tokens = 缓存命中；cache_creation_input_tokens = 缓存写入
+        if let Some(cache_read) = usage
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_i64())
+        {
+            usage_obj["cache_read_input_tokens"] = json!(cache_read);
+        }
+        if let Some(cache_creation) = usage
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_i64())
+        {
+            usage_obj["cache_creation_input_tokens"] = json!(cache_creation);
+        }
+        usage_obj
     });
 
     let created = SystemTime::now()
@@ -3154,17 +3791,26 @@ impl ProviderAdapter for GeminiAdapter {
 }
 
 #[cfg(test)]
+mod wave2_a_anthropic_budget_tests;
+#[cfg(test)]
+mod wave2_a_prefix_snapshot_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{
-        build_usage_event, is_meaningful_openai_tool_delta, sanitize_openai_request_body,
-        AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
+        build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,
+        sanitize_openai_request_body, AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter,
+        ProviderAdapter, StreamEvent,
     };
     use serde_json::{json, Value};
 
     #[test]
-    fn only_responses_adapter_requires_explicit_stream_completion() {
+    fn stream_completion_requirement_matches_adapter_protocols() {
+        // OpenAI Responses 与 Chat Completions 均有协议级终止事件
+        // （response.completed / [DONE]+finish_reason），传输层 EOF 不算成功；
+        // Anthropic 由 message_stop 驱动 Done，不要求显式完成标记
         assert!(OpenAIResponsesAdapter::new().requires_explicit_stream_completion());
-        assert!(!OpenAIAdapter.requires_explicit_stream_completion());
+        assert!(OpenAIAdapter::new().requires_explicit_stream_completion());
         assert!(!AnthropicAdapter::new().requires_explicit_stream_completion());
     }
 
@@ -3184,7 +3830,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_keeps_argument_deltas_and_skips_empty_tool_fragments() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let skipped = adapter.parse_stream(
             r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"","function":{}}]}}]}"#,
@@ -3199,7 +3845,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_preserves_empty_reasoning_content() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events =
             adapter.parse_stream(r#"data: {"choices":[{"delta":{"reasoning_content":""}}]}"#);
@@ -3212,7 +3858,7 @@ mod tests {
     #[test]
     fn openai_adapter_parse_stream_accepts_data_prefix_without_space() {
         // SSE 规范允许 "data:" 后不带空格，部分供应商/中转站省略空格
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter.parse_stream(r#"data:{"choices":[{"delta":{"content":"hi"}}]}"#);
         assert!(matches!(events.first(), Some(StreamEvent::ContentChunk(c)) if c == "hi"));
@@ -3223,7 +3869,8 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_accepts_bare_ndjson() {
-        let events = OpenAIAdapter.parse_stream(r#"{"choices":[{"delta":{"content":"ndjson"}}]}"#);
+        let events =
+            OpenAIAdapter::new().parse_stream(r#"{"choices":[{"delta":{"content":"ndjson"}}]}"#);
 
         assert!(matches!(
             events.first(),
@@ -3232,10 +3879,21 @@ mod tests {
     }
 
     #[test]
-    fn openai_adapter_finish_reason_emits_done_after_same_sse_chunk_events() {
-        let events = OpenAIAdapter.parse_stream(
-            r#"data: {"choices":[{"delta":{"content":"tail","reasoning_content":"thought","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+    fn openai_adapter_emits_usage_before_done_for_official_chunk_sequence() {
+        let adapter = OpenAIAdapter::new();
+        let mut events = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"content":"tail","reasoning_content":"thought","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
         );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamEvent::Done)),
+            "finish_reason completes the choice, not the stream"
+        );
+        events.extend(adapter.parse_stream(
+            r#"data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+        ));
+        events.extend(adapter.parse_stream("data: [DONE]"));
 
         assert_eq!(events.len(), 5);
         assert!(matches!(&events[0], StreamEvent::ContentChunk(content) if content == "tail"));
@@ -3250,16 +3908,24 @@ mod tests {
     }
 
     #[test]
-    fn openai_adapter_bare_ndjson_finish_reason_emits_done_without_done_marker() {
-        let events = OpenAIAdapter.parse_stream(
+    fn openai_adapter_bare_ndjson_finish_reason_completes_at_eof() {
+        let adapter = OpenAIAdapter::new();
+        let events = adapter.parse_stream(
             r#"{"choices":[{"index":0,"delta":{"content":"ndjson tail"},"finish_reason":"stop"}]}"#,
         );
 
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], StreamEvent::ContentChunk(content) if content == "ndjson tail")
         );
-        assert!(matches!(&events[1], StreamEvent::Done));
+        assert!(matches!(
+            adapter.finish_stream().first(),
+            Some(StreamEvent::Done)
+        ));
+        assert!(
+            adapter.finish_stream().is_empty(),
+            "EOF completion state must be consumed exactly once"
+        );
     }
 
     #[test]
@@ -3272,7 +3938,7 @@ mod tests {
                     "finish_reason": finish_reason
                 }]
             });
-            let events = OpenAIAdapter.parse_stream(&format!("data: {chunk}"));
+            let events = OpenAIAdapter::new().parse_stream(&format!("data: {chunk}"));
             assert!(
                 !events
                     .iter()
@@ -3281,7 +3947,7 @@ mod tests {
             );
         }
 
-        let partially_finished = OpenAIAdapter.parse_stream(
+        let partially_finished = OpenAIAdapter::new().parse_stream(
             r#"data: {"choices":[{"index":0,"delta":{"content":"first"},"finish_reason":"stop"},{"index":1,"delta":{"content":"second"},"finish_reason":null}]}"#,
         );
         assert!(
@@ -3291,16 +3957,63 @@ mod tests {
             "one finished choice must not terminate other choices in the same chunk"
         );
 
-        let all_finished = OpenAIAdapter.parse_stream(
+        let adapter = OpenAIAdapter::new();
+        let all_finished = adapter.parse_stream(
             r#"data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"},{"index":1,"delta":{},"finish_reason":"length"}]}"#,
         );
-        assert!(matches!(all_finished.last(), Some(StreamEvent::Done)));
+        assert!(!all_finished
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Done)));
+        assert!(matches!(
+            adapter.finish_stream().first(),
+            Some(StreamEvent::Done)
+        ));
+    }
+
+    /// ROUND-05 P1：choice 完成（finish_reason）≠ 流完成。finish_reason 之后
+    /// 官方序列仍会推送 usage-only 块（include_usage 请求来的缓存命中数据），
+    /// 部分网关还会补发内容块；事件序必须完整保序，Done 只由 [DONE] 触发，
+    /// 且 [DONE] 消费完成状态后 EOF 不再补发 Done。
+    #[test]
+    fn openai_adapter_choice_completion_keeps_event_sequence_until_done_marker() {
+        let adapter = OpenAIAdapter::new();
+        let mut events = adapter.parse_stream(
+            r#"data: {"choices":[{"index":0,"delta":{"content":"early"},"finish_reason":"stop"}]}"#,
+        );
+        // finish_reason 之后仍可能有后续内容块（宽松网关行为）
+        events.extend(
+            adapter.parse_stream(r#"data: {"choices":[{"index":0,"delta":{"content":" late"}}]}"#),
+        );
+        // 官方 include_usage 序列：[DONE] 前的 usage-only 块（choices 为空）
+        events.extend(adapter.parse_stream(
+            r#"data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,"prompt_tokens_details":{"cached_tokens":8}}}"#,
+        ));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamEvent::Done)),
+            "choice completion must not be treated as stream completion"
+        );
+        events.extend(adapter.parse_stream("data: [DONE]"));
+
+        assert_eq!(events.len(), 4);
+        assert!(matches!(&events[0], StreamEvent::ContentChunk(content) if content == "early"));
+        assert!(matches!(&events[1], StreamEvent::ContentChunk(content) if content == " late"));
+        assert!(matches!(
+            &events[2],
+            StreamEvent::Usage(usage)
+                if usage["total_tokens"] == json!(18)
+                    && usage["prompt_tokens_details"]["cached_tokens"] == json!(8)
+        ));
+        assert!(matches!(&events[3], StreamEvent::Done));
+        // [DONE] 已清空完成状态，EOF 收口不得重复发 Done
+        assert!(adapter.finish_stream().is_empty());
     }
 
     #[test]
     fn openai_adapter_parse_stream_handles_content_block_arrays() {
         // Mistral 推理模式：delta.content 为 ThinkChunk/TextChunk 块数组（研报 04 要点 4）
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter.parse_stream(
             r#"data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"let me think"}]},{"type":"text","text":"the answer"}]}}]}"#,
@@ -3327,7 +4040,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_handles_reasoning_field_variants() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         // (c) delta.reasoning 字符串：Together/Groq(parsed)/Cerebras/阶跃
         let reasoning =
@@ -3356,7 +4069,7 @@ mod tests {
     #[test]
     fn openai_adapter_parse_stream_reports_injected_error_objects() {
         // OpenRouter 等平台会在流中注入 {"error":{...}}（研报 09 §1），不能静默忽略
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter
             .parse_stream(r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#);
@@ -3373,7 +4086,7 @@ mod tests {
     #[test]
     fn openai_adapter_build_request_keeps_nested_tool_choice_shape() {
         // CC 协议要求 tool_choice 指定函数时保持嵌套形状（r2 报告 P1-15）
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "hi" }],
@@ -3412,7 +4125,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_do_not_duplicate_complete_endpoint_paths() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/chat/completions/",
                 "test-key",
@@ -3448,7 +4161,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_insert_endpoint_before_query_and_fragment() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/?token=signed#tenant-a",
                 "test-key",
@@ -3477,7 +4190,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_replace_cross_protocol_endpoints_and_preserve_url_tail() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/responses/?token=signed#tenant-a",
                 "test-key",
@@ -3910,6 +4623,82 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_openai_request_body_drops_tools_with_blank_flat_names() {
+        // issue #53：cliproxyapi 以 HTTP 400 拒绝空工具名
+        // （Invalid 'tools[0].name': empty string），扁平 name 与
+        // function.name 都必须在发送前校验
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                // 非 function 工具带空扁平 name：此前会被原样透传
+                { "type": "web_search_preview", "name": "" },
+                // function 工具带空扁平 name（嵌套 name 合法）：
+                // 此前 clone 会把空 name 字段原样送上线路
+                {
+                    "type": "function",
+                    "name": "   ",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                // 未声明名称的内置工具：合法，保留
+                { "type": "web_search" },
+                // 合法 function 工具：保留
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "rag_search",
+                        "description": "search notes",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ]
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        let tools = sanitized["tools"]
+            .as_array()
+            .expect("tools should be array");
+
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0], json!({ "type": "web_search" }));
+        assert_eq!(tools[1]["function"]["name"], json!("rag_search"));
+        // 任何幸存工具都不得携带空名称字段
+        for tool in tools {
+            let flat_blank = tool
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().is_empty());
+            let nested_blank = tool
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().is_empty());
+            assert!(
+                !flat_blank && !nested_blank,
+                "blank tool name leaked: {tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_openai_request_body_drops_all_blank_tools_and_clears_tools_field() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                { "type": "custom_gateway_tool", "name": "  " }
+            ],
+            "tool_choice": "auto"
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        assert!(sanitized.get("tools").is_none());
+        assert!(sanitized.get("tool_choice").is_none());
+    }
+
+    #[test]
     fn sanitize_openai_request_body_normalizes_missing_or_null_parameters() {
         let body = json!({
             "messages": [{ "role": "user", "content": "hi" }],
@@ -3961,7 +4750,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_build_request_sanitizes_invalid_tools() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "hi" }],
@@ -4020,6 +4809,8 @@ mod tests {
                         "parameters": { "type": "object", "properties": {} }
                     }
                 },
+                // issue #53：空扁平 name 的非 function 工具必须在发送前丢弃
+                { "type": "web_search_preview", "name": "" },
                 {
                     "type": "function",
                     "function": {
@@ -4119,7 +4910,7 @@ mod tests {
 
     #[test]
     fn openai_chat_adapter_accepts_event_and_data_sse_blocks() {
-        let events = OpenAIAdapter.parse_stream(
+        let events = OpenAIAdapter::new().parse_stream(
             "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"framed\"}}]}",
         );
 
@@ -4157,6 +4948,97 @@ mod tests {
         assert!(matches!(terminal.last(), Some(StreamEvent::Done)));
     }
 
+    /// P2-14 夹具：output_item.added 开始分块 + arguments.delta 增量 +
+    /// arguments.done 终态（name/call_id 从 added 登记的状态兜底），
+    /// output_item.done 与终端响应不得重复发射（保留 done 去重）。
+    #[test]
+    fn openai_responses_adapter_streams_added_and_argument_deltas() {
+        let adapter = OpenAIResponsesAdapter::new();
+
+        // added：发开始分块（有 id/name，arguments 为空）
+        let added = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup_weather","arguments":""}}"#,
+        );
+        assert_eq!(added.len(), 1);
+        assert!(matches!(
+            added.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value["index"] == json!(0)
+                    && value["id"] == json!("call_1")
+                    && value["function"]["name"] == json!("lookup_weather")
+                    && value["function"]["arguments"] == json!("")
+        ));
+
+        // delta：发 id-less 参数分块（上游按 index 追加、驱动前端预览）
+        let first_delta = adapter.parse_stream(
+            r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"city\":"}"#,
+        );
+        assert!(matches!(
+            first_delta.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value["index"] == json!(0)
+                    && value.get("id").is_none()
+                    && value["function"]["arguments"] == json!("{\"city\":")
+        ));
+        let second_delta = adapter.parse_stream(
+            r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"\"Paris\"}"}"#,
+        );
+        assert!(matches!(
+            second_delta.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value.get("id").is_none()
+                    && value["function"]["arguments"] == json!("\"Paris\"}")
+        ));
+
+        // arguments.done 只带 item_id：name/call_id 从 added 登记的状态兜底
+        let done = adapter.parse_stream(
+            r#"data: {"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":0,"arguments":"{\"city\":\"Paris\"}"}"#,
+        );
+        assert_eq!(done.len(), 1);
+        assert!(matches!(
+            done.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value["id"] == json!("call_1")
+                    && value["function"]["name"] == json!("lookup_weather")
+                    && value["function"]["arguments"] == json!("{\"city\":\"Paris\"}")
+        ));
+
+        // output_item.done 与终端响应：同一 call_id 不再重复发射
+        let item_done = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        );
+        assert!(item_done.is_empty());
+        let terminal = adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output":[{"type":"function_call","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}]}}"#,
+        );
+        assert!(!terminal
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ToolCall(_))));
+        assert!(matches!(terminal.last(), Some(StreamEvent::Done)));
+    }
+
+    /// P2-14 夹具：done item 缺 arguments 时，以 added + delta 累积缓冲兜底。
+    #[test]
+    fn openai_responses_adapter_output_item_done_uses_accumulated_argument_deltas() {
+        let adapter = OpenAIResponsesAdapter::new();
+        adapter.parse_stream(
+            r#"data: {"type":"response.output_item.added","output_index":2,"item":{"type":"function_call","id":"fc_9","call_id":"call_9","name":"lookup","arguments":""}}"#,
+        );
+        adapter.parse_stream(
+            r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_9","output_index":2,"delta":"{\"q\":\"rust\"}"}"#,
+        );
+
+        let done = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","id":"fc_9","call_id":"call_9","name":"lookup"}}"#,
+        );
+        assert!(matches!(
+            done.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value["id"] == json!("call_9")
+                    && value["function"]["arguments"] == json!("{\"q\":\"rust\"}")
+        ));
+    }
+
     #[test]
     fn openai_responses_adapter_emits_server_side_web_search_progress_events() {
         let adapter = OpenAIResponsesAdapter::new();
@@ -4181,6 +5063,283 @@ mod tests {
                     && payload["sources"][0]["title"] == json!("Alpha")
                     && payload["sources"][1]["snippet"] == json!("beta snippet")
         ));
+    }
+
+    /// 官方事件无 stage 字段：in_progress 事件不得误标为 searching
+    /// （研报 ROUND-01-responses-adapter 要点 4）。
+    #[test]
+    fn openai_responses_adapter_web_search_in_progress_stage_is_not_searching() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let in_progress = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.in_progress","call_id":"ws_ip"}"#,
+        );
+        assert!(matches!(
+            in_progress.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_ip") && payload["stage"] == json!("in_progress")
+        ));
+
+        let searching = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.searching","call_id":"ws_ip"}"#,
+        );
+        assert!(matches!(
+            searching.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["stage"] == json!("searching")
+        ));
+
+        // output_item.added 通告的 web_search_call 以 item 状态为准，缺省 in_progress
+        let added = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_add","status":"in_progress"}}"#,
+        );
+        assert!(matches!(
+            added.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_add") && payload["stage"] == json!("in_progress")
+        ));
+    }
+
+    /// P2-13 夹具：completed 事件载荷携带完整 web_search_call item（补全 type），
+    /// 供上游挂到 assistant meta 后原样回传下一轮 input；
+    /// 终端 annotations 兜底的合成载荷不得携带 item。
+    #[test]
+    fn openai_responses_adapter_attaches_full_web_search_item_for_replay() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let completed = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.completed","item":{"id":"ws_full","status":"completed","action":{"type":"search","query":"rust"},"search_results":[{"url":"https://example.com/r","title":"R"}]}}"#,
+        );
+        let payload = match completed.first() {
+            Some(StreamEvent::WebSearchCall(payload)) => payload,
+            other => panic!("expected WebSearchCall, got {:?}", other),
+        };
+        assert_eq!(payload["item"]["type"], json!("web_search_call"));
+        assert_eq!(payload["item"]["id"], json!("ws_full"));
+        assert_eq!(payload["item"]["status"], json!("completed"));
+        assert_eq!(payload["item"]["action"]["query"], json!("rust"));
+        assert_eq!(
+            payload["item"]["search_results"][0]["url"],
+            json!("https://example.com/r")
+        );
+
+        // output_item.done 已带 type 的 item 原样透传
+        let done_adapter = OpenAIResponsesAdapter::new();
+        let done = done_adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":1,"item":{"type":"web_search_call","id":"ws_typed","status":"completed","search_results":[{"url":"https://example.com/t","title":"T"}]}}"#,
+        );
+        assert!(matches!(
+            done.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["item"]["type"] == json!("web_search_call")
+                    && payload["item"]["id"] == json!("ws_typed")
+        ));
+
+        // 终端 annotations 兜底（合成聚合，无真实 item）：不携带 item
+        let fallback_adapter = OpenAIResponsesAdapter::new();
+        let terminal = fallback_adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"id":"r1","output":[{"type":"message","content":[{"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://example.com/a","title":"A"}]}]}]}}"#,
+        );
+        let synthetic = terminal
+            .iter()
+            .find_map(|event| match event {
+                StreamEvent::WebSearchCall(payload) => Some(payload),
+                _ => None,
+            })
+            .expect("annotations fallback should emit a completed payload");
+        assert!(synthetic.get("item").is_none());
+    }
+
+    /// P2-13 夹具：assistant 历史消息携带 `response_web_search_items` 时，
+    /// convert 必须把完整 item 原样放回 input（顺序在 assistant message 之前），
+    /// 非 web_search_call 类型跳过。
+    #[test]
+    fn openai_responses_adapter_replays_web_search_items_from_assistant_meta() {
+        let web_search_item = json!({
+            "type": "web_search_call",
+            "id": "ws_hist",
+            "status": "completed",
+            "action": { "type": "search", "query": "rust" },
+            "search_results": [{ "url": "https://example.com/r", "title": "R" }]
+        });
+        let body = json!({
+            "messages": [
+                { "role": "user", "content": "search something" },
+                {
+                    "role": "assistant",
+                    "content": "Here is what I found.",
+                    "response_web_search_items": [
+                        web_search_item.clone(),
+                        { "type": "message", "id": "not_a_search" }
+                    ]
+                },
+                { "role": "user", "content": "follow up" }
+            ]
+        });
+
+        let payload =
+            OpenAIResponsesAdapter::convert_to_responses_format("deepseek-v4-flash", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+
+        let replay_index = input
+            .iter()
+            .position(|item| item["type"] == json!("web_search_call"))
+            .expect("web_search_call item should be replayed");
+        // 原样回传：与写入 meta 的完整 item 逐字节一致
+        assert_eq!(input[replay_index], web_search_item);
+        // 顺序：位于 assistant message 之前
+        let assistant_index = input
+            .iter()
+            .position(|item| item["role"] == json!("assistant"))
+            .expect("assistant message should be present");
+        assert!(replay_index < assistant_index);
+        // 非 web_search_call 类型不得混入
+        assert!(!input.iter().any(|item| item["id"] == json!("not_a_search")));
+    }
+
+    #[test]
+    fn openai_responses_prompt_cache_breakpoint_wire_bodies_are_capability_gated() {
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": "You are helpful." },
+                { "role": "user", "content": "hi" }
+            ]
+        });
+
+        let official = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "gpt-5.6",
+            &body,
+            "https://api.openai.com/v1",
+        );
+        assert_eq!(
+            official,
+            json!({
+                "model": "gpt-5.6",
+                "input": [
+                    {
+                        "role": "developer",
+                        "content": [{
+                            "type": "input_text",
+                            "text": "You are helpful.",
+                            "prompt_cache_breakpoint": { "mode": "explicit" }
+                        }]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{ "type": "input_text", "text": "hi" }]
+                    }
+                ],
+                "stream": true,
+                "store": false,
+                "reasoning": { "summary": "auto" },
+                "include": ["reasoning.encrypted_content"]
+            })
+        );
+
+        let third_party_same_model =
+            OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+                "gpt-5.6",
+                &body,
+                "https://gateway.example/v1",
+            );
+        assert_eq!(
+            third_party_same_model,
+            json!({
+                "model": "gpt-5.6",
+                "input": [{
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "hi" }]
+                }],
+                "stream": true,
+                "store": false,
+                "instructions": "You are helpful.",
+                "reasoning": { "summary": "auto" },
+                "include": ["reasoning.encrypted_content"]
+            })
+        );
+
+        let accidental_name = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "deployment-not-gpt-6-preview",
+            &body,
+            "https://api.openai.com/v1",
+        );
+        assert_eq!(
+            accidental_name,
+            json!({
+                "model": "deployment-not-gpt-6-preview",
+                "input": [{
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "hi" }]
+                }],
+                "stream": true,
+                "store": false,
+                "instructions": "You are helpful."
+            })
+        );
+    }
+
+    /// ROUND-05 P0 补强：官方端点带 query/fragment 变体仍命中断点门控；
+    /// 遗留无端点包装 convert_to_responses_format 恒不注入（防止未来有人
+    /// 把生产调用误接回无端点包装）。
+    #[test]
+    fn openai_responses_prompt_cache_breakpoint_gate_covers_endpoint_variants() {
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": "You are helpful." },
+                { "role": "user", "content": "hi" }
+            ]
+        });
+
+        let official_variant = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "gpt-5.6",
+            &body,
+            "https://api.openai.com/v1/?token=x#frag",
+        );
+        assert_eq!(
+            official_variant["input"][0]["content"][0]["prompt_cache_breakpoint"],
+            json!({ "mode": "explicit" })
+        );
+
+        // 无端点包装：门控恒 false → 永不注入，system 回落顶层 instructions
+        let endpointless = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.6", &body);
+        assert_eq!(endpointless["instructions"], json!("You are helpful."));
+        let no_breakpoint = endpointless["input"]
+            .as_array()
+            .expect("input array")
+            .iter()
+            .all(|item| {
+                item["content"]
+                    .as_array()
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .all(|block| block.get("prompt_cache_breakpoint").is_none())
+                    })
+                    .unwrap_or(true)
+            });
+        assert!(no_breakpoint);
+    }
+
+    #[test]
+    fn model_supports_prompt_cache_breakpoint_parses_gpt_versions() {
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.6"));
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.6-sol"));
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("GPT-5.7"));
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.10"));
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-6"));
+        assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("openai/gpt-6.1"));
+
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5"));
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.5"));
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-4o"));
+        assert!(
+            !OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint(
+                "deployment-not-gpt-6-preview"
+            )
+        );
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("not-gpt-5.6"));
+        assert!(
+            !OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("deepseek-v4-flash")
+        );
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("qwen3.7-plus"));
     }
 
     #[test]
@@ -4525,6 +5684,228 @@ mod tests {
         }));
     }
 
+    /// P2-11：保留顶层 automatic cache_control，同时在 tools 尾与 system 尾
+    /// 各补一个显式 ephemeral 保险断点（不拆 auto、不改成纯 4 断点方案）。
+    #[test]
+    fn anthropic_adds_tools_and_system_tail_cache_breakpoints() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": "stable instructions" },
+                { "role": "user", "content": "hi" }
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+                },
+                {
+                    "type": "function",
+                    "function": { "name": "beta_tool", "parameters": { "type": "object" } }
+                }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+
+        // 顶层 automatic cache_control 保留
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+
+        // system 为 block 数组，尾块带显式断点
+        let system = request_json["system"]
+            .as_array()
+            .expect("system should be block array");
+        assert_eq!(system.len(), 1);
+        assert_eq!(system[0]["type"], json!("text"));
+        assert_eq!(system[0]["text"], json!("stable instructions"));
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+
+        // tools 尾块带显式断点；非尾块不打点
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    /// P2-11：调用方已打的块级 cache_control（稳定段尾标记）必须原样保留，
+    /// 不得剥掉，也不再追加多余断点。
+    #[test]
+    fn anthropic_preserves_caller_block_level_system_cache_control() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "stable prefix",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        { "type": "text", "text": "volatile suffix" }
+                    ]
+                },
+                { "role": "user", "content": "hi" }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+        let system = request_json["system"]
+            .as_array()
+            .expect("system should be block array");
+        assert_eq!(system.len(), 2);
+        // 稳定段尾标记原样保留
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+        // 已有块级标记时不再追加尾部断点（易变段不该被缓存锚定）
+        assert!(system[1].get("cache_control").is_none());
+    }
+
+    /// ROUND-05 P2：convert_tool_definition 透传调用方 tools[].cache_control，
+    /// has_marker 分支从死分支变为可达——调用方已打 marker 时原样保留、
+    /// 不再无条件追加尾部保险断点。
+    #[test]
+    fn anthropic_tool_cache_control_passthrough_suppresses_tail_breakpoint() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+                },
+                {
+                    "type": "function",
+                    "function": { "name": "beta_tool", "parameters": { "type": "object" } }
+                }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 2);
+        // 调用方 marker 原样透传（此前被静默丢弃）
+        assert_eq!(tools[0]["cache_control"], json!({ "type": "ephemeral" }));
+        // has_marker 命中 → 不再追加尾部保险断点（易变工具不该被缓存锚定）
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    /// ROUND-05 P2：四槽满载（顶层 automatic 1 + tools 尾 1 + system 块级 2）
+    /// 恰好用满预算，不触发剥除，全部保留。
+    #[test]
+    fn anthropic_cache_breakpoint_budget_keeps_full_four_slots() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "stable prefix",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "stable tail",
+                            "cache_control": { "type": "ephemeral" }
+                        }
+                    ]
+                },
+                { "role": "user", "content": "hi" }
+            ],
+            "tools": [{
+                "type": "function",
+                "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+            }]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+
+        // automatic 顶层槽保留
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+        // tools 尾保险断点（调用方无 marker → 自动打点）保留
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert_eq!(tools[0]["cache_control"], json!({ "type": "ephemeral" }));
+        // system 两个块级 marker 均保留（块级合计 3 = 预算上限 4 - automatic 1）
+        let system = request_json["system"].as_array().expect("system array");
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[1]["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    /// ROUND-05 P2：超载（automatic 1 + 块级 5 = 6 > 4）时按 prompt 序
+    /// （tools 先于 system、靠前块先剥）从最靠前的 marker 开始剥除；
+    /// 覆盖前缀最长、命中价值最高的尾部 marker 最后保留。
+    #[test]
+    fn anthropic_cache_breakpoint_budget_strips_earliest_markers_on_overflow() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "s1",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "s2",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "s3",
+                            "cache_control": { "type": "ephemeral" }
+                        }
+                    ]
+                },
+                { "role": "user", "content": "hi" }
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+                },
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "beta_tool", "parameters": { "type": "object" } }
+                }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+
+        // automatic 顶层槽不参与剥除
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+        // 块级 5 个 marker 超出 3 槽预算，剥除最靠前的 2 个（两个 tools marker）
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+        // system 三个 marker 全部保留（恰好用满剩余 3 槽）
+        let system = request_json["system"].as_array().expect("system array");
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[1]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[2]["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
     #[test]
     fn openai_responses_adapter_encodes_tool_history() {
         let body = json!({
@@ -4575,6 +5956,139 @@ mod tests {
         assert!(input
             .iter()
             .any(|item| item["type"] == json!("function_call_output")));
+    }
+
+    /// 回归：终态兜底（流式期间未逐条发射 item 时）必须按 response.output
+    /// 原始顺序交错发射 reasoning item 与 function_call，保持相邻配对语义——
+    /// 禁止先全量 reasoning 再全量 tool_call 的两遍扫描。
+    #[test]
+    fn openai_responses_completed_fallback_interleaves_reasoning_and_tool_calls() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let payload = json!({
+            "type": "response.completed",
+            "response": {
+                "output": [
+                    { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" },
+                    { "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "tool_a", "arguments": "{}" },
+                    { "type": "reasoning", "id": "rs_2", "encrypted_content": "enc-2" },
+                    { "type": "function_call", "id": "fc_2", "call_id": "call_2", "name": "tool_b", "arguments": "{}" }
+                ]
+            }
+        });
+
+        let events = adapter.parse_stream(&format!("data: {payload}"));
+        let sequence: Vec<String> = events
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ResponseReasoningItem(item) => {
+                    Some(format!("reasoning:{}", item["id"].as_str().unwrap_or("")))
+                }
+                StreamEvent::ToolCall(tool) => {
+                    Some(format!("tool:{}", tool["id"].as_str().unwrap_or("")))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sequence,
+            vec![
+                "reasoning:rs_1",
+                "tool:call_1",
+                "reasoning:rs_2",
+                "tool:call_2"
+            ],
+            "reasoning item 必须紧邻其 function_call 交错发射"
+        );
+    }
+
+    /// 回归：流式 output_item.done 已发射的 reasoning item 在终态兜底中按 id
+    /// 去重不重发；未流出过的新 item（rs_2）仍要补发（旧实现的单布尔守卫会
+    /// 把整个兜底跳过，丢失第二个 item）。
+    #[test]
+    fn openai_responses_completed_dedupes_streamed_reasoning_items_by_id() {
+        let adapter = OpenAIResponsesAdapter::new();
+
+        let streamed = adapter.parse_stream(&format!(
+            "data: {}",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "item": { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" }
+            })
+        ));
+        assert_eq!(
+            streamed
+                .iter()
+                .filter(|e| matches!(e, StreamEvent::ResponseReasoningItem(_)))
+                .count(),
+            1
+        );
+
+        let completed = adapter.parse_stream(&format!(
+            "data: {}",
+            json!({
+                "type": "response.completed",
+                "response": {
+                    "output": [
+                        { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" },
+                        { "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "tool_a", "arguments": "{}" },
+                        { "type": "reasoning", "id": "rs_2", "encrypted_content": "enc-2" }
+                    ]
+                }
+            })
+        ));
+        let reasoning_ids: Vec<&str> = completed
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ResponseReasoningItem(item) => item["id"].as_str(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reasoning_ids,
+            vec!["rs_2"],
+            "已流出的 rs_1 不重发，未流出的 rs_2 仍需补发"
+        );
+    }
+
+    /// 回归：无工具纯文本轮 —— 上一 assistant 消息携带的 reasoning item
+    /// 在下一轮 Responses input 中回传，且位于该 assistant 正文之前。
+    #[test]
+    fn openai_responses_adapter_replays_reasoning_item_before_plain_assistant_message() {
+        let body = json!({
+            "messages": [
+                { "role": "user", "content": "hi" },
+                {
+                    "role": "assistant",
+                    "content": "Hello there!",
+                    "response_reasoning_item": {
+                        "type": "reasoning",
+                        "id": "rs_final",
+                        "encrypted_content": "enc-final"
+                    }
+                },
+                { "role": "user", "content": "and again" }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+        let reasoning_index = input
+            .iter()
+            .position(|item| item["type"] == json!("reasoning"))
+            .expect("plain assistant turn should replay its reasoning item");
+        assert_eq!(input[reasoning_index]["encrypted_content"], "enc-final");
+        let assistant_index = input
+            .iter()
+            .position(|item| {
+                item["role"] == json!("assistant")
+                    && item["content"][0]["text"] == json!("Hello there!")
+            })
+            .expect("assistant message should be preserved");
+        assert!(
+            reasoning_index < assistant_index,
+            "reasoning item 必须回放在 assistant 正文之前（对齐响应 output 顺序）"
+        );
     }
 
     #[test]
@@ -4767,6 +6281,227 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
             Some(StreamEvent::Usage(u))
                 if u["input_tokens"] == json!(123) && u["output_tokens"] == json!(42)
         ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_merges_cache_fields_from_message_start() {
+        // P0 观测修复：message_start 携带 cache_read/cache_creation，message_delta
+        // 终态通常只有 output_tokens，字段级合并后缓存命中不能丢
+        let adapter = AnthropicAdapter::new();
+
+        let start_events = adapter.parse_stream(
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10,"cache_read_input_tokens":900,"cache_creation_input_tokens":50,"output_tokens":0}}}"#,
+        );
+        assert!(matches!(
+            start_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["cached_tokens"] == json!(900) && u["cache_write_tokens"] == json!(50)
+        ));
+
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42}}"#,
+        );
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["input_tokens"] == json!(10)
+                    && u["output_tokens"] == json!(42)
+                    && u["cached_tokens"] == json!(900)
+                    && u["cache_write_tokens"] == json!(50)
+        ));
+
+        // message_stop 后缓存清空，不能泄漏到下一条消息
+        let _ = adapter.parse_stream(r#"data: {"type":"message_stop"}"#);
+        let next_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
+        );
+        assert!(matches!(
+            next_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["output_tokens"] == json!(7) && u["cached_tokens"] == Value::Null
+        ));
+    }
+
+    #[test]
+    fn anthropic_merged_usage_prefers_terminal_nonzero_fields() {
+        // 终态 usage 若自带非零 cache 字段，不应被 message_start 的旧值覆盖
+        let adapter = AnthropicAdapter::new();
+
+        let _ = adapter.parse_stream(
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10,"cache_read_input_tokens":900}}}"#,
+        );
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42,"cache_read_input_tokens":1200}}"#,
+        );
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["cached_tokens"] == json!(1200) && u["input_tokens"] == json!(10)
+        ));
+    }
+
+    #[test]
+    fn build_usage_event_reads_responses_details() {
+        // OpenAI/DeepSeek Responses usage 夹具：input_tokens_details.cached_tokens /
+        // cache_write_tokens 与 output_tokens_details.reasoning_tokens 必须抬到顶层
+        let usage = json!({
+            "input_tokens": 1200,
+            "output_tokens": 300,
+            "total_tokens": 1500,
+            "input_tokens_details": { "cached_tokens": 1024, "cache_write_tokens": 128 },
+            "output_tokens_details": { "reasoning_tokens": 90 }
+        });
+
+        let event = build_usage_event(&usage).expect("usage event");
+        assert_eq!(event["input_tokens"], json!(1200));
+        assert_eq!(event["output_tokens"], json!(300));
+        assert_eq!(event["cached_tokens"], json!(1024));
+        assert_eq!(event["cache_write_tokens"], json!(128));
+        assert_eq!(event["reasoning_tokens"], json!(90));
+    }
+
+    #[test]
+    fn build_usage_event_preserves_observed_zero_cache_values() {
+        let event = build_usage_event(&json!({
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "input_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+            }
+        }))
+        .expect("usage event");
+        assert_eq!(event["cached_tokens"], json!(0));
+        assert_eq!(event["cache_write_tokens"], json!(0));
+
+        let unmeasured =
+            build_usage_event(&json!({"input_tokens": 10, "output_tokens": 5})).unwrap();
+        assert!(unmeasured["cached_tokens"].is_null());
+        assert!(unmeasured["cache_write_tokens"].is_null());
+    }
+
+    #[test]
+    fn convert_anthropic_response_passes_cache_fields() {
+        // 非流式 Anthropic 响应转 OpenAI 形态时透传缓存字段
+        let response = json!({
+            "type": "message",
+            "id": "msg_1",
+            "content": [{ "type": "text", "text": "hi" }],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 900,
+                "cache_creation_input_tokens": 50
+            }
+        });
+
+        let converted =
+            convert_anthropic_response_to_openai(&response, "claude-test").expect("converted");
+        let usage = &converted["usage"];
+        assert_eq!(usage["prompt_tokens"], json!(10));
+        assert_eq!(usage["completion_tokens"], json!(20));
+        assert_eq!(usage["cache_read_input_tokens"], json!(900));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(50));
+    }
+
+    #[test]
+    fn openai_adapter_gates_stream_options_include_usage_by_endpoint() {
+        let adapter = OpenAIAdapter::new();
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert_eq!(request.body["stream_options"]["include_usage"], json!(true));
+
+        // 未知兼容端点默认不注入扩展字段，避免严格网关因 unknown field 失败。
+        for base_url in [
+            "https://gateway.example/v1",
+            "https://api.openai.com.evil.example/v1",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert!(
+                request.body.get("stream_options").is_none(),
+                "base_url={base_url}"
+            );
+        }
+
+        // 非流式请求不加
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert!(request.body.get("stream_options").is_none());
+
+        // 调用方显式设置时尊重原值
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "stream_options": { "include_usage": false },
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert_eq!(
+            request.body["stream_options"]["include_usage"],
+            json!(false)
+        );
+    }
+
+    /// ROUND-05 P1：stream_options 注入门控钉死为官方 host（api.openai.com）——
+    /// 带路径/query/fragment/大小写的官方变体仍注入；子域、连字符伪装、
+    /// 后缀伪装、无 scheme 解析失败一律 fail-safe 不注入。
+    #[test]
+    fn openai_adapter_stream_options_gate_pins_official_host_variants() {
+        let adapter = OpenAIAdapter::new();
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+
+        for base_url in [
+            "https://api.openai.com",
+            "https://api.openai.com/v1/",
+            "https://API.OPENAI.COM/v1",
+            "https://api.openai.com/v1?token=x#frag",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert_eq!(
+                request.body["stream_options"]["include_usage"],
+                json!(true),
+                "official variant must inject: base_url={base_url}"
+            );
+        }
+
+        for base_url in [
+            "https://mirror.api.openai.com/v1",
+            "https://api-openai.com/v1",
+            "https://api.openai.com.evil.example/v1",
+            "api.openai.com/v1",
+            "",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert!(
+                request.body.get("stream_options").is_none(),
+                "non-official endpoint must not inject: base_url={base_url}"
+            );
+        }
     }
 
     #[test]

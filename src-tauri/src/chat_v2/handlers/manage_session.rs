@@ -375,6 +375,37 @@ pub async fn chat_v2_update_session_settings(
     Ok(session)
 }
 
+/// 🆕 P0 available_skills 会话快照跨进程：把前端首次生成的目录快照冻结进
+/// session.metadata（`availableSkillsSnapshot`，first-write-wins），返回
+/// 生效快照。
+///
+/// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，前端内存快照丢失
+/// 时从 `chat_v2_load_session` 带回的 session.metadata 恢复同一字节；该
+/// 命令负责写入侧。已冻结（含空串）绝不覆盖 —— 多窗口竞争时持久化权威
+/// 胜出，前端应以返回值回灌内存快照。
+#[tauri::command]
+pub async fn chat_v2_freeze_available_skills_snapshot(
+    session_id: String,
+    snapshot: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<String, String> {
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
+    log::info!(
+        "[ChatV2::handlers] chat_v2_freeze_available_skills_snapshot: session_id={}, bytes={}",
+        session_id,
+        snapshot.len()
+    );
+    ChatV2Repo::freeze_session_available_skills_snapshot(&db, &session_id, &snapshot)
+        .map_err(String::from)
+}
+
 /// 归档会话
 ///
 /// 将会话标记为已归档状态。归档的会话不会在默认列表中显示，但可以恢复。
@@ -1386,7 +1417,10 @@ fn branch_session_in_db(
     let now = chrono::Utc::now();
     let new_session_id = ChatSession::generate_id();
 
-    // 构建 metadata，加入 branchedFrom 信息
+    // 构建 metadata，加入 branchedFrom 信息。
+    // 整体 clone 源会话 metadata（不重建）：authority/plan 以及 P0 tools
+    // 冻结基线（frozenToolSchemaOrder）等键随分支自然继承 —— 分支会话的
+    // tools 前缀字节与源会话一致，provider prompt cache 可跨分支复用。
     let mut metadata = source_session
         .metadata
         .clone()
@@ -1605,6 +1639,10 @@ fn branch_session_in_db(
                 block_index: source_block.block_index,
             };
             ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
+            // V20260806 B 层：MessageBlock 结构体不携带重放三列
+            // （llm_content / tool_call_id / round_text），结构体深拷贝会
+            // 静默丢列——必须 SQL 级补拷，分支会话才能保持跨轮重放字节一致
+            ChatV2Repo::copy_block_replay_with_conn(&tx, old_block_id, new_block_id)?;
         }
     }
 
@@ -1627,11 +1665,12 @@ fn branch_session_in_db(
                 let new_summary_message_id = format!("msg_{}", uuid::Uuid::new_v4());
                 for source_block in source_summary_blocks {
                     let new_block_id = format!("blk_{}", uuid::Uuid::new_v4());
+                    let source_block_id = source_block.id.clone();
                     let mut new_block = source_block;
                     new_block.id = new_block_id.clone();
                     new_block.message_id = new_summary_message_id.clone();
                     new_block_ids.push(new_block_id);
-                    new_blocks.push(new_block);
+                    new_blocks.push((source_block_id, new_block));
                 }
                 let mut new_summary = source_summary;
                 new_summary.id = new_summary_message_id.clone();
@@ -1640,8 +1679,10 @@ fn branch_session_in_db(
                 new_summary.parent_id = None;
                 new_summary.supersedes = None;
                 ChatV2Repo::create_message_with_conn(&tx, &new_summary)?;
-                for new_block in new_blocks {
+                for (source_block_id, new_block) in new_blocks {
                     ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
+                    // V20260806 B 层：深拷贝补拷重放三列（结构体不携带）
+                    ChatV2Repo::copy_block_replay_with_conn(&tx, &source_block_id, &new_block.id)?;
                 }
                 summary_message_id = Some(new_summary_message_id);
             }

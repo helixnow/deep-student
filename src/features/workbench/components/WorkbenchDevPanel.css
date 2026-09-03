@@ -487,6 +487,33 @@
   background: #ef4444;
 }
 
+/* ==== 触屏命中区（pointer: coarse） ==================================== */
+
+/* HUD 头部折叠/关闭钮仅 20×18：伪元素纵向外扩到 44px；横向只吃满 6px
+   gap 的一半（±3px），两钮相邻命中不互相重叠（同菜单栏项范式） */
+@media (pointer: coarse) {
+  .wb-hud-btn {
+    position: relative;
+  }
+
+  .wb-hud-btn::after {
+    content: '';
+    position: absolute;
+    inset: -13px -3px;
+  }
+
+  /* 「复制/清空」文字链与 ACR 分区开关补足 44px 命中高度，文字视觉不变 */
+  .wb-hud-linkbtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .wb-hud-acr-toggle {
+    min-height: 44px;
+  }
+}
+
 /* ==== 降级 =========================================================== */
 
 @media (prefers-reduced-motion: reduce) {

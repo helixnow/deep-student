@@ -10,6 +10,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.46](https://github.com/helixnow/deep-student/compare/v0.9.45...v0.9.46) (2026-08-30)
+
+
+### Bug Fixes
+
+* **license:** 门禁哈希剔除 package-lock.json 版本字段 ([419d213](https://github.com/helixnow/deep-student/commit/419d2130883e9e11510cc5d015be378f9e74a86e))
+
+## [0.9.45](https://github.com/helixnow/deep-student/compare/v0.9.44...v0.9.45) (2026-08-30)
+
+
+### Features
+
+* **app:** 0824 批次应用外壳与其余前端改动 ([1d81763](https://github.com/helixnow/deep-student/commit/1d8176383d7debaf88df1dade8a8286020590360))
+* **chat:** 0824 批次聊天域前端迭代 ([707acef](https://github.com/helixnow/deep-student/commit/707aceff918b8db9e1ac9bb6d901c8a9547368fe))
+* **components:** 0824 批次共享组件库迭代 ([ee2e28e](https://github.com/helixnow/deep-student/commit/ee2e28ea865652352e2cdc836da0fb4b106b67c0))
+* **debug-panel:** 0824 批次调试面板迭代 ([f71d5ad](https://github.com/helixnow/deep-student/commit/f71d5ad64a10bb9ffc026c16699e2621c2b143a7))
+* **dstu:** 0824 批次 dstu 模块迭代 ([de3d98d](https://github.com/helixnow/deep-student/commit/de3d98de55f13b99e3aacbc09cbabdf7b853006d))
+* **essay-grading:** 0824 批次作文批改迭代 ([44af9b8](https://github.com/helixnow/deep-student/commit/44af9b81b6887284833caf94ffffac6458851b3d))
+* **features:** 0824 批次其余功能域前端迭代 ([adc834b](https://github.com/helixnow/deep-student/commit/adc834b37c033a54bb89ab48b25173cba8830c9f))
+* **generative-ui:** 0824 批次生成式 UI 前端迭代 ([2302215](https://github.com/helixnow/deep-student/commit/23022152d338cbb8bebddfdead9715e1fb70a1e8))
+* **i18n:** 0824 批次本地化与翻译迭代 ([ca3c9e7](https://github.com/helixnow/deep-student/commit/ca3c9e7dbba494e83c1c75eded53fde2f715b4ae))
+* **learning-hub:** 0824 批次学习中心前端迭代 ([0e53031](https://github.com/helixnow/deep-student/commit/0e5303143843660fdb571c77285bd9d1e9534ee9))
+* **llm:** 0824 批次 LLM 管理与 HPIAS 迭代 ([a1a6146](https://github.com/helixnow/deep-student/commit/a1a6146e3cfeaf1c09af330e6b7614e016d8f5dd))
+* **notes:** 0824 批次笔记与脑图前端迭代 ([4ad43ab](https://github.com/helixnow/deep-student/commit/4ad43ab77f4db041ad1d6526eec314bfcfa568a8))
+* **platform:** 0824 批次前端平台层（hooks/stores/utils/shared/styles）迭代 ([97a678e](https://github.com/helixnow/deep-student/commit/97a678e2cb4933659d7da87b5c13846b975281fb))
+* **settings:** 0824 批次设置页面前端迭代 ([e2562ee](https://github.com/helixnow/deep-student/commit/e2562ee5ec5f16e48fe791c43ec871d92800e6be))
+* **todo,skills,workbench:** 页面工具栏迁入全局顶栏，消除三层条带堆叠 ([478f8f0](https://github.com/helixnow/deep-student/commit/478f8f01ce8c40a2fc4943c383d6b1852dc55477))
+* **workbench:** 0824 批次工作台前端迭代 ([8fa9d38](https://github.com/helixnow/deep-student/commit/8fa9d38b68a5010c5ec7f34e107bc6100e4b0e12))
+
+
+### Bug Fixes
+
+* backfill missing VFS tables before change_log pre-repair ([b2a85a6](https://github.com/helixnow/deep-student/commit/b2a85a6900034943a2bedb7c5ebcf95ec7854fea))
+* **chat_v2:** 0824 批次后端会话/工具链迭代与 Windows 沙箱保护修复 ([5e29fc4](https://github.com/helixnow/deep-student/commit/5e29fc458026aa09ff020d121ad07a57918c360f))
+* **chat:** 移动端欢迎空态不再显示 Ctrl/⌘+N 键盘快捷键提示 ([3d2bb2a](https://github.com/helixnow/deep-student/commit/3d2bb2a6dfce1892a33dce2367e73d5cb2d9c961))
+* **chat:** 闪卡复习按钮移动端隐藏，避免仅桌面端可用的死路动作 ([ccd6f43](https://github.com/helixnow/deep-student/commit/ccd6f43775b822e866577f864ce7edc775d2fca8))
+* **ci:** include version in macOS updater archive names ([#156](https://github.com/helixnow/deep-student/issues/156)) ([0e4c9fa](https://github.com/helixnow/deep-student/commit/0e4c9fad55aee40c42418ada71b6d03caecc25ec))
+* **governance:** 0824 批次数据治理与迁移修复 ([6aec935](https://github.com/helixnow/deep-student/commit/6aec93509e7c41ba9eeec78180abbb9741dbd430))
+* **learning-hub:** 移除挤压主内容区的 GenerativeBriefing 简报组件 ([8adb78d](https://github.com/helixnow/deep-student/commit/8adb78d39f0d2dd936da396aba3225e6c3fd7124))
+* **mobile:** 修复手势 touchcancel 卡死与滑动误触豁免 ([7122093](https://github.com/helixnow/deep-student/commit/712209310ca4f555a4f5c4c976dbd88d93e8cbec))
+* **mobile:** 触控目标 44px 契约真正生效——修正 rem 锚点缩水 ([c9c1acc](https://github.com/helixnow/deep-student/commit/c9c1acc0633df51bfbd447f63e6afca691dc0e87))
+* **mobile:** 输入框防缩放、横屏安全区与触控可读性修复 ([91d538f](https://github.com/helixnow/deep-student/commit/91d538fb652b2114df4154a7a5cf3863ba77460e))
+* **sync:** 0824 批次云存储与同步修复 ([5fc21a2](https://github.com/helixnow/deep-student/commit/5fc21a2e4eab5ff717a7694f3ba576f5d5255319))
+* **todo:** 移除子屏各自叠加的底部安全区，消除与 overlay 容器兜底的双计留白 ([400797b](https://github.com/helixnow/deep-student/commit/400797bd2ee6e254eb9c1e3405a231baa67751e4))
+* **todo:** 移除空态背景同心圆环装饰（产品决策：观感不佳） ([bf2c2ba](https://github.com/helixnow/deep-student/commit/bf2c2ba08bd89e19324e454931572829b393ec0d))
+* **todo:** 空态同心圆环不居中——过约束绝对定位下 auto margin 解析为 0 ([9d96848](https://github.com/helixnow/deep-student/commit/9d96848a4fe5bf6e2bffd2bc288e3725b4681ca6))
+* **vfs:** 0824 批次虚拟文件系统修复 ([96511e1](https://github.com/helixnow/deep-student/commit/96511e1350120a6e0df19563d4edeec08e162095))
+* **workbench:** 桌面 AI 简报移入右上角组件栏，修复与桌面图标重叠 ([4e214ff](https://github.com/helixnow/deep-student/commit/4e214ff7793b6246730e9b1cae9a03448ce8fa50))
+* **workbench:** 窄桌面组件栏隐藏与状态栏断点对齐全局 ([e5f9792](https://github.com/helixnow/deep-student/commit/e5f9792085e3f2266c1164c6f4fc7bb87fedff85))
+
 ## [0.9.44](https://github.com/helixnow/deep-student/compare/v0.9.43...v0.9.44) (2026-08-08)
 
 

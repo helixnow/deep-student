@@ -28,8 +28,9 @@ describe('MessageSearchBar placement', () => {
   });
 
   it('keeps the floating layout as the default for mobile and fallback rendering', () => {
-    const { container } = render(<MessageSearchBar {...baseProps} />);
-    const root = container.querySelector('[data-slot="message-search-bar"]');
+    render(<MessageSearchBar {...baseProps} />);
+    // floating 形态由组件自身 createPortal 到 document.body，不在 render 容器内
+    const root = document.body.querySelector('[data-slot="message-search-bar"]');
 
     expect(root).toHaveClass('fixed', 'right-4', 'top-2');
     expect(root).not.toHaveClass('h-full');

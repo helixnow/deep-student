@@ -11,6 +11,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 import type { VfsResourceRef, ResolvedResource } from './vfsRefTypes';
 import { ok, err, toVfsError, type Result, VfsErrorCode, VfsError } from '@/shared/result';
 import { withTimeout } from '@/utils/concurrency';
@@ -507,7 +508,11 @@ export function checkResourceCapacity(
     return err(
       new VfsError(
         VfsErrorCode.CAPACITY_EXCEEDED,
-        `资源数量超限：当前 ${count}，最大 ${maxCount}`,
+        i18n.t('chat_module:vfs_inject.capacity_exceeded', {
+          defaultValue: '资源数量超限：当前 {{count}}，最大 {{maxCount}}',
+          count,
+          maxCount,
+        }),
         false,
         { count, maxCount }
       )
@@ -639,7 +644,11 @@ export async function batchGetResources(
     return ok(result);
   } catch (caughtError: unknown) {
     debugError(LOG_PREFIX, '❌ 批量查询失败:', caughtError);
-    return err(toVfsError(caughtError, '批量查询资源失败', { refs: uncachedRefs }));
+    return err(toVfsError(
+      caughtError,
+      i18n.t('chat_module:vfs_inject.batch_query_failed', { defaultValue: '批量查询资源失败' }),
+      { refs: uncachedRefs }
+    ));
   }
 }
 

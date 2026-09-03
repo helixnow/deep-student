@@ -1,40 +1,92 @@
-import { describe, it, expect } from 'vitest';
-import { normalizeToolExportCards } from '@/components/anki/cardforge/engines/exportNormalize';
+import { describe, it, expect, vi } from 'vitest';
 
-describe('normalizeToolExportCards', () => {
-  it('should preserve full card payload (text/fields/images/templateId)', () => {
-    const result = normalizeToolExportCards([
-      {
-        id: 'card-1',
-        taskId: 't1',
-        templateId: 'cloze',
-        front: '... {{c1::answer}} ...',
-        back: 'explain',
-        text: '... {{c1::answer}} ...',
-        tags: ['k1'],
-        images: ['img.png'],
-        fields: { Front: 'F', Back: 'B', Text: '... {{c1::answer}} ...' },
-        isErrorCard: false,
-        createdAt: '2026-02-03T00:00:00.000Z',
-      },
-    ]);
+// validateCardsForExport 的问题明细带本地化 message，测试环境直接回显 key
+vi.mock('@/utils/i18n', () => ({
+  t: (key: string) => key,
+}));
 
-    expect(result).toHaveLength(1);
-    expect(result[0].templateId).toBe('cloze');
-    expect(result[0].text).toBe('... {{c1::answer}} ...');
-    expect(result[0].images).toEqual(['img.png']);
-    expect(result[0].fields).toEqual({ Front: 'F', Back: 'B', Text: '... {{c1::answer}} ...' });
+import {
+  filterExportableCards,
+  validateCardsForExport,
+} from '@/components/anki/cardforge/engines/exportNormalize';
+
+describe('validateCardsForExport', () => {
+  it('flags error cards and empty cards as blocking (error level)', () => {
+    const cards = [
+      { id: 'ok', front: 'F', back: 'B' },
+      { id: 'err', front: 'F', back: 'B', isErrorCard: true },
+      { id: 'empty', front: '', back: '', fields: {} },
+    ];
+
+    const result = validateCardsForExport(cards);
+
+    expect(result.ok).toBe(true);
+    expect(result.totalCount).toBe(3);
+    expect(result.exportableCount).toBe(1);
+    expect(result.issues.map((i) => [i.code, i.level])).toEqual(
+      expect.arrayContaining([
+        ['error_card', 'error'],
+        ['empty_card', 'error'],
+      ])
+    );
   });
 
-  it('should accept legacy minimal cards and fill required fields', () => {
-    const result = normalizeToolExportCards([{ front: 'Front', back: 'Back', tags: ['t1'] }]);
+  it('accepts snake_case cards (global AnkiCard shape) via extra_fields/is_error_card', () => {
+    const cards = [
+      { id: 'a', front: '', back: '', extra_fields: { Front: 'F', Back: 'B' } },
+      { id: 'b', front: 'F', back: 'B', is_error_card: true },
+    ];
 
-    expect(result).toHaveLength(1);
-    expect(result[0].templateId).toBe('basic');
-    expect(result[0].front).toBe('Front');
-    expect(result[0].back).toBe('Back');
-    expect(result[0].fields).toEqual({ Front: 'Front', Back: 'Back' });
-    expect(result[0].tags).toEqual(['t1']);
+    const result = validateCardsForExport(cards);
+
+    expect(result.exportableCount).toBe(1);
+    expect(result.issues.some((i) => i.code === 'error_card' && i.index === 1)).toBe(true);
+  });
+
+  it('emits warnings (missing_front/missing_back) without blocking export', () => {
+    const cards = [{ id: 'w', front: '', back: '', fields: { Extra: 'content' } }];
+
+    const result = validateCardsForExport(cards);
+
+    expect(result.ok).toBe(true);
+    expect(result.exportableCount).toBe(1);
+    expect(result.issues.map((i) => i.code)).toEqual(
+      expect.arrayContaining(['missing_front', 'missing_back'])
+    );
+    expect(result.issues.every((i) => i.level === 'warning')).toBe(true);
+  });
+
+  it('reports missing required template fields as warnings', () => {
+    const cards = [{ id: 'r', front: 'F', back: 'B', fields: { Front: 'F' } }];
+
+    const result = validateCardsForExport(cards, ['Front', 'Back']);
+
+    expect(
+      result.issues.some((i) => i.code === 'missing_field' && i.field === 'Back')
+    ).toBe(true);
+  });
+
+  it('returns ok:false when no card survives validation', () => {
+    const result = validateCardsForExport([
+      { id: 'x', front: 'F', back: 'B', isErrorCard: true },
+    ]);
+
+    expect(result.ok).toBe(false);
+    expect(result.exportableCount).toBe(0);
   });
 });
 
+describe('filterExportableCards', () => {
+  it('drops only error-level cards and keeps warning-level cards', () => {
+    const cards = [
+      { id: 'ok', front: 'F', back: 'B' },
+      { id: 'warn', front: '', back: '', fields: { Extra: 'content' } },
+      { id: 'err', front: 'F', back: 'B', isErrorCard: true },
+    ];
+
+    const validation = validateCardsForExport(cards);
+    const filtered = filterExportableCards(cards, validation);
+
+    expect(filtered.map((c) => c.id)).toEqual(['ok', 'warn']);
+  });
+});

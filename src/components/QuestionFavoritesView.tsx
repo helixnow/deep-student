@@ -318,7 +318,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           <p className="text-sm text-muted-foreground">
             {t('exam_sheet:questionBank.favorites.loadFailed')}
           </p>
-          <DsButton variant="ghost" size="sm" className="mt-3" onClick={() => void loadFavorites()}>
+          <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={() => void loadFavorites()}>
             {t('common:actions.retry')}
           </DsButton>
         </div>
@@ -332,7 +332,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             {t('exam_sheet:questionBank.favorites.hint')}
           </p>
           {onBrowseQuestions && (
-            <DsButton variant="ghost" size="sm" className="mt-3" onClick={onBrowseQuestions}>
+            <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={onBrowseQuestions}>
               {t('exam_sheet:questionBank.favorites.browse')}
             </DsButton>
           )}

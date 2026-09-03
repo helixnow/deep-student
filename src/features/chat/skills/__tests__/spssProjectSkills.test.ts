@@ -218,12 +218,15 @@ describe('SPSS project skills', () => {
     const mainSkill = parseProjectSkill('spss-paper-analysis');
     const toolSkill = parseProjectSkill('statistics-tools');
 
+    // 运行时准入现在对非 builtin 技能 fail-closed（project 默认 untrusted，
+    // 见 packageMetadata.getSkillTrustStatus / runtimeAdmission）。这里模拟
+    // 用户已在技能管理中显式授信这两个 project 技能后的加载路径。
     skillRegistry.registerMany([
       askUserSkill,
       xlsxToolsSkill,
       canvasNoteSkill,
-      mainSkill,
-      toolSkill,
+      { ...mainSkill, trustStatus: 'trusted' },
+      { ...toolSkill, trustStatus: 'trusted' },
     ]);
 
     const initial = JSON.parse(

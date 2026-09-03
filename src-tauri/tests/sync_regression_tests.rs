@@ -1099,9 +1099,17 @@ fn r26_clock_drift_upsert_quarantined_then_replayable() {
         .to_rfc3339();
     change_json["changed_at"] = json!(past_iso);
     change_json["data"]["updated_at"] = json!(past_iso);
+    // [R05] 重放前有 payload_hash 防篡改校验（sha256(payload_json)）：
+    // 测试改写 payload 模拟"时钟追上"时必须同步重算 hash，
+    // 否则会被防篡改校验（正确地）拒绝重放。
+    let new_payload = serde_json::to_string(&change_json).unwrap();
+    let new_hash = {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(new_payload.as_bytes()))
+    };
     conn.execute(
-        "UPDATE __sync_quarantine SET payload_json = ?1",
-        params![serde_json::to_string(&change_json).unwrap()],
+        "UPDATE __sync_quarantine SET payload_json = ?1, payload_hash = ?2",
+        params![new_payload, new_hash],
     )
     .unwrap();
 

@@ -272,7 +272,6 @@ pub fn merge_tags(primary: &[String], secondary: Option<&[String]>) -> Vec<Strin
 
 use serde_json;
 
-#[cfg(feature = "mcp")]
 /// 估算文本Token数量（优先使用tiktoken；不可用时回退启发式估算）
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct EstimateTokensRequest {
@@ -1925,7 +1924,7 @@ fn build_test_provider_request(
             TestProviderAdapter::OpenAi if protocol == "openai_responses" => {
                 Box::new(crate::providers::OpenAIResponsesAdapter::new())
             }
-            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter),
+            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter::new()),
         };
 
     adapter.build_request(api_base, api_key, model, request_body)
@@ -2686,6 +2685,7 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
     #[cfg(not(feature = "lance"))]
     let orphan_count = {
         // 未启用 Lance 特性时，不执行清理
+        let _ = (&store, &all_message_ids);
         debug!("[CleanupEmbeddings] 未启用 lance 特性，跳过向量清理");
         0
     };
@@ -3156,8 +3156,13 @@ pub async fn pdfstream_check_access(
         Err(e) => return Ok(denied(&format!("文件不存在或不可读: {}", e))),
     };
 
+    // #59：与协议处理器使用同一 path_is_within 比较（Windows \\?\ verbatim 归一化），
+    // 避免探测与实际加载结果不一致。
     let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(&app);
-    if !allowed_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+    if !allowed_dirs
+        .iter()
+        .any(|dir| crate::pdf_protocol::path_is_within(&canonical, dir))
+    {
         return Ok(denied("路径不在 pdfstream 白名单目录内"));
     }
 
@@ -6463,6 +6468,10 @@ pub struct SubmitAnswerRequest {
     pub is_correct_override: Option<bool>,
     #[serde(default)]
     pub client_request_id: Option<String>,
+    /// 显式改判目标：自评按钮携带最近一次提交 id 时，对该提交改判而非新增作答，
+    /// 避免"我答对了/我答错了"把做题次数双计（含 AI 评判后的人工换判）。
+    #[serde(default)]
+    pub regrade_submission_id: Option<String>,
 }
 
 #[tauri::command]
@@ -6474,6 +6483,17 @@ pub async fn qbank_submit_answer(
         .question_bank_service
         .as_ref()
         .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
+
+    if let (Some(submission_id), Some(override_val)) = (
+        request
+            .regrade_submission_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty()),
+        request.is_correct_override,
+    ) {
+        return service.regrade_submission(&request.question_id, submission_id, override_val);
+    }
 
     if request.is_correct_override.is_some() {
         log::warn!(
@@ -6810,6 +6830,9 @@ pub struct GetCheckInCalendarRequest {
     pub exam_id: Option<String>,
     pub year: i32,
     pub month: u32,
+    /// 达标判定用的每日目标题数（可选；缺省 10，随用户在每日一练面板的目标设置）
+    #[serde(default)]
+    pub daily_target: Option<u32>,
 }
 
 /// 获取打卡日历
@@ -6823,7 +6846,12 @@ pub async fn qbank_get_check_in_calendar(
         .as_ref()
         .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
 
-    service.get_check_in_calendar(request.exam_id.as_deref(), request.year, request.month)
+    service.get_check_in_calendar(
+        request.exam_id.as_deref(),
+        request.year,
+        request.month,
+        request.daily_target,
+    )
 }
 
 // ============================================================================

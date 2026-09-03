@@ -91,7 +91,7 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
         <span className="text-sm font-semibold">大纲滚动调试</span>
         <div className="ml-auto flex items-center gap-2 text-xs">
           <button
-            className="px-2 py-1 rounded bg-muted hover:bg-muted/70"
+            className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded bg-muted hover:bg-muted/70"
             onClick={() => setPaused(p => !p)}
           >
             {paused ? (
@@ -101,14 +101,14 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
             )}
           </button>
           <button
-            className="px-2 py-1 rounded bg-muted hover:bg-muted/70"
+            className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded bg-muted hover:bg-muted/70"
             onClick={copyAll}
           >
             <span className="flex items-center gap-1">
               {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}复制日志
             </span>
           </button>
-          <button className="px-2 py-1 rounded bg-muted hover:bg-muted/70" onClick={clearAll}>
+          <button className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded bg-muted hover:bg-muted/70" onClick={clearAll}>
             <span className="flex items-center gap-1"><Trash size={12} /> 清空</span>
           </button>
         </div>
@@ -116,13 +116,13 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
 
       <div className="flex flex-wrap gap-2 text-xs">
         <input
-          className="px-2 py-1 rounded border bg-background flex-1 min-w-[120px]"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px] rounded border bg-background flex-1 min-w-[120px]"
           placeholder="关键字过滤"
           value={filter}
           onChange={e => setFilter(e.target.value)}
         />
         <select
-          className="px-2 py-1 rounded border bg-background"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded border bg-background"
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as typeof categoryFilter)}
         >

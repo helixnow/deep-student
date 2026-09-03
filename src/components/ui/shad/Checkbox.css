@@ -33,3 +33,23 @@
   min-height: 12px;
   flex-shrink: 0;
 }
+
+/* ---- 触屏命中区扩展 ----
+   复选框视觉锁定 16×16，低于 44×44 触控基线。
+   触屏下用透明伪元素以盒子中心为锚扩出至少 44×44 的命中区，
+   视觉尺寸不变、不占布局（与 Switch.css 同款做法）。 */
+@media (pointer: coarse) {
+  [data-radix-checkbox-root] {
+    position: relative;
+  }
+
+  [data-radix-checkbox-root]::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}

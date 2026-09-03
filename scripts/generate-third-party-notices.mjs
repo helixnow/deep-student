@@ -10,17 +10,51 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const cargoRoot = path.join(repoRoot, 'src-tauri');
 const cargoLockPath = path.join(cargoRoot, 'Cargo.lock');
 const npmLockPath = path.join(repoRoot, 'package-lock.json');
-const outputPath = path.join(repoRoot, 'public', 'legal', 'THIRD_PARTY_NOTICES.txt');
+// 唯一权威路径（WI-9 legal 去重）：不再放 public/（避免随 frontendDist 进安装包形成双份），
+// 仅经 tauri.conf.json bundle.resources 进入 resources/licenses/；前端展示走
+// resolveResource 读取（web dev 由 vite 中间件代理，见 vite.config.ts legalNoticesDevPlugin）。
+const outputPath = path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt');
 const legalFilePattern = /^(?:licen[cs]e|copying|notice|copyright)(?:$|[._-])/i;
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+// release-please 的版本 bump 只改写 package-lock.json 的根 version 与
+// packages[""].version，依赖闭包并未变化；哈希前剔除这两个字段，
+// 与 scripts/check-license-compliance.mjs 的校验口径保持一致。
+function sha256PackageLock(filePath) {
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  delete data.version;
+  if (data.packages && data.packages['']) delete data.packages[''].version;
+  return sha256(JSON.stringify(data));
+}
+
+// Shrinks a legal text without touching its wording: strips trailing
+// whitespace, collapses blank-line runs, and removes common indentation.
+function compactWhitespace(text) {
+  const lines = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/[ \t]+$/, '');
+    if (!line && !lines[lines.length - 1]) continue;
+    lines.push(line);
+  }
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  const indents = lines.filter(Boolean).map((line) => /^ */.exec(line)[0].length);
+  const indent = indents.length ? Math.min(...indents) : 0;
+  return lines.map((line) => line.slice(indent)).join('\n');
+}
+
+// Identity of a legal text for deduplication: its exact word sequence,
+// ignoring formatting differences (wrapping, indentation, blank lines).
+function wordKey(text) {
+  return sha256(text.split(/\s+/).filter(Boolean).join(' '));
+}
+
 function readText(filePath) {
   const buffer = fs.readFileSync(filePath);
   if (buffer.includes(0)) return null;
-  return buffer.toString('utf8').replace(/\r\n/g, '\n').trim();
+  return compactWhitespace(buffer.toString('utf8').replace(/\r\n/g, '\n').trim());
 }
 
 function legalFilesIn(directory, explicitFile, sourceBase = '') {
@@ -223,6 +257,82 @@ function wrapList(values, indent = '  ') {
   return values.map((value) => `${indent}${value}`).join('\n');
 }
 
+// The Apache-2.0 terms and conditions (sections 1-9) are word-for-word
+// identical across dozens of dependency license files; these markers delimit
+// that block so it can be stored once instead of per package. Some upstream
+// files omit the "END OF TERMS AND CONDITIONS" line, so the closing words of
+// section 9 serve as a fallback end marker.
+const commonBlockStart = 'TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION'.split(' ');
+const commonBlockEnds = [
+  'END OF TERMS AND CONDITIONS'.split(' '),
+  'of your accepting any such warranty or additional liability.'.split(' '),
+];
+
+function tokenize(text) {
+  const tokens = [];
+  for (const match of text.matchAll(/\S+/g)) {
+    tokens.push({ word: match[0], start: match.index, end: match.index + match[0].length });
+  }
+  return tokens;
+}
+
+function findWordSequence(words, sequence, fromIndex = 0) {
+  for (let i = fromIndex; i <= words.length - sequence.length; i += 1) {
+    let found = true;
+    for (let k = 0; k < sequence.length; k += 1) {
+      if (words[i + k] !== sequence[k]) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return i;
+  }
+  return -1;
+}
+
+// Replaces license-terms blocks shared verbatim (word-for-word) by two or
+// more notices with a reference to a single COMMON TEXT entry.
+function factorCommonTexts(notices) {
+  const groups = new Map();
+  for (const notice of notices.values()) {
+    const tokens = tokenize(notice.text);
+    const words = tokens.map((token) => token.word);
+    const startIndex = findWordSequence(words, commonBlockStart);
+    if (startIndex < 0) continue;
+    let endIndex = -1;
+    let endLength = 0;
+    for (const candidate of commonBlockEnds) {
+      const index = findWordSequence(words, candidate, startIndex + commonBlockStart.length);
+      if (index >= 0) {
+        endIndex = index;
+        endLength = candidate.length;
+        break;
+      }
+    }
+    if (endIndex < 0) continue;
+    const start = tokens[startIndex].start;
+    const end = tokens[endIndex + endLength - 1].end;
+    const groupKey = sha256(words.slice(startIndex, endIndex + endLength).join(' '));
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push({ notice, start, end });
+  }
+
+  const commonTexts = [];
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const id = `C${commonTexts.length + 1}`;
+    commonTexts.push({ id, text: members[0].notice.text.slice(members[0].start, members[0].end) });
+    for (const { notice, start, end } of members) {
+      notice.text = [
+        notice.text.slice(0, start).trim(),
+        `[Terms identical to COMMON TEXT ${id}; see the COMMON LICENSE TEXTS section above.]`,
+        notice.text.slice(end).trim(),
+      ].filter(Boolean).join('\n\n');
+    }
+  }
+  return commonTexts;
+}
+
 function render(records, cargoLockHash, npmLockHash) {
   const unknown = records.filter(
     (record) => record.license === 'UNKNOWN' && record.legalFiles.length === 0,
@@ -234,38 +344,22 @@ function render(records, cargoLockHash, npmLockHash) {
   const notices = new Map();
   const inventory = [];
   for (const record of records) {
-    const noticeIds = [];
+    const noticeIds = new Set();
     for (const legalFile of record.legalFiles) {
-      const hash = sha256(legalFile.text);
-      if (!notices.has(hash)) {
-        notices.set(hash, { text: legalFile.text, packages: new Set(), sources: new Set() });
+      const key = wordKey(legalFile.text);
+      if (!notices.has(key)) {
+        notices.set(key, { id: `N${notices.size + 1}`, text: legalFile.text });
       }
-      const notice = notices.get(hash);
-      notice.packages.add(`${record.ecosystem}: ${record.id}`);
-      notice.sources.add(legalFile.source);
-      noticeIds.push(hash.slice(0, 12));
+      noticeIds.add(notices.get(key).id);
     }
     inventory.push(
       `${record.ecosystem}: ${record.id}\n` +
-      `  License: ${record.license}\n` +
-      `  Notices: ${noticeIds.length ? [...new Set(noticeIds)].join(', ') : 'license expression only'}\n` +
-      (record.repository ? `  Upstream: ${record.repository}\n` : ''),
+      `  License: ${record.license}` +
+      (noticeIds.size ? `\n  Notices: ${[...noticeIds].join(', ')}` : ''),
     );
   }
 
-  const noticeSections = [...notices.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([hash, notice]) => [
-      '='.repeat(80),
-      `NOTICE ${hash.slice(0, 12)}`,
-      'Applies to:',
-      wrapList([...notice.packages].sort()),
-      'Source license files:',
-      wrapList([...notice.sources].sort()),
-      '-'.repeat(80),
-      notice.text,
-      '',
-    ].join('\n'));
+  const commonTexts = factorCommonTexts(notices);
 
   return [
     'DEEPSTUDENT THIRD-PARTY NOTICES',
@@ -280,25 +374,43 @@ function render(records, cargoLockHash, npmLockHash) {
     '',
     `Components: ${records.length}`,
     `Distinct legal texts: ${notices.size}`,
+    `Common license texts: ${commonTexts.length}`,
+    '',
+    'Format:',
+    '- COMPONENT INVENTORY lists each component with its license expression and',
+    '  the ids of the notice texts that ship with it. Components without a',
+    '  "Notices:" line are covered by their license expression alone.',
+    '- A license body shared verbatim by several notices is printed once in the',
+    '  COMMON LICENSE TEXTS section and referenced as COMMON TEXT C<n>.',
+    '- Each NOTICE N<n> section reproduces one distinct license/notice text.',
     '',
     '='.repeat(80),
     'COMPONENT INVENTORY',
     '='.repeat(80),
     '',
     inventory.join('\n'),
-    ...noticeSections,
+    '',
+    '='.repeat(80),
+    'COMMON LICENSE TEXTS',
+    '='.repeat(80),
+    '',
+    ...commonTexts.map((common) => `==== COMMON TEXT ${common.id} ====\n${common.text}\n`),
+    '='.repeat(80),
+    'LICENSE AND NOTICE TEXTS',
+    '='.repeat(80),
+    '',
+    ...[...notices.values()].map((notice) => `==== NOTICE ${notice.id} ====\n${notice.text}\n`),
   ].join('\n').trimEnd() + '\n';
 }
 
 function main() {
   const cargoLock = fs.readFileSync(cargoLockPath);
-  const npmLock = fs.readFileSync(npmLockPath);
   const records = [
     ...collectCargoRecords(),
     ...collectNpmRecords(),
     ...collectBundledAssetRecords(),
   ];
-  const output = render(records, sha256(cargoLock), sha256(npmLock));
+  const output = render(records, sha256(cargoLock), sha256PackageLock(npmLockPath));
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, output, 'utf8');
   console.log(`Wrote ${path.relative(repoRoot, outputPath)} (${records.length} components).`);

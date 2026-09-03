@@ -1,0 +1,18 @@
+{
+  "id": "rp04-front-back-identical",
+  "label": "edited_major",
+  "source": "synthetic-style-rewrite",
+  "description": "生成的卡片正反面完全相同（复习无信息量），用户把正面改写为提问、背面改写为陈述。改前应命中 front_back_identical，改后零命中。",
+  "original": {
+    "front": "牛顿第一定律",
+    "back": "牛顿第一定律"
+  },
+  "edited": {
+    "front": "牛顿第一定律的内容是什么？",
+    "back": "不受外力作用时，物体保持静止或匀速直线运动状态不变。"
+  },
+  "expected": {
+    "originalCodes": ["front_back_identical"],
+    "editedCodes": []
+  }
+}

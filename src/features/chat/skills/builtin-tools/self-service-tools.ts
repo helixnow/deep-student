@@ -146,7 +146,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-self_inspect',
       description:
-        '只读、脱敏自查当前 agent 运行环境：runtime root 列表（含 path，与 Settings 展示一致）、已注册技能及 loaded/active 状态、MCP server 名称/传输/enabled 摘要、web_search.* 配置键可见性。任务开始或遇到能力缺口时优先调用；输出不含任何密钥或 tool_approval 策略。',
+        '只读、脱敏自查运行环境：runtime root、技能注册/加载状态、MCP 摘要、web 搜索配置可见性。任务开始或能力缺口时优先调用；输出不含密钥。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -155,7 +155,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
             enum: ['roots', 'skills', 'mcp', 'search', 'all'],
             default: 'all',
             description:
-              '可选过滤：roots=runtime root，skills=技能注册/加载状态，mcp=MCP 配置摘要，search=web 搜索配置可见性，all=全部',
+              '可选过滤：roots/skills/mcp/search/all（默认全部）',
           },
         },
       },
@@ -163,7 +163,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mcp_server_propose',
       description:
-        '提案新增 MCP server 配置（High 审批）。先用 web_fetch 读官方文档确认参数；env_required 只收环境变量名（不传值），secret 由用户在 Settings > MCP 工具 填写并启用。无 secret 需求时写入后自动连测，失败自动回滚。stdio 需 command；远程 transport 需 https url。',
+        '提案新增 MCP server（High 审批）。env_required 只收变量名（禁止传值），secret 由用户在 Settings 填写；无 secret 时自动连测，失败回滚。stdio 需 command，远程需 https url。',
       inputSchema: {
         type: 'object',
         required: ['name', 'transport', 'purpose'],
@@ -171,7 +171,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           name: {
             type: 'string',
-            description: 'MCP server 唯一名称（用于查重与 Settings 展示）',
+            description: 'MCP server 唯一名称',
           },
           transport: {
             type: 'string',
@@ -180,11 +180,11 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           purpose: {
             type: 'string',
-            description: '一句话用途说明（展示在审批卡上）',
+            description: '一句话用途说明（审批卡展示）',
           },
           command: {
             type: 'string',
-            description: 'stdio 传输必填：启动命令（如 npx）',
+            description: 'stdio 必填：启动命令（如 npx）',
           },
           args: {
             type: 'array',
@@ -194,12 +194,11 @@ export const selfServiceToolsSkill: SkillDefinition = {
           env_required: {
             type: 'array',
             items: { type: 'string' },
-            description:
-              'stdio 可选：所需环境变量名列表（仅变量名，禁止传值；用户稍后在 Settings 填写）',
+            description: 'stdio 可选：所需环境变量名（仅变量名，禁止传值）',
           },
           url: {
             type: 'string',
-            description: '远程传输必填：MCP 端点 URL（必须 https://）',
+            description: '远程传输必填：MCP 端点 URL（须 https://）',
           },
         },
       },
@@ -207,7 +206,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mcp_server_update',
       description:
-        '修改已有 MCP server 配置（High 审批，不可 remember）。按 server_id（id 或名称）定位，只传要改的字段；先 self_inspect(section=mcp) 确认现状。禁止 env 明文，env_required 只收变量名（新增变量写占位符并自动停用，待用户在 Settings 填值）。无新增密钥需求且 server 启用中会自动连测，失败自动回滚旧配置。',
+        '修改已有 MCP server（High 审批，不可 remember）。先 self_inspect 确认现状，按 server_id 定位，只传要改字段；禁止 env 明文，新增变量写占位符并自动停用。无新增密钥且启用中自动连测，失败回滚。',
       inputSchema: {
         type: 'object',
         required: ['server_id'],
@@ -215,16 +214,16 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           server_id: {
             type: 'string',
-            description: '目标 server 的 id 或名称（可用 self_inspect 的 mcp 段查询）',
+            description: '目标 server 的 id 或名称',
           },
           name: {
             type: 'string',
-            description: '可选：新显示名称（id 保持不变；不得与其他 server 重名）',
+            description: '可选：新显示名称（id 不变；不得重名）',
           },
           transport: {
             type: 'string',
             enum: ['stdio', 'sse', 'http', 'websocket', 'streamable_http'],
-            description: '可选：新传输类型（切到远程必须同时给 url；切到 stdio 必须有 command）',
+            description: '可选：新传输类型（切远程须同时给 url；切 stdio 须有 command）',
           },
           command: {
             type: 'string',
@@ -239,15 +238,15 @@ export const selfServiceToolsSkill: SkillDefinition = {
             type: 'array',
             items: { type: 'string' },
             description:
-              '可选（仅 stdio）：所需环境变量名全集（仅变量名，禁止传值；已填的值按变量名保留，新增变量写占位符，未列出的变量删除）',
+              '可选（仅 stdio）：环境变量名全集（禁止传值；已填值按名保留，新增写占位符，未列出的删除）',
           },
           url: {
             type: 'string',
-            description: '可选（仅远程传输）：新 MCP 端点 URL（必须 https://）',
+            description: '可选（仅远程）：新端点 URL（须 https://）',
           },
           reason: {
             type: 'string',
-            description: '可选：修改原因（展示在审批卡上）',
+            description: '可选：修改原因（审批卡展示）',
           },
         },
       },
@@ -255,7 +254,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mcp_server_set_enabled',
       description:
-        '启用或停用已有 MCP server（Medium，需确认）。停用会断开前端连接但保留配置与已填密钥；启用前 env 必须已填完（有占位符会被拒绝）。MCP 配置管理的唯一正门之一，禁止用 settings_set/shell 直改 mcp.tools.list。',
+        '启用或停用 MCP server（Medium，需确认）。停用断开连接但保留配置与密钥；启用前 env 须已填完（有占位符被拒绝）。',
       inputSchema: {
         type: 'object',
         required: ['server_id', 'enabled'],
@@ -271,7 +270,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           reason: {
             type: 'string',
-            description: '可选：启停原因（展示在确认卡上）',
+            description: '可选：启停原因（确认卡展示）',
           },
         },
       },
@@ -279,7 +278,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mcp_server_remove',
       description:
-        '删除 MCP server 配置（High 审批，不可 remember，不可恢复；连同已填密钥与 provenance 一并清理）。必须携带 self_inspect 返回的 expected_transport 与 expected_entry_revision；配置变化后会 fail-closed。先向用户确认意图再调用。',
+        '删除 MCP server（High 审批，不可 remember，不可恢复；连同密钥与 provenance 清理）。须携带 self_inspect 返回的 expected_transport 与 expected_entry_revision，配置变化 fail-closed。',
       inputSchema: {
         type: 'object',
         required: ['server_id', 'expected_transport', 'expected_entry_revision'],
@@ -292,15 +291,15 @@ export const selfServiceToolsSkill: SkillDefinition = {
           expected_transport: {
             type: 'string',
             enum: ['stdio', 'sse', 'http', 'websocket', 'streamable_http'],
-            description: '必填：self_inspect 返回的该 server 当前 transport，用于审批卡展示与执行期复核',
+            description: 'self_inspect 返回的当前 transport，执行期复核',
           },
           expected_entry_revision: {
             type: 'string',
-            description: '必填：self_inspect 返回的该 server 当前 entry_revision，必须原样传回',
+            description: 'self_inspect 返回的当前 entry_revision，原样传回',
           },
           reason: {
             type: 'string',
-            description: '可选：删除原因（展示在审批卡上）',
+            description: '可选：删除原因（审批卡展示）',
           },
         },
       },
@@ -308,7 +307,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_workshop_propose',
       description:
-        '提案式创建/更新完整 SkillPackage 草稿（Medium）。content 旧接口继续表示单个 SKILL.md；files 可提交 SKILL.md、scripts/、references/、assets/ 的完整文件清单（文本用 content，二进制用 content_base64）。返回逐文件 SHA-256 与 package_sha256。',
+        '提案式创建/更新 SkillPackage 草稿（Medium）。content 表示单个 SKILL.md；files 提交完整文件清单（文本 content，二进制 content_base64）。返回逐文件 SHA-256 与 package_sha256。',
       inputSchema: {
         type: 'object',
         required: ['action'],
@@ -321,19 +320,17 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           skill_id: {
             type: 'string',
-            description:
-              'propose_create / propose_update 必填：技能 ID（仅字母数字、连字符、下划线）',
+            description: 'propose_* 必填：技能 ID（仅字母数字、连字符、下划线）',
           },
           content: {
             type: 'string',
-            description:
-              'propose_create / propose_update 必填：完整 SKILL.md 文本（含 YAML frontmatter，以 --- 开头）',
+            description: 'propose_* 必填：完整 SKILL.md 文本（含 --- 开头的 frontmatter）',
           },
           files: {
             type: 'array',
             maxItems: 256,
             description:
-              'propose_create / propose_update 可选：完整包文件清单；与旧 content 二选一。必须包含 SKILL.md，只允许 scripts/、references/、assets/ 子路径。',
+              'propose_* 可选：完整包文件清单，与 content 二选一；须含 SKILL.md，只允许 scripts/、references/、assets/ 子路径。',
             items: {
               type: 'object',
               required: ['path'],
@@ -347,7 +344,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           proposal_id: {
             type: 'string',
-            description: 'reject 必填：待拒绝的提案 ID（wp_<timestamp>_<suffix>）',
+            description: 'reject 必填：待拒绝的提案 ID',
           },
         },
       },
@@ -355,7 +352,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_workshop_apply',
       description:
-        '将已审阅的 pending 技能提案写入 ~/.deep-student/skills（High 审批，不可 remember）。必须原样携带 propose/list 返回的内容摘要和 revision；审批后任何提案或 SKILL.md 变化都会拒绝。写 provenance，新技能默认 untrusted——下一步走 skill_trust_request（inspect→grant），勿在信任前 load_skills。「技能管理」仅备用。propose_create 目标已存在时需 overwrite=true。',
+        '将已审阅的 pending 技能提案写入 skills 目录（High 审批，不可 remember）。原样携带 propose/list 返回的摘要和 revision，内容变化会拒绝；新技能默认 untrusted，下一步 skill_trust_request。propose_create 目标已存在需 overwrite=true。',
       inputSchema: {
         type: 'object',
         required: [
@@ -368,26 +365,23 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           proposal_id: {
             type: 'string',
-            description: '待应用的提案 ID（来自 propose 返回或 list）',
+            description: '待应用的提案 ID',
           },
           skill_id: {
             type: 'string',
-            description: '提案返回的目标技能 ID，用于审批界面明确展示写入目标',
+            description: '提案返回的目标技能 ID',
           },
           expected_content_sha256: {
             type: 'string',
-            description:
-              '必填：用户审阅的 propose/list 结果中的 content_sha256，必须原样传递，不得重算',
+            description: 'propose/list 返回的 content_sha256，原样传递，不得重算',
           },
           expected_proposal_revision: {
             type: 'string',
-            description:
-              '必填：同一 propose/list 结果中的 proposal_revision，必须原样传递',
+            description: '同一 propose/list 返回的 proposal_revision，原样传递',
           },
           overwrite: {
             type: 'boolean',
-            description:
-              'propose_create 时若目标技能目录已存在，必须显式 true 才允许覆盖',
+            description: 'propose_create 目标目录已存在时须显式 true',
           },
         },
       },
@@ -395,7 +389,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_set_enabled',
       description:
-        '启用或停用技能（Medium，需确认）。技能生命周期管理的唯一正门之一，禁止用 shell/文件工具改技能目录或启用状态。停用只影响后续轮次（退出 schema 收集/自动激活/手动选择），保留技能定义与文件；builtin 技能也可停用。重新启用传 enabled=true。',
+        '启用或停用技能（Medium，需确认）。停用只影响后续轮次，保留定义与文件；builtin 也可停用。',
       inputSchema: {
         type: 'object',
         required: ['skill_id', 'enabled'],
@@ -403,7 +397,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           skill_id: {
             type: 'string',
-            description: '目标技能 ID（仅字母数字、连字符、下划线；可用 self_inspect 的 skills 段查询）',
+            description: '目标技能 ID',
           },
           enabled: {
             type: 'boolean',
@@ -411,7 +405,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           reason: {
             type: 'string',
-            description: '可选：向用户说明启停原因（展示在确认卡上）',
+            description: '可选：启停原因（确认卡展示）',
           },
         },
       },
@@ -419,7 +413,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_remove',
       description:
-        '删除技能包（High，必须用户审批且不可 remember，不可撤销）。技能生命周期管理的唯一正门之一，禁止用 shell/文件工具删除技能目录。只能删除 ~/.deep-student/skills/<skill_id> 下的技能包；builtin 技能不可删除（可用 skill_set_enabled 停用或在技能管理页恢复默认）。删除同时清理 provenance 与信任记录。',
+        '删除技能包（High 审批，不可 remember，不可撤销；禁止绕道 shell/文件工具）。只能删 skills/<skill_id> 下的包，builtin 不可删除（可停用）；同时清理 provenance 与信任记录。',
       inputSchema: {
         type: 'object',
         required: ['skill_id'],
@@ -427,7 +421,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           skill_id: {
             type: 'string',
-            description: '待删除技能包 ID（对应 ~/.deep-student/skills/ 下目录名）',
+            description: '待删除技能包 ID（skills/ 下目录名）',
           },
         },
       },
@@ -435,7 +429,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_trust_request',
       description:
-        '申请信任 untrusted 技能。先 action=inspect（Low，只读现扫，返回整包 SHA-256 指纹 + 风险等级/信号，含 prompt injection 扫描）；向用户说明理由后再 action=grant（High，必须用户审批且不可 remember），原样携带 inspect 返回的 package_sha256 与 risk_level。信任绑定包内容指纹，包变化即失效；grant 前后指纹不一致会拒绝。这是授予技能信任的唯一正门，不得绕过指纹绑定。',
+        '申请信任 untrusted 技能（唯一正门）。先 action=inspect（Low，现扫整包指纹与风险）；再 action=grant（High 审批，不可 remember），原样携带 inspect 返回的 package_sha256 与 risk_level。信任绑定指纹，包变化即失效。',
       inputSchema: {
         type: 'object',
         required: ['action', 'skill_id'],
@@ -444,7 +438,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
           action: {
             type: 'string',
             enum: ['inspect', 'grant'],
-            description: 'inspect = 现扫指纹与风险；grant = 审批后授予绑定指纹的信任',
+            description: 'inspect = 现扫指纹与风险；grant = 审批后授予信任',
           },
           skill_id: {
             type: 'string',
@@ -452,17 +446,16 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           reason: {
             type: 'string',
-            description: 'grant 必填：申请信任的理由（展示在审批卡上）',
+            description: 'grant 必填：申请理由（审批卡展示）',
           },
           expected_package_sha256: {
             type: 'string',
-            description:
-              'grant 必填：inspect 返回的 package_sha256，必须原样传递，不得自行重算',
+            description: 'grant 必填：inspect 返回的 package_sha256，原样传递',
           },
           declared_risk_level: {
             type: 'string',
             enum: ['low', 'medium', 'high'],
-            description: 'grant 必填：inspect 返回的 risk_level，原样传递；现扫风险高于声明会拒绝',
+            description: 'grant 必填：inspect 返回的 risk_level；现扫风险更高会拒绝',
           },
         },
       },
@@ -470,7 +463,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_list',
       description:
-        '只读列出 workspaces/agents/ 下全部自定义子代理 persona 文件（文件名、frontmatter 摘要 name/description/base、字节数、修改时间）。persona 每次 subagent_call 现扫，落盘即生效。',
+        '只读列出全部 persona（文件名、frontmatter 摘要、字节数、修改时间）；每次 subagent_call 现扫，落盘即生效。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -480,7 +473,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_get',
       description:
-        '只读读取指定自定义子代理 persona 全文（含 frontmatter 摘要、字节数、content_sha256、首行标题）。提案修改前必须先 get 最新内容。',
+        '只读读取指定 persona 全文（含 frontmatter 摘要、字节数、content_sha256、首行标题）。提案修改前必须先 get 最新内容。',
       inputSchema: {
         type: 'object',
         required: ['file_name'],
@@ -488,8 +481,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           file_name: {
             type: 'string',
-            description:
-              'persona 文件名（含 .md，如 paper-summarizer.md；仅小写字母/数字/连字符）',
+            description: 'persona 文件名（含 .md；仅小写字母/数字/连字符）',
           },
         },
       },
@@ -497,7 +489,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_propose',
       description:
-        '提案式起草新建/修改自定义子代理 persona（Medium）。写入独立 pending 提案区（不落盘 agents/），返回 proposal_id、content_sha256、proposal_revision 与 change_summary（新旧字节数/首行标题）。content 必须是完整 Markdown：frontmatter 需含合法 name（小写字母/数字/连字符，不得与内建 default/worker/explorer 冲突），≤64KB。附带 action=list 查 pending、action=reject 拒绝提案。',
+        '提案式起草新建/修改 persona（Medium，不直接落盘），返回 proposal_id、content_sha256、proposal_revision 与 change_summary。content 须是完整 Markdown（frontmatter 含合法 name，不与内建冲突，≤64KB）。action=list 查 pending、reject 拒绝提案。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -506,21 +498,19 @@ export const selfServiceToolsSkill: SkillDefinition = {
             type: 'string',
             enum: ['propose', 'list', 'reject'],
             default: 'propose',
-            description: 'propose=起草（默认）；list=查看 pending 提案；reject=拒绝提案',
+            description: 'propose=起草（默认）；list=查 pending；reject=拒绝',
           },
           file_name: {
             type: 'string',
-            description:
-              'propose 必填：目标 persona 文件名（含 .md；仅小写字母/数字/连字符）。已存在则为覆盖提案',
+            description: 'propose 必填：目标文件名（含 .md）；已存在则为覆盖提案',
           },
           content: {
             type: 'string',
-            description:
-              'propose 必填：persona 完整 Markdown（--- frontmatter 声明 name/description/base/model/tools/skills，正文为子代理 instructions）',
+            description: 'propose 必填：persona 完整 Markdown（frontmatter+instructions，字段见技能说明）',
           },
           proposal_id: {
             type: 'string',
-            description: 'reject 必填：待拒绝的提案 ID（cap_<timestamp>_<suffix>）',
+            description: 'reject 必填：待拒绝的提案 ID',
           },
         },
       },
@@ -528,7 +518,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_apply',
       description:
-        '将已审阅的 persona 提案原子落盘到 workspaces/agents/（High 审批，不可 remember）。必须原样携带 propose 返回的内容摘要和 revision；审批后提案或目标文件变化都会 fail-closed 拒绝（需重新提案）。落盘后 persona 立即可被 subagent_call 使用。',
+        '将已审阅的 persona 提案原子落盘（High 审批，不可 remember）。原样携带 propose 返回的摘要和 revision，内容变化 fail-closed；落盘后立即可用。',
       inputSchema: {
         type: 'object',
         required: ['proposal_id', 'file_name', 'expected_content_sha256', 'expected_proposal_revision'],
@@ -536,24 +526,23 @@ export const selfServiceToolsSkill: SkillDefinition = {
         properties: {
           proposal_id: {
             type: 'string',
-            description: '待应用的提案 ID（来自 propose 返回或 action=list）',
+            description: '待应用的提案 ID',
           },
           file_name: {
             type: 'string',
-            description: '提案返回的目标文件名，用于审批界面明确展示写入目标',
+            description: '提案返回的目标文件名',
           },
           expected_content_sha256: {
             type: 'string',
-            description: '必填：propose 返回的 content_sha256，必须原样传递，不得重算',
+            description: 'propose 返回的 content_sha256，原样传递，不得重算',
           },
           expected_proposal_revision: {
             type: 'string',
-            description: '必填：同一 propose 返回的 proposal_revision，必须原样传递',
+            description: '同一 propose 返回的 proposal_revision，原样传递',
           },
           change_summary: {
             type: 'string',
-            description:
-              '建议携带：propose 返回的 change_summary（新旧字节数/首行标题），展示在审批卡上',
+            description: '建议携带：propose 返回的 change_summary（审批卡展示）',
           },
         },
       },
@@ -561,7 +550,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-custom_agent_remove',
       description:
-        '删除指定自定义子代理 persona 文件（High，必须用户审批且不可 remember，不可撤销）。调用前先 custom_agent_get 确认内容，原样传回 content_sha256，并把首行标题放进 title 供审批卡展示。',
+        '删除指定 persona 文件（High 审批，不可 remember，不可撤销）。先 custom_agent_get 确认并原样传回 content_sha256，首行标题放进 title。',
       inputSchema: {
         type: 'object',
         required: ['file_name', 'expected_content_sha256'],
@@ -573,11 +562,11 @@ export const selfServiceToolsSkill: SkillDefinition = {
           },
           expected_content_sha256: {
             type: 'string',
-            description: '必须原样使用 custom_agent_get 返回的 content_sha256；内容变化后删除会 fail-closed',
+            description: 'custom_agent_get 返回的 content_sha256，原样传回；内容变化会 fail-closed',
           },
           title: {
             type: 'string',
-            description: '可选：persona 首行标题（来自 custom_agent_get），展示在审批卡上',
+            description: '可选：persona 首行标题（审批卡展示）',
           },
         },
       },

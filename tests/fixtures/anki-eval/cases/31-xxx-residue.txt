@@ -1,0 +1,2 @@
+{"front": "二分查找的时间复杂度是多少？", "back": "O(log n)，前提是数组必须有序。详见教材第 xxx 页。", "tags": ["算法"]}
+<<<ANKI_CARD_JSON_END>>>

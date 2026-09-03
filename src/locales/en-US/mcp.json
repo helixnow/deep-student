@@ -15,6 +15,7 @@
     "qbank_import_document": "Import from Document",
     "qbank_ai_grade": "AI Grade",
     "rag_search": "Knowledge Base Search",
+    "render_generative_ui": "Render Generative UI",
     "multimodal_search": "Multimodal Search",
     "memory_search": "Memory Search",
     "memory_read": "Read Memory",
@@ -54,6 +55,7 @@
     "chatanki_add_cards": "ChatAnki Add Cards",
     "chatanki_enqueue_review": "ChatAnki Enqueue Review",
     "chatanki_review_stats": "ChatAnki Review Stats",
+    "chatanki_transform": "ChatAnki Batch Transform",
     "chatanki_retemplate": "ChatAnki Retemplate Cards",
     "chatanki_control": "ChatAnki Control",
     "chatanki_export": "ChatAnki Export",
@@ -365,5 +367,25 @@
     "spawn_hint_npx": "If you rely on npx, install Node.js and ensure the command works in your terminal.",
     "spawn_hint_install": "Install the reference MCP server with npm install -g @modelcontextprotocol/server-filesystem.",
     "spawn_hint_where": "On Windows you can run \"where {{command}}\" to inspect the resolved executable."
+  },
+  "dstu_exam": {
+    "listQuestionSets": "List question sets",
+    "getQuestionSetDetail": "Get question set detail",
+    "deleteQuestionSet": "Delete question set",
+    "getQuestionSetSessionDetail": "Get question set session detail"
+  },
+  "dstu_attachment": {
+    "listAttachments": "List attachments",
+    "listImageAttachments": "List image attachments",
+    "listFileAttachments": "List file attachments",
+    "getAttachmentDetail": "Get attachment detail",
+    "deleteAttachment": "Delete attachment",
+    "createAttachment": "Create attachment",
+    "updateAttachmentMetadata": "Update attachment metadata",
+    "getUpdatedAttachment": "Get updated attachment",
+    "setAttachmentFavorite": "Set attachment favorite",
+    "searchAttachments": "Search attachments",
+    "searchImageAttachments": "Search image attachments",
+    "searchFileAttachments": "Search file attachments"
   }
 }

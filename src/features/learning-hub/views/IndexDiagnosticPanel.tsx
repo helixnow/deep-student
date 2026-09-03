@@ -391,7 +391,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
   return (
     <div className="border-t border-border/50">
       {/* 标题栏 */}
-      <DsButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
+      <DsButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
         {isExpanded ? (
           <CaretDown size={16} className="text-muted-foreground" />
         ) : (
@@ -416,7 +416,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={() => handleGetDiagnostic()}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
               {t('diagnostic.getDiagnostic')}
@@ -426,7 +426,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleIndexWithDiagnostic}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={14} className="mr-1" />
               {t('diagnostic.indexWithDiag')}
@@ -436,7 +436,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetDisabled}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetDisabled')}
@@ -446,7 +446,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetIndexedWithoutEmb}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetNoEmbed')}
@@ -456,7 +456,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleDiagnoseLanceSchema}
               disabled={isLoading}
-              className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-11"
             >
               <Bug size={14} className="mr-1" />
               Lance Schema
@@ -467,7 +467,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleCopyLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Copy size={14} className="mr-1" />
               {t('diagnostic.copyLogs')}
@@ -477,7 +477,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleClearLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
             >
               <Trash size={14} className="mr-1" />
               {t('diagnostic.clearLogs')}
@@ -501,6 +501,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                     <div 
                       className={cn(
                         'flex items-start gap-2 cursor-pointer hover:bg-white/5 rounded px-1',
+                        // 触屏：日志行可点展开详情，保证 ≥44px 触控高度（桌面保持紧凑）
+                        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-1.5',
                         (log.data || log.lanceData) && 'cursor-pointer'
                       )}
                       onClick={() => (log.data || log.lanceData) && setShowDetails(showDetails === index ? null : index)}

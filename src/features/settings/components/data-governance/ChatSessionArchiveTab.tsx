@@ -256,6 +256,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           <DsButton
             variant="outline"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => {
               if (restoreArchivedGroup && ownerGroup) {
                 void restoreGroup(ownerGroup.id);
@@ -276,7 +277,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           <DsButton
             variant={confirmingDelete ? 'danger' : 'outline'}
             size="sm"
-            className={confirmingDelete ? undefined : '!text-destructive'}
+            className={confirmingDelete ? '[@media(pointer:coarse)]:!min-h-11' : '!text-destructive [@media(pointer:coarse)]:!min-h-11'}
             onClick={() => permanentlyDeleteSession(session.id)}
             disabled={busy}
             aria-label={confirmingDelete
@@ -318,6 +319,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
         <DsButton
           variant="outline"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={loadArchivedSessions}
           disabled={loading || actionSessionId !== null || actionGroupId !== null}
         >
@@ -372,6 +374,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                     <DsButton
                       variant="outline"
                       size="sm"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       onClick={() => restoreGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}
                       aria-label={t('data:governance.archive_restore_group')}
@@ -386,7 +389,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                     <DsButton
                       variant={confirmingDeleteGroup ? 'danger' : 'outline'}
                       size="sm"
-                      className={confirmingDeleteGroup ? undefined : '!text-destructive'}
+                      className={confirmingDeleteGroup ? '[@media(pointer:coarse)]:!min-h-11' : '!text-destructive [@media(pointer:coarse)]:!min-h-11'}
                       onClick={() => permanentlyDeleteGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}
                       aria-label={confirmingDeleteGroup

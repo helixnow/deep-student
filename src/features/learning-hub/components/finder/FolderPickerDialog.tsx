@@ -10,6 +10,8 @@ import { isErr } from '@/shared/result';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { useMobileSubviewChrome } from '@/components/layout';
+import { TouchTarget } from '@/components/ui/TouchTarget';
 import './finder-animations.css';
 
 interface FolderPickerDialogProps {
@@ -49,6 +51,7 @@ function FolderNode({
   onToggleExpand,
   parentExcluded = false,
 }: FolderNodeProps) {
+  const { t } = useTranslation('learningHub');
   const isExcluded = parentExcluded || excludeIds.has(node.folder.id);
   const isSelected = selectedId === node.folder.id;
   const isExpanded = expandedIds.has(node.folder.id);
@@ -72,41 +75,49 @@ function FolderNode({
 
   return (
     <div role="none">
-      <div
-        role="treeitem"
-        aria-selected={isSelected && !isExcluded}
-        aria-expanded={hasChildren ? isExpanded : undefined}
-        aria-disabled={isExcluded || undefined}
-        tabIndex={isExcluded ? -1 : 0}
-        className={cn(
-          'flex items-center gap-1.5 py-2 px-2 rounded-md cursor-pointer',
-          // 📱 触屏：树行高 ≥44px（契约第 6 条），桌面不受影响
-          '[@media(pointer:coarse)]:min-h-[44px]',
-          'transition-all duration-150 ease-out',
-          'active:scale-[0.99]',
-          'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
-          isSelected && !isExcluded && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
-          !isSelected && !isExcluded && 'hover:bg-[var(--interactive-hover)]',
-          isExcluded && 'opacity-40 cursor-not-allowed'
-        )}
-        style={{ paddingLeft: `${level * 16 + 12}px` }}
-        onClick={() => !isExcluded && onSelect(node.folder.id)}
-        onKeyDown={(e) => {
-          if (isExcluded) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect(node.folder.id);
-          } else if (e.key === 'ArrowRight' && hasChildren && !isExpanded) {
-            e.preventDefault();
-            onToggleExpand(node.folder.id);
-          } else if (e.key === 'ArrowLeft' && hasChildren && isExpanded) {
-            e.preventDefault();
-            onToggleExpand(node.folder.id);
-          }
-        }}
-      >
+      <TouchTarget asChild>
+        <div
+          role="treeitem"
+          aria-selected={isSelected && !isExcluded}
+          aria-expanded={hasChildren ? isExpanded : undefined}
+          aria-disabled={isExcluded || undefined}
+          tabIndex={isExcluded ? -1 : 0}
+          className={cn(
+            'flex items-center justify-start gap-1.5 py-2 px-2 rounded-md cursor-pointer',
+            'transition-all duration-150 ease-out',
+            'active:scale-[0.99]',
+            'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
+            isSelected && !isExcluded && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
+            !isSelected && !isExcluded && 'hover:bg-[var(--interactive-hover)]',
+            isExcluded && 'opacity-40 cursor-not-allowed'
+          )}
+          style={{ paddingLeft: `${level * 16 + 12}px` }}
+          onClick={() => !isExcluded && onSelect(node.folder.id)}
+          onKeyDown={(e) => {
+            if (isExcluded) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect(node.folder.id);
+            } else if (e.key === 'ArrowRight' && hasChildren && !isExpanded) {
+              e.preventDefault();
+              onToggleExpand(node.folder.id);
+            } else if (e.key === 'ArrowLeft' && hasChildren && isExpanded) {
+              e.preventDefault();
+              onToggleExpand(node.folder.id);
+            }
+          }}
+        >
         {hasChildren ? (
-          <DsButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            tabIndex={-1}
+            className="!h-5 !w-5 !p-0.5"
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }}
+            aria-label={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
+            aria-expanded={isExpanded}
+          >
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',
@@ -122,8 +133,9 @@ function FolderNode({
           'shrink-0 transition-colors duration-150',
           isSelected ? 'text-primary' : 'text-amber-500'
         )} />
-        <span className="text-sm truncate flex-1">{node.folder.title}</span>
-      </div>
+          <span className="text-sm truncate flex-1">{node.folder.title}</span>
+        </div>
+      </TouchTarget>
       {hasChildren && (
         <div
           ref={contentRef}
@@ -225,6 +237,20 @@ export function FolderPickerDialog({
 
   const resolvedTitle = title || t('finder.folderPicker.title');
 
+  // 📱 小屏 learning-hub 承载（中屏子屏）：标题/返回上移 App 级统一顶栏，
+  // 页内不再自绘返回行；返回箭头与上方系统返回键同语义（关闭子屏）。
+  // 无宿主（桌面分栏 / 「保存为笔记」的独立 fixed 承载等）返回 false，保持自绘返回行。
+  // 注意：通道只接管顶栏，不注册返回键——上面的 registerBackHandler 必须保留。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: resolvedTitle,
+      onBack: () => onOpenChange(false),
+      screen: 'center',
+    },
+    [resolvedTitle, onOpenChange],
+    inline && open,
+  );
+
   // 树内容（Dialog / 内联子屏共用）
   const treeBody = isLoading ? (
     <div className="flex items-center justify-center h-32 px-5">
@@ -237,34 +263,35 @@ export function FolderPickerDialog({
   ) : (
     <div className={cn('py-1', inline ? 'px-3' : 'px-5')} role="tree" aria-label={resolvedTitle}>
       {/* 根目录选项 */}
-      <div
-        role="treeitem"
-        aria-selected={selectedId === null}
-        tabIndex={0}
-        className={cn(
-          'flex items-center gap-2 py-2 px-3 rounded-md cursor-pointer',
-          '[@media(pointer:coarse)]:min-h-[44px]',
-          'transition-all duration-150 ease-out active:scale-[0.99]',
-          'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
-          selectedId === null && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
-          selectedId !== null && 'hover:bg-[var(--interactive-hover)]'
-        )}
-        onClick={() => setSelectedId(null)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setSelectedId(null);
-          }
-        }}
-      >
-        <House size={16} className={cn(
-          'transition-colors duration-150',
-          selectedId === null ? 'text-primary' : 'text-muted-foreground'
-        )} />
-        <span className="text-sm font-medium">
-          {t('finder.folderPicker.root')}
-        </span>
-      </div>
+      <TouchTarget asChild>
+        <div
+          role="treeitem"
+          aria-selected={selectedId === null}
+          tabIndex={0}
+          className={cn(
+            'flex items-center justify-start gap-2 py-2 px-3 rounded-md cursor-pointer',
+            'transition-all duration-150 ease-out active:scale-[0.99]',
+            'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
+            selectedId === null && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
+            selectedId !== null && 'hover:bg-[var(--interactive-hover)]'
+          )}
+          onClick={() => setSelectedId(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setSelectedId(null);
+            }
+          }}
+        >
+          <House size={16} className={cn(
+            'transition-colors duration-150',
+            selectedId === null ? 'text-primary' : 'text-muted-foreground'
+          )} />
+          <span className="text-sm font-medium">
+            {t('finder.folderPicker.root')}
+          </span>
+        </div>
+      </TouchTarget>
       {/* 文件夹树 */}
       {folderTree.map((node) => (
         <FolderNode
@@ -292,21 +319,23 @@ export function FolderPickerDialog({
         aria-label={resolvedTitle}
         aria-hidden={inlinePresence.exiting || undefined}
       >
-        {/* 顶栏：返回 + 标题 */}
-        <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            aria-label={t('common:back')}
-            className="gap-1 min-h-11 px-2 shrink-0"
-          >
-            <CaretLeft className="h-4 w-4" aria-hidden="true" />
-            {t('common:back')}
-          </DsButton>
-          <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
-          <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
-        </div>
+        {/* 顶栏：返回 + 标题（有统一顶栏宿主时由其接管，页内不再自绘） */}
+        {!subviewChromeHosted && (
+          <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              aria-label={t('common:back')}
+              className="gap-1 px-2 shrink-0"
+            >
+              <CaretLeft className="h-4 w-4" aria-hidden="true" />
+              {t('common:back')}
+            </DsButton>
+            <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
+            <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
+          </div>
+        )}
 
         {/* 文件夹树列表 */}
         <CustomScrollArea className="flex-1 min-h-0" fullHeight>
@@ -319,7 +348,7 @@ export function FolderPickerDialog({
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="[@media(pointer:coarse)]:min-h-[44px] px-4"
+            className="px-4"
           >
             {t('common:cancel')}
           </DsButton>
@@ -328,7 +357,7 @@ export function FolderPickerDialog({
             size="sm"
             onClick={handleConfirm}
             disabled={isLoading}
-            className="[@media(pointer:coarse)]:min-h-[44px] px-4"
+            className="px-4"
           >
             {t('finder.folderPicker.confirm')}
           </DsButton>

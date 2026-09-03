@@ -1,6 +1,6 @@
 # Study OS wallpaper sources
 
-These bundled wallpapers are 3840 x 2160 WebP derivatives created for the
+These bundled wallpapers are 2560 x 1440 WebP derivatives created for the
 Deep Student desktop. Each source image was published before 5 June 2017 and
 is made available under the Creative Commons CC0 1.0 Universal Public Domain
 Dedication. Attribution is not required, but the source records are retained
@@ -41,6 +41,7 @@ here for auditability and future asset replacement.
 ## Processing
 
 - Retrieved from the original-resolution Wikimedia Commons assets linked above.
-- Auto-oriented, resized as needed, and center-cropped to 16:9 at 3840 x 2160.
-- Encoded as WebP at quality 92 with smart chroma subsampling.
+- Auto-oriented, resized as needed, and center-cropped to 16:9 at 2560 x 1440.
+- Encoded as WebP at quality 82 with smart chroma subsampling (sharp/libwebp,
+  effort 6), single-generation from the originals.
 - No generative edits or content additions were made.

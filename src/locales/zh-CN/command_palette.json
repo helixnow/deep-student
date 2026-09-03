@@ -3,6 +3,7 @@
   "search_placeholder": "搜索命令...",
   "session_search_placeholder": "搜索会话...",
   "no_results": "未找到匹配的命令",
+  "results_label": "命令结果列表",
   "placeholder": "输入命令或搜索笔记...",
   "no_results_simple": "未找到结果",
   "command_disabled": "该命令当前不可用",

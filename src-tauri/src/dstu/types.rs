@@ -326,6 +326,13 @@ impl DstuNode {
 ///
 /// ## 默认行为
 /// - 若 `folder_id` 和 `type_filter` 都未指定，返回根目录内容
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DstuPropFilter {
+    pub key: String,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DstuListOptions {
@@ -358,6 +365,10 @@ pub struct DstuListOptions {
     /// 标签过滤（仅笔记类资源）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+
+    /// notes.props 自定义属性过滤（键不区分大小写，值为不区分大小写的包含匹配）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prop_filters: Option<Vec<DstuPropFilter>>,
 
     /// 排序字段（name | createdAt | updatedAt）
     #[serde(skip_serializing_if = "Option::is_none")]

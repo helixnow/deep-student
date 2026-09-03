@@ -3,6 +3,64 @@
  * 行内展开编辑、状态徽标、骨架屏。基础表面样式继续复用 wb-fc-*。
  */
 
+/* ---------- 新建 / 导入入口 ---------- */
+
+.fc-lib-create,
+.fc-lib-empty-actions,
+.fc-lib-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fc-lib-empty-actions {
+  justify-content: center;
+}
+
+/* 触控目标 ≥44px；窄屏拉满一行，避免与搜索/筛选挤成小热区 */
+.fc-lib-create-cta {
+  min-height: 36px;
+}
+
+@media (pointer: coarse) {
+  .fc-lib-create-cta {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fc-lib-create,
+  .fc-lib-empty-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fc-lib-create-cta {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+.fc-lib-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: 8px;
+  background: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
+}
+
+.fc-lib-composer-hint {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
 /* ---------- 筛选 / 排序行 ---------- */
 
 .fc-lib-filters {
@@ -133,6 +191,89 @@
   user-select: none;
 }
 
+/* ---------- 队列分区（已生成待入队收件箱 vs 复习队列） ---------- */
+
+.fc-lib-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
+.fc-lib-queue-head[data-queue='inbox'] {
+  background: color-mix(in hsl, hsl(var(--warning)) 9%, transparent 91%);
+  border-bottom-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--border)) 70%);
+}
+
+.fc-lib-queue-head[data-queue='scheduled'] {
+  background: color-mix(in hsl, hsl(var(--card)) 94%, hsl(var(--muted)) 6%);
+}
+
+.fc-lib-queue-title {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+}
+
+.fc-lib-queue-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.fc-lib-queue-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-lib-queue-hint[data-tone='due'] {
+  color: hsl(var(--danger));
+  font-weight: 500;
+}
+
+/* 区头 CTA（加入复习）靠右 */
+.fc-lib-queue-cta {
+  margin-left: auto;
+}
+
+/* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
+.fc-lib-queue-section[data-queue='inbox'] {
+  background: color-mix(in hsl, hsl(var(--warning)) 4%, transparent 96%);
+}
+
+/* 收件箱行左缘 2px 暖色标带（伪元素承载，不与行焦点环 box-shadow 冲突） */
+.fc-lib-queue-section[data-queue='inbox'] .fc-lib-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: color-mix(in hsl, hsl(var(--warning)) 55%, transparent 45%);
+  pointer-events: none;
+}
+
+/* 分区之间留出呼吸缝 */
+.fc-lib-queue-section[data-queue='inbox'] + .fc-lib-queue-section[data-queue='scheduled'] {
+  margin-top: 10px;
+}
+
+@media (max-width: 480px) {
+  /* 窄屏：说明文案让位给标题 + CTA */
+  .fc-lib-queue-hint:not([data-tone='due']) {
+    display: none;
+  }
+}
+
 /* ---------- 行 ---------- */
 
 .fc-lib-row {
@@ -187,7 +328,9 @@
   opacity: 1;
 }
 
-@media (hover: none) {
+/* 触屏常显行内操作：按指针类型而非 hover 能力区分，
+   覆盖报告 hover 能力的触屏平板（对照 FavoritesSection .nfs-unfavorite） */
+@media (pointer: coarse) {
   .fc-lib-row-actions {
     opacity: 1;
   }
@@ -417,11 +560,18 @@
 /* ---------- 触屏适配 ---------- */
 
 /* 筛选/排序 chips 是库页主操作，基准 ~24px 触控过小；
-   仅触屏放大到 ≥40px（与 flashcards.css 的 wb-fc-tab 同基线） */
+   仅触屏放大到 ≥44px（与 flashcards.css 的 wb-fc-tab 同基线） */
 @media (pointer: coarse) {
   .fc-lib-chip {
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
+  }
+
+  /* 行内操作钮（入队/复习/暂停/删除/展开）：DsButton 在 lg 断点后压缩高度，
+     宽屏触屏平板会跌破触控基线，这里兜底 ≥44px */
+  .fc-lib-row-actions button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

@@ -138,6 +138,25 @@
     }
   },
   "agent": {
-    "you": "你"
+    "you": "你",
+    "fsrs": {
+      "queue_not_reset": "用户中断，复习队列未重置",
+      "enqueue_requires_session": "无可应用的 fsrs_enqueue（需处于复习 session）",
+      "enqueued_cards": "入队 {{count}} 张卡片",
+      "already_in_queue": "{{kind}}（全部已在队列）",
+      "abort_queue_not_reset": "flashcards 入队已中止（队列未重置）",
+      "abort_run_not_found": "run {{runId}} aborted（flashcards 队列未重置）"
+    },
+    "pomodoro": {
+      "run_aborted": "运行已中止",
+      "pause_check_failed": "暂停检查失败（{{error}}）",
+      "start_noop": "{{label}}（当前状态无需启动或恢复）",
+      "pause_noop": "{{label}}（当前状态不可暂停）",
+      "resume_noop": "{{label}}（当前状态无需恢复）",
+      "stop_noop": "{{label}}（当前未运行番茄钟）",
+      "unsupported_op": "不支持的 pomodoro op: {{kind}}",
+      "persist_failed": "后端记录保存失败: {{error}}",
+      "pacing_failed": "节奏控制失败: {{error}}"
+    }
   }
 }

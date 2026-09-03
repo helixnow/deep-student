@@ -1,0 +1,391 @@
+{
+  "parse_error_title": "Unable to parse AI UI intent",
+  "parse_error_invalid": "Invalid format",
+  "unknown_block_title": "Unknown component: {{type}}",
+  "unknown_block_desc": "Skipped — check component registry",
+  "validation_failed_title": "{{type}} props validation failed",
+  "chrome": {
+    "streaming": "Generating…",
+    "stream_done": "Interface ready",
+    "accept": "Accept",
+    "regenerate": "Regenerate",
+    "dismiss": "Dismiss"
+  },
+  "action": {
+    "confirm_title": "Confirm: {{label}}",
+    "confirm_inline": "Confirm: {{label}}",
+    "confirm_desc": "This action may have irreversible effects.",
+    "confirm_execute": "Confirm",
+    "unregistered_hint": "This action is not registered and cannot run",
+    "unregistered_label": "Unregistered action",
+    "live_ok": "{{label}} completed",
+    "live_error": "{{label}} failed",
+    "live_undo": "Last action undone",
+    "live_undo_error": "Undo failed",
+    "live_timeout": "{{label}} timed out",
+    "live_rate_limit": "{{label}} too fast, try again shortly",
+    "undo": "Undo",
+    "undo_empty": "Nothing to undo",
+    "copy_intent": "Copy intent",
+    "export_markdown": "Export Markdown",
+    "copy_block": "Copy this block",
+    "open_note": "Open note",
+    "open_pdf_page": "Open PDF page {{page}}"
+  },
+  "export_markdown": {
+    "empty_table": "Empty table",
+    "chart_kind": "Kind",
+    "chart_unit": "Unit",
+    "chart_categories": "Categories",
+    "chart_series": "Series",
+    "stat": "Metric",
+    "flashcard_deck": "Deck",
+    "flashcard_front": "Front",
+    "flashcard_back": "Back",
+    "flashcard_tags": "Tags",
+    "review_day": "Day",
+    "review_due": "due",
+    "review_done": "done",
+    "mistake_error_rate": "Error rate",
+    "mistake_count": "Mistake count",
+    "research_plan": "Research Plan",
+    "queries": "Queries",
+    "retrieval": "Retrieval",
+    "retrieved": "Retrieved",
+    "selected": "Selected",
+    "report": "Report"
+  },
+  "flashcard": {
+    "preview_title": "Flashcard preview",
+    "front": "Front",
+    "back": "Back",
+    "preview_meta_title": "AI flashcard preview"
+  },
+  "review_calendar": {
+    "default_title": "Review calendar",
+    "due": "Due {{count}}",
+    "completed": "Done {{count}}"
+  },
+  "mistake": {
+    "error_rate": "Error rate {{rate}}%",
+    "count": "({{count}} items)"
+  },
+  "panel": {
+    "empty": "No AI UI content",
+    "no_intent": "No UI intent data"
+  },
+  "overflow": {
+    "truncated": "Block limit reached; only the first {{max}} are shown",
+    "unregistered_actions": "Some actions are unregistered and their buttons are disabled"
+  },
+  "a11y": {
+    "region_label": "AI generated interface",
+    "action_bar_label": "Actions",
+    "list_label": "List",
+    "text_label": "Text",
+    "progress_label": "Progress",
+    "key_value_label": "Key-value details",
+    "flashcard_front": "Flashcard front",
+    "flashcard_back": "Flashcard back",
+    "mindmap_label": "Mind map",
+    "research_report_label": "Research report",
+    "review_day": "{{date}}, {{due}} due",
+    "step_pending": "Not started",
+    "step_active": "In progress",
+    "step_done": "Done",
+    "step_error": "Failed",
+    "step_skipped": "Skipped",
+    "markdown_label": "Markdown content",
+    "chart_label": "{{title}} {{kind}} chart",
+    "chart_empty": "No chart data",
+    "steps_label": "Steps",
+    "table_label": "Table",
+    "table_caption": "Data table",
+    "block_error": "Component failed to render",
+    "retry": "Retry",
+    "skip_to_actions": "Skip to actions"
+  },
+  "blocks": {
+    "list": {
+      "empty": "No items"
+    },
+    "table": {
+      "empty": "No data"
+    },
+    "steps": {
+      "status_pending": "Pending",
+      "status_active": "In progress",
+      "status_done": "Done",
+      "status_error": "Failed",
+      "status_skipped": "Skipped"
+    },
+    "chart": {
+      "empty": "No chart data",
+      "a11y_label": "{{title}} {{kind}} chart"
+    },
+    "markdown": {
+      "empty": "No content yet",
+      "error": "Failed to render content"
+    }
+  },
+  "notes": {
+    "summary_title": "AI note summary",
+    "summary_default_title": "Note summary",
+    "summary_updated_prefix": "Updated",
+    "summary_heading_stat": "Sections",
+    "summary_overview_title": "Overview",
+    "summary_char_count": "Characters",
+    "summary_tags": "Tags",
+    "summary_tags_empty": "—",
+    "summary_headings_title": "Main sections",
+    "summary_updated_at": "Updated at",
+    "summary_empty_note_title": "Note has no body yet",
+    "summary_empty_note_description": "Write some content to generate a section summary",
+    "summary_empty_headings": "No section headings",
+    "summary_markdown_title": "Note overview",
+    "edit_suggestion_title": "Note edit suggestion",
+    "edit_suggestion_description": "Opens the diff panel — accept or reject in the editor",
+    "edit_operation_key": "Operation",
+    "edit_preview_title": "Change preview",
+    "edit_apply": "Apply to note",
+    "edit_dismiss": "Dismiss",
+    "edit_suggestion_markdown_title": "Suggestion notes",
+    "edit_dispatch_no_panel": "No suggestion panel is available in this environment",
+    "edit_dispatch_invalid": "The note edit suggestion is invalid or its content is too large",
+    "edit_dispatch_unclaimed": "No matching note editor claimed the suggestion"
+  },
+  "exam": {
+    "briefing_label": "AI question bank briefing",
+    "briefing": {
+      "total_title": "Total questions",
+      "mastery_trend": "Mastery {{percent}}%",
+      "empty_trend": "No questions yet",
+      "progress_title": "Mastery progress",
+      "mastered_row": "{{count}} mastered",
+      "review_row": "To review",
+      "correct_rate_row": "Correct rate",
+      "start_review": "Review mistakes",
+      "open_practice": "Start practice",
+      "empty_bank_title": "Question bank is empty",
+      "empty_bank_description": "Import or create questions before practicing",
+      "mistake_suggestion": "Review missed items first to reinforce weak topics",
+      "status_list_title": "Question status",
+      "in_progress_row": "In progress",
+      "new_count_row": "New",
+      "status_empty": "No question status yet",
+      "table_title": "Mastery and accuracy",
+      "table_metric_column": "Metric",
+      "table_value_column": "Value",
+      "chart_title": "Question distribution",
+      "chart_series": "Questions",
+      "mastered_category": "Mastered"
+    }
+  },
+  "translation": {
+    "briefing_label": "AI translation briefing",
+    "briefing": {
+      "source_stat_title": "Source characters",
+      "translated_stat_title": "Translated characters",
+      "empty_trend": "No source text",
+      "progress_title": "Translation progress",
+      "streaming_progress_title": "Translating",
+      "translated_row": "{{count}} translated",
+      "language_pair_row": "Language pair",
+      "formality_row": "Tone",
+      "domain_row": "Domain",
+      "glossary_row": "Glossary terms",
+      "open_settings": "Translation settings",
+      "copy_translation": "Copy translation",
+      "empty_source_title": "No source text",
+      "empty_source_description": "Add source text to track translation progress",
+      "segments_title": "Recent segments",
+      "segments_empty": "No segments yet",
+      "count_chart_title": "Source vs translation",
+      "count_chart_series": "Characters"
+    }
+  },
+  "indexStatus": {
+    "briefing_label": "AI index briefing",
+    "briefing": {
+      "total_title": "Total resources",
+      "progress_title": "Index progress",
+      "indexed_row": "{{count}} indexed",
+      "pending_row": "Pending",
+      "failed_row": "Failed",
+      "indexing_row": "Indexing",
+      "trend_all_indexed": "All ready",
+      "trend_needs_attention": "Needs attention",
+      "batch_index": "Index all",
+      "refresh": "Refresh",
+      "failed_alert_title": "Index errors",
+      "failed_alert_description": "Some resources failed to index. Retry pending items.",
+      "empty_index_title": "No resources found",
+      "empty_index_description": "There is nothing to index yet",
+      "scan_progress_title": "Scan progress",
+      "scan_progress_label": "Indexing {{count}}",
+      "failed_markdown_title": "Index failures",
+      "failed_markdown_body": "**{{count}}** resources failed to index. Retry pending items.",
+      "status_table_title": "Index status",
+      "status_col_name": "Status",
+      "status_col_count": "Count",
+      "indexed_label": "Indexed"
+    }
+  },
+  "memory": {
+    "briefing_label": "AI memory briefing",
+    "briefing": {
+      "count_title": "Memory entries",
+      "trend_active": "Growing",
+      "trend_empty": "No memories",
+      "overview_title": "Overview",
+      "root_folder_row": "Root folder",
+      "auto_extract_row": "Auto extract",
+      "freq_off": "Off",
+      "freq_balanced": "Balanced",
+      "freq_aggressive": "Aggressive",
+      "refresh": "Refresh",
+      "create_memory": "New memory",
+      "recent_list_title": "Recent entries",
+      "recent_empty": "No memory entries yet",
+      "open_memory": "Open memory",
+      "empty_guide_title": "Start capturing memories",
+      "empty_guide_body": "Create a memory, or open an existing entry and refresh the list.",
+      "steps_title": "Memory actions",
+      "step_create": "Create memory",
+      "step_open": "Open memory",
+      "step_refresh": "Refresh list",
+      "recent_col_title": "Title",
+      "recent_col_detail": "Detail"
+    }
+  },
+  "workbench": {
+    "briefing_label": "AI learning briefing",
+    "briefing": {
+      "due_flashcards_title": "Due flashcards",
+      "due_trend_due": "To review",
+      "due_trend_none": "None due",
+      "progress_title": "Todo progress",
+      "overdue_label": "{{count}} overdue",
+      "pending_label": "{{count}} pending",
+      "start_review": "Start review",
+      "open_qbank": "Open question bank"
+    },
+    "dashboard": {
+      "title": "AI learning dashboard",
+      "anki_tasks_title": "Active card generation",
+      "anki_tasks_trend_active": "Running in background",
+      "anki_tasks_trend_idle": "No active tasks",
+      "open_task_dashboard": "Open task dashboard",
+      "review_calendar_title": "Review calendar",
+      "review_empty_title": "Due reviews",
+      "review_empty": "Nothing due today",
+      "idle_alert_title": "Learning queue is idle",
+      "idle_alert_description": "No due flashcards, todos, or card-generation tasks",
+      "workload_chart_title": "Due and todos",
+      "chart_pending": "Pending todos",
+      "chart_overdue": "Overdue todos",
+      "workload_chart_series": "Count"
+    }
+  },
+  "learningHub": {
+    "briefing_label": "AI resource briefing",
+    "briefing": {
+      "default_folder": "Library",
+      "stat_title": "Visible resources",
+      "trend_active": "Keep exploring",
+      "trend_empty": "Folder is empty",
+      "start_review": "Start review",
+      "open_qbank": "Open question bank",
+      "due_review_title": "Due reviews",
+      "due_review_trend": "Items due",
+      "review_calendar_title": "Review calendar",
+      "recent_list_title": "Recent resources",
+      "recent_empty": "No visible resources in this folder",
+      "empty_alert_title": "Folder is empty",
+      "empty_alert_description": "Add notes or files to generate a briefing",
+      "path_steps_title": "Learning path",
+      "step_review": "Start review",
+      "step_qbank": "Open question bank",
+      "chart_title": "Review load",
+      "chart_due": "Due",
+      "chart_series": "Items"
+    }
+  },
+  "research": {
+    "paper_digest": {
+      "meta_title": "Paper digest",
+      "findings_stat": "Key points",
+      "key_findings": "Key findings",
+      "citations": "{{count}} citations"
+    },
+    "plan": {
+      "meta_title": "Research plan",
+      "round_label": "Round",
+      "round": "Round {{round}}",
+      "progress": "{{done}} / {{total}} steps done"
+    },
+    "report": {
+      "meta_title": "Research report",
+      "citation_stat": "Citations",
+      "citation_aria": "Citation {{label}}"
+    },
+    "hpias": {
+      "meta_title": "Deep research progress",
+      "plan_title": "Research task",
+      "step_plan": "Plan retrieval",
+      "step_retrieval": "Literature retrieval",
+      "step_selection": "Citation selection",
+      "step_subagents": "Sub-agent research",
+      "step_synthesis": "Synthesis report",
+      "subagent_fallback": "Subtask {{id}}",
+      "retrieval_stat": "Retrieved papers",
+      "selected_stat": "Selected citations",
+      "steps_list_title": "Research steps",
+      "step_status_pending": "Pending",
+      "step_status_active": "Active",
+      "step_status_done": "Done",
+      "digest_fallback_title": "Research digest",
+      "empty_steps": "No substeps yet",
+      "steps_block_title": "Research pipeline"
+    },
+    "actions": {
+      "copy_report": "Copy report",
+      "export_plan": "Export plan",
+      "export_intent": "Export all intents"
+    }
+  },
+  "demo": {
+    "recipes": {
+      "learning_dashboard": {
+        "title": "Learning dashboard",
+        "description": "Chart + table + steps"
+      },
+      "research_briefing": {
+        "title": "Research briefing",
+        "description": "Markdown + research plan"
+      },
+      "translation_chart": {
+        "title": "Translation throughput",
+        "description": "Chart"
+      },
+      "mistake_table": {
+        "title": "Mistake diagnosis",
+        "description": "Table + mistake analysis"
+      },
+      "empty_markdown": {
+        "title": "Empty state",
+        "description": "Markdown"
+      },
+      "v11_grid_two_col": {
+        "title": "v1.1 two-column",
+        "description": "Two-column grid layout"
+      }
+    },
+    "lint_title": "Intent diagnostics",
+    "lint_ok": "No issues",
+    "lint_count": "{{count}} issues",
+    "diff_title": "Diff vs last snapshot",
+    "diff_none": "No changes",
+    "diff_summary": "+{{added}} / −{{removed}} / ~{{changed}}"
+  }
+}

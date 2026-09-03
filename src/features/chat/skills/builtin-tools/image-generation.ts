@@ -59,35 +59,34 @@ export const imageGenerationSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-ask_user',
-      description:
-        '当图片用途、比例或风格信息不足时，向用户提出一个轻量级问题进行澄清。只问语义选择，不问底层接口参数。',
+      description: '图片用途、比例或风格不足时，向用户提一个轻量级语义问题澄清；不问底层接口参数。',
       inputSchema: {
         type: 'object',
         properties: {
           question: {
             type: 'string',
-            description: '【必填】需要用户回答的问题，保持简洁明确。',
+            description: '需要用户回答的问题，简洁明确。',
           },
           options: {
             type: 'array',
             items: { type: 'string' },
             minItems: 2,
             maxItems: 6,
-            description: '【必填】2-6 个候选项。推荐项放在第一位并以 (Recommended) 结尾。',
+            description: '候选项；推荐项放首位并以 (Recommended) 结尾。',
           },
           multiple: {
             type: 'boolean',
             default: false,
-            description: '是否允许多选。图片澄清场景通常保持 false。',
+            description: '是否允许多选。',
           },
           allowCustom: {
             type: 'boolean',
             default: true,
-            description: '是否允许用户自由输入额外说明。',
+            description: '是否允许自由输入补充。',
           },
           context: {
             type: 'string',
-            description: '为什么需要这个选择的简短说明。',
+            description: '需要此选择的原因说明。',
           },
         },
         required: ['question', 'options'],
@@ -96,14 +95,13 @@ export const imageGenerationSkill: SkillDefinition = {
     },
     {
       name: 'builtin-image_generate',
-      description:
-        '根据文本提示生成一张图片，适合学习插图、题目配图、知识卡片插图、概念图、封面图等。结果会保存到 VFS 并以 image_gen 块展示。',
+      description: '按文本提示生成一张学习类图片，保存到 VFS 并以 image_gen 块展示。',
       inputSchema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
-            description: '【必填】图片生成提示词。请包含主体、学习用途、风格、标注和构图要求。',
+            description: '提示词：包含主体、学习用途、风格、标注与构图要求。',
           },
           aspectRatio: {
             type: 'string',
@@ -113,13 +111,13 @@ export const imageGenerationSkill: SkillDefinition = {
           },
           quality: {
             type: 'string',
-            description: '生成质量。auto 通常最合适；high 成本和等待时间更高。',
+            description: '生成质量；auto 通常最合适。',
             enum: ['auto', 'low', 'medium', 'high'],
             default: 'auto',
           },
           purpose: {
             type: 'string',
-            description: '学习场景用途，例如：知识卡片插图、题目配图、概念图、封面图。',
+            description: '学习用途，如 知识卡片插图/题目配图/概念图/封面图。',
           },
         },
         required: ['prompt'],

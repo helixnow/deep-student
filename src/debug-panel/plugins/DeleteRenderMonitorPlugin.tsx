@@ -70,14 +70,14 @@ const DeleteRenderMonitorPlugin: React.FC<DebugPanelPluginProps> = ({ isActive, 
         </div>
         <div className="flex gap-2">
           <button
-            className="text-xs px-2 py-1 border rounded hover:bg-muted disabled:opacity-50"
+            className="text-xs px-2 py-1 border rounded hover:bg-muted disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
             onClick={copyLogs}
             disabled={bufferRef.current.length === 0}
           >
             复制 JSON
           </button>
           <button
-            className="text-xs px-2 py-1 border rounded hover:bg-muted disabled:opacity-50"
+            className="text-xs px-2 py-1 border rounded hover:bg-muted disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
             onClick={clearLogs}
             disabled={bufferRef.current.length === 0}
           >

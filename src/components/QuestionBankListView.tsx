@@ -160,7 +160,7 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
         size="icon"
         iconOnly
         onClick={onRemove}
-        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2 text-primary/70 hover:text-primary hover:bg-primary/10"
+        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2.5 text-primary/70 hover:text-primary hover:bg-primary/10"
         aria-label={t('exam.library.removeFilter', { label })}
         title={t('exam.library.removeFilter', { label })}
       >
@@ -220,7 +220,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
       
       {/* 开始做题按钮 */}
       {onStartPractice && (
-        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!h-11">
           <Play size={14} />
           {t('questionBank.startPractice')}
         </DsButton>
@@ -247,7 +247,7 @@ const RowHoverActions: React.FC<{
   const buttonClass = cn(
     dense ? '!w-5 !h-5' : '!w-6 !h-6',
     '!p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-    '[@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:-m-2',
+    '[@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-2',
     'hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground'
   );
   return (
@@ -284,7 +284,7 @@ const RowHoverActions: React.FC<{
             variant="danger" size="sm"
             disabled={deleteLoading}
             onClick={(e) => { e.stopPropagation(); onDeleteAction(); }}
-            className="!h-5 !px-1.5 !py-0 text-[10px] opacity-100 [@media(pointer:coarse)]:!h-8"
+            className="!h-5 !px-1.5 !py-0 text-[10px] opacity-100 [@media(pointer:coarse)]:!h-11"
             aria-label={t('learningHub:exam.library.confirmDeleteShort')}
           >
             {deleteLoading ? <CircleNotch size={10} className="animate-spin" /> : <Trash size={10} />}
@@ -414,7 +414,7 @@ const QuestionGridCard: React.FC<{
         </span>
       </div>
       
-      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow]" />
+      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow]" />
     </div>
   );
 };
@@ -504,7 +504,7 @@ const QuestionListRow: React.FC<{
         )}
       </div>
       
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
     </DsButton>
   );
 };
@@ -1209,7 +1209,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             variant="primary"
             size="sm"
             onClick={() => handleQuestionClick(0)}
-            className="!h-8 !px-2.5 !py-0 text-xs gap-1"
+            className="!h-8 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 text-xs gap-1"
           >
             <Play size={12} weight="fill" />
             {t('practice:questionBank.startPractice')}
@@ -1228,7 +1228,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className={cn(
-                'pl-9 h-8 sm:h-9 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm',
+                'pl-9 h-8 sm:h-9 [@media(pointer:coarse)]:!h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm [@media(pointer:coarse)]:text-base',
                 '[&::-webkit-search-cancel-button]:hidden',
                 (searchQuery || isLoading) && 'pr-8'
               )}
@@ -1245,7 +1245,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 size="icon"
                 iconOnly
                 onClick={handleSearchClear}
-                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 aria-label={t('learningHub:exam.library.clearSearch')}
                 title={t('learningHub:exam.library.clearSearch')}
               >
@@ -1259,7 +1259,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('grid')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9', viewType === 'grid' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'grid' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.gridView')}
               title={t('learningHub:exam.library.gridView')}
             >
@@ -1269,7 +1269,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('list')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9', viewType === 'list' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'list' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.listView')}
               title={t('learningHub:exam.library.listView')}
             >
@@ -1278,13 +1278,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })} title={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })}>
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </DsButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })} title={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })}>
               <Plus size={16} />
             </DsButton>
           )}
@@ -1299,8 +1299,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 if (!requestInlineEditorDiscard({ kind: 'callback', run: openBatchMode })) return;
                 openBatchMode();
               }}
-              className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-9 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
-              aria-label="batch manage"
+              className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+              aria-label={t('exam_sheet:questionBank.manage', { defaultValue: '管理' })}
             >
               <ListChecks size={14} className="mr-1" />
               <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
@@ -1323,7 +1323,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setPendingEditorAction(null)}
-                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 {t('learningHub:exam.library.keepEditing')}
               </DsButton>
@@ -1331,7 +1331,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 variant="danger"
                 size="sm"
                 onClick={confirmPendingEditorAction}
-                className="!h-auto !px-2 !py-1 text-xs"
+                className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs"
               >
                 {t('learningHub:exam.library.discardAndContinue')}
               </DsButton>
@@ -1342,37 +1342,37 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         {/* 筛选 Tab — ui-state-colors 让选中态颜色平滑过渡；
             激活中的筛选即使计数归零也保留 chip，避免筛选项凭空消失无法取消 */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
           </DsButton>
           {stats && (stats.newCount > 0 || statusFilter === 'new') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </DsButton>
           )}
           {stats && (stats.review > 0 || statusFilter === 'review') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
               {t('practice:questionBank.needsReview')} {stats.review}
             </DsButton>
           )}
           {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
               {t('practice:questionBank.masteredFilter')} {stats.mastered}
             </DsButton>
           )}
 
           <div className="w-px h-3 bg-border/60 mx-1" />
 
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
             {t('practice:questionBank.difficultyShort.easy')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.medium')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.hard')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
             {t('practice:questionBank.difficultyShort.veryHard')}
           </DsButton>
 
@@ -1389,7 +1389,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                     size="sm"
                     onClick={() => handleTypeToggle(type as QuestionType)}
                     className={cn(
-                      'ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs',
+                      'ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs',
                       typeFilter === type
                         ? 'bg-accent text-accent-foreground font-medium'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -1478,7 +1478,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             </p>
             <p className="mt-1 text-xs text-muted-foreground/70">{t('learningHub:exam.library.noMatchHint')}</p>
             {hasActiveFilters && (
-              <DsButton variant="ghost" size="sm" className="mt-3" onClick={clearFilters}>
+              <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3" onClick={clearFilters}>
                 <X size={14} />
                 {t('common:clear')}
               </DsButton>
@@ -1581,7 +1581,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setConfirmingBatch(null)}
-                  className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                  className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 >
                   {t('common:cancel')}
                 </DsButton>
@@ -1596,7 +1596,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                       void handleBatchResetConfirm();
                     }
                   }}
-                  className="!h-auto !px-2.5 !py-1 text-xs"
+                  className="!h-auto !px-2.5 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs"
                 >
                   {isOperating && <CircleNotch size={12} className="animate-spin" />}
                   {t('learningHub:exam.library.confirm')}

@@ -44,5 +44,12 @@
   "mapping_success": "映射成功",
   "mapping_created": "新创建",
   "mapping_failed": "映射失败",
-  "processing_time": "处理时间"
+  "processing_time": "处理时间",
+  "textbook": {
+    "list": "列出教材",
+    "get_detail": "获取教材详情",
+    "delete": "删除教材",
+    "set_favorite": "设置收藏状态",
+    "add": "添加教材"
+  }
 } 

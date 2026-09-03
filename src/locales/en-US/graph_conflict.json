@@ -2,5 +2,8 @@
   "title": "Conflict Detection",
   "conflict": "Conflict",
   "resolve": "Resolve",
-  "ignore": "Ignore"
+  "ignore": "Ignore",
+  "wikilink": {
+    "create_failed": "Failed to create note \"{{title}}\""
+  }
 }

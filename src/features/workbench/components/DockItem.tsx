@@ -3,7 +3,8 @@
  *
  * - 点击三分支：无实例 → workbenchBus.launch；单实例 → focus（已聚焦 → minimize）；
  *   多实例 → DockWindowList 弹层
- * - 角标：appRegistry badgeSource（轮询 2s + registry subscribe），wb-dock-badge
+ * - 角标：appRegistry badgeSource（badgeBus 推送为主 + 30s 低频兜底轮询 +
+ *   registry subscribe），wb-dock-badge
  * - 作为 DockContextMenu（AppMenu context 模式）的 asChild 触发器：
  *   接受并透传 className / onContextMenu 等外部 props 到根元素
  *
@@ -20,11 +21,14 @@
  * - 运行指示点：wb-dock-ind 淡入（静态点；定位仍由契约类 wb-dock-indicator 提供）
  * - tooltip：wb-dock-tip 玻璃气泡带箭头（hover/focus-within 显示；弹层打开时不渲染）；
  *   原生 title 已移除避免双气泡，可访问名仍由 aria-label 提供
+ * - 触屏等价（a11y 清单 §4）：未运行应用长按 = 钉住 tooltip 显示应用名且不触发
+ *   launch；运行中应用长按开列表后，应用名由 DockWindowList 头部提供
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
+import { subscribeAppBadgeChanged } from '../core/badgeBus';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { getSortedWindows } from '../core/windowListCache';
@@ -35,20 +39,22 @@ import { prefetchFrozenWindows } from '../core/wakePrefetchIntent';
 import { requestMinimizeAnimated } from '../hooks/useWindowLifecycleAnim';
 import { DockWindowList } from './DockWindowList';
 import { useDockPinnedDragReorder } from './DockPinnedStore';
+import { dockLongPressTolerancePx } from './dockGestures';
 // ACR 4.0（A5 跨界最小接线）：agent 后台完成角标（样式在 agent-visuals.css）
 import { useDockAgentBadge } from '../agent/visuals/dockBadgeStore';
 import '../agent/visuals/agent-visuals.css';
 
-const BADGE_POLL_MS = 2000;
+/**
+ * 角标兜底轮询间隔（2026-08：2s → 30s）。即时性由 badgeBus 推送承担
+ *（各数据源状态变化时 notifyAppBadgeChanged），轮询只作防事件丢失的对账。
+ */
+const BADGE_POLL_MS = 30_000;
 /** launch bounce 时长兜底（与 Dock.css 780ms 对齐，略加余量） */
 const BOUNCE_FALLBACK_MS = 920;
 /** 长按出窗口列表判定时长（与 WindowTitleBar 绿灯长按 400ms 基建对齐） */
 export const DOCK_LONGPRESS_DELAY = 400;
-/**
- * 长按期间的移动容差：与固定区拖拽阈值（DockPinnedStore DRAG_THRESHOLD_PX = 5）
- * 一致——移动超过该距离即判定为拖拽重排/滑动，取消长按，两条手势互不打架。
- */
-const DOCK_LONGPRESS_MOVE_TOLERANCE_PX = 5;
+/** 长按钉住的 tooltip 在松手后的驻留时长（触屏用户读完应用名再消失） */
+export const DOCK_TIP_LINGER_MS = 1600;
 
 function badgeEquals(a: AppBadge | null, b: AppBadge | null): boolean {
   if (a === b) return true;
@@ -57,9 +63,9 @@ function badgeEquals(a: AppBadge | null, b: AppBadge | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// 角标共享 ticker：模块级单一 setInterval（首个订阅启动，最后一个退订停止），
-// 替代每个 DockItem 自建 2s 定时器；document.hidden 时跳过 tick，
-// visibilitychange 恢复可见时立即 read 一次补齐
+// 角标共享 ticker（低频兜底）：模块级单一 setInterval（首个订阅启动，最后一个
+// 退订停止）；document.hidden 时跳过 tick，visibilitychange 恢复可见时立即
+// read 一次补齐。即时刷新走 badgeBus 推送，不依赖本 ticker。
 // ---------------------------------------------------------------------------
 
 const badgeTickSubscribers = new Set<() => void>();
@@ -92,7 +98,11 @@ function subscribeBadgeTick(cb: () => void): () => void {
   };
 }
 
-/** 角标：badgeSource 拉模式 — 共享 2s ticker + registry 变更即时刷新 */
+/**
+ * 角标：badgeSource 拉模式 —
+ * badgeBus 推送（数据源变化即时失效）为主 + 共享 30s 兜底 ticker
+ * + registry 变更即时刷新
+ */
 export function useDockBadge(typeId: string): AppBadge | null {
   const [badge, setBadge] = React.useState<AppBadge | null>(
     () => appRegistry.get(typeId)?.badgeSource?.() ?? null,
@@ -104,9 +114,11 @@ export function useDockBadge(typeId: string): AppBadge | null {
       setBadge((prev) => (badgeEquals(prev, next) ? prev : next));
     };
     read();
+    const unsubscribePush = subscribeAppBadgeChanged(typeId, read);
     const unsubscribeTick = subscribeBadgeTick(read);
     const unsubscribe = appRegistry.subscribe(read);
     return () => {
+      unsubscribePush();
       unsubscribeTick();
       unsubscribe();
     };
@@ -169,7 +181,32 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     // click，短按点击（launch / focus / minimize / 多实例 toggle）完全不变。
     const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressFiredRef = React.useRef(false);
-    const longPressStartRef = React.useRef<{ x: number; y: number } | null>(null);
+    /** tolerance 按下时按 pointerType 取档（触屏放宽，见 dockGestures） */
+    const longPressStartRef = React.useRef<{ x: number; y: number; tolerance: number } | null>(
+      null,
+    );
+
+    // ---- 触屏 tooltip 等价（a11y 清单 §4）----
+    // 无 hover 环境下，未运行应用的长按把 tooltip 钉住显示应用名
+    //（运行中应用的长按被窗口列表占用，应用名由列表头部提供）。
+    // 松手后驻留 DOCK_TIP_LINGER_MS 再消失，保证触屏用户来得及读。
+    const [tipPinned, setTipPinned] = React.useState(false);
+    const tipLingerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const scheduleTipUnpin = React.useCallback(() => {
+      if (tipLingerTimerRef.current !== null) clearTimeout(tipLingerTimerRef.current);
+      tipLingerTimerRef.current = setTimeout(() => {
+        tipLingerTimerRef.current = null;
+        setTipPinned(false);
+      }, DOCK_TIP_LINGER_MS);
+    }, []);
+
+    React.useEffect(
+      () => () => {
+        if (tipLingerTimerRef.current !== null) clearTimeout(tipLingerTimerRef.current);
+      },
+      [],
+    );
 
     const clearLongPress = React.useCallback(() => {
       if (longPressTimerRef.current !== null) {
@@ -350,6 +387,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         ref={setWrapRef}
         data-testid={`wb-dock-item-${typeId}`}
         data-wb-dock-item-wrap=""
+        data-tip-pinned={tipPinned || undefined}
         className={cn('wb-dock-item-wrap relative flex flex-col items-center', className)}
         {...rest}
         {...pinnedDataAttrs}
@@ -359,36 +397,53 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           // 新一轮按下先清掉上次长按的 click 抑制标记（长按后在 wrap 外松手时
           // click 不会发生，标记会残留到下一次交互）
           longPressFiredRef.current = false;
-          // 长按判定只从图标按钮本体开始（弹层/角标区域不算）
+          // 长按判定只从图标按钮本体开始（弹层/角标区域不算）。
+          // 运行中 → 窗口列表；未运行 → 钉住 tooltip（触屏应用名获取途径），
+          // 两条路径都抑制随后的 click（长按不该触发 launch/focus）。
           if (
             event.button === 0 &&
-            running &&
             !listOpen &&
             (event.target as HTMLElement | null)?.closest?.('button.wb-dock-item')
           ) {
             clearLongPress();
-            longPressStartRef.current = { x: event.clientX, y: event.clientY };
+            longPressStartRef.current = {
+              x: event.clientX,
+              y: event.clientY,
+              tolerance: dockLongPressTolerancePx(event.pointerType),
+            };
             longPressTimerRef.current = setTimeout(() => {
               longPressTimerRef.current = null;
               longPressStartRef.current = null;
               longPressFiredRef.current = true;
-              setListOpen(true);
+              if (running) {
+                setListOpen(true);
+              } else {
+                if (tipLingerTimerRef.current !== null) {
+                  clearTimeout(tipLingerTimerRef.current);
+                  tipLingerTimerRef.current = null;
+                }
+                setTipPinned(true);
+              }
             }, DOCK_LONGPRESS_DELAY);
           }
         }}
         onPointerMove={(event) => {
           onPointerMove?.(event);
-          // 移动超过容差 = 拖拽（固定区重排）或滑动，取消长按
+          // 移动超过容差 = 拖拽（固定区重排）或滑动，取消长按。
+          // 容差按指针类型差异化（触屏 10px / 鼠标笔 5px），且触屏拖拽
+          // 重排阈值恒大于长按容差 —— 抖动不误取消，重排不误启动。
           const start = longPressStartRef.current;
           if (start && longPressTimerRef.current !== null) {
             const dx = event.clientX - start.x;
             const dy = event.clientY - start.y;
-            if (Math.hypot(dx, dy) > DOCK_LONGPRESS_MOVE_TOLERANCE_PX) clearLongPress();
+            if (Math.hypot(dx, dy) > start.tolerance) clearLongPress();
           }
         }}
         onPointerUp={(event) => {
           onPointerUp?.(event);
           clearLongPress();
+          // 钉住的 tooltip：松手后驻留一段时间再消失
+          if (tipPinned) scheduleTipUnpin();
           // 长按开列表后按住滑到列表项上松手 = 直接选中（对齐 macOS 长按菜单滑选）
           if (longPressFiredRef.current) {
             const target = event.target as HTMLElement | null;
@@ -407,10 +462,12 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         onPointerLeave={(event) => {
           onPointerLeave?.(event);
           clearLongPress();
+          if (tipPinned) scheduleTipUnpin();
         }}
         onPointerCancel={(event) => {
           onPointerCancel?.(event);
           clearLongPress();
+          if (tipPinned) scheduleTipUnpin();
         }}
         onPointerEnter={(event) => {
           onPointerEnter?.(event);
@@ -471,7 +528,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
                   className={cn(
                     'wb-dock-badge absolute',
                     badge.kind === 'count'
-                      ? '-right-1 -top-1 h-4 min-w-[16px] rounded-full px-1 text-center text-[10px] font-medium leading-4'
+                      ? '-right-1 -top-1 h-4 min-w-[16px] rounded-full px-1 text-center text-2xs font-medium leading-4'
                       : 'right-0 top-0 h-2 w-2 min-w-0 rounded-full p-0',
                   )}
                 >

@@ -12,7 +12,23 @@ use tauri::State;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::session_export::{
+    export_session_jsonl, SessionExportOptions, SessionExportSummary,
+};
 use crate::chat_v2::types::{block_types, ChatMessage, MessageBlock, MessageRole};
+
+/// 会话 ID 前缀校验（sess_ / agent_ / subagent_），导出命令共用。
+fn validate_session_id(session_id: &str) -> Result<(), String> {
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
+    Ok(())
+}
 
 /// 导出结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,14 +61,7 @@ pub async fn chat_v2_export_session(
     include_thinking: Option<bool>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<ExportSessionResponse, String> {
-    if !session_id.starts_with("sess_")
-        && !session_id.starts_with("agent_")
-        && !session_id.starts_with("subagent_")
-    {
-        return Err(
-            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
-        );
-    }
+    validate_session_id(&session_id)?;
 
     let format = format.unwrap_or_else(|| "markdown".to_string());
     if format != "markdown" && format != "json" {
@@ -103,6 +112,58 @@ pub async fn chat_v2_export_session(
         content,
         message_count,
     })
+}
+
+/// 将会话按 WI-12 JSONL 规范流式导出到目标文件
+///
+/// 格式规范见 `docs/dev/optimization0824/WI-12-session-jsonl-spec.md`；
+/// 实现为 `chat_v2::session_export::export_session_jsonl`（逐行流式写出，
+/// 默认脱敏 `redactSecrets=true`）。
+///
+/// ## 参数
+/// - `session_id`: 会话 ID（`sess_` / `agent_` / `subagent_` 前缀）
+/// - `target_path`: 目标文件绝对路径（须以 `.jsonl` 结尾，由前端保存对话框提供）
+/// - `options`: 导出参数（省略字段取默认值：全变体 + 状态 + 压缩记录 + 脱敏）
+///
+/// ## 返回
+/// - `Ok(SessionExportSummary)`: 与 footer 行一致的计数摘要
+/// - `Err(String)`: 会话不存在 / 参数非法 / IO 失败（结构化 code+message JSON）
+#[tauri::command]
+pub async fn chat_v2_export_session_jsonl(
+    session_id: String,
+    target_path: String,
+    options: Option<SessionExportOptions>,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<SessionExportSummary, String> {
+    validate_session_id(&session_id)?;
+
+    if !target_path.to_lowercase().ends_with(".jsonl") {
+        return Err(ChatV2Error::Validation(format!(
+            "Invalid export path '{}': expected a .jsonl file",
+            target_path
+        ))
+        .into());
+    }
+
+    let options = options.unwrap_or_default();
+    let file = std::fs::File::create(&target_path)
+        .map_err(|e| String::from(ChatV2Error::IoError(format!("{}: {}", target_path, e))))?;
+    let mut writer = std::io::BufWriter::new(file);
+
+    let summary =
+        export_session_jsonl(&db, &session_id, &options, &mut writer).map_err(String::from)?;
+
+    log::info!(
+        "[ChatV2::handlers] chat_v2_export_session_jsonl: session_id={}, messages={}, blocks={}, compactions={}, bytes={}, path={}",
+        session_id,
+        summary.message_count,
+        summary.block_count,
+        summary.compaction_count,
+        summary.bytes_written,
+        target_path
+    );
+
+    Ok(summary)
 }
 
 /// 消息在导出时的有效块 ID 列表：

@@ -5,12 +5,13 @@
  * 后端没有前端 store，采用「自适应轮询 + 事件触发即时刷新」：
  * - 有活跃任务时约 5s 对账一次；无任务时约 60s（事件仍即时刷新）；
  * - 通过 eventHub 订阅 `anki_generation_event`（单一 Tauri listener，
- *   与全局完成通知器共享同名事件互不冲突），事件到达即刷新，
- *   保证 Dock 角标在任务启停后 2s 内反映（Dock 侧 2s 轮询 badgeSource）；
+ *   与全局完成通知器共享同名事件互不冲突），事件到达即刷新；
+ *   计数变化经 badgeBus 推送 Dock 角标即时更新（Dock 侧另有 30s 兜底轮询）；
  * - 投射源为 badge-only（projectWindows=false）：制卡任务进行中不强行
  *   弹出 taskDashboard 窗口，只亮角标（设计文档 §4.4「可选窗口投射」）。
  */
 import { invoke } from '@tauri-apps/api/core';
+import { notifyAppBadgeChanged } from '../../core/badgeBus';
 import { hubListen } from '../../core/eventHub';
 import type { ProjectionInstance, ProjectionSource } from '../../core/projection';
 import type { AppBadge } from '../../core/types';
@@ -40,6 +41,8 @@ function setCount(count: number): void {
   if (count === activeTaskCount) return;
   activeTaskCount = count;
   for (const fn of Array.from(listeners)) fn(count);
+  // 推送 Dock 角标即时重读 badgeSource（typeId 见 register.tsx taskDashboard）
+  notifyAppBadgeChanged('taskDashboard');
 }
 
 function pollDelayMs(): number {
@@ -169,7 +172,24 @@ export const ankiTaskProjectionSource: ProjectionSource = {
   },
 };
 
+/**
+ * 活跃任务数 → 角标的纯换算。Dock 角标与窗口标题后缀共用此函数，
+ * 保证两处口径永远一致（角标亮则标题带数、数值相同）。
+ */
+export function ankiTaskBadgeForCount(count: number): AppBadge | null {
+  return count > 0 ? { kind: 'count', value: count } : null;
+}
+
+/**
+ * 窗口标题：进行中任务数以「基础名 · N」后缀呈现（O18）。
+ * 后缀数与 Dock 角标同源自 ankiTaskBadgeForCount：角标无值时标题不带后缀。
+ */
+export function formatAnkiTaskWindowTitle(base: string, count: number): string {
+  const badge = ankiTaskBadgeForCount(count);
+  return badge ? `${base} · ${badge.value}` : base;
+}
+
 /** Dock 角标源：活跃制卡任务数量（0 = 无角标） */
 export function ankiTaskBadgeSource(): AppBadge | null {
-  return activeTaskCount > 0 ? { kind: 'count', value: activeTaskCount } : null;
+  return ankiTaskBadgeForCount(activeTaskCount);
 }

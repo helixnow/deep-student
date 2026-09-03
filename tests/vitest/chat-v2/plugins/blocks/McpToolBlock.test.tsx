@@ -14,29 +14,40 @@ import React from 'react';
 import type { Block } from '@/features/chat/core/types';
 
 // Mock react-i18next
+// - 缺失词条时必须尊重 defaultValue（getReadableToolName 用 defaultValue: ''
+//   探测词条是否存在，返回 key 会把 tools.* 泄漏成显示名）
+// - t.i18n 固定英文，避免真实 i18n 单例默认中文时人性化兜底输出中文词根
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      const translations: Record<string, string> = {
-        'blocks.mcpTool.title': 'Tool Call',
-        'blocks.mcpTool.unknownTool': 'Unknown Tool',
-        'blocks.mcpTool.input': 'Input Parameters',
-        'blocks.mcpTool.output': 'Output Result',
-        'blocks.mcpTool.noOutput': 'No output',
-        'blocks.mcpTool.showFullJson': 'Show full JSON',
-        'blocks.mcpTool.executing': 'Executing...',
-        'blocks.mcpTool.streamingOutput': 'Live Output',
-        'blocks.mcpTool.executionFailed': 'Execution Failed',
-        'blocks.mcpTool.unknownError': 'Unknown error',
-        'blocks.mcpTool.retry': 'Retry',
-        'blocks.mcpTool.status.pending': 'Pending',
-        'blocks.mcpTool.status.running': 'Running',
-        'blocks.mcpTool.status.success': 'Completed',
-        'blocks.mcpTool.status.error': 'Failed',
-      };
-      return translations[key] || key;
-    },
-  }),
+  useTranslation: () => {
+    const translations: Record<string, string> = {
+      'blocks.mcpTool.title': 'Tool Call',
+      'blocks.mcpTool.unknownTool': 'Unknown Tool',
+      'blocks.mcpTool.input': 'Input Parameters',
+      'blocks.mcpTool.output': 'Output Result',
+      'blocks.mcpTool.noOutput': 'No output',
+      'blocks.mcpTool.showFullJson': 'Show full JSON',
+      'blocks.mcpTool.executing': 'Executing...',
+      'blocks.mcpTool.streamingOutput': 'Live Output',
+      'blocks.mcpTool.executionFailed': 'Execution Failed',
+      'blocks.mcpTool.unknownError': 'Unknown error',
+      'blocks.mcpTool.retry': 'Retry',
+      'blocks.mcpTool.status.pending': 'Pending',
+      'blocks.mcpTool.status.running': 'Running',
+      'blocks.mcpTool.status.success': 'Completed',
+      'blocks.mcpTool.status.error': 'Failed',
+      'labels.skill': 'Skill',
+    };
+    const t = (key: string, params?: Record<string, unknown>) => {
+      if (key in translations) return translations[key];
+      if (params && 'defaultValue' in params) return String(params.defaultValue);
+      return key;
+    };
+    (t as unknown as { i18n: { language: string; resolvedLanguage: string } }).i18n = {
+      language: 'en-US',
+      resolvedLanguage: 'en-US',
+    };
+    return { t, i18n: { language: 'en-US' } };
+  },
   // Some modules initialize i18n in test environment and expect this export.
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
@@ -187,7 +198,9 @@ describe('McpToolBlock', () => {
       render(<McpToolBlockComponent block={block} />);
 
       expect(screen.getByText('vfs-memory')).toBeInTheDocument();
-      expect(screen.getByText('builtin-memory_delete')).toBeInTheDocument();
+      // 工具徽标现在渲染可读名（来源前缀 + 人性化短名），原始注册名保留在 title 上
+      expect(screen.getByTitle('builtin-memory_delete')).toBeInTheDocument();
+      expect(screen.getByText('Skill · Memory Delete')).toBeInTheDocument();
     });
 
     it('should format output based on type (JSON)', () => {

@@ -7,6 +7,7 @@
  *
  * 见 docs/dev/acr/DESIGN.md §5.4 / ROUND1.md R1-15。
  */
+import i18n from '@/i18n';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { collectDomainEntityIds, registerDomainListener } from '../domainEvents';
 import { listTickCost } from '../pacing';
@@ -326,7 +327,12 @@ export const qbankDriver: CollabDriver & {
           const store = useQuestionBankStore.getState();
           const focusResult = dispatchFocusEvent(questionId);
           if (!focusResult?.handled) {
-            state.undone.push(`${op.label || op.kind}（可见题库未找到该题）`);
+            state.undone.push(
+              i18n.t('exam_sheet:agent.question_not_visible', {
+                label: op.label || op.kind,
+                defaultValue: '{{label}}（可见题库未找到该题）',
+              }),
+            );
             state.nextOpIndex = i + 1;
             await run.pacing.tick(listTickCost(run.pacing.profile));
             continue;
@@ -335,7 +341,13 @@ export const qbankDriver: CollabDriver & {
           store.setCurrentQuestion(questionId);
           agentFlash(TYPE_ID, questionId);
           state.entityIds.push(questionId);
-          state.done.push(op.label || `聚焦题目 ${questionId}`);
+          state.done.push(
+            op.label ||
+              i18n.t('exam_sheet:agent.focus_question_done', {
+                questionId,
+                defaultValue: '聚焦题目 {{questionId}}',
+              }),
+          );
           state.applied += 1;
           // 没有前选中项时，记录一个只恢复 store 却无法恢复视图的 inverse 会让撤销撒谎。
           if (previousQuestionId && previousQuestionId !== questionId) {
@@ -344,7 +356,12 @@ export const qbankDriver: CollabDriver & {
               () => {
                 const reverted = dispatchFocusEvent(previousQuestionId);
                 if (!reverted?.handled) {
-                  throw new Error(`无法恢复已不存在的题目 ${previousQuestionId}`);
+                  throw new Error(
+                    i18n.t('exam_sheet:agent.undo_question_missing', {
+                      questionId: previousQuestionId,
+                      defaultValue: '无法恢复已不存在的题目 {{questionId}}',
+                    }),
+                  );
                 }
                 useQuestionBankStore.getState().setCurrentQuestion(previousQuestionId);
               },
@@ -382,7 +399,10 @@ export const qbankDriver: CollabDriver & {
       undone: state.undone,
       message:
         status === 'failed'
-          ? 'qbank driver 仅支持导航 op（qbank_focus_question）；数据修改请用领域工具'
+          ? i18n.t('exam_sheet:agent.unsupported_hint', {
+              defaultValue:
+                'qbank driver 仅支持导航 op（qbank_focus_question）；数据修改请用领域工具',
+            })
           : undefined,
     };
   },
@@ -391,11 +411,17 @@ export const qbankDriver: CollabDriver & {
     const state = qbankActiveRuns.get(runId);
     if (state) {
       state.aborted = true;
-      return qbankCancelledReceipt(state, 'qbank 导航已中止');
+      return qbankCancelledReceipt(
+        state,
+        i18n.t('exam_sheet:agent.nav_aborted', { defaultValue: 'qbank 导航已中止' }),
+      );
     }
     return withUserPatch(
       emptyReceipt('cancelled', 0, {
-        message: `run ${runId} aborted`,
+        message: i18n.t('exam_sheet:agent.run_not_found', {
+          runId,
+          defaultValue: 'run {{runId}} aborted',
+        }),
       }),
       TYPE_ID,
     );

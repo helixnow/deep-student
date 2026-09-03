@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { defineConfig, normalizePath, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -71,6 +71,31 @@ function workbenchInteractionTracePlugin(): Plugin {
   };
 }
 
+/**
+ * WI-9 legal 去重：THIRD_PARTY_NOTICES.txt 权威路径为仓库根 legal/，
+ * 只经 tauri bundle.resources 进安装包（resources/licenses/），不再进 dist。
+ * 纯 web dev（无 Tauri resources）由本中间件按原 fetch 路径代理到权威文件。
+ */
+function legalNoticesDevPlugin(): Plugin {
+  return {
+    name: "serve-legal-notices-from-repo-root",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/legal/THIRD_PARTY_NOTICES.txt", (_req, res) => {
+        const noticesPath = path.join(server.config.root, "legal", "THIRD_PARTY_NOTICES.txt");
+        if (!fs.existsSync(noticesPath)) {
+          res.statusCode = 404;
+          res.end("THIRD_PARTY_NOTICES.txt not generated. Run npm run licenses:generate.");
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.end(fs.readFileSync(noticesPath));
+      });
+    },
+  };
+}
+
 function removeSourceMaps(directory: string): void {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -132,6 +157,18 @@ const cMapsDir = normalizePath(path.join(pdfjsDistPath, 'cmaps'));
 const standardFontsDir = normalizePath(path.join(pdfjsDistPath, 'standard_fonts'));
 const wasmDir = normalizePath(path.join(pdfjsDistPath, 'wasm'));
 
+// cmaps 保守子集（R2 裁剪，详见 docs/dev/optimization0824/progress/R2-pdfjs-subset.md）：
+// 全量 169 个文件 1.11 MB → 68 个 0.59 MB。保留简中 GB 全系（核心场景）、
+// 繁中/日/韩的现代 Unicode 编码（UCS2/UTF16）、Adobe registry 系列
+// （其中 *-UCS2 是 Identity 编码 CID 字体复制/搜索的 ToUnicode 依赖）。
+// 裁掉非 GB 的遗留编码（RKSJ/EUC/B5/HK/KSC 等）与罕见 UTF8/UTF32 变体：
+// R4 起命中子集外的 cmap 时经 src/utils/pdfAssets.ts 三级 fallback
+//（本地 → appData 缓存 → 预留远程源）补齐，全部落空才记缺字日志并跳过该字体。
+// 白名单清单与守卫测试（tests/vitest/pdf/）共用 config/pdfjs-local-assets.json。
+const keptCMapGlobs: string[] = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), 'config', 'pdfjs-local-assets.json'), 'utf8'),
+).keptCMapGlobs;
+
 // Node 环境变量（避免 TS 提示）
 const host = (process as any)?.env?.TAURI_DEV_HOST;
 
@@ -155,11 +192,24 @@ export default defineConfig(({ command, mode }) => ({
     },
     react(),
     workbenchInteractionTracePlugin(),
+    legalNoticesDevPlugin(),
     viteStaticCopy({
       targets: [
-        { src: cMapsDir, dest: '' },
+        // worker 唯一权威来源 = node_modules/pdfjs-dist/build（与主库版本永远一致）。
+        // public/ 不再保留手工同步副本，升级 pdfjs-dist 时不会再静默过期
+        //（版本不匹配会报 API version mismatch）。入口仍是 public/pdf.worker.wrapper.mjs
+        //（Promise.withResolvers polyfill 包装），其 import './pdf.worker.min.mjs'
+        // 解析到本 target 拷贝的文件。
+        { src: normalizePath(path.join(pdfjsDistPath, 'build', 'pdf.worker.min.mjs')), dest: '' },
+        // glob src 会拍平文件，dest 需显式指向目标目录（与整目录拷贝语义不同）
+        { src: keptCMapGlobs.map((g) => `${cMapsDir}/${g}`), dest: 'cmaps' },
+        // standard_fonts 整目录保留：Foxit .pfb 承载非嵌入 Times/Courier/Symbol/
+        // ZapfDingbats（PDF 标准 14 字体，出现频率高），裁掉仅省 ~196 KB 不划算
         { src: standardFontsDir, dest: '' },
-        { src: wasmDir, dest: '' },
+        // 只拷贝 .wasm + LICENSE，裁掉 452 KB 的 openjpeg_nowasm_fallback.js：
+        // 该 JS 回退仅在 WebAssembly.instantiate 失败或显式 useWasm:false 时动态
+        // import，Tauri WebView（WebKit/WebView2/Android Chromium）均支持 WASM
+        { src: [`${wasmDir}/*.wasm`, `${wasmDir}/LICENSE*`], dest: 'wasm' },
         { src: normalizePath(path.join(process.cwd(), 'LICENSE')), dest: 'legal', rename: 'DEEPSTUDENT_LICENSE.txt' },
       ],
     }),
@@ -464,7 +514,6 @@ export default defineConfig(({ command, mode }) => ({
       'mustache',
       'dompurify',
       'cmdk',
-      'react-hotkeys-hook',
       // Milkdown/Crepe 依赖
       '@milkdown/crepe',
       '@milkdown/kit',

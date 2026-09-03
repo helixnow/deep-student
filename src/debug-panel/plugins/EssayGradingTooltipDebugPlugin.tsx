@@ -399,7 +399,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="flex items-center gap-2 p-2 border-b border-slate-700/50 bg-slate-800/50">
         <button
           onClick={handleManualCapture}
-          className="px-2 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 rounded transition-colors"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-cyan-600 hover:bg-cyan-500 rounded transition-colors"
         >
           📸 捕获快照
         </button>
@@ -413,7 +413,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
               setIsObserving(true);
             }
           }}
-          className={`px-2 py-1 text-xs rounded transition-colors ${
+          className={`px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded transition-colors ${
             isObserving 
               ? 'bg-green-600 hover:bg-green-500' 
               : 'bg-slate-600 hover:bg-slate-500'
@@ -425,7 +425,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <select
           value={filter}
           onChange={e => setFilter(e.target.value as typeof filter)}
-          className="px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-slate-700 border border-slate-600 rounded"
         >
           <option value="all">全部分类</option>
           <option value="lifecycle">生命周期</option>
@@ -437,7 +437,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <select
           value={levelFilter}
           onChange={e => setLevelFilter(e.target.value as typeof levelFilter)}
-          className="px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-slate-700 border border-slate-600 rounded"
         >
           <option value="all">全部级别</option>
           <option value="error">错误</option>
@@ -447,19 +447,19 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </select>
         <button
           onClick={handleCopyLogs}
-          className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-500 rounded transition-colors"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-slate-600 hover:bg-slate-500 rounded transition-colors"
         >
           📋 复制日志
         </button>
         <button
           onClick={handleCopyAll}
-          className="px-2 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 rounded transition-colors"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-indigo-600 hover:bg-indigo-500 rounded transition-colors"
         >
           📄 复制报告
         </button>
         <button
           onClick={handleClear}
-          className="px-2 py-1 text-xs bg-red-600/80 hover:bg-red-500 rounded transition-colors"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-red-600/80 hover:bg-red-500 rounded transition-colors"
         >
           🗑️ 清空
         </button>
@@ -555,7 +555,7 @@ const EssayGradingTooltipDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 <span className="text-[10px] font-semibold text-slate-300">快照详情</span>
                 <button
                   onClick={() => handleCopySnapshot(selectedSnapshot)}
-                  className="px-1.5 py-0.5 text-[9px] bg-slate-600 hover:bg-slate-500 rounded"
+                  className="px-1.5 py-0.5 [@media(pointer:coarse)]:min-h-11 text-[9px] bg-slate-600 hover:bg-slate-500 rounded"
                 >
                   复制
                 </button>

@@ -15,9 +15,13 @@ import {
 function embeddedToolKeys(skills: readonly SkillDefinition[]): string[] {
   const keys = skills.flatMap((skill) =>
     (skill.embeddedTools ?? []).map((tool) =>
-      tool.name
-        .replace(/^builtin[-:]/, '')
-        .replace(/^mcp_/, ''),
+      // Mirrors buildBuiltinToolsFromSkills/getToolDisplayNameKey: only one
+      // prefix is stripped. builtin-mcp_server_* tools keep their mcp_ prefix
+      // and resolve to the tools.mcp_server_* locale keys; a bare mcp_ prefix
+      // is stripped only when the builtin namespace is absent.
+      /^builtin[-:]/.test(tool.name)
+        ? tool.name.replace(/^builtin[-:]/, '')
+        : tool.name.replace(/^mcp_/, ''),
     ),
   );
   return [...new Set(keys)].sort();
@@ -64,6 +68,8 @@ describe('built-in tool display name locales', () => {
 
   it('never treats external MCP names as builtin display-name keys', () => {
     expect(getToolDisplayNameKey('builtin-web_search')).toBe('tools.web_search');
+    // Builtin MCP-manage tools keep mcp_ in the key: tools.mcp_server_*.
+    expect(getToolDisplayNameKey('builtin-mcp_server_propose')).toBe('tools.mcp_server_propose');
     expect(getToolDisplayNameKey('mcp_web_search')).toBeUndefined();
     expect(getToolDisplayNameKey('mcp.tools.web_search')).toBeUndefined();
     expect(hasToolDisplayName('mcp_web_search')).toBe(false);

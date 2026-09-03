@@ -175,7 +175,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
             </div>
           </div>
         </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('source_preview.close')}>
           <X size={20} className="text-[hsl(var(--muted-foreground))]" />
         </DsButton>
       </div>
@@ -198,17 +198,17 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
       {/* 操作按钮 */}
       <div className="p-4 border-b border-[hsl(var(--border))]">
         <div className="flex gap-2 flex-wrap">
-          <DsButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
+          <DsButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 [@media(pointer:coarse)]:!min-h-11 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
             <Copy size={14} />
             {copied ? t('source_preview.copied') : t('source_preview.copy_chunk')}
           </DsButton>
 
-          <DsButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 [@media(pointer:coarse)]:!min-h-11 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
             <ArrowSquareOut size={14} />
             {t('source_preview.open_in_kb')}
           </DsButton>
 
-          <DsButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
+          <DsButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 [@media(pointer:coarse)]:!min-h-11 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
             <Download size={14} />
             {t('source_preview.download')}
           </DsButton>

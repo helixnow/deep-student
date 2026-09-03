@@ -195,7 +195,7 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
         <span className="mermaid-error-title">
           {t('codeBlock.renderFailed')}
         </span>
-        <DsButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
+        <DsButton variant="ghost" size="sm" className="mermaid-error-reset [@media(pointer:coarse)]:!min-h-11" onClick={onReset}>
           {t('codeBlock.retry')}
         </DsButton>
       </div>
@@ -712,7 +712,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
-        <DsButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
+        <DsButton variant="ghost" size="sm" className="code-block-copy [@media(pointer:coarse)]:!min-h-11" onClick={handleCopy}>
           <IconSwap
             active={copied}
             a={<Copy size={14} />}
@@ -726,7 +726,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
             <DsButton
               variant="ghost"
               size="sm"
-              className="code-block-copy"
+              className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
               onClick={() => setShowRendered(v => !v)}
               title={showRendered ? t('codeBlock.viewSource') : t('codeBlock.viewRender')}
             >
@@ -738,7 +738,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="code-block-copy"
+                className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
                 onClick={
                   canRunMermaid ? handleRunMermaid :
                   canRenderSvg ? handleRunSvg :
@@ -761,7 +761,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="code-block-copy"
+                  className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
                   onClick={handleOpenSandbox}
                   disabled={!!isStreaming}
                   title={t('codeBlock.openSandbox')}
@@ -775,16 +775,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
         {(renderedSvg && showRendered && !htmlPreviewContent) && (
           <>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
               <Minus size={14} />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
               <Plus size={14} />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
               <span style={{ fontSize: 12 }}>⤢</span>
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
               <ArrowCounterClockwise size={14} />
             </DsButton>
           </>
@@ -824,6 +824,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           <div
             className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
             ref={previewRef}
+            data-no-screen-swipe
             onPointerDown={onPanPointerDown}
             onPointerMove={onPanPointerMove}
             onPointerUp={onPanPointerUp}

@@ -49,7 +49,7 @@ export const PlaybackRateMenu: React.FC<PlaybackRateMenuProps> = ({
           title={label}
           className={cn(
             'h-8 px-2 text-xs font-medium tabular-nums',
-            '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11',
+            '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11',
             overlay && 'text-white hover:bg-[var(--overlay-control-hover)]',
           )}
         >

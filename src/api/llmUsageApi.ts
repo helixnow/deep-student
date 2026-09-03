@@ -75,6 +75,8 @@ export interface UsageRecord {
   totalTokens: number;
   reasoningTokens?: number;
   cachedTokens?: number;
+  /** Omitted means unmeasured; an explicit 0 is a measured no-write result. */
+  cacheWriteTokens?: number;
   estimatedCostUsd?: number;
   durationMs?: number;
   success: boolean;

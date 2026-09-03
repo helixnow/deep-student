@@ -210,6 +210,7 @@ export const MediaCacheSection: React.FC = () => {
               iconOnly
               onClick={loadStats}
               disabled={loading}
+              className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
             </DsButton>
@@ -237,7 +238,7 @@ export const MediaCacheSection: React.FC = () => {
             <DsButton
               variant="outline"
               size="sm"
-              className="!text-destructive"
+              className="!text-destructive max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
               onClick={() => setShowConfirm(true)}
               disabled={
                 clearing ||
@@ -393,7 +394,7 @@ const ClearOption: React.FC<ClearOptionProps> = ({
     <div className="flex-1 min-w-0">
       <Label
         htmlFor={label}
-        className="font-medium text-sm text-foreground cursor-pointer"
+        className="flex items-center font-medium text-sm text-foreground cursor-pointer [@media(pointer:coarse)]:min-h-11"
       >
         {label}
       </Label>

@@ -87,15 +87,15 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_folder_create',
       description:
-        '创建资源库文件夹（Medium）。title 必填；parent_id 省略时创建在根目录。可选 icon/color 会原样保存。成功返回 success、action、folder 与 node；node 中的 id/path 可直接用于后续操作。',
+        '创建资源库文件夹（Medium）。parent_id 省略时建在根目录。返回 folder 与 node（id/path 供后续操作）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          title: { type: 'string', minLength: 1, maxLength: 255, description: '【必填】文件夹名称' },
-          parent_id: { type: 'string', minLength: 1, description: '可选：父文件夹 ID；省略表示根目录' },
-          icon: { type: 'string', maxLength: 100, description: '可选：文件夹图标标识' },
-          color: { type: 'string', maxLength: 100, description: '可选：文件夹颜色值' },
+          title: { type: 'string', minLength: 1, maxLength: 255, description: '文件夹名称' },
+          parent_id: { type: 'string', minLength: 1, description: '父文件夹 ID；省略=根目录' },
+          icon: { type: 'string', maxLength: 100, description: '图标标识' },
+          color: { type: 'string', maxLength: 100, description: '颜色值' },
         },
         required: ['title'],
       },
@@ -103,13 +103,13 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_folder_rename',
       description:
-        '按文件夹 ID 重命名文件夹（Medium）。成功返回 success、action、folder 与 node；node 含更新后的 id/name/path，且操作不会移动文件夹。',
+        '按文件夹 ID 重命名文件夹（Medium，不移动位置）。返回更新后的 node（id/name/path）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          folder_id: { type: 'string', minLength: 1, description: '【必填】folder_list 返回的文件夹 ID' },
-          title: { type: 'string', minLength: 1, maxLength: 255, description: '【必填】新文件夹名称' },
+          folder_id: { type: 'string', minLength: 1, description: 'folder_list 返回的文件夹 ID' },
+          title: { type: 'string', minLength: 1, maxLength: 255, description: '新名称' },
         },
         required: ['folder_id', 'title'],
       },
@@ -117,13 +117,13 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_rename',
       description:
-        '按准确 DSTU path 重命名资源或文件夹（Medium）。成功返回 success、action 及重命名后的完整 node（id、type、name、path），供后续移动、读取或核验使用。',
+        '按准确 DSTU path 重命名资源或文件夹（Medium）。返回重命名后的 node（id/type/name/path）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', minLength: 1, description: '【必填】只读资源工具返回的准确 DSTU path' },
-          new_name: { type: 'string', minLength: 1, maxLength: 255, description: '【必填】新名称' },
+          path: { type: 'string', minLength: 1, description: '只读资源工具返回的准确 DSTU path' },
+          new_name: { type: 'string', minLength: 1, maxLength: 255, description: '新名称' },
         },
         required: ['path', 'new_name'],
       },
@@ -131,13 +131,13 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_move',
       description:
-        '移动一个资源或文件夹（Medium）。src 是目标的准确 DSTU path；dst 是目标文件夹的 DSTU path，根目录使用 "/"。成功返回 success、action 及移动后的完整 node（id、type、name、path）。',
+        '移动资源或文件夹（Medium）。src=目标准确 DSTU path；dst=目标文件夹 path，根目录 "/"。返回移动后的 node。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          src: { type: 'string', minLength: 1, description: '【必填】待移动资源或文件夹的准确 DSTU path' },
-          dst: { type: 'string', minLength: 1, description: '【必填】目标文件夹 DSTU path；根目录传 "/"' },
+          src: { type: 'string', minLength: 1, description: '待移动目标的准确 DSTU path' },
+          dst: { type: 'string', minLength: 1, description: '目标文件夹 DSTU path；根目录 "/"' },
         },
         required: ['src', 'dst'],
       },
@@ -145,12 +145,12 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_delete',
       description:
-        '把一个资源或文件夹软删除到回收站（Medium，可恢复）。成功返回 success、action 与已删除目标的 path；一项任务累计删除超过 5 项前必须先用 builtin-ask_user 确认目标范围。',
+        '软删除资源或文件夹到回收站（Medium，可恢复）。一项任务累计删除超过 5 项前必须先用 builtin-ask_user 确认。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', minLength: 1, description: '【必填】待移入回收站的准确 DSTU path' },
+          path: { type: 'string', minLength: 1, description: '待移入回收站的准确 DSTU path' },
         },
         required: ['path'],
       },
@@ -158,12 +158,12 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_restore',
       description:
-        '从回收站恢复一个资源或文件夹（Medium）。path 必须来自 dstu_list_trash。成功返回 success、action 及恢复后的完整 node（id、type、name、path）。',
+        '从回收站恢复资源或文件夹（Medium）。path 须来自 dstu_list_trash；返回恢复后的 node。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', minLength: 1, description: '【必填】list_trash 返回的准确 DSTU path' },
+          path: { type: 'string', minLength: 1, description: 'list_trash 返回的准确 DSTU path' },
         },
         required: ['path'],
       },
@@ -171,26 +171,26 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_list_trash',
       description:
-        '只读列出回收站（Low）。成功返回 success、action 和按删除时间排列的 items，每项含 id、type、name、path 等恢复定位信息；同时返回 count、limit、offset、has_more 与 next_offset，供分页及 restore/purge 使用。',
+        '只读列出回收站（Low，按删除时间排列）。每项含 id/type/name/path；返回 count/has_more/next_offset 供分页与 restore/purge 使用。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          limit: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '返回数量，默认及最多 20' },
-          offset: { type: 'integer', minimum: 0, default: 0, description: '分页偏移，默认 0' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '返回数量' },
+          offset: { type: 'integer', minimum: 0, default: 0, description: '分页偏移' },
         },
       },
     },
     {
       name: 'builtin-dstu_set_favorite',
       description:
-        '设置资源或文件夹的收藏状态（Low）。favorite=true 收藏，false 取消收藏。成功返回 success、action、path 与最终 favorite 状态。',
+        '设置资源或文件夹收藏状态（Low）。返回最终 favorite 状态。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', minLength: 1, description: '【必填】资源或文件夹的准确 DSTU path' },
-          favorite: { type: 'boolean', description: '【必填】最终收藏状态；true 收藏，false 取消收藏' },
+          path: { type: 'string', minLength: 1, description: '资源或文件夹的准确 DSTU path' },
+          favorite: { type: 'boolean', description: 'true 收藏，false 取消' },
         },
         required: ['path', 'favorite'],
       },
@@ -198,12 +198,12 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_purge',
       description:
-        '永久删除回收站中的一个目标（High，不可恢复）。每次调用前必须加载 ask-user 并用 builtin-ask_user 列明本次准确 path、取得明确确认。成功仅返回 success、action 与 path；目标之后不能 restore。',
+        '永久删除回收站目标（High，不可恢复）。每次调用前必须用 builtin-ask_user 列明准确 path 并取得明确确认。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', minLength: 1, description: '【必填】list_trash 返回且已明确确认永久删除的准确 DSTU path' },
+          path: { type: 'string', minLength: 1, description: 'list_trash 返回且已确认永久删除的准确 DSTU path' },
         },
         required: ['path'],
       },
@@ -211,16 +211,16 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_upload_file',
       description:
-        '把当前会话授权 runtime root 中的文件上传到资源库（Medium）。必须传 attachment_stage/workspace 或安全后端映射返回的 root_id + relative_path；不接受绝对本地路径。可指定 folder_id、name、mime_type。成功返回 success、action、node、source_id、resource_id、path、name、mime_type、size、folder_id、is_new 与 resource_hash。',
+        '把会话授权 runtime root 中的文件上传到资源库（Medium）。必须传映射返回的 root_id+relative_path，不接受绝对本地路径。返回 resource_id、path、is_new 等。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          root_id: { type: 'string', minLength: 1, description: '当前会话授权的 runtime root ID；必须与 relative_path 同时传入' },
-          relative_path: { type: 'string', minLength: 1, description: 'root 内相对文件路径；必须与 root_id 同时传入，禁止绝对路径和 ..' },
-          folder_id: { type: 'string', minLength: 1, description: '可选：资源库目标文件夹 ID；省略使用默认文件夹' },
-          name: { type: 'string', minLength: 1, maxLength: 255, description: '可选：资源显示名称；省略时取源文件名' },
-          mime_type: { type: 'string', minLength: 1, maxLength: 255, description: '可选：MIME 类型；省略时按扩展名推断' },
+          root_id: { type: 'string', minLength: 1, description: '会话授权的 runtime root ID' },
+          relative_path: { type: 'string', minLength: 1, description: 'root 内相对路径；禁止绝对路径和 ..' },
+          folder_id: { type: 'string', minLength: 1, description: '目标文件夹 ID；省略用默认' },
+          name: { type: 'string', minLength: 1, maxLength: 255, description: '显示名称；省略取源文件名' },
+          mime_type: { type: 'string', minLength: 1, maxLength: 255, description: 'MIME 类型；省略按扩展名推断' },
         },
         required: ['root_id', 'relative_path'],
       },

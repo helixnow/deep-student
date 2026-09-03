@@ -165,7 +165,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 variant="ghost" size="sm"
                 onClick={() => setLocationFilter(tab.id)}
                 className={cn(
-                  '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
+                  '!px-2.5 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-11 text-xs font-medium whitespace-nowrap',
                   isActiveTab
                     ? 'bg-secondary text-secondary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -174,7 +174,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>
                 <span>{tab.label}</span>
                 <span className={cn(
-                  'ml-0.5 text-[10px] opacity-60',
+                  'ml-0.5 text-2xs opacity-60',
                   isActiveTab && 'opacity-100 font-bold'
                 )}>
                   {count}
@@ -360,7 +360,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
 />
 
       <UnifiedSidebarFooter>
-        <div className="grid grid-cols-3 gap-2 text-[11px]">
+        <div className="grid grid-cols-3 gap-2 text-xs">
           <div className="flex flex-col">
             <span className="text-muted-foreground">{t('skills:location.global')}</span>
             <span className="font-semibold">{skillSummary?.global ?? locationCounts.global}</span>

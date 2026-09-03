@@ -391,6 +391,14 @@
   border-radius: 8px;
 }
 
+/* 触屏（coarse pointer）：放大到 44px 触控目标；桌面 fine pointer 保持 22px 视觉 */
+@media (pointer: coarse) {
+  .acr-agent-strip-actions .acr-agent-strip-btn {
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
 /* 键盘可达性：焦点环走 workbench token（a11y，不随材质档降级） */
 .acr-agent-strip-actions .acr-agent-strip-btn:focus-visible {
   outline: none;

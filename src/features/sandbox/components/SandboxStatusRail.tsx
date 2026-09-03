@@ -24,7 +24,7 @@ export function SandboxStatusRail({ onOpenInspector }: SandboxStatusRailProps) {
         onClick={onOpenInspector}
         title={t('sandbox.expand')}
         aria-label={t('sandbox.expand')}
-        className="!h-8 !w-8 !p-0"
+        className="!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
       >
         <SidebarSimple size={16} />
       </DsButton>

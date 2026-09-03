@@ -19,7 +19,11 @@ import { useTranslation } from 'react-i18next';
 import { workbenchBus } from '../../core/workbenchBus';
 import { openChatSession } from '../chat/newSession';
 import type { AppWindowProps } from '../../core/types';
-import { getActiveAnkiTaskCount, subscribeAnkiTaskCount } from './ankiTaskSource';
+import {
+  formatAnkiTaskWindowTitle,
+  getActiveAnkiTaskCount,
+  subscribeAnkiTaskCount,
+} from './ankiTaskSource';
 import { WbSysActivityStrip, WbSysFade, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 
@@ -39,8 +43,8 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
   );
 
   useEffect(() => {
-    const base = t('workbench:apps.taskDashboard');
-    onTitleChange(activeCount > 0 ? `${base} · ${activeCount}` : base);
+    // 标题后缀与 Dock 角标同源换算（formatAnkiTaskWindowTitle ← ankiTaskBadgeForCount）
+    onTitleChange(formatAnkiTaskWindowTitle(t('workbench:apps.taskDashboard'), activeCount));
   }, [onTitleChange, t, activeCount]);
 
   return (

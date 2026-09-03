@@ -20,6 +20,7 @@ import { wikilinkPlugin } from './wikilink';
 import type { WikilinkPluginConfig } from './wikilink';
 import { mentionPlugin } from './mention';
 import type { MentionPluginConfig } from './mention';
+import { pdfRefPlugin } from './pdfRef';
 import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
 
 // Prism 核心必须先导入，组件依赖全局 Prism 对象
@@ -70,6 +71,11 @@ export interface CrepePluginsOptions {
   imageLightbox?: boolean;
   /** Mod-K 链接快捷键，默认启用 */
   linkKeymap?: boolean;
+  /**
+   * pdfref:// 来源行回链（点击回到 PDF 对应页），默认启用。
+   * 纯 click 拦截 + pdf-ref:open 派发，无 UI、无数据依赖。
+   */
+  pdfRefLink?: boolean;
 }
 
 /**
@@ -89,6 +95,7 @@ export const applyCrepePlugins = (
     pasteLink: enablePasteLink = true,
     imageLightbox: enableImageLightbox = true,
     linkKeymap: enableLinkKeymap = true,
+    pdfRefLink: enablePdfRefLink = true,
   } = options;
 
   // 自动 Markdown 格式化
@@ -151,6 +158,11 @@ export const applyCrepePlugins = (
   if (enableLinkKeymap) {
     crepe.editor.use(linkKeymapPlugin());
   }
+
+  // r5-S4：pdfref:// 来源行回链（点击回到 PDF 对应页，复用 pdf-ref:open 链路）
+  if (enablePdfRefLink) {
+    crepe.editor.use(pdfRefPlugin());
+  }
 };
 
 /**
@@ -165,4 +177,5 @@ export const defaultPluginOptions: CrepePluginsOptions = {
   pasteLink: true,
   imageLightbox: true,
   linkKeymap: true,
+  pdfRefLink: true,
 };

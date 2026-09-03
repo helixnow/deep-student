@@ -37,6 +37,14 @@ export {
 } from './MobileHeaderContext';
 export { UnifiedMobileHeader, MobileInFlowHeader, MobilePageScaffold, type UnifiedMobileHeaderProps } from './UnifiedMobileHeader';
 
+// 页内全屏子屏接管统一顶栏（宿主并入自身 useMobileHeader 配置，单一写者）
+export {
+  MobileSubviewChromeProvider,
+  useMobileSubviewChromeHost,
+  useMobileSubviewChrome,
+  type MobileSubviewChrome,
+} from './MobileSubviewChromeContext';
+
 // 现有桌面端组件
 export { MacTopSafeDragZone } from './MacTopSafeDragZone';
 // Topbar（旧版顶部导航栏）已删除（2026-07）：桌面壳的固定标题栏由 App.tsx 自绘，

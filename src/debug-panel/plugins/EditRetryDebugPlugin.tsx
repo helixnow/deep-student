@@ -323,7 +323,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             variant={flowFilter === 'all' ? 'default' : 'outline'}
             onClick={() => setFlowFilter('all')}
-            className="h-6 text-xs px-2"
+            className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
           >
             全部
           </Button>
@@ -331,7 +331,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             variant={flowFilter === 'edit' ? 'default' : 'outline'}
             onClick={() => setFlowFilter('edit')}
-            className="h-6 text-xs px-2"
+            className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
           >
             <PencilSimple size={12} className="mr-1" />
             编辑
@@ -340,7 +340,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             variant={flowFilter === 'retry' ? 'default' : 'outline'}
             onClick={() => setFlowFilter('retry')}
-            className="h-6 text-xs px-2"
+            className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowClockwise size={12} className="mr-1" />
             重试
@@ -353,7 +353,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           size="sm"
           variant={showStateChanges ? 'default' : 'outline'}
           onClick={() => setShowStateChanges(!showStateChanges)}
-          className="h-6 text-xs px-2"
+          className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
         >
           {showStateChanges ? <Eye size={12} className="mr-1" /> : <EyeSlash size={12} className="mr-1" />}
           状态
@@ -365,7 +365,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           size="sm"
           variant="outline"
           onClick={() => setAutoScroll(!autoScroll)}
-          className="h-6 text-xs px-2"
+          className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
         >
           {autoScroll ? <Lock size={12} className="mr-1" /> : <LockOpen size={12} className="mr-1" />}
           {autoScroll ? '锁定' : '解锁'}
@@ -374,7 +374,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           size="sm"
           variant="outline"
           onClick={handleCopyLogs}
-          className="h-6 text-xs px-2"
+          className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
         >
           <Copy size={12} />
         </Button>
@@ -382,7 +382,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           size="sm"
           variant="outline"
           onClick={handleClearLogs}
-          className="h-6 text-xs px-2"
+          className="h-6 text-xs px-2 [@media(pointer:coarse)]:min-h-11"
         >
           <Trash size={12} />
         </Button>

@@ -32,6 +32,8 @@ describe('computeTiledFrame — 12 种平铺形态', () => {
     'tiled-tr',
     'tiled-bl',
     'tiled-br',
+    'tiled-top',
+    'tiled-bottom',
   ];
 
   describe.each([0, 8])('margin=%i', (m) => {
@@ -79,6 +81,22 @@ describe('computeTiledFrame — 12 种平铺形态', () => {
       const halfLeft = computeTiledFrame('tiled-left', ctx(m, 0.5))!;
       expect(tl.x).toBe(halfLeft.x);
       expect(tl.w).toBe(halfLeft.w);
+    });
+
+    it('上/下半屏垂直互补且整宽：top.y+top.h+m = bottom.y', () => {
+      const top = computeTiledFrame('tiled-top', ctx(m))!;
+      const bottom = computeTiledFrame('tiled-bottom', ctx(m))!;
+      expect(top.x).toBe(m);
+      expect(top.y).toBe(m);
+      expect(top.w).toBe(DESKTOP.w - m * 2);
+      expect(bottom.w).toBe(top.w);
+      expect(top.y + top.h + m).toBe(bottom.y);
+      expect(bottom.y + bottom.h + m).toBe(DESKTOP.h);
+      // 上/下半屏行高与四分屏对齐
+      const tl = computeTiledFrame('tiled-tl', ctx(m))!;
+      const bl = computeTiledFrame('tiled-bl', ctx(m))!;
+      expect(top.h).toBe(tl.h);
+      expect(bottom.h).toBe(bl.h);
     });
   });
 
@@ -156,6 +174,8 @@ describe('zoneToDisplayMode', () => {
     ['tr', 'tiled-tr'],
     ['bl', 'tiled-bl'],
     ['br', 'tiled-br'],
+    ['top-half', 'tiled-top'],
+    ['bottom-half', 'tiled-bottom'],
     ['top-maximize', 'maximized'],
     [null, null],
   ];

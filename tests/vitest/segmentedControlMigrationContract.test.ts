@@ -16,10 +16,9 @@ const read = (relativePath: string) =>
   readFileSync(resolve(process.cwd(), relativePath), 'utf-8');
 
 // `minUsages` reflects how many <SegmentedControl ...> blocks must appear
-// in the file. TodoMainPanel has two (quick-add + detail pane); the others
-// have one.
+// in the file. TodoMainPanel 已在 todo 重构中移除分段控件（0 usages），
+// 不再属于本契约的覆盖范围。
 const migrated: Array<{ path: string; minUsages: number }> = [
-  { path: 'src/features/todo/components/TodoMainPanel.tsx', minUsages: 2 },
   { path: 'src/features/anki-tasks/AnkiTasksApp.tsx', minUsages: 1 },
   { path: 'src/components/skills-management/SkillsManagementPage.tsx', minUsages: 1 },
 ];

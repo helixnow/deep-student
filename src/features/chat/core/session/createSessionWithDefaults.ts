@@ -4,6 +4,7 @@ import { sessionManager } from './sessionManager';
 import { groupCache } from '../store/groupCache';
 import { skillDefaults } from '../../skills/skillDefaults';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { getDefaultPermissionPreset } from './permissionPresetDefaults';
 
 interface CreateSessionWithDefaultsOptions {
   mode: string;
@@ -58,6 +59,21 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
     groupId: session.groupId ?? options.groupId ?? null,
     sessionMetadata: (metadata ?? null) as Record<string, unknown> | null,
   });
+
+  // 新会话默认权限档位：沿用用户上次选择的安全档（cautious/relaxed）。
+  // 产品默认（relaxed）时跳过——前后端初始态已是 relaxed，无需多一次 IPC；
+  // 高权限档从不被记忆（见 permissionPresetDefaults），此处只可能命中 cautious。
+  const defaultPreset = getDefaultPermissionPreset();
+  if (defaultPreset !== 'relaxed') {
+    try {
+      await store.getState().setPermissionPreset(defaultPreset);
+    } catch (presetError) {
+      console.warn(
+        '[createSessionWithDefaults] Failed to apply default permission preset:',
+        getErrorMessage(presetError),
+      );
+    }
+  }
 
   const groupDefaults = options.groupId ? groupCache.get(options.groupId)?.defaultSkillIds ?? [] : [];
   const effectiveDefaults = skillDefaults.getEffective(groupDefaults);

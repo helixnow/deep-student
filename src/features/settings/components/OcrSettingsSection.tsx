@@ -184,7 +184,7 @@ export const OcrSettingsSection: React.FC = () => {
             size="sm"
             onClick={handleReset}
             disabled={saving}
-            className="gap-1"
+            className="gap-1 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}

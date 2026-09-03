@@ -323,7 +323,7 @@ Your learning data stays under your control.
 - Full ZIP backup & recovery (incremental backup retired), data import/export
 - AES-256-GCM encryption for sensitive data, dual-slot A/B switching
 - Audit logs for full traceability
-- Cloud sync (experimental): backup-style sync via S3-compatible storage & WebDAV; FTP backend experimental; not real-time collaboration
+- Cloud sync (experimental): desktop WebDAV / S3-compatible / experimental FTP; Android is WebDAV only. Whole-package backup is a full ZIP single-object PUT (no incremental transfer, dedup, or CDC). The default cloud ZIP is a portable archive and cannot slot-restore. When a cloud E2EE password is configured, Backup to Cloud Now exports an encrypted full-fidelity ZIP; if that password cannot be read, export is refused instead of silently writing a portable archive. Not real-time collaboration.
 
 </details>
 

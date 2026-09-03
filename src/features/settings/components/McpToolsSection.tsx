@@ -46,6 +46,7 @@ import {
 import { cn } from '@/lib/utils';
 import { isAndroid } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
@@ -55,6 +56,7 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { ApiKeyField } from './ApiKeyField';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -310,6 +312,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="ghost"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('settings:mcp_server_edit.cancel')}
@@ -317,6 +320,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="danger"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={deleting}
               onClick={async () => {
                 if (deleting) return;
@@ -456,11 +460,11 @@ function ServerListItem({
                 <div className="h-7" style={{ width: isBuiltin ? 28 : 124 }} aria-hidden="true" />
               ) : (
               <>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label={t('settings:mcp_descriptions.action_preview')}>
                 <Eye className="w-3.5 h-3.5" />
               </DsButton>
               {!isBuiltin && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" title={t('settings:mcp_descriptions.action_test')} aria-label={t('settings:mcp_descriptions.action_test')}>
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
@@ -478,7 +482,7 @@ function ServerListItem({
                   <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (onEditInPanel) { onEditInPanel(); } else { onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); } }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
                   </DsButton>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
                     <Trash className="w-3.5 h-3.5" />
                   </DsButton>
                 </>
@@ -803,11 +807,11 @@ function ServerEditPanel({
     <div className="p-4 space-y-6">
       {/* 模式切换标签 */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <FileCode className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.form_mode')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <CodeBlock className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
         </DsButton>
@@ -908,7 +912,7 @@ function ServerEditPanel({
 
             {/* 高级配置折叠区 */}
             <div className="border border-border/40 rounded-lg overflow-hidden">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none [@media(pointer:coarse)]:!min-h-11">
                 <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                 {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
               </DsButton>
@@ -939,7 +943,7 @@ function ServerEditPanel({
                       <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                         {t('settings:mcp_server_edit.env_vars')}
                       </label>
-                      <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                      <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
                         + {t('settings:mcp_server_edit.add')}
                       </DsButton>
                     </div>
@@ -962,7 +966,7 @@ function ServerEditPanel({
                               className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
-                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                               <Trash className="w-3.5 h-3.5" />
                             </DsButton>
                           </div>
@@ -1012,6 +1016,7 @@ function ServerEditPanel({
             type="button"
             variant="outline"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -1021,6 +1026,7 @@ function ServerEditPanel({
             type="submit"
             variant="primary"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={isSaving}
           >
             {t('settings:mcp_server_edit.save')}
@@ -1259,11 +1265,11 @@ function NewServerEditItem({
       <div className="p-4 space-y-6">
         {/* 模式切换标签 */}
         <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <FileCode className="w-3.5 h-3.5" />
             {t('settings:mcp_server_edit.form_mode')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <CodeBlock className="w-3.5 h-3.5" />
             JSON
           </DsButton>
@@ -1364,7 +1370,7 @@ function NewServerEditItem({
 
               {/* 高级配置折叠区 */}
               <div className="border border-border/40 rounded-lg overflow-hidden">
-                <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none [@media(pointer:coarse)]:!min-h-11">
                   <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                   {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
                 </DsButton>
@@ -1408,7 +1414,7 @@ function NewServerEditItem({
                         <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                           {t('settings:mcp_server_edit.env_vars')}
                         </label>
-                        <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                        <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
                           + {t('settings:mcp_server_edit.add')}
                         </DsButton>
                       </div>
@@ -1431,7 +1437,7 @@ function NewServerEditItem({
                                 className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
-                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                                 <Trash className="w-3.5 h-3.5" />
                               </DsButton>
                             </div>
@@ -1481,6 +1487,7 @@ function NewServerEditItem({
               type="button"
               variant="outline"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={onCancel}
               disabled={isSubmitting}
             >
@@ -1490,6 +1497,7 @@ function NewServerEditItem({
               type="submit"
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={isSubmitting}
             >
               {t('settings:mcp_server_edit.create')}
@@ -1520,6 +1528,7 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
         onClick={onAdd}
         variant="primary"
         size="sm"
+        className="[@media(pointer:coarse)]:!min-h-11"
       >
         <Plus className="w-4 h-4 mr-1" />
         {t('settings:mcp_server_list.add_server')}
@@ -1528,8 +1537,8 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-// 操作菜单组件
-function ActionMenu({
+// 操作菜单组件（导出供窄屏视口契约测试使用，见 #46）
+export function ActionMenu({
   onReconnect,
   onRefresh,
   onHealthCheck,
@@ -1547,61 +1556,96 @@ function ActionMenu({
   const { isSmallScreen } = useBreakpoint();
   const [isOpen, setIsOpen] = useState(false);
 
+  // 📱 Android 返回键：本菜单为自绘浮层（桌面 fixed 遮罩 / 移动内联展开），
+  // 无 data-state="open"，协调器 Radix 兜底探测不到；打开期间显式注册
+  // overlay 档 handler 先关菜单（对照 FinderBatchToolbar 排序菜单）。
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
+
   const menuItems = (
     <>
-      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.reconnect')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.refresh_list')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Flask className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.health_check')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
         {t('settings:mcp.clear_cache')}
       </DsButton>
       <div className="my-1 border-t border-border/50" />
-      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Key className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.security_policy')}
       </DsButton>
     </>
   );
 
-  return (
-    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <DsButton
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-      >
-        <DotsThree className="w-4 h-4" />
-        {t('settings:mcp_descriptions.quick_actions')}
-      </DsButton>
+  // 移动端：按钮下方内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）；
+  // UiPresence 承载打开/退出动画。
+  if (isSmallScreen) {
+    return (
+      <div className={cn('relative', isOpen && 'w-full')}>
+        <DsButton
+          variant="outline"
+          size="sm"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          className="[@media(pointer:coarse)]:!min-h-11"
+        >
+          <DotsThree className="w-4 h-4" />
+          {t('settings:mcp_descriptions.quick_actions')}
+        </DsButton>
 
-      {!isSmallScreen && isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-      <UiPresence
-        open={isOpen}
-        inClass="ui-zoom-fade-in motion-reduce:animate-none"
-        outClass="ui-zoom-fade-out"
-        className={isSmallScreen
-          ? 'mt-1 w-full rounded-lg border border-border bg-popover p-1.5'
-          : 'absolute top-full right-0 z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-popover p-1.5 shadow-lg'}
+        <UiPresence
+          open={isOpen}
+          inClass="ui-zoom-fade-in motion-reduce:animate-none"
+          outClass="ui-zoom-fade-out"
+          className="mt-1 w-full rounded-lg border border-border bg-popover p-1.5"
+        >
+          {menuItems}
+        </UiPresence>
+      </div>
+    );
+  }
+
+  // 桌面/平板（含安卓横屏 ≥768px）：Portal + fixed 定位（#46）。
+  // 旧实现是 `absolute right-0` + z-50：在窄视口下会超出屏幕左缘，
+  // 且被设置内容滚动容器裁切、被侧栏 stacking context 压住。
+  // Popover 原语自带视口碰撞钳制（resolvePopoverPosition）与 Z_INDEX.popover 层级。
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <DsButton
+          variant="outline"
+          size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
+        >
+          <DotsThree className="w-4 h-4" />
+          {t('settings:mcp_descriptions.quick_actions')}
+        </DsButton>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="max-w-[calc(100vw-1rem)]"
+        data-testid="mcp-quick-actions-menu"
       >
         {menuItems}
-      </UiPresence>
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1681,6 +1725,21 @@ export function PresetServerSelector({
     };
   }, [isOpen, closeSelector]);
 
+  // 📱 Android 返回键：选择器为自绘浮层（桌面 fixed 遮罩 / 移动内联展开），
+  // 无 data-state="open"，Radix 兜底探测不到；打开期间显式注册 overlay 档
+  // handler。层级语义：先关权限确认（移动内联卡 / 桌面 Sheet），再关预置列表。
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      if (pendingPreset) {
+        closePermissionDrawer();
+      } else {
+        closeSelector();
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen, pendingPreset, closePermissionDrawer, closeSelector]);
+
   const confirmInstall = useCallback(() => {
     if (!pendingPreset) return;
     if (pendingPreset.requiresApiKey && !pendingApiKey.trim() && !(oauthSupported && enableOauth)) {
@@ -1725,7 +1784,7 @@ export function PresetServerSelector({
                         disabled={isAdded}
                         data-testid={`mcp-preset-item-${preset.id}`}
                         className={cn(
-                          'w-full !justify-start !h-auto !py-2 text-left',
+                          'w-full !justify-start !h-auto !py-2 text-left [@media(pointer:coarse)]:!min-h-11',
                           isAdded && 'opacity-50 bg-muted/30'
                         )}
                       >
@@ -1847,7 +1906,7 @@ export function PresetServerSelector({
       )}
 
       {oauthSupported && isOAuthCapablePreset(pendingPreset) && (
-        <label className="flex items-start gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center">
           <Checkbox
             checked={enableOauth && !pendingApiKey.trim()}
             onCheckedChange={(v) => {
@@ -1866,63 +1925,54 @@ export function PresetServerSelector({
 
   const permissionFooterButtons = (
     <>
-      <DsButton variant="ghost" size="sm" onClick={closePermissionDrawer}>
+      <DsButton variant="ghost" size="sm" onClick={closePermissionDrawer} className="[@media(pointer:coarse)]:!min-h-11">
         {t('common:cancel')}
       </DsButton>
-      <DsButton variant="primary" size="sm" onClick={confirmInstall}>
+      <DsButton variant="primary" size="sm" onClick={confirmInstall} className="[@media(pointer:coarse)]:!min-h-11">
         {t('settings:mcp_presets.confirm_install')}
       </DsButton>
     </>
   );
 
-  return (
-    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <DsButton
-        ref={addPresetBtnRef}
-        onClick={() => setIsOpen(!isOpen)}
-        variant="outline"
-        size="sm"
-        aria-haspopup={isSmallScreen ? undefined : 'dialog'}
-        aria-expanded={isOpen}
-        data-testid="mcp-preset-add-btn"
-      >
-        <Package className="w-4 h-4 mr-1" aria-hidden="true" />
-        {t('settings:mcp_presets.add_preset')}
-      </DsButton>
-
-      <UiPresence
-        open={isOpen && !(isSmallScreen && Boolean(pendingPreset))}
-        inClass="ui-zoom-fade-in motion-reduce:animate-none"
-        outClass="ui-zoom-fade-out"
-        className={isSmallScreen ? 'mt-1 w-full' : 'absolute right-0 top-full z-50 mt-1'}
-      >
-        {!isSmallScreen && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={closeSelector}
-            aria-hidden="true"
-            data-testid="mcp-preset-selector-backdrop"
-          />
-        )}
-        <CustomScrollArea
-          ref={selectorPanelRef}
-          className={isSmallScreen
-            ? 'h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover mcp-preset-selector'
-            : 'relative z-50 h-[min(60dvh,30rem)] w-[380px] max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover shadow-lg mcp-preset-selector'}
-          viewportClassName="p-2"
-          trackOffsetTop={4}
-          trackOffsetBottom={4}
-          role={isSmallScreen ? 'group' : 'dialog'}
-          aria-modal={isSmallScreen ? undefined : 'true'}
-          aria-label={t('settings:mcp_presets.title')}
-          tabIndex={-1}
-          data-testid="mcp-preset-selector"
+  // P0-3 移动端：内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）。
+  // 选中预置后列表让位给权限确认卡，取消则回到列表；UiPresence 承载打开/退出动画。
+  if (isSmallScreen) {
+    return (
+      <div className={cn('relative', isOpen && 'w-full')}>
+        <DsButton
+          ref={addPresetBtnRef}
+          onClick={() => setIsOpen(!isOpen)}
+          variant="outline"
+          size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
+          aria-expanded={isOpen}
+          data-testid="mcp-preset-add-btn"
         >
-          {selectorContent}
-        </CustomScrollArea>
-      </UiPresence>
+          <Package className="w-4 h-4 mr-1" aria-hidden="true" />
+          {t('settings:mcp_presets.add_preset')}
+        </DsButton>
 
-      {isSmallScreen && (
+        <UiPresence
+          open={isOpen && !pendingPreset}
+          inClass="ui-zoom-fade-in motion-reduce:animate-none"
+          outClass="ui-zoom-fade-out"
+          className="mt-1 w-full"
+        >
+          <CustomScrollArea
+            ref={selectorPanelRef}
+            className="h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover mcp-preset-selector"
+            viewportClassName="p-2"
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
+            role="group"
+            aria-label={t('settings:mcp_presets.title')}
+            tabIndex={-1}
+            data-testid="mcp-preset-selector"
+          >
+            {selectorContent}
+          </CustomScrollArea>
+        </UiPresence>
+
         <UiPresence
           open={isOpen && Boolean(pendingPreset)}
           inClass="ui-zoom-fade-in motion-reduce:animate-none"
@@ -1950,47 +2000,94 @@ export function PresetServerSelector({
             </>
           )}
         </UiPresence>
-      )}
+      </div>
+    );
+  }
+
+  // 桌面/平板（含安卓横屏 ≥768px）：Portal + fixed 定位（#46）。
+  // 旧实现是 `absolute right-0` + z-50：预置弹层在窄视口下向左溢出屏幕、
+  // 被设置内容滚动容器裁切、被侧栏 stacking context 压住。
+  // Popover 原语自带视口碰撞钳制（resolvePopoverPosition）与 Z_INDEX.popover 层级。
+  return (
+    <div className="relative">
+      <Popover
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (open) setIsOpen(true);
+          else closeSelector();
+        }}
+      >
+        <PopoverTrigger asChild>
+          <DsButton
+            ref={addPresetBtnRef}
+            variant="outline"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            aria-haspopup="dialog"
+            data-testid="mcp-preset-add-btn"
+          >
+            <Package className="w-4 h-4 mr-1" aria-hidden="true" />
+            {t('settings:mcp_presets.add_preset')}
+          </DsButton>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={4}
+          aria-modal="true"
+          aria-label={t('settings:mcp_presets.title')}
+          data-testid="mcp-preset-selector"
+          className="w-[380px] max-w-[calc(100vw-1.5rem)] overflow-hidden !p-0"
+        >
+          <CustomScrollArea
+            ref={selectorPanelRef}
+            className="h-[min(60dvh,30rem)] w-full mcp-preset-selector"
+            viewportClassName="p-2"
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
+            tabIndex={-1}
+          >
+            {selectorContent}
+          </CustomScrollArea>
+        </PopoverContent>
+      </Popover>
 
       {/* 桌面端：安装前权限确认保留 Sheet；移动端由上方内联卡承载（P0-3） */}
-      {!isSmallScreen && (
-        <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
-          <SheetContent
-            side="right"
-            className="flex min-h-0 w-full flex-col overflow-hidden sm:max-w-md mcp-preset-permission-drawer"
-            data-testid="mcp-preset-permission-drawer"
-            aria-describedby="mcp-preset-permission-summary"
-            onWheel={(event) => event.stopPropagation()}
-          >
-            {pendingPreset && (
-              <>
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    <Shield className="w-5 h-5" aria-hidden="true" />
-                    {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
-                  </SheetTitle>
-                  <SheetDescription>
-                    {t(pendingPreset.descriptionKey)}
-                  </SheetDescription>
-                </SheetHeader>
-                <CustomScrollArea
-                  className="mt-4 min-h-0 flex-1"
-                  viewportClassName="pr-2 text-sm"
-                  trackOffsetTop={4}
-                  trackOffsetBottom={4}
-                >
-                  <div className="space-y-4">
-                    {permissionBody}
-                  </div>
-                </CustomScrollArea>
-                <SheetFooter className="mt-6 shrink-0 flex gap-2 sm:justify-end">
-                  {permissionFooterButtons}
-                </SheetFooter>
-              </>
-            )}
-          </SheetContent>
-        </Sheet>
-      )}
+      <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
+        <SheetContent
+          side="right"
+          className="flex min-h-0 w-full flex-col overflow-hidden sm:max-w-md mcp-preset-permission-drawer"
+          data-testid="mcp-preset-permission-drawer"
+          aria-describedby="mcp-preset-permission-summary"
+          onWheel={(event) => event.stopPropagation()}
+        >
+          {pendingPreset && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" aria-hidden="true" />
+                  {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
+                </SheetTitle>
+                <SheetDescription>
+                  {t(pendingPreset.descriptionKey)}
+                </SheetDescription>
+              </SheetHeader>
+              <CustomScrollArea
+                className="mt-4 min-h-0 flex-1"
+                viewportClassName="pr-2 text-sm"
+                trackOffsetTop={4}
+                trackOffsetBottom={4}
+              >
+                <div className="space-y-4">
+                  {permissionBody}
+                </div>
+              </CustomScrollArea>
+              <SheetFooter className="mt-6 shrink-0 flex gap-2 sm:justify-end">
+                {permissionFooterButtons}
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -2314,7 +2411,7 @@ function ShellCommandRulesSection() {
             {t('settings:tool_permissions.shell_rules.desc')}
           </p>
         </div>
-        <DsButton variant="outline" size="sm" onClick={beginAdd} disabled={loading || saving}>
+        <DsButton variant="outline" size="sm" onClick={beginAdd} disabled={loading || saving} className="[@media(pointer:coarse)]:!min-h-11">
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('settings:tool_permissions.shell_rules.add')}
         </DsButton>
@@ -2335,7 +2432,7 @@ function ShellCommandRulesSection() {
                 disabled={saving}
                 onClick={() => void handleDefaultEffect(effect)}
                 aria-pressed={defaultEffect === effect}
-                className={cn('!h-7 !px-2 text-xs', defaultEffect === effect && actionClass[effect])}
+                className={cn('!h-7 !px-2 text-xs [@media(pointer:coarse)]:!h-11', defaultEffect === effect && actionClass[effect])}
               >
                 {t(`settings:tool_permissions.shell_rules.action_${effect}`)}
               </DsButton>
@@ -2346,7 +2443,7 @@ function ShellCommandRulesSection() {
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-xs text-warning">
             <Warning className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="flex-1">{t('settings:tool_permissions.shell_rules.default_allow_warning')}</span>
-            <DsButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs [@media(pointer:coarse)]:!h-11">
               {t('settings:tool_permissions.shell_rules.confirm_allow')}
             </DsButton>
           </div>
@@ -2366,7 +2463,7 @@ function ShellCommandRulesSection() {
             onChange={event => setPreviewCommand(event.target.value)}
             placeholder={t('settings:tool_permissions.shell_rules.preview_placeholder')}
             aria-label={t('settings:tool_permissions.shell_rules.preview_title')}
-            className="min-w-0 flex-1 font-mono"
+            className="min-w-0 flex-1 font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
           />
           {preview && (
             <div className="flex min-h-8 items-center gap-2 text-xs sm:max-w-[45%]">
@@ -2391,11 +2488,11 @@ function ShellCommandRulesSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[8rem_10rem_minmax(12rem,1fr)] gap-2">
             <Select value={draft.action} onValueChange={value => { setDraft(prev => ({ ...prev, action: value as ShellCommandAction })); setPendingRisk(null); }}>
-              <SelectTrigger aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={draft.matchType} onValueChange={value => { setDraft(prev => ({ ...prev, matchType: value as ShellCommandMatchType })); setDraftError(null); setPendingRisk(null); }}>
-              <SelectTrigger aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Input
@@ -2403,11 +2500,11 @@ function ShellCommandRulesSection() {
               onChange={event => { setDraft(prev => ({ ...prev, pattern: event.target.value })); setDraftError(null); setPendingRisk(null); }}
               placeholder={t(`settings:tool_permissions.shell_rules.placeholder_${draft.matchType}`)}
               aria-label={t('settings:tool_permissions.shell_rules.pattern_label')}
-              className="font-mono"
+              className="font-mono [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               autoFocus
             />
           </div>
-          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2" />
+          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" />
           <p className="mt-1.5 text-xs text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
           {draftError && <p className="mt-2 text-xs text-destructive">{t(`settings:tool_permissions.shell_rules.error_${draftError}`)}</p>}
           {pendingRisk && (
@@ -2417,8 +2514,8 @@ function ShellCommandRulesSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <DsButton variant="outline" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }}>{t('common:cancel')}</DsButton>
-            <DsButton variant="primary" size="sm" onClick={() => void saveDraft()} disabled={saving}>
+            <DsButton variant="outline" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="[@media(pointer:coarse)]:!min-h-11">{t('common:cancel')}</DsButton>
+            <DsButton variant="primary" size="sm" onClick={() => void saveDraft()} disabled={saving} className="[@media(pointer:coarse)]:!min-h-11">
               {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
             </DsButton>
           </div>
@@ -2434,15 +2531,16 @@ function ShellCommandRulesSection() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_9rem_10rem] gap-2 mb-2">
-            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="pl-8" /></div>
-            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
-            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="pl-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" /></div>
+            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
           </div>
-          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">
+          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
                       checked={allVisibleSelected ? true : selectedRuleIds.size > 0 ? 'indeterminate' : false}
               onCheckedChange={checked => selectVisibleRules(checked === true)}
               aria-label={t('settings:tool_permissions.shell_rules.select_visible')}
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
             />
             <span className="text-xs text-muted-foreground">
               {selectedRuleIds.size > 0
@@ -2451,9 +2549,9 @@ function ShellCommandRulesSection() {
             </span>
             {selectedRuleIds.size > 0 && (
               <div className="ml-auto flex flex-wrap items-center gap-1">
-                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')}>{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
-                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')}>{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
-                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="[@media(pointer:coarse)]:!min-h-11">{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="[@media(pointer:coarse)]:!min-h-11">{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
+                <DsButton variant="outline" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!text-destructive [@media(pointer:coarse)]:!min-h-11">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
               </div>
             )}
           </div>
@@ -2470,6 +2568,7 @@ function ShellCommandRulesSection() {
                       return next;
                     })}
                     aria-label={t('settings:tool_permissions.shell_rules.select_rule', { pattern: rule.pattern })}
+                    className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -2482,8 +2581,8 @@ function ShellCommandRulesSection() {
                   </div>
                   <div className="flex items-center justify-end gap-1">
                     <Switch checked={rule.enabled} disabled={saving} onCheckedChange={enabled => void setRuleEnabled(rule, enabled)} aria-label={t('settings:tool_permissions.shell_rules.toggle_rule', { pattern: rule.pattern })} />
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></DsButton>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></DsButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></DsButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></DsButton>
                   </div>
                 </div>;
               })}
@@ -2964,7 +3063,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 }
               }}
               className={cn(
-                '!h-auto !px-2 !py-0.5 text-xs font-medium',
+                '!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11',
                 isActive
                   ? config.badge
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -3004,7 +3103,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
               aria-pressed={active}
               onClick={() => void handleBulkOverride(toolNames, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -3042,7 +3141,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
               aria-pressed={active}
               onClick={() => void handleSetGroupOverride(kind, group, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -3162,14 +3261,14 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   }
                 }}
                 placeholder={t('settings:tool_permissions.runtime_root_path_placeholder')}
-                className="min-w-0 font-mono lg:basis-0 lg:flex-1"
+                className="min-w-0 font-mono lg:basis-0 lg:flex-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               />
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select
                   value={workspaceAccess}
                   onValueChange={(value) => setWorkspaceAccess(value as 'read_only' | 'read_write')}
                 >
-                  <SelectTrigger className="w-[8.5rem]" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
+                  <SelectTrigger className="w-[8.5rem] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3182,7 +3281,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   size="sm"
                   onClick={handleBrowseRuntimeRoot}
                   disabled={isSavingRuntimeRoot}
-                  className="flex-shrink-0"
+                  className="flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_browse')}
@@ -3192,7 +3291,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   size="sm"
                   onClick={handleSetWorkspaceRoot}
                   disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
-                  className="text-xs flex-shrink-0"
+                  className="text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Check className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_set_workspace')}
@@ -3203,7 +3302,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   onClick={handleAuthorizeRuntimeRoot}
                   disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
                   className={cn(
-                    'text-xs flex-shrink-0',
+                    'text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     pendingRootRisk && 'text-warning'
                   )}
                 >
@@ -3239,7 +3338,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                       variant="ghost"
                       size="sm"
                       onClick={handleReselectRuntimeRoot}
-                      className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline"
+                      className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('settings:tool_permissions.runtime_root_reselect')}
                     </DsButton>
@@ -3336,7 +3435,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleFocusRuntimeRootInput}
-                                className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline"
+                                className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11"
                               >
                                 {t('settings:tool_permissions.runtime_root_configure_now')}
                               </DsButton>
@@ -3349,7 +3448,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                             size="icon"
                             iconOnly
                             onClick={() => handleRevokeRuntimeRoot(root.id)}
-                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-destructive flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_remove')}
                             aria-label={t('settings:tool_permissions.runtime_root_remove')}
                           >
@@ -3362,7 +3461,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                             size="icon"
                             iconOnly
                             onClick={handleResetWorkspaceRoot}
-                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_workspace_reset')}
                             aria-label={t('settings:tool_permissions.runtime_root_workspace_reset')}
                           >
@@ -3404,7 +3503,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 size="sm"
                 onClick={fetchConfig}
                 disabled={isLoading || isBulkUpdating}
-                className="flex-shrink-0"
+                className="flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
@@ -3446,7 +3545,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         onClick={() => setGroupMode(mode)}
                         aria-pressed={groupMode === mode}
                         className={cn(
-                          '!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3',
+                          '!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3',
                           groupMode === mode && 'bg-background text-foreground shadow-sm'
                         )}
                       >
@@ -3495,7 +3594,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowAdvancedTools(value => !value)}
-                  className="mt-2 !px-1 text-xs"
+                  className="mt-2 !px-1 text-xs [@media(pointer:coarse)]:!min-h-11"
                   aria-expanded={showAdvancedTools}
                 >
                   <CaretRight className={cn('h-3.5 w-3.5 mr-1 transition-transform', showAdvancedTools && 'rotate-90')} />
@@ -3521,11 +3620,11 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                           onChange={event => setToolSearch(event.target.value)}
                           placeholder={t('settings:tool_permissions.search_placeholder')}
                           aria-label={t('settings:tool_permissions.search_placeholder')}
-                          className="h-8 pl-8 text-xs"
+                          className="h-8 pl-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                       </div>
                       <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                        <SelectTrigger aria-label={t('settings:tool_permissions.source_filter')}>
+                        <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.source_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3536,7 +3635,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={levelFilter} onValueChange={value => setLevelFilter(value as ToolLevelFilter)}>
-                        <SelectTrigger aria-label={t('settings:tool_permissions.level_filter')}>
+                        <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.level_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3548,7 +3647,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={overrideFilter} onValueChange={value => setOverrideFilter(value as ToolOverrideFilter)}>
-                        <SelectTrigger aria-label={t('settings:tool_permissions.override_filter')}>
+                        <SelectTrigger className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.override_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3560,11 +3659,12 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                     </div>
 
                     {filteredTools.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/20 border border-border/30 rounded-t-md">
+                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/20 border border-border/30 rounded-t-md [@media(pointer:coarse)]:min-h-11">
                         <Checkbox
                           checked={allVisibleSelected ? true : selectedVisibleCount > 0 ? 'indeterminate' : false}
                           onCheckedChange={checked => selectVisibleTools(checked === true)}
                           aria-label={t('settings:tool_permissions.select_visible')}
+                          className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                         />
                         <span className="text-xs text-muted-foreground">
                           {selectedTools.size > 0
@@ -3580,6 +3680,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                               variant="outline"
                               size="sm"
                               onClick={() => setSelectedTools(new Set())}
+                              className="[@media(pointer:coarse)]:!min-h-11"
                             >
                               {t('settings:tool_permissions.clear_selection')}
                             </DsButton>
@@ -3616,7 +3717,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                                     checked={selectedTools.has(tool.id)}
                                     onCheckedChange={checked => toggleToolSelection(tool.id, checked === true)}
                                     aria-label={t('settings:tool_permissions.select_tool', { name: tool.display })}
-                                    className="mt-0.5"
+                                    className="mt-0.5 relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                                   />
                                   <span className={cn(
                                     'mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0',
@@ -3673,7 +3774,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 variant="outline"
                 size="sm"
                 onClick={handleClearHistory}
-                className="!text-destructive"
+                className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
               >
                 <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}
@@ -3871,6 +3972,7 @@ export function McpToolsSection({
               disabled={isAddingNew}
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Plus className="w-4 h-4 mr-1" />
               {t('settings:mcp.add_server')}
@@ -4000,7 +4102,7 @@ export function McpToolsSection({
             variant="ghost"
             size="sm"
             onClick={() => setPermissionsExpanded((open) => !open)}
-            className="!h-auto !px-1 !py-1.5 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
+            className="!h-auto !px-1 !py-1.5 [@media(pointer:coarse)]:!min-h-11 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
             aria-expanded={permissionsExpanded}
             aria-controls="settings-tool-permissions"
           >
@@ -4011,7 +4113,7 @@ export function McpToolsSection({
             {t('settings:tool_permissions.title')}
             {!permissionsExpanded && (
               <span className="ml-1 text-xs font-normal text-muted-foreground">
-                {t('settings:tool_permissions.expand_hint', '点击展开')}
+                {t('common:expand', { defaultValue: 'Expand' })}
               </span>
             )}
           </DsButton>

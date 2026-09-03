@@ -97,6 +97,13 @@ describe('getShortcutGroups', () => {
     expect(findItem(groups, 'canvas', 'indent')?.combos).toContain('alt+ArrowRight');
     expect(findItem(groups, 'canvas', 'selectAll')?.combos).toEqual(['mod+a']);
   });
+
+  it('exposes associationStart (mod+l) on canvas only — outline has no association lines', () => {
+    const canvas = getShortcutGroups('canvas', 'deep-student', 'mac');
+    expect(findItem(canvas, 'canvas', 'associationStart')?.combos).toEqual(['mod+l']);
+    const outline = getShortcutGroups('outline', 'deep-student', 'mac');
+    expect(findItem(outline, 'outline', 'associationStart')).toBeUndefined();
+  });
 });
 
 describe('formatShortcut', () => {

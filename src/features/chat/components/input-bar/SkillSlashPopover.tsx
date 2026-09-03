@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../../skills/skillEnableStorage';
 
@@ -187,6 +188,19 @@ export function useSkillSlashCommands({
   const dismiss = useCallback(() => {
     setDismissedQuery(query);
   }, [query]);
+
+  // 📱 Android 系统返回键：补全弹层打开时先 dismiss（overlay 级），避免返回键
+  // 穿透到底层导航。开合状态由本 hook 持有（组件无 onClose prop），故注册放这里；
+  // 模式与 ModelMentionPopover / InputBarUI 组合面板一致，ref 保持注册稳定。
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      dismissRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
 
   const applySelection = useCallback(
     (index?: number): SkillSlashApplyResult | null => {

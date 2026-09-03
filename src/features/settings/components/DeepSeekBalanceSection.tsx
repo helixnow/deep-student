@@ -116,7 +116,7 @@ export const DeepSeekBalanceSection: React.FC<DeepSeekBalanceSectionProps> = ({
         size="sm"
         variant="ghost"
         iconOnly
-        className="h-5 w-5 shrink-0"
+        className="h-5 w-5 shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         onClick={() => void query()}
         disabled={state.status === 'loading'}
         title={t('settings:vendor_panel.balance_refresh')}

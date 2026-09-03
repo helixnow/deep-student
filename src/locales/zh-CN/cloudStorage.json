@@ -1,6 +1,6 @@
 {
   "title": "云存储",
-  "description": "配置云端备份存储，支持 WebDAV 和 S3 兼容存储",
+  "description": "配置云端备份与记录级同步使用的存储。Android 仅支持 WebDAV；桌面端还支持 S3 兼容存储与实验性的 FTP/FTPS。",
   
   "provider": {
     "label": "存储类型",
@@ -8,10 +8,11 @@
     "webdavDesc": "坚果云、Nextcloud、自建 WebDAV 等",
     "s3": "S3 兼容存储",
     "s3Desc": "AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等",
-    "s3Disabled": "未启用（需编译时启用 S3 feature）",
+    "s3Disabled": "当前平台或安装包不支持 S3。请改用 WebDAV；或在桌面端将数据导出为 ZIP 备份后，再导入到本设备。",
     "ftp": "FTP/FTPS",
     "ftpDesc": "传统 FTP 服务器、支持显式 FTPS 加密",
-    "ftpDescExperimental": "实验性后端，当前存在已知数据风险"
+    "ftpDescExperimental": "实验性后端，当前存在已知数据风险",
+    "ftpDisabledMobile": "Android 不支持 FTP/FTPS。请改用 WebDAV，或在桌面端使用 FTP 同步。"
   },
   
   "webdav": {
@@ -42,9 +43,9 @@
     "secretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "region": "区域（可选）",
     "regionPlaceholder": "us-east-1",
-    "regionHint": "某些 S3 兼容服务可能不需要",
+    "regionHint": "AWS S3 必须与存储桶实际所在区域一致；某些 S3 兼容服务可能不需要",
     "pathStyle": "使用 Path Style",
-    "pathStyleHint": "MinIO 等自建服务需要启用",
+    "pathStyleHint": "MinIO 等自建服务需要启用；阿里云 OSS 请勿开启",
     "insecureWarning": {
       "title": "不安全的 S3 连接",
       "description": "您正在使用明文 HTTP（http://）连接 S3 服务，Access Key、Secret Key 以及传输的数据将以明文形式在网络中传输，可能被中间人窃取。建议使用 HTTPS（https://）加密连接。",
@@ -76,9 +77,30 @@
 
   "encryption": {
     "title": "端到端加密密码（可选，强烈推荐）",
-    "placeholder": "留空则不加密；设置后仅你的设备可解密加密备份",
-    "description": "开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。",
-    "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。"
+    "statusConfigured": "已配置端到端加密",
+    "statusNotConfigured": "未加密",
+    "placeholderConfigured": "已配置加密密码：留空保持现有密码不变，输入新密码则替换",
+    "placeholderUnset": "当前未加密：输入密码以启用端到端加密",
+    "tooShort": "云端端到端加密密码至少需要 {{min}} 个字符（按 Unicode 码点计数，不能为空白）。短于此长度无法导出加密全保真 ZIP，不会保存。",
+    "tooWeak": "云端端到端加密密码过于常见或过于单一（命中常见弱口令名单，或不同字符少于 {{minDistinct}} 个），没有保存。请换一个更难猜的密码。此检查只针对新设密码；沿用旧密码解密既有备份不受影响。",
+    "preexistingShortConfirm": {
+      "title": "密码短于 {{min}} 个字符",
+      "description": "新设的端到端加密密码至少需要 {{min}} 个字符。如果这是你在旧版本中设置过、用于加密既有云端备份的原密码，可以继续保存使用——解密已有备份不受长度限制。若是新设密码，请改用更长的密码。",
+      "confirm": "这是已有的旧密码，继续"
+    },
+    "storedPasswordRequired": "已开启云端端到端加密，但本机没有可用的备份密码。已拒绝继续，以免把无法整槽恢复的便携归档当成加密全保真。请重新填写云端加密密码后再试。",
+    "description": "开启后，整包 ZIP 备份，以及记录级同步的变更记录、同步清单、删除标记，还有文件级对象（workspace 数据库、VFS blob、资产文件）都会使用 AES-256-GCM 端到端加密，云服务商无法读取内容。对象地址仍用明文内容哈希做去重；启用加密前已上传的明文遗留对象会被拒绝下载，需用同一密码重新同步以完成迁移。",
+    "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。",
+    "disableAction": "停用端到端加密",
+    "disabledNotice": "端到端加密已停用。若云端根目录已有加密标记，新备份不会以明文上传，而是会被拒绝",
+    "disableFailed": "停用端到端加密失败，加密密码未被删除",
+    "disableConfirm": {
+      "title": "停用端到端加密？",
+      "description": "此操作将从本设备删除端到端加密密码。WebDAV/S3/FTP 登录凭据不受影响。",
+      "existingBackupsWarning": "如果你没有在其他地方另存该密码，云端已加密的备份将永久无法解密。",
+      "futureUploadsPlaintext": "若此云端根目录进行过加密备份（云端已写入加密标记），停用后新备份不会以明文上传，而是会在上传时被拒绝；需重新填写原密码，或更换云端根目录后才能继续备份。从未加密备份过的根目录则会以未加密形式上传。",
+      "confirm": "确认停用"
+    }
   },
 
   "progress": {
@@ -88,7 +110,9 @@
     "refreshStatus": "正在刷新状态...",
     "downloadCloud": "正在从云端下载...",
     "importZip": "正在导入 ZIP...",
-    "restoreDatabase": "正在恢复数据库..."
+    "restoreDatabase": "正在恢复数据库...",
+    "maintenanceBackup": "正在备份并上传到云端，请勿编辑学习数据或关闭应用",
+    "maintenanceRestore": "正在从云端恢复，请勿编辑学习数据或关闭应用"
   },
   
   "actions": {
@@ -98,10 +122,27 @@
     "saving": "保存中...",
     "uploadNow": "立即备份到云端",
     "uploading": "上传中...",
+    "fullZipHint": "每次备份都会把当前数据打成完整 ZIP，再作为单个对象上传；未变化的文件也不会少传。当前没有增量传输、内容去重或 CDC。从云端恢复、巡检或同步大文件时，WebDAV 与桌面 S3 支持断点续传；FTP 仍需整包重下。Android 只有 WebDAV。未配置云端端到端加密密码时，云端包仍是便携归档；已配置时导出加密全保真 ZIP，解包后应能整槽恢复。已配置却读不到已存密码时会拒绝导出，不会偷偷打成便携包。此接线前上传的云端包仍可能是便携归档，恢复时不会套用已存密码。",
     "downloadLatest": "从云端恢复最新版本",
     "downloading": "下载中...",
     "viewHistory": "查看历史版本",
     "clearConfig": "清除配置"
+  },
+
+  "phase": {
+    "draftUntested": "草稿未测试：当前表单内容尚未发布，不影响已发布配置",
+    "draftTested": "草稿测试通过，尚未发布——点「保存配置」后才会生效",
+    "draftTestFailed": "草稿测试失败，未发布；已发布配置未受影响",
+    "testing": "正在测试草稿连接…",
+    "published": "配置已发布"
+  },
+
+  "clearConfirm": {
+    "title": "清除云存储配置？",
+    "description": "此操作将从本设备删除已保存的服务器地址、账号密码以及端到端加密密码。",
+    "encryptionWarning": "如果你没有在其他地方另存端到端加密密码，已加密的云端备份将永久无法解密。",
+    "cloudFilesKept": "云端已上传的备份文件不会被删除。",
+    "confirm": "确认清除"
   },
   
   "status": {
@@ -113,7 +154,8 @@
     "cloudVersions": "云端版本数",
     "latestVersion": "最新版本",
     "deviceId": "设备 ID",
-    "never": "从未同步"
+    "never": "从未同步",
+    "encryptionMemoryPersistFailed": "本机「加密目录记忆」写入失败：本机第二道明文防护暂时降级（云端加密标记仍然生效）。请检查数据目录的磁盘空间与写入权限。"
   },
   
   "history": {
@@ -126,6 +168,9 @@
     "checksum": "校验和",
     "note": "备注",
     "restore": "恢复此版本",
+    "portableArchive": "便携归档，不能整槽恢复",
+    "fullFidelity": "加密全保真，可整槽恢复",
+    "portableArchiveNotRestorable": "这份云端包是便携归档，不能替换当前数据槽。当前数据没有被改动。",
     "delete": "删除",
     "deleteConfirm": "确定要删除此版本吗？此操作不可撤销。",
     "current": "当前设备"
@@ -139,22 +184,29 @@
     "confirm": "开始备份",
     "success": "备份成功",
     "successDetail": "版本 {{version}} 已上传到云端",
+    "portableArchiveUploaded": "这次上传的是便携归档，换机整槽恢复会被拒绝。要得到可整槽恢复的云端包，请在两端配置同一云端端到端加密密码后重新「立即备份到云端」。",
     "pruned": "已自动清理 {{count}} 个旧版本"
   },
   
   "download": {
     "title": "从云端恢复",
-    "description": "下载云端备份并恢复数据",
-    "warning": "警告：恢复操作将覆盖本地数据！",
-    "warningDetail": "建议先导出当前数据作为备份",
+    "description": "下载云端备份并尝试整槽恢复。未配置云端端到端加密密码时，默认云端包仍是便携归档，整槽校验会拒绝；已配置时解包后应能整槽恢复。此接线前上传的便携云端包仍可导入，不会套用已存密码。",
+    "warning": "警告：只有通过整槽恢复校验的备份才会覆盖本地数据。",
+    "warningDetail": "建议先给本机做一次本地完整备份，不要只依赖这份云端整包。",
+    "partialArchiveNotice": "未配置云端端到端加密密码时，「立即备份到云端」导出的仍是便携归档：会剥离本机密钥与审计数据，整槽恢复校验会明确拒绝，当前数据不会被覆盖。已配置云端端到端加密密码时，「立即备份到云端」会导出加密全保真 ZIP（外层 DSBK 与内层备份密码使用同一已存密码），解包后应能整槽恢复。已配置却读不到已存密码时会拒绝导出，不会偷偷打成便携包。此接线前上传的云端包仍可能是便携归档，恢复时不会套用已存密码。需要换机时请确认两端使用同一密码；也可在「导出备份」里单独设置备份密码。",
     "selectVersion": "选择要恢复的版本",
     "latest": "最新版本",
     "confirm": "开始恢复",
     "confirmTitle": "确认恢复",
+    "confirmVersion": "将恢复云端版本 {{version}}。",
+    "confirmKnownPortable": "这份云端包已标记为便携归档，整槽恢复会被拒绝，当前数据不会被改动。",
+    "confirmKnownFull": "这份云端包已标记为加密全保真，只有通过整槽校验后才会覆盖当前数据。",
+    "confirmUnknownKind": "这份云端包没有恢复种类标记（多半是接线前上传的）。导入后仍会先检查能否整槽；便携/部分归档会被拒绝，当前数据不会被改动。",
     "cancel": "取消",
     "success": "恢复成功",
     "successDetail": "版本 {{version}} 已下载到本地",
-    "successRestart": "数据恢复成功！",
+    "successRestart": "数据恢复成功！应用将立即重启。",
+    "restartNotice": "只有通过整槽恢复校验后，数据才会写入非活动槽并重启；被拒绝的便携/部分归档不会覆盖当前数据。",
     "restartWhenReady": "请手动重启应用以加载恢复的数据。",
     "checksumFailed": "校验和不匹配，文件可能已损坏"
   },
@@ -170,15 +222,82 @@
     "permissionDenied": "权限不足",
     "notFound": "文件不存在",
     "noBackupAvailable": "没有可用的备份文件",
+    "ftpDisabledAndroid": "Android 端暂不支持 FTP/FTPS 存储。请改用 WebDAV，或在桌面端使用 FTP 同步。",
+    "s3DisabledInBuild": "当前安装包不支持 S3 兼容存储。请改用 WebDAV；或在桌面端将数据导出为 ZIP 备份后，再导入到本设备。",
+    "e2eePlaintextLegacyRejected": "云端存在启用加密前遗留的未加密数据，为防止端到端加密被静默降级已拒收，本地数据未被改动。处理办法：在仍持有这些数据的设备上填入相同的加密密码并执行一次上传同步（旧数据会被自动重新加密）；或暂时清除本机加密密码取回旧数据后，重新设置密码并执行一次完整上传。",
+    "e2eeWrongPassword": "加密密码与该云端目录既有的加密数据不一致，操作已在写入前安全中止，本地与云端数据均未被改动。请核对并填入与其他设备一致的端到端加密密码后重试；如确要更换密码，请改用新的云端目录。",
+    "e2eeMarkerCorrupted": "云端加密标记（.encryption-marker）已损坏或异常，无法确认加密密码与既有备份一致，已安全中止（fail-closed）。请按用户指南「数据管理与云同步」的排障说明人工检查该云端目录（必要时删除或重写该标记文件）后重试。",
+    "e2eePasswordRequired": "云端数据是端到端加密的，但本机还没有填写加密密码。操作已安全中止，本地与云端数据均未被改动。请到云同步设置中填入首次启用加密时设置的密码，然后重试。",
+    "e2eeDowngradeRejected": "该云端目录已登记端到端加密，但下载到的备份对象不是密文——疑似密文被明文替换（降级攻击）或云端目录被篡改，已拒绝还原，已下载的可疑对象未保留在本机。本地数据未被改动。若这是启用加密前上传的旧明文版本，请先在仍持有数据的设备上用同一密码重新「立即备份到云端」，再恢复新版本；否则请人工核查云端目录完整性。",
+    "e2eeClaimConflict": "另一台设备正在认领 / 刚刚改动了该云端目录的加密标记，为避免两台设备用不同密码分叉，本次操作已安全中止，未写入任何备份对象。请稍等约一分钟后重试；若重试仍失败，请核对所有设备使用同一加密密码。",
+    "syncBadObjectFailClosed": "云端有一个损坏的控制对象，且没有可用的已校验副本可自动收敛，操作已安全中止（fail-closed），坏对象已复制到云端 .quarantine/ 目录待审计。请在最近成功上传过的设备上重新执行一次云端备份后重试；若持续失败，请按用户指南「数据管理与云同步」排查。",
+    "governanceBusy": "另一个数据治理任务（同步 / 备份 / 恢复 / 删除标记）正在进行中，本次操作未执行。请等它完成后再试。",
+    "backupDirMissing": "备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置。",
+    "restoreDiskBudgetOverflow": "该备份清单声明的总大小超出可计算范围，无法证明磁盘空间充足，恢复已在写入任何数据前安全中止。当前数据没有被改动；该备份清单可能已损坏。",
+    "zipExportTempMissing": "导出的临时 ZIP 在写入目标位置前已不存在（可能被系统清理或磁盘异常），本次导出未完成。请重新导出。",
+    "zipExportCopyTargetFailed": "ZIP 已打包完成，但复制到你选择的目标位置失败（目标不可写或空间不足），临时文件已清理。请换一个目标位置或释放空间后重新导出。",
+    "verifiedPublishMismatch": "云端写入后的回读校验发现内容与本地不一致（可能被网关改写、传输截断或被其他设备并发覆盖），本次发布已安全中止，未通过校验的对象不会被当作有效数据。请重试；若持续失败，请检查云端存储服务是否会改写上传内容。",
+    "verifiedPublishOversize": "云端对象超过发布校验的大小上限，回读核对已拒绝下载，本次发布已安全中止。请检查该云端目录是否被异常改动后重试。",
+    "verifiedPublishUnconditionalWrite": "当前云端存储后端不支持本次发布所需的条件写入，操作已在写入前安全中止，云端数据未被改动。这通常是同步内部约束未被满足，重试多半无效；请反馈该问题。",
+    "partialArchiveNotSlotable": "这份备份是便携/部分归档，不能替换当前数据槽。当前数据没有被改动。若这是未配置云端端到端加密时上传的云端包，请在两端配置同一加密密码后重新「立即备份到云端」；或用「导出备份」并设置备份密码，得到含受保护敏感材料、可整槽恢复的全保真 ZIP。",
+    "sealedBackupPasswordRequired": "这份云端备份包含加密全保真 ZIP。请输入导出时设置的备份密码后重试；当前数据没有被改动。",
+    "sealedBackupDecryptFailed": "无法解封加密全保真 ZIP：备份密码错误，或密封载荷已损坏。当前数据没有被改动。",
+    "atomicRestoreUnavailable": "A/B 数据空间管理器不可用，恢复已在写入任何数据前安全中止。当前数据没有被改动；请重启应用后重试。",
+    "restoreDomainUnconsumed": "恢复域校验未通过：备份声明的部分数据域没有被任何恢复器处理（未消费断言）。为避免静默丢失数据，切换已在提交前安全中止，当前数据没有被改动。",
+    "restoreDomainFailed": "部分数据域恢复失败，切换已在提交前安全中止，当前数据没有被改动。请查看详情中的失败域列表后重试。",
+    "restoreUntrustedIsolated": "该备份来源尚未被信任，恢复内容已完整放入隔离区，未进入当前数据槽。请在确认来源可信后再激活；当前数据没有被改动。",
     "backupDatabaseFailed": "备份数据库失败: {{error}}",
     "packageZipFailed": "打包 ZIP 失败: {{error}}",
     "uploadFileFailed": "上传文件失败: {{error}}",
     "downloadBackupFailed": "下载备份失败: {{error}}",
     "importZipFailed": "导入 ZIP 失败: {{error}}",
     "restoreDatabaseFailed": "恢复数据库失败: {{error}}",
+    "restoreInsufficientSpace": "磁盘空间不足：需要 {{required}} GB，可用 {{available}} GB。当前数据没有被改动。请释放空间后重试。",
+    "missingWebdavConfig": "缺少 WebDAV 配置",
+    "missingS3Config": "缺少 S3 配置",
+    "missingFtpConfig": "缺少 FTP 配置",
     "unknown": "未知错误"
   },
   
+  "repoCheck": {
+    "title": "云端仓库巡检",
+    "description": "只读检查：逐个下载云端清单引用的备份对象，核对存在性、SHA256 校验和与端到端加密头，并报告孤儿与缺失对象。WebDAV 与桌面 S3 巡检同一对象时支持断点续传；FTP 仍整包重下。巡检不会修改或删除任何云端数据；会消耗与仓库总大小相当的下载流量。",
+    "run": "开始巡检",
+    "running": "巡检中...",
+    "failed": "巡检失败",
+    "checkedAt": "巡检时间",
+    "summary": "已核对 {{versions}} 个引用版本 / 完整校验 {{objects}} 个对象（{{bytes}}）",
+    "statusOk": "全部通过：引用对象齐全、校验和一致、无孤儿",
+    "statusProblems": "发现 {{count}} 个问题",
+    "statusIncomplete": "巡检不完整：不能视为全绿",
+    "truncatedNotice": "云端文件列表被截断，本次巡检不完整——即使未发现问题，也不能据此认为仓库健康。请稍后重试，或清理云端对象数量后再巡检。",
+    "encryptedRepo": "该云端目录已启用端到端加密（存在加密标记），巡检已核对每个对象的 DSBK 加密头。",
+    "orphanCount": "孤儿对象：{{count}} 个",
+    "problemsTitle": "问题清单",
+    "problemsTruncated": "问题过多，仅显示前 {{count}} 条",
+    "problemKind": {
+      "missingObject": "对象缺失",
+      "checksumMismatch": "SHA256 不匹配",
+      "undecodableDsbkHeader": "加密头（DSBK）不可解",
+      "plaintextInEncryptedRepo": "加密仓库中的明文对象",
+      "encryptedWithoutMarker": "密文对象缺少加密标记",
+      "orphanObject": "孤儿对象",
+      "tempLeftover": "临时文件残留",
+      "corruptManifest": "清单损坏",
+      "conflictingManifestEntry": "清单条目冲突",
+      "corruptEncryptionMarker": "加密标记损坏",
+      "objectReadFailed": "对象读取失败"
+    },
+    "guidance": {
+      "title": "发现坏对象后该做什么",
+      "readOnly": "巡检是只读的，没有修改云端任何内容；以下处理均由你自行执行。",
+      "badObject": "「对象缺失 / SHA256 不匹配 / 加密头不可解 / 明文对象」意味着对应版本已无法完整恢复：不要删除其他仍健康的版本；先在数据完好的设备上点「立即备份到云端」产生一个新的完整版本，确认新版本可用后，再在「历史版本」里删除坏版本。",
+      "orphan": "孤儿对象不影响任何恢复，只占用空间。确认无误后可用网盘自带工具（网页版 / 控制台）手动删除对应文件；巡检不会代你删除。",
+      "manifest": "「清单损坏 / 条目冲突 / 加密标记损坏」时，先在最近上传过的设备上重新执行一次云端备份（会重写该设备的清单），再巡检一次；若持续存在，按用户指南「数据管理与云同步」的巡检小节排查。",
+      "incomplete": "「巡检不完整」（列表截断或对象读取失败）通常是网络或服务端分页限制所致：请重试；在结果变为全绿之前，不要把该云端目录当作可靠的灾备。"
+    }
+  },
+
   "messages": {
     "connectionSuccess": "连接成功！",
     "configSaved": "配置已保存",
@@ -187,6 +306,7 @@
     "secureStoreReadFailed": "无法读取已保存的凭据。请恢复系统安全存储的访问权限后重新打开此面板；现有凭据未被修改。",
     "secureStoreWriteFailed": "凭据尚未保存。请恢复系统安全存储的访问权限后再次点击保存。",
     "configSsotFailed": "配置未保存：无法写入后端同步配置",
+    "configPublishFailed": "配置未发布：本次凭据与配置均未生效，原有已发布配置保持不变",
     "configCleared": "配置已清除",
     "configClearPartial": "配置已从当前界面移除，但部分后端数据清理失败",
     "versionDeleted": "版本已删除"

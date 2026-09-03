@@ -5,6 +5,7 @@ import { cn } from '../../../lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 interface PopoverContextValue {
   open: boolean;
@@ -44,6 +45,18 @@ export function Popover({ open, onOpenChange, children }: PopoverProps) {
     if (!actualOpen) return;
     return registerInteractiveOverlay();
   }, [actualOpen, registerInteractiveOverlay]);
+
+  // 📱 Android 返回键：Popover 是自绘浮层（role=dialog 但无 data-state="open"），
+  // 协调器的 Radix Escape 兜底探测不到它；打开时注册 overlay 级 handler，
+  // 返回键与 Escape 走同一关闭路径（setOpen(false) → onOpenChange(false)）。
+  // 桌面端注册无副作用（handleAndroidBack 仅由 Android native 桥调用）。
+  React.useEffect(() => {
+    if (!actualOpen) return;
+    return registerBackHandler(() => {
+      setOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [actualOpen, setOpen]);
 
   React.useEffect(() => {
     if (!actualOpen) return;

@@ -641,7 +641,7 @@ export function useAppUpdater(): AppUpdaterController {
 
       if (!update) {
         downloadingRef.current = false;
-        setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: '更新已不可用，请稍后重试' } }));
+        setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: i18n.t('settings:about.update.error.unavailable') } }));
         return;
       }
       pendingUpdateRef.current = null;
@@ -707,7 +707,7 @@ export function useAppUpdater(): AppUpdaterController {
             readyToRelaunch: true,
             error: {
               phase: 'relaunch',
-              message: '更新已安装，请手动重启应用以完成更新',
+              message: i18n.t('settings:about.update.error.relaunch'),
             },
           };
         }

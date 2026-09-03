@@ -206,7 +206,7 @@ function getTypeId(sourceType: SourceType): string {
  * 提供将学习资源引用到对话的能力，集成同步服务。
  */
 export function useReferenceToChat(): UseReferenceToChatReturn {
-  const { t } = useTranslation(['notes', 'learningHub']);
+  const { t } = useTranslation(['notes', 'learningHub', 'chat_module']);
 
   /**
    * 检查是否可以引用到对话
@@ -261,7 +261,9 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
             errorMsg = t('notes:reference.resource_not_found');
             showGlobalNotification('warning', errorMsg);
           } else if (result.error.code === VfsErrorCode.NETWORK) {
-            errorMsg = '网络错误，请重试';
+            errorMsg = t('chat_module:vfs_inject.network_retry', {
+              defaultValue: '网络错误，请重试',
+            });
             showGlobalNotification('error', errorMsg);
           } else {
             errorMsg = result.error.toUserMessage();

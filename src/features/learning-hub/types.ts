@@ -13,6 +13,10 @@ import type { ContextRef } from '@/features/chat/context/types';
 import type { ReferenceNode } from '@/features/notes/types/reference';
 import type { FolderItemType, VfsFolderItem } from '@/dstu/types/folder';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
+import {
+  AUDIO_PREVIEW_EXTENSIONS,
+  VIDEO_PREVIEW_EXTENSIONS,
+} from './apps/views/mediaPreviewUtils';
 import type React from 'react';
 
 // ============================================================================
@@ -28,7 +32,7 @@ export type WorkMode = 'canvas' | 'fullscreen';
 
 /**
  * 视图模式
- * - list: 列表视图（复用 DndFileTree）
+ * - list: 列表视图
  * - grid: 图标/网格视图
  * - columns: Finder 分栏视图（仅桌面全屏宿主使用；与 stores/finderStore 的
  *   ViewMode 保持一致，分栏 UI 落地前由 FinderFileList 回退为 grid 渲染）
@@ -424,15 +428,18 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (ext === 'pptx') return 'pptx';
   if (ext === 'epub') return 'epub';
 
+  // 文本判定先于音视频：'ts' 等扩展名两边都认识，按 TypeScript 而非 MPEG-TS 处理
   if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
     return 'text';
   }
 
-  if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'].includes(ext)) {
+  // ★ 单一真源：与播放器的 MIME 映射表（mediaPreviewUtils）同一套扩展名集合，
+  // 避免"推断说不可预览、播放器其实认识"的两处漂移
+  if (AUDIO_PREVIEW_EXTENSIONS.has(ext)) {
     return 'audio';
   }
 
-  if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'wmv', 'flv'].includes(ext)) {
+  if (VIDEO_PREVIEW_EXTENSIONS.has(ext)) {
     return 'video';
   }
 
@@ -456,6 +463,17 @@ export function nodeTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType
   };
 
   return mapping[nodeType] ?? null;
+}
+
+/**
+ * DSTU node.type → FolderItemType（带 'note' 兜底）
+ *
+ * LearningHubSidebar 打开 / 右键菜单 / 拖拽移动 / 批量移动等处共用，
+ * 避免各处手写 switch 漂移（历史上右键菜单分支曾漏掉 image/file）。
+ * 不支持的类型（folder / retrieval）回退为 'note'。
+ */
+export function mapDstuTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType {
+  return nodeTypeToFolderItemType(nodeType) ?? 'note';
 }
 
 const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([

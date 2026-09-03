@@ -63,9 +63,11 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
   availableModels,
   onClose,
 }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common', 'notes']);
   const clickInputRef = useRef<HTMLInputElement>(null);
-  const maxImageSize = 10 * 1024 * 1024;
+  // 50MB - 与后端图片上限（attachment_repo.rs MAX_IMAGE_BYTES）保持一致
+  const maxImageSizeMB = 50;
+  const maxImageSize = maxImageSizeMB * 1024 * 1024;
   // 测试所有已配置的引擎（不按 engineType 去重，支持同类型多引擎对比）
   const engineModels = availableModels;
   
@@ -87,7 +89,8 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
     }
 
     if (file.size > maxImageSize) {
-      showGlobalNotification('warning', t('settings:ocr.image_too_large'));
+      // settings:ocr.image_too_large 文案写死 10MB，改用带 {{limit}} 插值的 key
+      showGlobalNotification('warning', t('notes:upload.image_too_large', { limit: maxImageSizeMB }));
       return;
     }
 
@@ -177,7 +180,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-foreground">{t('settings:ocr.test_title')}</h3>
         {onClose && (
-          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose}>
+          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('settings:a11y.close')}>
             <X size={16} />
           </DsButton>
         )}
@@ -192,7 +195,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               alt={t('settings:ocr.test_image')}
               className="max-h-48 mx-auto rounded-lg shadow-sm"
             />
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)]" aria-label="clear">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
               <X size={14} />
             </DsButton>
           </div>
@@ -201,6 +204,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               variant="outline"
               size="sm"
               onClick={() => clickInputRef.current?.click()}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <ImageIcon size={14} />
               {t('settings:ocr.change_image')}
@@ -210,6 +214,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               disabled={testing || engineModels.length === 0}
               size="sm"
               variant="primary"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {testing ? (
                 <>
@@ -313,7 +318,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                     {/* 区域详情（可折叠） */}
                     {result.regions.length > 0 && result.regions.some(r => r.bbox) && (
                       <details className="mt-2">
-                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center">
                           {t('settings:ocr.view_regions')} {result.regions.filter(r => r.bbox).length} {t('settings:ocr.regions_count')}
                         </summary>
                         <CustomScrollArea className="mt-2 h-40" viewportClassName="pr-1">

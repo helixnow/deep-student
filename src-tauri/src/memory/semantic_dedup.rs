@@ -688,6 +688,7 @@ mod tests {
             created_at: "2026-07-01T00:00:00Z".to_string(),
             updated_at: "2026-07-01T00:00:00Z".to_string(),
             deleted_at: None,
+            props: None,
         }
     }
 

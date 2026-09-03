@@ -1,23 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockGenerateCards,
-  mockWaitForReady,
+  mockStartGeneration,
   mockShowGlobalNotification,
   mockInvoke,
 } = vi.hoisted(() => ({
-  mockGenerateCards: vi.fn(),
-  mockWaitForReady: vi.fn(),
+  mockStartGeneration: vi.fn(),
   mockShowGlobalNotification: vi.fn(),
   mockInvoke: vi.fn(),
 }));
 
 vi.mock('@/components/anki/cardforge', () => ({
-  ChatV2AnkiAdapter: {
-    generateCards: mockGenerateCards,
-  },
   cardAgent: {
-    waitForReady: mockWaitForReady,
+    startGeneration: mockStartGeneration,
   },
 }));
 
@@ -47,8 +42,7 @@ import {
 describe('selectionCardGeneration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockWaitForReady.mockResolvedValue(true);
-    mockGenerateCards.mockResolvedValue({ ok: true, documentId: 'doc-1', cards: [] });
+    mockStartGeneration.mockResolvedValue({ ok: true, documentId: 'doc-1' });
     mockInvoke.mockResolvedValue(undefined);
   });
 
@@ -96,11 +90,11 @@ describe('selectionCardGeneration', () => {
       });
 
       expect(result).toEqual({ ok: false, reason: 'too_short' });
-      expect(mockGenerateCards).not.toHaveBeenCalled();
+      expect(mockStartGeneration).not.toHaveBeenCalled();
       expect(mockShowGlobalNotification).toHaveBeenCalledWith('warning', expect.any(String));
     });
 
-    it('waits for cardAgent readiness and calls adapter with short-text quota', async () => {
+    it('starts the backend pipeline (fire-and-forget) with short-text quota and links session', async () => {
       const selectedText = '这是一段足够长的选中文本用于制卡';
       const result = await generateCardsFromSelection({
         selectedText,
@@ -110,13 +104,19 @@ describe('selectionCardGeneration', () => {
         t,
       });
 
-      expect(mockWaitForReady).toHaveBeenCalledTimes(1);
-      expect(mockGenerateCards).toHaveBeenCalledTimes(1);
-      const [content, options] = mockGenerateCards.mock.calls[0];
-      expect(content).toContain(selectedText);
-      expect(content).toContain('前文上下文');
-      expect(content).toContain('后文上下文');
-      expect(options).toMatchObject({ maxCards: DEFAULT_SELECTION_MAX_CARDS });
+      // 生产路径：cardAgent.startGeneration → start_enhanced_document_processing
+      // （非阻塞启动，进度由任务台跟踪），不再经 ChatV2AnkiAdapter 阻塞收集
+      expect(mockStartGeneration).toHaveBeenCalledTimes(1);
+      const [input] = mockStartGeneration.mock.calls[0];
+      expect(input.content).toContain(selectedText);
+      expect(input.content).toContain('前文上下文');
+      expect(input.content).toContain('后文上下文');
+      expect(input.maxCards).toBe(DEFAULT_SELECTION_MAX_CARDS);
+      expect(input.options).toMatchObject({
+        deckName: expect.any(String),
+        customRequirements: expect.any(String),
+      });
+
       expect(result).toEqual({ ok: true, documentId: 'doc-1' });
       expect(mockInvoke).toHaveBeenCalledWith('set_document_session_source', {
         documentId: 'doc-1',
@@ -132,8 +132,8 @@ describe('selectionCardGeneration', () => {
       );
     });
 
-    it('toasts failure when adapter returns ok:false', async () => {
-      mockGenerateCards.mockResolvedValue({ ok: false, error: 'boom' });
+    it('toasts failure when the pipeline start returns ok:false', async () => {
+      mockStartGeneration.mockResolvedValue({ ok: false, error: 'boom' });
 
       const result = await generateCardsFromSelection({
         selectedText: '这是一段足够长的选中文本用于制卡',
@@ -146,6 +146,22 @@ describe('selectionCardGeneration', () => {
         expect.stringContaining('boom')
       );
       expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('toasts failure when startGeneration throws', async () => {
+      mockStartGeneration.mockRejectedValue(new Error('ipc down'));
+
+      const result = await generateCardsFromSelection({
+        selectedText: '这是一段足够长的选中文本用于制卡',
+        t,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'generate_failed',
+        error: expect.stringContaining('ipc down'),
+      });
+      expect(mockShowGlobalNotification).toHaveBeenCalledWith('error', expect.any(String));
     });
   });
 });

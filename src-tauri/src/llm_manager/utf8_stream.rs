@@ -1,5 +1,8 @@
 //! 增量 UTF-8 流式解码器
 //!
+//! 注：本文件包含 issue #122 定位探针（invalid 分支的 log::warn，仅记录长度类
+//! 元数据，不记录任何 chunk/用户文本内容），不声称修复 #122。
+//!
 //! `reqwest::bytes_stream()` 的 chunk 边界由 TCP/HTTP 分帧决定，
 //! 完全可能把一个多字节 UTF-8 字符（中文 3 字节 / emoji 4 字节）切在两个 chunk 之间。
 //! 直接对每个 chunk 做 `String::from_utf8_lossy` 会把被切断的字符替换为 U+FFFD（`�`），
@@ -8,6 +11,10 @@
 //! 本解码器在 chunk 之间保留末尾不完整的字节序列（最多 3 字节），
 //! 与下一个 chunk 拼接后再解码，彻底消除跨 chunk 边界的乱码。
 //! 真正非法的字节（非"不完整"而是"无效"）仍替换为 U+FFFD 并继续。
+//!
+//! 调用方：`crate::utils::sse_buffer::SseEventBuffer` 在所有 LLM 流式管线
+//! （model2_pipeline、翻译、作文/题库评分、Anki、VLM grounding 等）的
+//! 字节 chunk 入口统一使用本解码器（issue #122）。
 
 /// 跨 chunk 增量 UTF-8 解码器。
 ///
@@ -39,6 +46,8 @@ impl Utf8StreamDecoder {
     /// - 末尾若是被切断的多字节字符，保留到下一次调用；
     /// - 中途遇到真正非法的字节序列替换为 U+FFFD 并继续。
     pub fn decode(&mut self, chunk: &[u8]) -> String {
+        // issue #122 定位探针：记录进入本次 decode 时的残留长度（仅元数据）
+        let pending_len_before = self.pending.len();
         // 无残留时直接借用 chunk，避免拷贝
         let owned;
         let bytes: &[u8] = if self.pending.is_empty() {
@@ -64,6 +73,18 @@ impl Utf8StreamDecoder {
                     out.push_str(std::str::from_utf8(&bytes[pos..pos + valid]).unwrap_or(""));
                     match e.error_len() {
                         Some(invalid_len) => {
+                            // issue #122 定位探针（不声称修复）：真正非法字节触发
+                            // U+FFFD 替换时记录长度类元数据，便于区分“上游本身发来
+                            // 非法字节”与“跨 chunk 切断”两类乱码来源。
+                            // 禁止打印 chunk/用户文本内容。
+                            log::warn!(
+                                "[utf8_stream][issue#122 探针] 遇到非法 UTF-8 字节序列，已替换为 U+FFFD：invalid_len={}, valid_up_to={}, pos={}, pending_len_before={}, chunk_len={}",
+                                invalid_len,
+                                valid,
+                                pos,
+                                pending_len_before,
+                                chunk.len()
+                            );
                             // 真正非法的字节：替换并跳过，继续解析后续内容
                             out.push('\u{FFFD}');
                             pos += valid + invalid_len;
@@ -87,6 +108,12 @@ impl Utf8StreamDecoder {
         if self.pending.is_empty() {
             String::new()
         } else {
+            // issue #122 定位探针（不声称修复）：流在多字节字符中间被截断，
+            // 只记录残留长度，不打印任何字节/文本内容。
+            log::warn!(
+                "[utf8_stream][issue#122 探针] flush 时仍有不完整多字节序列，按 lossy 语义替换为 U+FFFD：pending_len={}",
+                self.pending.len()
+            );
             self.pending.clear();
             "\u{FFFD}".to_string()
         }

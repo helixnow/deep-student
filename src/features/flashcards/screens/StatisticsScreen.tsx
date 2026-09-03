@@ -26,6 +26,7 @@ import {
   useReviewActivity,
 } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
+import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
@@ -272,7 +273,7 @@ export const StatisticsScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={handleRefresh}
-          className="shrink-0 text-sm"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('statistics.refresh')}
@@ -280,19 +281,32 @@ export const StatisticsScreen: React.FC = () => {
       </header>
 
       {error ? (
-        <div role="alert" className="wb-fc-empty gap-3 rounded-md border border-border/60 px-5 text-center">
-          <WarningCircle size={28} className="text-destructive/70" weight="duotone" />
-          <div className="space-y-1">
-            <p className="font-medium text-foreground">
-              {t('statistics.loadFailed')}
-            </p>
-            <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
+        // 统计加载失败时调度设置必须保持可用：它读写独立的 scheduler_config
+        // 后端命令，与统计数据无依赖（此前整体包在 stats 分支里被一起拖垮）。
+        <CustomScrollArea className="min-h-0 flex-1">
+          <div className="wb-fcx-scroll">
+            <SchedulerSettingsSection />
+            <div role="alert" className="wb-fc-empty gap-3 rounded-md border border-border/60 px-5 text-center">
+              <WarningCircle size={28} className="text-destructive/70" weight="duotone" />
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">
+                  {t('statistics.loadFailed')}
+                </p>
+                <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
+              </div>
+              <DsButton
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => void load()}
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
+                <ArrowClockwise size={15} />
+                {t('statistics.retry')}
+              </DsButton>
+            </div>
           </div>
-          <DsButton type="button" variant="default" size="sm" onClick={() => void load()}>
-            <ArrowClockwise size={15} />
-            {t('statistics.retry')}
-          </DsButton>
-        </div>
+        </CustomScrollArea>
       ) : loading && !stats ? (
         <div className="wb-fc-loading">{t('statistics.loading')}</div>
       ) : stats ? (
@@ -300,7 +314,6 @@ export const StatisticsScreen: React.FC = () => {
           className="min-h-0 flex-1"
         >
           <div className="wb-fcx-scroll">
-          <SchedulerSettingsSection />
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">
@@ -470,7 +483,13 @@ export const StatisticsScreen: React.FC = () => {
                 />
               </div>
             </section>
+
+            <FsrsParamsPanel />
           </div>
+
+          {/* Statistics are the primary content; keep scheduler controls as the
+              secondary action after the data panels. */}
+          <SchedulerSettingsSection />
           </div>
         </CustomScrollArea>
       ) : null}

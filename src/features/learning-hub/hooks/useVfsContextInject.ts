@@ -90,7 +90,7 @@ const LOG_PREFIX = '[useVfsContextInject]';
  * 使用引用模式，只存储 sourceId + resourceHash，不存储实际内容。
  */
 export function useVfsContextInject(): UseVfsContextInjectReturn {
-  const { t } = useTranslation(['learningHub', 'notes']);
+  const { t } = useTranslation(['learningHub', 'notes', 'chat_module']);
   const [isInjecting, setIsInjecting] = useState(false);
 
   /**
@@ -140,11 +140,18 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           const vfsError = result.error;
 
           if (vfsError.code === VfsErrorCode.NOT_FOUND) {
-            errorMsg = `资源 ${sourceId} 未找到`;
+            errorMsg = t('chat_module:vfs_inject.resource_not_found', {
+              defaultValue: '资源 {{sourceId}} 未找到',
+              sourceId,
+            });
           } else if (vfsError.code === VfsErrorCode.NETWORK) {
-            errorMsg = '网络错误，无法获取资源引用';
+            errorMsg = t('chat_module:vfs_inject.network_error', {
+              defaultValue: '网络错误，无法获取资源引用',
+            });
           } else if (vfsError.code === VfsErrorCode.PERMISSION) {
-            errorMsg = '权限不足，无法访问资源';
+            errorMsg = t('chat_module:vfs_inject.permission_denied', {
+              defaultValue: '权限不足，无法访问资源',
+            });
           } else {
             errorMsg = vfsError.toUserMessage();
           }

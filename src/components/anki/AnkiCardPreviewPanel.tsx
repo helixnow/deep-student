@@ -59,7 +59,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={showFront}
           onClick={() => setShowFront(true)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8"
         >
           <Eye size={14} />
           {t('anki:card_front')}
@@ -71,7 +71,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
           role="tab"
           aria-selected={!showFront}
           onClick={() => setShowFront(false)}
-          className="min-h-11 gap-1.5 text-sm sm:min-h-8 [@media(pointer:coarse)]:min-h-11"
+          className="min-h-11 gap-1.5 text-sm sm:min-h-8"
         >
           <Eye size={14} />
           {t('anki:card_back')}
@@ -80,7 +80,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
 
       {/* 卡面渲染 */}
       <div className="min-w-0 rounded-md border border-border/70 bg-card">
-        <div className="px-3 pt-2 text-[11px] uppercase tracking-wide text-muted-foreground/70">
+        <div className="px-3 pt-2 text-xs uppercase tracking-wide text-muted-foreground/70">
           {showFront ? t('anki:preview_front') : t('anki:preview_back')}
         </div>
         <div className="p-3">
@@ -100,7 +100,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
             {card.tags.map((tag, index) => (
               <span
                 key={`${tag}-${index}`}
-                className="rounded-sm bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-700 dark:text-emerald-400"
+                className="rounded-sm bg-success/10 px-1.5 py-0.5 text-xs text-success"
               >
                 {tag}
               </span>
@@ -117,7 +117,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
 
         {card.fields && Object.keys(card.fields).length > 0 ? (
           <details>
-            <summary className="cursor-pointer select-none py-1 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3 text-xs text-muted-foreground">
               {t('anki:extra_fields')} ({Object.keys(card.fields).length})
             </summary>
             <div className="mt-1 space-y-1">

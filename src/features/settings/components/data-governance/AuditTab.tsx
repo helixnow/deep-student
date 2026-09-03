@@ -71,28 +71,28 @@ export const AuditTab: React.FC<AuditTabProps> = ({
     switch (status) {
       case 'Completed':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs whitespace-nowrap">
             <CheckCircle size={12} className="shrink-0" />
             {t('data:governance.status_completed')}
           </div>
         );
       case 'Failed':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs whitespace-nowrap">
             <XCircle size={12} className="shrink-0" />
             {t('data:governance.status_failed')}
           </div>
         );
       case 'Started':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-info/10 text-info text-xs whitespace-nowrap">
             <Play size={12} className="shrink-0" />
             {t('data:governance.status_started')}
           </div>
         );
       case 'Partial':
         return (
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 text-xs whitespace-nowrap">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-warning/10 text-warning text-xs whitespace-nowrap">
             <Warning size={12} className="shrink-0" />
             {t('data:governance.status_partial')}
           </div>
@@ -143,7 +143,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
         </div>
       )}
 
-      {/* 过滤器 */}
+      {/* 过滤器：触控高度由 AppSelect / DsButton 基座契约保证（coarse 指针 44px），调用侧不再叠加 min-h 覆盖 */}
       <h3 className="text-base font-semibold text-foreground">{t('data:governance.audit_log')}</h3>
       <div className="flex items-center gap-2">
         <AppSelect
@@ -183,12 +183,13 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       </div>
 
       {/* 日志列表 */}
-      <CustomScrollArea
-        orientation="horizontal"
-        fullHeight={false}
-        className="rounded-2xl bg-muted"
-      >
-        <Table>
+      <div className="hidden md:block">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-2xl bg-muted"
+        >
+          <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-border/40">
               <TableHead className="h-10 whitespace-nowrap min-w-[120px]">{t('data:governance.time')}</TableHead>
@@ -233,8 +234,43 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               </TableRow>
             )}
           </TableBody>
-        </Table>
-      </CustomScrollArea>
+          </Table>
+        </CustomScrollArea>
+      </div>
+
+      <div className="space-y-2 md:hidden">
+        {logs.map((log) => (
+          <div key={log.id} className="space-y-2.5 rounded-md border border-border/40 bg-background/50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-caption text-muted-foreground">
+                {formatTimestamp(log.timestamp)}
+              </span>
+              {getStatusBadge(log.status)}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="font-normal text-xs whitespace-nowrap">
+                {getOperationLabel(log.operation_type)}
+              </Badge>
+              <span className="text-caption text-muted-foreground">
+                {t('data:governance.duration')}: {log.duration_ms ? formatDuration(log.duration_ms) : '-'}
+              </span>
+            </div>
+            <p className="break-words text-sm font-medium text-foreground">{log.target}</p>
+          </div>
+        ))}
+        {logs.length === 0 && (
+          <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <CircleNotch size={16} className="animate-spin" />
+                {t('common:status.loading')}
+              </div>
+            ) : (
+              t('data:governance.no_logs')
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 分页信息和加载更多 */}
       {logs.length > 0 && (

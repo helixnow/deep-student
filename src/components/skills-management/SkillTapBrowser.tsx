@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '../UnifiedNotification';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { skillRegistry, reloadSkills } from '@/features/chat/skills';
 import {
   fetchTapCatalog,
@@ -144,6 +145,23 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
   useEffect(() => () => {
     marketRequestSeq.current += 1;
+  }, []);
+
+  // Android 返回键：面板挂载（= 打开）期间注册 overlay handler，返回键先关本面板
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const rootRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    return registerBackHandler(() => {
+      // 保活守卫：skills-management 视图在被隐藏的保活层里仍保持挂载
+      // （visibility:hidden），本面板也随之滞留——此时不消费返回键，
+      // 交还给当前活跃视图（对照 EnhancedPdfViewer 的同款守卫）
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
   }, []);
 
   const handleBrowse = useCallback(async (targetUrl?: string) => {
@@ -379,17 +397,17 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         <p className="text-xs leading-relaxed text-foreground">{sourceLabel}</p>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
             {t('skills:package.permission_files', { count: scan.files_extracted })}
           </span>
-          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
             {t('skills:management.import_scan_scripts', { count: scan.scripts_count })}
           </span>
-          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+          <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
             {t('skills:management.import_scan_tools', { count: scan.allowed_tools_count })}
           </span>
           {scan.package_sha256 && (
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs">
               sha256:{scan.package_sha256.slice(0, 12)}
             </span>
           )}
@@ -397,29 +415,29 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {t('skills:management.risk_heading')}
             </span>
-            <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', RISK_BADGE_CLASSES[riskLevel])}>
+            <span className={cn('rounded-full px-1.5 py-0.5 text-2xs font-medium', RISK_BADGE_CLASSES[riskLevel])}>
               {t(`skills:management.risk_${riskLevel}`, scan.risk_level)}
             </span>
           </div>
           {riskLevel !== 'low' && scan.risk_signals.length > 0 && (
             <ul className="space-y-0.5">
               {scan.risk_signals.map((signal) => (
-                <li key={signal} className="text-[11px] leading-relaxed text-muted-foreground">
+                <li key={signal} className="text-xs leading-relaxed text-muted-foreground">
                   · {t(`skills:management.risk_signal_${signal}`, signal)}
                 </li>
               ))}
             </ul>
           )}
           {isHighRisk && (
-            <p className="text-[11px] leading-relaxed text-red-600 dark:text-red-400">
+            <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">
               {t('skills:management.risk_high_warning')}
             </p>
           )}
           {overwrite && (
-            <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+            <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
               {t('skills:management.import_confirm_overwrite_hint')}
             </p>
           )}
@@ -431,7 +449,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onCancel}
             disabled={busy}
-            className="h-7 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -440,7 +458,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onConfirm}
             disabled={busy}
-            className="h-7 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 px-2.5 text-xs"
           >
             {busy
               ? t('skills:tap.installing')
@@ -502,7 +520,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               if (e.key === 'Enter') void handleBrowse();
             }}
             placeholder={t('skills:tap.url_placeholder')}
-            className="h-8 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 pl-8 pr-3 text-xs"
           />
         </div>
         <DsButton
@@ -510,7 +528,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           size="sm"
           onClick={() => void handleBrowse()}
           disabled={loading || !url.trim()}
-          className="h-8 px-3 text-xs"
+          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-8 px-3 text-xs"
         >
           {loading ? t('skills:tap.browsing') : t('skills:tap.browse')}
         </DsButton>
@@ -525,7 +543,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               type="button"
               onClick={() => void handleBrowse(source.url)}
               disabled={loading}
-              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
+              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-xs transition-colors hover:bg-[var(--interactive-hover)]"
             >
               <GithubLogo size={11} />
               {source.label}
@@ -540,7 +558,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
       {catalog && catalog.skills.length > 0 && (
         <div className="space-y-1.5">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
             {t('skills:tap.catalog_count', { count: catalog.skills.length })}
           </div>
           <div className="space-y-1">
@@ -557,17 +575,17 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                     <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium text-foreground">{displayName}</span>
+                        <span className="truncate text-ui font-medium text-foreground">{displayName}</span>
                         {entry.version && (
-                          <span className="flex-shrink-0 text-[10px] text-muted-foreground/70">v{entry.version}</span>
+                          <span className="flex-shrink-0 text-2xs text-muted-foreground/70">v{entry.version}</span>
                         )}
                       </div>
                       {entry.description && (
-                        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                           {entry.description}
                         </p>
                       )}
-                      <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/60">
+                      <div className="mt-0.5 flex items-center gap-2 text-2xs text-muted-foreground/60">
                         {entry.subdir && <span className="truncate font-mono">{entry.subdir}</span>}
                         <span className="flex-shrink-0">{t('skills:tap.file_count', { count: entry.fileCount })}</span>
                       </div>
@@ -583,7 +601,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                         }
                       }}
                       disabled={scanningSubdir !== null || installing}
-                      className="h-7 flex-shrink-0 px-2.5 text-xs"
+                      className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 px-2.5 text-xs"
                     >
                       {scanningSubdir === entry.subdir ? (
                         t('skills:tap.scanning')
@@ -618,7 +636,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         </div>
       )}
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+      <p className="text-2xs leading-relaxed text-muted-foreground/70">
         {t('skills:tap.footer_hint')}
       </p>
     </div>
@@ -641,7 +659,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             }}
             placeholder={t('skills:tap.market.search_placeholder')}
             aria-label={t('skills:tap.market.search_placeholder')}
-            className="h-8 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 pl-8 pr-3 text-xs"
             data-testid="skill-market-search-input"
           />
         </div>
@@ -650,7 +668,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           size="sm"
           onClick={() => void loadSkillMarket()}
           disabled={marketLoading}
-          className="h-8 px-3 text-xs"
+          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-8 px-3 text-xs"
           data-testid="skill-market-search-btn"
           aria-busy={marketLoading || undefined}
         >
@@ -659,7 +677,8 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
       </div>
 
       <div className="skill-market-filter-row">
-        <label>
+        {/* 触屏：13px checkbox + 11px 文案不足触控标准，label 整体升到 44px 命中高度 */}
+        <label className="[@media(pointer:coarse)]:!min-h-11">
           <input
             type="checkbox"
             checked={nonSuspiciousOnly}
@@ -668,7 +687,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           />
           {t('skills:tap.market.non_suspicious_only')}
         </label>
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-2xs text-muted-foreground/60">
           {t('skills:tap.market.trending')}
         </span>
       </div>
@@ -724,21 +743,21 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                   <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-[13px] font-medium text-foreground">
+                      <span className="truncate text-ui font-medium text-foreground">
                         {card.displayName || card.slug}
                       </span>
-                      <span className="font-mono text-[10px] text-muted-foreground/70">{card.slug}</span>
+                      <span className="font-mono text-2xs text-muted-foreground/70">{card.slug}</span>
                       {card.version && (
-                        <span className="flex-shrink-0 text-[10px] text-muted-foreground/70">v{card.version}</span>
+                        <span className="flex-shrink-0 text-2xs text-muted-foreground/70">v{card.version}</span>
                       )}
                       {renderVerifyBadge(card.verify)}
                     </div>
                     {card.summary && (
-                      <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                      <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                         {card.summary}
                       </p>
                     )}
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/60">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground/60">
                       {card.ownerHandle && (
                         <span>{t('skills:tap.market.owner', { handle: card.ownerHandle })}</span>
                       )}
@@ -756,7 +775,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                       }
                     }}
                     disabled={marketBusySlug !== null || marketInstalling}
-                    className="h-7 flex-shrink-0 px-2.5 text-xs"
+                    className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 px-2.5 text-xs"
                     data-testid={`skill-market-install-${card.slug}`}
                   >
                     {busy ? (
@@ -792,7 +811,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         </div>
       )}
 
-      <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+      <p className="text-2xs leading-relaxed text-muted-foreground/70">
         {t('skills:tap.market.footer_hint')}
       </p>
     </div>
@@ -800,6 +819,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
   return (
     <section
+      ref={rootRef}
       aria-label={t('skills:tap.title')}
       className={cn(
         'mb-4 rounded-lg border border-border/60 bg-[color:var(--surface-raised,transparent)]',
@@ -814,10 +834,10 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           <GithubLogo size={16} className="flex-shrink-0 text-muted-foreground" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-foreground">
+          <div className="text-ui font-medium text-foreground">
             {tab === 'market' ? t('skills:tap.market.title') : t('skills:tap.title')}
           </div>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-xs text-muted-foreground">
             {tab === 'market' ? t('skills:tap.market.description') : t('skills:tap.description')}
           </p>
         </div>
@@ -827,7 +847,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           iconOnly
           onClick={onClose}
           aria-label={t('common:actions.close')}
-          className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+          className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         >
           <X size={14} />
         </DsButton>

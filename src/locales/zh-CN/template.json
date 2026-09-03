@@ -42,9 +42,18 @@
     "import_change_file": "更换文件",
     "import_clear_file": "移除文件",
     "import_no_file": "尚未选择文件",
+    "import_error_read_file": "无法读取所选文件，请确认文件未被移动或占用后重试。",
+    "import_error_invalid_json": "所选文件不是有效的 JSON，无法解析。请确认它是「导出模板」生成的 .json 文件。",
+    "import_error_not_template": "JSON 内容不符合模板导出格式（缺少必需字段）。请使用本应用「导出模板」生成的文件。",
+    "import_error_permission": "没有文件读写权限，导入被系统拒绝。请检查系统授权后重试。",
+    "import_error_detail": "技术细节：{{detail}}",
     "export_panel_title": "导出模板",
     "export_selected_count": "已选 {{count}} 个",
     "panel_close": "收起面板"
+  },
+  "preview_ref": {
+    "get_node": "获取引用节点",
+    "get_content": "获取引用内容"
   },
   "manager_title": "卡片模板管理",
   "manager_subtitle": "管理模板、创建新模板或让 AI 直接生成",

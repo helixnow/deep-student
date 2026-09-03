@@ -1,11 +1,17 @@
 /**
  * CardForge 2.0 - CardAgent 统一入口
  *
- * 制卡系统的唯一入口，提供 MCP 工具兼容的接口。
- * 遵循 LLM-First 设计原则，无状态设计。
+ * 制卡引擎的编程入口。生产链路现状（2026-08 核实）：
+ * - 聊天内制卡走后端 ChatAnki（builtin-chatanki_* 工具，纯后端管线），不经过本类；
+ * - 划词制卡（selectionCardGeneration）通过 `startGeneration` 直启后端
+ *   `start_enhanced_document_processing`（与 ChatAnki 管线共用同一个
+ *   EnhancedAnkiService::start_document_processing 入口），启动即返回，
+ *   进度由任务台（anki-tasks）跟踪；
+ * - `generateCards`（阻塞收集式）保留为编程 API，无 UI 生产调用方，仅测试覆盖。
  *
- * 注意：ChatAnki 通过 ChatV2AnkiAdapter 使用此引擎的导出/模板/分析/任务控制能力。
- * 独立制卡页面（AnkiCardGeneration）已废弃，但此引擎仍为活跃组件。
+ * 历史上的 Chat V2 工具桥（后端 AnkiToolExecutor 经 `anki_tool_call` 事件
+ * 桥接到本类执行）已随 pipeline 不再注册 AnkiToolExecutor 而整体删除：
+ * 本类不再监听任何 `anki_tool_call` 事件。
  *
  * LLM-First 核心原则：
  * - 所有"理解"和"决策"工作交给 LLM
@@ -15,7 +21,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import i18next from 'i18next';
 import { templateManager } from '@/data/ankiTemplates';
 import { ankiApiAdapter } from '@/services/ankiApiAdapter';
@@ -26,11 +32,9 @@ import { SegmentEngine } from './SegmentEngine';
 import {
   buildContentAnalysisPrompt,
   buildCardGenerationSystemPrompt,
-  buildCardGenerationUserPrompt,
 } from '../prompts';
 import {
   filterExportableCards,
-  normalizeToolExportCards,
   validateCardsForExport,
 } from './exportNormalize';
 import { isTerminalTaskStatus, normalizeTaskStatus } from './taskStatus';
@@ -155,6 +159,17 @@ interface BackendGenerationOptions {
   enable_images: boolean;
   max_cards_per_mistake: number;
   /**
+   * 全文档卡片总上限。调用方 maxCards 的真实语义（0824 评审 #4）：
+   * 后端 DocumentProcessingService 按分段分配该额度，避免
+   * 「每段 × 分段数」放大导致总数失控。
+   */
+  max_cards_total?: number;
+  /**
+   * FSRS 复习画像注入授权（0824 评审 #1）。后端只认显式 true；
+   * 前端始终显式传布尔值，避免 None 被任何一侧误读为开启。
+   */
+  fsrs_feedback?: boolean;
+  /**
    * @deprecated 使用 template_ids 替代，支持 LLM 多模板自选。
    *
    * 迁移状态（2026-07 核实）：后端 enhanced_anki_service.rs 仍以
@@ -178,6 +193,30 @@ interface BackendGenerationOptions {
   /** 多模板：按模板ID分组的字段提取规则 */
   field_extraction_rules_by_id?: Record<string, Record<string, FieldExtractionRule>>;
 }
+
+/** maxCards 缺省/非法时的默认总额度 */
+const DEFAULT_MAX_CARDS = 50;
+/** 后端 EnhancedAnkiService 对 max_cards_per_mistake 的校验上限 */
+const BACKEND_MAX_CARDS_PER_SEGMENT = 100;
+
+/**
+ * 显式校验调用方 maxCards（0824 评审 #4）：
+ * 只有 ≥1 的有限数才有效（向下取整）；0/负数/NaN/Infinity 非法，
+ * 与缺省一样回退 DEFAULT_MAX_CARDS。旧实现 `input.maxCards || 50`
+ * 依赖 falsy 巧合，负数会被原样透传给后端。
+ */
+const resolveMaxCardsTotal = (maxCards: number | undefined): number => {
+  if (maxCards === undefined || maxCards === null) {
+    return DEFAULT_MAX_CARDS;
+  }
+  if (typeof maxCards !== 'number' || !Number.isFinite(maxCards) || Math.floor(maxCards) < 1) {
+    console.warn(
+      `[CardAgent] 非法 maxCards=${String(maxCards)}（要求 ≥1 的有限数），回退默认 ${DEFAULT_MAX_CARDS}`
+    );
+    return DEFAULT_MAX_CARDS;
+  }
+  return Math.floor(maxCards);
+};
 
 const resolveExportTemplateId = (cards: AnkiCardResult[]): string | undefined => {
   const ids = new Set(
@@ -232,22 +271,9 @@ const buildBackendExportCards = (cards: AnkiCardResult[]): BackendAnkiCard[] => 
  * 提供 MCP 工具兼容的接口，所有方法都是无状态的。
  * 状态由后端管理，前端只负责调用和监听事件。
  */
-// Chat V2 工具调用事件载荷（来自后端 AnkiToolExecutor）
-interface ChatV2ToolCallPayload {
-  toolCallId: string;
-  toolName: string;
-  arguments: Record<string, unknown>;
-  messageId: string;
-  blockId: string;
-  /** 🆕 2026-01: 会话 ID，用于回调时创建 anki_cards 块 */
-  sessionId: string;
-}
-
 export class CardAgent {
   private eventListeners: Map<string, Set<CardForgeEventListener>> = new Map();
   private unlistenFn: UnlistenFn | null = null;
-  private toolCallUnlistenFn: UnlistenFn | null = null;
-  private cachedWindowLabel?: string | null;
   /** 初始化状态 */
   private _initialized = false;
   private _initPromise: Promise<void> | null = null;
@@ -260,14 +286,12 @@ export class CardAgent {
 
   /**
    * 初始化方法
-   * 设置事件监听，错误会被捕获并记录
+   * 设置 `anki_generation_event` 事件监听（生成流事件是唯一需要的监听），
+   * 错误会被捕获并记录
    */
   private async init(): Promise<void> {
     try {
-      await Promise.all([
-        this.setupEventListener(),
-        this.setupToolCallListener(),
-      ]);
+      await this.setupEventListener();
       this._initialized = true;
       console.log('[CardAgent] 初始化成功');
     } catch (error: unknown) {
@@ -335,95 +359,14 @@ export class CardAgent {
         };
       }
 
-      // 获取可用模板
-      const templates = (await this.getAvailableTemplates(input.templates)).map((t) => {
-        const fields = this.normalizeTemplateFields(t.fields);
-        return {
-          ...t,
-          fields,
-          field_extraction_rules: this.ensureFieldExtractionRules(fields, t.field_extraction_rules),
-        };
-      });
-      if (templates.length === 0) {
+      const prepared = await this.buildBackendGenerationOptions(input);
+      if ('error' in prepared) {
         return {
           ok: false,
-          error: '没有可用的模板',
+          error: prepared.error,
         };
       }
-
-      // LLM-First: 准备模板详情，供后端 LLM 智能选择
-      const templateDescriptions = templates.map((t) => ({
-        id: t.id,
-        name: t.name,
-        description: t.description || t.useCaseDescription || '',
-        fields: t.fields || [],
-        // 🔧 修复：传递 generation_prompt，确保 LLM 知道如何构造模板特定字段
-        generation_prompt: t.generation_prompt || undefined,
-      }));
-
-      // G4: 使用 PromptKit 构建系统 prompt 和用户 prompt
-      // 注意：userPrompt 使用占位符标记内容位置，实际内容由后端填充
-      const systemPrompt = buildCardGenerationSystemPrompt();
-      const userPrompt = buildCardGenerationUserPrompt(
-        '{{DOCUMENT_CONTENT}}', // 占位符，后端会用实际内容替换
-        templates,
-        undefined, // 分段信息由后端管理
-        {
-          maxCards: input.maxCards,
-          customRequirements: input.options?.customRequirements,
-          preferredTemplates: input.templates,
-        }
-      );
-
-      // 构建后端生成选项 - 传递所有模板让 LLM 自选
-      const templateFieldMap = templates.reduce((acc, t) => {
-        acc[t.id] = this.normalizeTemplateFields(t.fields);
-        return acc;
-      }, {} as Record<string, string[]>);
-
-      const templateRulesMap = templates.reduce((acc, t) => {
-        acc[t.id] = this.ensureFieldExtractionRules(
-          templateFieldMap[t.id] ?? this.normalizeTemplateFields(t.fields),
-          t.field_extraction_rules
-        );
-        return acc;
-      }, {} as Record<string, Record<string, FieldExtractionRule>>);
-
-      const isMultiTemplate = templates.length > 1;
-      const defaultTemplateId = templates[0]?.id;
-      const backendOptions: BackendGenerationOptions & {
-        system_prompt?: string;
-        custom_anki_prompt?: string;
-        template_fields?: string[];
-      } = {
-        deck_name: input.options?.deckName || 'Default',
-        note_type: 'Basic',
-        enable_images: true,
-        max_cards_per_mistake: input.maxCards || 50,
-        // LLM-First: 传递所有模板 ID，由后端 LLM 自动选择最合适的
-        template_ids: templates.map((t) => t.id),
-        template_descriptions: templateDescriptions,
-        // 保留 template_id 作为回退（兼容性）
-        template_id: templates[0]?.id,
-        custom_requirements: input.options?.customRequirements,
-        segment_overlap_size: 200,
-        // 启用 LLM 智能分段边界检测
-        enable_llm_boundary_detection: true,
-        // G4: 使用 PromptKit 制卡模板
-        system_prompt: systemPrompt,
-        custom_anki_prompt: userPrompt,
-        // 单模板时传递字段定义（多模板时使用按模板分组的映射）
-        template_fields: !isMultiTemplate && defaultTemplateId
-          ? templateFieldMap[defaultTemplateId]
-          : undefined,
-        // 单模板时传递字段提取规则（多模板时使用按模板分组的映射）
-        field_extraction_rules: !isMultiTemplate && defaultTemplateId
-          ? templateRulesMap[defaultTemplateId]
-          : undefined,
-        // 多模板：按模板ID分组的字段与规则
-        template_fields_by_id: templateFieldMap,
-        field_extraction_rules_by_id: templateRulesMap,
-      };
+      const backendOptions = prepared.options;
 
       // 🔧 P0 修复：先设置事件监听，再调用后端，防止竞态条件丢失事件
       // 创建卡片收集器，在调用后端之前就开始监听
@@ -486,6 +429,155 @@ export class CardAgent {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * start_generation - 非阻塞启动制卡（划词制卡生产路径）
+   *
+   * 直接调用后端 `start_enhanced_document_processing`
+   * （EnhancedAnkiService::start_document_processing——与 ChatAnki
+   * chatanki_start 管线共用的同一个后端入口），启动成功即返回
+   * documentId，不在前端等待生成完成；进度/结果由任务台
+   * （anki-tasks，基于 get_document_tasks / anki_generation_event）跟踪。
+   *
+   * 与 `generateCards` 的区别：不注册卡片收集器、不阻塞等待
+   * `DocumentProcessingCompleted`，因此不依赖本类的事件监听初始化。
+   */
+  async startGeneration(input: GenerateCardsInput): Promise<{
+    ok: boolean;
+    documentId?: string;
+    error?: string;
+  }> {
+    try {
+      if (!input.content || input.content.trim().length === 0) {
+        return { ok: false, error: '内容不能为空' };
+      }
+
+      const prepared = await this.buildBackendGenerationOptions(input);
+      if ('error' in prepared) {
+        return { ok: false, error: prepared.error };
+      }
+
+      const documentId = await invoke<string>('start_enhanced_document_processing', {
+        documentContent: input.content,
+        originalDocumentName: input.options?.deckName || 'Default',
+        options: prepared.options,
+      });
+
+      return { ok: true, documentId };
+    } catch (error: unknown) {
+      console.error('[CardAgent] startGeneration error:', error);
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * 构建后端 `start_enhanced_document_processing` 的生成选项
+   * （generateCards / startGeneration 共用，保证两条路径的
+   * Prompt 装配与模板契约完全一致）。
+   */
+  private async buildBackendGenerationOptions(input: GenerateCardsInput): Promise<
+    | {
+        options: BackendGenerationOptions & {
+          custom_anki_prompt?: string;
+          template_fields?: string[];
+        };
+      }
+    | { error: string }
+  > {
+    // 获取可用模板
+    const templates = (await this.getAvailableTemplates(input.templates)).map((t) => {
+      const fields = this.normalizeTemplateFields(t.fields);
+      return {
+        ...t,
+        fields,
+        field_extraction_rules: this.ensureFieldExtractionRules(fields, t.field_extraction_rules),
+      };
+    });
+    if (templates.length === 0) {
+      return { error: '没有可用的模板' };
+    }
+
+    // LLM-First: 准备模板详情，供后端 LLM 智能选择
+    const templateDescriptions = templates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description || t.useCaseDescription || '',
+      fields: t.fields || [],
+      // 🔧 修复：传递 generation_prompt，确保 LLM 知道如何构造模板特定字段
+      generation_prompt: t.generation_prompt || undefined,
+    }));
+
+    // Prompt 装配契约（与后端 streaming_anki_service::build_prompt 对齐）：
+    // - custom_anki_prompt：后端 system 消息的基础提示词，传入协议中立的
+    //   角色/质量 system prompt（输出协议由后端按供应商能力单点生成，
+    //   本 prompt 不得携带任何 END 标记 / wrapper 规则，见 0824 评审 #2）
+    // - 学习材料只经 documentContent 参数由后端注入 user 消息；
+    //   历史上的 {{DOCUMENT_CONTENT}} 占位符方案（后端从不替换，占位符原样进入
+    //   system 消息）已删除
+    // - options.system_prompt 在后端的语义是"用户补充要求"，模板列表/数量上限/
+    //   自定义要求均已通过专用字段传递，此处无补充内容，不传
+    const systemPrompt = buildCardGenerationSystemPrompt();
+
+    // 构建后端生成选项 - 传递所有模板让 LLM 自选
+    const templateFieldMap = templates.reduce((acc, t) => {
+      acc[t.id] = this.normalizeTemplateFields(t.fields);
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    const templateRulesMap = templates.reduce((acc, t) => {
+      acc[t.id] = this.ensureFieldExtractionRules(
+        templateFieldMap[t.id] ?? this.normalizeTemplateFields(t.fields),
+        t.field_extraction_rules
+      );
+      return acc;
+    }, {} as Record<string, Record<string, FieldExtractionRule>>);
+
+    const isMultiTemplate = templates.length > 1;
+    const defaultTemplateId = templates[0]?.id;
+
+    // maxCards 语义收口（0824 评审 #4）：调用方给的是"本次生成的总数上限"，
+    // 写入 max_cards_total 由后端按分段分配额度；max_cards_per_mistake 只作
+    // 单段兜底上限（后端校验单段 >100 直接拒绝，故截断到 100）。
+    const maxCardsTotal = resolveMaxCardsTotal(input.maxCards);
+
+    return {
+      options: {
+        deck_name: input.options?.deckName || 'Default',
+        note_type: 'Basic',
+        enable_images: true,
+        max_cards_per_mistake: Math.min(maxCardsTotal, BACKEND_MAX_CARDS_PER_SEGMENT),
+        max_cards_total: maxCardsTotal,
+        // FSRS 画像注入需显式授权（0824 评审 #1）：默认 false，
+        // 只有调用方显式传 fsrsFeedback: true 才授权外送复习画像
+        fsrs_feedback: input.options?.fsrsFeedback === true,
+        // LLM-First: 传递所有模板 ID，由后端 LLM 自动选择最合适的
+        template_ids: templates.map((t) => t.id),
+        template_descriptions: templateDescriptions,
+        // 保留 template_id 作为回退（兼容性）
+        template_id: templates[0]?.id,
+        custom_requirements: input.options?.customRequirements,
+        segment_overlap_size: 200,
+        // 启用 LLM 智能分段边界检测（由后端 streaming_anki_service 执行）
+        enable_llm_boundary_detection: true,
+        // PromptKit system prompt 作为后端 system 消息的基础提示词
+        custom_anki_prompt: systemPrompt,
+        // 单模板时传递字段定义（多模板时使用按模板分组的映射）
+        template_fields: !isMultiTemplate && defaultTemplateId
+          ? templateFieldMap[defaultTemplateId]
+          : undefined,
+        // 单模板时传递字段提取规则（多模板时使用按模板分组的映射）
+        field_extraction_rules: !isMultiTemplate && defaultTemplateId
+          ? templateRulesMap[defaultTemplateId]
+          : undefined,
+        // 多模板：按模板ID分组的字段与规则
+        template_fields_by_id: templateFieldMap,
+        field_extraction_rules_by_id: templateRulesMap,
+      },
+    };
   }
 
   /**
@@ -792,14 +884,11 @@ export class CardAgent {
       // 获取可用模板
       const { templates } = await this.listTemplates({ activeOnly: true });
 
-      // 使用 SegmentEngine 进行准确的分段估算
+      // 使用 SegmentEngine 进行准确的分段估算（纯数学硬分割，无 LLM 调用）
       let estimatedSegments: number;
       try {
         const segmentEngine = new SegmentEngine();
-        // 快速估算分段（不启用 LLM 定界，仅硬分割）
-        const segments = await segmentEngine.segment(content, {
-          enableLLMBoundary: false,
-        });
+        const segments = await segmentEngine.segment(content);
         estimatedSegments = segments.length;
       } catch (segmentError: unknown) {
         console.warn('[CardAgent] SegmentEngine failed, falling back to estimation:', segmentError);
@@ -953,241 +1042,10 @@ export class CardAgent {
     }
   }
 
-  /**
-   * 设置 Chat V2 工具调用监听（CardForge 2.0）
-   *
-   * 监听后端 AnkiToolExecutor 发出的 `anki_tool_call` 事件，
-   * 将工具调用路由到相应的 CardAgent 方法执行。
-   * 🔧 P0 修复 #3: 失败时必须抛出错误
-   */
-  private async setupToolCallListener(): Promise<void> {
-    if (this.toolCallUnlistenFn) return;
-
-    try {
-      this.toolCallUnlistenFn = await listen<ChatV2ToolCallPayload>(
-        'anki_tool_call',
-        async (event) => {
-          await this.handleToolCall(event.payload);
-        }
-      );
-      console.log('[CardAgent] Chat V2 tool call listener setup complete');
-    } catch (error: unknown) {
-      console.error('[CardAgent] Failed to setup tool call listener:', error);
-      // 🔧 P0 修复: 必须重新抛出错误
-      throw error;
-    }
-  }
-
-  /**
-   * 处理 Chat V2 工具调用
-   *
-   * 将后端桥接过来的工具调用路由到对应方法。
-   * 🔧 P2 增强：添加输入验证，防止类型不匹配导致的运行时错误
-   */
-  private async handleToolCall(payload: ChatV2ToolCallPayload): Promise<void> {
-    const { toolCallId, toolName, arguments: args, messageId, blockId, sessionId } = payload;
-
-    console.log(`[CardAgent] Handling tool call: ${toolName} (id: ${toolCallId}, session: ${sessionId})`);
-
-    try {
-      let result: unknown;
-
-      // 工具名标准化：builtin-anki_generate_cards -> anki_generate_cards
-      const normalizedName = toolName.startsWith('builtin-')
-        ? toolName.replace('builtin-', '')
-        : toolName;
-
-      switch (normalizedName) {
-        case 'anki_generate_cards': {
-          // 验证必需参数
-          if (typeof args.content !== 'string' || !args.content.trim()) {
-            result = { ok: false, error: 'content 参数是必需的且不能为空' };
-            break;
-          }
-          const generateResult = await this.generateCards({
-            content: args.content,
-            templates: Array.isArray(args.templates) ? args.templates : undefined,
-            maxCards: typeof args.maxCards === 'number' ? args.maxCards : undefined,
-            options: {
-              deckName: typeof args.deckName === 'string' ? args.deckName : undefined,
-              customRequirements: typeof args.customRequirements === 'string' ? args.customRequirements : undefined,
-            },
-          });
-          result = generateResult;
-
-          // 🆕 2026-01: 将卡片结果回调到后端，创建 anki_cards 块显示在聊天中
-          if (sessionId && messageId) {
-            try {
-              const cards = generateResult.cards || [];
-              await invoke('chat_v2_anki_cards_result', {
-                request: {
-                  sessionId,
-                  messageId,
-                  toolBlockId: blockId,
-                  cards: cards.map(card => ({
-                    id: card.id,
-                    front: card.front,
-                    back: card.back,
-                    text: card.text,
-                    tags: card.tags,
-                    templateId: card.templateId,
-                    isErrorCard: card.isErrorCard,
-                    createdAt: card.createdAt,
-                  })),
-                  documentId: generateResult.documentId,
-                  templateId: cards[0]?.templateId,
-                  success: generateResult.ok,
-                  error: generateResult.error,
-                },
-              });
-              console.log(`[CardAgent] Anki cards result sent to backend: ${cards.length} cards`);
-            } catch (callbackError: unknown) {
-              console.error('[CardAgent] Failed to send anki cards result to backend:', callbackError);
-              // 不影响主流程，继续执行
-            }
-          }
-          break;
-        }
-
-        case 'anki_control_task': {
-          // 验证必需参数
-          const validActions = ['pause', 'resume', 'retry', 'cancel'];
-          if (typeof args.action !== 'string' || !validActions.includes(args.action)) {
-            result = { ok: false, error: `action 必须是 ${validActions.join('/')} 之一` };
-            break;
-          }
-          if (typeof args.documentId !== 'string' || !args.documentId.trim()) {
-            result = { ok: false, error: 'documentId 参数是必需的' };
-            break;
-          }
-          result = await this.controlTask({
-            action: args.action as 'pause' | 'resume' | 'retry' | 'cancel',
-            documentId: args.documentId,
-            taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-          });
-          break;
-        }
-
-        case 'anki_export_cards': {
-          // 验证必需参数
-          const hasDocumentId =
-            typeof args.documentId === 'string' && args.documentId.trim().length > 0;
-          if (!Array.isArray(args.cards) || args.cards.length === 0) {
-            result = hasDocumentId
-              ? {
-                  ok: false,
-                  error:
-                    'anki_export_cards 需要 cards 列表；检测到 documentId，请改用 chatanki_export。',
-                }
-              : { ok: false, error: 'cards 必须是非空数组' };
-            break;
-          }
-          const validFormats = ['apkg', 'anki_connect', 'json'];
-          if (typeof args.format !== 'string' || !validFormats.includes(args.format)) {
-            result = { ok: false, error: `format 必须是 ${validFormats.join('/')} 之一` };
-            break;
-          }
-          if (typeof args.deckName !== 'string' || !args.deckName.trim()) {
-            result = { ok: false, error: 'deckName 参数是必需的' };
-            break;
-          }
-          // Normalize legacy minimal cards while preserving full CardForge payload when present.
-          result = await this.exportCards({
-            cards: normalizeToolExportCards(args.cards),
-            format: args.format as 'apkg' | 'anki_connect' | 'json',
-            deckName: args.deckName,
-            noteType: typeof args.noteType === 'string' ? args.noteType : undefined,
-          });
-          break;
-        }
-
-        case 'anki_list_templates':
-          result = await this.listTemplates({
-            category: typeof args.category === 'string' ? args.category : undefined,
-            activeOnly: typeof args.activeOnly === 'boolean' ? args.activeOnly : undefined,
-          });
-          break;
-
-        case 'anki_analyze_content': {
-          // 验证必需参数
-          if (typeof args.content !== 'string' || !args.content.trim()) {
-            result = { ok: false, error: 'content 参数是必需的且不能为空' };
-            break;
-          }
-          result = await this.analyzeContent({
-            content: args.content,
-          });
-          break;
-        }
-
-        default:
-          console.warn(`[CardAgent] Unknown Anki tool: ${toolName}`);
-          result = { ok: false, error: `Unknown tool: ${toolName}` };
-      }
-
-      // 发送工具执行结果事件到后端（可选：用于 UI 更新）
-      this.emit('tool:result', {
-        toolCallId,
-        toolName,
-        messageId,
-        blockId,
-        result,
-      });
-
-      const normalizedOk = !(
-        result &&
-        typeof result === 'object' &&
-        (('ok' in result && (result as { ok?: boolean }).ok === false) ||
-          ('success' in result && (result as { success?: boolean }).success === false) ||
-          ('status' in result &&
-            typeof (result as { status?: string }).status === 'string' &&
-            ['error', 'failed'].includes((result as { status?: string }).status!)))
-      );
-      const normalizedError = !normalizedOk &&
-        result &&
-        typeof result === 'object' &&
-        'error' in result &&
-        typeof (result as { error?: string }).error === 'string'
-        ? (result as { error?: string }).error
-        : undefined;
-      const windowLabel = await this.getWindowLabel();
-
-      // 回传执行结果给后端（用于工具调用真实完成确认）
-      void emit(`anki_tool_result:${toolCallId}`, {
-        toolCallId,
-        toolName,
-        messageId,
-        blockId,
-        ok: normalizedOk,
-        result,
-        error: normalizedError,
-        windowLabel: windowLabel ?? undefined,
-      });
-
-      console.log(`[CardAgent] Tool ${toolName} completed`, result);
-    } catch (error: unknown) {
-      console.error(`[CardAgent] Tool ${toolName} failed:`, error);
-
-      this.emit('tool:error', {
-        toolCallId,
-        toolName,
-        messageId,
-        blockId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      const windowLabel = await this.getWindowLabel();
-      void emit(`anki_tool_result:${toolCallId}`, {
-        toolCallId,
-        toolName,
-        messageId,
-        blockId,
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        windowLabel: windowLabel ?? undefined,
-      });
-    }
-  }
+  // 历史说明：此处曾有 setupToolCallListener/handleToolCall（监听后端
+  // AnkiToolExecutor 经 `anki_tool_call` 事件桥接的工具调用）。pipeline
+  // 已不注册 AnkiToolExecutor，该事件在生产中永远不会发出，整条桥接
+  // 已删除（见 docs/research/anki-ai-native/round3/04-cardforge-cleanup.md）。
 
   /**
    * 处理后端事件
@@ -1370,47 +1228,6 @@ export class CardAgent {
   // ==========================================================================
   // 辅助方法
   // ==========================================================================
-
-  /**
-   * 获取当前窗口 label（用于跨窗口事件校验）
-   */
-  private async getWindowLabel(): Promise<string | null> {
-    if (this.cachedWindowLabel !== undefined) {
-      return this.cachedWindowLabel ?? null;
-    }
-
-    try {
-      // Tauri v2：优先 getCurrentWindow().label；兼容旧桥接的 WebviewWindow.getCurrent()
-      const windowModule: Record<string, unknown> = await import('@tauri-apps/api/window');
-      let labelValue: unknown;
-
-      const getCurrentWindow = windowModule.getCurrentWindow;
-      if (typeof getCurrentWindow === 'function') {
-        const current = (getCurrentWindow as () => { label?: unknown })();
-        labelValue = current?.label;
-      }
-
-      if (typeof labelValue !== 'string' || !labelValue.trim()) {
-        const webviewWindowClass = windowModule.WebviewWindow as
-          | { getCurrent?: () => { label?: unknown } }
-          | undefined;
-        const webview = webviewWindowClass?.getCurrent?.();
-        const rawLabel = webview?.label;
-        labelValue = typeof rawLabel === 'function'
-          ? await (rawLabel as () => Promise<unknown>).call(webview)
-          : rawLabel;
-      }
-
-      const normalized = typeof labelValue === 'string' && labelValue.trim()
-        ? labelValue
-        : null;
-      this.cachedWindowLabel = normalized;
-      return normalized;
-    } catch {
-      this.cachedWindowLabel = null;
-      return null;
-    }
-  }
 
   /**
    * 获取可用模板
@@ -1817,11 +1634,6 @@ export class CardAgent {
     if (this.unlistenFn) {
       this.unlistenFn();
       this.unlistenFn = null;
-    }
-    // 清理 Chat V2 工具调用监听器
-    if (this.toolCallUnlistenFn) {
-      this.toolCallUnlistenFn();
-      this.toolCallUnlistenFn = null;
     }
     // 清理本地事件监听器
     this.eventListeners.clear();

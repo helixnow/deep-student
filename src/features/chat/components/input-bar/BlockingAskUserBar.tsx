@@ -28,6 +28,7 @@ import { cn } from '@/utils/cn';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import type { PlaygroundAskUserInteraction } from '../../dev/playground/blockingRuntime';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 
 // ============================================================================
 // 类型定义
@@ -218,7 +219,10 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
             <button
               type="button"
               aria-label={t('askUser.optionReasonLabel')}
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              className={cn(
+                'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground',
+                coarseHitClassFor24
+              )}
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -272,7 +276,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                   <label
                     key={index}
                     className={cn(
-                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                       isChecked
                         ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                       : isRecommended
@@ -307,7 +311,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                 <div
                   key={index}
                   className={cn(
-                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none',
+                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                     isChecked
                       ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                     : isRecommended
@@ -320,7 +324,8 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                     type="button"
                     onClick={() => handleSingleSelect(index)}
                     disabled={disabled}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
+                    // 触屏改用实体最小高度，避免透明扩区盖住右侧原因按钮/选中指示
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                   >
                     <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
                       {numberLabel}
@@ -386,7 +391,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               size="sm"
               onClick={handleIgnore}
               disabled={disabled}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {t('askUser.ignore')}
             </DsButton>
@@ -395,7 +400,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               size="sm"
               onClick={handlePrimarySubmit}
               disabled={disabled || !canSubmit}
-              className="rounded-full px-4"
+              className="rounded-full px-4 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               <span>{t('askUser.submit')}</span>
             </DsButton>

@@ -121,7 +121,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
       <div
         className={cn(
           'flex items-center gap-1 py-0.5 hover:bg-[var(--interactive-hover)] rounded cursor-pointer',
-          isExpandable && 'cursor-pointer'
+          isExpandable && 'cursor-pointer [@media(pointer:coarse)]:!min-h-11'
         )}
         onClick={() => isExpandable && setExpanded(!expanded)}
       >
@@ -229,7 +229,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
     >
       {/* 头部 */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border cursor-pointer"
+        className="flex items-center justify-between px-3 py-2 [@media(pointer:coarse)]:!min-h-11 bg-muted/50 border-b border-border cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
@@ -272,7 +272,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
               e.stopPropagation();
               handleRefresh();
             }}
-            className="p-1 hover:bg-[var(--interactive-hover)] rounded"
+            className="p-1 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 flex items-center justify-center hover:bg-[var(--interactive-hover)] rounded"
             title="Refresh"
           >
             <ArrowClockwise size={14} />
@@ -282,7 +282,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
               e.stopPropagation();
               handleCopy();
             }}
-            className="p-1 hover:bg-[var(--interactive-hover)] rounded"
+            className="p-1 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 flex items-center justify-center hover:bg-[var(--interactive-hover)] rounded"
             title="Copy JSON"
           >
             {copied ? (

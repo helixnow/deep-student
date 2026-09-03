@@ -495,18 +495,20 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                         aria-label={node.name}
                         onFocus={() => setFocusIndex(index)}
                       >
-                        <input
-                          type="checkbox"
-                          className="ntd-item-check"
-                          checked={selectedIds.has(node.id)}
-                          disabled={busy}
-                          tabIndex={-1}
-                          onChange={() => toggleSelected(node.id)}
-                          aria-label={t('workbench:notesWorkspace.trash.selectItem', {
-                            name: node.name,
-                            defaultValue: 'Select {{name}}',
-                          })}
-                        />
+                        <label className="ntd-item-check-hit">
+                          <input
+                            type="checkbox"
+                            className="ntd-item-check"
+                            checked={selectedIds.has(node.id)}
+                            disabled={busy}
+                            tabIndex={-1}
+                            onChange={() => toggleSelected(node.id)}
+                            aria-label={t('workbench:notesWorkspace.trash.selectItem', {
+                              name: node.name,
+                              defaultValue: 'Select {{name}}',
+                            })}
+                          />
+                        </label>
                         <span className="ntd-item-icon"><TrashGlyph type={type} /></span>
                         <div className="ntd-item-meta">
                           <span className="ntd-item-name">{node.name}</span>

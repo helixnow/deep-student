@@ -78,7 +78,7 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
         <div className="space-y-1 min-w-0 flex-1">
           <h2 className="text-xl font-semibold text-foreground md:text-lg">{title}</h2>
           {description && (
-            <p className="text-[15px] leading-relaxed text-muted-foreground md:text-sm">{description}</p>
+            <p className="text-md leading-relaxed text-muted-foreground md:text-sm">{description}</p>
           )}
         </div>
         {rightSlot && <div className="ml-0 md:ml-4 flex-shrink-0">{rightSlot}</div>}

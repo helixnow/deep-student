@@ -1,0 +1,14 @@
+-- ============================================================================
+-- V20260824: llm_usage_logs 增加 cache_write_tokens（缓存写入 Token 数）
+-- ============================================================================
+--
+-- 运行时 TokenUsage 已从各协议提取缓存写入量：
+--   - Anthropic: usage.cache_creation_input_tokens
+--   - OpenAI / DeepSeek Responses: usage.input_tokens_details.cache_write_tokens
+-- 但 llm_usage_logs 此前只落 cached_tokens（缓存读取），报表侧无法计算
+-- 缓存 write/read 比（Anthropic 缓存写入按 1.25x 计费，写多读少 = 前缀
+-- 不稳定 / 缓存不经济的直接信号）。
+--
+-- 列可空：NULL = 无测量（适配器未上报该字段），不等于 0（真实测得未写入）。
+-- 与 cached_tokens 的 NULL≠0 语义保持一致。
+ALTER TABLE llm_usage_logs ADD COLUMN cache_write_tokens INTEGER;

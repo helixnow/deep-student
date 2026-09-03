@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
+use super::OFFICE_DOC_PARSE_MAX_BYTES;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
 
@@ -49,11 +50,12 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
-        // 文件大小安全检查（50MB 上限）
-        if bytes.len() > 50 * 1024 * 1024 {
+        // 文件大小安全检查（上限与提示统一由 OFFICE_DOC_PARSE_MAX_BYTES 派生，#62/ATT-09）
+        if bytes.len() > OFFICE_DOC_PARSE_MAX_BYTES {
             return Err(format!(
-                "DOCX 文件过大: {}MB (上限 50MB)",
-                bytes.len() / 1024 / 1024
+                "DOCX 文件过大: {}MB (上限 {}MB)",
+                bytes.len() / 1024 / 1024,
+                OFFICE_DOC_PARSE_MAX_BYTES / 1024 / 1024
             ));
         }
 

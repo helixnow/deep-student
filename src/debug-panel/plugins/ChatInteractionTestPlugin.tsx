@@ -312,7 +312,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">主模型（发送/重试/编辑）</label>
-              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm [@media(pointer:coarse)]:min-h-11"
                 value={primaryModelId}
                 onChange={e => { setPrimaryModelId(e.target.value); saveConfig({ primaryModelId: e.target.value }); }}
                 disabled={status === 'running'}>
@@ -326,7 +326,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">备用模型（换模型重试）</label>
-              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+              <select className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm [@media(pointer:coarse)]:min-h-11"
                 value={secondaryModelId}
                 onChange={e => { setSecondaryModelId(e.target.value); saveConfig({ secondaryModelId: e.target.value }); }}
                 disabled={status === 'running'}>
@@ -345,7 +345,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <label className="text-xs text-muted-foreground mb-1.5 block">测试步骤（取消勾选 = 跳过）</label>
             <div className="grid grid-cols-2 gap-1">
               {ALL_STEPS.map(step => (
-                <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
+                <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1 [@media(pointer:coarse)]:min-h-11"
                   title={STEP_DESCRIPTIONS[step]}>
                   <Checkbox
                     checked={!skipSteps.has(step)}
@@ -362,7 +362,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           {/* 高级配置折叠 */}
           <div>
-            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
               onClick={() => setShowAdvanced(!showAdvanced)}>
               {showAdvanced ? <CaretDown size={12} /> : <CaretRight size={12} />}
               高级配置
@@ -372,14 +372,14 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">发送 Prompt</label>
-                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={prompt}
                       onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">编辑后 Prompt</label>
-                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={editedPrompt}
                       onChange={e => { setEditedPrompt(e.target.value); saveConfig({ editedPrompt: e.target.value }); }}
                       disabled={status === 'running'} />
@@ -388,14 +388,14 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">中断延迟 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={abortDelayMs} min={500} max={30000} step={500}
                       onChange={e => { const v = Number(e.target.value); setAbortDelayMs(v); saveConfig({ abortDelayMs: v }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">单轮超时 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={roundTimeoutMs} min={10000} max={300000} step={5000}
                       onChange={e => { const v = Number(e.target.value); setRoundTimeoutMs(v); saveConfig({ roundTimeoutMs: v }); }}
                       disabled={status === 'running'} />
@@ -408,23 +408,23 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           {/* 控制按钮 */}
           <div className="flex items-center justify-end gap-2">
             {status === 'running' ? (
-              <Button size="sm" variant="destructive" onClick={handleAbort}>
+              <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleAbort}>
                 <Square size={16} className="mr-1" /> 中止
               </Button>
             ) : (
-              <Button size="sm" onClick={handleStart} disabled={!canStart}>
+              <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleStart} disabled={!canStart}>
                 <Play size={16} className="mr-1" /> 开始测试 ({activeSteps.length} 步)
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0}
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleDownload} disabled={results.length === 0}
               title="下载测试报告">
               <Download size={16} />
             </Button>
-            <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0}
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs} disabled={liveLogs.length === 0}
               title="复制日志">
               <Copy size={16} />
             </Button>
-            <Button size="sm" variant="outline" onClick={handleCleanup}
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCleanup}
               disabled={isCleaningUp || status === 'running'}
               title="清理测试会话">
               {isCleaningUp ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
@@ -558,7 +558,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                         {/* 请求体查看 */}
                         {r.capturedRequestBodies.length > 0 && (
                           <div>
-                            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
                               onClick={() => setShowRequestBody(showRequestBody === r.step ? null : r.step)}>
                               {showRequestBody === r.step ? <EyeSlash size={12} /> : <Eye size={12} />}
                               请求体详情 ({r.capturedRequestBodies.length})
@@ -641,7 +641,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="h-32 flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
+            <Button size="sm" variant="ghost" className="h-5 px-1 [@media(pointer:coarse)]:min-h-11" onClick={() => setLiveLogs([])}>
               <Trash size={12} />
             </Button>
           </div>

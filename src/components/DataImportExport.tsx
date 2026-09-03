@@ -3,6 +3,7 @@ import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
 import { TauriAPI, BackupTier } from '../utils/tauriApi';
 import { DataGovernanceApi } from '../api/dataGovernance';
+import { isImportedArchiveSlotRestorable } from '../utils/cloudStorageApi';
 import { fileManager, extractFileName } from '../utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -160,15 +161,17 @@ const BackupListItem: React.FC<{
         </div>
       </div>
       {/* ★ 2026-07-08（移动端审计 D-5 / P0）：恢复/保存按钮原为 hover 显现，
-          触屏没有 hover —— 备份恢复入口完全不可达。<md 常显，桌面保持 hover 交互。 */}
-      <div className="flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+          触屏没有 hover —— 备份恢复入口完全不可达。
+          按指针类型而非 md 断点区分：pointer:coarse（含 ≥768px 触屏平板）常显，
+          pointer:fine 保持 hover / 键盘聚焦显现。 */}
+      <div className="flex gap-2 transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100">
         {onSave && (
           <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onSave(backup.backup_id)}
             title={t('data:backup_list.save_button')}
-            className="h-11 px-3 md:h-9"
+            className="h-11 px-3 [@media(pointer:fine)]:h-9"
           >
             <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
@@ -186,7 +189,7 @@ const BackupListItem: React.FC<{
                   defaultValue: 'Partial archives cannot replace the data slot',
                 })
           }
-          className="h-11 px-3 md:h-9"
+          className="h-11 px-3 [@media(pointer:fine)]:h-9"
         >
           <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}
@@ -297,9 +300,12 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
 
   // 供 useMobileHeader rightActions 调用（handleExport 在下方定义）
   const handleExportRef = useRef<() => void>(() => {});
+  const [isExporting, setIsExporting] = useState(false);
 
   // D-1: 移动端顶栏标题（data-management 视图直挂本组件）
   // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
+  // ★ 嵌入 Settings 统计页（embedded）时禁用：不写 data-management 键，
+  // 避免覆盖/清掉独立视图实例的顶栏配置
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
     showMenu: !embedded,
@@ -311,11 +317,13 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         iconOnly
         aria-label={t('common:header.export')}
         onClick={() => handleExportRef.current()}
+        disabled={isExporting}
+        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
       >
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [t, embedded]);
+  }, [t, embedded, onBack, isExporting], !embedded);
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -326,7 +334,6 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const [activeTab, setActiveTab] = useState('backup');
   // 获取会话统计数据，用于合并趋势图
   const chatStats = useChatV2Stats(false);
-  const [isExporting, setIsExporting] = useState(false);
   const [exportBackupTiers, setExportBackupTiers] = useState<BackupTier[]>([]);
   
   const formatEta = (seconds: number): string => {
@@ -968,6 +975,10 @@ ${resolvedPath}`);
         throw new Error(t('data:errors.zip_import_backup_id_not_resolved'));
       }
 
+      if (!isImportedArchiveSlotRestorable(importResult.result?.stats)) {
+        throw new Error(t('data:governance.restore_partial_archive_refused'));
+      }
+
       const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);
       if (!spaceCheck.has_enough_space) {
         const availableGB = (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2);
@@ -1383,7 +1394,7 @@ ${resolvedPath}`);
                   <Badge variant="outline" className={`border-transparent ring-1 ring-border/40 ${isRefreshing ? 'text-primary bg-primary/10' : 'text-muted-foreground bg-muted/50'}`}>
                     {t('data:auto_refresh_label')} {isRefreshing ? t('data:auto_refresh_in_progress') : t('data:auto_refresh_interval')}
                   </Badge>
-                  <DsButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
+                  <DsButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1 [@media(pointer:coarse)]:!min-h-11">
                     <DownloadSimple className={DATA_CENTER_ICON_SM_CLASS} /> {t('data:export_stats_button')}
                   </DsButton>
                 </div>
@@ -1441,7 +1452,8 @@ ${resolvedPath}`);
             </p>
             <div className="space-y-2">
               {exportTierOptions.map((option) => (
-                <label key={option.id} className="flex items-start gap-3">
+                // 触屏：整行 label 是命中区，升到 44px 触控标准（checkbox 本体 16px 不足）
+                <label key={option.id} className="flex items-start gap-3 [@media(pointer:coarse)]:min-h-11">
                   <Checkbox
                     checked={exportBackupTiers.includes(option.id)}
                     onCheckedChange={() => toggleExportTier(option.id)}
@@ -1456,7 +1468,7 @@ ${resolvedPath}`);
             </div>
           </CardContent>
             <CardFooter>
-              <DsButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting} className="[@media(pointer:coarse)]:!min-h-11">
                 {isExporting ? t('data:actions.exporting') : t('data:actions.export_button')}
               </DsButton>
             </CardFooter>
@@ -1506,7 +1518,7 @@ ${resolvedPath}`);
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="ml-2 h-6 px-2 text-xs [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                        className="ml-2 h-6 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3"
                         onClick={handleExport}
                       >
                         {t('data:actions.retry_button')}
@@ -1528,7 +1540,7 @@ ${resolvedPath}`);
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <DsButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting} className="[@media(pointer:coarse)]:!min-h-11">
                 {isExporting && restoreProgress ? (
                   <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
@@ -1567,6 +1579,7 @@ ${resolvedPath}`);
               <DsButton 
                 variant="ghost" 
                 size="sm" 
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   // 触发父组件的导入对话对话框
                   dispatchAppEvent(APP_EVENTS.OPEN_IMPORT_CONVERSATION);
@@ -1594,6 +1607,7 @@ ${resolvedPath}`);
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   dispatchAppEvent(APP_EVENTS.OPEN_CLOUD_STORAGE_SETTINGS);
                 }}
@@ -1635,7 +1649,7 @@ ${resolvedPath}`);
                       <HardDrive className={DATA_CENTER_ICON_SM_CLASS} />
                       <span>{t('data:backup_list.total_count', { count: backupList.length })}</span>
                     </div>
-                    <DsButton onClick={handleAutoBackup} disabled={isExporting}>
+                    <DsButton onClick={handleAutoBackup} disabled={isExporting} className="[@media(pointer:coarse)]:!min-h-11">
                       {isExporting ? t('data:backup_list.backup_in_progress') : t('data:auto_backup')}
                     </DsButton>
                   </div>
@@ -1724,12 +1738,12 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <DsButton variant="outline" onClick={loadDataSpaceInfo} className="sm:w-auto">
+                      <DsButton variant="outline" onClick={loadDataSpaceInfo} className="sm:w-auto [@media(pointer:coarse)]:!min-h-11">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
                       </DsButton>
                       <DsButton
-                        className="sm:w-auto"
+                        className="sm:w-auto [@media(pointer:coarse)]:!min-h-11"
                         onClick={async () => {
                           try {
                             const msg = await TauriAPI.markDataSpacePendingSwitchToInactive();
@@ -1752,7 +1766,7 @@ ${resolvedPath}`);
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
-                      <DsButton variant="outline" onClick={handleRunIntegrityCheck} className="mt-4">
+                      <DsButton variant="outline" onClick={handleRunIntegrityCheck} className="mt-4 [@media(pointer:coarse)]:!min-h-11">
                         <FileText className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:integrity.run_button')}
                       </DsButton>
@@ -1761,7 +1775,7 @@ ${resolvedPath}`);
                     <div className="rounded-2xl bg-muted p-6">
                       <h3 className="text-base font-semibold text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
-                      <DsButton variant="outline" className="mt-4 !text-destructive" onClick={handleClearAllData}>
+                      <DsButton variant="outline" className="mt-4 !text-destructive [@media(pointer:coarse)]:!min-h-11" onClick={handleClearAllData}>
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
                       </DsButton>
@@ -1794,8 +1808,8 @@ ${resolvedPath}`);
                   </DsDialogDescription>
                 </DsDialogHeader>
                 <DsDialogFooter>
-                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</DsButton>
-                  <DsButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</DsButton>
+                  <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</DsButton>
                 </DsDialogFooter>
               </>
             )}
@@ -1813,7 +1827,7 @@ ${resolvedPath}`);
                   </DsDialogDescription>
                 </DsDialogHeader>
                 <DsDialogFooter>
-                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</DsButton>
+                  <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</DsButton>
                 </DsDialogFooter>
               </>
             )}
@@ -1839,8 +1853,8 @@ ${resolvedPath}`);
 />
                 </DsDialogBody>
                 <DsDialogFooter>
-                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</DsButton>
-                  <DsButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
+                  <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
                     {t('data:clear_dialog.step2_confirm_button')}
                   </DsButton>
                 </DsDialogFooter>

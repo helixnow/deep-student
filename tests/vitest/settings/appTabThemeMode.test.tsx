@@ -73,7 +73,7 @@ describe('AppearanceTab theme mode settings', () => {
     expect(screen.getByText('外观 / 主题').parentElement?.parentElement).toHaveClass('items-stretch', 'md:!items-center');
     expect(screen.getByRole('radio', { name: '亮色' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '暗色' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '系统默认' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '系统' })).toBeInTheDocument();
 
     const segmentedGroup = screen.getByRole('radiogroup', { name: '选择主题模式' });
     expect(segmentedGroup.className).toContain('study-shell-segmented');

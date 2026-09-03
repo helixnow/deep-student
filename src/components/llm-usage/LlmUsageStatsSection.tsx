@@ -388,7 +388,7 @@ const DonutChart: React.FC<DonutChartProps> = ({ icon, title, data, centerLabel 
               key={i}
               className={cn(
                 'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-default transition-colors',
-                '[@media(pointer:coarse)]:min-h-[2.5rem]',
+                '[@media(pointer:coarse)]:min-h-11',
                 activeIndex === i && 'bg-muted/50'
               )}
               onMouseEnter={() => setActiveIndex(i)}
@@ -570,7 +570,12 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     return (
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
-          <DsButton variant="ghost" size="sm" onClick={loadData}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={loadData}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
           </DsButton>
@@ -593,7 +598,14 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 刷新按钮 */}
       {!statsOnly && (
         <div className="flex justify-end mb-4">
-          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={loadData}
+            className="text-muted-foreground hover:text-foreground h-8 px-2 [@media(pointer:coarse)]:min-h-11"
+            aria-label={t('actions.refresh')}
+            title={t('actions.refresh')}
+          >
             <ArrowsClockwise size={14} />
           </DsButton>
         </div>

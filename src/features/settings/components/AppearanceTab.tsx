@@ -10,7 +10,7 @@ import { SettingSection } from './SettingsCommon';
 import { AccentPicker } from './AccentPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { isMacOS } from '@/utils/platform';
+import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import {
@@ -102,6 +102,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const [thinkingAutoCollapse, setThinkingAutoCollapse] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (isMobilePlatform()) return;
+
     let cancelled = false;
     const loadSidebarTranslucent = async () => {
       try {
@@ -130,6 +132,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, []);
 
   useEffect(() => {
+    if (isMobilePlatform()) return;
+
     let cancelled = false;
     (async () => {
       try {
@@ -390,6 +394,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
                 className="w-full md:w-auto"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
                   value: mode,
                   title,
@@ -415,25 +420,29 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               />
             )}
 
-            <SwitchRow
-              title={t('settings:theme.sidebar_translucent_title')}
-              description={t('settings:theme.sidebar_translucent_description')}
-              checked={sidebarTranslucent ?? false}
-              loading={sidebarTranslucent === null}
-              onCheckedChange={(checked) => {
-                void handleSidebarTranslucentChange(checked);
-              }}
-            />
+            {!isMobilePlatform() && (
+              <SwitchRow
+                title={t('settings:theme.sidebar_translucent_title')}
+                description={t('settings:theme.sidebar_translucent_description')}
+                checked={sidebarTranslucent ?? false}
+                loading={sidebarTranslucent === null}
+                onCheckedChange={(checked) => {
+                  void handleSidebarTranslucentChange(checked);
+                }}
+              />
+            )}
 
-            <SwitchRow
-              title={t('settings:theme.pointer_cursor_title')}
-              description={t('settings:theme.pointer_cursor_description')}
-              checked={pointerCursorEnabled ?? true}
-              loading={pointerCursorEnabled === null}
-              onCheckedChange={(checked) => {
-                void handlePointerCursorChange(checked);
-              }}
-            />
+            {!isMobilePlatform() && (
+              <SwitchRow
+                title={t('settings:theme.pointer_cursor_title')}
+                description={t('settings:theme.pointer_cursor_description')}
+                checked={pointerCursorEnabled ?? true}
+                loading={pointerCursorEnabled === null}
+                onCheckedChange={(checked) => {
+                  void handlePointerCursorChange(checked);
+                }}
+              />
+            )}
 
             <SwitchRow
               title={t('settings:theme.thinking_auto_collapse_title')}
@@ -458,7 +467,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     placeholder={t('settings:zoom.select_placeholder')}
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                     variant="outline"
-                    className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)]"
+                    className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                     width={90}
                   />
                   <DsButton
@@ -467,7 +476,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
-                    className="min-h-11 md:min-h-0"
+                    className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
@@ -491,7 +500,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
@@ -504,7 +513,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   disabled={fontSaving || fontLoading}
                   width={180}
                   variant="outline"
-                  className="max-w-full bg-transparent transition-colors hover:bg-[var(--interactive-hover)]"
+                  className="max-w-full bg-transparent transition-colors hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                 />
               </div>
             </SettingRow>
@@ -521,7 +530,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   placeholder={t('settings:font.size_select_placeholder')}
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                   variant="outline"
-                  className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)]"
+                  className="bg-transparent transition-colors hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                   width={90}
                 />
                 <DsButton
@@ -530,7 +539,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}

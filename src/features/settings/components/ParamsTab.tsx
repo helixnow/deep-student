@@ -9,7 +9,6 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS } from './constants';
 import type { SettingsExtra } from './hookDepsTypes';
 
-
 interface ParamsTabProps {
   extra: SettingsExtra;
   setExtra: React.Dispatch<React.SetStateAction<SettingsExtra>>;
@@ -65,7 +64,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
                 onChange={e => setExtra((prev: any) => ({ ...prev, chatStreamTimeoutSeconds: e.target.value }))}
                 onBlur={() => { void handleSaveChatStreamTimeout(); }}
                 placeholder={t('common:settings.chat_stream.timeout_placeholder') ?? ''}
-                className="!w-32 md:!w-28"
+                className="!w-32 md:!w-28 [@media(pointer:coarse)]:min-h-11"
               />
             </SettingRow>
 

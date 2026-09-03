@@ -148,6 +148,8 @@
   "menubar": {
     "label": "Study status bar",
     "appName": "Study Desktop",
+    "desktopRename": "Rename Desktop…",
+    "desktopNameInputLabel": "Desktop name",
     "flashcardsDue": "{{count}} flashcards due",
     "tasksRunning": "{{count}} card tasks running",
     "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
@@ -160,6 +162,9 @@
     "automationsRelativeHours": "in {{count}} h",
     "automationsRelativeDays": "in {{count}} d",
     "pomodoroFocus": "Focus remaining {{time}}",
+    "pomodoroBreakRemaining": "Break remaining {{time}}",
+    "pomodoroFocusElapsed": "Focused {{time}}",
+    "pomodoroPaused": "Paused {{time}}",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
@@ -206,6 +211,10 @@
       "loading": "Loading session…",
       "sessionNav": "Session navigation"
     },
+    "chatSession": {
+      "name": "Session Window",
+      "missingSession": "This window is not bound to a session. Open one from the session list."
+    },
     "system": {
       "todoNav": "Todo navigation",
       "settingsNav": "Settings navigation",
@@ -233,7 +242,11 @@
     "settings": "Settings",
     "sandbox": "Sandbox",
     "pomodoro": "Pomodoro",
-    "browser": "Browser"
+    "browser": "Browser",
+    "aiDashboard": "AI Dashboard"
+  },
+  "legacyFallback": {
+    "desktopOnly": "{{name}} is only available on desktop"
   },
   "dock": {
     "label": "Dock",
@@ -327,11 +340,17 @@
     "unknownApp": "Unknown app type: {{typeId}}",
     "crashTitle": "Something went wrong in this window",
     "crashUnknown": "Unknown error",
-    "reload": "Reload"
+    "reload": "Reload",
+    "reloadCooldown": "Retry in {{seconds}}s",
+    "crashLoopHint": "The app keeps crashing. Reload is paused briefly to break the loop.",
+    "dozeTitle": "Background Window",
+    "dozeHint": "Rendering is paused. Pick it to resume."
   },
   "tile": {
     "left": "Tile to Left Half",
     "right": "Tile to Right Half",
+    "top": "Tile to Top Half",
+    "bottom": "Tile to Bottom Half",
     "topLeft": "Tile to Top Left",
     "topRight": "Tile to Top Right",
     "bottomLeft": "Tile to Bottom Left",
@@ -343,6 +362,8 @@
     "zone": {
       "left": "left half",
       "right": "right half",
+      "top": "top half",
+      "bottom": "bottom half",
       "topLeft": "top-left",
       "topRight": "top-right",
       "bottomLeft": "bottom-left",
@@ -358,6 +379,9 @@
     "emptyHint": "Press Esc or click anywhere to return to the desktop",
     "emptyApp": "This app has no windows to overview"
   },
+  "snap": {
+    "altBadge": "Wider snap zones"
+  },
   "switcher": {
     "title": "Window Switcher",
     "hint": "Hold Ctrl to cycle, release to switch",
@@ -368,6 +392,9 @@
     "hint": "Open apps from the Dock below to get started — windows can be freely arranged, tiled and compared side by side.",
     "actionsLabel": "Quick start",
     "actionFiles": "Open Files",
+    "actionRestoreSession": "Restore last desktop",
+    "actionRestoreSessionCount_one": "Restore last desktop (1 window)",
+    "actionRestoreSessionCount_other": "Restore last desktop ({{count}} windows)",
     "actionFilesDesc": "Browse notes, textbooks, and all resources",
     "actionApps": "All apps",
     "actionFlashcards": "Flashcards",
@@ -438,19 +465,41 @@
     "materialTier": "Visual material",
     "showDesktop": "Show desktop",
     "restoreWindows": "Restore windows",
+    "showWidgets": "Show desktop widgets",
+    "shortcuts": "Keyboard shortcuts",
+    "replayTour": "Replay quick tour",
     "settings": "Desktop settings…"
+  },
+  "immersive": {
+    "hint": "Immersive mode — press Esc to exit",
+    "hintTouch": "Immersive mode — tap Exit, or the green button in the window title bar",
+    "exit": "Exit immersive"
   },
   "cheatsheet": {
     "title": "Keyboard shortcuts",
     "close": "Close",
     "hint": "Press ? or Esc to close · Hold Ctrl+Alt to peek",
     "hintMac": "Press ? or Esc to close · Hold ⌘⌥ to peek",
+    "replayTour": "Replay quick tour",
     "groups": {
       "layout": "Tiling & layout",
       "movement": "Move & snap",
       "navigation": "Switch & navigate",
       "management": "Window management",
       "help": "Help"
+    },
+    "tricks": {
+      "title": "Modifier tricks",
+      "drag": "Drag a window: larger snap zones; drop on the top edge for top half",
+      "dragGesture": "drag",
+      "tileMenu": "Zoom hover menu: middle column becomes top half / fill / bottom half",
+      "tileMenuGesture": "hover zoom",
+      "zoom": "Classic zoom: fill desktop / restore",
+      "zoomGesture": "click zoom",
+      "closeAll": "Close all windows of this app",
+      "closeAllGesture": "click close",
+      "minimizeAll": "Minimize all windows of this app",
+      "minimizeAllGesture": "click minimize"
     }
   },
   "wallpaper": {
@@ -492,7 +541,20 @@
     "missingResource": "Missing resource identifier; this window cannot be opened",
     "missingResourceHint": "Reopen from Files, or check that the resource still exists.",
     "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?",
-    "unsavedTitle": "You have unsaved changes. Leave anyway?"
+    "unsavedTitle": "You have unsaved changes. Leave anyway?",
+    "saveAndClose": "Save & Close",
+    "saveAndCloseFailed": "Save failed; the window stays open. Check the error and retry."
+  },
+  "deactivation": {
+    "cancelled": "Deactivation cancelled. Study Desktop stays on.",
+    "dirtyBlocked": "Some windows have unsaved changes, so closing Study Desktop was cancelled. Save or close those windows first.",
+    "exitBlocked": "There is unsaved content, so exiting was cancelled. Save your work before quitting."
+  },
+  "suspend": {
+    "keptBackground": "This window has unsaved changes, so it was kept running in the background instead of being frozen."
+  },
+  "hub": {
+    "closeCancelled": "Closing the tab was cancelled. Your unsaved changes are kept."
   },
   "mindmap": {
     "loading": "Loading mind map…",
@@ -533,6 +595,7 @@
     "restored": "{{title}} restored",
     "exposeOpened": "Overview opened, {{count}} windows",
     "exposeClosed": "Overview closed",
+    "exposeSelected": "{{title}} selected",
     "dropOpened": "Opened {{title}}",
     "appCrashed": "{{name}} crashed and can be reloaded",
     "showDesktop": "Desktop shown",
@@ -550,6 +613,8 @@
     "title": "Keyboard Shortcuts",
     "tileLeft": "Tile to left half",
     "tileRight": "Tile to right half",
+    "tileTop": "Tile to top half",
+    "tileBottom": "Tile to bottom half",
     "tileTopLeft": "Tile to top-left",
     "tileTopRight": "Tile to top-right",
     "tileBottomLeft": "Tile to bottom-left",
@@ -621,8 +686,18 @@
       "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
     },
     "restoreSession": {
-      "title": "Restore last desktop on launch",
-      "desc": "On next launch, restore previously open windows and layout. Off by default for faster cold starts; desktop state is still saved so you can turn this on later."
+      "title": "Automatically restore last desktop on launch",
+      "desc": "When on, every launch reopens all of your previous windows. Off by default for faster cold starts — desktop state is still saved, and the empty desktop offers a one-off \"Restore last desktop\" button."
+    },
+    "desktopWidgets": {
+      "title": "Show desktop widgets",
+      "desc": "Show the calendar and today's agenda widget on the desktop. Turning it off frees horizontal space on narrow windows and small screens (also toggleable from the desktop context menu)."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "desc": "Window management shortcuts for the Study Desktop. On the desktop, press ? or use the desktop context menu to open the cheatsheet anytime.",
+      "show": "Show all {{count}}",
+      "hide": "Hide list"
     },
     "menubarAutohide": {
       "title": "Automatically Hide Menu Bar",
@@ -771,7 +846,8 @@
       "refresh": "Refresh",
       "open": "Open file explorer",
       "close": "Close file explorer",
-      "closeFiles": "Close files"
+      "closeFiles": "Close files",
+      "moreActions": "More actions"
     },
     "navHistory": {
       "aria": "Navigation history",
@@ -828,10 +904,13 @@
       "activeTags": "Active tags",
       "removeTag": "Remove tag {{tag}}",
       "emptyQuickOpenHint": "Try \"Search content\" for full-text matches.",
-      "tagHint": "tag:name filters by tag",
+      "tagHint": "Filter with tag: path: or key:value",
       "resultCount": "{{count}} results",
       "recentGroup": "Recently opened",
-      "allGroup": "All files"
+      "allGroup": "All files",
+      "loadMore": "Load more results",
+      "loadingMore": "Loading more…",
+      "resultCountMore": "{{count}}+ results"
     },
     "backlinks": {
       "title": "Links",
@@ -863,7 +942,15 @@
       "mentionsFailed": "Could not scan unlinked mentions.",
       "mentionsLimited": "Only the {{count}} most recent candidate notes were scanned.",
       "noMentions": "No unlinked mentions found",
-      "convertMention": "Convert the mention in \"{{title}}\" to a link"
+      "convertMention": "Convert the mention in \"{{title}}\" to a link",
+      "convertDirty": "\"{{title}}\" has unsaved changes. Save it before converting.",
+      "convertMissing": "\"{{title}}\" has changed and the mention could not be found.",
+      "convertFailed": "Could not convert the mention to a link.",
+      "tabGraph": "Graph"
+    },
+    "renameSync": {
+      "updated": "Updated wiki links in {{count}} notes",
+      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually."
     },
     "tree": {
       "aria": "File tree",
@@ -879,7 +966,8 @@
       "empty": "No files in this library yet",
       "showAll": "Show all files",
       "dragLink": "Drag link into note",
-      "moreActions": "More actions"
+      "moreActions": "More actions",
+      "truncated": "More than {{max}} files in the library. The file tree only shows part of them."
     },
     "tabs": {
       "aria": "Open files",
@@ -967,6 +1055,45 @@
       "confirmPurgeTitle": "Delete permanently?",
       "confirmPurgeDesc": "\"{{name}}\" will be permanently deleted. This cannot be undone.",
       "confirmPurgeAction": "Delete permanently"
+    },
+    "graph": {
+      "canvasAria": "Local link graph for \"{{title}}\"",
+      "clientFallback": "Graph service unavailable; showing only outgoing links of this note.",
+      "depth1": "1 hop",
+      "depth2": "2 hops",
+      "depthLabel": "Graph depth",
+      "empty": "No links yet. Type [[ to create a wiki link.",
+      "legendLabel": "Edge types",
+      "legendNoteref": "Reference",
+      "legendWikilink": "Wiki link",
+      "loadFailed": "Failed to load the local graph.",
+      "loading": "Building graph…",
+      "noActiveNote": "Select a note to see its graph.",
+      "refresh": "Refresh graph",
+      "truncated": "Too many connections; showing a subset of nodes."
+    },
+    "props": {
+      "title": "Properties",
+      "add": "Add property",
+      "confirmAdd": "Add property",
+      "cancelAdd": "Cancel",
+      "confirmEdit": "Save value",
+      "cancelEdit": "Cancel editing",
+      "editAria": "Edit property {{key}}",
+      "editValueAria": "Edit value of property {{key}}",
+      "removeAria": "Delete property {{key}}",
+      "keyPlaceholder": "Name",
+      "valuePlaceholder": "Value",
+      "emptyHint": "Add arbitrary key-value properties, searchable via key:value.",
+      "emptyReadOnly": "No properties.",
+      "emptyKey": "Enter a property name.",
+      "reservedKey": "This name is reserved; pick another.",
+      "duplicateKey": "A property with this name already exists.",
+      "keyTooLong": "Property names can be at most {{max}} characters.",
+      "valueTooLong": "Property values can be at most {{max}} characters.",
+      "invalidChars": "Properties cannot contain control characters.",
+      "tooMany": "You can add at most {{max}} properties.",
+      "saveFailed": "Failed to save properties."
     }
   },
   "sandbox": {
@@ -1021,7 +1148,10 @@
     "printUnsupported": "This file type can't be printed from the preview. Open it with a system app to print.",
     "searchUnavailable": "Text search isn't available for this file type",
     "moreActions": "More actions",
-    "closeSearch": "Close search"
+    "closeSearch": "Close search",
+    "quickLook": "Quick Look",
+    "quickLookHint": "Space or Esc to close",
+    "quickLookClose": "Close Quick Look"
   },
   "pomodoro": {
     "modes": {
@@ -1048,6 +1178,7 @@
     },
     "settingsTitle": "Pomodoro Settings",
     "statsTitle": "Focus trends",
+    "breakReview": "Review {{count}} due cards",
     "progressTitle": "{{done}}/{{total}} pomodoros completed",
     "today": {
       "label": "Today",

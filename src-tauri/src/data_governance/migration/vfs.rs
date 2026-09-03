@@ -900,6 +900,17 @@ pub const V20260808_FILE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::n
 ])
 .idempotent();
 
+/// V20260824: notes.props 自定义键值属性（JSON 对象文本，空对象规范化为 NULL）。
+///
+/// 裸 ALTER ADD COLUMN 不可重复执行；v0.9.44 升级和 duplicate-column
+/// 中间态由 MigrationCoordinator 的显式 pre-repair 收敛。
+pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
+    20260824,
+    "note_props",
+    include_str!("../../../migrations/vfs/V20260824__note_props.sql"),
+)
+.with_expected_columns(&[("notes", "props")]);
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -958,6 +969,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX,
     V20260807_QUESTION_STRUCTURED_DATA,
     V20260808_FILE_DELETION_INTENT_JOURNAL,
+    V20260824_NOTE_PROPS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1106,6 +1118,16 @@ mod tests {
         // 不能挂钩 VFS_FTS_TABLE_COUNT 等 head 状态常量——
         // notes_fts 等后续迁移新增的 FTS 表不属于 init 的 smoke 范围。
         assert_eq!(V20260130_INIT.expected_queries.len(), 2);
+    }
+
+    #[test]
+    fn test_note_props_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260824);
+        assert_eq!(V20260824_NOTE_PROPS.expected_columns, &[("notes", "props")]);
+        assert_eq!(
+            VFS_MIGRATIONS.last().map(|migration| migration.name),
+            Some("note_props")
+        );
     }
 
     #[test]

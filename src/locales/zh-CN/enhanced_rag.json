@@ -146,6 +146,9 @@
     "loading_more": "加载中...",
     "processing_documents": "处理中 ({{count}} 个文档)"
   },
+  "retrieve": {
+    "empty_query": "检索请求必须包含文本、图片或两者"
+  },
   "rag_search": {
     "title": "智能检索",
     "query_placeholder": "输入检索查询...",

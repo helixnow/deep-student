@@ -18,6 +18,8 @@ import {
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
+import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
@@ -98,6 +100,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ exam
             examId={examId}
             className="p-4"
             onClose={() => setShowCalendar(false)}
+            isActive={isActive}
           />
         ) : isSessionActive ? (
           <ReviewSession examId={examId} isActive={isActive} />
@@ -241,13 +244,13 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) => {
         <ProgressRing ratio={masteryRatio} className="text-success" />
         <div className="flex items-baseline gap-1 leading-none">
           <span className="text-xs font-semibold tabular-nums text-foreground">{masteryPercent}%</span>
-          <span className="text-[10px] text-muted-foreground">{t('exam.shell.mastery')}</span>
+          <span className="text-2xs text-muted-foreground">{t('exam.shell.mastery')}</span>
         </div>
       </div>
       <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
       <div className="flex items-baseline gap-1 leading-none" title={t('exam.shell.correctRate')}>
         <span className="text-xs font-semibold tabular-nums text-foreground">{correctPercent}%</span>
-        <span className="text-[10px] text-muted-foreground">{t('exam.shell.correctRate')}</span>
+        <span className="text-2xs text-muted-foreground">{t('exam.shell.correctRate')}</span>
       </div>
     </div>
   );
@@ -298,6 +301,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   );
 
   const sessionId = node.id;
+  const isSmallScreen = useIsMobile();
 
   // 渲染日志放入 effect，保持 render 纯函数（避免 StrictMode 双调用产生重复日志）
   useEffect(() => {
@@ -306,6 +310,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // 🆕 2026-01 改造：使用 useQuestionBankSession Hook 管理题目状态
   const {
+    practiceSessionOwner,
     questions,
     currentIndex,
     stats,
@@ -485,6 +490,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, []);
 
+  // 视图壳只消费判分侧已有的 dirty 信号；判分侧尚未提供窗口级保存 API，
+  // 故不注册 save handler（不自造保存），关窗确认只提供「放弃/取消」。
   useEffect(() => registerContentDirtyChecker(
     'exam',
     sessionId,
@@ -578,7 +585,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const detail = (event as CustomEvent<SettingsRequest>).detail;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
 
-      const open = detail?.open;
+      // 顶栏「更多→设置」不带 open（toggle 语义），而设置面板只在练习视图渲染：
+      // 非 practice 时直接翻转 settingsPanelOpen 既无可见反馈，还会让之后进入
+      // 练习时面板意外弹出。toggle 仅在 practice 有效；非 practice 统一按「打开」
+      // 处理，复用 open === true 的进练习守卫。
+      const open = detail?.open ?? (viewMode === 'practice' ? undefined : true);
       if (open === true && !hasQuestions) {
         detail?.acknowledge?.({
           handled: false,
@@ -954,6 +965,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (!sessionId) throw new Error('No session');
     const result = await submitAnswer(questionId, answer);
 
+    // 限时/每日练习进度回写（2026-08 修复）：这两个全局会话对象此前没有
+    // 任何真实路径的写入方，面板进度与正确率恒为 0。action 内部按会话题目
+    // 成员资格 + 首答幂等自行门禁，非会话题目是空操作。
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, result.isCorrect);
+
+    // 权威优先（R6 补齐）：后端提交响应回带当日 daily 快照时覆盖上面的
+    // 本地乐观增量。顺序必须是先乐观（维护 answered_results 差量基线）、
+    // 后权威覆盖计数；旧后端无此字段时为 undefined，行为不变。timed 不受影响。
+    if (result.dailyProgress) {
+      useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
+    }
+
     // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写。
     // ★ 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
     //   避免连续快速提交时后写覆盖先写、丢失已答记录
@@ -986,8 +1009,41 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 🆕 使用 Hook 的 markCorrect
   const handleMarkCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
     if (!sessionId) return;
-    await markCorrect(questionId, isCorrect);
-  }, [sessionId, markCorrect]);
+    const result = await markCorrect(questionId, isCorrect);
+
+    // 与 handleSubmitAnswer 对齐：改判成功后同样回写限时/每日练习进度。
+    // action 内部按「会话题目成员资格 + 首答幂等 + 已答题差量修正」门禁（R4 起）：
+    // 已答且有判定基线的题按旧判定 → 新判定 差量更新 correct（可减）；
+    // 「跳过自动判分、直接自评」的主观题由这里首次计入进度；
+    // 已答但无基线（旧会话残留 / 权威覆盖引入）保持首答锁，由下方权威快照收敛。
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
+
+    // mock_exam 对称回写：成绩依赖 results，改判后同步更新判定；
+    // answers 保持不变（改判不改作答内容），且仅对本会话内已作答的题目生效，
+    // 避免制造"有判定无作答"的不一致记录。
+    if (practiceMode === 'mock_exam') {
+      const latestSession = useQuestionBankStore.getState().mockExamSession;
+      if (
+        latestSession &&
+        latestSession.exam_id === sessionId &&
+        !latestSession.is_submitted &&
+        latestSession.question_ids.includes(questionId) &&
+        questionId in latestSession.answers
+      ) {
+        setMockExamSession({
+          ...latestSession,
+          results: { ...latestSession.results, [questionId]: isCorrect },
+        });
+      }
+    }
+
+    // 权威优先（R6 补齐，闭环 wave2-E-r4-05 的遗留项）：hook 已透出改判响应
+    // 里的当日 daily 快照，用它覆盖本地乐观增量——这是首答锁 fail-closed
+    // 分支（已答但无判定基线）唯一的即时收敛路径；旧后端无此字段时不动。
+    if (result.dailyProgress) {
+      useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
+    }
+  }, [sessionId, markCorrect, practiceMode, setMockExamSession]);
 
   // 🆕 使用 Hook 的 navigate
   const handleNavigate = useCallback((index: number) => {
@@ -1670,6 +1726,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
   const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
 
+  // 📱 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
+  // 返回键先执行页内返回（practice 回启动台，二级视图回题库列表），
+  // 而不是让 MobileSlidingLayout 直接把整个右屏收回中屏。
+  //
+  // ⚠️ 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
+  // MobileSlidingLayout 的 A-5 注释），view 档在右屏打开时永远轮不到。
+  // 本 handler 仅在进入非根态时才注册（必然晚于布局 mount 时的注册），
+  // 同优先级后注册者先执行，因此能先拿到事件；之后打开的浮层（Dialog/
+  // AppMenu 等）注册更晚仍优先于本 handler，「先关浮层」语义不受影响。
+  const hardwareBackRef = useRef({ viewMode, isActive, requestViewMode });
+  hardwareBackRef.current = { viewMode, isActive, requestViewMode };
+  const isNonRootViewMode = viewMode !== 'list' && viewMode !== 'launcher';
+  useEffect(() => {
+    if (!isSmallScreen || !isNonRootViewMode) return;
+    return registerBackHandler(() => {
+      const { viewMode: mode, isActive: active, requestViewMode: request } = hardwareBackRef.current;
+      if (active === false || mode === 'list' || mode === 'launcher') return false;
+      // 右屏离屏时（MobileSlidingLayout 给非可见屏加 inert）让行给布局/导航层
+      if (agentFlashRootRef.current?.closest('[inert]')) return false;
+      // requestViewMode 内部的草稿/复习/CSV 导入守卫可能弹确认面板或阻断；
+      // 无论结果如何都消费本次返回，避免确认面板刚弹出整个右屏就被收走
+      request(mode === 'practice' ? 'launcher' : 'list');
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, isNonRootViewMode]);
+
   // ========== Tab 栏滑动选中指示器 + 方向键可达 ==========
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const [tabIndicator, setTabIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -1947,7 +2029,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </DsButton>
@@ -2014,7 +2096,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:min-h-11"
+                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:!min-h-11"
               >
                 {isResuming ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -2037,7 +2119,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <span className="text-sm text-destructive truncate" title={error}>
               {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
-            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               <ArrowClockwise size={14} />
               {t('common:actions.retry')}
             </DsButton>
@@ -2078,7 +2160,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'list' || undefined}
               aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'list'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2099,7 +2181,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'practice' || undefined}
               aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'practice'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
@@ -2120,7 +2202,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:min-h-11',
+                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
                       activeTopTab === 'more'
                         ? 'text-accent-foreground font-medium hover:bg-transparent'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2141,7 +2223,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       icon={<Icon size={16} />}
                       checked={viewMode === mode}
                       suffix={badge > 0 ? (
-                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-[10px] font-medium tabular-nums text-warning">
+                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-2xs font-medium tabular-nums text-warning">
                           {badge > 99 ? '99+' : badge}
                         </span>
                       ) : undefined}
@@ -2160,7 +2242,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11"
                 />
                 
                 <DsButton
@@ -2176,7 +2258,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:min-h-11',
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     isAdvancedRuntimeTimer
                       ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
                       : isTimerRunning
@@ -2216,7 +2298,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={handleOpenExport}
                 aria-label={t('learningHub:exam.tab.export')}
                 title={t('learningHub:exam.tab.export')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
@@ -2230,7 +2312,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
                     title={t('learningHub:exam.tab.addQuestion')}
-                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
                   >
                     <Plus size={14} />
                     <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
@@ -2328,6 +2410,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onRequestedModeHandled={() => setLauncherRequestedMode(null)}
               currentQuestionId={sessionCurrentQuestionId}
               markedQuestionIds={favoriteQuestionIds}
+              isActive={isActive}
             />
           ) : viewMode === 'manage' && hasQuestions ? (
             <QuestionBankManageView
@@ -2399,9 +2482,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onBack={handleUploaderBack}
               onManualCreate={handleCreateQuestionEntry}
             />
-          ) : viewMode === 'practice' && hasQuestions ? (
+          ) : viewMode === 'practice' && hasQuestions && practiceSessionOwner ? (
             <QuestionBankEditor
               sessionId={sessionId}
+              practiceSessionOwner={practiceSessionOwner}
               questions={practiceQuestions}
               stats={stats}
               currentIndex={practiceCurrentIndex}
@@ -2465,6 +2549,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           examName={sessionDetail?.summary?.exam_name || node.name}
           examId={sessionId}
           inline
+          isActive={isActive}
         />
         {/* onJumpToQuestion 直连宿主导航而不走 QBANK_FOCUS_EVENT 回退：
             该事件不带 targetResourceId，同一题目集多窗（标签页保活）时会让
@@ -2475,6 +2560,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           onOpenChange={handleHistoryOpenChange}
           inline
           onJumpToQuestion={handleOpenQuestion}
+          isActive={isActive}
         />
       </Suspense>
     </div>

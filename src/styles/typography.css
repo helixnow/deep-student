@@ -86,9 +86,19 @@ small, .text-sm {
 	font-size: var(--font-size-sm);
 }
 
-/* UI 文本 - 侧边栏、菜单等 */
-.text-ui {
-	font-size: var(--font-size-sm);
+/* UI 文本 - 侧边栏、菜单、按钮标签等
+ *
+ * 与 Tailwind 的 text-ui 工具类（tailwind.config.js fontSize.ui →
+ * --font-size-ui = 13px × --font-size-scale）是同一个类名。本文件在 App.tsx
+ * 里晚于 tailwind.css 引入，未加 :where() 时这条规则会盖掉工具类，导致
+ * text-ui 实际渲染成 12px，并顺带压掉同元素上的 font-* / tracking-* 工具类。
+ *
+ * 现在：字号对齐 --font-size-ui（与工具类同值，二者谁赢都是 13px 且吃
+ * 字号缩放），并用 :where() 把特异性归零，weight / letter-spacing 退化成
+ * 可被任意工具类覆盖的默认值。
+ */
+:where(.text-ui) {
+	font-size: var(--font-size-ui);
 	font-weight: var(--font-weight-medium);
 	letter-spacing: var(--letter-spacing-normal);
 }

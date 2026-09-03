@@ -52,6 +52,26 @@ export const TemplateToolbar: React.FC<TemplateToolbarProps> = ({
   const typeLabel = (value: TemplateTypeFilter) => t(`templateMgmt.type_${value}`);
   const sourceLabel = (value: TemplateSourceFilter) => t(`templateMgmt.source_${value}`);
 
+  // 键盘从搜索进入结果列表：↓/Enter 把焦点交给第一张模板卡
+  // （列表内的 roving 方向键导航见 TemplateBrowser）；Esc 清空搜索。
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Escape') {
+      if (searchInput) {
+        e.preventDefault();
+        onSearchInputChange('');
+      }
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter') return;
+    const root = e.currentTarget.closest('.wb-tm-root') ?? document;
+    const firstItem = root.querySelector<HTMLElement>('[data-template-item]');
+    if (firstItem) {
+      e.preventDefault();
+      firstItem.focus();
+    }
+  };
+
   return (
     <div className="wb-tm-toolbar" role="search">
       <div className="wb-tm-toolbar-row">
@@ -61,8 +81,10 @@ export const TemplateToolbar: React.FC<TemplateToolbarProps> = ({
             type="search"
             value={searchInput}
             onChange={(e) => onSearchInputChange(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder={t('search_placeholder')}
             aria-label={t('search_placeholder')}
+            data-template-search
             className="wb-tm-toolbar-search-input"
           />
           {searchInput && (

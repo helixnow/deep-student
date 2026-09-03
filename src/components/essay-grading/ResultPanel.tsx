@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   Pen,
+  Cards,
   Copy,
   Check,
   Download,
+  Notebook,
   WarningCircle,
   ArrowClockwise,
   CircleNotch,
@@ -14,6 +16,7 @@ import {
   CaretRight,
 } from '@phosphor-icons/react';
 import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer';
+import type { SuggestionChange } from '../../essay-grading/suggestionAnchors';
 import { cn } from '@/lib/utils';
 
 interface ResultPanelProps {
@@ -29,8 +32,17 @@ interface ResultPanelProps {
   canRetry?: boolean;
   onRetry?: () => void;
   isPartialResult?: boolean;
-  /** 应用批注中的修改建议到输入区（由 Workbench 提供） */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 应用批注中的修改建议到输入区（由 Workbench 提供，前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议 */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合 */
+  appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 把当前轮批改结果存为笔记 */
+  onSaveAsNote?: () => void;
+  /** 把批改结果送进制卡链路（由 Workbench 提供） */
+  onGenerateCards?: () => void;
+  isGeneratingCards?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -103,6 +115,11 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   onRetry,
   isPartialResult,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
+  onSaveAsNote,
+  onGenerateCards,
+  isGeneratingCards,
   roundNavigation,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
@@ -126,11 +143,17 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   );
 
   const showEmptyState = !gradingResult && !isGrading && !error;
+  // 无批改结果 / 批改进行中都没有可提炼的错点，按钮 disabled 并说明原因
+  const generateCardsDisabledReason = isGrading
+    ? t('essay_grading:make_cards.disabled_grading')
+    : !gradingResult
+      ? t('essay_grading:make_cards.disabled_no_result')
+      : null;
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
       {/* Toolbar - 简洁风格 */}
-      <div className="flex h-[41px] items-center justify-between border-b border-border/30 px-3 sm:px-4">
+      <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/30 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
         <div className="flex items-center gap-3 min-w-0">
           {/* 标题 - 简洁风格简洁 */}
           <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
@@ -141,22 +164,22 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {currentRound > 0 && (
             <div className="flex items-center gap-0.5 shrink-0">
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretLeft size={12} />
                 </DsButton>
               )}
               <span className="text-xs text-muted-foreground/60 tabular-nums">
                 {roundNavigation && roundNavigation.total > 1 ? (
                   <>
-                    <span className="sm:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
-                    <span className="hidden sm:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
+                    <span className="md:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
+                    <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
                   </>
                 ) : (
                   t('essay_grading:round.label', { number: currentRound })
                 )}
               </span>
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretRight size={12} />
                 </DsButton>
               )}
@@ -187,19 +210,33 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   size="icon"
                   iconOnly
                   onClick={handleCopy}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={t('essay_grading:result_section.copy')}
                 >
                   {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                 </DsButton>
               </CommonTooltip>
+              {onSaveAsNote && !isGrading && (
+                <CommonTooltip content={t('essay_grading:result_section.save_as_note')}>
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={onSaveAsNote}
+                    className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                    aria-label={t('essay_grading:result_section.save_as_note')}
+                  >
+                    <Notebook size={14} />
+                  </DsButton>
+                </CommonTooltip>
+              )}
               <CommonTooltip content={t('essay_grading:result_section.export')}>
                 <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
                   onClick={onExportResult}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={t('essay_grading:result_section.export')}
                 >
                   <Download size={14} />
@@ -227,7 +264,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             description={error}
           >
             {canRetry && onRetry && (
-              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
+              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
                 <ArrowClockwise size={12} />
                 {t('essay_grading:actions.retry')}
               </DsButton>
@@ -260,6 +297,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               hideToolbar={false}
               hideStreamingIndicator={true}
               onApplySuggestion={onApplySuggestion}
+              onUndoSuggestion={onUndoSuggestion}
+              appliedSuggestionKeys={appliedSuggestionKeys}
             />
           </div>
         )}
@@ -273,6 +312,30 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           </div>
         )}
       </div>
+
+      {/* 生成卡片：常显次级动作条（移动端整行，桌面右对齐），不藏进 hover 层 */}
+      {onGenerateCards && !showEmptyState && (
+        <div className="shrink-0 border-t border-border/30 px-3 py-2 sm:px-4">
+          <DsButton
+            variant="secondary"
+            size="sm"
+            onClick={onGenerateCards}
+            disabled={Boolean(generateCardsDisabledReason) || Boolean(isGeneratingCards)}
+            title={generateCardsDisabledReason ?? undefined}
+            className="w-full justify-center sm:ml-auto sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+          >
+            <Cards size={14} />
+            {isGeneratingCards
+              ? t('essay_grading:make_cards.running')
+              : t('essay_grading:make_cards.label')}
+          </DsButton>
+          {generateCardsDisabledReason && (
+            <p className="mt-1.5 text-xs text-muted-foreground sm:text-right">
+              {generateCardsDisabledReason}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 });

@@ -85,7 +85,7 @@ const ArgumentsPreview: React.FC<{
         <pre className="p-2 text-xs">{displayText}</pre>
       </CustomScrollArea>
       {needsTruncation && (
-        <DsButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
+        <DsButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline [@media(pointer:coarse)]:!min-h-11">
           {isExpanded ? (
             <>
               <CaretUp size={12} />
@@ -428,7 +428,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               size="sm"
               onClick={() => setIsReasonOpen((prev) => !prev)}
               disabled={isResponding || isTimedOutLocally}
-              className="text-danger hover:text-danger"
+              className="text-danger hover:text-danger [@media(pointer:coarse)]:!min-h-11"
             >
               <X size={16} className="mr-1" />
               {t('approval.reject')}
@@ -440,7 +440,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                 size="sm"
                 onClick={() => handleResponse(true, undefined, true)}
                 disabled={isResponding || isTimedOutLocally}
-                className="text-success hover:text-success/80"
+                className="text-success hover:text-success/80 [@media(pointer:coarse)]:!min-h-11"
               >
                 {shellScope
                   ? t('approval.allowScope')
@@ -454,7 +454,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               onClick={() => handleResponse(true)}
               disabled={isResponding || isTimedOutLocally}
               autoFocus
-              className="bg-success text-success-foreground"
+              className="bg-success text-success-foreground [@media(pointer:coarse)]:!min-h-11"
             >
               <Check size={16} className="mr-1" />
               {t('approval.approve')}
@@ -491,7 +491,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   size="sm"
                   onClick={handleRejectImmediately}
                   disabled={isResponding || isTimedOutLocally}
-                  className="shrink-0 text-xs text-muted-foreground hover:text-danger"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-danger [@media(pointer:coarse)]:!min-h-11"
                 >
                   {t('approval.rejectDirectly')}
                 </DsButton>
@@ -500,7 +500,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   size="sm"
                   onClick={handleRejectWithReason}
                   disabled={isResponding || isTimedOutLocally}
-                  className="shrink-0 text-xs text-danger hover:text-danger"
+                  className="shrink-0 text-xs text-danger hover:text-danger [@media(pointer:coarse)]:!min-h-11"
                 >
                   {t('approval.rejectSend')}
                 </DsButton>

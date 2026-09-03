@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { isMobilePlatform } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   CircleNotch,
@@ -76,14 +77,30 @@ import {
 } from './components/ChatAnkiCardExtras';
 import { parseAnkiSegmentCounts } from './components/ankiSegmentCounts';
 import {
+  isInternalAnkiField,
+  parseCardQaFlags,
+  summarizeQaFlags,
+} from './components/ankiQaFlags';
+import { AnkiQaFlagBadge, AnkiQaFlagsSummaryChip } from './components/AnkiQaFlagBadge';
+import { AnkiCriticSummaryBanner } from './components/AnkiCriticSummaryBanner';
+import { parseAnkiMediaReport } from './components/ankiMediaReport';
+import { ImageOcclusionOverlay } from '@/components/anki/ImageOcclusionOverlay';
+import {
+  parseOcclusionSpec,
+  type OcclusionSpec,
+} from '@/components/anki/utils/imageOcclusion';
+import { buildImageDataUrl } from '@/features/chat/context/imagePayload';
+import {
   getAnkiBlockUiState,
   patchAnkiBlockUiState,
   getLastDeckNameInput,
   setLastDeckNameInput,
   type AnkiCardEditDraft,
+  type AnkiCriticSummary,
+  type AnkiGenerationStats,
 } from './components/ankiCardsBlockState';
 import { useMultiTemplateLoader } from '../../hooks/useMultiTemplateLoader';
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import './components/chat-anki-cards.css';
 
 // ============================================================================
@@ -167,6 +184,21 @@ export interface AnkiCardsBlockData {
   issues?: AnkiCardsIssue[];
   /** 后端警告信息（用于 UI 显示） */
   warnings?: AnkiCardsWarning[];
+  /**
+   * APKG 媒体导入报告（`{declared, imported, skipped, skips: [{reason, count, filenames}], mediaDir}`）。
+   * 弱类型透传自 tool_output，渲染前经 parseAnkiMediaReport 收紧。
+   */
+  mediaReport?: unknown;
+  /**
+   * 任务级 critic 摘要（anki_generation_event 的 CriticSummary 标签，
+   * 适配器归一化后 patch 写入；仅 critic opt-in 且收尾成功时存在）。
+   */
+  criticSummary?: AnkiCriticSummary;
+  /**
+   * 流式生成质量统计（anki_generation_event 的 GenerationStats 标签，
+   * 适配器归一化后 patch 写入）。
+   */
+  generationStats?: AnkiGenerationStats;
 }
 
 interface DocumentTaskSummary {
@@ -318,6 +350,8 @@ function resolveEditableFields(
   ];
   const ordered = (candidates.length > 0 ? candidates : fallbackFieldOrder).filter((field, index, arr) => {
     if (!field) return false;
+    // 内部协议字段（如 _qa_flags）不进入编辑列表，也不拼进任何可见文本
+    if (isInternalAnkiField(field)) return false;
     const lower = field.toLowerCase();
     return arr.findIndex((item) => item.toLowerCase() === lower) === index;
   });
@@ -356,7 +390,7 @@ function mapBlockStatusToPreviewStatus(
   finalStatus?: string
 ): AnkiCardStackPreviewStatus {
   const normalizedFinalStatus =
-    typeof finalStatus === 'string' ? finalStatus.toLowerCase() : undefined;
+    typeof finalStatus === 'string' ? finalStatus.trim().toLowerCase() : undefined;
   const isCancelled =
     normalizedFinalStatus === 'cancelled' ||
     normalizedFinalStatus === 'canceled';
@@ -380,6 +414,164 @@ function mapBlockStatusToPreviewStatus(
       return 'ready';
   }
 }
+
+// ============================================================================
+// 子组件：Image Occlusion 预览
+// ============================================================================
+
+type OcclusionImageState = {
+  imageRef: string;
+  src: string | null;
+  status: 'loading' | 'ready' | 'unavailable';
+};
+
+interface ResolvedOcclusionImage {
+  found?: boolean;
+  content?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+const DIRECT_OCCLUSION_IMAGE_URL = /^(?:data:image\/|blob:|https?:|asset:)/i;
+const VFS_OCCLUSION_SOURCE_ID = /^(?:att|file|img|image|res)_[a-z0-9_.-]+$/i;
+
+function getVfsOcclusionSourceId(imageRef: string): string | null {
+  const trimmed = imageRef.trim();
+  if (/^vfs:\/\//i.test(trimmed)) {
+    const sourceId = trimmed.replace(/^vfs:\/\//i, '').replace(/^\/+/, '');
+    return sourceId || null;
+  }
+  return VFS_OCCLUSION_SOURCE_ID.test(trimmed) ? trimmed : null;
+}
+
+function resolveImmediateOcclusionImageSrc(imageRef: string): string | null {
+  const trimmed = imageRef.trim();
+  if (!trimmed) return null;
+  if (DIRECT_OCCLUSION_IMAGE_URL.test(trimmed)) return trimmed;
+  if (getVfsOcclusionSourceId(trimmed)) return null;
+  // 拒绝未知 URL scheme；普通绝对/相对文件路径才交给 Tauri asset protocol。
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !/^[a-z]:[\\/]/i.test(trimmed)) {
+    return null;
+  }
+  try {
+    return convertFileSrc(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function useOcclusionImage(imageRef: string): Pick<OcclusionImageState, 'src' | 'status'> {
+  const vfsSourceId = useMemo(() => getVfsOcclusionSourceId(imageRef), [imageRef]);
+  const immediateSrc = useMemo(
+    () => resolveImmediateOcclusionImageSrc(imageRef),
+    [imageRef],
+  );
+  const [resolved, setResolved] = useState<OcclusionImageState>(() => ({
+    imageRef,
+    src: immediateSrc,
+    status: immediateSrc ? 'ready' : vfsSourceId ? 'loading' : 'unavailable',
+  }));
+
+  useEffect(() => {
+    if (immediateSrc) {
+      setResolved({ imageRef, src: immediateSrc, status: 'ready' });
+      return;
+    }
+    if (!vfsSourceId) {
+      setResolved({ imageRef, src: null, status: 'unavailable' });
+      return;
+    }
+
+    let cancelled = false;
+    setResolved({ imageRef, src: null, status: 'loading' });
+    void invoke<ResolvedOcclusionImage[]>('vfs_resolve_resource_refs', {
+      refs: [{
+        sourceId: vfsSourceId,
+        resourceId: vfsSourceId.startsWith('res_') ? vfsSourceId : undefined,
+        resourceHash: '',
+        type: 'image',
+        name: vfsSourceId,
+        injectModes: { image: ['image'] },
+      }],
+    })
+      .then((resources) => {
+        if (cancelled) return;
+        const resource = resources[0];
+        const mimeType =
+          typeof resource?.metadata?.mimeType === 'string'
+            ? resource.metadata.mimeType
+            : 'image/png';
+        const src =
+          resource?.found && typeof resource.content === 'string'
+            ? buildImageDataUrl(resource.content, mimeType)
+            : null;
+        setResolved({
+          imageRef,
+          src,
+          status: src ? 'ready' : 'unavailable',
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolved({ imageRef, src: null, status: 'unavailable' });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageRef, immediateSrc, vfsSourceId]);
+
+  if (resolved.imageRef !== imageRef) {
+    return {
+      src: immediateSrc,
+      status: immediateSrc ? 'ready' : vfsSourceId ? 'loading' : 'unavailable',
+    };
+  }
+  return { src: resolved.src, status: resolved.status };
+}
+
+const AnkiOcclusionCardPreview: React.FC<{
+  spec: OcclusionSpec;
+  cardIndex: number;
+}> = ({ spec, cardIndex }) => {
+  const { t } = useTranslation('anki');
+  const image = useOcclusionImage(spec.imageRef);
+  return (
+    <div
+      data-testid="anki-occlusion-card-preview"
+      data-card-index={cardIndex}
+      className="rounded-lg border border-border/60 bg-muted/20 p-2"
+    >
+      <div className="flex justify-center">
+        <div
+          className={cn(
+            'relative max-w-full overflow-hidden rounded-md bg-muted',
+            image.src ? 'w-fit' : 'aspect-[4/3] w-80',
+          )}
+        >
+          {image.src ? (
+            <img
+              src={image.src}
+              alt={t('agent.occlusion.imageAlt')}
+              loading="lazy"
+              draggable={false}
+              data-testid="anki-occlusion-image"
+              className="block max-h-80 max-w-full object-contain"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              data-testid="anki-occlusion-image-placeholder"
+              data-state={image.status}
+              className="h-full min-h-32 w-full bg-muted"
+            />
+          )}
+          <ImageOcclusionOverlay spec={spec} />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ============================================================================
 // 子组件：内联可编辑卡片项
@@ -431,6 +623,13 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
     return template ?? null;
   }, [templateMap, card.template_id, template]);
   const useTemplateRender = !!(resolvedTemplate && resolvedTemplate.front_template);
+  // 质检标记（extra_fields._qa_flags）：结构化摘要展示，不拼进 back
+  const qaFlags = useMemo(() => parseCardQaFlags(card), [card]);
+  // 图像遮挡（extra_fields._occlusion）：坏 JSON / 坏结构收敛为 null，不影响普通卡。
+  const occlusionSpec = useMemo(
+    () => parseOcclusionSpec(card.extra_fields),
+    [card.extra_fields],
+  );
 
   const [editFieldOrder, setEditFieldOrder] = useState<string[]>([]);
   const [editFieldValues, setEditFieldValues] = useState<Record<string, string>>({});
@@ -598,15 +797,16 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
       <div className="border rounded-lg bg-card overflow-hidden ui-drop-in">
         {/* 编辑头部 */}
         <div className="flex items-center justify-between px-3 py-2 bg-accent/30 border-b">
-          <span className="text-xs font-medium text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
             #{index + 1}
+            {qaFlags.length > 0 && <AnkiQaFlagBadge flags={qaFlags} cardIndex={index} />}
           </span>
           <div className="flex items-center gap-1">
             <DsButton
               type="button"
               variant="ghost"
               onClick={() => onDelete(index)}
-              className="!h-10 !w-10 text-destructive hover:text-destructive"
+              className="!h-10 !w-10 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               size="icon"
               iconOnly
               aria-label={t('chatV2.deleteCard')}
@@ -656,6 +856,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               variant="ghost"
               onClick={() => onToggleEdit(index)}
               disabled={savePending}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('chatV2.cancelEdit')}
             </DsButton>
@@ -666,6 +867,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={handleSave}
               disabled={savePending}
               aria-busy={savePending}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {savePending ? (
                 <CircleNotch size={14} className="animate-spin" />
@@ -701,9 +903,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 onClick={(e) => { e.stopPropagation(); onQuote(index); }}
                 data-wb-blur-surface
                 className={cn(
-                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                   isTouchPrimary
-                    ? '!h-10 !w-10 opacity-100'
+                    ? '!h-11 !w-11 opacity-100'
                     : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                 )}
                 aria-label={t('chatBlock.quoteToInput')}
@@ -719,9 +921,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.editCard', { index: index + 1 })}
@@ -736,9 +938,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onDelete(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-destructive/10',
+                'bg-background/80 backdrop-blur border hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.deleteCard')}
@@ -749,6 +951,11 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           </div>
         )}
         {/* 模板渲染预览（翻面浏览不受编辑锁影响） */}
+        {occlusionSpec && (
+          <div className="px-3 pt-3">
+            <AnkiOcclusionCardPreview spec={occlusionSpec} cardIndex={index} />
+          </div>
+        )}
         <RenderedAnkiCard
           card={card}
           template={resolvedTemplate!}
@@ -766,6 +973,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             {card.tags.length > 4 && (
               <span className="text-xs text-muted-foreground">+{card.tags.length - 4}</span>
             )}
+          </div>
+        )}
+        {/* 质检标记摘要（模板渲染下方，结构化展示，不进 back） */}
+        {qaFlags.length > 0 && (
+          <div className="px-3 pb-2" onClick={(e) => e.stopPropagation()}>
+            <AnkiQaFlagBadge flags={qaFlags} cardIndex={index} />
           </div>
         )}
       </div>
@@ -793,6 +1006,11 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
       tabIndex={disabled ? undefined : 0}
       aria-label={disabled ? undefined : t('chatV2.editCard', { index: index + 1 })}
     >
+      {occlusionSpec && (
+        <div className="px-3 pt-3">
+          <AnkiOcclusionCardPreview spec={occlusionSpec} cardIndex={index} />
+        </div>
+      )}
       <div className="flex items-start gap-3 p-3">
         {/* 序号 */}
         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground mt-0.5">
@@ -820,6 +1038,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               {card.tags.length > 4 && (
                 <span className="text-xs text-muted-foreground">+{card.tags.length - 4}</span>
               )}
+            </div>
+          )}
+          {/* 质检标记摘要（结构化展示，不拼进 back 文本） */}
+          {qaFlags.length > 0 && (
+            <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+              <AnkiQaFlagBadge flags={qaFlags} cardIndex={index} />
             </div>
           )}
         </div>
@@ -1253,7 +1477,7 @@ const ActionButtons: React.FC<{
         disabled={retryStatus === 'loading'}
         aria-busy={retryStatus === 'loading'}
         variant={retryStatus === 'error' ? 'danger' : 'default'}
-        className="min-h-10 w-full text-xs sm:w-auto sm:text-sm"
+        className="min-h-10 [@media(pointer:coarse)]:!min-h-11 w-full text-xs sm:w-auto sm:text-sm"
       >
         {renderIcon(retryStatus, ArrowClockwise)}
         {t('blocks.ankiCards.retryFailedSegments')}
@@ -1293,7 +1517,7 @@ const ActionButtons: React.FC<{
               disabled={taskControlStatus === 'loading'}
               aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'resume'}
               variant="primary"
-              className="min-h-10 text-xs sm:text-sm"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
             >
               {taskControlStatus !== 'idle' && pendingTaskAction === 'resume'
                 ? renderIcon(taskControlStatus, Play)
@@ -1307,7 +1531,7 @@ const ActionButtons: React.FC<{
               disabled={taskControlStatus === 'loading'}
               aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'pause'}
               variant="default"
-              className="min-h-10 text-xs sm:text-sm"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
             >
               {taskControlStatus !== 'idle' && pendingTaskAction === 'pause'
                 ? renderIcon(taskControlStatus, Pause)
@@ -1321,7 +1545,7 @@ const ActionButtons: React.FC<{
             disabled={taskControlStatus === 'loading'}
             aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'cancel'}
             variant="danger"
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {taskControlStatus !== 'idle' && pendingTaskAction === 'cancel'
               ? renderIcon(taskControlStatus, Stop)
@@ -1338,7 +1562,7 @@ const ActionButtons: React.FC<{
             type="button"
             onClick={onToggleExpand}
             variant={isExpanded ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
             {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
@@ -1350,7 +1574,7 @@ const ActionButtons: React.FC<{
             onClick={handleSave}
             disabled={isDisabled || saveStatus === 'loading'}
             variant={saveStatus === 'success' ? 'success' : saveStatus === 'error' ? 'danger' : canReviewBatch ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {renderIcon(saveStatus, FloppyDisk)}
             {t(
@@ -1360,18 +1584,20 @@ const ActionButtons: React.FC<{
             )}
           </DsButton>
 
-          {/* 复习这批 → workbench 闪卡会话 */}
+          {/* 复习这批 → workbench 闪卡会话（OS 模式专属；移动端隐藏避免死路动作） */}
+          {!isMobilePlatform() && (
           <DsButton
             type="button"
             onClick={handleReviewBatch}
             disabled={isDisabled || !canReviewBatch}
             title={!canReviewBatch ? t('blocks.ankiCards.reviewBatchNeedsRealIds') : undefined}
             variant="primary"
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             <Stack size={16} />
             {t('blocks.ankiCards.reviewBatch')}
           </DsButton>
+          )}
 
           {/* 牌组名选择：保存/导出/同步共用（默认取生成 options，会话内记住上次输入） */}
           <Popover>
@@ -1379,7 +1605,7 @@ const ActionButtons: React.FC<{
               <DsButton
                 type="button"
                 variant="ghost"
-                className="min-h-10 max-w-[180px] text-xs text-muted-foreground sm:text-sm"
+                className="min-h-10 [@media(pointer:coarse)]:!min-h-11 max-w-[180px] text-xs text-muted-foreground sm:text-sm"
                 title={t('blocks.ankiCards.deckName')}
                 aria-label={t('blocks.ankiCards.deckName')}
               >
@@ -1412,7 +1638,7 @@ const ActionButtons: React.FC<{
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-10 !w-10 justify-self-end"
+                className="!h-10 !w-10 justify-self-end [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('blocks.ankiCards.moreActions')}
                 title={t('blocks.ankiCards.moreActions')}
               >
@@ -1871,7 +2097,29 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     return false;
   }, [data?.ankiConnect]);
 
-  const shouldShowChatAnkiProgress = hasProgress || hasAnkiConnect;
+  // APKG 媒体导入报告（tool_output.mediaReport）：解析失败/缺失时为 null
+  const mediaReport = useMemo(() => parseAnkiMediaReport(data?.mediaReport), [data?.mediaReport]);
+
+  // 质检标记块级摘要：N 张卡片带 _qa_flags（用于完成态复查提示）
+  const qaFlagsSummary = useMemo(() => summarizeQaFlags(cards), [cards]);
+
+  // 折叠预览最多与既有纯文本栈一致展示前 5 张卡；只收录可安全解析的遮挡卡。
+  const occlusionPreviewCards = useMemo(
+    () => cards
+      .map((card, index) => ({
+        card,
+        index,
+        spec: parseOcclusionSpec(card.extra_fields),
+      }))
+      .filter(
+        (entry): entry is { card: AnkiCard; index: number; spec: OcclusionSpec } =>
+          entry.spec !== null,
+      )
+      .slice(0, 5),
+    [cards],
+  );
+
+  const shouldShowChatAnkiProgress = hasProgress || hasAnkiConnect || mediaReport !== null;
 
   // 刷新 AnkiConnect 状态：调用后端重新检测，更新 block 数据
   // 注意：从 store 读取最新 block 数据，避免 stale closure 导致覆盖并发更新
@@ -2570,22 +2818,38 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     <div className="chat-v2-anki-cards-block">
       {/* 折叠态：卡片预览 */}
       {!isExpanded && (
-        <AnkiCardStackPreview
-          status={previewStatus}
-          cards={cards}
-          templateId={data?.templateId}
-          template={template}
-          templateMap={templateMap}
-          debugContext={{
-            blockId: block.id,
-            documentId: data?.documentId,
-          }}
-          lastUpdatedAt={block.endedAt || block.startedAt}
-          errorMessage={shouldShowChatAnkiProgress ? undefined : errorMessage}
-          stableId={data?.messageStableId || block.messageId}
-          disabled={false}
-          onClick={cards.length > 0 ? handleToggleExpand : undefined}
-        />
+        <>
+          {occlusionPreviewCards.length > 0 && (
+            <div
+              data-testid="anki-occlusion-preview-gallery"
+              className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2"
+            >
+              {occlusionPreviewCards.map(({ card, index, spec }) => (
+                <AnkiOcclusionCardPreview
+                  key={card.id || `occlusion-${index}`}
+                  spec={spec}
+                  cardIndex={index}
+                />
+              ))}
+            </div>
+          )}
+          <AnkiCardStackPreview
+            status={previewStatus}
+            cards={cards}
+            templateId={data?.templateId}
+            template={template}
+            templateMap={templateMap}
+            debugContext={{
+              blockId: block.id,
+              documentId: data?.documentId,
+            }}
+            lastUpdatedAt={block.endedAt || block.startedAt}
+            errorMessage={shouldShowChatAnkiProgress ? undefined : errorMessage}
+            stableId={data?.messageStableId || block.messageId}
+            disabled={false}
+            onClick={cards.length > 0 ? handleToggleExpand : undefined}
+          />
+        </>
       )}
 
       {/* 展开态：内联卡片编辑列表 */}
@@ -2613,7 +2877,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('list')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'list'}
                 aria-label={tAnki('chatBlock.layoutList')}
                 title={tAnki('chatBlock.layoutList')}
@@ -2626,7 +2890,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('grid')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'grid'}
                 aria-label={tAnki('chatBlock.layoutGrid')}
                 title={tAnki('chatBlock.layoutGrid')}
@@ -2638,7 +2902,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="sm"
                 variant="ghost"
                 onClick={handleToggleExpand}
-                className="min-h-10 px-2"
+                className="min-h-10 [@media(pointer:coarse)]:!min-h-11 px-2"
               >
                 <CaretUp size={14} />
                 {t('blocks.ankiCards.collapse')}
@@ -2661,7 +2925,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={handleInvertSelection}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {t('blocks.ankiCards.invertSelection')}
                 </DsButton>
@@ -2671,7 +2935,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   variant="ghost"
                   onClick={handleDeleteSelected}
                   disabled={batchAction !== null}
-                  className="min-h-8 text-xs text-destructive hover:text-destructive"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs text-destructive hover:text-destructive"
                 >
                   <Trash size={13} />
                   {t('blocks.ankiCards.deleteSelected')}
@@ -2683,7 +2947,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleSaveSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'save'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'save' ? (
                     <CircleNotch size={13} className="animate-spin" />
@@ -2699,7 +2963,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleExportSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'export'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'export' ? (
                     <CircleNotch size={13} className="animate-spin" />
@@ -2773,7 +3037,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={() => setVisibleCount((prev) => prev + CARDS_PAGE_SIZE)}
-                  className="min-h-10 text-xs"
+                  className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {t('blocks.ankiCards.showMore', { remaining: cards.length - visibleCount })}
                 </DsButton>
@@ -2784,7 +3048,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     size="sm"
                     variant="ghost"
                     onClick={() => setVisibleCount((prev) => prev + 50)}
-                    className="min-h-10 text-xs text-muted-foreground"
+                    className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showMoreBig', { count: 50 })}
                   </DsButton>
@@ -2794,7 +3058,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     size="sm"
                     variant="ghost"
                     onClick={() => setVisibleCount(cards.length)}
-                    className="min-h-10 text-xs text-muted-foreground"
+                    className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showAll', { total: cards.length })}
                   </DsButton>
@@ -2845,11 +3109,23 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               progress={data?.progress}
               ankiConnect={data?.ankiConnect}
               warnings={data?.warnings}
+              mediaReport={mediaReport}
               cardsCount={cards.length}
               blockStatus={block.status}
               finalStatus={data?.finalStatus}
               errorMessage={errorMessage}
               onRefreshAnkiConnect={handleRefreshAnkiConnect}
+            />
+          )}
+
+          {/* AI 质检终审任务级摘要（字段尚未收进 AnkiCardsBlockData，宽松透传；无数据时组件自行不渲染） */}
+          <AnkiCriticSummaryBanner criticSummary={(data as { criticSummary?: unknown } | undefined)?.criticSummary} />
+
+          {/* 质检标记块级摘要：折叠/展开态均可见，提示复查后再导出 */}
+          {qaFlagsSummary.flaggedCardCount > 0 && (
+            <AnkiQaFlagsSummaryChip
+              flaggedCardCount={qaFlagsSummary.flaggedCardCount}
+              maxSeverity={qaFlagsSummary.maxSeverity}
             />
           )}
 

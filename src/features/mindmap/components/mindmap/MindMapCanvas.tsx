@@ -22,6 +22,7 @@ import { LayoutRegistry, StyleRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import { DEFAULT_LAYOUT_CONFIG, REACTFLOW_CONFIG, ROOT_NODE_STYLE, calculateBaseNodeHeight } from '../../constants';
 import { WHEEL_MODE_PAN_PROPS, WHEEL_MODE_ZOOM_PROPS } from '../../constants/layout';
+import { eventMatchesShortcut } from '../../constants/shortcuts';
 import { nodeTypes as defaultNodeTypes } from './nodes';
 import { edgeTypes as defaultEdgeTypes, type AssociationEdgeData } from './edges';
 import './edges/associationEdge.css';
@@ -269,7 +270,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   }), [reactFlowInstance]);
 
   // 画布专属导航/编辑快捷键；剪贴板已上提到 MindMapContentView，大纲视图也可共用
-  useMindMapKeyboard();
+  // containerRef：空间导航候选节点限定本画布，禁止分屏双画布串扰
+  useMindMapKeyboard({ containerRef: canvasContainerRef });
 
   // 隐藏已完成时，焦点若落在不可见节点则上移到可见祖先
   useEffect(() => {
@@ -1659,6 +1661,37 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         return;
       }
 
+      // ⌘L / Ctrl+L：从聚焦/选中节点启动关联线（见 constants/shortcuts associationStart）
+      if (
+        eventMatchesShortcut(e, 'mod+l') &&
+        !reciteMode &&
+        !associatingFromId &&
+        !editingAssociationId
+      ) {
+        const state = storeApi.getState();
+        const sourceId = state.focusedNodeId || state.selection[0];
+        if (sourceId) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleStartAssociation(sourceId);
+        }
+        return;
+      }
+
+      // 选中关联线后 Enter / F2 直接键盘编辑标签（不必双击标签）
+      if (
+        (e.key === 'Enter' || e.key === 'F2') &&
+        selectedAssociationId &&
+        !editingAssociationId &&
+        !reciteMode &&
+        !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingAssociationId(selectedAssociationId);
+        return;
+      }
+
       if (
         (e.key === 'Delete' || e.key === 'Backspace') &&
         selectedAssociationId &&
@@ -1680,10 +1713,12 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     isCanvasActive,
     associatingFromId,
     clearAssociationMode,
+    handleStartAssociation,
     selectedAssociationId,
     editingAssociationId,
     removeAssociation,
     reciteMode,
+    storeApi,
   ]);
 
   // 关联创建/选中工具条属于画布内临时操作态，Android 返回应先退出该状态，
@@ -1765,7 +1800,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           <DsButton
             variant="ghost"
             onClick={() => setViewRootId(null)}
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)]"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title={t('outline.exitFocusMode')}
           >
             <House size={14} />
@@ -1777,7 +1812,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
                 variant="ghost"
                 onClick={() => setViewRootId(node.id)}
                 className={cn(
-                  "px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] truncate max-w-[100px]",
+                  "px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] truncate max-w-[100px] [@media(pointer:coarse)]:!min-h-11",
                   index === breadcrumbPath.length - 1
                     ? "text-[var(--mm-text)] font-medium"
                     : "",

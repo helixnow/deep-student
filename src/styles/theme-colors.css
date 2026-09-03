@@ -9,8 +9,19 @@
   --surface-overlay: color-mix(in hsl, hsl(var(--card)) 80%, transparent 20%);
   --surface-overlay-strong: color-mix(in hsl, hsl(var(--card)) 65%, hsl(var(--background)) 35%);
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+
+  /* --surface-panel 是面板族的基准层（panel < panel-strong），语义与近邻一致：
+     elevated 与 root 的 mix。故障/恢复路径（StartupPreflight / RecoveryShell /
+     RecoveryCenter / ComponentRecoveryShell / FeatureUnavailablePanel）在
+     token 缺失时会因 background 计算失效而变透明——那正是最不能"没有底色"的
+     场景，所以这里先给不依赖 color-mix 的兜底值，再在文件末尾的 @supports
+     里升级为 mix 版本（Android WebView 等无 color-mix 环境仍有实色底）。 */
+  --surface-panel: hsl(var(--card));
   --surface-panel-muted: color-mix(in hsl, var(--surface-muted) 82%, var(--surface-elevated) 18%);
   --surface-panel-strong: color-mix(in hsl, var(--surface-elevated) 92%, var(--surface-root) 8%);
+
+  /* 语义 accent：对齐 shadcn --primary，供故障面板选中态边框等使用 */
+  --accent-primary: hsl(var(--primary));
 
   /* Desktop shell surfaces
      ------------------------------------------------------------
@@ -103,17 +114,32 @@
   --tooltip-surface: hsl(var(--foreground));
   --tooltip-foreground: hsl(var(--background));
 
+  /* 阴影体系
+     ------------------------------------------------------------
+     --shadow-base 是色相基（始终黑），投影强度全部抽到 --shadow-strength-*，
+     这样暗色主题只需覆写 alpha 档位，不必把整串 box-shadow 配方抄一遍。
+     暗色下沿用亮色 alpha（0.04~0.10）等于没有阴影：背景本身就接近纯黑，
+     浮层与底板完全糊在一起。暗色覆写见 :root.dark 同名 token。
+     ------------------------------------------------------------ */
   --shadow-base: 0 0% 0%;
-  --shadow-shell-soft: 0 12px 24px hsl(var(--shadow-base) / 0.04);
-  --shadow-shell-panel: 0 16px 32px hsl(var(--shadow-base) / 0.05);
-  --shadow-shell-floating: 0 18px 36px hsl(var(--shadow-base) / 0.08);
-  --shadow-shell-pressed: 0 8px 20px hsl(var(--shadow-base) / 0.05);
+  --shadow-strength-soft: 0.04;
+  --shadow-strength-panel: 0.05;
+  --shadow-strength-floating: 0.08;
+  --shadow-strength-pressed: 0.05;
+  --shadow-strength-content-subtle: 0.05;
+  --shadow-strength-content-soft: 0.10;
+  --shadow-strength-content-elevated: 0.06;
+  --shadow-strength-sheet: 0.10;
+  --shadow-shell-soft: 0 12px 24px hsl(var(--shadow-base) / var(--shadow-strength-soft));
+  --shadow-shell-panel: 0 16px 32px hsl(var(--shadow-base) / var(--shadow-strength-panel));
+  --shadow-shell-floating: 0 18px 36px hsl(var(--shadow-base) / var(--shadow-strength-floating));
+  --shadow-shell-pressed: 0 8px 20px hsl(var(--shadow-base) / var(--shadow-strength-pressed));
 
   /* 兼容别名：hover:shadow-[var(--shadow-card)] 的存量消费者（原定义在 card-animations.css） */
   --shadow-card: var(--shadow-shell-soft);
-  --shadow-content-subtle: 0 1px 3px hsl(var(--shadow-base) / 0.05);
-  --shadow-content-soft: 0 2px 8px hsl(var(--shadow-base) / 0.10);
-  --shadow-content-elevated: 0 6px 18px hsl(var(--shadow-base) / 0.06);
+  --shadow-content-subtle: 0 1px 3px hsl(var(--shadow-base) / var(--shadow-strength-content-subtle));
+  --shadow-content-soft: 0 2px 8px hsl(var(--shadow-base) / var(--shadow-strength-content-soft));
+  --shadow-content-elevated: 0 6px 18px hsl(var(--shadow-base) / var(--shadow-strength-content-elevated));
   --text-shadow-contrast-subtle: 0 1px 2px hsl(var(--shadow-base) / 0.10);
   --text-shadow-contrast-medium: 0 1px 2px hsl(var(--shadow-base) / 0.30);
   --text-shadow-contrast-strong: 0 1px 3px hsl(var(--shadow-base) / 0.50);
@@ -133,6 +159,10 @@
   --button-tonal-hover-bg: color-mix(in oklab, hsl(var(--muted)) 78%, hsl(var(--background)) 22%);
   --button-tonal-active-bg: color-mix(in oklab, hsl(var(--accent)) 82%, hsl(var(--background)) 18%);
   --button-tonal-border: color-mix(in oklab, hsl(var(--border)) 78%, hsl(var(--foreground)) 6%);
+
+  /* secondary 按钮表面 = tonal 表面的语义别名（ComposerPlusMenu 的 open 态等
+     直接消费该名字）。无 color-mix 时退回 hsl(var(--secondary)) 实色。 */
+  --button-secondary-surface: hsl(var(--secondary));
   --button-outline-bg: color-mix(in oklab, hsl(var(--background)) 92%, hsl(var(--secondary)) 8%);
   --button-outline-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, hsl(var(--background)) 16%);
   --button-outline-active-bg: color-mix(in oklab, var(--interactive-selected) 78%, hsl(var(--background)) 22%);
@@ -182,7 +212,7 @@
   --mobile-sheet-border: var(--border-soft);
   --mobile-sheet-header-border: var(--surface-divider);
   --mobile-sheet-handle: var(--border-strong);
-  --mobile-sheet-shadow: 0 -12px 34px hsl(var(--shadow-base) / 0.10);
+  --mobile-sheet-shadow: 0 -12px 34px hsl(var(--shadow-base) / var(--shadow-strength-sheet));
 
   /* Menu shell — AppMenu 下拉/右键菜单外壳，与 composer shell 同族
      设计目的：让弹出菜单看起来像"从输入框延伸出来的一片"，而不是独立风格的 popover。
@@ -202,7 +232,10 @@
   --menu-shell-row-padding-y: 7px;
   --menu-shell-row-padding-x: 10px;
   --menu-shell-row-gap: 8px;
-  --menu-shell-font-size: 13px;
+  /* 走 --font-size-ui（13px × --font-size-scale）而不是写死 13px：
+     AppMenu / ModelPicker 桌面档经此 token 消费字号，硬编码会让菜单
+     成为界面字号缩放里唯一不跟随的一层。 */
+  --menu-shell-font-size: var(--font-size-ui);
 
   /* Borders */
   --border-default: hsl(var(--border));
@@ -231,6 +264,10 @@
   --text-muted: hsl(var(--muted-foreground));
   --text-inverse: hsl(var(--primary-foreground));
 
+  /* Tailwind's brand.secondary / brand.accent mappings consume complete colors
+     directly, so both aliases must be defined rather than bare HSL channels. */
+  --brand-secondary: hsl(var(--info));
+  --brand-accent: color-mix(in oklab, hsl(var(--primary)) 50%, hsl(var(--info)) 50%);
   /* Brand palette + gradients */
   --brand-gradient: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 100%);
   --brand-gradient-hover: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 80%, hsl(var(--primary)) 100%);
@@ -256,6 +293,23 @@
   --neutral-muted: var(--neutral) / 0.35;
   --neutral-bg: var(--neutral) / 0.14;
 
+  /* 分类 accent（设置导航图标等"每一栏一个颜色"的场景）
+     ------------------------------------------------------------
+     这些色只承担"区分类别"，不表达状态，所以不能挂到 --success/--warning
+     那一族。原先是散落在 useSettingsNavigation.tsx 里的浅色 hex
+     （#e5ad3d / #4d86df …），在暗色下亮度不足、也无法随主题走，现在收进
+     token 层：亮色沿用原色相，暗色抬亮度、降饱和，高对比模式再抬一档。
+     新增分类请复用下面的档位，不要再往组件里写 hex。
+     ------------------------------------------------------------ */
+  --settings-nav-accent-amber: hsl(40 76% 57%);
+  --settings-nav-accent-blue: hsl(217 69% 59%);
+  --settings-nav-accent-slate: hsl(218 9% 50%);
+  --settings-nav-accent-purple: hsl(272 69% 62%);
+  --settings-nav-accent-orange: hsl(27 81% 59%);
+  --settings-nav-accent-green: hsl(157 73% 42%);
+  --settings-nav-accent-sky: hsl(208 77% 60%);
+  --settings-nav-accent-pink: hsl(327 56% 66%);
+
   /* Citation/source semantics */
   --citation-badge-bg-alpha: 0.10;
   --citation-badge-hover-alpha: 0.20;
@@ -264,9 +318,63 @@
   --citation-source-memory: var(--warning);
   --citation-source-web-search: var(--success);
   --diagram-node-contrast-text: hsl(var(--destructive-foreground));
+
+  /* Learning-hub 资源图标插画色
+     ------------------------------------------------------------
+     消费方：src/features/learning-hub/icons/ResourceIcons.tsx
+     `-ink` 是与主题无关的色相锚点（原先直接写死在 tsx 里的浅色 hex）。
+     bg / border 与当前卡片表面混合，fg 在暗色下往 --foreground 提亮，
+     因此同一套 SVG 在 .dark 下不再是刺眼的浅色块。调档只需改下面三个
+     mix 比例，不必逐个 hue 重配。派生的 -bg/-fg/-border 依赖 color-mix，
+     收在文件末尾的 @supports 块里；无 color-mix 的运行时退回 tsx 内联
+     的浅色 fallback。 */
+  --resource-icon-gray-ink: #787774;
+  --resource-icon-brown-ink: #976d57;
+  --resource-icon-orange-ink: #cc782f;
+  --resource-icon-yellow-ink: #cf9232;
+  --resource-icon-green-ink: #4f9779;
+  --resource-icon-blue-ink: #2b59c3;
+  --resource-icon-purple-ink: #9a6dd7;
+  --resource-icon-pink-ink: #d65c9d;
+  --resource-icon-red-ink: #d44c47;
+  --resource-icon-surface: hsl(var(--card));
+  --resource-icon-bg-mix: 9%;
+  --resource-icon-border-mix: 26%;
+  --resource-icon-ink-mix: 100%;
+  --resource-icon-ink-tint: hsl(var(--foreground));
+  /* 纸面/高光/暗角：原先是写死的 #FFFFFF 与 black/5% */
+  --resource-icon-paper: hsl(0 0% 100%);
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.35);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.5);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.05);
+  --resource-icon-folder-back: #e8b849;
+  --resource-icon-folder-tab: #d4a53a;
+  --resource-icon-folder-front: #f5c85c;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.4);
 }
 
 :root.dark {
+  /* 面板族暗色兜底（无 color-mix 时生效，mix 版本见文件末尾 @supports） */
+  --surface-panel: hsl(var(--card));
+  --accent-primary: hsl(var(--primary));
+  --button-secondary-surface: hsl(var(--secondary));
+
+  /* 暗色阴影翻转
+     ------------------------------------------------------------
+     色基仍是黑（不用白阴影：白色投影在深灰底上是"发光"，与本设计体系
+     其余部分的物理光照隐喻冲突），改为整体抬高 alpha 档位。暗色背景
+     L≈9%~12%，0.05 的黑几乎不可见，需要 6~8 倍才能重新读出层次。
+     ------------------------------------------------------------ */
+  --shadow-base: 0 0% 0%;
+  --shadow-strength-soft: 0.32;
+  --shadow-strength-panel: 0.40;
+  --shadow-strength-floating: 0.54;
+  --shadow-strength-pressed: 0.36;
+  --shadow-strength-content-subtle: 0.28;
+  --shadow-strength-content-soft: 0.44;
+  --shadow-strength-content-elevated: 0.40;
+  --shadow-strength-sheet: 0.52;
+
   --interactive-hover: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
   --interactive-selected: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
   --overlay-control-hover: rgba(255, 255, 255, 0.2);
@@ -325,6 +433,116 @@
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 22%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 36%, transparent);
   --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 50%, transparent);
+
+  /* 分类 accent 暗色档：背景 L≈9%，亮色档（L 42%~62%）在其上对比不足，
+     统一抬到 L 56%~74% 并降一点饱和，避免深底上的荧光感。 */
+  --settings-nav-accent-amber: hsl(40 72% 66%);
+  --settings-nav-accent-blue: hsl(217 66% 72%);
+  --settings-nav-accent-slate: hsl(218 10% 68%);
+  --settings-nav-accent-purple: hsl(272 62% 74%);
+  --settings-nav-accent-orange: hsl(27 74% 68%);
+  --settings-nav-accent-green: hsl(157 55% 58%);
+  --settings-nav-accent-sky: hsl(208 70% 70%);
+  --settings-nav-accent-pink: hsl(327 52% 74%);
+
+  /* Keep brand utility colors legible on the dark shell. */
+  --brand-secondary: color-mix(in oklab, hsl(var(--info)) 80%, hsl(var(--foreground)) 20%);
+  --brand-accent: color-mix(in oklab, var(--brand-secondary) 50%, hsl(var(--primary)) 50%);
+
+  /* 资源图标：底更沉、边更实、前景往 --foreground 提亮，
+     -bg / -fg / -border 的 color-mix 公式在亮色档已写好，这里只翻比例。
+     （暗色 --resource-icon-paper 依赖 color-mix，见文件末尾 @supports。） */
+  --resource-icon-bg-mix: 22%;
+  --resource-icon-border-mix: 40%;
+  --resource-icon-ink-mix: 64%;
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.06);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.07);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.28);
+  --resource-icon-folder-back: #a9791f;
+  --resource-icon-folder-tab: #8e6519;
+  --resource-icon-folder-front: #c7962f;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.14);
+}
+
+/* 高对比偏好：分类 accent 再抬一档亮度/饱和（亮色压暗、暗色提亮），
+   与 workbench a11y-cursor.css 的 prefers-contrast 策略同族。 */
+@media (prefers-contrast: more) {
+  :where(:root) {
+    --settings-nav-accent-amber: hsl(40 82% 38%);
+    --settings-nav-accent-blue: hsl(217 74% 44%);
+    --settings-nav-accent-slate: hsl(218 12% 34%);
+    --settings-nav-accent-purple: hsl(272 72% 46%);
+    --settings-nav-accent-orange: hsl(27 86% 42%);
+    --settings-nav-accent-green: hsl(157 78% 28%);
+    --settings-nav-accent-sky: hsl(208 82% 42%);
+    --settings-nav-accent-pink: hsl(327 62% 46%);
+  }
+
+  :root.dark {
+    --settings-nav-accent-amber: hsl(40 80% 76%);
+    --settings-nav-accent-blue: hsl(217 76% 80%);
+    --settings-nav-accent-slate: hsl(218 12% 80%);
+    --settings-nav-accent-purple: hsl(272 72% 82%);
+    --settings-nav-accent-orange: hsl(27 82% 78%);
+    --settings-nav-accent-green: hsl(157 62% 70%);
+    --settings-nav-accent-sky: hsl(208 80% 80%);
+    --settings-nav-accent-pink: hsl(327 62% 82%);
+  }
+}
+
+/* 面板族 / secondary 表面的 color-mix 升级档
+   ------------------------------------------------------------
+   自定义属性一旦存了不被支持的 color-mix()，替换到 background 时会
+   "computed-value time invalid" → 面板直接透明，故障面板会整块看不见底。
+   把 mix 版本收进 @supports，无 color-mix 的运行时（老 Android WebView）
+   停留在上面的实色兜底值。选择器必须与兜底处逐一对应，否则 :root.dark
+   的实色声明（特异性更高）会压过这里的 :where(:root)。
+   ------------------------------------------------------------ */
+@supports (background: color-mix(in hsl, red 50%, blue)) {
+  :where(:root) {
+    --surface-panel: color-mix(in hsl, var(--surface-elevated) 78%, var(--surface-root) 22%);
+    --button-secondary-surface: var(--button-tonal-bg);
+
+    /* 资源图标派生色：bg/border 与卡片表面混合、fg 往 ink-tint 提亮。
+       mix 比例（--resource-icon-*-mix）在 :root / :root.dark 主块里定义，
+       var() 在使用处求值，暗色翻比例自动生效。 */
+    --resource-icon-gray-bg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-gray-fg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-gray-border: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-brown-bg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-brown-fg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-brown-border: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-orange-bg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-orange-fg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-orange-border: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-yellow-bg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-yellow-fg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-yellow-border: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-green-bg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-green-fg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-green-border: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-blue-bg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-blue-fg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-blue-border: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-purple-bg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-purple-fg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-purple-border: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-pink-bg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-pink-fg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-pink-border: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-red-bg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-red-fg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-red-border: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  }
+
+  :root.dark {
+    /* 暗色下面板要比 root 明显抬起一档，否则故障面板与背板同色 */
+    --surface-panel: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
+    --button-secondary-surface: var(--button-tonal-bg);
+
+    /* 暗色纸面：往前景抬 24%，白纸在深底上不再刺眼 */
+    --resource-icon-paper: color-mix(in oklab, hsl(var(--card)) 76%, hsl(var(--foreground)) 24%);
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -136,5 +136,14 @@
       "panel_state_saved": "Panel state saved",
       "panel_closed": "Panel closed"
     }
+  },
+  "open_resource": {
+    "action": "Open resource",
+    "handler_not_registered": "OpenResourceHandler is not registered",
+    "handler_not_registered_for": "OpenResourceHandler is not registered: {{target}}",
+    "not_found": "Resource not found: {{path}}",
+    "folder_not_openable": "Folders cannot be opened in an editor",
+    "editor_not_registered": "No editor registered for type {{type}}",
+    "unknown_location": "Unknown open location: {{location}}"
   }
 }

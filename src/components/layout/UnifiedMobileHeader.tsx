@@ -203,12 +203,12 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         {config.titleNode ? (
           config.titleNode
         ) : (config.title || fallbackTitle) ? (
-          <h1 className="max-w-full truncate text-[15px] font-semibold text-[color:var(--shell-navigation-foreground)]">
+          <h1 className="max-w-full truncate text-md font-semibold text-[color:var(--shell-navigation-foreground)]">
             {config.title || fallbackTitle}
           </h1>
         ) : null}
         {config.subtitle && (
-          <p className="max-w-full truncate text-[11px] text-[color:var(--shell-navigation-muted)]">
+          <p className="max-w-full truncate text-caption text-[color:var(--shell-navigation-muted)]">
             {config.subtitle}
           </p>
         )}

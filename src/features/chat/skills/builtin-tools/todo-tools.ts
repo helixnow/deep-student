@@ -45,21 +45,21 @@ export const todoToolsSkill: SkillDefinition = {
     {
       name: 'builtin-todo_init',
       description:
-        '[AI内部工具] 初始化 AI 任务执行计划。将复杂任务分解为可执行的子步骤，用于 AI 自己跟踪执行进度。不会写入用户的待办列表。当需要多步骤完成任务时使用，如调研、综述、批量处理等场景。',
+        '[AI内部工具] 初始化任务执行计划，把复杂任务分解为子步骤供 AI 自己跟踪进度；不写入用户待办列表。',
       inputSchema: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '【必填】任务的整体目标或标题' },
+          title: { type: 'string', description: '任务整体目标或标题' },
           steps: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                description: { type: 'string', description: '【必填】步骤描述，具体说明要做什么' },
+                description: { type: 'string', description: '步骤描述' },
               },
               required: ['description'],
             },
-            description: '任务步骤列表，按执行顺序排列',
+            description: '按执行顺序排列的步骤列表',
           },
         },
         required: ['title', 'steps'],
@@ -67,16 +67,15 @@ export const todoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-todo_update',
-      description:
-        '更新任务步骤的状态。每完成一个步骤都应调用此工具。状态包括：running（执行中）、completed（已完成）、failed（失败）、skipped（跳过）。',
+      description: '更新步骤状态，每完成一步调用一次。',
       inputSchema: {
         type: 'object',
         properties: {
-          stepId: { type: 'string', description: '【必填】要更新的步骤 ID（如 step_1, step_2）' },
+          stepId: { type: 'string', description: '步骤 ID（如 step_1）' },
           status: {
             type: 'string',
             enum: ['running', 'completed', 'failed', 'skipped'],
-            description: '【必填】新状态',
+            description: '新状态',
           },
           result: { type: 'string', description: '执行结果摘要（完成或失败时提供）' },
         },
@@ -85,19 +84,19 @@ export const todoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-todo_add',
-      description: '动态添加新任务步骤。在执行过程中发现需要额外步骤时使用。',
+      description: '执行中发现需要额外步骤时动态添加。',
       inputSchema: {
         type: 'object',
         properties: {
-          description: { type: 'string', description: '【必填】新步骤的描述' },
-          afterStepId: { type: 'string', description: '插入位置，在此步骤之后插入。省略则添加到末尾。' },
+          description: { type: 'string', description: '新步骤描述' },
+          afterStepId: { type: 'string', description: '在此步骤后插入；省略则追加到末尾' },
         },
         required: ['description'],
       },
     },
     {
       name: 'builtin-todo_get',
-      description: '获取当前任务列表及所有步骤的状态。用于查看任务进度。',
+      description: '获取当前任务列表与各步骤状态。',
       inputSchema: {
         type: 'object',
         properties: {},

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { ArrowLeft, GearSix, QrCode, Plug, WarningCircle } from '@phosphor-icons/react';
@@ -13,6 +13,8 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingSection, settingsQuietInteractiveRowClassName } from '../SettingsCommon';
 import { SettingRow, SettingsGroup, SwitchRow } from '../settingsTabPrimitives';
 import {
@@ -64,6 +66,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   onPluginChange,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [config, setConfig] = useState<IlinkBotConfig | null>(null);
   const [status, setStatus] = useState<PluginStatusSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -192,7 +195,9 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection title={plugin.label} hideHeader>
-        {/* 子页头部：插件名 + 返回列表 */}
+        {/* 子页头部：插件名 + 返回列表。小屏不自绘返回（对照 vendor 详情三屏）：
+            返回交给 Settings 统一顶栏返回链与已注册的 overlay 返回键 handler
+            （见 PluginsTab）；桌面详情内联在设置正文、无顶栏返回链，保留按钮。 */}
         <div className="flex flex-wrap items-start justify-between gap-2 px-1">
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-semibold text-foreground">{plugin.label}</h3>
@@ -200,10 +205,17 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               {plugin.blurb}
             </p>
           </div>
-          <DsButton variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            {t('settings:plugins.back_to_list')}
-          </DsButton>
+          {!isSmallScreen && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
+              onClick={onBack}
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              {t('settings:plugins.back_to_list')}
+            </DsButton>
+          )}
         </div>
 
         {/* 连接 */}
@@ -218,6 +230,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               </p>
               <DsButton
                 variant="primary"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -259,6 +272,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -302,7 +316,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                   size="sm"
                   variant="outline"
                   disabled={busy}
-                  className="!text-destructive"
+                  className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setUnbindOpen(true)}
                 >
                   {t('settings:plugins.rebind')}
@@ -341,7 +355,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               type="number"
               min={1}
               max={120}
-              className="!w-28 bg-transparent md:!w-24"
+              className="!w-28 bg-transparent md:!w-24 [@media(pointer:coarse)]:min-h-11"
               value={config.rateLimitPerMin}
               onChange={(e) =>
                 setConfig((c) =>
@@ -432,6 +446,7 @@ interface PluginsTabProps {
 
 export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -481,15 +496,39 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   };
 
   const selected = plugins.find((p) => p.id === selectedId) || null;
+  const detailOpen = Boolean(selected);
+
+  // 详情子页根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const detailRootRef = useRef<HTMLDivElement>(null);
+
+  // 📱 Android 返回键：小屏打开插件详情（IlinkBotConfigPanel 子页，小屏不自绘
+  // 返回按钮，本 handler 即详情逐级回退的唯一入口）时先返回列表。详情打开时才
+  // 注册，同 overlay 档后注册先执行，保证事件不被 Settings 的 overlay handler
+  // （切回分区列表）抢走。
+  useEffect(() => {
+    if (!isSmallScreen || !detailOpen) return;
+    return registerBackHandler(() => {
+      // 保活守卫（同 TemplateManagementApp）：隐藏保活层（display:none 等）中
+      // 滞留的详情不吞返回键，交还当前活跃视图。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = detailRootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      setSelectedId(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, detailOpen]);
 
   if (selected) {
     return (
-      <IlinkBotConfigPanel
-        plugin={selected}
-        models={models}
-        onBack={() => setSelectedId(null)}
-        onPluginChange={() => void refreshList()}
-      />
+      <div ref={detailRootRef}>
+        <IlinkBotConfigPanel
+          plugin={selected}
+          models={models}
+          onBack={() => setSelectedId(null)}
+          onPluginChange={() => void refreshList()}
+        />
+      </div>
     );
   }
 
@@ -525,7 +564,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                 >
                   <DsButton
                     variant="ghost"
-                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1"
+                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => setSelectedId(p.id)}
                   >
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/80">
@@ -560,7 +599,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                     <DsButton
                       variant="outline"
                       size="sm"
-                      className="gap-1.5 text-foreground/80"
+                      className="gap-1.5 text-foreground/80 [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setSelectedId(p.id)}
                     >
                       <GearSix className="size-4" aria-hidden="true" />

@@ -1,0 +1,8 @@
+Sure! 我来为你生成卡片。Here are the flashcards:
+
+{"front": "什么是 REST 中的无状态约束？", "back": "服务器不保存客户端会话状态，每个请求自带完整上下文。"}
+<<<ANKI_CARD_JSON_END>>>
+OK, next one: 下面是第二张卡片
+{"front": "什么是 HATEOAS？", "back": "响应中携带可跳转的超媒体链接，客户端据此驱动应用状态转移。"}
+<<<ANKI_CARD_JSON_END>>>
+希望这些卡片对你的复习有帮助！Good luck!

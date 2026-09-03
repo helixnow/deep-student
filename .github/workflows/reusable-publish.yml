@@ -123,6 +123,12 @@ jobs:
         with:
           path: artifacts
 
+      # WI-4: frontend-dist 是构建中间产物（预构建前端 dist, 供各平台
+      # reusable-build-* 复用），不是发布资产 —— 在这里显式移除, 防止其
+      # 内容被下方 Collect release files 的扩展名 glob 误收集/误发布。
+      - name: Drop non-release intermediate artifacts
+        run: rm -rf artifacts/frontend-dist
+
       - name: Display artifact structure
         run: find artifacts -type f | head -50
 
@@ -377,7 +383,7 @@ jobs:
           find artifacts -name "*.rpm" -exec cp {} release-files/ \;
           find artifacts -name "*.apk" -exec cp {} release-files/ \;
 
-          ls release-files/ | sort > expected-assets.txt
+          find release-files -maxdepth 1 -type f -printf '%f\n' | sort > expected-assets.txt
           echo "📦 Release files (expected upload manifest):"
           ls -lh release-files/
 
@@ -499,7 +505,7 @@ jobs:
           ANDROID_STATUS="${{ steps.manifest.outputs.android_status }}"
           APK_URL=""
           if [ "$ANDROID_STATUS" = "available" ]; then
-            APK_NAME=$(ls release-files/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+            APK_NAME=$(find release-files -maxdepth 1 -name '*.apk' -printf '%f\n' | sort | head -1)
             if [ -z "$APK_NAME" ]; then
               echo "::error::android status is 'available' but no APK in release-files — inconsistent state"
               exit 1

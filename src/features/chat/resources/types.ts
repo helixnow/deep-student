@@ -259,9 +259,10 @@ export interface CreateResourceResult {
 // ============================================================================
 
 /**
- * 图片大小限制（10MB）
+ * 图片大小限制（50MB）
+ * #221: 与后端 VFS Image 资源上限及作文批改图片上限对齐
  */
-export const IMAGE_SIZE_LIMIT = 10 * 1024 * 1024;
+export const IMAGE_SIZE_LIMIT = 50 * 1024 * 1024;
 
 /**
  * 文件大小限制（200MB）

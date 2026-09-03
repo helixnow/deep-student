@@ -255,7 +255,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             onToggle();
           }
         }}
-        className="flex w-full flex-wrap items-center justify-between gap-y-1 p-2.5 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex w-full flex-wrap items-center justify-between gap-y-1 p-2.5 [@media(pointer:coarse)]:!min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
@@ -301,7 +301,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-8 lg:h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
+            className={cn('h-8 lg:h-6 px-2 text-xs [@media(pointer:coarse)]:!h-11', isDispatchOpen && 'bg-primary/10 text-primary')}
             aria-expanded={isDispatchOpen}
             onClick={(e) => {
               e.stopPropagation();
@@ -322,7 +322,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-8 lg:h-6 px-2 text-xs text-destructive"
+              className="h-8 lg:h-6 px-2 text-xs text-destructive [@media(pointer:coarse)]:!h-11"
               onClick={handleCancel}
             >
               {t('chatV2:workspace.cancel')}
@@ -331,7 +331,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
               {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
             </DsButton>
           )}
@@ -341,7 +341,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-8 lg:h-6 px-2 text-xs"
+              className="h-8 lg:h-6 px-2 text-xs [@media(pointer:coarse)]:!h-11"
               onClick={(e) => {
                 e.stopPropagation();
                 onViewFullSession();
@@ -416,6 +416,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 if (dispatching) return;
                 setIsDispatchOpen(false);
@@ -428,6 +429,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={handleDispatch}
               disabled={dispatching || !isOnline}
             >

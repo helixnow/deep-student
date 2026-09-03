@@ -1,28 +1,29 @@
 import type { JsonSchemaProperty, SkillDefinition } from '../types';
 
-const id = (description: string): JsonSchemaProperty => ({
+// description 可省略：字段名自明（如 textbook_id）时不再注入 description 键，
+// 只减少注入 LLM 的 schema 字符，不改变 JSON Schema 校验结构。
+const id = (description?: string): JsonSchemaProperty => ({
   type: 'string',
   minLength: 1,
   maxLength: 200,
   pattern: '^[A-Za-z0-9_-]+$',
-  description,
+  ...(description === undefined ? {} : { description }),
 });
 
 const expectedRevision: JsonSchemaProperty = {
   type: 'string',
   minLength: 1,
   maxLength: 128,
-  description: '【必填】最近一次 get 返回的 updated_at；冲突后必须重新读取，禁止盲重试',
+  description: '最近一次 get 返回的 updated_at（OCC 基线）',
 };
 
 const pagination = {
-  page: { type: 'integer' as const, minimum: 1, default: 1, description: '结果页码，从 1 开始' },
+  page: { type: 'integer' as const, minimum: 1, default: 1 },
   page_size: {
     type: 'integer' as const,
     minimum: 1,
     maximum: 20,
     default: 20,
-    description: '每页数量，最多 20 条',
   },
 };
 
@@ -43,25 +44,25 @@ const highlightProperties = {
     type: 'integer' as const,
     minimum: 0,
     maximum: 100000,
-    description: 'PDF 页索引，0-based；用户说第 12 页时传 11',
+    description: 'PDF 页索引（0-based）',
   },
   text: {
     type: 'string' as const,
     minLength: 1,
     maxLength: 20000,
-    description: '高亮对应的真实选中文本；返回时超过 2000 字符会截断并标记',
+    description: '高亮对应的真实选中文本',
   },
   color: {
     type: 'string' as const,
     enum: ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca'],
-    description: '阅读器支持的黄色、绿色、蓝色或红色高亮色',
+    description: '高亮色：黄/绿/蓝/红',
   },
   rects: {
     type: 'array' as const,
     minItems: 1,
     maxItems: 64,
     items: rectSchema,
-    description: 'coordVersion=2 的页面归一化坐标矩形，所有矩形必须完整落在 0..1 内',
+    description: 'coordVersion=2 归一化矩形，须完整落在 0..1 内',
   },
 };
 
@@ -114,13 +115,13 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
     {
       name: 'builtin-textbook_bookmarks',
       description:
-        '分页读取或以 OCC 添加、删除、更新教材书签。get 为 Low，写操作为 Medium。get 每页最多 20 条并返回 updated_at；返回标题超过 2000 字符时带 title_truncated（写入标题最多 500）。',
+        '分页读取或以 OCC 增删改教材书签。get 为 Low 且返回 updated_at，写为 Medium；超长标题带 title_truncated。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           action: { type: 'string', enum: ['get', 'add', 'remove', 'update'] },
-          textbook_id: id('教材 ID'),
+          textbook_id: id(),
         },
         oneOf: [
           {
@@ -129,7 +130,7 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id'],
             properties: {
               action: { type: 'string', enum: ['get'] },
-              textbook_id: id('教材 ID'),
+              textbook_id: id(),
               ...pagination,
             },
           },
@@ -139,7 +140,7 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'page_number', 'title', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['add'] },
-              textbook_id: id('教材 ID'),
+              textbook_id: id(),
               page_number: { type: 'integer', minimum: 1, maximum: 100000, description: '1-based 页码' },
               title: { type: 'string', minLength: 1, maxLength: 500 },
               expected_updated_at: expectedRevision,
@@ -151,8 +152,8 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'bookmark_id', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['remove'] },
-              textbook_id: id('教材 ID'),
-              bookmark_id: id('要删除的书签 ID'),
+              textbook_id: id(),
+              bookmark_id: id(),
               expected_updated_at: expectedRevision,
             },
           },
@@ -162,8 +163,8 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'bookmark_id', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['update'] },
-              textbook_id: id('教材 ID'),
-              bookmark_id: id('要更新的书签 ID'),
+              textbook_id: id(),
+              bookmark_id: id(),
               page_number: { type: 'integer', minimum: 1, maximum: 100000 },
               title: { type: 'string', minLength: 1, maxLength: 500 },
               expected_updated_at: expectedRevision,
@@ -175,13 +176,13 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
     {
       name: 'builtin-textbook_highlights',
       description:
-        '分页读取或以 OCC 添加、删除、更新 DSTU metadata 中的 PDF 高亮。get 为 Low，写操作为 Medium。page_index 为 0-based；输出 text 超过 2000 字符时带 text_truncated。',
+        '分页读取或以 OCC 增删改 PDF 高亮。get 为 Low 且返回 updated_at，写为 Medium；page_index 0-based，超长 text 带 text_truncated。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           action: { type: 'string', enum: ['get', 'add', 'remove', 'update'] },
-          textbook_id: id('教材 ID'),
+          textbook_id: id(),
         },
         oneOf: [
           {
@@ -190,7 +191,7 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id'],
             properties: {
               action: { type: 'string', enum: ['get'] },
-              textbook_id: id('教材 ID'),
+              textbook_id: id(),
               page_index: highlightProperties.page_index,
               ...pagination,
             },
@@ -201,7 +202,7 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'page_index', 'text', 'color', 'rects', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['add'] },
-              textbook_id: id('教材 ID'),
+              textbook_id: id(),
               ...highlightProperties,
               expected_updated_at: expectedRevision,
             },
@@ -212,8 +213,8 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'highlight_id', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['remove'] },
-              textbook_id: id('教材 ID'),
-              highlight_id: id('要删除的高亮 ID'),
+              textbook_id: id(),
+              highlight_id: id(),
               expected_updated_at: expectedRevision,
             },
           },
@@ -223,8 +224,8 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
             required: ['action', 'textbook_id', 'highlight_id', 'expected_updated_at'],
             properties: {
               action: { type: 'string', enum: ['update'] },
-              textbook_id: id('教材 ID'),
-              highlight_id: id('要更新的高亮 ID'),
+              textbook_id: id(),
+              highlight_id: id(),
               ...highlightProperties,
               expected_updated_at: expectedRevision,
             },
@@ -235,7 +236,7 @@ get 单页最多 20 条并返回 total/page/page_size/has_more。任何输出文
     {
       name: 'builtin-pdf_page_image',
       description:
-        '读取真实 VFS PDF 预渲染页图（Low）。page_index 为 0-based。优先取已有 compressed blob，必要时限制为最长边 2048、压缩到 1500000 bytes 内；返回 mime_type/width/height/size/compressed/image_url，绝不返回截断 base64。',
+        '读取 VFS PDF 预渲染页图（Low，page_index 0-based）。优先用已有压缩 blob，必要时缩到最长边 2048 并压缩；返回 image_url 等元信息，绝不返回截断 base64。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

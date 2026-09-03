@@ -14,6 +14,7 @@
  *
  * 约束：store 未注册或尚未加载 target.resourceId 时视为 closed。
  */
+import i18n from '@/i18n';
 import {
   getMindMapStoreForResource,
   getMindMapStoreForWindow,
@@ -86,6 +87,16 @@ export const SUGGESTION_MESSAGE =
   + '用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。'
   + 'suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，'
   + '或提示用户保存/结束编辑后重试。';
+
+/**
+ * 写入回执时走 i18n（mindmap:agent.*；语言可运行时切换，故用函数而非模块级常量）。
+ * 常量本身保留 zh-CN 原文，作为 defaultValue 兜底与既有测试锚点。
+ */
+function suggestionMessage(): string {
+  return i18n.t('mindmap:agent.suggestion_pending', {
+    defaultValue: SUGGESTION_MESSAGE,
+  });
+}
 
 /** R1-05 对齐的 anchor / payload 形状 */
 interface MindmapOpAnchor {
@@ -316,7 +327,12 @@ export function validateMindmapSubtreeInput(
   });
 
   if (input !== undefined && !Array.isArray(input)) {
-    return fail('INVALID_CHILDREN', 'data.children 必须是数组');
+    return fail(
+      'INVALID_CHILDREN',
+      i18n.t('mindmap:agent.validation_children_not_array', {
+        defaultValue: 'data.children 必须是数组',
+      }),
+    );
   }
   const values = (input ?? []) as unknown[];
 
@@ -333,12 +349,32 @@ export function validateMindmapSubtreeInput(
       stack.push({ node: current.node.children[i], depth: current.depth + 1 });
     }
   }
-  if (parentDepth < 0) return fail('INVALID_NODE', `父节点 ${parentId} 不存在`);
+  if (parentDepth < 0) {
+    return fail(
+      'INVALID_NODE',
+      i18n.t('mindmap:agent.parent_not_found', {
+        id: parentId,
+        defaultValue: '父节点 {{id}} 不存在',
+      }),
+    );
+  }
   if (existingCount + 1 > MAX_MINDMAP_NODES) {
-    return fail('NODE_LIMIT', `节点总数不能超过 ${MAX_MINDMAP_NODES}`);
+    return fail(
+      'NODE_LIMIT',
+      i18n.t('mindmap:agent.validation_node_limit', {
+        max: MAX_MINDMAP_NODES,
+        defaultValue: '节点总数不能超过 {{max}}',
+      }),
+    );
   }
   if (parentDepth + 1 >= MAX_MINDMAP_DEPTH) {
-    return fail('DEPTH_LIMIT', `节点深度不能达到或超过 ${MAX_MINDMAP_DEPTH}`);
+    return fail(
+      'DEPTH_LIMIT',
+      i18n.t('mindmap:agent.validation_depth_limit', {
+        max: MAX_MINDMAP_DEPTH,
+        defaultValue: '节点深度不能达到或超过 {{max}}',
+      }),
+    );
   }
 
   const incomingIds = new Set<string>();
@@ -352,42 +388,102 @@ export function validateMindmapSubtreeInput(
     if (failure) return null;
     const raw = asRecord(value);
     if (!raw) {
-      failure = fail('INVALID_NODE', 'children 中每一项都必须是节点对象', nodeCount, maxRelativeDepth);
+      failure = fail(
+        'INVALID_NODE',
+        i18n.t('mindmap:agent.validation_item_not_node', {
+          defaultValue: 'children 中每一项都必须是节点对象',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       return null;
     }
     if (activeObjects.has(raw)) {
-      failure = fail('CYCLE', 'children 中存在循环引用', nodeCount, maxRelativeDepth);
+      failure = fail(
+        'CYCLE',
+        i18n.t('mindmap:agent.validation_cycle', {
+          defaultValue: 'children 中存在循环引用',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       return null;
     }
     if (seenObjects.has(raw)) {
-      failure = fail('SHARED_NODE', '同一节点对象不能属于多个父节点', nodeCount, maxRelativeDepth);
+      failure = fail(
+        'SHARED_NODE',
+        i18n.t('mindmap:agent.validation_shared_node', {
+          defaultValue: '同一节点对象不能属于多个父节点',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       return null;
     }
     activeObjects.add(raw);
     seenObjects.add(raw);
 
     if (typeof raw.id !== 'string' || raw.id.trim().length === 0) {
-      failure = fail('INVALID_ID', '子节点 id 必须是非空字符串', nodeCount, maxRelativeDepth);
+      failure = fail(
+        'INVALID_ID',
+        i18n.t('mindmap:agent.validation_invalid_id', {
+          defaultValue: '子节点 id 必须是非空字符串',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
     if (existingIds.has(raw.id)) {
-      failure = fail('EXISTING_ID', `子节点 id ${raw.id} 已存在`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'EXISTING_ID',
+        i18n.t('mindmap:agent.validation_existing_id', {
+          id: raw.id,
+          defaultValue: '子节点 id {{id}} 已存在',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
     if (incomingIds.has(raw.id)) {
-      failure = fail('DUPLICATE_ID', `children 中存在重复 id ${raw.id}`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'DUPLICATE_ID',
+        i18n.t('mindmap:agent.validation_duplicate_id', {
+          id: raw.id,
+          defaultValue: 'children 中存在重复 id {{id}}',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
     if (typeof raw.text !== 'string') {
-      failure = fail('INVALID_TEXT', `子节点 ${raw.id} 的 text 必须是字符串`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'INVALID_TEXT',
+        i18n.t('mindmap:agent.validation_invalid_text', {
+          id: raw.id,
+          defaultValue: '子节点 {{id}} 的 text 必须是字符串',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
     if (!Array.isArray(raw.children)) {
-      failure = fail('INVALID_CHILDREN', `子节点 ${raw.id} 的 children 必须是数组`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'INVALID_CHILDREN',
+        i18n.t('mindmap:agent.validation_invalid_children', {
+          id: raw.id,
+          defaultValue: '子节点 {{id}} 的 children 必须是数组',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
@@ -396,12 +492,28 @@ export function validateMindmapSubtreeInput(
     nodeCount += 1;
     maxRelativeDepth = Math.max(maxRelativeDepth, relativeDepth);
     if (existingCount + 1 + nodeCount > MAX_MINDMAP_NODES) {
-      failure = fail('NODE_LIMIT', `节点总数不能超过 ${MAX_MINDMAP_NODES}`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'NODE_LIMIT',
+        i18n.t('mindmap:agent.validation_node_limit', {
+          max: MAX_MINDMAP_NODES,
+          defaultValue: '节点总数不能超过 {{max}}',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
     if (parentDepth + 1 + relativeDepth >= MAX_MINDMAP_DEPTH) {
-      failure = fail('DEPTH_LIMIT', `节点深度不能达到或超过 ${MAX_MINDMAP_DEPTH}`, nodeCount, maxRelativeDepth);
+      failure = fail(
+        'DEPTH_LIMIT',
+        i18n.t('mindmap:agent.validation_depth_limit', {
+          max: MAX_MINDMAP_DEPTH,
+          defaultValue: '节点深度不能达到或超过 {{max}}',
+        }),
+        nodeCount,
+        maxRelativeDepth,
+      );
       activeObjects.delete(raw);
       return null;
     }
@@ -626,36 +738,66 @@ function resolveFailureReason(
   const root = storeApi.getState().document.root;
   switch (op.kind) {
     case 'add_node': {
-      if (!anchor.parent_id) return '缺少 parent_id';
+      if (!anchor.parent_id) {
+        return i18n.t('mindmap:agent.missing_parent_id', { defaultValue: '缺少 parent_id' });
+      }
       if (!findNodeById(root, anchor.parent_id)) {
-        return `父节点 ${anchor.parent_id} 不存在`;
+        return i18n.t('mindmap:agent.parent_not_found', {
+          id: anchor.parent_id,
+          defaultValue: '父节点 {{id}} 不存在',
+        });
       }
       return null;
     }
     case 'update_node':
     case 'delete_node': {
-      if (!anchor.node_id) return '缺少 node_id';
+      if (!anchor.node_id) {
+        return i18n.t('mindmap:agent.missing_node_id', { defaultValue: '缺少 node_id' });
+      }
       if (!findNodeById(root, anchor.node_id)) {
-        return `节点 ${anchor.node_id} 不存在`;
+        return i18n.t('mindmap:agent.node_not_found', {
+          id: anchor.node_id,
+          defaultValue: '节点 {{id}} 不存在',
+        });
       }
       if (op.kind === 'delete_node' && root.id === anchor.node_id) {
-        return '不能删除根节点';
+        return i18n.t('mindmap:agent.cannot_delete_root', { defaultValue: '不能删除根节点' });
       }
       return null;
     }
     case 'move_node': {
-      if (!anchor.node_id) return '缺少 node_id';
-      if (!anchor.new_parent_id) return '缺少 new_parent_id';
+      if (!anchor.node_id) {
+        return i18n.t('mindmap:agent.missing_node_id', { defaultValue: '缺少 node_id' });
+      }
+      if (!anchor.new_parent_id) {
+        return i18n.t('mindmap:agent.missing_new_parent_id', {
+          defaultValue: '缺少 new_parent_id',
+        });
+      }
       if (!findNodeById(root, anchor.node_id)) {
-        return `节点 ${anchor.node_id} 不存在`;
+        return i18n.t('mindmap:agent.node_not_found', {
+          id: anchor.node_id,
+          defaultValue: '节点 {{id}} 不存在',
+        });
       }
       if (!findNodeById(root, anchor.new_parent_id)) {
-        return `新父节点 ${anchor.new_parent_id} 不存在`;
+        return i18n.t('mindmap:agent.new_parent_not_found', {
+          id: anchor.new_parent_id,
+          defaultValue: '新父节点 {{id}} 不存在',
+        });
       }
-      if (root.id === anchor.node_id) return '不能移动根节点';
-      if (anchor.node_id === anchor.new_parent_id) return '不能把节点移动到自身';
+      if (root.id === anchor.node_id) {
+        return i18n.t('mindmap:agent.cannot_move_root', { defaultValue: '不能移动根节点' });
+      }
+      if (anchor.node_id === anchor.new_parent_id) {
+        return i18n.t('mindmap:agent.cannot_move_to_self', {
+          defaultValue: '不能把节点移动到自身',
+        });
+      }
       if (isDescendantOf(root, anchor.node_id, anchor.new_parent_id)) {
-        return '不能把节点移动到自己的后代';
+        return i18n.t('mindmap:agent.cannot_move_to_descendant', {
+          defaultValue: '不能把节点移动到自己的后代',
+        });
       }
       const movingNode = findNodeById(root, anchor.node_id);
       const nextParentDepth = getTreeDepth(root, anchor.new_parent_id);
@@ -663,12 +805,18 @@ function resolveFailureReason(
         movingNode &&
         nextParentDepth + 1 + getTreeHeight(movingNode) >= MAX_MINDMAP_DEPTH
       ) {
-        return `移动后节点深度会达到或超过 ${MAX_MINDMAP_DEPTH}`;
+        return i18n.t('mindmap:agent.move_depth_limit', {
+          max: MAX_MINDMAP_DEPTH,
+          defaultValue: '移动后节点深度会达到或超过 {{max}}',
+        });
       }
       return null;
     }
     default:
-      return `未知操作 kind=${op.kind}`;
+      return i18n.t('mindmap:agent.unknown_op_kind', {
+        kind: op.kind,
+        defaultValue: '未知操作 kind={{kind}}',
+      });
   }
 }
 
@@ -688,7 +836,12 @@ function applyOneOp(
   const skipOpts = { skipHistory: true } as const;
   const assertResource = () => {
     if (storeApi.getState().mindmapId !== resourceId) {
-      throw new Error(`导图 ${resourceId} 已不再由原 store 持有`);
+      throw new Error(
+        i18n.t('mindmap:agent.resource_not_held', {
+          resourceId,
+          defaultValue: '导图 {{resourceId}} 已不再由原 store 持有',
+        }),
+      );
     }
   };
 
@@ -706,7 +859,11 @@ function applyOneOp(
         return {
           entityId: null,
           ok: false,
-          reason: validation.reason ?? '嵌套 children 校验失败',
+          reason:
+            validation.reason ??
+            i18n.t('mindmap:agent.nested_children_validation_failed', {
+              defaultValue: '嵌套 children 校验失败',
+            }),
         };
       }
 
@@ -726,7 +883,13 @@ function applyOneOp(
 
       const newId = storeApi.getState().agentAddSubtree(parentId, nodeData, index);
       if (!newId) {
-        return { entityId: null, ok: false, reason: '添加节点失败（深度/数量限制）' };
+        return {
+          entityId: null,
+          ok: false,
+          reason: i18n.t('mindmap:agent.add_node_failed', {
+            defaultValue: '添加节点失败（深度/数量限制）',
+          }),
+        };
       }
       const expectedAdded = deepCloneNode(
         findNodeById(storeApi.getState().document.root, newId)!,
@@ -739,12 +902,21 @@ function applyOneOp(
           const current = findNodeById(storeApi.getState().document.root, newId);
           if (current) {
             if (stableValue(current) !== stableValue(expectedAdded)) {
-              throw new Error(`撤销添加冲突：节点 ${newId} 已被继续编辑`);
+              throw new Error(
+                i18n.t('mindmap:agent.undo_add_conflict', {
+                  id: newId,
+                  defaultValue: '撤销添加冲突：节点 {{id}} 已被继续编辑',
+                }),
+              );
             }
             storeApi.getState().agentDeleteNode(newId);
           }
           if (!(await storeApi.getState().save())) {
-            throw new Error('撤销添加失败：更改未能保存');
+            throw new Error(
+              i18n.t('mindmap:agent.undo_add_save_failed', {
+                defaultValue: '撤销添加失败：更改未能保存',
+              }),
+            );
           }
         },
         op.label,
@@ -773,21 +945,39 @@ function applyOneOp(
           assertResource();
           const currentNode = findNodeById(storeApi.getState().document.root, nodeId);
           if (!currentNode) {
-            throw new Error(`撤销更新失败：节点 ${nodeId} 不存在`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_update_missing', {
+                id: nodeId,
+                defaultValue: '撤销更新失败：节点 {{id}} 不存在',
+              }),
+            );
           }
           const current = snapshotNodeFields(currentNode);
           if (stableValue(current) === stableValue(before)) {
             if (!(await storeApi.getState().save())) {
-              throw new Error('撤销更新失败：更改未能保存');
+              throw new Error(
+                i18n.t('mindmap:agent.undo_update_save_failed', {
+                  defaultValue: '撤销更新失败：更改未能保存',
+                }),
+              );
             }
             return;
           }
           if (stableValue(current) !== stableValue(after)) {
-            throw new Error(`撤销更新冲突：节点 ${nodeId} 已被继续编辑`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_update_conflict', {
+                id: nodeId,
+                defaultValue: '撤销更新冲突：节点 {{id}} 已被继续编辑',
+              }),
+            );
           }
           storeApi.getState().updateNode(nodeId, before, skipOpts);
           if (!(await storeApi.getState().save())) {
-            throw new Error('撤销更新失败：更改未能保存');
+            throw new Error(
+              i18n.t('mindmap:agent.undo_update_save_failed', {
+                defaultValue: '撤销更新失败：更改未能保存',
+              }),
+            );
           }
         },
         op.label,
@@ -801,7 +991,13 @@ function applyOneOp(
       const node = findNodeById(root, nodeId)!;
       const parent = findParentNode(root, nodeId);
       if (!parent) {
-        return { entityId: null, ok: false, reason: '找不到父节点' };
+        return {
+          entityId: null,
+          ok: false,
+          reason: i18n.t('mindmap:agent.parent_missing', {
+            defaultValue: '找不到父节点',
+          }),
+        };
       }
       const index = parent.children.findIndex((c) => c.id === nodeId);
       const snapshot = deepCloneNode(node);
@@ -812,16 +1008,30 @@ function applyOneOp(
         async () => {
           assertResource();
           if (!findNodeById(storeApi.getState().document.root, parentId)) {
-            throw new Error(`撤销删除失败：父节点 ${parentId} 不存在`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_delete_parent_missing', {
+                id: parentId,
+                defaultValue: '撤销删除失败：父节点 {{id}} 不存在',
+              }),
+            );
           }
           const existing = findNodeById(storeApi.getState().document.root, nodeId);
           if (!existing) {
             storeApi.getState().agentInsertSubtree(parentId, snapshot, index);
           } else if (stableValue(existing) !== stableValue(snapshot)) {
-            throw new Error(`撤销删除冲突：节点 id ${nodeId} 已被其他内容占用`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_delete_conflict', {
+                id: nodeId,
+                defaultValue: '撤销删除冲突：节点 id {{id}} 已被其他内容占用',
+              }),
+            );
           }
           if (!(await storeApi.getState().save())) {
-            throw new Error('撤销删除失败：更改未能保存');
+            throw new Error(
+              i18n.t('mindmap:agent.undo_delete_save_failed', {
+                defaultValue: '撤销删除失败：更改未能保存',
+              }),
+            );
           }
         },
         op.label,
@@ -835,7 +1045,13 @@ function applyOneOp(
       const root = storeApi.getState().document.root;
       const parent = findParentNode(root, nodeId);
       if (!parent) {
-        return { entityId: null, ok: false, reason: '找不到原父节点' };
+        return {
+          entityId: null,
+          ok: false,
+          reason: i18n.t('mindmap:agent.old_parent_missing', {
+            defaultValue: '找不到原父节点',
+          }),
+        };
       }
       const oldParentId = parent.id;
       const oldIndex = parent.children.findIndex((c) => c.id === nodeId);
@@ -846,11 +1062,23 @@ function applyOneOp(
           : (nextParent?.children.length ?? 0);
 
       if (!storeApi.getState().agentMoveNode(nodeId, newParentId, targetIndex)) {
-        return { entityId: null, ok: false, reason: '移动节点失败' };
+        return {
+          entityId: null,
+          ok: false,
+          reason: i18n.t('mindmap:agent.move_node_failed', {
+            defaultValue: '移动节点失败',
+          }),
+        };
       }
       const movedLocation = nodeLocation(storeApi.getState().document.root, nodeId);
       if (!movedLocation) {
-        return { entityId: null, ok: false, reason: '移动后无法确认节点位置' };
+        return {
+          entityId: null,
+          ok: false,
+          reason: i18n.t('mindmap:agent.move_location_unconfirmed', {
+            defaultValue: '移动后无法确认节点位置',
+          }),
+        };
       }
       run.ledger.record(
         run.runId,
@@ -859,11 +1087,20 @@ function applyOneOp(
           const currentRoot = storeApi.getState().document.root;
           const currentLocation = nodeLocation(currentRoot, nodeId);
           if (!currentLocation) {
-            throw new Error(`撤销移动失败：节点 ${nodeId} 不存在`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_move_missing', {
+                id: nodeId,
+                defaultValue: '撤销移动失败：节点 {{id}} 不存在',
+              }),
+            );
           }
           if (currentLocation.parentId === oldParentId && currentLocation.index === oldIndex) {
             if (!(await storeApi.getState().save())) {
-              throw new Error('撤销移动失败：更改未能保存');
+              throw new Error(
+                i18n.t('mindmap:agent.undo_move_save_failed', {
+                  defaultValue: '撤销移动失败：更改未能保存',
+                }),
+              );
             }
             return;
           }
@@ -871,15 +1108,29 @@ function applyOneOp(
             currentLocation.parentId !== movedLocation.parentId
             || currentLocation.index !== movedLocation.index
           ) {
-            throw new Error(`撤销移动冲突：节点 ${nodeId} 已被再次移动`);
+            throw new Error(
+              i18n.t('mindmap:agent.undo_move_conflict', {
+                id: nodeId,
+                defaultValue: '撤销移动冲突：节点 {{id}} 已被再次移动',
+              }),
+            );
           }
           if (currentLocation.parentId !== oldParentId || currentLocation.index !== oldIndex) {
             if (!storeApi.getState().agentMoveNode(nodeId, oldParentId, oldIndex)) {
-              throw new Error(`撤销移动失败：节点 ${nodeId} 无法返回原位置`);
+              throw new Error(
+                i18n.t('mindmap:agent.undo_move_restore_failed', {
+                  id: nodeId,
+                  defaultValue: '撤销移动失败：节点 {{id}} 无法返回原位置',
+                }),
+              );
             }
           }
           if (!(await storeApi.getState().save())) {
-            throw new Error('撤销移动失败：更改未能保存');
+            throw new Error(
+              i18n.t('mindmap:agent.undo_move_save_failed', {
+                defaultValue: '撤销移动失败：更改未能保存',
+              }),
+            );
           }
         },
         op.label,
@@ -888,7 +1139,14 @@ function applyOneOp(
     }
 
     default:
-      return { entityId: null, ok: false, reason: `未知操作 kind=${op.kind}` };
+      return {
+        entityId: null,
+        ok: false,
+        reason: i18n.t('mindmap:agent.unknown_op_kind', {
+          kind: op.kind,
+          defaultValue: '未知操作 kind={{kind}}',
+        }),
+      };
   }
 }
 
@@ -909,8 +1167,10 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     receipt.status = 'failed';
     receipt.mode = 'frontend';
     receipt.undone = ops.map((op) => op.label);
-    receipt.message =
-      '导图 store 未加载目标资源（mindmapId≠resourceId 或未打开），无法前端演出；请回落后端路径';
+    receipt.message = i18n.t('mindmap:agent.store_not_loaded', {
+      defaultValue:
+        '导图 store 未加载目标资源（mindmapId≠resourceId 或未打开），无法前端演出；请回落后端路径',
+    });
     activeRuns.delete(run.runId);
     return receipt;
   }
@@ -933,7 +1193,9 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       for (let j = i; j < ops.length; j++) {
         receipt.undone.push(ops[j].label);
       }
-      receipt.message = '已中止（abort）';
+      receipt.message = i18n.t('mindmap:agent.aborted', {
+        defaultValue: '已中止（abort）',
+      });
       break;
     }
 
@@ -943,16 +1205,25 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       for (let j = i; j < ops.length; j++) {
         receipt.undone.push(ops[j].label);
       }
-      receipt.message = '已中止（用户停止或取消）';
+      receipt.message = i18n.t('mindmap:agent.aborted_by_user', {
+        defaultValue: '已中止（用户停止或取消）',
+      });
       break;
     }
 
     if (storeApi.getState().mindmapId !== resourceId) {
       receipt.status = receipt.applied > 0 ? 'partial' : 'failed';
       for (let j = i; j < ops.length; j++) {
-        receipt.undone.push(`${ops[j].label}（目标资源已切换）`);
+        receipt.undone.push(
+          i18n.t('mindmap:agent.op_undone_target_switched', {
+            label: ops[j].label,
+            defaultValue: '{{label}}（目标资源已切换）',
+          }),
+        );
       }
-      receipt.message = '目标导图在执行期间已切换，剩余操作未应用';
+      receipt.message = i18n.t('mindmap:agent.target_switched', {
+        defaultValue: '目标导图在执行期间已切换，剩余操作未应用',
+      });
       break;
     }
 
@@ -973,7 +1244,7 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       for (let j = i; j < ops.length; j++) {
         receipt.undone.push(ops[j].label);
       }
-      receipt.message = SUGGESTION_MESSAGE;
+      receipt.message = suggestionMessage();
       break;
     }
 
@@ -999,16 +1270,25 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
           for (let j = i; j < ops.length; j++) {
             receipt.undone.push(ops[j].label);
           }
-          receipt.message = '已中止（用户停止或取消）';
+          receipt.message = i18n.t('mindmap:agent.aborted_by_user', {
+            defaultValue: '已中止（用户停止或取消）',
+          });
           break;
         }
         // 动画期间目标导图可能被切换：与循环顶部同语义防御
         if (storeApi.getState().mindmapId !== resourceId) {
           receipt.status = receipt.applied > 0 ? 'partial' : 'failed';
           for (let j = i; j < ops.length; j++) {
-            receipt.undone.push(`${ops[j].label}（目标资源已切换）`);
+            receipt.undone.push(
+              i18n.t('mindmap:agent.op_undone_target_switched', {
+                label: ops[j].label,
+                defaultValue: '{{label}}（目标资源已切换）',
+              }),
+            );
           }
-          receipt.message = '目标导图在执行期间已切换，剩余操作未应用';
+          receipt.message = i18n.t('mindmap:agent.target_switched', {
+            defaultValue: '目标导图在执行期间已切换，剩余操作未应用',
+          });
           break;
         }
       }
@@ -1016,9 +1296,27 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
 
     const result = applyOneOp(run, storeApi, resourceId, op);
     if (!result.ok) {
-      const reason = result.reason ?? '锚点解析失败';
-      receipt.undone.push(`${op.label}（${reason}）`);
-      run.reportProgress(step, totalOps, `跳过：${op.label} — ${reason}`);
+      const reason =
+        result.reason ??
+        i18n.t('mindmap:agent.anchor_resolve_failed', {
+          defaultValue: '锚点解析失败',
+        });
+      receipt.undone.push(
+        i18n.t('mindmap:agent.op_undone_with_reason', {
+          label: op.label,
+          reason,
+          defaultValue: '{{label}}（{{reason}}）',
+        }),
+      );
+      run.reportProgress(
+        step,
+        totalOps,
+        i18n.t('mindmap:agent.op_skipped_progress', {
+          label: op.label,
+          reason,
+          defaultValue: '跳过：{{label}} — {{reason}}',
+        }),
+      );
       await run.pacing.tick();
       continue;
     }
@@ -1078,22 +1376,33 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     receipt.mode = 'suggestion';
     receipt.suggestionPending = true;
     if (savePending) {
-      receipt.message = '前序操作已写入当前导图，但保存失败；建议仍等待用户确认，请先重试保存或撤销';
+      receipt.message = i18n.t('mindmap:agent.suggestion_save_failed', {
+        defaultValue:
+          '前序操作已写入当前导图，但保存失败；建议仍等待用户确认，请先重试保存或撤销',
+      });
     } else {
-      receipt.message = SUGGESTION_MESSAGE;
+      receipt.message = suggestionMessage();
     }
   } else if (receipt.status === 'completed') {
     if (savePending) {
       receipt.status = 'partial';
-      receipt.message = '操作已写入当前导图，但保存失败；请重试保存或撤销';
+      receipt.message = i18n.t('mindmap:agent.save_failed', {
+        defaultValue: '操作已写入当前导图，但保存失败；请重试保存或撤销',
+      });
     } else if (receipt.applied === 0 && receipt.undone.length > 0) {
       receipt.status = 'failed';
-      receipt.message = '全部操作未能应用（锚点缺失或限制）';
+      receipt.message = i18n.t('mindmap:agent.all_ops_failed', {
+        defaultValue: '全部操作未能应用（锚点缺失或限制）',
+      });
     } else if (receipt.undone.length > 0) {
       receipt.status = 'partial';
-      receipt.message = '部分操作已应用（自动保存）；未执行项见 undone';
+      receipt.message = i18n.t('mindmap:agent.partially_applied', {
+        defaultValue: '部分操作已应用（自动保存）；未执行项见 undone',
+      });
     } else {
-      receipt.message = '已应用（自动保存）';
+      receipt.message = i18n.t('mindmap:agent.applied', {
+        defaultValue: '已应用（自动保存）',
+      });
     }
   } else if (receipt.status === 'cancelled' && receipt.applied > 0) {
     // partial 语义：已做 + 未做
@@ -1112,7 +1421,9 @@ function abortMindmap(runId: string): AcrReceipt {
     const receipt: AcrReceipt = {
       ...state.receipt,
       status: 'partial',
-      message: state.receipt.message ?? '已中止（abort）',
+      message:
+        state.receipt.message ??
+        i18n.t('mindmap:agent.aborted', { defaultValue: '已中止（abort）' }),
     };
     // 未执行的 ops 由 apply 循环退出时补 undone；此处返回当前累计
     return withUserPatch(receipt, TYPE_ID);
@@ -1126,7 +1437,7 @@ function abortMindmap(runId: string): AcrReceipt {
       entityIds: [],
       done: [],
       undone: [],
-      message: '无活跃 run',
+      message: i18n.t('mindmap:agent.no_active_run', { defaultValue: '无活跃 run' }),
     },
     TYPE_ID,
   );

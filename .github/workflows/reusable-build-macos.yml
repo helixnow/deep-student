@@ -37,6 +37,11 @@ on:
         required: false
         default: false
         type: boolean
+      frontend_dist_artifact:
+        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -62,6 +67,11 @@ jobs:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'packed' || 'off' }}
+      # sccache（GHA cache 后端）与 rust-cache 叠加：rust-cache 负责 registry/
+      # git 依赖与 target 目录整体缓存，sccache 按编译单元缓存 rustc 输出，
+      # 依赖版本或 profile 变化导致 rust-cache miss 时仍可大量命中。
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: sccache
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +150,11 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
+      # sccache 二进制不存在时 cargo 会直接报错。
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
@@ -173,13 +188,31 @@ jobs:
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
           echo "runner          : ${{ matrix.runner }} ($(uname -m))"
+          echo "sccache         : $(sccache --version) (RUSTC_WRAPPER, GHA cache backend)"
           echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, split-debuginfo=${CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO}"
           echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
           echo "xcode           : $(xcodebuild -version | tr '\n' ' ')"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / sccache-action v0.0.11 / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
+
+      # ── WI-4: 预构建前端 dist（可选）──
+      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
+      # artifact 分发；传入名称时这里下载复用, tauri build 用 --config 把
+      # beforeBuildCommand 置空跳过重复的 npm run build。留空时保持原行为。
+      - name: Download prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: dist
+
+      - name: Verify prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        run: |
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
+          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
 
       # ── 导入 Developer ID 证书到独立临时 keychain ──
       # 不污染 login keychain；keychain 密码为一次性随机值；构建结束
@@ -270,6 +303,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
           if [[ "$ALLOW_UNSIGNED" == "1" ]]; then
             # Empty APPLE_* variables override tauri.conf.json and make Tauri
@@ -277,7 +311,29 @@ jobs:
             # ad-hoc identity ("-") is used for unsigned recovery bundles.
             unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           fi
-          npx tauri build --target ${{ matrix.target }} -- --locked
+          CONFIG_ARGS=()
+          if [[ -n "$FRONTEND_DIST_ARTIFACT" ]]; then
+            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
+            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
+            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
+          fi
+          npx tauri build --target ${{ matrix.target }} "${CONFIG_ARGS[@]}" -- --locked
+
+      # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
+      # 失败时也能拿到命中率，结果同时写入日志与 job summary。
+      # Linux/Windows 的 reusable-build-* 同结构。
+      - name: Show sccache stats
+        if: always()
+        run: |
+          STATS="$(sccache --show-stats 2>&1 || echo 'sccache unavailable')"
+          echo "$STATS"
+          {
+            echo "## sccache stats (release ${{ matrix.target }})"
+            echo ""
+            echo '```'
+            echo "$STATS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ── 签名/公证结果强制验证（fail-closed）──
       # codesign --verify --strict + stapler validate + spctl --assess:

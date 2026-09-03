@@ -208,7 +208,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsCapturing(!isCapturing)}
-            className={`px-2 py-1 rounded text-[10px] flex items-center gap-1 ${
+            className={`px-2 py-1 rounded text-[10px] flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 ${
               isCapturing ? 'bg-green-600/30 text-green-300' : 'bg-slate-700 text-slate-400'
             }`}
           >
@@ -217,7 +217,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </button>
           <button
             onClick={checkContainer}
-            className="px-2 py-1 rounded bg-cyan-600/30 text-cyan-300 hover:bg-cyan-600/50 flex items-center gap-1"
+            className="px-2 py-1 rounded bg-cyan-600/30 text-cyan-300 hover:bg-cyan-600/50 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowClockwise size={12} />
             检查容器
@@ -225,14 +225,14 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <button
             onClick={copyLogs}
             disabled={logs.length === 0}
-            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1"
+            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
           >
             <Copy size={12} />
             复制
           </button>
           <button
             onClick={clearLogs}
-            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 flex items-center gap-1"
+            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
           >
             <Trash size={12} />
             清空
@@ -281,7 +281,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
       {/* 自动滚动开关 */}
       <div className="flex items-center justify-end px-3 py-1 border-b border-slate-700 bg-slate-800/20">
-        <label className="flex items-center gap-1 text-[10px] text-slate-400">
+        <label className="flex items-center gap-1 text-[10px] text-slate-400 [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
@@ -321,7 +321,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   
                   {log.data && Object.keys(log.data).length > 0 && (
                     <details className="mt-1 ml-4">
-                      <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-400">
+                      <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-400 [@media(pointer:coarse)]:min-h-11">
                         查看详情
                       </summary>
                       <pre className="mt-1 text-[10px] text-slate-400 font-mono bg-slate-800/50 rounded p-1.5 overflow-x-auto">

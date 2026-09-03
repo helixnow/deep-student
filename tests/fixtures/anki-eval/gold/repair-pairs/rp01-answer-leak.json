@@ -1,0 +1,18 @@
+{
+  "id": "rp01-answer-leak",
+  "label": "edited_minor",
+  "source": "synthetic-style-rewrite",
+  "description": "生成的卡片在题干末尾直接泄露了答案原文，用户删掉泄露句。改前应命中 answer_leak，改后零命中。",
+  "original": {
+    "front": "快速排序的平均时间复杂度是多少？答案是 O(n log n)。",
+    "back": "O(n log n)"
+  },
+  "edited": {
+    "front": "快速排序的平均时间复杂度是多少？",
+    "back": "O(n log n)"
+  },
+  "expected": {
+    "originalCodes": ["answer_leak"],
+    "editedCodes": []
+  }
+}

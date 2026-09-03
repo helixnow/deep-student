@@ -74,7 +74,29 @@
     "operation_set": "Set content",
     "accept": "Accept",
     "reject": "Reject",
-    "no_changes": "No changes detected"
+    "no_changes": "No changes detected",
+    "errors": {
+      "output_too_large": "The suggested note exceeds the {{maxBytes}}-byte limit",
+      "append_empty": "Append content is empty",
+      "search_empty": "Search pattern is empty",
+      "invalid_regex": "Invalid regular expression: {{message}}",
+      "regex_syntax_error": "syntax error",
+      "replace_not_found": "No matching content found to replace",
+      "unknown_operation": "Unknown operation type: {{operation}}",
+      "section_not_found": "Section not found: {{section}}",
+      "user_rejected": "Edit rejected by user"
+    },
+    "summary": {
+      "meta_title": "Change summary",
+      "meta_description": "Deterministic preview from diff stats",
+      "stat_title": "Changed lines",
+      "no_change_trend": "No substantive change",
+      "added": "Added",
+      "removed": "Removed",
+      "operation": "Operation",
+      "no_diff_title": "No visible diff",
+      "no_diff_description": "The AI suggestion matches the current content; accepting will make no changes."
+    }
   },
   "aiCheckpoint": {
     "applied": "AI edit applied",
@@ -352,6 +374,7 @@
     "quote": "Quote",
     "horizontalRule": "Horizontal Rule",
     "codeBlock": "Code Block",
+    "generateCards": "Generate cards",
     "link": "Link",
     "image": "Image",
     "table": "Table",
@@ -509,7 +532,7 @@
       "paste_failed": "Pasted image processing failed: {{error}}",
       "success": "Image inserted",
       "command_failed": "Slash image upload failed: {{error}}",
-      "too_large": "Image exceeds 10MB limit",
+      "too_large": "Image exceeds 50MB limit",
       "placeholder": "Click or drag to upload image",
       "placeholder_touch": "Tap to upload image",
       "upload_button": "Upload image",
@@ -1298,7 +1321,16 @@
     "taskList": "Task list",
     "image": "Image",
     "undo": "Undo",
-    "redo": "Redo"
+    "redo": "Redo",
+    "generateCards": "Generate cards"
+  },
+  "generateCards": {
+    "deckName": "Note cards",
+    "requirements": "Build cards from the key points of this note, keep the original terminology and wording, and skip purely formatting content.",
+    "tooShort": "This note is too short — add some content before generating cards",
+    "started": "Started generating cards from this note",
+    "failed": "Failed to generate cards",
+    "openTaskDashboard": "View tasks"
   },
   "menu": {
     "page_actions": "Page Actions",

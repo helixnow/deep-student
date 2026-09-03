@@ -1,0 +1,2 @@
+{"front": "什么是「三次握手」(three-way handshake)？", "back": "TCP 建立连接的过程：SYN、SYN-ACK、ACK 三步确认双方的收发能力。", "tags": ["网络", "TCP"]}
+<<<ANKI_CARD_JSON_END>>>

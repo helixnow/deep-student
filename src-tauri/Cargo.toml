@@ -1,6 +1,6 @@
 [package]
 name = "deep-student"
-version = "0.9.44"
+version = "0.9.46"
 description = "Deep Student - AI驱动的智能学习助手"
 authors = ["helixnow"]
 edition = "2021"
@@ -150,6 +150,7 @@ reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 tauri-plugin-clipboard-manager = "~2.2"
 fs2 = "0.4.3"
+unicode-normalization = "0.1"
 
 # 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
@@ -351,9 +352,10 @@ data_governance = ["refinery"]
 devtools = ["tauri/devtools"]
 
 # =============================================================================
-# 移动端 feature profile 草案（mobile-slim）
+# 移动端生产 feature profile（mobile-slim）
 # =============================================================================
-# 状态：仅为骨架定义 + 裁剪评估注释，默认 features 不变，不影响桌面构建。
+# 状态：R2 已完成编译门控，R3 起 Android release/recovery workflow 均使用本 profile；
+# 默认 features 不变，不影响桌面构建。
 # 目标：移动端构建体积/编译时间/内存占用最小化。
 #
 # 可裁剪项评估（相对 default）：
@@ -368,13 +370,12 @@ devtools = ["tauri/devtools"]
 #   - updater/process/single-instance/global-shortcut 等桌面插件已由
 #     [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'] 条件依赖天然排除
 #
-# 使用方式（草案，落地前需先验证各 #[cfg(feature)] 门控的编译完整性）：
+# 使用方式（与 Android CI/release 一致）：
 #   cargo tauri android build --no-default-features --features mobile-slim
 mobile-slim = ["sqlite", "builtin_free_models", "data_governance"]
 
-# Android recovery/release profile: keep core functionality while excluding
-# the optional AWS S3 client, whose dependency graph dominates hosted-runner
-# compile time. Cloud-storage APIs use their existing "not enabled" path.
+# Legacy opt-in profile retained for manual compatibility. Release/recovery
+# workflows use mobile-slim; this broader set is no longer selected by CI.
 android-release = [
     "sqlite",
     "lance",

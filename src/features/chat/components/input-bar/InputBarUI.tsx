@@ -5,101 +5,78 @@
  * 保留原有 UI/UX/动效，删除所有业务逻辑和旧架构依赖。
  */
 
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import {
-  ArrowUp,
-  Square,
-  Paperclip,
-  CheckCircle,
-  Warning,
-  Clock,
-  XCircle,
   UploadSimple,
-  Camera,
-  Lightning,
-  CircleNotch,
-  FolderOpen,
-  CaretDown,
-  MagnifyingGlass,
-  DotsThree,
-  Trash,
-  X,
+  Info,
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
-import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { ProviderIcon } from '@/components/ui/ProviderIcon';
-import { TextSwap } from '@/components/ui/TextSwap';
-import {
-  AppMenu,
-  AppMenuTrigger,
-  AppMenuContent,
-  AppMenuItem,
-  AppMenuGroup,
-  AppMenuSub,
-  AppMenuSubTrigger,
-  AppMenuSubContent,
-  AppMenuSeparator,
-} from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { cancelPdfProcessing, getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
+import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
-import type { ContextWindowUsage } from './contextWindowUsage';
-import { formatContextTokenAmount } from './contextWindowUsage';
-import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import { vfsRefApi } from '../../context/vfsRefApi';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
 import { FILE_TYPE_ID } from '../../context/definitions/file';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
-import { ModelMentionPopover, shouldHandleModelMentionKey } from './ModelMentionPopover';
-import { SkillSlashPopover, useSkillSlashCommands, shouldHandleSkillSlashKey } from './SkillSlashPopover';
+import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates } from '../../core/types/common';
+import { ModelMentionPopover } from './ModelMentionPopover';
+import { SkillSlashPopover, useSkillSlashCommands } from './SkillSlashPopover';
 import { ModelMentionChips } from './ModelMentionChip';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
+// P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
+import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
-import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
-import { ComposerPlusMenu } from './ComposerPlusMenu';
-import { ThinkingDepthSlider } from './ThinkingDepthSlider';
-import { ContextUsagePopover } from './ContextUsagePopover';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
-  getSelectedInjectModes as ssotGetSelectedModes,
-  getEffectiveReadyModes as ssotGetEffectiveReadyModes,
   getAttachmentMediaType,
   getMediaTypeForAttachment,
   buildDefaultInjectModes,
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import type { DeepSeekReasoningOption } from '@/utils/deepseekReasoningControls';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
+// ★ 拆分后的子模块：textarea+IME / 底部工具栏 / 附件面板体 / 模式辅助 / 发送可用性
+import { ComposerTextarea } from './ComposerTextarea';
+import { ComposerToolbar } from './ComposerToolbar';
+import { AttachmentPanelBody } from './AttachmentPanelBody';
+import { INPUT_BAR_CONFIG, getFileExtension } from './inputBarConfig';
+import {
+  getSelectedModes,
+  getEffectiveReadyModes,
+  getMissingModes,
+  hasAnyReadyMode,
+} from './attachmentModeHelpers';
+import {
+  computeSendAvailability,
+  resolveSendBlockedReason,
+  resolveInlineSendHint,
+} from './sendAvailability';
 
 // ============================================================================
 // 常量
 // ============================================================================
 
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   ATTACHMENT_MAX_SIZE,
+  getAttachmentSizeLimit,
   ATTACHMENT_MAX_COUNT,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -114,53 +91,9 @@ import {
   formatFileSize,
 } from '../../core/constants';
 
-/**
- * InputBar 配置常量
- * 集中管理输入栏的各种硬编码值，便于维护和调整
- */
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
-const INPUT_BAR_CONFIG = {
-  /** 延迟时间配置 */
-  delays: {
-    /** 副作用延迟初始化时间 */
-    idle: 100,
-    /** 重 UI/重计算延迟挂载时间 */
-    heavyUI: 400,
-  },
-  /** 高度相关配置 */
-  heights: {
-    /** 首帧固定高度占位，避免布局抖动 */
-    placeholder: MOBILE_LAYOUT.inputBar.placeholderHeight,
-    /** ResizeObserver 高度变化阈值（小于此值不更新状态） */
-    changeThreshold: MOBILE_LAYOUT.inputBar.heightChangeThreshold,
-    /** textarea 最小高度 */
-    textareaMin: 40,
-    /** textarea 最大高度（超出后才允许内部滚动）；220px ≈ 8 行，长草稿编辑不憋屈 */
-    textareaMax: 220,
-  },
-  /** 粘贴策略 */
-  paste: {
-    /** 超过该字符数时，粘贴后提供「转为附件」内联建议（文本默认进输入框） */
-    longTextSuggestChars: 1000,
-    /** 超过该字符数时，直接转为 .txt 附件（避免超长文本拖垮输入框） */
-    longTextAutoAttachChars: 50000,
-  },
-  /** 响应式断点 */
-  breakpoints: {
-    /** 移动端断点 */
-    mobile: 768,
-  },
-  /** 间距配置 */
-  gaps: {
-    /** 桌面端底部间距 */
-    desktop: 0,
-    /** 移动端底部间距：应用导航已进入侧边栏，只保留系统安全区 */
-    mobile: 0,
-  },
-};
-
-// 向后兼容：保留原有常量名用于代码中的引用
+// 向后兼容：保留原有常量名用于代码中的引用（配置本体已拆至 inputBarConfig.ts）
 const DESKTOP_DOCK_GAP_PX = INPUT_BAR_CONFIG.gaps.desktop;
 const MOBILE_DOCK_GAP_PX = INPUT_BAR_CONFIG.gaps.mobile;
 const MOBILE_BREAKPOINT_PX = INPUT_BAR_CONFIG.breakpoints.mobile;
@@ -168,6 +101,19 @@ const INITIAL_PLACEHOLDER_HEIGHT = INPUT_BAR_CONFIG.heights.placeholder;
 const HEIGHT_CHANGE_THRESHOLD = INPUT_BAR_CONFIG.heights.changeThreshold;
 const IDLE_DELAY_MS = INPUT_BAR_CONFIG.delays.idle;
 const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
+
+/**
+ * owned-overlay 登记的 ownerId：Composer 面板打开期间，向 OverlayCoordinator
+ * 声明「AppMenu portal 浮层（[data-app-menu-id]）归 Composer 所有」。
+ * 外点关闭 / 焦点门控查询同一 id，见 isWithinComposerTerritory。
+ */
+const COMPOSER_OVERLAY_OWNER_ID = 'input-bar-composer';
+/**
+ * 登记用 selector：全库 AppMenu 内容/子菜单 portal 均带 data-app-menu-id
+ * （值为各菜单实例的 menuId，动态且多实例），Composer 内有多个 AppMenu
+ * （加号菜单/模型菜单等），故登记泛化属性 selector，与原 closest 判定范围一致。
+ */
+const COMPOSER_OWNED_OVERLAY_SELECTOR = '[data-app-menu-id]';
 
 /**
  * 调度 idle 回调的工具函数
@@ -182,287 +128,9 @@ function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): () => void
   return () => clearTimeout(id);
 }
 
-function getFileExtension(fileName: string): string {
-  const parts = fileName.split('.');
-  return parts.length > 1 ? parts.pop()!.toLowerCase() : '';
-}
-
-function clampPercent(value?: number): number {
-  const safe = Number.isFinite(value) ? (value as number) : 0;
-  return Math.min(100, Math.max(0, Math.round(safe)));
-}
-
-function getCompactThinkingLabel(label?: string): string | undefined {
-  const compact = label?.replace(/^(推理|Reasoning)\s*[:：]\s*/i, '').trim();
-  return compact || label;
-}
-
-function ResizingThinkingLabel({ text }: { text: string }) {
-  const measureRef = useRef<HTMLSpanElement>(null);
-  const [labelWidth, setLabelWidth] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    const width = Math.ceil(measureRef.current?.getBoundingClientRect().width ?? 0);
-    if (width > 0) setLabelWidth(width);
-  }, [text]);
-
-  return (
-    <span
-      data-testid="thinking-runtime-state-label"
-      className="relative inline-block whitespace-nowrap text-left text-[color:var(--text-muted)] opacity-70"
-    >
-      <span
-        className="t-resize inline-block whitespace-nowrap"
-        style={labelWidth ? { width: labelWidth } : undefined}
-      >
-        <TextSwap text={text} />
-      </span>
-      <span
-        ref={measureRef}
-        aria-hidden="true"
-        className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap"
-      >
-        {text}
-      </span>
-    </span>
-  );
-}
-
-function ContextWindowUsageRing({
-  usage,
-  sessionUsage,
-  t,
-  disabled,
-}: {
-  usage: ContextWindowUsage;
-  sessionUsage?: SessionUsageSummary | null;
-  t: TFunction;
-  disabled: boolean;
-}) {
-  // ★ 1.2 水位分级警示：<75% 默认，75-90% warning，>90% danger
-  const contextUsageColor =
-    usage.usedPercent >= 90
-      ? 'hsl(var(--danger))'
-      : usage.usedPercent >= 75
-        ? 'hsl(var(--warning))'
-        : 'var(--text-primary)';
-  const ringRadius = 6.75;
-  const ringCircumference = 2 * Math.PI * ringRadius;
-  const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
-  const ariaLabel = t('chatV2:tokenUsage.contextWindow');
-  const tooltipContent = (
-    <div className="w-48 p-1.5 text-xs">
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-semibold text-[color:var(--text-primary)]">
-          {t('chatV2:tokenUsage.contextWindow')}
-        </span>
-        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-2xs leading-none tabular-nums text-[color:var(--text-secondary)]">
-          {usage.usedPercent}%
-        </span>
-      </div>
-      <div
-        data-testid="context-window-usage-tooltip-bar"
-        className="mb-2.5 mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--button-utility-hover)] ring-1 ring-[color:var(--input-shell-border)]"
-      >
-        <div
-          className="h-full rounded-full transition-[width] duration-150"
-          style={{ width: `${usage.usedPercent}%`, background: contextUsageColor }}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[color:var(--text-secondary)]">
-            {t('chatV2:tokenUsage.contextUsedPercent', { percent: usage.usedPercent })}
-          </span>
-          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-            {t('chatV2:tokenUsage.contextUsedTokens', { tokens: usage.usedLabel })}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[color:var(--text-secondary)]">
-            {t('chatV2:tokenUsage.contextRemainingPercent', { percent: usage.remainingPercent })}
-          </span>
-          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-            {t('chatV2:tokenUsage.contextRemainingTokens', { tokens: usage.remainingLabel })}
-          </span>
-        </div>
-      </div>
-      {usage.usedPercent >= 75 && (
-        <p className="mt-2 border-t border-[color:var(--input-shell-border)] pt-2 text-[11px] leading-snug text-[color:var(--text-secondary)]">
-          {t('chatV2:tokenUsage.contextHighWaterHint')}
-        </p>
-      )}
-      {/* ★ 1.2 本会话累计（token / 费用） */}
-      {sessionUsage && sessionUsage.totalTokens > 0 && (
-        <div className="mt-2 space-y-1.5 border-t border-[color:var(--input-shell-border)] pt-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[color:var(--text-secondary)]">
-              {t('chatV2:tokenUsage.sessionTotal')}
-            </span>
-            <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-              {formatContextTokenAmount(sessionUsage.totalTokens)}
-            </span>
-          </div>
-          {typeof sessionUsage.estimatedCostUsd === 'number' && sessionUsage.estimatedCostUsd > 0 && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[color:var(--text-secondary)]">
-                {t('chatV2:tokenUsage.sessionCost')}
-              </span>
-              <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-                ${sessionUsage.estimatedCostUsd.toFixed(sessionUsage.estimatedCostUsd < 0.1 ? 4 : 2)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <CommonTooltip content={tooltipContent} position="top" disabled={disabled}>
-      <span
-        data-testid="context-window-usage-control"
-        role="img"
-        tabIndex={0}
-        aria-label={ariaLabel}
-        title={ariaLabel}
-        className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-      >
-        <svg
-          data-testid="context-window-usage-ring"
-          className="h-4 w-4 rounded-full"
-          viewBox="0 0 16 16"
-          fill="none"
-          aria-hidden="true"
-        >
-          <circle
-            cx="8"
-            cy="8"
-            r={ringRadius}
-            stroke="var(--button-utility-hover)"
-            strokeWidth="2.5"
-          />
-          <circle
-            cx="8"
-            cy="8"
-            r={ringRadius}
-            stroke={contextUsageColor}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeDasharray={ringCircumference}
-            strokeDashoffset={ringProgressOffset}
-            transform="rotate(-90 8 8)"
-            style={{ opacity: usage.usedPercent > 0 ? 1 : 0 }}
-          />
-        </svg>
-      </span>
-    </CommonTooltip>
-  );
-}
-
-function getStageLabel(
-  t: TFunction,
-  status: PdfProcessingStatus | undefined,
-  isPdf: boolean,
-  isImage: boolean
-): string | undefined {
-  if (!status?.stage) return undefined;
-  const current = status.currentPage;
-  const total = status.totalPages;
-  switch (status.stage) {
-    case 'text_extraction':
-      return t('chatV2:inputBar.stage.textExtraction');
-    case 'page_rendering':
-      return current && total
-        ? t('chatV2:inputBar.stage.pageRenderingProgress', { current, total })
-        : t('chatV2:inputBar.stage.pageRendering');
-    case 'page_compression':
-      return current && total
-        ? t('chatV2:inputBar.stage.pageCompressionProgress', { current, total })
-        : t('chatV2:inputBar.stage.pageCompression');
-    case 'image_compression':
-      return t('chatV2:inputBar.stage.imageCompression');
-    case 'ocr_processing':
-      if (isImage) return 'OCR';
-      return current && total
-        ? t('chatV2:inputBar.stage.ocrProcessingProgress', { current, total })
-        : 'OCR';
-    case 'vector_indexing':
-      return t('chatV2:inputBar.stage.vectorIndexing');
-    case 'completed':
-      return t('chatV2:inputBar.stage.completed');
-    case 'error':
-      return t('chatV2:inputBar.stage.error');
-    default:
-      return isPdf
-        ? t('chatV2:inputBar.stage.pdfProcessing')
-        : t('chatV2:inputBar.stage.imageProcessing');
-  }
-}
-
-function getDisplayPercent(
-  status: PdfProcessingStatus | undefined,
-  isPdf: boolean
-): number {
-  if (!status) return 0;
-  const percent = clampPercent(status.percent);
-  if (isPdf) {
-    const current = status.currentPage;
-    const total = status.totalPages;
-    const isPageStage = status.stage === 'page_rendering'
-      || status.stage === 'page_compression'
-      || status.stage === 'ocr_processing';
-    if (isPageStage && current && total && total > 0) {
-      return clampPercent((current / total) * 100);
-    }
-  }
-  return percent;
-}
-
-// ★ N3 修复：getEffectiveReadyModes / getSelectedModes 等已统一到 injectModeUtils（SSOT）
-// 以下为适配 InputBarUI 调用签名的薄层委托函数
-
-function getSelectedModes(
-  attachment: AttachmentMeta,
-  isPdf: boolean,
-  isImage: boolean
-): MediaInjectMode[] {
-  const mediaType = isPdf ? 'pdf' : isImage ? 'image' : null;
-  if (!mediaType) return [];
-  return ssotGetSelectedModes(attachment, mediaType);
-}
-
-/**
- * InputBarUI 专用适配器：将 (attachment, status, mediaType) 委托给 SSOT
- */
-function getEffectiveReadyModes(
-  status: PdfProcessingStatus | undefined,
-  mediaType: 'pdf' | 'image',
-  attachment: AttachmentMeta
-): MediaInjectMode[] | undefined {
-  return ssotGetEffectiveReadyModes(attachment, mediaType, status);
-}
-
-function getMissingModes(
-  selectedModes: MediaInjectMode[],
-  readyModes?: MediaInjectMode[]
-): MediaInjectMode[] {
-  if (!selectedModes.length) return [];
-  if (!readyModes) return selectedModes;
-  const readySet = new Set(readyModes);
-  return selectedModes.filter((mode) => !readySet.has(mode));
-}
-
-function hasAnyReadyMode(
-  selectedModes: MediaInjectMode[],
-  readyModes?: MediaInjectMode[]
-): boolean {
-  if (!selectedModes.length) return true;
-  if (!readyModes || !readyModes.length) return false;
-  const readySet = new Set(readyModes);
-  return selectedModes.some((mode) => readySet.has(mode));
-}
-
+// getFileExtension 已拆至 inputBarConfig.ts；
+// clampPercent / 附件模式辅助已拆至 attachmentModeHelpers.ts；
+// getCompactThinkingLabel / ResizingThinkingLabel / ContextWindowUsageRing 已拆至 ComposerToolbar.tsx
 
 // ============================================================================
 // 辅助 Hooks
@@ -555,6 +223,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onSetPanelState,
   onCompactContext,
   isCompactingContext = false,
+  compactContextStatus = null,
   getCompactionInfo,
   // UI 配置
   placeholder,
@@ -611,8 +280,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 🆕 工具审批请求
   pendingApprovalRequest,
   sessionId,
+  authorityMode = 'craft',
+  onAuthorityModeChange,
   permissionPreset = 'relaxed',
   onPermissionPresetChange,
+  authorityAskBlockedHint = false,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
   // ★ PDF 页码引用
@@ -620,7 +292,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onRemovePdfPageRef,
   onClearPdfPageRefs,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
+  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -651,20 +323,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const ghostRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // 🔧 IME 合成态追踪：防止 WKWebView 中文输入法重复追加文本
-  const isComposingRef = useRef(false);
-  // 🔧 Safari/WebKit 时序修复：compositionend 先于确认 Enter 的 keydown 触发，
-  // 该 keydown 的 isComposing 已为 false，会把「确认候选词」误判为「发送」。
-  // 标记 compositionend 后的同一轮事件循环，期间的 Enter 一律视为 IME 确认键。
-  const compositionJustEndedRef = useRef(false);
-  const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (compositionEndTimerRef.current !== null) {
-        clearTimeout(compositionEndTimerRef.current);
-      }
-    };
-  }, []);
+  // 🔧 IME 合成态追踪已随 textarea 渲染整体拆至 ComposerTextarea.tsx
 
   // ========== 本地状态 ==========
   // 🔧 首帧降载：使用固定高度占位，idle 后再测量真实高度
@@ -672,11 +331,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
-  // 🔧 A-6/P1-6 语义澄清（两个"移动端"判断有意分裂，勿合并）：
-  // - isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的唯一依据
-  //   （内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
-  // - isMobileEnv（pointer: coarse，见下方声明）：仅用于**设备能力**判断
-  //   （是否展示拍照入口等），窄窗口桌面端不该出现相机、宽屏触摸设备应保留相机。
+  // 🔧 A-6/P1-6 → R3 能力三分离（三个判定各答一个问题，勿合并）：
+  // - 布局 = isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的
+  //   唯一依据（内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
+  // - 触摸 = any-pointer: coarse（inputBarCapabilities.TOUCH_CAPABILITY_MEDIA_QUERY）：
+  //   JS 侧如需触摸能力布尔统一走该查询；样式侧继续用 CSS 媒体查询类。
+  // - 相机 = canCapturePhoto（平台/捕获能力，见下方声明）：仅控制拍照入口，
+  //   窄窗口桌面端不该出现相机、Android/iOS 宽屏设备应保留相机。
   const isMobile = mobileLayout?.isMobile ?? false;
   // ⌨️ P0-2 键盘统一：订阅全局键盘 inset 单例（iOS overlay 检测 + Android
   // adjustResize 自动归零），不再自管 visualViewport 双轨逻辑
@@ -819,8 +480,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : (isArchive || isBinaryMindmap) ? 'other' : 'document';
       const attachmentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // 🔧 P2优化：文件大小验证 (P1-08: 使用统一常量)
-      if (file.size > ATTACHMENT_MAX_SIZE) {
+      // 图片走 50MB（VFS Image / 后端 MAX_IMAGE_BYTES）；其他附件走 200MB。
+      const maxSize = getAttachmentSizeLimit(isImage);
+      if (file.size > maxSize) {
         console.warn(`[InputBarUI] File too large: ${file.name} (${formatFileSize(file.size)})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
@@ -830,7 +492,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           mimeType: file.type,
           size: file.size,
           status: 'error',
-          error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(ATTACHMENT_MAX_SIZE) }),
+          error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(maxSize) }),
         };
         onAddAttachment(errorAttachment);
         liveAttachmentCountRef.current += 1;
@@ -1157,10 +819,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t]);
 
   // ========== 相机拍照处理 ==========
-  // A-6/P1-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
-  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态。
-  // 注意：isMobileEnv 只回答"设备能不能"（能力），布局分支一律用 isMobile（断点）。
-  const isMobileEnv = useMediaQuery('(pointer: coarse)');
+  // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或
+  // input capture 特性 + 移动壳兜底），不再复用 pointer 媒体查询——
+  // 触摸 ≠ 有摄像头（桌面触摸屏误报、外接键鼠的手机/平板漏报）。
+  // 平台检测在会话内不变，挂载时求值一次即可。
+  // 布局分支一律用 isMobile（断点）；触摸能力见 TOUCH_CAPABILITY_MEDIA_QUERY。
+  const canCapturePhoto = useMemo(() => detectCanCapturePhoto(), []);
 
   const handleCameraClick = useCallback(() => {
     if (cameraInputRef.current) {
@@ -1257,6 +921,34 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     return true;
   }, [processFilesToAttachments, t]);
 
+  // textarea 粘贴入口（渲染已拆至 ComposerTextarea，这里保留完整策略）：
+  // isReady 后走附件转换；未就绪时缓存剪贴板文件，isReady 后自动补投
+  const handleTextareaPaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
+    if (isReady) {
+      handlePasteAsAttachment(e);
+      return;
+    }
+    // ★ L2 修复：未就绪时不再直接拒绝——同步读出剪贴板文件缓存起来，
+    // isReady 后自动补投（File 对象在事件结束后仍然有效）；
+    // 普通短文本直接走浏览器默认粘贴
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const earlyFiles = cd.files
+      ? Array.from(cd.files).filter((file) => file && file.size > 0)
+      : [];
+    const text = cd.getData('text/plain') ?? '';
+    if (text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      earlyFiles.push(new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
+    }
+    if (earlyFiles.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      pendingEarlyPasteRef.current.push(...earlyFiles);
+    }
+  }, [isReady, handlePasteAsAttachment]);
+
   // ★ 长文本粘贴建议条：转为附件（从输入框原位剥离该片段）
   const convertLongPasteToAttachment = useCallback(() => {
     if (!longPasteCandidate) return;
@@ -1335,112 +1027,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
 
   // ========== 派生值 ==========
-  // P1-3 触控目标：36px 视觉尺寸不变，触屏（pointer:coarse）用透明伪元素把
-  // 命中区域扩到 ≥44px，避免改变桌面视觉密度
-  const coarseHitAreaClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']";
-  // ★ M5：28px 级小控件（h-7 推理触发器等）需要更大的外扩量才能凑满 ≥44px
-  const coarseHitAreaLgClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
-  const coarseHitAreaXlClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
-  const iconButtonClass = cn(
-    'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
-    coarseHitAreaClass
-  );
-  const studyUiButtonBaseClassName =
-    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
-  const studyUiButtonSizeIconClassName =
-    'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
-  const studyUiSendButtonSizeClass =
-    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
-  const studyUiBlackActionButtonClass =
-    '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
-  const studyUiSendButtonEmptyStateClass =
-    '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
-  const studyUiSendButtonAriaLabel = t('chatV2:inputBar.sendMessage');
-  const tooltipPosition = 'top' as const;
-  // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
-  const tooltipDisabled = isMobile;
+  // 触控目标 / studyUi 按钮样式 / 推理与运行时模型菜单派生值已随
+  // 底部工具栏整体拆至 ComposerToolbar.tsx
   const attachmentCount = attachments.length;
-  const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
-  const resolveThinkingDepthLabel = useCallback(
-    (option: DeepSeekReasoningOption) => t(option.labelKey, option.defaultLabel),
-    [t]
-  );
-  const selectedThinkingDepthOption =
-    !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
-      ? thinkingDepthOptions.find((o) => o.value === thinkingDepthValue)
-      : undefined;
-  const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
-    ? resolveThinkingDepthLabel(selectedThinkingDepthOption)
-    : compactThinkingStateLabel;
+  // 移动端内联模型面板的 aria-label 仍需要该标题
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
-  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
-  const runtimeModelAccessibleCurrent = runtimeModelLabel
-    ? runtimeModelProviderLabel
-      ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
-      : runtimeModelLabel
-    : undefined;
-  const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
-        label: chooseRuntimeModelLabel,
-        current: runtimeModelAccessibleCurrent,
-      })
-    : chooseRuntimeModelLabel;
-  const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
-        label: chooseRuntimeModelLabel,
-        current: runtimeModelAccessibleCurrent,
-      })
-    : chooseRuntimeModelLabel;
-  const thinkingRuntimeTitle = [
-    runtimeModelAccessibleCurrent ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}` : undefined,
-    thinkingStateLabel,
-  ].filter(Boolean).join(' · ') || thinkingStateLabel;
-  const hasThinkingDepthMenu = !!(
-    !thinkingUnsupported &&
-    compactThinkingStateLabel &&
-    onSetThinkingDepth &&
-    thinkingDepthOptions &&
-    thinkingDepthOptions.length > 0
-  );
-  const hasThinkingUnsupportedMenu = !!(compactThinkingStateLabel && thinkingUnsupported);
-  const hasRuntimeModelMenu = runtimeModelOptions.length > 0 || !!renderModelPanel;
-  const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
-  const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
-  const thinkingRuntimeTriggerLabel = resolvedThinkingTriggerLabel || runtimeModelLabel || runtimeModelTitle;
-  const [runtimeModelSearch, setRuntimeModelSearch] = useState('');
-  const normalizedRuntimeModelSearch = runtimeModelSearch.trim().toLowerCase();
-  const groupedRuntimeModelOptions = useMemo(() => {
-    if (runtimeModelOptions.length === 0) return [];
-
-    const filteredOptions = normalizedRuntimeModelSearch.length === 0
-      ? runtimeModelOptions
-      : runtimeModelOptions.filter((model) => {
-          const haystack = [model.label, model.providerLabel, model.id]
-            .filter((value): value is string => typeof value === 'string' && value.length > 0)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(normalizedRuntimeModelSearch);
-        });
-
-    const groups = new Map<string, typeof runtimeModelOptions>();
-    filteredOptions.forEach((model) => {
-      const providerLabel = model.providerLabel?.trim() || fallbackRuntimeProviderLabel;
-      const existing = groups.get(providerLabel);
-      if (existing) {
-        existing.push(model);
-        return;
-      }
-      groups.set(providerLabel, [model]);
-    });
-
-    return Array.from(groups.entries()).map(([providerLabel, models]) => ({
-      providerLabel,
-      models,
-    }));
-  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions]);
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
@@ -1474,6 +1065,38 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
 
+  // 🔗 owned-overlay 归属：面板打开期间向 OverlayCoordinator 登记
+  // 「AppMenu portal 浮层归 Composer 所有」，供下方谓词按 ownerId 查询。
+  // 无 Provider 时 registerOwnedOverlay 为 noop、isOwnedOverlayTarget 恒 false
+  // （fallback 语义见 OverlayCoordinator.tsx），此时靠谓词里保留的 closest
+  // 兜底继续工作，行为与接线前一致。
+  const { registerOwnedOverlay, isOwnedOverlayTarget } = useOverlayCoordinator();
+  useEffect(() => {
+    if (!hasAnyPanelOpen) return;
+    return registerOwnedOverlay({
+      ownerId: COMPOSER_OVERLAY_OWNER_ID,
+      selector: COMPOSER_OWNED_OVERLAY_SELECTOR,
+    });
+  }, [hasAnyPanelOpen, registerOwnedOverlay]);
+
+  // 🔧 统一谓词：节点是否落在 Composer 领地内 = 输入壳 + 内联面板容器 + 桌面
+  // overlay + AppMenu portal。AppMenu 内容 portal 挂在 body 上（全库都带
+  // data-app-menu-id），三个 ref 的 contains 覆盖不到：第四条件走
+  // OverlayCoordinator 的归属查询（有 Provider 且面板打开时命中）；末条
+  // closest 保留为 fail-open 回退——无 Provider / 登记窗口外（面板刚关闭的
+  // 同一事件）时仍按旧行为兜住，两者判定范围一致，不会互相扩大。
+  // 焦点门控与外点关闭共用此判定，避免两套逻辑分叉。
+  const isWithinComposerTerritory = useCallback((node: Node | null): boolean => {
+    if (!node) return false;
+    return !!(
+      inputContainerRef.current?.contains(node)
+      || panelContainerRef.current?.contains(node)
+      || composerPanelOverlayRef.current?.contains(node)
+      || isOwnedOverlayTarget(COMPOSER_OVERLAY_OWNER_ID, node)
+      || (node instanceof Element && node.closest(COMPOSER_OWNED_OVERLAY_SELECTOR))
+    );
+  }, [isOwnedOverlayTarget]);
+
   // ⌨️ P0-2 焦点门控：追踪焦点是否落在 composer 区域内的任一可编辑元素上。
   // 判定范围放宽到输入壳 + 面板容器 + 桌面 overlay，保证在组合面板内的
   // 搜索框打字时 inset 不归零（旧实现要求 activeElement === textarea）。
@@ -1485,15 +1108,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
     const evaluate = () => {
       const active = document.activeElement;
-      const withinComposer = !!active && (
-        inputContainerRef.current?.contains(active)
-        || panelContainerRef.current?.contains(active)
-        || composerPanelOverlayRef.current?.contains(active)
-        // ★ M3 修复：AppMenu 内容 portal 在 body 上（加号菜单 / 推理菜单里的
-        // 模型搜索框），焦点落入其中时同样需要应用键盘 inset
-        || !!(active instanceof Element && active.closest('[data-app-menu-id]'))
-      );
-      setComposerEditableFocused(Boolean(withinComposer && isEditableElement(active)));
+      setComposerEditableFocused(isWithinComposerTerritory(active) && isEditableElement(active));
     };
 
     evaluate();
@@ -1508,7 +1123,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
     };
-  }, [isMobile, sessionSwitchKey]);
+  }, [isMobile, sessionSwitchKey, isWithinComposerTerritory]);
 
   // 最终生效的键盘 inset：仅移动端 + composer 内可编辑元素聚焦时抬升
   const keyboardInsetPx = isMobile && composerEditableFocused ? globalKeyboardInset : 0;
@@ -1574,26 +1189,6 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     return null;
   }, [attachments, pdfStatusMap]);
 
-  const sendBlockedReason = useMemo(() => {
-    if (queueFull) return t('chatV2:queue.fullTooltip');
-    if (disabledReason) return disabledReason;
-    if (hasUploadingAttachments) {
-      return t('chatV2:inputBar.attachmentsUploading');
-    }
-    if (firstBlockingAttachment) {
-      const missingLabel = formatModeList(firstBlockingAttachment.missingModes);
-      return missingLabel
-        ? t('chatV2:inputBar.attachmentNotReady', {
-          name: firstBlockingAttachment.name,
-          modes: missingLabel,
-        })
-        : t('chatV2:inputBar.attachmentProcessing', {
-          name: firstBlockingAttachment.name,
-        });
-    }
-    return undefined;
-  }, [queueFull, disabledReason, hasUploadingAttachments, firstBlockingAttachment, formatModeList, t]);
-
   const processingIndicatorLabel = useMemo(() => {
     if (!firstBlockingAttachment) return undefined;
     const missingLabel = formatModeList(firstBlockingAttachment.missingModes);
@@ -1621,12 +1216,51 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const showStop = isStreaming;
   // 🆕 canSubmit 允许在 idle 或 队列模式下放行，未提供时退化到 canSend
   const effectiveCanSubmit = canSubmit ?? canSend;
-  // 🔧 P1修复：附件上传中时禁用发送
-  // 🆕 增加媒体处理中检查：选中的注入模式未就绪时也禁用发送
-  // 🆕 队列模式：队列已满时禁用发送
-  const disabledSend = showStop
-    ? false
-    : !!disabledReason || !canSendWithAttachments || !effectiveCanSubmit || hasUploadingAttachments || hasProcessingMedia || queueFull;
+  // ★ 6 个禁用条件收敛到 sendAvailability selector（含原因码），
+  // 原因文案与旧 sendBlockedReason 逐字一致，另补 empty / busy 两档
+  const blockingAttachmentInfo = useMemo(() => (
+    firstBlockingAttachment
+      ? {
+          name: firstBlockingAttachment.name,
+          missingModesLabel: formatModeList(firstBlockingAttachment.missingModes),
+        }
+      : null
+  ), [firstBlockingAttachment, formatModeList]);
+  const sendAvailability = useMemo(() => computeSendAvailability({
+    showStop,
+    queueFull,
+    externalReason: disabledReason,
+    hasUploadingAttachments,
+    hasProcessingMedia,
+    firstBlockingAttachment: blockingAttachmentInfo,
+    hasSendableContent: canSendWithAttachments,
+    canSubmit: effectiveCanSubmit,
+  }), [
+    showStop,
+    queueFull,
+    disabledReason,
+    hasUploadingAttachments,
+    hasProcessingMedia,
+    blockingAttachmentInfo,
+    canSendWithAttachments,
+    effectiveCanSubmit,
+  ]);
+  const disabledSend = sendAvailability.disabled;
+  const sendBlockedReason = useMemo(
+    () => resolveSendBlockedReason(t, sendAvailability.code, {
+      externalReason: disabledReason,
+      firstBlockingAttachment: blockingAttachmentInfo,
+    }),
+    [t, sendAvailability.code, disabledReason, blockingAttachmentInfo],
+  );
+  // 输入区内联提示：只对「可等待解除」的阻塞展示（empty 交给按钮置灰表达）
+  const sendBlockedInlineHint = useMemo(
+    () => resolveInlineSendHint(t, sendAvailability, {
+      externalReason: disabledReason,
+      firstBlockingAttachment: blockingAttachmentInfo,
+    }),
+    [t, sendAvailability, disabledReason, blockingAttachmentInfo],
+  );
 
   // ========== 回调函数 ==========
 
@@ -1729,35 +1363,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       </>
     ) : null;
 
-  // IME 合成态检测
-  // 覆盖三类场景：1) 标准 isComposing；2) Windows/旧 WebView 的 keyCode 229；
-  // 3) Safari/WebKit 在 compositionend 之后才派发确认 Enter 的 keydown（isComposing 已为 false）
-  const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const anyNative = e.nativeEvent as any;
-    return Boolean(
-      (e as any).isComposing ||
-      (anyNative && anyNative.isComposing) ||
-      (e as any).which === 229 ||
-      (anyNative && anyNative.keyCode === 229) ||
-      isComposingRef.current ||
-      compositionJustEndedRef.current
-    );
-  }, []);
-
-  // 判断是否应该发送
-  const shouldSendOnEnter = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // C-11: 移动端软键盘没有 Shift+Enter，Enter 应为换行，发送只走按钮
-      //（与微信/Telegram 移动端心智一致）
-      if (isMobile) return false;
-      const mode = sendShortcut || 'enter';
-      if (mode === 'enter') {
-        return e.key === 'Enter' && !e.shiftKey && !isImeComposing(e);
-      }
-      return e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isImeComposing(e);
-    },
-    [isMobile, sendShortcut, isImeComposing]
-  );
+  // IME 合成态检测与 Enter 发送判定已随 textarea 渲染拆至 ComposerTextarea.tsx
 
   // 处理发送
   const handleSend = useCallback(() => {
@@ -1825,17 +1431,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     if (!hasAnyPanelOpen) return;
 
     const handleClickOutside = (e: PointerEvent) => {
-      const target = e.target as Node;
-      // 检查点击是否在面板容器内
-      if (panelContainerRef.current?.contains(target)) {
-        return; // 点击在面板内，不关闭
-      }
-      if (composerPanelOverlayRef.current?.contains(target)) {
-        return; // Portal 面板内点击，不关闭
-      }
-      // 检查点击是否在输入栏内（包括按钮）
-      if (inputContainerRef.current?.contains(target)) {
-        return; // 点击在输入栏内，不关闭
+      // 与焦点门控共用同一谓词：输入壳 / 面板容器 / 桌面 overlay / AppMenu
+      // portal 内的点击都不算「外部」（菜单 portal 在 body 上，ref 覆盖不到）
+      if (isWithinComposerTerritory(e.target as Node)) {
+        return;
       }
       // 点击在外部，关闭所有面板
       closeAllPanels();
@@ -1854,7 +1453,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('pointerdown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [hasAnyPanelOpen, closeAllPanels]);
+  }, [hasAnyPanelOpen, closeAllPanels, isWithinComposerTerritory]);
 
   // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
   // 与 Radix 浮层、MobileSlidingLayout 的返回键语义保持一致（A-5 体系补全）。
@@ -1863,6 +1462,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     if (!isMobile || !hasAnyPanelOpen) return;
     return registerBackHandler(() => {
+      // Radix 浮层（dialog/menu 等）叠在面板上方时让行，先关最上层浮层（Settings 同款模式）
+      if (hasOpenRadixOverlayBesides(null)) return false;
       closeAllPanelsRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -1907,20 +1508,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     togglePanel('model');
   }, [modelMentionActions, onOpenRuntimeModelPanel, renderModelPanel, togglePanel]);
 
-  const handleTurnThinkingOn = useCallback(() => {
-    if (enableThinking) return;
-    onToggleThinking?.();
-  }, [enableThinking, onToggleThinking]);
-
-  const handleTurnThinkingOff = useCallback(() => {
-    if (!thinkingCanDisable) return;
-    if (!enableThinking) return;
-    if (onSetThinkingDepth) {
-      onSetThinkingDepth('off');
-      return;
-    }
-    onToggleThinking?.();
-  }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
+  // handleTurnThinkingOn / handleTurnThinkingOff 已随推理菜单拆至 ComposerToolbar.tsx
 
   const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
     setIsAttachmentMenuOpen(open);
@@ -1930,15 +1518,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     }
   }, [closeAllPanels, modelMentionActions]);
 
-  const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      setIsAttachmentMenuOpen(false);
-      modelMentionActions?.closeAutoComplete();
-      closeAllPanels();
-      setRuntimeModelSearch('');
-      return;
-    }
-    setRuntimeModelSearch('');
+  // 推理/运行时模型菜单打开前的父级副作用（搜索框重置由 ComposerToolbar 自持）
+  const handleThinkingMenuWillOpen = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    modelMentionActions?.closeAutoComplete();
+    closeAllPanels();
   }, [closeAllPanels, modelMentionActions]);
 
   const handleAddAttachmentAction = useCallback(() => {
@@ -2262,7 +1846,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             stage: 'error',
             percent: 0,
             readyModes: [],
-            error: 'Processing timed out after 5 minutes',
+            error: t('chatV2:inputBar.processingTimeout'),
             mediaType: getMediaTypeForAttachment(att) ?? 'image',
           },
         });
@@ -2555,309 +2139,30 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     onUpdateAttachment(attachmentId, { injectModes: modes });
   }, [onUpdateAttachment]);
 
-  const handleClearAllAttachments = () => {
-    attachments.forEach(att => {
-      if (att.sourceId) {
-        void cancelPdfProcessing(att.sourceId).catch((error) => {
-          logAttachment('ui', 'cancel_processing_failed', {
-            attachmentId: att.id,
-            sourceId: att.sourceId,
-            error: getErrorMessage(error),
-          }, 'warning');
-        });
-      }
-      if (att.previewUrl?.startsWith('blob:')) {
-        URL.revokeObjectURL(att.previewUrl);
-      }
-    });
-    onClearAttachments();
-  };
+  // ★ 拆分：附件面板体（头部操作 + 附件列表 + 注入模式选择器）已拆至
+  // AttachmentPanelBody.tsx，桌面 overlay 与移动端内联面板共用同一组件
+  const handlePickFiles = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   const renderAttachmentPanelBody = () => (
-    <>
-      {/* 面板头部：桌面横排全部操作；移动端折叠为 标题 + ⋯更多 + 关闭（P1-4） */}
-      {isMobile ? (
-        <div className="mb-2 flex items-center justify-between gap-1">
-          <div className="flex min-w-0 items-center gap-2 text-sm text-foreground">
-            <Paperclip size={16} weight="bold" className="shrink-0" />
-            <span className="truncate">
-              {t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center">
-            <DsButton
-              variant="outline"
-              size="sm"
-              className="!h-11 min-w-11"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              + {t('analysis:input_bar.attachments.add')}
-            </DsButton>
-            <AppMenu>
-              <AppMenuTrigger asChild>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  className="!h-11 !w-11"
-                  aria-label={t('common:actions.more', '更多')}
-                  data-testid="attachment-panel-more"
-                >
-                  <DotsThree size={20} weight="bold" />
-                </DsButton>
-              </AppMenuTrigger>
-              <AppMenuContent align="end" width={200}>
-                <AppMenuItem
-                  className="min-h-[44px]"
-                  icon={<FolderOpen className="w-4 h-4" weight="bold" />}
-                  onClick={handleOpenResourceLibrary}
-                >
-                  {t('chatV2:inputBar.resourceLibrary')}
-                </AppMenuItem>
-                {isMobileEnv && (
-                  <AppMenuItem
-                    className="min-h-[44px]"
-                    icon={<Camera className="w-4 h-4" weight="bold" />}
-                    onClick={handleCameraClick}
-                  >
-                    {t('chatV2:inputBar.camera')}
-                  </AppMenuItem>
-                )}
-                {attachments.length > 0 && (
-                  <AppMenuItem
-                    className="min-h-[44px]"
-                    icon={<Trash className="w-4 h-4" weight="bold" />}
-                    destructive
-                    onClick={handleClearAllAttachments}
-                  >
-                    {t('analysis:input_bar.attachments.clear_all')}
-                  </AppMenuItem>
-                )}
-              </AppMenuContent>
-            </AppMenu>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              className="!h-11 !w-11"
-              onClick={toggleAttachmentPanel}
-              aria-label={t('common:actions.close')}
-            >
-              <X size={16} />
-            </DsButton>
-          </div>
-        </div>
-      ) : (
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <Paperclip size={16} weight="bold" />
-            <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-              + {t('analysis:input_bar.attachments.add')}
-            </DsButton>
-            {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={handleOpenResourceLibrary}
-            >
-              <FolderOpen size={12} weight="bold" />
-              {t('chatV2:inputBar.resourceLibrary')}
-            </DsButton>
-            {isMobileEnv && (
-              <DsButton variant="outline" size="sm" onClick={handleCameraClick}>
-                <Camera size={12} weight="bold" />
-                {t('chatV2:inputBar.camera')}
-              </DsButton>
-            )}
-            {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
-                {t('analysis:input_bar.attachments.clear_all')}
-              </DsButton>
-            )}
-            <DsButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
-              {t('common:actions.close')}
-            </DsButton>
-          </div>
-        </div>
-      )}
-
-      {/* 附件列表 */}
-      <CustomScrollArea
-        fullHeight={false}
-        className="max-h-56"
-        viewportClassName="max-h-56 flex flex-col gap-2"
-      >
-        {attachments.length === 0 ? (
-          <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
-            {t('analysis:input_bar.attachments.empty')}
-          </div>
-        ) : (
-          attachments.map((attachment) => {
-            const isVfsRef = attachment.id.startsWith('vfs-');
-            const sizeLabel = isVfsRef ? t('analysis:input_bar.attachments.reference') : `${(attachment.size / 1024).toFixed(1)} KB`;
-
-            // 判断媒体类型（SSOT：MIME OR 扩展名；type === 'image' 作为兜底）
-            const rowMediaType = getMediaTypeForAttachment(attachment)
-              ?? (attachment.type === 'image' ? 'image' : null);
-            const isPdf = rowMediaType === 'pdf';
-            const isImage = rowMediaType === 'image';
-
-            // 🆕 媒体处理中状态显示（PDF + 图片）
-            const isPdfProcessing = isPdf && attachment.status === 'processing';
-            const isImageProcessing = isImage && attachment.status === 'processing';
-            const isMediaProcessing = isPdfProcessing || isImageProcessing;
-            // 🔧 优化：优先使用 Store 中的最新状态
-            // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
-            const storeStatus = isMediaProcessing && attachment.sourceId
-              ? pdfStatusMap.get(attachment.sourceId)
-              : undefined;
-            // 类型兼容处理：Store 的 stage 包含 'pending'，需要转换为 common.ts 的类型
-            const mediaProgress = storeStatus
-              ? {
-                ...storeStatus,
-                stage: storeStatus.stage === 'pending' ? undefined : storeStatus.stage,
-              } as typeof attachment.processingStatus
-              : (isMediaProcessing ? attachment.processingStatus : undefined);
-            const selectedModes = getSelectedModes(attachment, isPdf, isImage);
-            const mediaType = isPdf ? 'pdf' : 'image';
-            const statusForModes = attachment.status === 'ready'
-              ? attachment.processingStatus
-              : mediaProgress;
-            const readyModes = getEffectiveReadyModes(statusForModes, mediaType, attachment);
-            const missingModes = getMissingModes(selectedModes, readyModes);
-            const missingModesLabel = missingModes.length > 0 ? formatModeList(missingModes) : '';
-            const displayPercent = getDisplayPercent(mediaProgress, isPdf);
-            let stageLabel = getStageLabel(t, mediaProgress, isPdf, isImage);
-            if ((mediaProgress?.stage === 'completed' || mediaProgress?.stage === 'completed_with_issues') && missingModesLabel) {
-              stageLabel = t('chatV2:inputBar.completedMissingModes', {
-                modes: missingModesLabel,
-              });
-            }
-            const isUploading = attachment.status === 'uploading' || attachment.status === 'pending';
-            // ★ 视觉统一：状态色改走语义 token（success/warning/destructive/info），
-            // 亮暗色由 token 自适应，不再散落 Tailwind 调色板 + dark: 补丁
-            const statusIcon =
-              attachment.status === 'ready' && missingModes.length > 0
-                ? <Warning size={12} weight="bold" className="text-warning" />
-                : attachment.status === 'ready' ? <CheckCircle size={12} weight="fill" className="text-success" />
-                  : attachment.status === 'error' ? <XCircle size={12} weight="fill" className="text-destructive" />
-                    : (isMediaProcessing || isUploading) ? <CircleNotch size={12} weight="bold" className="text-info animate-spin motion-reduce:animate-none" />
-                      : <Clock size={12} weight="bold" className="text-muted-foreground" />;
-            const toneClass = isVfsRef
-              ? 'border-info/25 bg-info/10'
-              : attachment.status === 'error' ? 'border-destructive/25 bg-destructive/10'
-                : attachment.status === 'ready' && missingModes.length > 0
-                  ? 'border-warning/25 bg-warning/10'
-                  : attachment.status === 'ready' ? 'border-success/25 bg-success/10'
-                    : (isMediaProcessing || isUploading) ? 'border-info/25 bg-info/10'
-                      : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]';
-
-            // 判断是否为图片或 PDF（需要显示注入模式选择器）
-            const showInjectModeSelector = isImage || isPdf;
-
-            return (
-              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
-                {/* 第一行：文件名、大小、状态、移除按钮 */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <span className="text-ui text-foreground truncate block">{attachment.name}</span>
-                    {attachment.status === 'error' && attachment.error && <span className="text-[11px] text-destructive truncate block">{attachment.error}</span>}
-                    {/* 🆕 统一进度条：上传(0-50%) + 处理(50-100%) */}
-                    {(() => {
-                      // 计算统一进度百分比和阶段标签
-                      let unifiedPercent: number | null = null;
-                      let unifiedLabel = '';
-
-                      if (isUploading && attachment.uploadProgress != null) {
-                        // 上传阶段：直接使用 uploadProgress (0-50%)
-                        unifiedPercent = attachment.uploadProgress;
-                        unifiedLabel = t(`chatV2:inputBar.uploadStage.${attachment.uploadStage || 'reading'}`);
-                      } else if (isMediaProcessing && mediaProgress) {
-                        // 处理阶段：后端 0-100% 映射到 50-100%
-                        unifiedPercent = 50 + Math.round(displayPercent * 0.5);
-                        unifiedLabel = stageLabel || '';
-                      }
-
-                      if (unifiedPercent == null) return null;
-
-                      return (
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <div className="flex-1 h-1 rounded-full bg-[color:var(--composer-panel-muted-surface)] overflow-hidden">
-                            <div
-                              className="h-full bg-info transition-[width] duration-300 motion-reduce:transition-none"
-                              style={{ width: `${unifiedPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-2xs text-info whitespace-nowrap">
-                            {unifiedLabel}{unifiedPercent > 0 ? ` · ${unifiedPercent}%` : ''}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                    {missingModesLabel && !isUploading && (
-                      <div className="mt-0.5 text-2xs text-warning">
-                        {t('chatV2:inputBar.modesNotReady', { modes: missingModesLabel })}
-                      </div>
-                    )}
-                  </div>
-                  <span className={cn("text-[12px]", isVfsRef ? "text-info font-medium" : "text-muted-foreground")}>{sizeLabel}</span>
-                  <span className="flex items-center gap-1">{statusIcon}</span>
-                  {/* ★ P0 修复：错误状态时显示重试按钮（使用正确的 sourceId） */}
-                  {attachment.status === 'error' && attachment.sourceId && (
-                    <DsButton
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { void handleRetryAttachment(attachment); }}
-                      className="text-info"
-                    >
-                      {t('common:retry')}
-                    </DsButton>
-                  )}
-                  <DsButton variant="danger" size="sm" onClick={() => {
-                    logAttachment('ui', 'attachment_remove', {
-                      attachmentId: attachment.id,
-                      sourceId: attachment.sourceId,
-                      fileName: attachment.name,
-                      status: attachment.status,
-                    });
-                    if (attachment.sourceId) {
-                      void cancelPdfProcessing(attachment.sourceId).catch((error) => {
-                        logAttachment('ui', 'cancel_processing_failed', {
-                          attachmentId: attachment.id,
-                          sourceId: attachment.sourceId,
-                          error: getErrorMessage(error),
-                        }, 'warning');
-                      });
-                    }
-                    if (attachment.previewUrl?.startsWith('blob:')) {
-                      URL.revokeObjectURL(attachment.previewUrl);
-                    }
-                    onRemoveAttachment(attachment.id);
-                  }}>
-                    {t('analysis:input_bar.attachments.remove')}
-                  </DsButton>
-                </div>
-                {/* 第二行：注入模式选择器（仅图片和 PDF 显示，PDF 在处理中也显示） */}
-                {showInjectModeSelector && (attachment.status === 'ready' || isMediaProcessing) && (
-                  <div className="flex items-center gap-2 pl-1">
-                    <span className="text-[11px] text-muted-foreground">{t('chatV2:injectMode.label')}:</span>
-                    <AttachmentInjectModeSelector
-                      attachment={attachment}
-                      onInjectModesChange={handleInjectModesChange}
-                      disabled={attachment.status !== 'ready' && !isMediaProcessing}
-                      processingStatus={mediaProgress}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </CustomScrollArea>
-    </>
+    <AttachmentPanelBody
+      attachments={attachments}
+      isMobile={isMobile}
+      // prop 名 isMobileEnv 为下游兼容保留（AttachmentPanelBody 本轮独占锁），
+      // 语义已是「相机捕获能力」：只控制拍照入口
+      isMobileEnv={canCapturePhoto}
+      pdfStatusMap={pdfStatusMap}
+      formatModeList={formatModeList}
+      onPickFiles={handlePickFiles}
+      onOpenResourceLibrary={handleOpenResourceLibrary}
+      onOpenCamera={handleCameraClick}
+      onClose={toggleAttachmentPanel}
+      onRetryAttachment={handleRetryAttachmentChip}
+      onInjectModesChange={handleInjectModesChange}
+      onRemoveAttachment={onRemoveAttachment}
+      onClearAttachments={onClearAttachments}
+    />
   );
 
   // ========== 📱 P0-1 移动端内联面板节点 ==========
@@ -2890,7 +2195,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderMcpPanel ? renderMcpPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 460;
-          inlineAriaLabel = 'MCP';
+          inlineAriaLabel = t('analysis:input_bar.mcp.title');
           break;
         case 'advanced':
           inlineContent = renderAdvancedPanel ? renderAdvancedPanel() : null;
@@ -2903,7 +2208,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderSkillPanel ? renderSkillPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 480;
-          inlineAriaLabel = 'Skills';
+          inlineAriaLabel = t('skills:title');
           break;
         default:
           break;
@@ -2954,6 +2259,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         background: `var(--shell-workspace-panel)`,
         // 🎨 移动端底部安全区 + 导航栏间距（使用 bottomGapValue 同时包含安全区域和导航栏高度）
         paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
+        // 横屏刘海/手势条：左右安全区（竖屏两值为 0，等价原 px-4）
+        paddingLeft: isMobile ? 'calc(1rem + var(--mobile-safe-area-left, 0px))' : undefined,
+        paddingRight: isMobile ? 'calc(1rem + var(--mobile-safe-area-right, 0px))' : undefined,
         ['--unified-input-docked-height' as any]: dockedHeightVarValue,
         ['--unified-input-bottom-gap' as any]: bottomGapValue,
         ['--unified-input-keyboard-inset' as any]: `${keyboardInsetPx}px`,
@@ -3057,7 +2365,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs text-primary"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
@@ -3065,7 +2373,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
@@ -3087,7 +2395,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
@@ -3109,7 +2417,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
@@ -3129,7 +2437,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}
@@ -3173,625 +2481,115 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             disabled={isStreaming}
           />
 
-          <div
-            ref={textareaScrollViewportRef}
-            className={cn(
-              'relative w-full',
-              textareaViewportHeight >= INPUT_BAR_CONFIG.heights.textareaMax
-                ? 'overflow-y-auto'
-                : 'overflow-y-hidden',
-            )}
-            style={{ height: `${textareaViewportHeight}px` }}
-          >
-            <textarea
-              data-testid="input-bar-v2-textarea"
-              ref={textareaRef}
-              aria-label={placeholder || t('analysis:input_bar.placeholder')}
-              value={inputValue}
-              onCompositionStart={() => {
-                isComposingRef.current = true;
-              }}
-              onCompositionEnd={(e) => {
-                isComposingRef.current = false;
-                // Safari/WebKit：确认 Enter 的 keydown 会在 compositionend 之后同步派发，
-                // 用微小的时间窗标记它属于 IME 确认，避免误触发送
-                compositionJustEndedRef.current = true;
-                if (compositionEndTimerRef.current !== null) {
-                  clearTimeout(compositionEndTimerRef.current);
-                }
-                compositionEndTimerRef.current = setTimeout(() => {
-                  compositionJustEndedRef.current = false;
-                  compositionEndTimerRef.current = null;
-                }, 0);
-                // 合成结束时用最终值同步 store，确保不丢字
-                const composedTarget = e.target as HTMLTextAreaElement;
-                onInputChange(composedTarget.value);
-                setComposerCaretPos(composedTarget.selectionStart);
-                setTimeout(() => {
-                  adjustTextareaHeight();
-                  scrollCaretIntoView();
-                }, 0);
-              }}
-              onChange={(e) => {
-                // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
-                if (!isComposingRef.current || !isMobile) {
-                  onInputChange(e.target.value);
-                }
-                setTimeout(() => {
-                  adjustTextareaHeight();
-                  scrollCaretIntoView();
-                }, 0);
-                // 更新光标位置（用于斜杠命令 / 模型提及检测）
-                setComposerCaretPos(e.target.selectionStart);
-                if (modelMentionActions) {
-                  modelMentionActions.updateCursorPosition(e.target.selectionStart);
-                }
-              }}
-              placeholder={placeholder || t('analysis:input_bar.placeholder')}
-              onKeyDown={(e) => {
-                // ★ 技能斜杠命令补全优先（与 @mention 的触发上下文互斥）
-                if (
-                  !isImeComposing(e) &&
-                  shouldHandleSkillSlashKey(e, skillSlash.open)
-                ) {
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    skillSlash.moveSelectionUp();
-                    return;
-                  }
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    skillSlash.moveSelectionDown();
-                    return;
-                  }
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    if (applySkillSlashSelection()) {
-                      e.preventDefault();
-                      return;
-                    }
-                    // 无可应用项：放行原按键语义（Enter 继续走发送）
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    skillSlash.dismiss();
-                    return;
-                  }
-                }
-
-                if (
-                  modelMentionState?.showAutoComplete &&
-                  modelMentionActions &&
-                  !isImeComposing(e) &&
-                  shouldHandleModelMentionKey(e, modelMentionState.showAutoComplete)
-                ) {
-                  const hasMentionSuggestions = modelMentionState.suggestions.length > 0;
-                  if (e.key === 'ArrowUp' && hasMentionSuggestions) {
-                    e.preventDefault();
-                    modelMentionActions.moveSelectionUp();
-                    return;
-                  }
-                  if (e.key === 'ArrowDown' && hasMentionSuggestions) {
-                    e.preventDefault();
-                    modelMentionActions.moveSelectionDown();
-                    return;
-                  }
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    const result = modelMentionActions.confirmSelection();
-                    if (result) {
-                      e.preventDefault();
-                      onInputChange(result.value);
-                      setComposerCaretPos(result.caret);
-                      // 光标精确回到 mention 起点（不再粗暴移到末尾）
-                      const textarea = textareaRef.current;
-                      if (textarea) {
-                        requestAnimationFrame(() => {
-                          textarea.setSelectionRange(result.caret, result.caret);
-                          modelMentionActions.updateCursorPosition(result.caret);
-                        });
-                      }
-                      return;
-                    }
-                    // 无候选（noResults 提示态）：放行 Enter 走正常发送
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    modelMentionActions.closeAutoComplete();
-                    return;
-                  }
-                }
-
-                // 🔧 Chip 模式：输入为空时按 Backspace 删除最后一个 chip
-                if (e.key === 'Backspace' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                  const textarea = textareaRef.current;
-                  if (
-                    textarea &&
-                    textarea.selectionStart === 0 &&
-                    textarea.selectionEnd === 0 &&
-                    inputValue === '' &&
-                    modelMentionState?.selectedModels.length
-                  ) {
-                    e.preventDefault();
-                    modelMentionActions?.removeLastSelectedModel();
-                    return;
-                  }
-                }
-
-                // 正常的发送快捷键处理
-                if (shouldSendOnEnter(e)) {
-                  e.preventDefault();
-                  // 队列/引导模式下，流式中的 Enter 语义改成“入队”，
-                  // Stop 只保留给按钮显式点击，避免键盘误中断当前回复。
-                  if (showStop && !queueEnabled) {
-                    handleStop();
-                  } else {
-                    handleSend();
-                  }
-                  return;
-                }
-              }}
-              onFocus={() => setComposerTextareaFocused(true)}
-              onBlur={() => setComposerTextareaFocused(false)}
-              onSelect={(e) => {
-                // 光标位置变化时更新（支持点击、选择等操作）
-                const selectionStart = (e.target as HTMLTextAreaElement).selectionStart;
-                setComposerCaretPos(selectionStart);
-                if (modelMentionActions) {
-                  modelMentionActions.updateCursorPosition(selectionStart);
-                }
-                // ★ M4：键盘移动光标（方向键/Home/End）时也保证光标可见
-                scrollCaretIntoView();
-              }}
-              onPaste={(e) => {
-                // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
-                if (isReady) {
-                  handlePasteAsAttachment(e);
-                  return;
-                }
-                // ★ L2 修复：未就绪时不再直接拒绝——同步读出剪贴板文件缓存起来，
-                // isReady 后自动补投（File 对象在事件结束后仍然有效）；
-                // 普通短文本直接走浏览器默认粘贴
-                const cd = e.clipboardData;
-                if (!cd) return;
-                const earlyFiles = cd.files
-                  ? Array.from(cd.files).filter((file) => file && file.size > 0)
-                  : [];
-                const text = cd.getData('text/plain') ?? '';
-                if (text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
-                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                  earlyFiles.push(new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
-                }
-                if (earlyFiles.length > 0) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  pendingEarlyPasteRef.current.push(...earlyFiles);
-                }
-              }}
-              readOnly={isStreaming && !queueEnabled}
-              rows={1}
-              className="w-full resize-none border-0 bg-transparent py-1 text-md leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden [@media(pointer:coarse)]:text-[16px]"
-              style={{
-                minHeight: '40px',
-                background: 'transparent',
-              }}
-            />
-          </div>
-          {/* Ghost element for height calculation */}
-          <div
-            ref={ghostRef}
-            aria-hidden="true"
-            className="invisible absolute top-0 left-0 -z-50 overflow-hidden whitespace-pre-wrap break-words text-md leading-relaxed [@media(pointer:coarse)]:text-[16px]"
-            style={{
-              minHeight: '40px',
-              lineHeight: '24px',
-              visibility: 'hidden',
-              pointerEvents: 'none',
-            }}
+          {/* ★ 拆分：textarea + ghost + IME 合成态/keydown 路由整体在 ComposerTextarea.tsx */}
+          <ComposerTextarea
+            textareaRef={textareaRef}
+            ghostRef={ghostRef}
+            viewportRef={textareaScrollViewportRef}
+            inputValue={inputValue}
+            placeholder={placeholder || t('analysis:input_bar.placeholder')}
+            isMobile={isMobile}
+            isStreaming={isStreaming}
+            queueEnabled={queueEnabled}
+            showStop={showStop}
+            sendShortcut={sendShortcut}
+            textareaViewportHeight={textareaViewportHeight}
+            onInputChange={onInputChange}
+            onCaretPosChange={setComposerCaretPos}
+            adjustTextareaHeight={adjustTextareaHeight}
+            scrollCaretIntoView={scrollCaretIntoView}
+            onSend={handleSend}
+            onStop={handleStop}
+            onFocusChange={setComposerTextareaFocused}
+            onPaste={handleTextareaPaste}
+            skillSlash={skillSlash}
+            applySkillSlashSelection={applySkillSlashSelection}
+            modelMentionState={modelMentionState}
+            modelMentionActions={modelMentionActions}
           />
         </div>
 
-        {/* 底部按钮栏 */}
-        <div className="flex items-center justify-between gap-2">
-          {/* 左侧按钮 - 窄屏时可横向滚动 */}
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
-            {/* 加号菜单：附件 / 模式 / 技能 / 连接器 / 对话控制 */}
-            <ComposerPlusMenu
-              open={isAttachmentMenuOpen}
-              onOpenChange={handleAttachmentMenuOpenChange}
-              attachmentCount={attachmentCount}
-              iconButtonClass={iconButtonClass}
-              tooltipPosition={tooltipPosition}
-              tooltipDisabled={tooltipDisabled}
-              isMobile={isMobile}
-              isMobileEnv={isMobileEnv}
-              onAddAttachment={handleAddAttachmentAction}
-              onOpenResourceLibrary={handleOpenResourceLibrary}
-              onOpenCamera={handleOpenCameraAction}
-              onOpenSkillPanel={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
-              sessionId={sessionId}
-              permissionPreset={permissionPreset}
-              onPermissionPresetChange={onPermissionPresetChange}
-              knowledgeBaseProactive={knowledgeBaseProactive}
-              onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
-              renderSkillPanel={renderSkillPanelMenuVariant}
-              activeSkillCount={activeSkillIds?.length ?? 0}
-              hasLoadedSkills={!!hasLoadedSkills}
-              renderMcpPanel={renderMcpPanel}
-              onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
-              mcpEnabled={mcpEnabled}
-              selectedMcpServerCount={selectedMcpServerCount}
-              onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
-            />
-
-            {leftAccessory}
-
-            {/* 快捷键提示（对齐旧版 InputBar）：桌面 Enter 发送模式下，
-                输入框聚焦且为空时在工具行空白区展示，不占额外行、不产生布局抖动 */}
-            {!isMobile &&
-              (sendShortcut || 'enter') === 'enter' &&
-              isComposerEmpty &&
-              composerTextareaFocused && (
-                <span className="pointer-events-none ml-auto shrink-0 select-none whitespace-nowrap pl-2 text-2xs text-muted-foreground/60">
-                  {t('chatV2:inputBar.shortcut')}
-                </span>
-              )}
-
+        {/* ★ 发送禁用原因内联提示（sendAvailability selector 供数；empty 态不提示） */}
+        {disabledSend && sendBlockedInlineHint && (
+          <div
+            data-testid="send-blocked-inline-hint"
+            role="status"
+            className="mb-1.5 flex items-center gap-1.5 text-2xs text-muted-foreground"
+          >
+            <Info size={12} weight="bold" className="shrink-0 text-info" />
+            <span className="min-w-0 truncate">{sendBlockedInlineHint}</span>
           </div>
+        )}
 
-          {/* 右侧按钮 - 固定不滚动 */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {extraButtonsRight}
-
-            {contextWindowUsage && (
-              /* ★ 点击水位环展开用量明细弹层（逻辑在 ContextUsagePopover，这里只挂载） */
-              <ContextUsagePopover
-                usage={contextWindowUsage}
-                sessionUsage={sessionUsage}
-                onCompactContext={onCompactContext}
-                isCompactingContext={isCompactingContext}
-                compactDisabled={isStreaming}
-                getCompactionInfo={getCompactionInfo}
-              >
-                <ContextWindowUsageRing
-                  usage={contextWindowUsage}
-                  sessionUsage={sessionUsage}
-                  t={t}
-                  disabled={tooltipDisabled}
-                />
-              </ContextUsagePopover>
-            )}
-
-            {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
-            {onToggleThinking && (
-              <span
-                ref={runtimeModelTriggerRef}
-                className={cn(
-                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-ui font-semibold leading-none',
-                  enableThinking && !thinkingUnsupported
-                    ? 'text-[color:var(--text-primary)]'
-                    : 'text-[color:var(--text-muted)]'
-                )}
-                data-testid="thinking-runtime-control"
-              >
-                {hasThinkingRuntimeMenu ? (
-                  <AppMenu onOpenChange={handleThinkingRuntimeMenuOpenChange}>
-                    <AppMenuTrigger asChild>
-                      <button
-                        type="button"
-                        data-testid="thinking-runtime-menu-trigger"
-                        className={cn(
-                          'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                          coarseHitAreaLgClass
-                        )}
-                        title={thinkingRuntimeTitle}
-                        aria-label={
-                          thinkingUnsupported
-                            ? t('chatV2:inputBar.thinkingUnsupported')
-                            : hasThinkingDepthMenu
-                            ? t('chatV2:inputBar.thinkingDepthMenu')
-                            : t('chatV2:inputBar.thinking')
-                        }
-                      >
-                        {runtimeModelIconId ? (
-                          <ProviderIcon
-                            modelId={runtimeModelIconId}
-                            size={15}
-                            showTooltip={false}
-                            variant="mono"
-                            className="shrink-0 text-[color:var(--text-primary)] opacity-90"
-                          />
-                        ) : (
-                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 text-[color:var(--text-primary)] opacity-90" />
-                        )}
-                        <ResizingThinkingLabel text={thinkingRuntimeTriggerLabel} />
-                        <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
-                      </button>
-                    </AppMenuTrigger>
-                    <AppMenuContent align="end" width={hasRuntimeModelMenu ? 232 : 176}>
-                      {hasThinkingUnsupportedMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
-                          <AppMenuItem disabled>
-                            {t('chatV2:inputBar.thinkingUnsupportedDescription')}
-                          </AppMenuItem>
-                        </AppMenuGroup>
-                      ) : hasThinkingDepthMenu ? (
-                        thinkingCanDisable ? (
-                          <AppMenuGroup>
-                            <ThinkingDepthSlider
-                              options={thinkingDepthOptions}
-                              value={thinkingDepthValue}
-                              enabled={!!enableThinking}
-                              onChange={(next) => onSetThinkingDepth(next)}
-                              offLabel={t('chatV2:inputBar.thinkingOff')}
-                              efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}
-                              smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}
-                              resolveOptionLabel={resolveThinkingDepthLabel}
-                              ariaLabel={t('chatV2:inputBar.thinkingDepthMenu')}
-                            />
-                          </AppMenuGroup>
-                        ) : (
-                          // 不可关闭推理的模型：滑块必带"关闭"档，退回菜单列表以保留 thinkingCanDisable 语义
-                          <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
-                            {thinkingDepthOptions.map((option) => (
-                              <AppMenuItem
-                                key={option.value}
-                                checked={!!enableThinking && thinkingDepthValue === option.value}
-                                onClick={() => onSetThinkingDepth(option.value)}
-                              >
-                                {resolveThinkingDepthLabel(option)}
-                              </AppMenuItem>
-                            ))}
-                          </AppMenuGroup>
-                        )
-                      ) : hasThinkingToggleMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
-                          <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                            {t('chatV2:inputBar.thinkingOn')}
-                          </AppMenuItem>
-                          {thinkingCanDisable && (
-                            <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                              {t('chatV2:inputBar.thinkingOff')}
-                            </AppMenuItem>
-                          )}
-                        </AppMenuGroup>
-                      ) : null}
-                      {(hasThinkingToggleMenu || hasThinkingUnsupportedMenu) && hasRuntimeModelMenu && (
-                        <AppMenuSeparator />
-                      )}
-                      {hasRuntimeModelMenu && (
-                        <AppMenuGroup label={runtimeModelTitle}>
-                          {runtimeModelOptions.length > 0 ? (
-                            <AppMenuSub openOnClick>
-                              <AppMenuSubTrigger
-                                aria-label={runtimeModelSwitchLabel}
-                                className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                                title={runtimeModelSwitchTitle}
-                              >
-                                {runtimeModelLabel ? (
-                                  <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                    <span
-                                      className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                      title={runtimeModelLabel}
-                                    >
-                                      {runtimeModelLabel}
-                                    </span>
-                                    {runtimeModelProviderLabel && (
-                                      <span
-                                        className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
-                                        title={runtimeModelProviderLabel}
-                                      >
-                                        {runtimeModelProviderLabel}
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : (
-                                  chooseRuntimeModelLabel
-                                )}
-                              </AppMenuSubTrigger>
-                              <AppMenuSubContent className="w-[min(240px,calc(100vw-24px))] max-w-[min(240px,calc(100vw-24px))] p-1">
-                                <div className="app-menu-search">
-                                  <MagnifyingGlass className="app-menu-search-icon" />
-                                  <input
-                                    type="search"
-                                    className="app-menu-search-input ds-search-input"
-                                    placeholder={runtimeModelSearchPlaceholder}
-                                    value={runtimeModelSearch}
-                                    onChange={(event) => setRuntimeModelSearch(event.target.value)}
-                                    onClick={(event) => event.stopPropagation()}
-                                  />
-                                </div>
-                                <CustomScrollArea
-                                  fullHeight={false}
-                                  className="max-h-[220px]"
-                                  viewportClassName="max-h-[220px]"
-                                >
-                                  {groupedRuntimeModelOptions.length > 0 ? (
-                                    groupedRuntimeModelOptions.map((group) => (
-                                      <AppMenuGroup
-                                        key={group.providerLabel}
-                                        label={group.providerLabel}
-                                        className="app-menu-group--natural-case"
-                                      >
-                                        {group.models.map((model) => (
-                                          <AppMenuItem
-                                            key={model.id}
-                                            icon={model.iconId ? (
-                                              <ProviderIcon
-                                                modelId={model.iconId}
-                                                size={14}
-                                                showTooltip={false}
-                                                variant="mono"
-                                              />
-                                            ) : undefined}
-                                            checked={model.id === runtimeCurrentModelId}
-                                            onClick={() => onSelectRuntimeModel?.(model.id)}
-                                          >
-                                            <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                              <span className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground">
-                                                {model.label}
-                                              </span>
-                                              {model.providerLabel && (
-                                                <span className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground">
-                                                  {model.providerLabel}
-                                                </span>
-                                              )}
-                                            </span>
-                                          </AppMenuItem>
-                                        ))}
-                                      </AppMenuGroup>
-                                    ))
-                                  ) : (
-                                    <AppMenuItem disabled>
-                                      {t('chatV2:inputBar.runtimeModelNoResults')}
-                                    </AppMenuItem>
-                                  )}
-                                </CustomScrollArea>
-                                <AppMenuSeparator />
-                                <AppMenuItem onClick={() => handleOpenRuntimeModelPanel('compare')}>
-                                  {runtimeCompareModeLabel}
-                                </AppMenuItem>
-                              </AppMenuSubContent>
-                            </AppMenuSub>
-                          ) : (
-                            <AppMenuItem
-                              aria-label={runtimeModelSwitchLabel}
-                              className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                              title={runtimeModelSwitchTitle}
-                              onClick={() => handleOpenRuntimeModelPanel?.()}
-                            >
-                              {runtimeModelLabel ? (
-                                <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                  <span
-                                    className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                    title={runtimeModelLabel}
-                                  >
-                                    {runtimeModelLabel}
-                                  </span>
-                                  {runtimeModelProviderLabel && (
-                                    <span
-                                      className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
-                                      title={runtimeModelProviderLabel}
-                                    >
-                                      {runtimeModelProviderLabel}
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                chooseRuntimeModelLabel
-                              )}
-                            </AppMenuItem>
-                          )}
-                        </AppMenuGroup>
-                      )}
-                    </AppMenuContent>
-                  </AppMenu>
-                ) : (
-                  <span className="inline-flex min-w-0 items-center" data-testid="thinking-runtime-minimal-control">
-                    <button
-                      type="button"
-                      data-testid="btn-toggle-thinking"
-                      onClick={thinkingUnsupported ? undefined : onToggleThinking}
-                      disabled={thinkingUnsupported}
-                      className={cn(
-                        'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                        coarseHitAreaXlClass,
-                        thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
-                      )}
-                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
-                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
-                      aria-pressed={enableThinking && !thinkingUnsupported}
-                    >
-                      <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0" />
-                    </button>
-                    {compactThinkingStateLabel ? (
-                      <span
-                        data-testid="thinking-runtime-state-label"
-                        className="inline-flex h-7 min-w-0 max-w-[5.75rem] select-none items-center rounded-md px-1 text-inherit"
-                        title={thinkingStateLabel}
-                      >
-                        <span className="truncate">{compactThinkingStateLabel}</span>
-                      </span>
-                    ) : null}
-                  </span>
-                )}
-              </span>
-            )}
-            {/* 🆕 媒体处理中提示（P1-5：移动端保留 icon + 短文案，不再整体隐藏文字） */}
-            {hasProcessingMedia && (
-              <div className="text-xs text-muted-foreground flex min-w-0 items-center gap-1 mr-1">
-                <CircleNotch className="w-3 h-3 shrink-0 animate-spin motion-reduce:animate-none" weight="bold" />
-                <span className="min-w-0 max-w-[7rem] truncate sm:max-w-none">
-                  {processingIndicatorLabel || t('chatV2:inputBar.processingIndicator')}
-                </span>
-              </div>
-            )}
-
-            {resolvedInputToolSlot}
-
-            {/* 发送/停止按钮 - 极简圆形风格 */}
-            {showStop ? (
-              <DsButton
-                data-testid="btn-stop"
-                variant="default"
-                size="icon"
-                iconOnly
-                onClick={handleStop}
-                disabled={!canAbort}
-                // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
-                aria-label={canAbort
-                  ? t('analysis:input_bar.actions.stop')
-                  : t('chatV2:inputBar.stopping')}
-                title={canAbort
-                  ? t('analysis:input_bar.actions.stop')
-                  : t('chatV2:inputBar.stopping')}
-              >
-                {/* ★ aborting 中断确认期用 spinner 反馈，避免「点了没反应」错觉 */}
-                {canAbort ? (
-                  <Square size={12} weight="fill" />
-                ) : (
-                  <CircleNotch size={14} weight="bold" className="animate-spin motion-reduce:animate-none" />
-                )}
-              </DsButton>
-            ) : (
-              <CommonTooltip
-                content={disabledSend ? sendBlockedReason : undefined}
-                disabled={!disabledSend || isMobile || !sendBlockedReason}
-              >
-                <span className="relative inline-flex">
-                  <button
-                    data-testid="btn-send"
-                    type="button"
-                    onClick={handleSend}
-                    disabled={disabledSend}
-                    className={cn(
-                      studyUiButtonBaseClassName,
-                      studyUiButtonSizeIconClassName,
-                      studyUiSendButtonSizeClass,
-                      isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
-                    )}
-                    aria-label={studyUiSendButtonAriaLabel}
-                  >
-                    <ArrowUp size={16} weight="bold" />
-                  </button>
-                  {/* C-2: 移动端无 tooltip，点击禁用按钮时用 toast 解释禁用原因 */}
-                  {disabledSend && isMobile && sendBlockedReason && (
-                    <button
-                      type="button"
-                      data-testid="btn-send-disabled-hint"
-                      className="absolute inset-0 cursor-not-allowed rounded-full bg-transparent"
-                      aria-label={sendBlockedReason}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        showGlobalNotification('info', sendBlockedReason);
-                      }}
-                    />
-                  )}
-                </span>
-              </CommonTooltip>
-            )}
-          </div>
-        </div>
+        {/* ★ 拆分：底部工具栏（加号菜单/水位环/推理菜单/发送停止）在 ComposerToolbar.tsx */}
+        <ComposerToolbar
+          isMobile={isMobile}
+          // prop 名 isMobileEnv 为下游兼容保留（ComposerToolbar→ComposerPlusMenu
+          // 本轮独占锁），语义已是「相机捕获能力」：只控制拍照入口
+          isMobileEnv={canCapturePhoto}
+          isStreaming={isStreaming}
+          sessionId={sessionId}
+          isPlusMenuOpen={isAttachmentMenuOpen}
+          onPlusMenuOpenChange={handleAttachmentMenuOpenChange}
+          attachmentCount={attachmentCount}
+          onAddAttachment={handleAddAttachmentAction}
+          onOpenResourceLibrary={handleOpenResourceLibrary}
+          onOpenCamera={handleOpenCameraAction}
+          onOpenSkillPanel={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
+          onCompactContext={onCompactContext}
+          isCompactingContext={isCompactingContext}
+          compactContextStatus={compactContextStatus}
+          authorityMode={authorityMode}
+          onAuthorityModeChange={onAuthorityModeChange}
+          permissionPreset={permissionPreset}
+          onPermissionPresetChange={onPermissionPresetChange}
+          authorityAskBlockedHint={authorityAskBlockedHint}
+          knowledgeBaseProactive={knowledgeBaseProactive}
+          onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+          renderSkillPanelMenuVariant={renderSkillPanelMenuVariant}
+          activeSkillCount={activeSkillIds?.length ?? 0}
+          hasLoadedSkills={!!hasLoadedSkills}
+          renderMcpPanel={renderMcpPanel}
+          onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
+          mcpEnabled={mcpEnabled}
+          selectedMcpServerCount={selectedMcpServerCount}
+          onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
+          leftAccessory={leftAccessory}
+          extraButtonsRight={extraButtonsRight}
+          inputToolSlot={resolvedInputToolSlot}
+          sendShortcut={sendShortcut}
+          isComposerEmpty={isComposerEmpty}
+          composerTextareaFocused={composerTextareaFocused}
+          contextWindowUsage={contextWindowUsage}
+          sessionUsage={sessionUsage}
+          getCompactionInfo={getCompactionInfo}
+          runtimeModelTriggerRef={runtimeModelTriggerRef}
+          onToggleThinking={onToggleThinking}
+          enableThinking={enableThinking}
+          thinkingUnsupported={thinkingUnsupported}
+          thinkingCanDisable={thinkingCanDisable}
+          thinkingStateLabel={thinkingStateLabel}
+          thinkingDepthOptions={thinkingDepthOptions}
+          thinkingDepthValue={thinkingDepthValue}
+          onSetThinkingDepth={onSetThinkingDepth}
+          runtimeModelLabel={runtimeModelLabel}
+          runtimeModelProviderLabel={runtimeModelProviderLabel}
+          runtimeModelIconId={runtimeModelIconId}
+          runtimeCurrentModelId={runtimeCurrentModelId}
+          runtimeModelOptions={runtimeModelOptions}
+          onSelectRuntimeModel={onSelectRuntimeModel}
+          hasModelPanel={!!renderModelPanel}
+          onOpenRuntimeModelPanel={handleOpenRuntimeModelPanel}
+          onThinkingMenuWillOpen={handleThinkingMenuWillOpen}
+          hasProcessingMedia={hasProcessingMedia}
+          processingIndicatorLabel={processingIndicatorLabel}
+          showStop={showStop}
+          canAbort={canAbort}
+          onStop={handleStop}
+          onSend={handleSend}
+          disabledSend={disabledSend}
+          sendBlockedReason={sendBlockedReason}
+        />
           </>
         )}
       </div>

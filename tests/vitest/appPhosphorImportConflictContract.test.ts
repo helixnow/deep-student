@@ -10,7 +10,7 @@ describe('App phosphor import conflict contract', () => {
     assert.doesNotMatch(appSource, /^(<<<<<<<|=======|>>>>>>>)/mu);
     assert.match(
       appSource,
-      /import\s*\{\s*CaretLeft,\s*CaretRight,\s*CircleNotch,\s*DownloadSimple,\s*Terminal,\s*Warning,\s*X\s*\}\s*from\s*'@phosphor-icons\/react';/u,
+      /import\s*\{\s*CaretLeft,\s*CaretRight,\s*CircleNotch,\s*Terminal,\s*Warning,\s*X\s*\}\s*from\s*'@phosphor-icons\/react';/u,
     );
     assert.doesNotMatch(appSource, /\bArrowLeft\b/u);
   });

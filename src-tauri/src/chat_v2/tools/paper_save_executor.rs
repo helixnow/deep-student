@@ -37,7 +37,9 @@ const MAX_BATCH_SIZE: usize = 5;
 /// PDF 下载超时（秒）
 const PDF_DOWNLOAD_TIMEOUT_SECS: u64 = 60;
 
-/// PDF 最大文件大小（50MB，与 VFS 一致）
+/// PDF 下载大小上限（50MB）
+/// ★ #62/ATT-09：这是联网下载 PDF 的安全阈值，并非附件/VFS 文件上限
+/// （后者已提升至 200MB，见 attachment_repo::MAX_FILE_BYTES），勿据此推断全局上限。
 const MAX_PDF_SIZE: usize = 50 * 1024 * 1024;
 
 /// Unpaywall API 端点（通过 DOI 查找开放获取 PDF）

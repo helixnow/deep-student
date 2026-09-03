@@ -74,19 +74,19 @@ OCR 是后台管线（可能耗时数分钟），调用顺序：
     {
       name: 'builtin-document_parse',
       description:
-        '对 VFS 中的 PDF/图片主动发起解析/OCR 管线（异步，立即返回）。当 resource_read 读不到内容或用户要求识别扫描件时使用。发起后用 document_parse_status 轮询进度；完成后可用 resource_read 读全文或 qbank_import_document 导入题库。',
+        '对 PDF/图片发起解析/OCR 管线（异步，立即返回）；resource_read 读不到内容或需识别扫描件时使用，随后用 document_parse_status 轮询。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description: '【必填】文件类资源 ID（file_* 或 res_* 开头，来自 resource_list/resource_search）',
+            description: '文件类资源 ID（file_* 或 res_*，来自 resource_list/resource_search）',
           },
           stage: {
             type: 'string',
             enum: ['auto', 'ocr', 'full'],
             default: 'auto',
-            description: '起始阶段：auto=按媒体类型自动选择（推荐）；ocr=强制从 OCR 开始；full=从文本提取重跑完整管线（修复失败时用）',
+            description: 'auto=按媒体类型自动选择；ocr=强制从 OCR 开始；full=重跑完整管线（修复失败用）',
           },
         },
         required: ['resource_id'],
@@ -95,13 +95,13 @@ OCR 是后台管线（可能耗时数分钟），调用顺序：
     {
       name: 'builtin-document_parse_status',
       description:
-        '查询文档解析/OCR 进度：当前阶段（pending/text_extraction/ocr_processing/vector_indexing/completed/error 等）、进度详情、错误信息、已提取文本字符数。stage=completed 表示可以消费全文了。',
+        '查询解析/OCR 进度：当前阶段、进度详情、错误、已提取字符数；stage=completed 即可消费全文。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description: '【必填】文件类资源 ID（file_* 或 res_* 开头）',
+            description: '文件类资源 ID（file_* 或 res_*）',
           },
         },
         required: ['resource_id'],

@@ -26,7 +26,7 @@ import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
@@ -167,13 +167,16 @@ const WorkbenchTab = React.lazy(() => import('./WorkbenchTab').then((module) => 
 const MemoryTab = React.lazy(() => import('./MemoryTab').then((module) => ({ default: module.MemoryTab })));
 const DocumentProcessingTab = React.lazy(() => import('./DocumentProcessingTab').then((module) => ({ default: module.DocumentProcessingTab })));
 
-const SettingsTabFallback = () => (
-  <div
-    className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
-    role="status"
-    aria-label="Loading settings"
-  />
-);
+const SettingsTabFallback = () => {
+  const { t } = useTranslation(['settings']);
+  return (
+    <div
+      className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
+      role="status"
+      aria-label={t('settings:loading', { defaultValue: 'Loading settings' })}
+    />
+  );
+};
 
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
@@ -204,7 +207,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   // P1-6 移动端 API 配置页两级导航：供应商列表 → 供应商详情
   const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
 
-  // 移动端统一顶栏配置 - 带面包屑导航
+  // 移动端 Sheet header 标题（面包屑）所需状态
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
   const activeTab = useSettingsShellStore((state) => state.activeTab);
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
@@ -212,7 +215,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   const [settingsScrollElement, setSettingsScrollElement] = useState<HTMLDivElement | null>(null);
   
-  // 顶栏标题在 vendorState / mcpSection 就绪后统一计算（见下方 SettingsBreadcrumb）
+  // Sheet header 标题在 vendorState / mcpSection 就绪后统一计算（见下方 settingsBreadcrumbText）
 
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
@@ -591,14 +594,24 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   }, [screenPosition, mobileNavView, handleBack, handleMobileSettingsBack]);
 
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
-  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
-  // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
-  // 分区列表态返回 false，交给应用级视图历史 fallback。
+  //
+  // 必须注册在 overlay 档而非 view 档：移动端 Settings 整页是 Radix Sheet
+  // （role="dialog" data-state="open"），协调器的 Radix Escape 兜底探测跑在
+  // view 档之前且常驻命中本 Sheet——view 档 handler 永远轮不到，逐级回退失效。
+  // overlay 档显式 handler 先于兜底探测执行（见 androidBackCoordinator 文件头），
+  // 且同优先级后注册先执行：打开更晚的 DsDialog / 浮动编辑器等仍最先消费；
+  // MobileSlidingLayout 的抽屉/右滑面板 handler 靠本 handler 在非中屏时返回
+  // false 让行。上方叠着未显式注册的 Radix 浮层（shad/Select 下拉等）时同样
+  // 让行，交给兜底探测先关浮层。分区列表态返回 false → 兜底探测派发 Escape
+  // → Sheet onOpenChange → handleSheetBack 关闭整个 Sheet（回退链的最后一级）。
+  // Settings 是 LRU 保活视图：必须 gate isActive，非活跃时注销 handler，否则会吞掉其他页面的返回键。
+  const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
   settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
   useEffect(() => {
-    if (!isSmallScreen) return;
+    if (!isSmallScreen || !isActive) return;
     return registerBackHandler(() => {
+      if (hasOpenRadixOverlayBesides(sheetContentRef.current)) return false;
       const s = settingsBackStateRef.current;
       if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
       if (s.activeTab === 'apis' && s.mobileVendorDetailOpen) {
@@ -607,8 +620,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         setMobileNavView('sections');
       }
       return true;
-    }, BACK_PRIORITY.view);
-  }, [isSmallScreen]);
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, isActive]);
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
   useEffect(() => {
@@ -737,7 +750,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="!h-11 !w-11 text-primary">
+        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
           <Check size={20} />
         </DsButton>
       );
@@ -754,7 +767,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           }}
           title={t('common:actions.save')}
           aria-label={t('settings:a11y.save')}
-          className="!h-11 !w-11 text-primary"
+          className="text-primary"
         >
           <Check size={20} />
         </DsButton>
@@ -1226,7 +1239,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <nav aria-label={t('settings:title')} className="space-y-5">
             {sidebarNavGroups.map((group, groupIndex) => (
               <section key={`mobile-settings-group-${groupIndex}`}>
-                <h2 className="mb-2 px-2 text-[15px] font-semibold leading-6 text-muted-foreground">
+                <h2 className="mb-2 px-2 text-md font-semibold leading-6 text-muted-foreground">
                   {t(`settings:mobile_groups.${groupIndex}`)}
                 </h2>
                 <div className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
@@ -1249,10 +1262,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                           <Icon className="h-6 w-6" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[16px] font-medium leading-6 text-foreground">
+                          <span className="block truncate text-lg font-medium leading-6 text-foreground">
                             {item.label}
                           </span>
-                          <span className="mt-0.5 block truncate text-[13px] leading-5 text-muted-foreground">
+                          <span className="mt-0.5 block truncate text-ui leading-5 text-muted-foreground">
                             {item.mobileDescription}
                           </span>
                         </span>
@@ -1403,7 +1416,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               mobilePageMode
                 ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
                 : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
-              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
+              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
             )}
           >
           {/* 分区切换：左右对称进出，替代原先只有入场的整树重挂载 */}
@@ -1476,7 +1489,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="outline" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
+              <DsButton variant="outline" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:!min-h-11">{t('common:close')}</DsButton>
             </DsDialogFooter>
           </DsDialog>
         )}
@@ -1630,7 +1643,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {/* 头部 */}
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-foreground">{t('settings:mcp.security_policy')}</h3>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                   <X size={16} />
                 </DsButton>
               </div>
@@ -1642,7 +1655,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 trackOffsetBottom={4}
               >
                 <div className="grid gap-3">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+                <label className="inline-flex items-center gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
                     onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: !!checked }))}
@@ -1731,9 +1744,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 </div>
               </CustomScrollArea>
               <div className="mt-4 flex justify-end gap-2">
-                <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
                   variant="primary"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
@@ -1844,7 +1858,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           >
             <CustomScrollArea
               className="flex-1 min-h-0 w-full"
-              viewportClassName="px-4 py-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+              // 外层容器（--android-safe-area-bottom）已消费底部安全区；
+              // Sheet 根现在重建了 --mobile-safe-area-bottom，这里再叠加会双倍留白。
+              viewportClassName="px-4 py-4"
               trackOffsetTop={12}
               trackOffsetBottom={12}
             >

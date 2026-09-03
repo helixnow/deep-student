@@ -20,11 +20,16 @@ describe('mind map hover clarity contract', () => {
     'src/features/mindmap/styles/mindmap.css',
   );
 
-  it('does not restyle every edge when the hovered node changes', () => {
+  it('keeps hover styling scoped to the hovered branch without dimming all edges', () => {
+    // 旧反模式：hoveredNodeId 驱动全边重样式 + 非路径边整体压暗（opacity 0.25）
     expect(canvasSource).not.toContain('hoveredNodeId');
-    expect(canvasSource).not.toContain('onNodeMouseEnter');
-    expect(canvasSource).not.toContain('onNodeMouseLeave');
     expect(canvasSource).not.toContain('opacity: 0.25');
+    // 悬停路径高亮是刻意功能（悬停节点 → 根的路径提亮一档），
+    // 但必须限定路径边（isHoverPath 守卫）且触屏（无 hover 语义）跳过
+    expect(canvasSource).toContain('hoverPathEdgeKeys');
+    expect(canvasSource).toContain('hoverPathEdgeKeys?.has(edgeKey)');
+    expect(canvasSource).toContain('isHoverPath');
+    expect(canvasSource).toMatch(/if \(isCoarsePointer\) return;/);
   });
 
   it('uses visibility instead of opacity transitions for hover-only node controls', () => {

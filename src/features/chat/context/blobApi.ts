@@ -50,7 +50,9 @@ const blobCache = new Map<string, VfsBlobBase64Result>();
 
 const MAX_CACHE_SIZE = 50;
 const MAX_CACHE_BYTES = 100 * 1024 * 1024; // 100 MB
-const MAX_SINGLE_ITEM_BYTES = 10 * 1024 * 1024; // 10 MB
+// 50 MB - 与后端图片上限（attachment_repo.rs MAX_IMAGE_BYTES）对齐，
+// 否则 10–50MB 的考题图每次都会跳过缓存、反复走 IPC 重新拉取
+const MAX_SINGLE_ITEM_BYTES = 50 * 1024 * 1024;
 
 let totalCacheBytes = 0;
 

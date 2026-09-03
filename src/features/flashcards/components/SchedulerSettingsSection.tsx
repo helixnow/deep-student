@@ -155,7 +155,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                     setDraftNew(event.target.value);
                     setNotice(null);
                   }}
-                  className="h-8 w-28 text-sm"
+                  className="h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -168,7 +168,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                     setDraftReviews(event.target.value);
                     setNotice(null);
                   }}
-                  className="h-8 w-28 text-sm"
+                  className="h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -181,7 +181,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                     setDraftRetention(event.target.value);
                     setNotice(null);
                   }}
-                  className="h-8 w-28 text-sm"
+                  className="h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </label>
               <DsButton
@@ -190,7 +190,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                 size="sm"
                 disabled={saving || !dirty}
                 onClick={() => void handleSave()}
-                className="text-xs"
+                className="text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('settings.scheduler.save')}
               </DsButton>

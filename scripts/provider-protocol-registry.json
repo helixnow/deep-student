@@ -56,7 +56,7 @@
       "default_protocol": "openai_responses",
       "official": true,
       "supports_openai_responses": true,
-      "notes": "官方 Responses API 已于 2026-07-31 随 V4-Flash 正式版公测（base_url 不变，见 api-docs.deepseek.com/guides/responses_api），当前仅 deepseek-v4-flash 及 legacy 别名（deepseek-chat/deepseek-reasoner，映射到 flash）支持，V4-Pro 正式版发布后开放。模型级门控由后端 effective_api_protocol_for_config 与前端 modelConverters 共同执行：非 flash 系列默认回落 chat_completions，避免 404。服务端 web_search 工具（{'type':'web_search'}）仅在 Responses 协议下可用。官方 Anthropic 端点 api.deepseek.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
+      "notes": "官方 Responses API（base_url 不变，见 api-docs.deepseek.com/guides/responses_api）按模型列名开放，2026-08-23 文档列名 deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-flash-vision-exp 及 legacy 别名（deepseek-chat/deepseek-reasoner，映射到 flash）；V3.x 等未列名型号不支持。模型级门控由后端 effective_api_protocol_for_config（显式与默认路径均执行）与前端 modelConverters 共同执行：未列名型号回落 chat_completions，避免 404。服务端 web_search 工具（{'type':'web_search'}）门控独立于 Responses 列名：仅官方端点 + Responses 协议 + flash 系列（contains 匹配，含 vision-exp）及 legacy 别名注入；v4-pro 已列名 Responses 但 web_search 未列名，不注入（后端 deepseek_model_supports_server_side_web_search）。官方端点判定 is_official_deepseek_config 要求 base_url host 精确匹配 api.deepseek.com（base_url 为空且 provider 声称 deepseek 时回落内置官方端点）：反代/中转即使 provider_type=deepseek 也不判定为官方，不注入服务端 web_search，默认路由回落 chat_completions（显式声明 supports_openai_responses=true 时保留 Responses）。官方 Anthropic 端点 api.deepseek.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "siliconflow",

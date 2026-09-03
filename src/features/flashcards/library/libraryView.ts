@@ -35,6 +35,33 @@ export function getCardStatus(card: AnkiLibraryCard): LibraryCardStatus {
   }
 }
 
+/**
+ * 队列分区：已生成但尚未入队 FSRS 的卡（inbox，收件箱）与已入队的调度中卡（scheduled）。
+ * 稳定分区：各组内保持传入顺序（调用方先做筛选/排序）。
+ */
+export interface LibraryQueueSections {
+  /** 未入队：制卡产物落库后还没进复习计划，不会出现在到期队列。 */
+  inbox: AnkiLibraryCard[];
+  /** 已入队（含暂停）：由 FSRS 调度，属于复习队列。 */
+  scheduled: AnkiLibraryCard[];
+}
+
+export function partitionLibraryQueues(items: AnkiLibraryCard[]): LibraryQueueSections {
+  const inbox: AnkiLibraryCard[] = [];
+  const scheduled: AnkiLibraryCard[] = [];
+  for (const card of items) {
+    (card.enqueued ? scheduled : inbox).push(card);
+  }
+  return { inbox, scheduled };
+}
+
+export function countDueCards(items: AnkiLibraryCard[]): number {
+  return items.reduce(
+    (count, card) => (card.isDue && !card.suspended ? count + 1 : count),
+    0,
+  );
+}
+
 export function matchesStatusFilter(
   card: AnkiLibraryCard,
   filter: LibraryStatusFilter,

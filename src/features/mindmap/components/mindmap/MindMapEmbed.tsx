@@ -76,7 +76,7 @@ const LARGE_MAP_NODE_THRESHOLD = 10;
 
 /** 嵌入卡片角落控制按钮的统一外观（缩放/布局/打开等） */
 const EMBED_CONTROL_BUTTON_CLASS = cn(
-  'p-1.5 rounded-md [@media(pointer:coarse)]:min-w-10 [@media(pointer:coarse)]:min-h-10',
+  'p-1.5 rounded-md [@media(pointer:coarse)]:!min-w-11 [@media(pointer:coarse)]:!min-h-11',
   'inline-flex items-center justify-center',
   'bg-background/80 hover:bg-background',
   'border border-border/50 hover:border-border',
@@ -551,7 +551,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
         </div>
         <DsButton
           variant="ghost"
-          className="ds-btn text-xs text-muted-foreground hover:text-foreground"
+          className="ds-btn text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
           onClick={() => setReloadNonce((nonce) => nonce + 1)}
         >
           <ArrowClockwise size={13} />

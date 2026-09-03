@@ -124,7 +124,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   variant="ghost"
                   size="sm"
                   onClick={this.handleCopyError}
-                  className={this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}
+                  className={`[@media(pointer:coarse)]:!min-h-11 ${this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}`}
                 >
                   {this.state.copied
                     ? i18n.t('common:error_boundary.copied', 'Copied')
@@ -132,14 +132,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 </DsButton>
               </div>
               {this.state.componentStack && (
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">
+                <pre className="mt-2 max-h-40 overflow-auto overscroll-contain whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">
                   {this.state.componentStack.trim()}
                 </pre>
               )}
             </div>
           )}
-          <DsButton variant="ghost" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5">
-            {i18n.t('common:error_boundary.refresh', 'Refresh Page')}
+          {/* 这个按钮只重挂子树，不重载页面——文案必须是「重试」。
+              真正的刷新在 TopLevelFallback（那里才用 error_boundary.refresh）。 */}
+          <DsButton variant="ghost" size="sm" onClick={this.resetError} className="text-xs !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11">
+            {i18n.t('common:error_boundary.retry', 'Try again')}
           </DsButton>
         </div>
       );

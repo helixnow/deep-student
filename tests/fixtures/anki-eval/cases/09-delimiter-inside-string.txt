@@ -1,0 +1,2 @@
+{"front": "流式制卡协议中 <<<ANKI_CARD_JSON_END>>> 标记的作用是什么？", "back": "作为卡片 JSON 之间的分隔符，指示一张卡片输出完毕。"}
+<<<ANKI_CARD_JSON_END>>>

@@ -153,7 +153,7 @@ function ComponentRow({ entry, tone }: { entry: ScanData['components'][string]; 
     <div className="mb-1.5">
       <button
         type="button"
-        className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-left hover:bg-[color:var(--interactive-hover)] transition-colors"
+        className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-left hover:bg-[color:var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
         onClick={() => setShowFiles(!showFiles)}
       >
         <span className="text-xs text-[color:var(--text-primary)]">{entry.label}</span>

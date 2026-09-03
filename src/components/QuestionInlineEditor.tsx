@@ -144,7 +144,7 @@ function createStructuredDraft(question?: Question | null): StructuredDraft {
 }
 
 const MAX_IMAGES = 10;
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB - 与后端 vfs_upload_attachment 的 MAX_IMAGE_BYTES 保持一致
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 const MAX_OPTIONS = 26; // A-Z
@@ -327,7 +327,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           continue;
         }
         if (file.size > MAX_IMAGE_SIZE) {
-          showGlobalNotification('warning', `${file.name}: ${t('exam_sheet:image.max_size', { size: '10MB' })}`);
+          showGlobalNotification('warning', `${file.name}: ${t('exam_sheet:image.max_size', { size: '50MB' })}`);
           continue;
         }
 
@@ -822,7 +822,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   </span>
                 )}
               </Label>
-              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs">
+              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs">
                 <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
               </DsButton>
@@ -853,7 +853,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       className={cn(
                         // 触屏放大命中区（桌面保持紧凑视觉）
                         'flex-shrink-0 !w-5 !h-5 !p-0 rounded text-[11px] font-semibold',
-                        '[@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10',
+                        '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5',
                         isAnswerKey
                           ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                           : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
@@ -867,7 +867,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:text-[16px]"
                       placeholder={`${opt.key} ...`}
 />
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 text-muted-foreground hover:text-destructive" aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5 text-muted-foreground hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                       <X size={10} />
                     </DsButton>
                   </div>
@@ -1015,7 +1015,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
-              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:text-[16px]"
+              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
 />
             <DsButton
               variant="ghost"
@@ -1023,7 +1023,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onClick={handleAddTag}
               disabled={!tagInput.trim()}
               aria-label={t('common:actions.add')}
-              className="w-8 h-8 ui-press"
+              className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 ui-press"
               iconOnly
             >
               <Plus size={14} />
@@ -1035,8 +1035,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                 <Badge
                   key={tag}
                   variant="secondary"
-                  // 触屏加高命中区（点击即删除标签）
-                  className="cursor-pointer hover:bg-destructive/20 text-xs h-5 [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:px-2"
+                  // 触屏视觉保持小巧，用 after 伪元素把命中区扩到 ≥44px（28 + 8×2）
+                  className="cursor-pointer hover:bg-destructive/20 text-xs h-5 relative [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:px-2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']"
                   onClick={() => handleRemoveTag(tag)}
                 >
                   {tag}
@@ -1075,7 +1075,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingImage}
-              className="w-full !h-9 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] gap-1.5"
+              className="w-full !h-9 [@media(pointer:coarse)]:!h-11 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] gap-1.5"
             >
               {isUploadingImage ? (
                 <CircleNotch size={14} className="animate-spin text-muted-foreground" />
@@ -1110,7 +1110,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
- className="w-6 h-6 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
+ className="w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
                       <Trash size={12} />
                     </DsButton>
@@ -1144,7 +1144,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => setShowOptional((v) => !v)}
-            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-10"
+            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
             aria-expanded={showOptional}
           >
             {showOptional ? (
@@ -1246,7 +1246,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setShowDiscardConfirm(false)}
-              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.keepEditing')}
             </DsButton>
@@ -1254,7 +1254,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="danger"
               size="sm"
               onClick={onCancel}
-              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs"
             >
               {t('common:actions.discard')}
             </DsButton>
@@ -1268,17 +1268,28 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setShowPreview((v) => !v)}
-          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-10', showPreview ? 'text-primary' : 'text-muted-foreground')}
+          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-11', showPreview ? 'text-primary' : 'text-muted-foreground')}
           aria-expanded={showPreview}
         >
           <Eye size={14} className="mr-1" />
           {t('common:actions.preview')}
         </DsButton>
         <div className="flex items-center gap-2">
-          <DsButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCancelRequest}
+            disabled={isSaving}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton size="sm" onClick={handleSave} disabled={isSaving} className="ui-press">
+          <DsButton
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="ui-press [@media(pointer:coarse)]:!min-h-11"
+          >
             {isSaving ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
             ) : (

@@ -656,13 +656,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const renderCodeSubTabs = () => (
     <>
       <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
           {t('front_template_title')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
           {t('back_template_title')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
           {t('css_style_title')}
         </DsButton>
       </div>
@@ -697,23 +697,23 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {!hideSidebar && (
         <div className="editor-sidebar">
           <nav className="editor-nav scrollbar-none">
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:!min-h-11 ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
               <FileText size={18} />
               {t('basic_info')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:!min-h-11 ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
               <Code size={18} />
               {t('template_code')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:!min-h-11 ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
               <Database size={18} />
               {t('preview_data')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:!min-h-11 ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
               <Gear size={18} />
               {t('extraction_rules')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:!min-h-11 ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
               <Gear size={18} />
               {t('advanced_settings')}
             </DsButton>
@@ -811,7 +811,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.note_type}
                       onValueChange={(value) => setFormData({...formData, note_type: value})}
                     >
-                      <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                      <SelectTrigger className="flex h-9 [@media(pointer:coarse)]:!h-11 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
                         <SelectValue placeholder={t('note_type_placeholder')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -987,6 +987,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   <DsButton
                     type="button"
                     variant="ghost"
+                    className="[@media(pointer:coarse)]:!min-h-11"
                     onClick={copyJsonTemplate}
                   >
                     <Copy size={16} className="mr-2" />
@@ -1034,7 +1035,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 });
                               }}
                             >
-                              <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                              <SelectTrigger className="flex h-9 [@media(pointer:coarse)]:!h-11 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1118,6 +1119,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         type="button"
                         variant="ghost"
                         size="sm"
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         onClick={() => setShowPromptPreview(!showPromptPreview)}
                       >
                         {showPromptPreview ? <EyeSlash size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
@@ -1179,11 +1181,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             )}
           </div>
           <div className="flex gap-3 shrink-0">
-            <DsButton type="button" variant="ghost" onClick={onCancel}>
+            <DsButton type="button" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>
               {t('cancel_button')}
             </DsButton>
             <DsButton
               type="button"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={handleSubmit}
               disabled={isSubmitting}
             >

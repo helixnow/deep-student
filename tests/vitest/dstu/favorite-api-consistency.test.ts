@@ -106,8 +106,8 @@ describe('P2-010: 日志和错误处理验证', () => {
     const hasLogPrefix = content.includes("console.log(LOG_PREFIX, 'toggleFavorite via DSTU:', path)");
     expect(hasLogPrefix, 'toggleFavorite 应有日志输出').toBe(true);
 
-    // 检查错误报告
-    const hasErrorReport = content.includes("reportError(getResult.error, 'Get essay session')");
+    // 检查错误报告（错误标题允许 i18n 包装，defaultValue 保留原文案）
+    const hasErrorReport = /reportError\(\s*getResult\.error,[\s\S]*?'Get essay session'/.test(content);
     expect(hasErrorReport, 'toggleFavorite 应有错误报告').toBe(true);
   });
 
@@ -119,8 +119,8 @@ describe('P2-010: 日志和错误处理验证', () => {
     const hasLogPrefix = content.includes("console.log(LOG_PREFIX, 'toggleFavorite via DSTU:', path)");
     expect(hasLogPrefix, 'toggleFavorite 应有日志输出').toBe(true);
 
-    // 检查错误报告
-    const hasErrorReport = content.includes("reportError(getResult.error, 'Get translation')");
+    // 检查错误报告（错误标题允许 i18n 包装，defaultValue 保留原文案）
+    const hasErrorReport = /reportError\(\s*getResult\.error,[\s\S]*?'Get translation'/.test(content);
     expect(hasErrorReport, 'toggleFavorite 应有错误报告').toBe(true);
   });
 });

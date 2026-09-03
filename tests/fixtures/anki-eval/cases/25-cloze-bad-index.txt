@@ -1,0 +1,2 @@
+{"text": "真空中的光速约为 {{c0::3×10^8 m/s}}，任何信息传播速度不能超过它。", "template_id": "cloze", "tags": ["物理"]}
+<<<ANKI_CARD_JSON_END>>>

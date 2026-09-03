@@ -24,6 +24,14 @@
   padding: 16px 380px 96px 16px;
 }
 
+/* 窄桌面（<768px，对齐全局 md 断点）：组件栏整体隐藏（见 workbench.css），
+   图标层收回右侧让位——否则 <468px 时图标区可用宽度归零、图标整体不可见 */
+@media (max-width: 767.98px) {
+  .wb-desk-icons {
+    padding-right: 16px;
+  }
+}
+
 .wb-desk-icon {
   pointer-events: auto;
   position: relative;
@@ -119,7 +127,7 @@
 @media (pointer: coarse) {
   .wb-desk-icon__input {
     width: 108px;
-    min-height: 32px;
+    min-height: 44px;
     font-size: 16px;
   }
 }

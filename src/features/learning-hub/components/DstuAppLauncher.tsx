@@ -50,7 +50,7 @@ import {
 
 /** 新建菜单项样式：触屏下项高 ≥44px（契约第 3/6 条），桌面保持原尺寸 */
 const CREATE_MENU_ITEM_CLASS =
-  'w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground [@media(pointer:coarse)]:min-h-[44px]';
+  'w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground [@media(pointer:coarse)]:!min-h-11';
 
 interface DstuAppLauncherProps {
   /** 当前选中的应用/类型 */
@@ -215,7 +215,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         size="sm"
         onClick={() => handleNavigate(item.type as QuickAccessType)}
         className={cn(
-          'w-full !justify-start gap-3 !px-3 !py-[9px] group',
+          'w-full !justify-start gap-3 !px-3 !py-[9px] group [@media(pointer:coarse)]:!min-h-11',
           isActive
             ? 'bg-accent/80 text-foreground font-medium'
             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
@@ -265,7 +265,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           iconOnly
           onClick={() => void onRefresh()}
           disabled={isRefreshing}
-          className="shrink-0"
+          className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('common:refresh')}
           aria-label={t('common:refresh')}
         >
@@ -298,7 +298,8 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           }}
           disabled={searchDisabled}
           className={cn(
-            'w-full pl-9 pr-9',
+            // 触屏 44px 触控目标（旁边的清除钮已有伪元素热区，输入框此前漏改）
+            'w-full pl-9 pr-9 [@media(pointer:coarse)]:!h-11',
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
             embedded ? 'h-9 text-[16px] sidebar-shell-search' : 'h-[41px] text-[16px]',
           )}
@@ -324,6 +325,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           iconOnly
           onClick={() => !createDisabled && setShowCreateMenu(!showCreateMenu)}
           className={cn(
+            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
             showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]',
           )}
           title={t('learningHub:finder.toolbar.new')}

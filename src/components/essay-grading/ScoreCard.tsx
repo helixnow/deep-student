@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { ParsedScore, DimensionScore } from '../../essay-grading/streamingMarkerParser';
 import type { GradeCode } from '../../essay-grading/types';
+import { wrapRadarLabel } from './radarLabel';
 import { ChartBar, ChartPolar } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 
@@ -99,11 +100,13 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 /** 维度雷达图（纯 SVG，无外部依赖，≥3 维时使用） */
 const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> = ({ dimensions, mounted }) => {
-  const size = 220;
-  const cx = size / 2;
-  const cy = size / 2;
+  // 画布宽于高：两侧留出双行英文标签的排版空间（viewBox 裁剪会吃掉超宽标签）
+  const width = 300;
+  const height = 220;
+  const cx = width / 2;
+  const cy = height / 2;
   const radius = 70;
-  const labelRadius = 88;
+  const labelRadius = 82;
   const n = dimensions.length;
 
   const angleAt = (i: number) => ((-90 + (360 / n) * i) * Math.PI) / 180;
@@ -123,12 +126,10 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
   });
   const valuePolygon = valuePoints.map((p) => p.join(',')).join(' ');
 
-  const truncateLabel = (name: string) => (name.length > 6 ? `${name.slice(0, 6)}…` : name);
-
   return (
     <svg
-      viewBox={`0 0 ${size} ${size}`}
-      className="w-full max-w-[260px] mx-auto"
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full max-w-[300px] mx-auto"
       aria-hidden="true"
     >
       {/* 网格 */}
@@ -174,11 +175,12 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
           <circle key={i} cx={x} cy={y} r={2.5} className="fill-primary" />
         ))}
       </g>
-      {/* 维度标签 */}
+      {/* 维度标签（宽度感知换行，避免英文维度名被截断到不可读） */}
       {dimensions.map((dim, i) => {
         const [x, y] = pointAt(i, labelRadius);
         const cos = Math.cos(angleAt(i));
         const anchor = Math.abs(cos) < 0.3 ? 'middle' : cos > 0 ? 'start' : 'end';
+        const lines = wrapRadarLabel(dim.name);
         return (
           <text
             key={i}
@@ -188,7 +190,15 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
             dominantBaseline="middle"
             className="fill-muted-foreground text-[10px]"
           >
-            {truncateLabel(dim.name)}
+            {lines.map((line, li) => (
+              <tspan
+                key={li}
+                x={x}
+                dy={li === 0 ? (lines.length > 1 ? '-0.35em' : 0) : '1.15em'}
+              >
+                {line}
+              </tspan>
+            ))}
           </text>
         );
       })}
@@ -287,12 +297,12 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
         </div>
       </div>
 
-      {/* 总进度条 */}
+      {/* 总进度条：颜色与等级徽章/圆环同源（score.grade），避免两处口径漂移 */}
       <div className="h-1 bg-muted/30 rounded-full overflow-hidden mb-5">
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
-            GRADE_BAR_CLASS[getGradeCodeFromPercentage(percentage)]
+            GRADE_BAR_CLASS[score.grade] ?? GRADE_BAR_CLASS.fail
           )}
           style={{ width: mounted ? `${percentage}%` : '0%' }}
         />
@@ -315,7 +325,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   aria-pressed={chartMode === 'bars'}
                   onClick={() => setChartMode('bars')}
                   className={cn(
-                    'w-6 h-6 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9',
+                    'w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
                     chartMode === 'bars'
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground/50 hover:text-foreground'
@@ -331,7 +341,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   aria-pressed={chartMode === 'radar'}
                   onClick={() => setChartMode('radar')}
                   className={cn(
-                    'w-6 h-6 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9',
+                    'w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
                     chartMode === 'radar'
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground/50 hover:text-foreground'

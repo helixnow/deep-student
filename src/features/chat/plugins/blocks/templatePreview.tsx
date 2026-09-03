@@ -93,7 +93,7 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
         size="sm"
         onClick={toggleRaw}
         aria-expanded={rawExpanded}
-        className="w-full !justify-start gap-2 !px-3 !py-2 text-muted-foreground hover:text-foreground"
+        className="w-full !justify-start gap-2 !px-3 !py-2 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
       >
         <CaretDown
           size={14}

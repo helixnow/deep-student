@@ -190,5 +190,17 @@
       "searchImageAttachments": "Search image attachments",
       "searchFileAttachments": "Search file attachments"
     }
+  },
+  "agent": {
+    "user_patch": {
+      "default": "The user made manual edits",
+      "mindmap": "The user made manual edits in the mind map",
+      "note": "The user made manual edits in the note body",
+      "todo": "The user made manual edits in the todo list",
+      "files": "The user manually navigated or edited in the file manager",
+      "flashcards": "The user performed manual actions in the review queue",
+      "exam": "The user made manual edits in the question bank",
+      "pomodoro": "The user manually operated the pomodoro timer"
+    }
   }
 }

@@ -144,23 +144,26 @@ describe('TileMenuPopover 九宫格', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('⌥ Option 按住时 Fill ⇄ Center 互换，松开还原', () => {
+  it('⌥ Option 按住时中列换成 上半屏/填满/下半屏，松开还原', () => {
     renderPopover();
     const menu = screen.getByRole('menu');
-    // 初始：顶行中格为 Fill(maximized)，中心格为 Center
+    // 初始：顶行中格为 Fill(maximized)，中心格为 Center，末行中格为 Restore
     let items = screen.getAllByRole('menuitem');
     expect(items[1]).toHaveAttribute('data-wb-tile-action', 'maximized');
     expect(items[4]).toHaveAttribute('data-wb-tile-action', 'center');
+    expect(items[7]).toHaveAttribute('data-wb-tile-action', 'restore');
 
     fireEvent.keyDown(window, { key: 'Alt' });
     expect(menu).toHaveAttribute('data-wb-tile-alt', 'true');
     items = screen.getAllByRole('menuitem');
-    expect(items[1]).toHaveAttribute('data-wb-tile-action', 'center');
+    expect(items[1]).toHaveAttribute('data-wb-tile-action', 'tiled-top');
     expect(items[4]).toHaveAttribute('data-wb-tile-action', 'maximized');
+    expect(items[7]).toHaveAttribute('data-wb-tile-action', 'tiled-bottom');
 
     fireEvent.keyUp(window, { key: 'Alt' });
     items = screen.getAllByRole('menuitem');
     expect(items[1]).toHaveAttribute('data-wb-tile-action', 'maximized');
+    expect(items[7]).toHaveAttribute('data-wb-tile-action', 'restore');
     expect(menu).not.toHaveAttribute('data-wb-tile-alt');
   });
 

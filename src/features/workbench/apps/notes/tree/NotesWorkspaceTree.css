@@ -461,16 +461,51 @@
   color: hsl(var(--foreground));
 }
 
-/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标 */
+/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标。
+   44px 触控目标，负 margin 抵消占位（实际占用仍 36px） */
 @media (pointer: coarse) {
   .nwt-row-more,
   .nwt-link-drag {
     opacity: 1;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    margin: -4px;
   }
 
   .nwt-link-drag {
-    flex: 0 0 36px;
+    flex: 0 0 44px;
+  }
+
+  /* 整行可选/打开：触屏放大到 44px 触控目标（桌面保持 30/26 密度档） */
+  .nwt-row,
+  .nwt-root {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  /* 右键菜单项：触屏放大到 44px 触控目标（桌面保持 28px 密度档） */
+  .nwt-context-menu-item {
+    min-height: 44px;
+    height: auto;
+  }
+
+  /* 展开/折叠箭头单独可点（stopPropagation）：用伪元素扩大命中区到 44px，
+     视觉仍 14px，不撑大行布局 */
+  .nwt-caret {
+    position: relative;
+  }
+
+  .nwt-caret::after {
+    content: '';
+    position: absolute;
+    inset: -15px;
+  }
+
+  /* 重命名输入：行已 44px，输入随行撑满；16px 防 iOS 聚焦自动放大
+     （对齐 DesktopShortcuts / notes-inline-create 同款处理） */
+  .nwt-rename-input {
+    height: auto;
+    min-height: 44px;
+    font-size: 16px;
   }
 }

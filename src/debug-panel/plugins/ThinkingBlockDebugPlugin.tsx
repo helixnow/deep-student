@@ -250,6 +250,7 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
               <Button 
                 size="sm" 
                 variant={autoFollow ? 'default' : 'outline'}
+                className="[@media(pointer:coarse)]:min-h-11"
                 onClick={() => setAutoFollow(!autoFollow)}
               >
                 <RadioButton className={`w-4 h-4 mr-1 ${autoFollow ? 'animate-pulse' : ''}`} />
@@ -283,24 +284,24 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
           {/* 控制按钮 */}
           <div className="flex flex-wrap gap-2">
             {isListening ? (
-              <Button size="sm" variant="destructive" onClick={stopListening}>
+              <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={stopListening}>
                 停止监听
               </Button>
             ) : (
-              <Button size="sm" disabled={!currentSessionId && streamingSessions.length === 0}>
+              <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" disabled={!currentSessionId && streamingSessions.length === 0}>
                 <Lightning size={16} className="mr-1" />
                 等待流式会话...
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={loadBlocksFromDb}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={loadBlocksFromDb}>
               <Database size={16} className="mr-1" />
               从 DB 加载
             </Button>
-            <Button size="sm" variant="outline" onClick={clearEvents}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={clearEvents}>
               <Trash size={16} className="mr-1" />
               清除
             </Button>
-            <Button size="sm" variant="outline" onClick={copyLogs}>
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={copyLogs}>
               <Copy size={16} className="mr-1" />
               复制
             </Button>

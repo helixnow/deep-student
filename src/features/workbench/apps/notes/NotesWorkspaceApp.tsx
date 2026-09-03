@@ -25,6 +25,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { dstu, createEmpty, folderApi, trashApi, type DstuNode } from '@/dstu';
+import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { getMindMapStoreForInstance } from '@/features/mindmap/store';
@@ -58,7 +59,10 @@ import {
   NotesBacklinksPanel,
   type NotesBacklinksTabRequest,
 } from './NotesBacklinksPanel';
+import { syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
+import { NotesGraphTab } from './graph/NotesGraphTab';
+import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
 import { FavoritesSection } from './FavoritesSection';
@@ -180,6 +184,50 @@ type ResourceDialog =
 
 const WORKSPACE_STORAGE_KEY = 'workbench.notesWorkspace.state.v1';
 
+/**
+ * 资源列表分页参数，与 wikilinkNotesCache 对齐（每页 1000、总上限 20000）。
+ * 旧实现单次 `limit: 1000` 静默截断：第 1001 篇起从文件树里消失且毫无提示。
+ */
+export const RESOURCE_LIST_PAGE_SIZE = 1000;
+export const RESOURCE_LIST_MAX_TOTAL = 20000;
+
+/**
+ * 背链面板并排（非 overlay）所需的最小工作区宽度。
+ * 旧值 1180 恰好等于窗口默认宽（去掉窗框后工作区永远差几像素）——默认
+ * 尺寸下面板永远盖在正文上。现在阈值与默认窗宽（register.ts 1240）拉开，
+ * 默认窗口即可并排显示。
+ */
+export const BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH = 1120;
+
+// 互斥 never 字段与 shared/result 的 Ok/Err 同款（strict:false 下无收窄）
+type ListWorkspaceResourcesResult =
+  | { ok: true; nodes: DstuNode[]; truncated: boolean; error?: never }
+  | { ok: false; error: { toUserMessage(): string }; nodes?: never; truncated?: never };
+
+/** 分页拉全某类型资源；命中总上限或后续页失败时返回已取到的部分并标记截断。 */
+export async function listWorkspaceResources(typeFilter: ResourceType): Promise<ListWorkspaceResourcesResult> {
+  const nodes: DstuNode[] = [];
+  let offset = 0;
+  for (;;) {
+    const result = await dstu.list('/', {
+      typeFilter,
+      sortBy: 'name',
+      sortOrder: 'asc',
+      limit: RESOURCE_LIST_PAGE_SIZE,
+      offset,
+    });
+    if (!result.ok) {
+      // 首页失败 = 整树加载失败；后续页失败保留已取到的部分并提示不完整
+      if (offset === 0) return { ok: false, error: result.error };
+      return { ok: true, nodes, truncated: true };
+    }
+    nodes.push(...result.value);
+    if (result.value.length < RESOURCE_LIST_PAGE_SIZE) return { ok: true, nodes, truncated: false };
+    if (nodes.length >= RESOURCE_LIST_MAX_TOTAL) return { ok: true, nodes, truncated: true };
+    offset += RESOURCE_LIST_PAGE_SIZE;
+  }
+}
+
 interface PersistedWorkspaceState {
   tabs: WorkspaceTab[];
   activeTabKey: string | null;
@@ -264,7 +312,17 @@ function parseInitialResource(instanceKey: string | null, payload: unknown): Not
     if (type && id) return { type, id };
   }
   if (!instanceKey) return null;
-  return { type: instanceKey.startsWith('mindmap_') ? 'mindmap' : 'note', id: instanceKey };
+  // 冷启动回退按 DSTU 统一的 ID 前缀表推断类型（mm_ → mindmap 等），
+  // 未知前缀按笔记打开（历史行为，笔记是工作区的默认资源类型）
+  return { type: resourceTypeFromIdPrefix(instanceKey) ?? 'note', id: instanceKey };
+}
+
+/** 从资源 ID 前缀推断工作区资源类型；非 note/mindmap 前缀返回 null。 */
+function resourceTypeFromIdPrefix(id: string): ResourceType | null {
+  for (const [prefix, type] of Object.entries(RESOURCE_ID_PREFIX_MAP)) {
+    if (id.startsWith(prefix)) return resourceType(type);
+  }
+  return null;
 }
 
 function getFolderMembership(treeNodes: readonly FolderTreeNode[]): ReadonlyMap<string, string> {
@@ -905,6 +963,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
+  const explorerOpenRef = useRef(explorerOpen);
+  explorerOpenRef.current = explorerOpen;
+  // compact 档把 explorerOpen 复用为「文件」全屏子屏的开关；进窄窗前的
+  // 宽/中窗侧栏折叠偏好暂存在这里，回宽窗时还原（持久化也写这份偏好）
+  const explorerBeforeCompactRef = useRef(persistedState.explorerOpen);
   const [focusMode, setFocusMode] = useState(false);
   const focusModeOwnersRef = useRef<Set<string>>(new Set());
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(
@@ -942,6 +1005,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const focusedPaneRef = useRef<WorkspacePaneId>(focusedPane);
   const resourcesRef = useRef<DstuNode[]>([]);
   const hasLoadedResourcesRef = useRef(false);
+  const truncationNotifiedRef = useRef(false);
+  const createFolderComposingRef = useRef(false);
   const loadSequenceRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1003,11 +1068,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     [collapsedFolderPaths, folderEntries],
   );
   const hasTreeItems = treeItems.length > 0;
-  const sidebarLayoutWidth = sizeClass === 'wide' ? 272 : sizeClass === 'medium' ? 240 : 0;
+  // 宽/中窗侧栏可被 explorerOpen 真正折叠（mod+\ / 命令面板 toggle-sidebar）：
+  // 折叠后布局宽度归零，titlebar 标签偏移与背链 overlay 判定随之变化
+  const explorerVisible = sizeClass !== 'compact' && explorerOpen;
+  const sidebarLayoutWidth = explorerVisible ? (sizeClass === 'wide' ? 272 : 240) : 0;
   const availableMainWidth = workspaceWidth - sidebarLayoutWidth;
   const backlinksOverlay = sizeClass === 'compact'
     || Boolean(splitTab)
-    || workspaceWidth < 1180
+    || workspaceWidth < BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH
     || availableMainWidth < 760;
   const titlebarTabsLeft = Math.max(76, sidebarLayoutWidth);
   const saveStates = useMemo(
@@ -1064,27 +1132,43 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const foldersRequest = folderApi?.listFolders?.() ?? Promise.resolve(null);
       const folderTreeRequest = folderApi?.getFolderTree?.() ?? Promise.resolve(null);
       const [notesResult, mindmapsResult, foldersResult, folderTreeResult] = await Promise.all([
-        dstu.list('/', { typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: 1000 }),
-        dstu.list('/', { typeFilter: 'mindmap', sortBy: 'name', sortOrder: 'asc', limit: 1000 }),
+        listWorkspaceResources('note'),
+        listWorkspaceResources('mindmap'),
         foldersRequest,
         folderTreeRequest,
       ]);
       if (requestSequence !== loadSequenceRef.current) return;
 
-      const resourceFailure = !notesResult.ok ? notesResult : !mindmapsResult.ok ? mindmapsResult : null;
-      if (resourceFailure) {
-        const message = resourceFailure.error.toUserMessage();
+      const reportLoadFailure = (message: string) => {
         if (blocking || !hasLoadedResourcesRef.current) setLoadError(message);
         setStatus(message);
         if (blocking || requiresInitialLoad) setLoading(false);
+      };
+      if (!notesResult.ok) {
+        reportLoadFailure(notesResult.error.toUserMessage());
+        return;
+      }
+      if (!mindmapsResult.ok) {
+        reportLoadFailure(mindmapsResult.error.toUserMessage());
         return;
       }
 
       const byId = new Map<string, DstuNode>();
-      for (const node of [...notesResult.value, ...mindmapsResult.value]) {
+      for (const node of [...notesResult.nodes, ...mindmapsResult.nodes]) {
         if (resourceType(node.type)) byId.set(node.id, node);
       }
       const nextResources = [...byId.values()];
+      // 命中上限（或后续分页失败）时明确告知，不再静默丢文件；同一截断态只提示一次
+      const truncated = notesResult.truncated || mindmapsResult.truncated;
+      if (truncated && !truncationNotifiedRef.current) {
+        truncationNotifiedRef.current = true;
+        showGlobalNotification('warning', t('notesWorkspace.tree.truncated', {
+          defaultValue: '文件数量超过 {{max}} 上限，文件树仅显示部分内容',
+          max: RESOURCE_LIST_MAX_TOTAL,
+        }));
+      } else if (!truncated) {
+        truncationNotifiedRef.current = false;
+      }
       const nextFolders = foldersResult?.ok ? foldersResult.value : [];
       const nextResourceFolderIds = folderTreeResult?.ok
         ? getFolderMembership(folderTreeResult.value)
@@ -1667,7 +1751,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         focusedPane: resolvedFocusedPane,
         splitLayout,
         backlinksOpen,
-        explorerOpen,
+        // compact 档 explorerOpen 是「文件」子屏开关，持久化写宽/中窗折叠偏好
+        explorerOpen: sizeClassRef.current === 'compact' ? explorerBeforeCompactRef.current : explorerOpen,
         collapsedFolderPaths: [...collapsedFolderPaths].sort(),
       } satisfies PersistedWorkspaceState));
     } catch {
@@ -1678,6 +1763,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
   const handleSplitLayout = useCallback((layout: number[]) => {
     if (!splitTab || layout.length !== 2) return;
+    // compact 分屏锁定 50/50（无手柄不可拖），不把该布局写回持久化，避免覆盖桌面拖拽比例
+    if (sizeClassRef.current === 'compact') return;
     const nextLayout = parseSplitLayout(layout);
     setSplitLayout((current) => (
       current[0] === nextLayout[0] && current[1] === nextLayout[1]
@@ -1690,10 +1777,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!splitTab) return;
     const frame = window.requestAnimationFrame(() => {
       const group = paneGroupRef.current;
-      if (group?.getLayout().length === 2) group.setLayout(splitLayoutRef.current);
+      // compact 锁定默认布局（对照 VerticalResizable fixed：断点切换不继承桌面拖拽残留比例）
+      if (group?.getLayout().length === 2) {
+        group.setLayout(sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT : splitLayoutRef.current);
+      }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [splitTab?.key]);
+  }, [splitTab?.key, sizeClass]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1702,8 +1792,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const width = entry.contentRect.width;
       setWorkspaceWidth(width);
       const nextSizeClass = classifyWbSysWidth(width);
+      const prevSizeClass = sizeClassRef.current;
       setSizeClass(nextSizeClass);
-      if (nextSizeClass === 'compact') setExplorerOpen(false);
+      if (nextSizeClass === 'compact' && prevSizeClass !== 'compact') {
+        // 进窄窗：暂存宽/中窗折叠偏好；「文件」子屏一律从关闭开始
+        explorerBeforeCompactRef.current = explorerOpenRef.current;
+        setExplorerOpen(false);
+      } else if (nextSizeClass !== 'compact' && prevSizeClass === 'compact') {
+        // 回宽/中窗：还原进窄窗前的侧栏折叠偏好
+        setExplorerOpen(explorerBeforeCompactRef.current);
+      }
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -1718,6 +1816,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   useEffect(() => {
     if (sizeClass !== 'compact' || !explorerOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，explorer 打开态也随之滞留——
+      // 此时不消费返回键、不误关 explorer，交还给当前活跃视图
+      // （对照 NotesEditorHeader 的同款守卫）
+      const el = hostRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setExplorerOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -1980,6 +2084,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (sizeClassRef.current === 'compact') setExplorerOpen(false);
   }, []);
 
+  // 布局抽屉回调仅在 compact 档代理「文件」子屏开关；离开 compact 时布局会
+  // 强制回传 false（收抽屉残留），不能让它冲掉宽/中窗的侧栏折叠偏好
+  const handleDrawerOpenChange = useCallback((open: boolean) => {
+    if (sizeClassRef.current === 'compact') setExplorerOpen(open);
+  }, []);
+
   const openTreeItem = useCallback((id: string) => {
     const item = findItemById(treeItems, id);
     if (!item || item.kind === 'folder') return;
@@ -2002,15 +2112,47 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     } else {
       const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
       const path = node?.path || `/${item.id}`;
+      const previousName = (node?.name ?? item.name).trim();
       const result = await dstu.rename(path, name);
       if (!result.ok) {
         setStatus(result.error.toUserMessage());
         return;
       }
       updateTabTitle(`${item.kind}:${item.id}`, name);
+      // 按旧标题写的 [[wikilink]] 会因重命名失解析：后台回写引用来源
+      //（OCC 保护并发编辑；脏来源跳过），结果以通知汇总
+      if (item.kind === 'note' && previousName && previousName !== name) {
+        // knownNotes 是重命名前的标题快照（resourcesRef 尚未刷新，天然是旧名）
+        const knownNotes = resourcesRef.current
+          .filter((entry) => entry.type === 'note')
+          .map((entry) => ({
+            id: entry.id,
+            title: entry.id === item.id ? previousName : entry.name,
+          }));
+        void syncWikiLinksAfterNoteRename({
+          noteId: item.id,
+          oldTitle: previousName,
+          newTitle: name,
+          knownNotes,
+        }).then((summary) => {
+          if (summary.updatedSources > 0) {
+            showGlobalNotification('success', t('notesWorkspace.renameSync.updated', {
+              defaultValue: '已同步更新 {{count}} 篇笔记中的双链',
+              count: summary.updatedSources,
+            }));
+            void loadResources({ blocking: false });
+          }
+          if (summary.skippedDirtySources > 0 || summary.failedSources > 0) {
+            showGlobalNotification('warning', t('notesWorkspace.renameSync.incomplete', {
+              defaultValue: '{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查',
+              count: summary.skippedDirtySources + summary.failedSources,
+            }));
+          }
+        });
+      }
     }
     await loadResources({ blocking: false });
-  }, [loadResources, treeItems, updateTabTitle]);
+  }, [loadResources, t, treeItems, updateTabTitle]);
 
   const moveTreeItem = useCallback(async (
     dragId: string,
@@ -2236,12 +2378,24 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       && event.shiftKey
       && !event.altKey
       && (event.key === ']' || event.key === '[' || event.key === '}' || event.key === '{');
-    if (cyclesByPage || cyclesByBracket) {
+    // Ctrl+Tab / Ctrl+Shift+Tab（handlesTabCycleShortcut 让位协议）：
+    // - defaultPrevented = 壳层切换器会话进行中已接管，跳过（协议规则 2）；
+    // - 搜索浮层打开时它自持 Ctrl+Tab 切搜索模式，让给浮层。
+    const cyclesByTab = event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+      && event.key === 'Tab'
+      && !event.defaultPrevented
+      && !searchOpen;
+    if (cyclesByPage || cyclesByBracket || cyclesByTab) {
       event.preventDefault();
       event.stopPropagation();
-      cycleTab(event.key === 'PageDown' || event.key === ']' || event.key === '}' ? 1 : -1);
+      const backwards = cyclesByTab
+        ? event.shiftKey
+        : event.key === 'PageUp' || event.key === '[' || event.key === '{';
+      cycleTab(backwards ? -1 : 1);
     }
-  }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay]);
+  }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay, searchOpen]);
 
   useEventRegistry(
     isActive
@@ -2251,6 +2405,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   );
 
   // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
+  // 探索器工具栏尾部低频动作（新建导图/刷新/搜索/背链/回收站/文库）。
+  // 中窗侧栏仅 240px，10 个图标按钮必溢出被裁：中窗折叠进「更多」菜单，
+  // 宽窗与紧凑子屏（探索器全宽展示）保持整排图标。
+  const explorerTailActions: ExplorerOverflowAction[] = [
+    { key: 'new-mindmap', label: t('notesWorkspace.explorer.newMindmap', 'New mind map'), icon: <TreeStructure size={15} />, onSelect: () => { void createResource('mindmap'); } },
+    { key: 'refresh', label: t('notesWorkspace.explorer.refresh', 'Refresh'), icon: <ArrowsClockwise size={15} />, onSelect: () => { void loadResources({ blocking: false }); } },
+    { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: () => openSearchOverlay('full-text') },
+    { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: () => setBacklinksOpen((open) => !open) },
+    { key: 'trash', label: t('notesWorkspace.ribbon.trash', 'Trash'), icon: <Trash size={15} />, onSelect: () => setTrashOpen(true) },
+    { key: 'library', label: t('notesWorkspace.library.manage', 'Import or export library'), icon: <FileArchive size={15} />, onSelect: () => setLibraryDialog({ open: true, tab: 'export' }) },
+  ];
+
   const explorerSurface = (
     <WorkbenchSidebarSurface
         ariaLabel={t('notesWorkspace.explorer.title', 'Files')}
@@ -2273,12 +2439,21 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             ><ArrowRight size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newNote', 'New note')} onClick={() => void createResource('note')}><FileText size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newFolder', 'New folder')} onClick={() => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); }}><FolderPlus size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.newMindmap', 'New mind map')} onClick={() => void createResource('mindmap')}><TreeStructure size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.refresh', 'Refresh')} onClick={() => void loadResources({ blocking: false })}><ArrowsClockwise size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => !open)}><LinkSimple size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.library.manage', 'Import or export library')} onClick={() => setLibraryDialog({ open: true, tab: 'export' })}><FileArchive size={15} /></IconButton>
+            {sizeClass === 'medium' ? (
+              <ExplorerOverflowMenu
+                label={t('notesWorkspace.explorer.moreActions', 'More actions')}
+                actions={explorerTailActions}
+              />
+            ) : (
+              explorerTailActions.map((action) => (
+                <IconButton
+                  key={action.key}
+                  label={action.label}
+                  data-active={action.active === undefined ? undefined : (action.active ? 'true' : 'false')}
+                  onClick={action.onSelect}
+                >{action.icon}</IconButton>
+              ))
+            )}
           </div>
         </header>
         <div className="notes-search">
@@ -2340,7 +2515,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                   event.preventDefault();
                   void createFolder();
                 }}
-                onBlur={() => {
+                onCompositionStart={() => { createFolderComposingRef.current = true; }}
+                onCompositionEnd={() => { createFolderComposingRef.current = false; }}
+                onBlur={(event) => {
+                  // 失焦只在「还没输入任何内容」时视为取消。已有输入或 IME 合成中
+                  //（点候选词可能触发 blur）、以及焦点仍落在行内面板内部（计数器/
+                  // 错误提示）时保留输入行，避免误取消丢输入。
+                  if (createFolderComposingRef.current) return;
+                  if (
+                    event.relatedTarget instanceof Node
+                    && event.currentTarget.closest('[data-notes-inline-create]')?.contains(event.relatedTarget)
+                  ) return;
+                  if (resourceDialog.value.trim()) return;
                   setDialogError(null);
                   setResourceDialog(null);
                 }}
@@ -2553,7 +2739,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         data-wb-notes-workspace
         data-focus-mode={focusMode ? 'true' : 'false'}
         data-compact={sizeClass === 'compact' ? 'true' : 'false'}
-        data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
+        data-explorer-open={explorerOpen ? 'true' : 'false'}
         onKeyDown={handleWorkspaceKeyDown}
         onDragOver={(event) => {
           if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
@@ -2570,8 +2756,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       <WorkbenchSidebarLayout
         sizeClass={sizeClass}
         navLabel={t('notesWorkspace.explorer.title', 'Files')}
-        drawerOpen={sizeClass === 'compact' ? false : explorerOpen}
-        onDrawerOpenChange={setExplorerOpen}
+        drawerOpen={false}
+        onDrawerOpenChange={handleDrawerOpenChange}
+        sidebarCollapsed={!explorerVisible}
         sidebar={sizeClass === 'compact' ? null : explorerSurface}
       >
 
@@ -2587,7 +2774,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             <Panel
               id="notes-workspace-main-pane"
               order={1}
-              defaultSize={splitTab ? splitLayout[0] : 100}
+              defaultSize={splitTab ? (sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[0] : splitLayout[0]) : 100}
               minSize={splitTab ? 25 : 100}
               className="notes-pane-panel"
             >
@@ -2608,14 +2795,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             </Panel>
             {splitTab && (
               <>
-                <PanelResizeHandle
-                  className="notes-pane-resize"
-                  aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
-                />
+                {/* compact（手机窄窗）分屏固定 50/50：不渲染拖拽手柄（对照 VerticalResizable fixed） */}
+                {sizeClass !== 'compact' && (
+                  <PanelResizeHandle
+                    className="notes-pane-resize"
+                    /* 触屏热区：库在 document 层用 getBoundingClientRect + hitAreaMargins 做命中检测，
+                       CSS ::after 外扩不参与；coarse 19 → 6px 可视宽 + 2×19 = 44px */
+                    hitAreaMargins={{ coarse: 19, fine: 5 }}
+                    aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
+                  />
+                )}
                 <Panel
                   id="notes-workspace-right-pane"
                   order={2}
-                  defaultSize={splitLayout[1]}
+                  defaultSize={sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[1] : splitLayout[1]}
                   minSize={25}
                   className="notes-pane-panel"
                 >
@@ -2650,6 +2843,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               <NotesPropertiesTab
                 activeResource={activeResource}
                 onRefresh={() => { void loadResources({ blocking: false }); }}
+              />
+            )}
+            graphContent={(
+              <NotesGraphTab
+                open={backlinksOpen}
+                activeResource={activeResource}
+                notes={resources}
+                onOpenResource={openWorkspaceSearchResult}
               />
             )}
           />

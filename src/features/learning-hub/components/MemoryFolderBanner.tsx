@@ -296,7 +296,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
   if (configError && !config) {
     return (
       <div className={cn('border-b border-border/40', className)}>
-        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
           <WarningCircle size={13} className="text-destructive/70 shrink-0" />
           <span>{t('memory.config_load_error')}</span>
           <DsButton variant="ghost" size="sm" onClick={loadConfig} className="!h-5 !px-1.5 text-2xs ml-auto [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5">
@@ -314,7 +314,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       {/* 工具栏（📱 允许换行：窄屏下按钮过多会横向溢出导致部分功能不可达） */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">
         <MemoryIcon size={14} className="text-muted-foreground shrink-0" />
-        <span className="text-[11px] text-muted-foreground mr-1">{t('memory.auto_extract')}:</span>
+        <span className="text-xs text-muted-foreground mr-1">{t('memory.auto_extract')}:</span>
         <div className="flex items-center gap-0.5">
           {([
             { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
@@ -379,14 +379,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
 
         <DsButton variant="ghost" size="sm"
           onClick={() => setActivePanel(activePanel === 'import' ? null : 'import')}
-          className={cn('!h-6 !px-1.5 text-[11px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5', activePanel === 'import' && 'text-primary bg-primary/10')}
+          className={cn('!h-6 !px-1.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5', activePanel === 'import' && 'text-primary bg-primary/10')}
         >
           <ListPlus size={14} />
           {t('memory.batch_import')}
         </DsButton>
         <DsButton variant="ghost" size="sm"
           onClick={() => setActivePanel(activePanel === 'new' ? null : 'new')}
-          className={cn('!h-6 !px-1.5 text-[11px] text-primary [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5', activePanel === 'new' && 'bg-primary/10')}
+          className={cn('!h-6 !px-1.5 text-xs text-primary [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5', activePanel === 'new' && 'bg-primary/10')}
         >
           <Plus size={14} />
           {t('memory.new')}
@@ -398,11 +398,11 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         {activePanel === 'profile' && (
           <motion.div key="profile" {...disclosureMotion} className="overflow-hidden">
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
-              <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.profile_title')}</div>
+              <div className="text-xs font-medium text-muted-foreground mb-1.5">{t('memory.profile_title')}</div>
               {isLoadingProfile ? (
                 <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
               ) : profileError ? (
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
                   <WarningCircle size={12} className="text-destructive/70" />
                   <span>{t('memory.profile_load_error')}</span>
                   <DsButton variant="ghost" size="sm" onClick={() => { setActivePanel(null); handleToggleProfile(); }} className="!h-5 !px-1.5 text-2xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5">
@@ -410,14 +410,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   </DsButton>
                 </div>
               ) : profileSections.length === 0 ? (
-                <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.no_profile')}</div>
+                <div className="text-xs text-muted-foreground/60 py-2">{t('memory.no_profile')}</div>
               ) : (
                 <CustomScrollArea className="max-h-40 min-h-0" fullHeight={false}>
                   <div className="space-y-1.5">
                     {profileSections.map((section, i) => (
                       <div key={i}>
                         <div className="text-2xs font-medium text-muted-foreground">{section.category}</div>
-                        <div className="text-[11px] text-foreground/80 whitespace-pre-wrap">{section.content}</div>
+                        <div className="text-xs text-foreground/80 whitespace-pre-wrap">{section.content}</div>
                       </div>
                     ))}
                   </div>
@@ -431,11 +431,11 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         {activePanel === 'audit' && (
           <motion.div key="audit" {...disclosureMotion} className="overflow-hidden">
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
-              <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.audit_log')}</div>
+              <div className="text-xs font-medium text-muted-foreground mb-1.5">{t('memory.audit_log')}</div>
               {isLoadingAuditLog && auditLogs.length === 0 ? (
                 <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
               ) : auditLogs.length === 0 ? (
-                <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.audit_empty')}</div>
+                <div className="text-xs text-muted-foreground/60 py-2">{t('memory.audit_empty')}</div>
               ) : (
                 <CustomScrollArea className="max-h-48 min-h-0" fullHeight={false}>
                   <div className="space-y-1">
@@ -470,7 +470,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           <motion.div key="import" {...disclosureMotion} className="overflow-hidden">
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import')}</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.batch_import')}</span>
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:actions.close')}><X size={12} /></DsButton>
               </div>
               <Textarea
@@ -485,19 +485,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={4}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-xs [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setBatchImportType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
                 ))}
                 <div className="flex-1" />
-                <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3">
+                <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3">
                   {isImporting && <CircleNotch size={12} className="animate-spin" />}
                   {t('memory.batch_import_confirm')}
                 </DsButton>
@@ -511,7 +511,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           <motion.div key="new" {...disclosureMotion} className="overflow-hidden">
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title')}</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.create_title')}</span>
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:actions.close')}><X size={12} /></DsButton>
               </div>
               <Input
@@ -520,7 +520,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setActivePanel(null); } }}
                 autoFocus
-                className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
+                className="w-full h-7 px-2 text-xs bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
               />
               <Textarea
                 placeholder={t('memory.content_placeholder_study')}
@@ -534,19 +534,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={3}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-xs [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setNewType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
                 ))}
                 <div className="flex-1" />
-                <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3">
+                <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3">
                   {isCreating && <CircleNotch size={12} className="animate-spin" />}
                   {t('common:create')}
                 </DsButton>

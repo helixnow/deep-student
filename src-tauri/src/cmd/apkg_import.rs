@@ -174,6 +174,7 @@ mod tests {
             imported_templates: 0,
             media_skipped: 3,
             media_imported: 1,
+            media_report: Default::default(),
             warnings: vec![],
             card_ids: vec!["card-1".to_string(), "card-2".to_string()],
         };
@@ -201,12 +202,25 @@ mod tests {
 
     #[test]
     fn import_result_with_warnings_serializes_them_for_frontend() {
+        use crate::apkg_importer_service::{ApkgMediaReport, ApkgMediaSkip};
+
         let result = ApkgImportResult {
             document_id: "document-2".to_string(),
             imported_cards: 1,
             imported_templates: 1,
             media_skipped: 1,
             media_imported: 0,
+            media_report: ApkgMediaReport {
+                declared: 1,
+                imported: 0,
+                skipped: 1,
+                skips: vec![ApkgMediaSkip {
+                    reason: "entry_missing".to_string(),
+                    count: 1,
+                    filenames: vec!["a.png".to_string()],
+                }],
+                media_dir: Some("/tmp/anki_media".to_string()),
+            },
             warnings: vec!["媒体清单声明的条目在包内缺失，已跳过: 0 (a.png)".to_string()],
             card_ids: vec!["card-1".to_string()],
         };
@@ -215,5 +229,11 @@ mod tests {
         assert!(value["warnings"][0]
             .as_str()
             .is_some_and(|warning| warning.contains("a.png")));
+        // 结构化媒体报告透出给前端：reason/count/filenames + 可解析的 mediaDir
+        assert_eq!(value["mediaReport"]["skipped"], 1);
+        assert_eq!(value["mediaReport"]["skips"][0]["reason"], "entry_missing");
+        assert_eq!(value["mediaReport"]["skips"][0]["count"], 1);
+        assert_eq!(value["mediaReport"]["skips"][0]["filenames"][0], "a.png");
+        assert_eq!(value["mediaReport"]["mediaDir"], "/tmp/anki_media");
     }
 }

@@ -1090,6 +1090,172 @@ pub async fn workspace_run_agent(
     .await
 }
 
+// ============================================================
+// Multi-agent Phase 2（QAAgent 只读卡面）：worker 工具 schema 源
+// ============================================================
+
+/// chatanki 只读四工具的 worker 端 schema（后端维护的精简副本）。
+///
+/// 与 [`crate::chat_v2::workspace::custom_agents::CHATANKI_READONLY_TOOLS`]
+/// 一一对应，是双层 fail-closed 防线的 **schema 层**：只有档案
+/// `tools:` 声明的工具才把 schema 注入 worker 上下文（见
+/// [`extend_worker_tool_schemas`]），chatanki 写工具在此没有 schema 源，
+/// 声明了也进不了模型上下文；执行层再由 `execution_allowed_tools` 白名单
+/// 与 chatanki 执行器的只读所有权预检兜底。
+fn chatanki_readonly_worker_tool_schemas() -> Vec<crate::chat_v2::types::McpToolSchema> {
+    use crate::chat_v2::types::McpToolSchema;
+    vec![
+        McpToolSchema {
+            name: "builtin-chatanki_get_cards".to_string(),
+            server_id: None,
+            description: Some(
+                "分页读回制卡文档的卡片内容（只读）。documentId 从任务消息中获取；\
+                 同 workspace coordinator 拥有的文档可读，跨 workspace 一律不可见。"
+                    .to_string(),
+            ),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "documentId": {
+                        "type": "string",
+                        "description": "制卡文档 ID（必需，从任务消息中获取）"
+                    },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "pageSize": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+                    "filter": {
+                        "type": "string",
+                        "enum": ["all", "error_only", "edited_only"],
+                        "default": "all"
+                    }
+                },
+                "required": ["documentId"]
+            })),
+        },
+        McpToolSchema {
+            name: "builtin-chatanki_status".to_string(),
+            server_id: None,
+            description: Some(
+                "查询制卡文档的生成进度与卡片统计（只读）。documentId 从任务消息中获取。"
+                    .to_string(),
+            ),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "documentId": {
+                        "type": "string",
+                        "description": "制卡文档 ID（必需）"
+                    }
+                },
+                "required": ["documentId"]
+            })),
+        },
+        McpToolSchema {
+            name: "builtin-chatanki_analyze".to_string(),
+            server_id: None,
+            description: Some(
+                "预分析制卡材料（只读预估）：给出路由建议、密度指标与推荐参数，\
+                 不生成任何卡片。content 与 resourceIds 至少提供一个。"
+                    .to_string(),
+            ),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": { "type": "string", "description": "直接文本材料" },
+                    "goal": { "type": "string", "description": "学习目标（参与路由规划）" },
+                    "route": {
+                        "type": "string",
+                        "enum": ["simple_text", "vlm_light", "vlm_full"],
+                        "description": "可选：预演强制路由"
+                    },
+                    "resourceIds": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "可选：会话资源 ID 列表"
+                    }
+                }
+            })),
+        },
+        McpToolSchema {
+            name: "builtin-chatanki_list_templates".to_string(),
+            server_id: None,
+            description: Some("列出本地可用的制卡模板（只读）。".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "category": { "type": "string", "description": "按分类/名称过滤" },
+                    "activeOnly": { "type": "boolean", "default": true },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "pageSize": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 }
+                }
+            })),
+        },
+    ]
+}
+
+/// worker schema 注入（fail-closed）：从「headless 只读 schema 集 ∪ chatanki
+/// 只读四工具 schema」中，按 profile `allowed_tools` **精确匹配**追加 schema。
+///
+/// 白名单外的工具（含全部 chatanki 写工具）在这两个源里都没有 schema，
+/// 无论档案怎么声明都不会进入模型上下文；已存在的 schema 不重复注入。
+fn extend_worker_tool_schemas(
+    schemas: &mut Vec<crate::chat_v2::types::McpToolSchema>,
+    allowed_tools: &[String],
+) {
+    for schema in crate::chat_v2::headless::headless_tool_schemas()
+        .into_iter()
+        .chain(chatanki_readonly_worker_tool_schemas())
+    {
+        if allowed_tools.iter().any(|tool| *tool == schema.name)
+            && !schemas.iter().any(|existing| existing.name == schema.name)
+        {
+            schemas.push(schema);
+        }
+    }
+}
+
+/// Multi-agent Phase 2：档案声明了 chatanki 只读工具时，为 worker 安装
+/// 「同 workspace coordinator 文档可读」的只读作用域（RAII guard，管线结束
+/// 即撤销）。
+///
+/// fail-closed：非 worker / 档案未声明任何 chatanki 只读工具 / workspace 里
+/// 找不到 Coordinator 角色 agent / 安装校验失败（自映射、空 id）→ 一律不
+/// 安装，chatanki 侧回到「仅本会话拥有」的默认所有权检查。
+fn install_worker_card_read_scope(
+    is_worker: bool,
+    worker_allowed_tools: &[String],
+    agents: &[crate::chat_v2::workspace::WorkspaceAgent],
+    workspace_id: &str,
+    agent_session_id: &str,
+) -> Option<crate::chat_v2::tools::chatanki_executor::WorkspaceCardReadScopeGuard> {
+    use crate::chat_v2::workspace::custom_agents::CHATANKI_READONLY_TOOLS;
+    if !is_worker
+        || !worker_allowed_tools
+            .iter()
+            .any(|tool| CHATANKI_READONLY_TOOLS.contains(&tool.as_str()))
+    {
+        return None;
+    }
+    let coordinator_session_id = agents
+        .iter()
+        .find(|a| matches!(a.role, AgentRole::Coordinator))
+        .map(|a| a.session_id.clone())?;
+    match crate::chat_v2::tools::chatanki_executor::install_workspace_card_read_scope(
+        agent_session_id,
+        workspace_id,
+        &coordinator_session_id,
+    ) {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            log::warn!(
+                "[Workspace::handlers] Failed to install card read scope for worker {}: {}",
+                agent_session_id,
+                error
+            );
+            None
+        }
+    }
+}
+
 /// Runtime-native worker entry point. This is deliberately independent from the
 /// `workspace_worker_ready` frontend event: tools, restore code and Tauri commands
 /// all enter the same scheduler path.
@@ -1487,21 +1653,14 @@ pub async fn run_workspace_agent_backend(
 
     // 🆕 工具面（fail-closed，参考 headless.rs 的双层防线）：
     // - 基座：上面两个本地 workspace schema（workspace_send/query 不重复注入）；
-    // - profile 存在时：从 headless 只读 schema 集中按 profile.allowed_tools
-    //   精确匹配追加 schema，执行层白名单取 profile.allowed_tools 全集；
+    // - profile 存在时：从「headless 只读 schema 集 ∪ chatanki 只读四工具
+    //   schema（Phase 2）」中按 profile.allowed_tools 精确匹配追加 schema，
+    //   执行层白名单取 profile.allowed_tools 全集；
     // - profile 缺失（解析失败回退 legacy）时：维持现状只放行两个 workspace 工具。
     let mut workspace_tool_schemas = workspace_tool_schemas;
     let worker_allowed_tools: Vec<String> = match runtime_config.as_ref() {
         Some(config) => {
-            for schema in crate::chat_v2::headless::headless_tool_schemas() {
-                if config.allowed_tools.iter().any(|tool| *tool == schema.name)
-                    && !workspace_tool_schemas
-                        .iter()
-                        .any(|existing| existing.name == schema.name)
-                {
-                    workspace_tool_schemas.push(schema);
-                }
-            }
+            extend_worker_tool_schemas(&mut workspace_tool_schemas, &config.allowed_tools);
             config.allowed_tools.clone()
         }
         None => workspace_tool_schemas
@@ -1509,6 +1668,18 @@ pub async fn run_workspace_agent_backend(
             .map(|schema| schema.name.clone())
             .collect(),
     };
+
+    // 🆕 Multi-agent Phase 2（QAAgent 只读卡面）：档案声明了 chatanki 只读
+    // 工具时，安装「同 workspace coordinator 文档可读」作用域。guard 随管线
+    // 结束（完成/取消/超时/panic）drop 即撤销；未安装时 chatanki 侧保持
+    // 「仅本会话拥有」默认所有权检查（fail-closed）。
+    let card_read_scope_guard = install_worker_card_read_scope(
+        is_worker,
+        &worker_allowed_tools,
+        &agents,
+        workspace_id,
+        agent_session_id,
+    );
 
     let assistant_message_id = ChatMessage::generate_id();
     let send_request = ChatSendMessageRequest {
@@ -1563,6 +1734,8 @@ pub async fn run_workspace_agent_backend(
         use tauri::Emitter;
 
         let stream_guard = stream_guard;
+        // Phase 2 只读作用域与管线同寿命：任务结束（含 panic）即撤销
+        let card_read_scope_guard = card_read_scope_guard;
 
         // 🆕 整体超时：pipeline 包 wall-clock 上限（对齐 headless），
         // 超时后触发取消并给管线一个收尾窗口保存部分结果。
@@ -1601,6 +1774,10 @@ pub async fn run_workspace_agent_backend(
             }
         };
         drop(permit);
+
+        // 管线已结束：立即撤销 Phase 2 只读作用域（后续完成信封投递等收尾
+        // 动作不再需要读 coordinator 文档）。
+        drop(card_read_scope_guard);
 
         // 管线已结束：先释放流注册，避免下面 worker_ready 触发的下一轮 run_agent
         // 与本次流注册冲突（run_agent 的 try_register_stream 会拒绝并回滚 drain）。

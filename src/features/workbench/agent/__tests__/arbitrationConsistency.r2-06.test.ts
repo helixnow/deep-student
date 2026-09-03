@@ -10,6 +10,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// userPatch 摘要走 i18n（dstu:agent.user_patch.*）；此处回显 defaultValue 以断言主干原文
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? key,
+  },
+}));
+
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => () => {}),
   emit: vi.fn(async () => {}),

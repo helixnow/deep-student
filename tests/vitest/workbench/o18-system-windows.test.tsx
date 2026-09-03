@@ -125,6 +125,8 @@ import {
   subscribeAnkiTaskCount,
   getActiveAnkiTaskCount,
 } from '@/features/workbench/apps/system/ankiTaskSource';
+import { refreshFlashcardsDueCount } from '@/features/workbench/apps/system/flashcardsDueSource';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { DEFAULT_POMODORO_SETTINGS } from '@/features/pomodoro/types';
 import PomodoroAppWindow from '@/features/workbench/apps/system/PomodoroAppWindow';
@@ -462,6 +464,87 @@ describe('O18 PomodoroAppWindow 计时视觉', () => {
     expect(
       container.querySelector('.wb-sys-pomo-cycle[data-current="true"]'),
     ).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// PomodoroAppWindow：休息期到期闪卡联动
+// ============================================================================
+
+describe('O18 PomodoroAppWindow 休息期闪卡联动', () => {
+  const setDueStats = (due: number) => {
+    invokeMock.mockImplementation(async (cmd: unknown) =>
+      cmd === 'fsrs_get_stats' ? { due } : []);
+  };
+
+  beforeEach(() => {
+    usePomodoroStore.setState({
+      mode: 'idle',
+      status: 'paused',
+      timeLeft: 1500,
+      phaseEndsAt: null,
+      phaseStartedAt: null,
+      currentTaskTitle: null,
+      settings: { ...DEFAULT_POMODORO_SETTINGS },
+    });
+  });
+
+  afterEach(async () => {
+    // 把模块级 due 计数归零并还原默认 invoke，避免泄漏到其他用例
+    setDueStats(0);
+    await refreshFlashcardsDueCount();
+    invokeMock.mockImplementation(async () => []);
+  });
+
+  it('休息期有到期闪卡：显示「去复习 N 张」，点击走 flashcards startReview due', async () => {
+    setDueStats(5);
+    const activateSpy = vi.spyOn(workbenchBus, 'activate').mockResolvedValue(true);
+    try {
+      usePomodoroStore.setState({ mode: 'short_break', status: 'running', timeLeft: 240 });
+      render(<PomodoroAppWindow {...makeProps()} />);
+      await act(async () => {
+        await refreshFlashcardsDueCount();
+      });
+
+      const button = screen.getByTestId('wb-sys-pomo-break-review');
+      expect(button).toHaveTextContent('去复习 5 张');
+
+      fireEvent.click(button);
+      expect(activateSpy).toHaveBeenCalledTimes(1);
+      expect(activateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          typeId: 'flashcards',
+          action: 'startReview',
+          payload: { screen: 'session', mode: 'due' },
+          fallbackLaunch: expect.objectContaining({
+            typeId: 'flashcards',
+            payload: { screen: 'session', mode: 'due' },
+          }),
+        }),
+      );
+    } finally {
+      activateSpy.mockRestore();
+    }
+  });
+
+  it('专注期不显示复习入口；休息期无到期卡也不显示', async () => {
+    setDueStats(5);
+    usePomodoroStore.setState({ mode: 'work', status: 'running', timeLeft: 600 });
+    render(<PomodoroAppWindow {...makeProps()} />);
+    await act(async () => {
+      await refreshFlashcardsDueCount();
+    });
+    expect(screen.queryByTestId('wb-sys-pomo-break-review')).toBeNull();
+
+    // 切到休息但清空到期卡
+    setDueStats(0);
+    await act(async () => {
+      await refreshFlashcardsDueCount();
+    });
+    act(() => {
+      usePomodoroStore.setState({ mode: 'long_break', status: 'running', timeLeft: 900 });
+    });
+    expect(screen.queryByTestId('wb-sys-pomo-break-review')).toBeNull();
   });
 });
 

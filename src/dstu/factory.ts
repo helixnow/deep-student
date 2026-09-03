@@ -5,6 +5,7 @@
  * 名称去重、元数据合并等业务逻辑。
  */
 
+import i18n from '@/i18n';
 import { dstu } from './api';
 import type { DstuNode, DstuNodeType } from './types';
 import { EMPTY_RESOURCE_TEMPLATES } from './types';
@@ -100,12 +101,12 @@ export async function createEmpty(options: CreateEmptyOptions): Promise<Result<D
   if (!template) {
     const error = new VfsError(
       VfsErrorCode.VALIDATION,
-      `未知的资源类型: ${type}`,
+      i18n.t('stats:dstu.unknown_resource_type', { defaultValue: '未知的资源类型: {{type}}', type }),
       false,
       { type }
     );
     logger.error('createEmpty', error.message, [options]);
-    reportError(error, '创建空资源');
+    reportError(error, i18n.t('stats:dstu.create_empty', { defaultValue: '创建空资源' }));
     return err(error);
   }
 
@@ -166,7 +167,7 @@ export async function createEmpty(options: CreateEmptyOptions): Promise<Result<D
 
   if (!createResult.ok) {
     logger.error('createEmpty', createResult.error.message, [options]);
-    reportError(createResult.error, '创建空资源');
+    reportError(createResult.error, i18n.t('stats:dstu.create_empty', { defaultValue: '创建空资源' }));
     return createResult;
   }
 

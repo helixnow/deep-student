@@ -4,7 +4,8 @@
  * 卡片网格布局，顶部工具栏包含搜索和筛选功能
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { LayoutGroup } from 'framer-motion';
@@ -27,6 +28,12 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
+import {
+  TITLEBAR_CONTROL_CLASS,
+  TITLEBAR_ICON_CONTROL_CLASS,
+  TITLEBAR_TITLE_CLASS,
+} from '@/app/shell/titlebarUiTokens';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
@@ -92,6 +99,13 @@ interface SkillsManagementPageProps {
   className?: string;
   /** Workbench 窗口 id：提供时注册 skills agent 观察/操作面（ACR 4.0 A3） */
   workbenchWindowId?: string;
+  /**
+   * Workbench 窗口内容区尺寸分级（data-wb-sys-size 同源，SkillsAppWindow 下传）。
+   * 页面自身的 viewport 断点在窗口里恒为桌面大屏；非 wide 档时工具栏的
+   * 七个次级操作收进「⋯」溢出菜单，避免窄窗横向溢出。legacy 页面不传，
+   * 维持纯 viewport 断点行为。
+   */
+  windowSizeClass?: 'compact' | 'medium' | 'wide';
 }
 
 // ============================================================================
@@ -188,11 +202,48 @@ const InlineConfirmSection: React.FC<InlineConfirmSectionProps> = ({
 export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   className,
   workbenchWindowId,
+  windowSizeClass,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
+  // workbench 窗口标题栏 app 槽位查找（与 ChatAppWindow 同款：壳内查询 + 观察兜底）
+  const [windowTitlebarSlot, setWindowTitlebarSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!workbenchWindowId) return;
+    const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(workbenchWindowId) : workbenchWindowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedId}"]`);
+    const queryRoot: ParentNode = shell ?? document;
+    let currentTarget: HTMLElement | null = null;
+    let observer: MutationObserver | null = null;
+    const findTarget = () => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === workbenchWindowId) ?? null;
+      if (!target) return;
+      currentTarget = target;
+      setWindowTitlebarSlot((current) => (current === target ? current : target));
+      observer?.disconnect();
+      observer = null;
+    };
+    findTarget();
+    if (!currentTarget) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
+  }, [workbenchWindowId]);
+  // legacy 壳标题栏槽位；与 workbench 窗口槽位互斥
+  const shellHeaderTarget = useDesktopShellHeaderPortal('skills-management');
+  const toolbarPortalTarget = windowTitlebarSlot ?? shellHeaderTarget;
+  const inTitlebar = Boolean(toolbarPortalTarget);
+  // 顶栏模式统一控件规格（28px / coarse 40px / text-xs，对齐 chat 与 learning-hub 既有件）
+  const titlebarSecondaryBtnCls = cn(TITLEBAR_CONTROL_CLASS, 'text-muted-foreground');
+  const inlineSecondaryBtnCls = 'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground';
+  const secondaryBtnCls = inTitlebar ? titlebarSecondaryBtnCls : inlineSecondaryBtnCls;
+  // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
+  const collapseToolbarActions =
+    isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -218,6 +269,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<SkillDefinition | null>(null);
   const [inlineDeleting, setInlineDeleting] = useState(false);
+
+  // 恢复内置默认确认状态（丢弃全部自定义且不可撤销 → 与删除同级的风险确认）
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [skillToReset, setSkillToReset] = useState<SkillDefinition | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   // 导入覆盖确认状态
   const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
@@ -576,26 +632,42 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     await reloadSkills();
   }, [editingSkill, t]);
 
-  // 恢复内置技能默认值
-  const handleResetToDefault = useCallback(async (skill: SkillDefinition) => {
+  // 请求恢复内置技能默认值（风险操作：先经列表顶部行内确认横幅，再真正执行）
+  const handleRequestResetToDefault = useCallback((skill: SkillDefinition) => {
     if (!skill.isBuiltin) return;
+    setSkillToReset(skill);
+    setResetConfirmOpen(true);
+  }, []);
 
+  const handleCancelResetToDefault = useCallback(() => {
+    setResetConfirmOpen(false);
+    setSkillToReset(null);
+  }, []);
+
+  // 确认恢复内置技能默认值（丢弃全部自定义，不可撤销）
+  const handleConfirmResetToDefault = useCallback(async () => {
+    if (!skillToReset) return;
+    setResetting(true);
     try {
-      await resetBuiltinSkillCustomization(skill.id);
+      await resetBuiltinSkillCustomization(skillToReset.id);
       showGlobalNotification(
         'success',
         t('skills:management.reset_success')
       );
       // 刷新列表
       await reloadSkills();
+      setResetConfirmOpen(false);
+      setSkillToReset(null);
     } catch (error) {
       console.error('[SkillsManagement] 恢复默认失败:', error);
       showGlobalNotification(
         'error',
         t('skills:management.reset_failed')
       );
+    } finally {
+      setResetting(false);
     }
-  }, [t]);
+  }, [skillToReset, t]);
 
   // 确认删除
   const handleConfirmDelete = useCallback(async () => {
@@ -1051,15 +1123,54 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setSkillToDelete(null);
   }, []);
 
-  // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
+  // ========== / 聚焦搜索（非输入态） ==========
+  // 门禁与 TodoMainPanel 同范式：workbench 窗口承载（祖先带
+  // data-wb-sys-app="skills"）时要求所在窗口聚焦（data-focused）且事件
+  // 发生在窗内；legacy 页面承载时要求页面可见（离场层 visibility:hidden 不消费）。
+  const pageRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const root = pageRootRef.current;
+      if (!root || !root.isConnected) return;
+      const target = e.target as HTMLElement | null;
+      const wbHost = root.closest<HTMLElement>('[data-wb-sys-app="skills"]');
+      if (wbHost) {
+        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+        const scope = windowShell ?? wbHost;
+        if (!target || !scope.contains(target)) return;
+      } else if (root.getClientRects().length === 0) {
+        return;
+      }
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const input = root.querySelector<HTMLInputElement>('[data-skills-search]');
+      if (!input) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // 行内确认横幅 / 技能源浏览器渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
-  const anyInlineConfirmOpen =
-    updateConfirmOpen || zipConfirmOpen ||
+  const anyInlinePanelOpen =
+    tapBrowserOpen || updateConfirmOpen || zipConfirmOpen || resetConfirmOpen ||
     deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
-    if (!anyInlineConfirmOpen) return;
+    if (!anyInlinePanelOpen) return;
     listViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [anyInlineConfirmOpen]);
+  }, [anyInlinePanelOpen]);
 
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
@@ -1120,11 +1231,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }
       : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />
       </DsButton>
     ) : undefined,
-  }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t]);
+  }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t, workbenchWindowId],
+  // Workbench 窗口内嵌入时不接管全局移动端顶栏（对照 TodoContentView）
+  !workbenchWindowId);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
@@ -1245,12 +1358,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   }, [workbenchWindowId]);
 
   // ========== 渲染主内容 ==========
-  const renderMainContent = () => (
-    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <div className="study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10 py-3 sticky top-0 z-10 space-y-3">
-        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-            <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
+  const renderMainContent = () => {
+    // 工具栏第一行（面包屑/计数 + 动作条）：桌面端有全局顶栏槽位时 portal 上移，
+    // 页内不再重复渲染；第二行（搜索 + 位置筛选）始终页内保留
+    const toolbarPrimaryRow = (
+        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
+          <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
+            <span className={inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate'}>{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="flex-shrink-0">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
           </div>
@@ -1272,7 +1386,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
+                  className={inTitlebar
+                    ? cn(TITLEBAR_CONTROL_CLASS, 'border-transparent bg-[color:var(--button-tonal-bg)]')
+                    : 'h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs'}
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create')}
@@ -1281,14 +1397,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               </>
             )}
 
-            {!isSmallScreen ? (
+            {!collapseToolbarActions ? (
               <>
                 <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => void handleRefresh()}
                   disabled={isLoading}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                   aria-label={t('skills:selector.refresh')}
                 >
                   <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
@@ -1301,7 +1417,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   onClick={() => setTapBrowserOpen((v) => !v)}
                   aria-expanded={tapBrowserOpen}
                   className={cn(
-                    'max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground',
+                    secondaryBtnCls,
                     tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
                   )}
                 >
@@ -1314,7 +1430,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleCheckUpdates()}
                   disabled={updateChecking}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
                   {t('skills:management.check_updates')}
@@ -1324,7 +1440,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportZipClick}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Package size={14} className="mr-1" />
                   {t('skills:management.import_zip')}
@@ -1334,7 +1450,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportClick}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Upload size={14} className="mr-1" />
                   {t('skills:management.import')}
@@ -1345,7 +1461,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={handleExportAll}
                   disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <Download size={14} className="mr-1" />
                   {t('skills:management.export_all_short')}
@@ -1356,22 +1472,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleExportTap()}
                   disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className={secondaryBtnCls}
                 >
                   <UploadSimple size={14} className="mr-1" />
                   {t('skills:management.export_tap')}
                 </DsButton>
               </>
             ) : (
-              /* 移动端：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
-                 主操作（搜索/筛选在下一行，新建在应用顶栏）保持直达 */
+              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
+                 主操作（搜索/筛选在下一行，新建在应用顶栏或本行首）保持直达 */
               <AppMenu>
                 <AppMenuTrigger asChild>
                   <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="!h-11 !w-11 text-muted-foreground"
+                    className={cn('text-muted-foreground', inTitlebar ? TITLEBAR_ICON_CONTROL_CLASS : isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
                     aria-label={t('common:more')}
                     title={t('common:more')}
                   >
@@ -1424,7 +1540,18 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
           </div>
         </div>
+    );
 
+    return (
+    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      {toolbarPortalTarget
+        ? createPortal(
+            <div className="pointer-events-none flex h-full min-w-0 items-center px-2">{toolbarPrimaryRow}</div>,
+            toolbarPortalTarget,
+          )
+        : null}
+      <div className={cn('study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10', toolbarPortalTarget ? 'py-2' : 'py-3 space-y-3')}>
+        {!toolbarPortalTarget && toolbarPrimaryRow}
         <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
             <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -1433,10 +1560,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder')}
+              data-skills-search
               className={cn(
                 'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                // 移动端加高到触控目标标准，桌面保持紧凑
-                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
+                // 移动端加高到触控目标标准，桌面保持紧凑；粗指针设备（如 iPad 横屏）同样加高
+                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs [@media(pointer:coarse)]:!h-11',
               )}
 />
           </div>
@@ -1452,8 +1580,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
             itemClassName={isSmallScreen
               // 移动端加大纵向点击区，接近触控目标标准（对齐制卡任务页做法）
-              ? '!h-auto !px-3 !py-2 text-[12px] font-medium whitespace-nowrap'
-              : '!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap'}
+              // 粗指针设备（如 iPad 横屏走桌面分支）用 !min-h-11 兜底触控高度，
+              // 需带 ! 以覆盖 .study-shell-segmented-button 的 min-height: 0
+              ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+              : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
             options={locationTabs
               .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
               .map((tab) => {
@@ -1469,7 +1599,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                       <span>{tab.label}</span>
                       <span
                         className={cn(
-                          'ml-0.5 text-[10px] opacity-60',
+                          'ml-0.5 text-2xs opacity-60',
                           isActiveTab && 'opacity-100 font-bold',
                         )}
                       >
@@ -1503,7 +1633,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onEdit={handleEdit}
             onDelete={handleDelete}
             onToggleDefault={handleToggleDefault}
-            onResetToOriginal={handleResetToDefault}
+            onResetToOriginal={handleRequestResetToDefault}
             onExport={handleExport}
             onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
             cardRefsMap={cardRefsMap}
@@ -1512,7 +1642,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </div>
       </CustomScrollArea>
     </div>
-  );
+    );
+  };
 
   // ========== 渲染右侧面板（移动端编辑器） ==========
   const renderRightPanel = () => (
@@ -1554,10 +1685,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }}
         className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
       >
-        <div className="text-[13px] font-medium text-foreground">
+        <div className="text-ui font-medium text-foreground">
           {t('skills:management.update_confirm_title')}
         </div>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t('skills:management.update_confirm_desc', { count: pendingUpdates.length })}
         </p>
         <div className="space-y-2">
@@ -1571,22 +1702,22 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               <div className="flex flex-wrap items-center gap-1.5">
                 <div className="text-xs font-medium text-foreground">{item.skillId}</div>
                 <span
-                  className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]"
+                  className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-2xs"
                   data-testid={`skill-outdated-badge-${item.skillId}`}
                   title={t('skills:management.update_outdated_hint')}
                 >
                   {t('skills:management.update_outdated_badge')}
                 </span>
               </div>
-              <div className="font-mono text-[10px] text-muted-foreground">
+              <div className="font-mono text-2xs text-muted-foreground">
                 {formatSkillUpdateDrift(item)}
               </div>
-              <div className="truncate text-[10px] text-muted-foreground/70">{item.sourceSummary}</div>
+              <div className="truncate text-2xs text-muted-foreground/70">{item.sourceSummary}</div>
             </div>
           ))}
         </div>
         <p
-          className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400"
+          className="text-xs leading-relaxed text-amber-600 dark:text-amber-400"
           data-testid="skill-update-retrust-hint"
         >
           {t('skills:management.update_retrust_hint')}
@@ -1597,7 +1728,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelUpdates}
             disabled={updating}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1606,7 +1737,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmUpdates()}
             disabled={updating}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
           </DsButton>
@@ -1635,28 +1766,28 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             : 'border-border/60 bg-[color:var(--surface-muted)]',
         )}
       >
-        <div className="text-[13px] font-medium text-foreground">
+        <div className="text-ui font-medium text-foreground">
           {overwrite
             ? t('skills:management.import_confirm_overwrite_title')
             : t('skills:management.import_confirm_title')}
         </div>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t('skills:management.import_confirm_source', { name: scan.skill_id, file: fileName })}
         </p>
         <div className="space-y-3">
           {/* 包扫描摘要：文件 / 脚本 / 兼容工具声明 / sha256 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:package.permission_files', { count: scan.files_extracted })}
             </span>
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:management.import_scan_scripts', { count: scan.scripts_count })}
             </span>
-            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs">
               {t('skills:management.import_scan_tools', { count: scan.allowed_tools_count })}
             </span>
             {scan.package_sha256 && (
-              <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]">
+              <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs">
                 sha256:{scan.package_sha256.slice(0, 12)}
               </span>
             )}
@@ -1667,7 +1798,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               scan.requires.env.length > 0 ||
               (scan.requires.python_packages?.length ?? 0) > 0) && (
             <div className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {t('skills:management.requires_heading')}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1675,7 +1806,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`bin-${bin.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs',
                       !bin.found && 'study-shell-badge--warning',
                     )}
                   >
@@ -1691,7 +1822,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`env-${env.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs',
                       !env.set && 'study-shell-badge--warning',
                     )}
                   >
@@ -1707,7 +1838,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   <span
                     key={`py-${pkg.name}`}
                     className={cn(
-                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-2xs',
                       !pkg.found && 'study-shell-badge--warning',
                     )}
                   >
@@ -1726,12 +1857,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {/* 风险分级 + 信号列表（只提示不拦截） */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {t('skills:management.risk_heading')}
               </span>
               <span
                 className={cn(
-                  'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                  'rounded-full px-1.5 py-0.5 text-2xs font-medium',
                   RISK_BADGE_CLASSES[riskLevel]
                 )}
               >
@@ -1741,19 +1872,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {riskLevel !== 'low' && scan.risk_signals.length > 0 && (
               <ul className="space-y-0.5">
                 {scan.risk_signals.map((signal) => (
-                  <li key={signal} className="text-[11px] leading-relaxed text-muted-foreground">
+                  <li key={signal} className="text-xs leading-relaxed text-muted-foreground">
                     · {t(`skills:management.risk_signal_${signal}`, signal)}
                   </li>
                 ))}
               </ul>
             )}
             {isHighRisk && (
-              <p className="text-[11px] leading-relaxed text-red-600 dark:text-red-400">
+              <p className="text-xs leading-relaxed text-red-600 dark:text-red-400">
                 {t('skills:management.risk_high_warning')}
               </p>
             )}
             {overwrite && (
-              <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+              <p className="text-xs leading-relaxed text-amber-600 dark:text-amber-400">
                 {t('skills:management.import_confirm_overwrite_hint')}
               </p>
             )}
@@ -1766,7 +1897,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelZipInstall}
             disabled={zipInstalling}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1775,7 +1906,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmZipInstall()}
             disabled={zipInstalling}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {zipInstalling
               ? t('skills:tap.installing')
@@ -1800,11 +1931,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             }}
             className="mb-4 space-y-2.5 rounded-lg border border-red-300/50 bg-red-50/50 p-3 dark:border-red-700/40 dark:bg-red-900/10"
           >
-            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+            <div className="flex items-center gap-2 text-ui font-medium text-foreground">
               <Warning size={16} className="text-destructive" />
               {t('skills:management.delete')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.delete_confirm', {
                 name: getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t),
               })}
@@ -1815,10 +1946,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 <span className="min-w-0 truncate font-medium">
                   {getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t)}
                 </span>
-                <span className="flex-shrink-0 text-[10px] text-muted-foreground">({skillToDelete.id})</span>
+                <span className="flex-shrink-0 text-2xs text-muted-foreground">({skillToDelete.id})</span>
               </div>
               {skillToDelete.description && (
-                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                   {getLocalizedSkillDescription(skillToDelete.id, skillToDelete.description, t)}
                 </p>
               )}
@@ -1829,7 +1960,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 size="sm"
                 onClick={handleCancelInlineDelete}
                 disabled={inlineDeleting}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1838,9 +1969,51 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 size="sm"
                 onClick={() => void handleInlineConfirmDelete()}
                 disabled={inlineDeleting}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
+              </DsButton>
+            </div>
+          </InlineConfirmSection>
+        )}
+
+        {resetConfirmOpen && skillToReset && (
+          <InlineConfirmSection
+            label={t('skills:management.reset_confirm_title')}
+            onCancel={() => {
+              if (!resetting) handleCancelResetToDefault();
+            }}
+            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+          >
+            <div className="flex items-center gap-2 text-ui font-medium text-foreground">
+              <ArrowCounterClockwise size={16} className="text-amber-600 dark:text-amber-400" />
+              {t('skills:management.reset_confirm_title')}
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t('skills:management.reset_confirm_desc', {
+                name: getLocalizedSkillName(skillToReset.id, skillToReset.name, t),
+              })}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelResetToDefault}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </DsButton>
+              <DsButton
+                variant="primary"
+                size="sm"
+                onClick={() => void handleConfirmResetToDefault()}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {resetting
+                  ? t('skills:management.resetting')
+                  : t('skills:management.reset_confirm_action')}
               </DsButton>
             </div>
           </InlineConfirmSection>
@@ -1852,10 +2025,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={handleCancelOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
-            <div className="text-[13px] font-medium text-foreground">
+            <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_overwrite_title')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.import_overwrite_confirm', { name: pendingImport.skill.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
@@ -1863,7 +2036,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelOverwrite}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1871,7 +2044,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmOverwrite()}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}
               </DsButton>
@@ -1885,10 +2058,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onCancel={handleCancelZipOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
-            <div className="text-[13px] font-medium text-foreground">
+            <div className="text-ui font-medium text-foreground">
               {t('skills:management.import_zip_overwrite_title')}
             </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {t('skills:management.import_zip_overwrite_confirm', { name: pendingZipImport.name })}
             </p>
             <div className="flex items-center justify-end gap-2">
@@ -1896,7 +2069,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelZipOverwrite}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1904,7 +2077,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmZipOverwrite()}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}
               </DsButton>
@@ -1918,7 +2091,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
           sidebar={
             // 本页无页内工具，抽屉只承载统一应用导航；
@@ -1961,7 +2134,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 桌面端布局 ==========
   return (
     <LayoutGroup>
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
         {/* 桌面端编辑器：页面容器内的内联全区编辑视图（absolute 于本页面内，不逃出 OS 窗口）。

@@ -80,7 +80,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             <WarningCircle size={40} className="text-destructive/60" />
             <span className="text-sm text-destructive text-center max-w-md">{createError}</span>
             {onClose && (
-              <DsButton variant="ghost" onClick={onClose}>
+              <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
                 {t('common:actions.close')}
               </DsButton>
             )}
@@ -113,7 +113,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           {t('exam_sheet:errors.noSession')}
         </span>
         {onCloseError && (
-          <DsButton variant="ghost" onClick={onCloseError}>
+          <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCloseError}>
             {t('common:actions.close')}
           </DsButton>
         )}

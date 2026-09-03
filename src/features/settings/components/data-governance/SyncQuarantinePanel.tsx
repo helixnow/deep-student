@@ -178,7 +178,7 @@ export const SyncQuarantinePanel: React.FC<{
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <ShieldWarning size={16} className="text-amber-500" />
+            <ShieldWarning size={16} className="text-warning" />
             {t("data:governance.quarantine_title", { count: rows.length })}
           </CardTitle>
           <CardDescription>
@@ -205,7 +205,7 @@ export const SyncQuarantinePanel: React.FC<{
                   }
                 }}
                 disabled={isBatchRunning || loading}
-                className="h-8 text-xs"
+                className="h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
               >
                 {isBatchRunning ? (
                   <CircleNotch size={14} className="mr-1 animate-spin" />
@@ -233,8 +233,8 @@ export const SyncQuarantinePanel: React.FC<{
                 }}
                 disabled={isBatchRunning || loading}
                 className={isSmallScreen && confirmingBatch === "discardAll"
-                  ? "h-8 text-xs"
-                  : "h-8 text-xs text-destructive hover:text-destructive"}
+                  ? "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                  : "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-destructive hover:text-destructive"}
               >
                 <Trash size={14} className="mr-1" />
                 {isSmallScreen && confirmingBatch === "discardAll"
@@ -248,7 +248,7 @@ export const SyncQuarantinePanel: React.FC<{
             size="sm"
             onClick={refresh}
             disabled={loading}
-            className="h-8"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {loading ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -262,7 +262,7 @@ export const SyncQuarantinePanel: React.FC<{
       <CardContent className="space-y-3">
         {rows.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-            <CheckCircle size={16} className="text-emerald-500" />
+            <CheckCircle size={16} className="text-success" />
             {t("data:governance.quarantine_empty")}
           </div>
         )}
@@ -296,7 +296,7 @@ export const SyncQuarantinePanel: React.FC<{
                     size="sm"
                     onClick={() => handleRetry(row)}
                     disabled={busy || loading}
-                    className="h-7 text-xs"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {busy ? (
                       <CircleNotch size={13} className="mr-1 animate-spin" />
@@ -310,7 +310,7 @@ export const SyncQuarantinePanel: React.FC<{
                     size="sm"
                     onClick={() => handleDiscard(row)}
                     disabled={busy || loading}
-                    className="h-7 text-xs text-destructive hover:text-destructive"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-destructive hover:text-destructive"
                   >
                     <Trash size={13} className="mr-1" />
                     {t("data:governance.quarantine_discard")}
@@ -322,7 +322,7 @@ export const SyncQuarantinePanel: React.FC<{
               </div>
               {row.payload_json && (
                 <details className="text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">
+                  <summary className="cursor-pointer text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center">
                     {t("data:governance.quarantine_payload_label")}
                   </summary>
                   <CustomScrollArea orientation="both" className="mt-2 h-48 rounded-md bg-muted/40" viewportClassName="p-2">

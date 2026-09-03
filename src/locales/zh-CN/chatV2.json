@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "没有可复制的 AI 回复",
+    "continueBusy": "正在回复中，请稍候",
+    "continueEmpty": "没有可继续的 AI 回复"
+  },
   "error": {
     "loadFailed": "加载失败",
     "retry": "重试",
@@ -139,7 +144,8 @@
       "retryDeletingSubsequent": "因重试已移除后续 {{count}} 条消息",
       "retryConfirmAction": "继续重试",
       "saveAsNote": "保存为笔记",
-      "saveAsNoteSuccess": "已保存为笔记：{{title}}",
+      "saveAsNoteSuccessInFolder": "已保存为笔记：{{title}}（已存入所选目录）",
+      "saveAsNoteSuccessAtRoot": "已保存为笔记：{{title}}（位于资源库根目录）",
       "saveAsNoteFailed": "保存笔记失败",
       "exportMarkdown": "导出为 Markdown",
       "exportMarkdownSuccess": "已导出 Markdown 文件",
@@ -150,6 +156,7 @@
       "branchSuccess": "已创建分支会话",
       "branchFailed": "分支失败"
     },
+    "branchedFromHere": "已从此处分支",
     "touchBar": {
       "ariaLabel": "消息快捷操作"
     },
@@ -217,11 +224,12 @@
     "attachmentsUploading": "附件上传中，请稍候",
     "attachmentNotReady": "附件未就绪：{{name}}（{{modes}}）",
     "attachmentProcessing": "附件处理中：{{name}}",
+    "sendBlockedEmpty": "输入内容或添加附件后即可发送",
+    "sendBlockedBusy": "正在回复中，完成后可发送",
     "processingIndicator": "附件处理中...",
     "processingIndicatorPartial": "部分模式未就绪",
     "completedMissingModes": "完成（{{modes}}未就绪）",
     "modesNotReady": "未就绪：{{modes}}",
-    "nonMultimodalImageFallback": "当前模型不支持图片输入，已自动将 {{count}} 个附件切换为文本/OCR 模式。可切换到多模态模型后再启用图片模式。",
     "uploadStage": {
       "reading": "读取文件",
       "uploading": "上传中",
@@ -229,9 +237,6 @@
     },
     "modeSeparator": "、",
     "runtimeModelSwitchCurrent": "{{label}}，当前：{{current}}",
-    "thinkingEnabled": "推理模式已开启",
-    "thinkingDisabled": "点击开启推理模式",
-    "toggleThinking": "切换推理模式",
     "thinking": "推理模式",
     "thinkingDepthMenu": "选择推理深度",
     "thinkingDepthTitle": "推理强度",
@@ -242,6 +247,7 @@
     "thinkingUnsupported": "不支持推理",
     "thinkingUnsupportedDescription": "该模型不支持推理",
     "thinkingDepth": {
+      "minimal": "最低",
       "low": "低",
       "medium": "中",
       "high": "高",
@@ -258,37 +264,6 @@
     "runtimeModelOtherProvider": "其他",
     "runtimeModelNoResults": "未找到匹配模型",
     "chooseRuntimeModel": "选择模型",
-    "thinkingDepthExpensive": "更慢",
-    "ankiTools": "Anki 制卡",
-    "menuGroup": {
-      "context": "上下文",
-      "aiSettings": "AI 增强",
-      "modes": "模式",
-      "tools": "工具"
-    },
-    "imageGen": {
-      "title": "生成图片",
-      "subtitle": "通过内置工具生成图片，结果会保存到 VFS。",
-      "configureModel": "设置模型",
-      "placeholder": "例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖",
-      "promptRequired": "请输入生图描述",
-      "model": "模型",
-      "autoModel": "自动选择",
-      "openAICompatible": "OpenAI 兼容 Image API",
-      "loadingModels": "正在加载生图模型...",
-      "noModelTitle": "未配置生图模型",
-      "noModelDescription": "请先在模型设置中标记并选择一个支持 /images/generations 的模型。",
-      "aspectRatio": "比例",
-      "quality": "质量",
-      "purposes": {
-        "knowledgeCard": "知识卡片插图",
-        "quizImage": "题目配图",
-        "conceptDiagram": "概念图",
-        "coverImage": "封面图"
-      },
-      "generate": "生成"
-    },
-    "nonMultimodalImageFallbackUnavailable": "当前模型不支持图片输入，且有 {{count}} 个附件尚未准备好可用的文本/OCR 模式。请切换到多模态模型，或等待 OCR 完成后重试。",
     "stage": {
       "textExtraction": "提取文本",
       "pageRendering": "渲染",
@@ -303,7 +278,6 @@
       "pdfProcessing": "PDF 处理中",
       "imageProcessing": "图片处理中"
     },
-    "toggleModelPanel": "切换模型选择面板",
     "voiceInput": {
       "button": "语音输入",
       "start": "开始语音输入",
@@ -373,7 +347,6 @@
       "compactionSkipped": "本次未压缩",
       "compactionFailed": "压缩失败，请重试"
     },
-    "pasteNotReady": "正在初始化，请稍后再试",
     "retryStarted": "已重新启动处理",
     "retryFailed": "重试失败: {{error}}",
     "mediaProcessingFailed": "{{type}}处理失败",
@@ -753,6 +726,12 @@
       "retryFailedSegments": "重试失败分段",
       "synced": "已同步",
       "syncToAnki": "同步到 Anki",
+      "occlusion": {
+        "badge": "遮挡草稿预览",
+        "draftHint": "仅供应用内预览，当前不会导出为可复习的 Anki 图像遮挡卡",
+        "imageAlt": "图像遮挡卡片",
+        "imageUnavailable": "遮挡图片无法加载，已保留文字内容"
+      },
       "syncStatus": {
         "pending": "待同步",
         "syncing": "同步中...",
@@ -807,6 +786,22 @@
           "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
           "recovered": "自动生成未完成，已通过备用方式补齐 {{count}} 张可用卡片。",
           "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
+        },
+        "media": {
+          "label": "媒体",
+          "summary": "媒体：导入 {{imported}}/{{declared}}，跳过 {{skipped}}",
+          "skipReasonLine": "{{reason}} × {{count}}",
+          "filenamesSample": "示例：{{names}}",
+          "reasons": {
+            "mediaImportDisabled": "媒体导入已关闭",
+            "manifestUnparsed": "媒体清单无法解析",
+            "mediaDirUnavailable": "媒体目录不可用",
+            "unsafeFilename": "文件名不安全，已拦截",
+            "entryMissing": "包内缺少对应条目",
+            "entryOversized": "文件超出大小限制",
+            "ioError": "写入失败（IO 错误）",
+            "orphanEntry": "孤立条目（清单未声明）"
+          }
         }
       },
       "errors": {
@@ -841,6 +836,9 @@
       },
       "warnings": {
         "generationRecovered": "自动生成出现问题，已通过备用方式提供 {{count}} 张可用卡片。",
+        "maxCardsClamped": "请求生成 {{requested}} 张卡片，已按单次上限调整为 {{applied}} 张；如需更多卡片，请分批生成。",
+        "preferenceMemoryPersistFailed": "本次制卡偏好未能保存，但卡片生成与编辑结果不受影响。",
+        "preferenceMemoryStoreInvalid": "历史制卡偏好数据无效，已忽略并继续本次生成。",
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",
@@ -1173,6 +1171,7 @@
     "renameSession": "重命名线程",
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
+    "openInNewWindow": "在新窗口打开",
     "pinGroup": "置顶分组",
     "unpinGroup": "取消置顶分组",
     "archiveSession": "归档线程",
@@ -1235,6 +1234,10 @@
   "pdfRef": {
     "openFailedTitle": "无法打开 PDF 引用",
     "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整"
+  },
+  "contextRef": {
+    "previewFailedTitle": "无法打开引用预览",
+    "previewFailedDesc": "引用的资源不存在或已被移除"
   },
   "modelMention": {
     "suggestions": "模型建议",
@@ -1615,7 +1618,11 @@
     "makeCardsFailed": "制卡启动失败",
     "makeCardsDeckName": "划词制卡",
     "makeCardsRequirements": "根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。",
-    "openTaskDashboard": "打开任务台"
+    "openTaskDashboard": "打开任务台",
+    "saveAsNote": "保存为笔记",
+    "saveAsNotePickFolder": "选择保存目录",
+    "saveAsNoteDefaultTitle": "未命名笔记",
+    "openNote": "打开笔记"
   },
   "explainPopover": {
     "thinking": "思考中...",

@@ -1,0 +1,2 @@
+{"front": "三色标记法在垃圾回收中的作用是什么？", "back": "TODO"}
+<<<ANKI_CARD_JSON_END>>>

@@ -78,6 +78,18 @@ describe('StatisticsScreen', () => {
     expect(mocks.getStats).toHaveBeenCalledTimes(2);
   });
 
+  it('places scheduler settings after the statistics panels', async () => {
+    mocks.getStats.mockResolvedValueOnce(firstStats);
+
+    render(<StatisticsScreen />);
+    const statistics = await screen.findByTestId('fsrs-statistics');
+    const settings = screen.getByTestId('fsrs-scheduler-settings');
+
+    expect(
+      statistics.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('shows backend errors and retries successfully', async () => {
     mocks.getStats
       .mockRejectedValueOnce(new Error('stats backend is offline'))
@@ -90,6 +102,17 @@ describe('StatisticsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     expect(await screen.findByTestId('fsrs-statistics')).toBeInTheDocument();
     expect(mocks.getStats).toHaveBeenCalledTimes(2);
+  });
+
+  // 2026-08 修复回归：调度设置读写独立的 scheduler_config 命令，
+  // 统计加载失败时必须保持可用（此前整块 UI 被 stats 分支一起拖垮）。
+  it('keeps scheduler settings reachable when statistics loading fails', async () => {
+    mocks.getStats.mockRejectedValueOnce(new Error('stats backend is offline'));
+
+    render(<StatisticsScreen />);
+    await screen.findByRole('alert');
+
+    expect(screen.getByTestId('fsrs-scheduler-settings')).toBeInTheDocument();
   });
 
   it('refreshes when the FSRS statistics domain event is dispatched', async () => {

@@ -4,6 +4,13 @@ import { Check } from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 import './Checkbox.css';
 
+/**
+ * coarse 触控热区已在基元层保证：Checkbox.css 对
+ * `[data-radix-checkbox-root]` 在 @media (pointer: coarse) 下用居中
+ * 透明 ::after 撑出 ≥44×44 命中区（视觉仍 16×16，与 Switch.css 同款，
+ * 属 coarseHit.ts 所述伪元素逃生舱的基元级下沉）。
+ * 调用点【不要】再手抄 before:-inset-3.5 / !min-h-11 之类散点补丁。
+ */
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>

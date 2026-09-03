@@ -1230,7 +1230,7 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
         // 🔧 性能优化：使用 chunkBuffer 批量更新
         // 对于流式内容块（content, thinking），使用缓冲器减少 Store 更新频率
         // ⚠️ 热路径：此分支每个 token 级 chunk 都会执行，禁止无条件日志。
-        if ((type === 'content' || type === 'thinking') && chunk) {
+        if ((type === 'content' || type === 'thinking' || type === 'generative_ui') && chunk) {
           chunkBuffer.setStore(store);
           chunkBuffer.push(effectiveBlockId, chunk, store.sessionId);
 

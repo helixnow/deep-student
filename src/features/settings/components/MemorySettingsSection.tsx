@@ -209,7 +209,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
           <div className="flex flex-col items-start justify-center py-6 gap-2">
             <WarningCircle size={24} className="text-destructive/60" />
             <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
-            <DsButton variant="outline" size="sm" onClick={loadData}>
+            <DsButton variant="outline" size="sm" onClick={loadData} className="[@media(pointer:coarse)]:!min-h-11">
               <ArrowClockwise size={14} />
               {t('common:retry')}
             </DsButton>
@@ -271,7 +271,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 : folders.map((folder) => ({ value: folder.id, label: folder.path }))
               }
               variant="outline"
-              className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"
               width={160}
             />
 
@@ -280,6 +280,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               size="sm"
               onClick={() => setShowCreateInput(!showCreateInput)}
               disabled={saving}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Plus size={14} className="mr-1" />
               {t('settings:memory.createFolder')}
@@ -295,7 +296,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder={t('settings:memory.defaultFolderName')}
-                className="h-8 flex-1"
+                className="h-8 flex-1 [@media(pointer:coarse)]:h-11"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleCreateFolder();
@@ -307,6 +308,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 variant="primary"
                 onClick={handleCreateFolder}
                 disabled={saving || !newFolderName.trim()}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {saving ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -341,7 +343,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               { value: '经历', label: t('settings:memory.categoryExperience') },
             ]}
             variant="outline"
-            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"
             width={120}
           />
         </SettingRow>
@@ -368,7 +370,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               { value: 'aggressive', label: t('settings:memory.freqAggressive') },
             ]}
             variant="outline"
-            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"
             width={120}
           />
         </SettingRow>

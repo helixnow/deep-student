@@ -345,8 +345,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           variant="ghost"
           size="icon"
           iconOnly
-          // 视觉缩为 36px 避免盖住卡片内容，热区经伪元素只向卡片外侧（上/右）扩到 44px
-          className="absolute right-0 top-0 z-10 !h-9 !w-9 !p-2 hover:bg-[var(--interactive-hover)] before:absolute before:content-[''] before:-top-2 before:-right-2 before:bottom-0 before:left-0"
+          // 视觉缩为 36px 避免盖住卡片内容，热区经伪元素四周各扩 8px 到 52px；即使卡外部分被裁剪，卡内命中仍 ≥44px
+          className="absolute right-0 top-0 z-10 !h-9 !w-9 !p-2 hover:bg-[var(--interactive-hover)] before:absolute before:content-[''] before:-inset-2"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
           aria-label={t('common:more')}
         >
@@ -373,12 +373,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             selectNameOnly={item.type !== 'folder'}
             autoSize
             className="mx-auto text-center"
-            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框相应调高）
-            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!text-[16px]"
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框调高到 44px 触达）
+            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-xs !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-[16px]"
           />
         ) : (
           <span className={cn(
-            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-[11px] leading-tight font-normal line-clamp-2 break-words',
+            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-xs leading-tight font-normal line-clamp-2 break-words',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
             {item.name}

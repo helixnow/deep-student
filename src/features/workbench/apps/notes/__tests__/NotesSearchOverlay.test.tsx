@@ -113,7 +113,9 @@ describe('NotesSearchOverlay', () => {
       target: { value: 'chem' },
     });
     expect(screen.queryByText('Recently opened')).toBeNull();
-    expect(screen.getByRole('option', { name: /Chemistry/ })).toBeInTheDocument();
+    // 命中词高亮用 <mark> 拆分标题，jsdom 的可访问名计算会在元素边界补空格
+    //（"Chem istry"），因此按前缀匹配而非完整单词
+    expect(screen.getByRole('option', { name: /Chem/ })).toBeInTheDocument();
   });
 
   it('searches full text through DSTU, renders a safe snippet, and filters unsupported results', async () => {
@@ -341,6 +343,167 @@ describe('NotesSearchOverlay', () => {
     expect(screen.getByRole('combobox')).toHaveValue('formula');
   });
 
+  it('pages quick-open results past the visible cap with the load-more button', () => {
+    const many = Array.from({ length: 5 }, (_, index) => node({
+      id: `note_${index}`,
+      sourceId: `note_${index}`,
+      path: `/course/note_${index}`,
+      name: `Algebra ${index}`,
+    }));
+
+    render(
+      <NotesSearchOverlay
+        open
+        maxResults={3}
+        resources={many}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    // 页脚以「N+」标注还有未展示的匹配
+    expect(screen.getByText('3+ 条结果')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more results' }));
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull();
+    expect(screen.getByText('5 条结果')).toBeInTheDocument();
+  });
+
+  it('filters quick-open results with the path: operator', () => {
+    const algebra = node({ name: 'Algebra', path: '/course/note_1' });
+    const biology = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      path: '/science/note_2',
+      name: 'Biology',
+    });
+
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[algebra, biology]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search notes' }), {
+      target: { value: 'path:science' },
+    });
+    expect(screen.getByRole('option', { name: /Biology/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Algebra/ })).toBeNull();
+    // 操作符以完整 chips 展示，可一键移除
+    expect(screen.getByText('path:science')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /移除标签 path:science/ }));
+    expect(screen.getByRole('combobox', { name: 'Search notes' })).toHaveValue('');
+  });
+
+  it('filters quick-open results with generic key:value against metadata.props', () => {
+    const done = node({
+      name: 'Done note',
+      metadata: { props: { Status: 'Done' } },
+    });
+    const draft = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      path: '/course/note_2',
+      name: 'Draft note',
+      metadata: { props: { Status: 'Draft' } },
+    });
+    const bare = node({
+      id: 'note_3',
+      sourceId: 'note_3',
+      path: '/course/note_3',
+      name: 'Bare note',
+    });
+
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[done, draft, bare]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search notes' }), {
+      target: { value: 'status:done' },
+    });
+    expect(screen.getByRole('option', { name: /Done note/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Draft note/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /Bare note/ })).toBeNull();
+    expect(screen.getByText('status:done')).toBeInTheDocument();
+  });
+
+  it('pushes key:value filters into full-text search before backend pagination', async () => {
+    const done = node({
+      name: 'Done note',
+      metadata: { props: { Status: 'Done' } },
+    });
+    const draft = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      name: 'Draft note',
+      metadata: { props: { Status: 'Draft' } },
+    });
+    search.mockResolvedValue({ ok: true, value: [done, draft] });
+
+    render(
+      <NotesSearchOverlay
+        open
+        initialMode="full-text"
+        initialQuery="formula status:done"
+        searchDebounceMs={0}
+        resources={[]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(search).toHaveBeenCalledWith(
+      'formula',
+      expect.objectContaining({
+        propFilters: [{ key: 'status', value: 'done' }],
+      }),
+    ));
+    expect(await screen.findByRole('option', { name: /Done note/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Draft note/ })).toBeNull();
+  });
+
+  it('loads more full-text results without clearing the current page', async () => {
+    const batch = Array.from({ length: 30 }, (_, index) => node({
+      id: `note_${index}`,
+      sourceId: `note_${index}`,
+      path: `/course/note_${index}`,
+      name: `Formula ${index}`,
+    }));
+    search.mockResolvedValue({ ok: true, value: batch });
+
+    render(
+      <NotesSearchOverlay
+        open
+        initialMode="full-text"
+        initialQuery="formula"
+        searchDebounceMs={0}
+        maxResults={3}
+        resources={[]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findAllByRole('option')).toHaveLength(3);
+    const loadMore = screen.getByRole('button', { name: 'Load more results' });
+    fireEvent.click(loadMore);
+
+    // 加载期间旧结果保留（不闪空），随后扩展到下一页
+    expect(screen.getAllByRole('option').length).toBeGreaterThanOrEqual(3);
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(6));
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
   it('only exposes a combobox popup relationship when its result list is rendered', async () => {
     const { rerender } = render(
       <NotesSearchOverlay
@@ -368,5 +531,43 @@ describe('NotesSearchOverlay', () => {
 
     await waitFor(() => expect(input).toHaveAttribute('aria-expanded', 'true'));
     expect(input).toHaveAttribute('aria-controls');
+  });
+
+  it('makes result rows draggable with the workbench resource payload', () => {
+    const onClose = vi.fn();
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[node()]}
+        onOpenResource={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    const option = screen.getByRole('option', { name: /Algebra/ });
+    expect(option).toHaveAttribute('draggable', 'true');
+
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      setData: (key: string, value: string) => stored.set(key, value),
+      effectAllowed: 'none',
+      dropEffect: 'none',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+
+    expect(JSON.parse(stored.get('application/x-deepstudent-resource') ?? 'null')).toEqual({
+      resourceId: 'note_1',
+      resourceType: 'note',
+      title: 'Algebra',
+    });
+    expect(stored.get('text/plain')).toBe('Algebra');
+
+    // 拖拽被取消（dropEffect=none）：面板保持打开
+    fireEvent.dragEnd(option, { dataTransfer: { dropEffect: 'none' } });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // 落点接收后（dropEffect=copy）：资源已在别处打开，面板自动关闭
+    fireEvent.dragEnd(option, { dataTransfer: { dropEffect: 'copy' } });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

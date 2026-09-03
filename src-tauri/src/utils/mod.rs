@@ -2,6 +2,7 @@ pub mod chat_helpers;
 pub mod chat_query;
 pub mod chat_timing;
 pub mod graph_prefs;
+pub mod model_special_tokens;
 pub mod token_budget;
 pub mod unicode;
 

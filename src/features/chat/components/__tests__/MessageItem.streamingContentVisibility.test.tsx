@@ -17,6 +17,7 @@ vi.mock('react-i18next', async () => {
     },
     useTranslation: () => ({
       t: (_key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? _key,
+      i18n: { resolvedLanguage: 'en', language: 'en' },
     }),
   };
 });

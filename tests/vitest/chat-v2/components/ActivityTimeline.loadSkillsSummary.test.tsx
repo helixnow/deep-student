@@ -36,6 +36,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/features/chat/utils/toolDisplayName', () => ({
   getReadableToolName: (name: string) => name,
+  getExternalToolProviderName: () => undefined,
 }));
 
 function createToolBlock(overrides?: Partial<Block>): Block {

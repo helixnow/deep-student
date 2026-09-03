@@ -3,16 +3,33 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DstuNode } from '@/dstu';
 
-const { getContent, search, watch, fetchBacklinksFromBackend } = vi.hoisted(() => ({
+const {
+  getContent, search, watch, get, update, fetchBacklinksFromBackend,
+  publishNotesFindQuery, publishNotesHeadingTarget,
+} = vi.hoisted(() => ({
   getContent: vi.fn(),
   search: vi.fn(),
   watch: vi.fn(),
+  get: vi.fn(),
+  update: vi.fn(),
   fetchBacklinksFromBackend: vi.fn(),
+  publishNotesFindQuery: vi.fn(),
+  publishNotesHeadingTarget: vi.fn(),
 }));
 
 vi.mock('@/dstu', () => ({
-  dstu: { getContent, search, watch },
+  dstu: { getContent, search, watch, get, update },
 }));
+
+// 定位桥：断言点击行后发布 find/heading 目标（真实实现是发布并保留的全局 map）
+vi.mock('@/features/notes/findQueryBridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/notes/findQueryBridge')>();
+  return { ...actual, publishNotesFindQuery };
+});
+vi.mock('@/features/notes/headingTargetBridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/notes/headingTargetBridge')>();
+  return { ...actual, publishNotesHeadingTarget };
+});
 
 // 后端链接图命令默认不可用 → 面板走客户端扫描降级路径（原有断言不变）。
 // 单独的用例把它 mock 成成功返回，验证后端优先路径。
@@ -23,11 +40,16 @@ vi.mock('../backlinksBackend', async (importOriginal) => {
 
 import {
   BACKLINK_CANDIDATE_LIMIT,
+  buildMentionWikiLink,
   extractContextSnippet,
   NotesBacklinksPanel,
   UNLINKED_MENTION_CANDIDATE_LIMIT,
   useRequestedPanelTab,
 } from '../NotesBacklinksPanel';
+import {
+  __resetContentDirtyRegistry,
+  registerContentDirtyChecker,
+} from '../../content/contentDirtyRegistry';
 
 /** 每次完整加载的 search 次数：2 目标 × 8 变体 + note:// + 未链接提及标题查询 */
 const SEARCHES_PER_LOAD = 18;
@@ -93,8 +115,13 @@ describe('NotesBacklinksPanel', () => {
     getContent.mockReset();
     search.mockReset();
     watch.mockReset();
+    get.mockReset();
+    update.mockReset();
+    publishNotesFindQuery.mockReset();
+    publishNotesHeadingTarget.mockReset();
     fetchBacklinksFromBackend.mockReset();
     fetchBacklinksFromBackend.mockRejectedValue(new Error('command unavailable'));
+    __resetContentDirtyRegistry();
     localStorage.clear();
     getContent.mockImplementation(async (path: string) => ({ ok: true, value: contentByPath[path] }));
     search.mockImplementation(async (query: string) => ({
@@ -106,10 +133,16 @@ describe('NotesBacklinksPanel', () => {
           : [],
     }));
     watch.mockImplementation(() => () => {});
+    get.mockImplementation(async (path: string) => {
+      const node = notes.find((candidate) => candidate.path === path || path === `/${candidate.id}`);
+      return node ? { ok: true, value: node } : { ok: false, error: new Error('not found') };
+    });
+    update.mockResolvedValue({ ok: true, value: notes[0] });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    __resetContentDirtyRegistry();
   });
 
   it('re-applies the same requested tab when its requestId changes', async () => {
@@ -133,6 +166,36 @@ describe('NotesBacklinksPanel', () => {
 
     rerender(<Harness requestId={2} />);
     await waitFor(() => expect(screen.getByLabelText('active tab')).toHaveTextContent('properties'));
+  });
+
+  it('renders a graph tab only when graphContent is provided and switches into it', async () => {
+    const { rerender } = renderPanel({
+      propertiesContent: <div>props body</div>,
+      graphContent: <div data-testid="graph-body">graph body</div>,
+    });
+
+    const graphTab = screen.getByRole('tab', { name: '图谱' });
+    expect(graphTab).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(graphTab);
+    expect(screen.getByRole('tab', { name: '图谱' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('graph-body')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tab', { name: '链接' })).toBeInTheDocument());
+
+    // 不提供 graphContent 时页签消失，且已选中的 graph 回退到链接页
+    rerender(
+      <NotesBacklinksPanel
+        open
+        activeResource={notes[0]}
+        notes={notes}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+        propertiesContent={<div>props body</div>}
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: '图谱' })).toBeNull();
+    await waitFor(() => (
+      expect(screen.getByRole('tab', { name: '链接' })).toHaveAttribute('aria-selected', 'true')
+    ));
   });
 
   it('loads only the active note and narrow backlink candidates', async () => {
@@ -194,9 +257,15 @@ describe('NotesBacklinksPanel', () => {
     expect(screen.getByText('Gamma alias')).toBeInTheDocument();
     expect(screen.getByText('[[missing]]')).toBeInTheDocument();
     expect(screen.getByText('反向链接')).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: /出链/ }))
-      .getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
-    expect(screen.queryByText('Alpha alias')).toBeNull();
+    const outgoing = screen.getByRole('region', { name: /出链/ });
+    expect(within(outgoing).getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
+    // 'Alpha alias' 是 Beta→Alpha 入链使用的别名：入链区域的上下文片段会渲染它
+    // （见下方 shows inbound context snippets 用例），但不应泄漏进出链区域。
+    expect(within(outgoing).queryByText('Alpha alias')).toBeNull();
+    // 反链行标题永远是来源笔记名；来源里写的别名只出现在上下文摘录的高亮里
+    const incoming = screen.getByRole('region', { name: /反向链接/ });
+    expect(within(incoming).getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
+    expect(within(incoming).queryByRole('button', { name: /Alpha alias/ })).toBeNull();
   });
 
   it('prefers the backend note_links graph and skips the candidate search scan', async () => {
@@ -470,7 +539,7 @@ describe('NotesBacklinksPanel', () => {
     expect(localStorage.getItem('notes-backlinks-panel:section-collapse')).toContain('"outgoing":true');
   });
 
-  it('lists unlinked mentions, filters linked sources, and opens via the convert entry', async () => {
+  function mockDeltaMentionLibrary(deltaContent = 'Talks about Alpha in plain text.'): void {
     search.mockImplementation(async (query: string) => ({
       ok: true,
       value: query === 'Alpha'
@@ -481,10 +550,12 @@ describe('NotesBacklinksPanel', () => {
     }));
     getContent.mockImplementation(async (path: string) => ({
       ok: true,
-      value: path === notes[3].path
-        ? 'Talks about Alpha in plain text.'
-        : contentByPath[path],
+      value: path === notes[3].path ? deltaContent : contentByPath[path],
     }));
+  }
+
+  it('lists unlinked mentions, filters linked sources, and positions the opened source note', async () => {
+    mockDeltaMentionLibrary();
     const { onOpenResource } = renderPanel();
 
     const mentions = await screen.findByRole('region', { name: /未链接提及/ });
@@ -498,8 +569,111 @@ describe('NotesBacklinksPanel', () => {
     expect(within(mentions).queryByRole('button', { name: '打开 Beta' })).toBeNull();
     expect(within(mentions).getByText('Alpha')).toHaveClass('notes-backlinks-panel-context-mark');
 
-    fireEvent.click(within(mentions).getByRole('button', { name: '在「Delta」中转为链接' }));
+    fireEvent.click(within(mentions).getByRole('button', { name: '打开 Delta' }));
     await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[3]));
+    // 打开来源后通过查找桥定位到提及文本
+    expect(publishNotesFindQuery).toHaveBeenCalledWith({ noteId: 'note_delta', query: 'Alpha' });
+  });
+
+  it('converts an unlinked mention into a real wiki link with an OCC write-back', async () => {
+    mockDeltaMentionLibrary();
+    const { onOpenResource } = renderPanel();
+
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    fireEvent.click(await within(mentions).findByRole('button', { name: '在「Delta」中转为链接' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    // 提及被替换为 [[..]]，写回携带来源节点的乐观锁基线
+    expect(update).toHaveBeenCalledWith(
+      notes[3].path,
+      'Talks about [[Alpha]] in plain text.',
+      'note',
+      { expectedUpdatedAtMs: notes[3].updatedAt },
+    );
+    // 转换是就地写回，不打开来源笔记
+    expect(onOpenResource).not.toHaveBeenCalled();
+  });
+
+  it('refuses to convert a mention while the source note has unsaved changes', async () => {
+    mockDeltaMentionLibrary();
+    const unregister = registerContentDirtyChecker('note', 'note_delta', () => true);
+    renderPanel();
+
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    fireEvent.click(await within(mentions).findByRole('button', { name: '在「Delta」中转为链接' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('未保存');
+    expect(update).not.toHaveBeenCalled();
+    unregister();
+  });
+
+  it('surfaces an OCC conflict instead of silently overwriting concurrent edits', async () => {
+    mockDeltaMentionLibrary();
+    update.mockResolvedValue({
+      ok: false,
+      error: { toUserMessage: () => '检测到内容冲突' },
+    });
+    renderPanel();
+
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    fireEvent.click(await within(mentions).findByRole('button', { name: '在「Delta」中转为链接' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('检测到内容冲突');
+  });
+
+  it('re-locates the mention in fresh content before converting', async () => {
+    mockDeltaMentionLibrary();
+    renderPanel();
+    const mentions = await screen.findByRole('region', { name: /未链接提及/ });
+    await within(mentions).findByRole('button', { name: '在「Delta」中转为链接' });
+
+    // 面板快照之后内容被外部编辑：提及位置整体前移
+    getContent.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: path === notes[3].path ? 'About Alpha now.' : contentByPath[path],
+    }));
+    fireEvent.click(within(mentions).getByRole('button', { name: '在「Delta」中转为链接' }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith(
+      notes[3].path,
+      'About [[Alpha]] now.',
+      'note',
+      { expectedUpdatedAtMs: notes[3].updatedAt },
+    ));
+  });
+
+  it('positions an opened backlink source via the find-query bridge', async () => {
+    renderPanel();
+    const incoming = await screen.findByRole('region', { name: /反向链接/ });
+
+    fireEvent.click(within(incoming).getByRole('button', { name: '打开 Beta' }));
+    // Beta 中的链接写作 [[Alpha|Alpha alias]]，编辑器里渲染为别名
+    await waitFor(() => expect(publishNotesFindQuery).toHaveBeenCalledWith({
+      noteId: 'note_beta',
+      query: 'Alpha alias',
+    }));
+  });
+
+  it('scrolls to the heading when opening an outgoing [[Note#Heading]] link', async () => {
+    getContent.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: path === notes[0].path ? 'See [[Beta#Intro]] for details.' : contentByPath[path],
+    }));
+    const { onOpenResource } = renderPanel();
+    const outgoing = await screen.findByRole('region', { name: /出链/ });
+
+    fireEvent.click(within(outgoing).getByRole('button', { name: '打开 Beta' }));
+    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[1]));
+    expect(publishNotesHeadingTarget).toHaveBeenCalledWith({ noteId: 'note_beta', heading: 'Intro' });
+    expect(publishNotesFindQuery).not.toHaveBeenCalled();
+  });
+
+  it('builds mention replacements that keep the original casing readable', () => {
+    expect(buildMentionWikiLink('Alpha', 'Alpha')).toBe('[[Alpha]]');
+    // 大小写不敏感命中：解析同样不区分大小写，原文显示保持不变
+    expect(buildMentionWikiLink('alpha', 'Alpha')).toBe('[[alpha]]');
+    // 防御分支：文本与标题实质不同时退化为别名形式
+    expect(buildMentionWikiLink('阿尔法', 'Alpha')).toBe('[[Alpha|阿尔法]]');
   });
 
   it('shows the empty mentions state when nothing mentions the active title', async () => {

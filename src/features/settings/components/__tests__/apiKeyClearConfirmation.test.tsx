@@ -149,7 +149,10 @@ describe('API key clearing confirmation', () => {
       />
     );
 
-    const input = screen.getByDisplayValue('sk-test');
+    // 已保存的密钥只保留在内存中（lastSavedKeyRef），输入框保持为空并显示
+    // “API Key 已配置”占位符，点击眼睛按钮才会临时回填显示。
+    const input = screen.getByPlaceholderText(/API Key 已配置/);
+    expect(input).toHaveValue('');
     const revealButton = screen.getByRole('button', { name: /显示 API 密钥/ });
 
     expect(input).toHaveClass('api-key-field__input');

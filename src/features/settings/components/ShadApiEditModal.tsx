@@ -997,7 +997,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         value={formData.name}
                         onChange={e => setFormData(prev => ({ ...prev, name: (e.target as HTMLInputElement).value }))}
                         placeholder={t('common:api_config_modal.config_name_placeholder')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                     </div>
                     <div className="space-y-2">
@@ -1010,7 +1010,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           value={formData.model}
                           onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
                           placeholder={t('common:api_config_modal.model_name_placeholder')}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                         <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
@@ -1055,7 +1055,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 });
                               }}
                               className={cn(
-                                '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center',
+                                '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center [@media(pointer:coarse)]:!min-h-11',
                                 isSelected
                                   ? 'border-primary bg-primary/10 text-foreground'
                                   : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1128,7 +1128,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={formData.baseUrl}
                             onChange={e => setFormData(prev => ({ ...prev, baseUrl: (e.target as HTMLInputElement).value }))}
                             placeholder={ADAPTER_DEFAULT_BASE_URL[formData.modelAdapter] ?? t('common:api_config_modal.base_url_placeholder')}
-                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
@@ -1140,7 +1140,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={formData.apiKey}
                             onChange={e => setFormData(prev => ({ ...prev, apiKey: (e.target as HTMLInputElement).value }))}
                             placeholder={t('common:api_config_modal.api_key_placeholder')}
-                            inputClassName="font-mono"
+                            className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11"
+                            inputClassName="font-mono [@media(pointer:coarse)]:!text-[16px]"
                             revealed={showApiKey}
                             canReveal={formData.apiKey.trim().length > 0}
                             onToggle={() => setShowApiKey(!showApiKey)}
@@ -1239,7 +1240,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={0}
                         max={2}
                         step={0.1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.temperature_hint')}
@@ -1266,7 +1267,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={1}
                         max={128000}
                         step={1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.max_tokens_hint')}
@@ -1306,7 +1307,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={1000000}
                       step={1}
                       placeholder={t('settings:api.modal.fields.max_tokens_limit_placeholder')}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                     />
                     <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.max_tokens_limit_hint')}
@@ -1342,7 +1343,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={2000000}
                       step={1024}
                       placeholder={t('settings:api.modal.fields.context_window_placeholder', { defaultValue: `${t('settings:api.modal.fields.context_window_auto_inferred')}: ${inferredCaps.contextWindow.toLocaleString()}` })}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                     />
                     <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.context_window_hint')}
@@ -1367,7 +1368,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, minP: Math.max(0, Math.min(num, 1)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                       </div>
                       <div className="space-y-2">
@@ -1385,7 +1386,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, topK: Math.max(0, Math.min(Math.round(num), 10000)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                       </div>
                     </div>
@@ -1452,7 +1453,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>}
                       </div>
@@ -1460,7 +1461,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.enable_thinking_hint')}</p>
                           </div>
                           <Switch
@@ -1471,7 +1472,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         </div>
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.reasoning.include_thoughts')}</Label>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.reasoning.include_thoughts')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.include_thoughts_hint')}</p>
                           </div>
                           <Switch
@@ -1500,7 +1501,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
                                 {t('settings:api.modal.mimo.enable_thinking', 'Thinking Mode')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1515,7 +1516,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </div>
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.mimo.preserve_reasoning', 'Preserve Reasoning')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1554,7 +1555,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           });
                         }}
                         placeholder={t('settings:api.modal.fields.repetition_penalty_placeholder', 'Qwen: >1.0, Doubao: >0')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.repetition_penalty_hint', 'Qwen/Doubao models: penalize repeated tokens')}
@@ -1567,7 +1568,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     <div className="pt-4 border-t border-border/40">
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                             {t('settings:api.modal.fields.reasoning_split', 'MiniMax Reasoning Split')}
                           </Label>
                           <p className="text-xs text-muted-foreground/70">
@@ -1586,7 +1587,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     <div className="space-y-6">
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.anthropic.title')}</Label>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.anthropic.title')}</Label>
                           <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.anthropic.description')}</p>
                         </div>
                         <Switch
@@ -1624,7 +1625,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                         <p className="text-2xs text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
                       </div>}
@@ -1636,7 +1637,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       {profileReasoningControl.kind === 'toggle-only' && (
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                               {t('settings:api.modal.reasoning.enable_thinking')}
                             </Label>
                             <p className="text-xs text-muted-foreground/70">
@@ -1679,13 +1680,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>}
                       </div>
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.google.include_thoughts_label')}</Label>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.google.include_thoughts_label')}</Label>
                           {isGeminiReasoningWithThoughts && (
                             <p className="text-xs text-muted-foreground">{t('settings:api.modal.google.auto_thinking_hint')}</p>
                           )}
@@ -1729,7 +1730,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.deepseek.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1807,7 +1808,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.qwen.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1853,7 +1854,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 });
                               }}
                               placeholder={t('settings:api.modal.qwen.thinking_budget_placeholder')}
-                              className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                              className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                             />
                           </div>}
                         </CardContent>
@@ -1971,7 +1972,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.zhipu.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2000,7 +2001,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.zhipu.preserve_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2031,7 +2032,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.reasoning.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2080,7 +2081,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           {isModernKimiThinkingModel && (
                             <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                               <div className="space-y-1">
-                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                   {t('settings:api.modal.reasoning.enable_thinking')}
                                 </Label>
                                 <p className="text-xs text-muted-foreground/70">
@@ -2123,7 +2124,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           {miniMaxModelMajor !== undefined && (
                             <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                               <div className="space-y-1">
-                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                   {t('settings:api.modal.reasoning.enable_thinking')}
                                 </Label>
                                 <p className="text-xs text-muted-foreground/70">
@@ -2139,7 +2140,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                                 {t('settings:api.modal.minimax.reasoning_split', 'Reasoning Split')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2178,7 +2179,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               variant="outline"
               onClick={() => void handleTestConnection()}
               disabled={connectionTest.state === 'testing'}
-              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {connectionTest.state === 'testing' ? (
                 <Lightning className="h-4 w-4 animate-pulse" />
@@ -2198,10 +2199,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
             </DsButton>
             <div className="flex-1" />
-            <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+            <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11">
               {t('common:actions.cancel')}
             </DsButton>
-            <DsButton type="submit" variant="primary" className="min-w-[100px]">
+            <DsButton type="submit" variant="primary" className="min-w-[100px] [@media(pointer:coarse)]:!min-h-11">
               {t('common:actions.save')}
             </DsButton>
           </div>

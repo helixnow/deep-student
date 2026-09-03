@@ -255,15 +255,15 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Badge variant="outline">{snapshots.length} 个快照</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleManualCapture}>
+          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleManualCapture}>
             <ArrowClockwise size={16} className="mr-1" />
             捕获状态
           </Button>
-          <Button size="sm" variant="outline" onClick={handleCopyLogs}>
+          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs}>
             <Copy size={16} className="mr-1" />
             复制全部
           </Button>
-          <Button size="sm" variant="destructive" onClick={handleClear}>
+          <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClear}>
             <Trash size={16} className="mr-1" />
             清空
           </Button>

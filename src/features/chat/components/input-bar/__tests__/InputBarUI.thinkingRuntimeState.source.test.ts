@@ -2,26 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+// ★ 拆分后：底部工具栏（推理运行时菜单 / 水位环 / 发送停止）在 ComposerToolbar.tsx，
+// InputBarUI.tsx 只保留壳体与编排。断言按各自源文件归位。
 describe('InputBarUI thinking runtime state visibility', () => {
   const inputBarSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
+  const toolbarSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerToolbar.tsx'),
+    'utf-8'
+  );
 
   it('renders the current thinking state as a minimal visible control, not only as tooltip text', () => {
-    expect(inputBarSource).toContain('data-testid="thinking-runtime-minimal-control"');
-    expect(inputBarSource).toContain('data-testid="thinking-runtime-state-label"');
-    expect(inputBarSource).toContain('{thinkingStateLabel}');
+    expect(toolbarSource).toContain('data-testid="thinking-runtime-minimal-control"');
+    expect(toolbarSource).toContain('data-testid="thinking-runtime-state-label"');
+    expect(toolbarSource).toContain('{thinkingStateLabel}');
   });
 
   it('keeps depth menu labels terse without slower suffix copy', () => {
     expect(inputBarSource).not.toContain('thinkingDepthExpensive');
+    expect(toolbarSource).not.toContain('thinkingDepthExpensive');
   });
 
   it('opens the depth menu instead of toggling directly when depth options exist', () => {
-    const menuBranchStart = inputBarSource.indexOf('{hasThinkingRuntimeMenu ? (');
-    const menuBranchEnd = inputBarSource.indexOf(') : (', menuBranchStart);
-    const menuBranch = inputBarSource.slice(menuBranchStart, menuBranchEnd);
+    const menuBranchStart = toolbarSource.indexOf('{hasThinkingRuntimeMenu ? (');
+    const menuBranchEnd = toolbarSource.indexOf(') : (', menuBranchStart);
+    const menuBranch = toolbarSource.slice(menuBranchStart, menuBranchEnd);
 
     expect(menuBranchStart).toBeGreaterThan(-1);
     expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
@@ -30,9 +37,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('renders reasoning depth as a slider with an off stop when thinking can be disabled', () => {
-    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
-    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
-    const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
+    const menuGroupStart = toolbarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = toolbarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
+    const menuGroup = toolbarSource.slice(menuGroupStart, menuGroupEnd);
 
     expect(menuGroupStart).toBeGreaterThan(-1);
     expect(menuGroupEnd).toBeGreaterThan(menuGroupStart);
@@ -46,9 +53,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('keeps a menu-item fallback without an off action for forced-thinking models', () => {
-    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
-    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
-    const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
+    const menuGroupStart = toolbarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = toolbarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
+    const menuGroup = toolbarSource.slice(menuGroupStart, menuGroupEnd);
 
     expect(menuGroup).toContain('thinkingCanDisable ? (');
     // 滑块必带"关闭"档；不可关闭推理的模型退回菜单列表且不渲染关闭项
@@ -60,10 +67,10 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('anchors the reasoning menu to the stable right edge while depth labels change', () => {
-    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
-    const contentStart = inputBarSource.indexOf('<AppMenuContent', triggerStart);
-    const contentEnd = inputBarSource.indexOf('>', contentStart);
-    const menuContent = inputBarSource.slice(contentStart, contentEnd);
+    const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const contentStart = toolbarSource.indexOf('<AppMenuContent', triggerStart);
+    const contentEnd = toolbarSource.indexOf('>', contentStart);
+    const menuContent = toolbarSource.slice(contentStart, contentEnd);
 
     expect(triggerStart).toBeGreaterThan(-1);
     expect(contentStart).toBeGreaterThan(triggerStart);
@@ -71,30 +78,30 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('uses the transitions-dev text state swap for changes in the trigger label', () => {
-    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
-    const triggerEnd = inputBarSource.indexOf('</button>', triggerStart);
-    const triggerSource = inputBarSource.slice(triggerStart, triggerEnd);
+    const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = toolbarSource.indexOf('</button>', triggerStart);
+    const triggerSource = toolbarSource.slice(triggerStart, triggerEnd);
 
     expect(triggerStart).toBeGreaterThan(-1);
     expect(triggerEnd).toBeGreaterThan(triggerStart);
-    expect(inputBarSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
-    expect(inputBarSource).toContain('function ResizingThinkingLabel');
+    expect(toolbarSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
+    expect(toolbarSource).toContain('function ResizingThinkingLabel');
     expect(triggerSource).toContain('<ResizingThinkingLabel');
     expect(triggerSource).toContain('text={thinkingRuntimeTriggerLabel}');
-    expect(inputBarSource).toContain("className=\"t-resize inline-block whitespace-nowrap\"");
-    expect(inputBarSource).toContain('style={labelWidth ? { width: labelWidth } : undefined}');
+    expect(toolbarSource).toContain("className=\"t-resize inline-block whitespace-nowrap\"");
+    expect(toolbarSource).toContain('style={labelWidth ? { width: labelWidth } : undefined}');
     expect(triggerSource).not.toContain('max-w-[5.75rem]');
   });
 
   it('adds the runtime model selector to the thinking runtime menu', () => {
-    const menuBranchStart = inputBarSource.indexOf('{hasThinkingRuntimeMenu ? (');
-    const menuBranchEnd = inputBarSource.indexOf('</AppMenuContent>', menuBranchStart);
-    const menuBranch = inputBarSource.slice(menuBranchStart, menuBranchEnd);
+    const menuBranchStart = toolbarSource.indexOf('{hasThinkingRuntimeMenu ? (');
+    const menuBranchEnd = toolbarSource.indexOf('</AppMenuContent>', menuBranchStart);
+    const menuBranch = toolbarSource.slice(menuBranchStart, menuBranchEnd);
 
     expect(menuBranchStart).toBeGreaterThan(-1);
     expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
-    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle')");
-    expect(inputBarSource).toContain('onOpenRuntimeModelPanel');
+    expect(toolbarSource).toContain("t('chatV2:inputBar.runtimeModelTitle')");
+    expect(toolbarSource).toContain('onOpenRuntimeModelPanel');
     expect(menuBranch).toContain('<AppMenuGroup label={runtimeModelTitle}>');
     expect(menuBranch).toContain('runtimeModelOptions.length > 0 ? (');
     expect(menuBranch).toContain('<AppMenuSub openOnClick>');
@@ -102,23 +109,21 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).toContain('<AppMenuSubContent');
     expect(menuBranch).toContain('runtimeModelSearchPlaceholder');
     expect(menuBranch).toContain('groupedRuntimeModelOptions.map');
-    expect(menuBranch).toContain("handleOpenRuntimeModelPanel('compare')");
+    expect(menuBranch).toContain("onOpenRuntimeModelPanel('compare')");
     expect(menuBranch).toContain('<AppMenuItem');
-    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
+    expect(toolbarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
     expect(menuBranch).toContain('onSelectRuntimeModel?.(model.id)');
     expect(menuBranch).toContain('runtimeCurrentModelId');
   });
 
   it('places attachment on the left and reasoning depth in the former right attachment slot', () => {
-    const leftStart = inputBarSource.indexOf('{/* 左侧按钮 - 窄屏时可横向滚动 */}');
-    const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
-    const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');
-    const leftToolbar = inputBarSource.slice(leftStart, rightStart);
-    const rightToolbar = inputBarSource.slice(rightStart, panelStart);
+    const leftStart = toolbarSource.indexOf('{/* 左侧按钮 - 窄屏时可横向滚动 */}');
+    const rightStart = toolbarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
+    const leftToolbar = toolbarSource.slice(leftStart, rightStart);
+    const rightToolbar = toolbarSource.slice(rightStart);
 
     expect(leftStart).toBeGreaterThan(-1);
     expect(rightStart).toBeGreaterThan(leftStart);
-    expect(panelStart).toBeGreaterThan(rightStart);
     expect(leftToolbar).toContain('<ComposerPlusMenu');
     expect(leftToolbar).not.toContain('data-testid="btn-toggle-model"');
     expect(leftToolbar).not.toContain('data-testid="thinking-runtime-control"');
@@ -130,11 +135,10 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('places the context window usage ring immediately before the thinking runtime control', () => {
-    const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
-    const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');
-    const rightToolbar = inputBarSource.slice(rightStart, panelStart);
+    const rightStart = toolbarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
+    const rightToolbar = toolbarSource.slice(rightStart);
 
-    expect(inputBarSource).toContain('data-testid="context-window-usage-control"');
+    expect(toolbarSource).toContain('data-testid="context-window-usage-control"');
     expect(rightToolbar).toContain('<ContextWindowUsageRing');
     expect(rightToolbar.indexOf('<ContextWindowUsageRing')).toBeLessThan(
       rightToolbar.indexOf('data-testid="thinking-runtime-control"')
@@ -142,9 +146,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('renders the context window usage meter as a plain rounded ring from 12 o clock clockwise', () => {
-    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
-    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
-    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
+    const ringSource = toolbarSource.slice(ringStart, ringEnd);
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
@@ -166,9 +170,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('uses tiered context usage colors at high-water thresholds', () => {
-    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
-    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
-    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
+    const ringSource = toolbarSource.slice(ringStart, ringEnd);
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
@@ -184,9 +188,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('keeps tooltip support without adding a hover state to the ring control', () => {
-    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
-    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
-    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
+    const ringSource = toolbarSource.slice(ringStart, ringEnd);
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
@@ -198,9 +202,9 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('uses the monochrome provider icon in the thinking runtime trigger', () => {
-    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
-    const triggerEnd = inputBarSource.indexOf('</button>', triggerStart);
-    const triggerSource = inputBarSource.slice(triggerStart, triggerEnd);
+    const triggerStart = toolbarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = toolbarSource.indexOf('</button>', triggerStart);
+    const triggerSource = toolbarSource.slice(triggerStart, triggerEnd);
     const providerIconStart = triggerSource.indexOf('<ProviderIcon');
     const providerIconEnd = triggerSource.indexOf('/>', providerIconStart);
     const providerIconSource = triggerSource.slice(providerIconStart, providerIconEnd);
@@ -215,13 +219,12 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('does not mount the input token estimate badge in the right action rail', () => {
-    const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
-    const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');
-    const rightToolbar = inputBarSource.slice(rightStart, panelStart);
+    const rightStart = toolbarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
+    const rightToolbar = toolbarSource.slice(rightStart);
 
     expect(rightStart).toBeGreaterThan(-1);
-    expect(panelStart).toBeGreaterThan(rightStart);
     expect(inputBarSource).not.toContain("import { InputTokenEstimate } from '../TokenUsageDisplay';");
+    expect(toolbarSource).not.toContain("import { InputTokenEstimate } from '../TokenUsageDisplay';");
     expect(rightToolbar).not.toContain('<InputTokenEstimate');
   });
 

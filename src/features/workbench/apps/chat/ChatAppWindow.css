@@ -20,3 +20,17 @@
   pointer-events: auto;
   color: var(--wb-titlebar-fg, hsl(var(--foreground)));
 }
+
+/* 触屏：标题栏固定 38px 放不下 44px 视觉，保持 28px 视觉不变，
+   用 ::after 四周外扩 8px 把命中区扩到 44×44 */
+@media (pointer: coarse) {
+  .wb-chat-titlebar-sidebar-toggle {
+    position: relative;
+  }
+
+  .wb-chat-titlebar-sidebar-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}

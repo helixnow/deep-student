@@ -13,6 +13,9 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { CircleNotch, Check, X, Warning, Info } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 // Chat V2 组件
 import { ChatContainer } from '../components/ChatContainer';
@@ -192,6 +195,19 @@ const TEST_SCENARIOS: TestScenario[] = [
 
 export const IntegrationTest: React.FC = () => {
   const { t } = useTranslation('chatV2');
+  const { isSmallScreen } = useBreakpoint();
+
+  // 本页无 onBack prop（App.tsx 直挂），返回统一走全局导航事件回 chat-v2
+  const handleBackToChat = useCallback(() => {
+    dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view: 'chat-v2' });
+  }, []);
+
+  // 移动端统一顶栏：标题 + 返回箭头（回 chat-v2）
+  useMobileHeader('chat-v2-test', {
+    title: t('dev.integrationTest.title', 'Chat V2 Integration Test'),
+    showBackArrow: true,
+    onMenuClick: handleBackToChat,
+  }, [t, handleBackToChat]);
 
   // 生成测试会话 ID
   const testSessionId = useMemo(() => `test_${Date.now().toString(36)}`, []);
@@ -307,9 +323,10 @@ export const IntegrationTest: React.FC = () => {
   }, [testResults]);
 
   return (
-    <div className={cn('chat-v2 min-h-screen bg-background', isDarkMode && 'dark')}>
-      {/* 头部 */}
-      <header className="border-b border-border bg-card">
+    <div className={cn('chat-v2 h-full flex flex-col bg-background', isDarkMode && 'dark')}>
+      {/* 头部（移动端由统一顶栏承载标题/返回，自绘 header 仅桌面渲染） */}
+      {!isSmallScreen && (
+      <header className="flex-shrink-0 border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-4 py-3">
           {/* 窄屏允许状态行换行，避免溢出 */}
           <div className="flex flex-wrap items-center justify-between gap-y-2">
@@ -361,8 +378,10 @@ export const IntegrationTest: React.FC = () => {
           </div>
         </div>
       </header>
+      )}
 
-      {/* 主内容 */}
+      {/* 主内容：根节点 flex 列 + 滚动区，修复 overflow hidden 下内容不可达 */}
+      <CustomScrollArea className="flex-1 min-h-0" fullHeight={false}>
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左侧：聊天区域 */}
@@ -397,7 +416,7 @@ export const IntegrationTest: React.FC = () => {
                     onClick={runAllTests}
                     disabled={isRunningTests}
                     className={cn(
-                      'px-2 py-1 text-xs rounded-md',
+                      'px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md',
                       'bg-primary text-primary-foreground',
                       'hover:bg-primary/90 transition-colors',
                       isRunningTests && 'opacity-50 cursor-not-allowed'
@@ -495,6 +514,7 @@ export const IntegrationTest: React.FC = () => {
           </div>
         </div>
       </main>
+      </CustomScrollArea>
     </div>
   );
 };

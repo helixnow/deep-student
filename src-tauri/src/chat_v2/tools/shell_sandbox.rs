@@ -16,6 +16,12 @@ pub struct SandboxPolicy {
     pub writable_roots: Vec<PathBuf>,
     pub protected_read_roots: Vec<PathBuf>,
     pub protected_write_roots: Vec<PathBuf>,
+    /// Linux only: replace the host root with an empty tmpfs and re-bind only
+    /// trusted system runtime paths plus `readable_roots`/`writable_roots`.
+    /// Untrusted script runners must enable this; the interactive local shell
+    /// keeps the legacy read-only host view for compatibility.
+    #[serde(default)]
+    pub restrict_read_to_roots: bool,
     pub allow_network: bool,
 }
 
@@ -548,10 +554,10 @@ mod linux {
 
     /// 构造 bwrap 参数向量。bwrap 按参数顺序处理挂载，后面的挂载会覆盖
     /// 前面的，因此顺序即语义：
-    /// 1. 整个根文件系统只读 bind（读边界比 macOS Seatbelt 宽，敏感路径由
-    ///    下方 protected_* 遮蔽补齐）；
+    /// 1. 普通模式把整个根文件系统只读 bind（敏感路径由 protected_* 遮蔽）；
+    ///    严格模式则以空 tmpfs 作为根，只重挂系统运行时与 policy 可读根；
     /// 2. /dev、/proc 换成沙箱私有实例；
-    /// 3. policy 允许写的 roots 重新挂成可写；
+    /// 3. 严格模式下 policy 允许读的 roots 重挂成只读，允许写的 roots 重挂成可写；
     /// 4. protected_write_roots 再压回只读（覆盖可写挂载内部的保护子树，
     ///    如 .git、技能包目录）；
     /// 5. protected_read_roots 用 tmpfs（目录）或 /dev/null bind（文件）
@@ -564,14 +570,36 @@ mod linux {
         policy: &SandboxPolicy,
     ) -> Result<Vec<OsString>, String> {
         let mut args: Vec<OsString> = Vec::new();
-        args.push("--ro-bind".into());
-        args.push("/".into());
-        args.push("/".into());
+        if policy.restrict_read_to_roots {
+            // 不得从只读 "/" 起步：那会令“仅 job 目录可读”的脚本策略在
+            // Linux 上退化为可读取整台主机。空根上只补解释器所需系统运行时。
+            args.push("--tmpfs".into());
+            args.push("/".into());
+            for root in ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"] {
+                if Path::new(root).exists() {
+                    args.push("--ro-bind".into());
+                    args.push(root.into());
+                    args.push(root.into());
+                }
+            }
+        } else {
+            args.push("--ro-bind".into());
+            args.push("/".into());
+            args.push("/".into());
+        }
         args.push("--dev".into());
         args.push("/dev".into());
         args.push("--proc".into());
         args.push("/proc".into());
 
+        if policy.restrict_read_to_roots {
+            for root in &policy.readable_roots {
+                let canonical = canonical_policy_path(root)?;
+                args.push("--ro-bind".into());
+                args.push(canonical.clone().into_os_string());
+                args.push(canonical.into_os_string());
+            }
+        }
         for root in &policy.writable_roots {
             let canonical = canonical_policy_path(root)?;
             args.push("--bind".into());
@@ -804,6 +832,7 @@ mod linux_tests {
             writable_roots: vec![writable.clone()],
             protected_read_roots: vec![],
             protected_write_roots: vec![protected.clone()],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let args = bwrap_args("printf ok", &writable, &policy).unwrap();
@@ -847,6 +876,7 @@ mod linux_tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: true,
         };
         let args = bwrap_args("printf ok", temp.path(), &policy).unwrap();
@@ -866,6 +896,7 @@ mod linux_tests {
             writable_roots: vec![],
             protected_read_roots: vec![secret_dir.clone(), secret_file.clone()],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let args = bwrap_args("printf ok", temp.path(), &policy).unwrap();
@@ -887,6 +918,34 @@ mod linux_tests {
     }
 
     #[test]
+    fn bwrap_args_strict_read_mode_uses_empty_root_and_rebinds_only_allowed_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let job = temp.path().join("job");
+        std::fs::create_dir_all(&job).unwrap();
+        let policy = SandboxPolicy {
+            readable_roots: vec![job.clone()],
+            writable_roots: vec![job.clone()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            restrict_read_to_roots: true,
+            allow_network: false,
+        };
+        let args = bwrap_args("printf ok", &job, &policy).unwrap();
+
+        assert_eq!(args[..2], [os("--tmpfs"), os("/")]);
+        assert!(
+            !contains_sequence(&args, &[os("--ro-bind"), os("/"), os("/")]),
+            "strict mode must never expose the host root"
+        );
+        let job = job.canonicalize().unwrap().into_os_string();
+        assert!(contains_sequence(
+            &args,
+            &[os("--ro-bind"), job.clone(), job.clone()]
+        ));
+        assert!(contains_sequence(&args, &[os("--bind"), job.clone(), job]));
+    }
+
+    #[test]
     fn bwrap_args_pass_paths_with_spaces_verbatim() {
         let temp = tempfile::tempdir().unwrap();
         let spaced = temp.path().join("dir with spaces");
@@ -896,6 +955,7 @@ mod linux_tests {
             writable_roots: vec![spaced.clone()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let spaced_canon = spaced.canonicalize().unwrap();
@@ -916,6 +976,7 @@ mod linux_tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let report = PlatformSandboxBackend::new().effect_report(&policy);
@@ -959,6 +1020,7 @@ mod tests {
             writable_roots: vec![writable.clone()],
             protected_read_roots: vec![],
             protected_write_roots: vec![protected.clone()],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let rendered = profile(&policy).unwrap();
@@ -991,6 +1053,7 @@ mod tests {
             writable_roots: vec![allowed.clone()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1010,6 +1073,7 @@ mod tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1058,6 +1122,7 @@ mod tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1102,6 +1167,7 @@ mod tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1121,6 +1187,7 @@ mod tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1178,6 +1245,7 @@ mod tests {
             writable_roots: vec![temp.path().to_path_buf()],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: false,
         };
         let backend = PlatformSandboxBackend::new();
@@ -1212,6 +1280,7 @@ mod tests {
             writable_roots: vec![],
             protected_read_roots: vec![],
             protected_write_roots: vec![],
+            restrict_read_to_roots: false,
             allow_network: true,
         };
         let backend = UnsandboxedShellBackend::new();

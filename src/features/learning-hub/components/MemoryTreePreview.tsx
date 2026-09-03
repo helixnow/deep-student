@@ -103,6 +103,8 @@ const TreeNode: React.FC<{
       <div
         className={cn(
           'group flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer transition-colors',
+          // 触屏：整行是展开/导航命中区，保证 ≥44px 触控高度（桌面保持紧凑）
+          '[@media(pointer:coarse)]:min-h-11',
           'hover:bg-[var(--interactive-hover)]',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
           isRoot && 'font-medium',
@@ -151,8 +153,8 @@ const TreeNode: React.FC<{
           {/* Navigate button */}
           <DsButton
             variant="ghost" size="icon" iconOnly
-            // 触屏放大命中区（≥32px），负 margin 抵消占位保持行高稳定
-            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 [@media(pointer:coarse)]:-my-1.5 transition-opacity"
+            // 触屏放大命中区（≥44px），负 margin 抵消占位保持行高稳定
+            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-3 transition-opacity"
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title={t('memory.open_folder')}
             aria-label={t('memory.open_folder')}
@@ -224,7 +226,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 gap-2', className)}>
         <span className="text-sm text-muted-foreground">{error}</span>
-        <DsButton variant="ghost" size="sm" onClick={loadTree}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={loadTree}>
           <ArrowClockwise size={14} />
           {t('common:retry')}
         </DsButton>
@@ -248,14 +250,14 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
         <GitBranch size={14} className="text-muted-foreground" />
-        <span className="text-[11px] font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-muted-foreground">
           {t('memory.tree_title')}
         </span>
         <span className="text-2xs text-muted-foreground/50">
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8" aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
         </DsButton>
       </div>

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 export interface MessageTouchActionBarProps {
   /** 是否展开 */
@@ -75,6 +76,18 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
       setCopied(false);
     }
   }, [open, disarmDelete]);
+
+  // 📱 Android 系统返回键：操作条展开时先收起操作条（overlay 级），避免返回键
+  // 穿透直接切走聊天视图；模式与 InputBarUI 组合面板 / DsDialog 的注册一致
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
 
   // 外点关闭（pointerdown：触摸滚动/拖选不产生 mousedown）+ Escape 关闭
   useEffect(() => {
@@ -241,7 +254,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={deleteArmed ? disarmDelete : onClose}
             tabIndex={open ? 0 : -1}
             aria-label={t('common.cancel')}

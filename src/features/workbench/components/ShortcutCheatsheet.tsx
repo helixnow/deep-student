@@ -9,6 +9,9 @@
  * 展示：按 listWorkbenchShortcutGroups() 分组，行 = 描述 + 键帽可视化；
  * 收到 `workbench:shortcut-feedback` 事件时对应行短暂高亮（帮助用户
  * 在速查表打开时确认刚触发的快捷键）。
+ * 末尾附「修饰键技巧」区块（2026-08）：⌥ 扩热区 / ⌥ 拖顶缘上半屏 /
+ * ⌥+红黄绿灯批量与传统 zoom 等指针+修饰键隐藏行为——这些不进快捷键
+ * 注册表（不参与 keydown 匹配），仅在速查表可发现。
  *
  * 挂载：与 WindowSwitcher 同层级，渲染在桌面容器内（absolute inset-0），
  * 由 O20 在 WorkbenchDesktop 接线：`<ShortcutCheatsheet />`。
@@ -26,6 +29,7 @@ import {
 } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { replayEmptyDesktopTour } from './EmptyDesktop';
 import './ShortcutCheatsheet.css';
 
 /** 关闭后保留 DOM 播放退场动画的时长（与 CSS --wb-cheat-duration 对齐） */
@@ -51,6 +55,43 @@ const Keycaps: React.FC<{ parts: string[] }> = ({ parts }) => (
 
 const CHEAT_FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * ⌥ 修饰键隐藏技巧（指针手势 + 修饰键）。行为实现分别见：
+ * drag → snapZones SNAP_ALT_*_SCALE 与 top-half；tileMenu → TileMenuPopover
+ * altHeld 中列变体；zoom/closeAll/minimizeAll → WindowTitleBar 三灯 ⌥ 分支。
+ */
+const MODIFIER_TRICKS: ReadonlyArray<{
+  id: string;
+  descKey: string;
+  gestureKey: string;
+}> = [
+  {
+    id: 'drag',
+    descKey: 'workbench:cheatsheet.tricks.drag',
+    gestureKey: 'workbench:cheatsheet.tricks.dragGesture',
+  },
+  {
+    id: 'tile-menu',
+    descKey: 'workbench:cheatsheet.tricks.tileMenu',
+    gestureKey: 'workbench:cheatsheet.tricks.tileMenuGesture',
+  },
+  {
+    id: 'zoom',
+    descKey: 'workbench:cheatsheet.tricks.zoom',
+    gestureKey: 'workbench:cheatsheet.tricks.zoomGesture',
+  },
+  {
+    id: 'close-all',
+    descKey: 'workbench:cheatsheet.tricks.closeAll',
+    gestureKey: 'workbench:cheatsheet.tricks.closeAllGesture',
+  },
+  {
+    id: 'minimize-all',
+    descKey: 'workbench:cheatsheet.tricks.minimizeAll',
+    gestureKey: 'workbench:cheatsheet.tricks.minimizeAllGesture',
+  },
+];
 
 const ShortcutCheatsheetComponent: React.FC = () => {
   const { t } = useTranslation();
@@ -164,6 +205,7 @@ const ShortcutCheatsheetComponent: React.FC = () => {
   if (!rendered) return null;
 
   const groups = listWorkbenchShortcutGroups();
+  const altCap = isMacShortcutPlatform() ? '⌥' : 'Alt';
 
   return (
     <div className="wb-cheat-root" data-wb-cheat-open={open ? 'true' : 'false'}>
@@ -224,11 +266,47 @@ const ShortcutCheatsheetComponent: React.FC = () => {
               </ul>
             </section>
           ))}
+
+          {/* 修饰键技巧：⌥ + 指针手势的隐藏行为（不进 keydown 注册表） */}
+          <section
+            className="wb-cheat-group"
+            aria-label={t('workbench:cheatsheet.tricks.title')}
+          >
+            <h3 className="wb-cheat-group-title">
+              {t('workbench:cheatsheet.tricks.title')}
+            </h3>
+            <ul className="wb-cheat-rows">
+              {MODIFIER_TRICKS.map((trick) => (
+                <li
+                  key={trick.id}
+                  className="wb-cheat-row"
+                  data-wb-cheat-trick={trick.id}
+                >
+                  <span className="wb-cheat-desc">{t(trick.descKey)}</span>
+                  <Keycaps parts={[altCap, t(trick.gestureKey)]} />
+                </li>
+              ))}
+            </ul>
+          </section>
         </CustomScrollArea>
 
         <div className="wb-cheat-footer">
           {/* macOS 上长按组合是 ⌘⌥（见 core/shortcuts 平台映射），提示文案跟随 */}
-          {t(isMacShortcutPlatform() ? 'workbench:cheatsheet.hintMac' : 'workbench:cheatsheet.hint')}
+          <span>
+            {t(isMacShortcutPlatform() ? 'workbench:cheatsheet.hintMac' : 'workbench:cheatsheet.hint')}
+          </span>
+          {/* 空桌面 tour 再入口：清持久化消隐位并复位 tour（桌面清空时重现） */}
+          <button
+            type="button"
+            className="wb-cheat-replay-tour wb-focus-ring"
+            data-testid="wb-cheat-replay-tour"
+            onClick={() => {
+              replayEmptyDesktopTour();
+              closeCheatsheet();
+            }}
+          >
+            {t('workbench:cheatsheet.replayTour')}
+          </button>
         </div>
       </div>
     </div>

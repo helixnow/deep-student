@@ -192,6 +192,7 @@ function StatusBar({
         size="sm"
         onClick={onRequestAccess}
         disabled={requestingAccess}
+        className="[@media(pointer:coarse)]:!min-h-11"
       >
         {requestingAccess ?           <CircleNotch size={14} className="animate-spin" /> : null}
         {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
@@ -279,6 +280,7 @@ function HotkeyModeSegmented({
       ariaLabel={t('settings:voice_input.trigger_mode_title', { defaultValue: 'Trigger Mode' })}
       value={value}
       onValueChange={onChange}
+      itemClassName="[@media(pointer:coarse)]:!min-h-11"
       options={segments.map((segment) => ({
         value: segment.mode,
         label: segment.label,
@@ -311,7 +313,7 @@ function HistoryEntryCard({
             ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
             : ''}
         </div>
-        <DsButton type="button" variant="outline" size="sm" onClick={() => onCopy(entry)}>
+        <DsButton type="button" variant="outline" size="sm" onClick={() => onCopy(entry)} className="[@media(pointer:coarse)]:!min-h-11">
           <Copy size={14} />
           {copyLabel}
         </DsButton>
@@ -557,6 +559,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('models')}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <GearSix size={14} />
               {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
@@ -566,6 +569,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('apis')}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Wrench size={14} />
               {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
@@ -575,6 +579,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('statistics')}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <ChartBar size={14} />
               {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
@@ -629,7 +634,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="w-40"
+            className="w-40 [@media(pointer:coarse)]:h-11"
           />
         </SettingRow>
 
@@ -657,7 +662,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="w-32"
+            className="w-32 [@media(pointer:coarse)]:h-11"
           />
         </SettingRow>
 
@@ -703,7 +708,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                 type="button"
                 variant="outline"
                 size="sm"
-                className="!text-destructive"
+                className="!text-destructive [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void handleClearHistory()}
               >
                 <Trash size={14} />
@@ -733,7 +738,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             size="sm"
             onClick={() => setDiagnosticsOpen((prev) => !prev)}
             aria-expanded={diagnosticsOpen}
-            className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground"
+            className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
           >
             <CaretDown
               className={cn(
@@ -808,6 +813,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                     void refreshSupport();
                   }}
                   disabled={saving || requestingAccess}
+                  className="[@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}

@@ -112,5 +112,13 @@
     "tag": "quick-learning",
     "mistake_tag": "quick-capture",
     "need_content": "Type or paste learning content first"
+  },
+  "prompts": {
+    "ask": "Answer the question below directly. Give the conclusion first, then the necessary explanation; if there is not enough information, say so explicitly.",
+    "explain": "Explain the content below clearly. Use plain language to cover the core concepts, the key relationships, and one short example; avoid unrelated digressions.",
+    "translate": "Detect the language of the text and translate it into English; if it is already in English, translate it into natural Chinese. Preserve terminology, formulas, and paragraph structure, and output only the translation.",
+    "summarize": "Summarize the content below. Output: a one-sentence thesis, 3-5 key points, and the keywords worth remembering.",
+    "hint": "Treat the content below as a study exercise. Do not give the final answer; first identify what it tests, then give layered hints and the next step to take.",
+    "content_separator": "--- Study material ---"
   }
 }
