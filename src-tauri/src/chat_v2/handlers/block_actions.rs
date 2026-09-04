@@ -983,9 +983,9 @@ fn upsert_block_in_db(
             tool_output_json = excluded.tool_output_json,
             citations_json = excluded.citations_json,
             error = excluded.error,
-            started_at = excluded.started_at,
+            started_at = COALESCE(chat_v2_blocks.started_at, excluded.started_at),
             ended_at = excluded.ended_at,
-            first_chunk_at = excluded.first_chunk_at
+            first_chunk_at = COALESCE(chat_v2_blocks.first_chunk_at, excluded.first_chunk_at)
         "#,
         rusqlite::params![
             block.id,
@@ -1014,6 +1014,59 @@ fn upsert_block_in_db(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn setup_streaming_block_test_db() -> (tempfile::TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrations");
+        let db = ChatV2Database::new(temp_dir.path()).expect("chat_v2 db");
+        (temp_dir, db)
+    }
+
+    #[test]
+    fn streaming_upsert_preserves_first_timestamps() {
+        use crate::chat_v2::types::{ChatSession, MessageBlock};
+
+        let (_temp_dir, db) = setup_streaming_block_test_db();
+        let session = ChatSession::new("sess_stream_times".to_string(), "chat".to_string());
+        let mut message = ChatMessage::new_assistant(session.id.clone());
+        message.id = "msg_stream_times".to_string();
+        message.block_ids = vec!["blk_stream_times".to_string()];
+        let conn = db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        drop(conn);
+
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_stream_times".to_string();
+        block.content = Some("first".to_string());
+        block.started_at = Some(100);
+        block.first_chunk_at = Some(110);
+        block.ended_at = Some(120);
+        upsert_block_in_db(&block, &db).unwrap();
+
+        block.content = Some("second".to_string());
+        block.started_at = Some(200);
+        block.first_chunk_at = Some(210);
+        block.ended_at = Some(220);
+        upsert_block_in_db(&block, &db).unwrap();
+
+        let saved = ChatV2Repo::get_block_v2(&db, &block.id)
+            .unwrap()
+            .expect("saved streaming block");
+        assert_eq!(saved.content.as_deref(), Some("second"));
+        assert_eq!(saved.started_at, Some(100));
+        assert_eq!(saved.first_chunk_at, Some(110));
+        assert_eq!(saved.ended_at, Some(220));
+    }
+
     #[test]
     fn removed_cardforge_callback_stays_off_command_surfaces() {
         let removed_command = ["chat_v2_anki", "_cards_result"].concat();

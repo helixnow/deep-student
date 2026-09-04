@@ -10,6 +10,7 @@ commands.allow = [
   "chat_v2_create_group",
   "chat_v2_send_message",
   "chat_v2_cancel_stream",
+  "chat_v2_has_active_stream",
   "chat_v2_perform_ocr",
   "chat_v2_search_content",
   "dstu_create",

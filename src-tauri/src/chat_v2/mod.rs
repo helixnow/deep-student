@@ -174,6 +174,7 @@ pub use handlers::{
     chat_v2_empty_deleted_sessions,
     // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
     chat_v2_get_message_summary,
+    chat_v2_has_active_stream,
     chat_v2_list_sessions,
     chat_v2_load_messages_page,
     chat_v2_load_session,

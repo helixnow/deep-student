@@ -113,6 +113,50 @@ describe('SubagentIdleWakeController', () => {
     controller.dispose();
   });
 
+  it('does not spin while an idle frontend store is stale against a busy backend', async () => {
+    vi.useFakeTimers();
+    const store = createParentStore({ sessionStatus: 'idle', currentStreamingMessageId: null });
+    const sendWake = vi.fn().mockResolvedValue(false);
+    const controller = new SubagentIdleWakeController({
+      resolveParentStore: async () => store,
+      sendWake,
+    });
+
+    controller.enqueue(completion());
+    await flush();
+    expect(sendWake).toHaveBeenCalledTimes(1);
+
+    await flush();
+    expect(sendWake).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sendWake).toHaveBeenCalledTimes(2);
+
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
+  it('rate-limits a wake conflict that throws while the parent store remains idle', async () => {
+    vi.useFakeTimers();
+    const store = createParentStore({ sessionStatus: 'idle', currentStreamingMessageId: null });
+    const sendWake = vi.fn().mockRejectedValue(new Error('Session has an active stream'));
+    const controller = new SubagentIdleWakeController({
+      resolveParentStore: async () => store,
+      sendWake,
+    });
+
+    controller.enqueue(completion());
+    await flush();
+    expect(sendWake).toHaveBeenCalledTimes(1);
+
+    await flush();
+    expect(sendWake).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sendWake).toHaveBeenCalledTimes(2);
+
+    controller.dispose();
+    vi.useRealTimers();
+  });
+
   it('abandons an unavailable parent after the lookup retry limit', async () => {
     vi.useFakeTimers();
     const resolveParentStore = vi.fn().mockResolvedValue(undefined);

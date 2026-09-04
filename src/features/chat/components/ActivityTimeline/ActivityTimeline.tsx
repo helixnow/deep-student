@@ -154,7 +154,6 @@ const RETRIEVAL_TOOL_NAMES: Record<string, string> = {
 
 function canMergeToolNode(node: TimelineNodeData | undefined): node is TimelineNodeData {
   return node?.type === 'tool'
-    && !isShellTimelineTool(node.toolName)
     && !isTodoTool(node.toolName)
     && !isNoteTool(node.toolName)
     && !isAttemptCompletionTool(node.toolName);
@@ -176,7 +175,7 @@ function mergeConsecutiveToolNodes(nodes: TimelineNodeData[]): TimelineNodeData[
       group.push(nodes[index + group.length]);
     }
 
-    if (group.length === 1) {
+    if (group.length === 1 && !isShellTimelineTool(node.toolName)) {
       merged.push(node);
     } else {
       merged.push({
@@ -1117,6 +1116,7 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedShellId, setExpandedShellId] = useState<string | null>(null);
   const toolNodes = node.toolNodes ?? [];
   const isActive = toolNodes.some((toolNode) =>
     (toolNode.isPreparing || toolNode.toolStatus === 'running') && isStreaming,
@@ -1171,11 +1171,79 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
                 const visual = getToolVisual(toolNode.toolName);
                 const ToolIcon = visual.Icon;
                 const isToolActive = (toolNode.isPreparing || toolNode.toolStatus === 'running') && isStreaming;
+                const shellDescriptor = getShellCommandDescriptor({
+                  toolName: toolNode.toolName,
+                  toolInput: toolNode.toolInput,
+                  toolOutput: toolNode.toolOutput,
+                  toolError: toolNode.toolError,
+                  toolStatus: toolNode.toolStatus,
+                  isPreparing: toolNode.isPreparing,
+                  isRunning: isToolActive,
+                });
                 const toolStatus = isToolActive
                   ? t('timeline.tool.running')
                   : toolNode.toolStatus === 'error'
                     ? t('timeline.tool.failed')
                     : t('timeline.tool.success');
+
+                if (shellDescriptor) {
+                  const isShellExpanded = expandedShellId === toolNode.id;
+                  const durationMs = toolNode.block.startedAt && toolNode.block.endedAt
+                    ? toolNode.block.endedAt - toolNode.block.startedAt
+                    : undefined;
+
+                  return (
+                    <div key={toolNode.id}>
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setExpandedShellId(isShellExpanded ? null : toolNode.id)}
+                        aria-expanded={isShellExpanded}
+                        className="activity-timeline-tool-trigger !grid !h-7 !min-h-0 w-full grid-cols-[16px_minmax(0,1fr)_auto] !items-center !justify-start !gap-1.5 !px-0 !py-0 hover:!bg-transparent"
+                      >
+                        <ToolActivitySweep active={isToolActive} className="h-4 w-4 items-center justify-center">
+                          <ToolIcon size={13} className="text-muted-foreground" />
+                        </ToolActivitySweep>
+                        <span className="flex min-w-0 items-center gap-1.5 text-left">
+                          <span className={cn(
+                            'activity-timeline-tool-name shrink-0',
+                            shellDescriptor.tone === 'running' && 'text-primary',
+                            shellDescriptor.tone === 'success' && 'text-success',
+                            shellDescriptor.tone === 'error' && 'text-destructive',
+                          )}>
+                            {shellCommandVerb(shellDescriptor, t)}
+                          </span>
+                          <code
+                            className="activity-timeline-tool-command min-w-0 truncate font-mono text-foreground"
+                            title={shellCommandPlaceholder(shellDescriptor, t)}
+                          >
+                            {shellCommandPlaceholder(shellDescriptor, t)}
+                          </code>
+                        </span>
+                        {durationMs !== undefined && toolNode.toolStatus === 'success' && (
+                          <span className="activity-timeline-status shrink-0 text-muted-foreground/70">
+                            {formatToolDurationShort(durationMs)}
+                          </span>
+                        )}
+                      </DsButton>
+                      <AnimatePresence initial={false}>
+                        {isShellExpanded && (
+                          <motion.div {...disclosureMotion} className="overflow-hidden pb-1 pt-1 pl-[22px]">
+                            <ShellCommandTimelineView
+                              toolName={toolNode.toolName}
+                              toolInput={toolNode.toolInput}
+                              toolOutput={toolNode.toolOutput}
+                              toolError={toolNode.toolError}
+                              toolStatus={toolNode.toolStatus}
+                              isPreparing={toolNode.isPreparing}
+                              isRunning={isToolActive}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                }
 
                 return (
                   <div key={toolNode.id} className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5">

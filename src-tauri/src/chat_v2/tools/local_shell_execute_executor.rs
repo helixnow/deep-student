@@ -46,6 +46,27 @@ pub mod tool_names {
 
 pub struct LocalShellExecuteExecutor;
 
+/// Backend-internal execution options for the local shell.
+///
+/// These flags are set only by trusted in-process callers (e.g. the semantic
+/// git tool executor). They are never read from model-controlled tool
+/// arguments: the public `local_shell_execute` path always runs with the
+/// `Default` (all-false) options.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ShellExecuteOptions {
+    /// The command was built from a closed, validated backend template and its
+    /// sensitivity was handled by the dedicated tool's pipeline approval.
+    pub structured_command_approved: bool,
+    /// Mount the selected runtime root read-only even when it is normally
+    /// writable. Semantic Git reads use this because repository config may
+    /// invoke helpers such as fsmonitor or textconv.
+    pub force_read_only: bool,
+    /// Allow writes to the selected runtime root's `.git` metadata directory.
+    /// Only the dedicated semantic git tools enable this; every other root's
+    /// `.git` stays write-protected regardless of this flag.
+    pub allow_git_metadata_write: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ShellEnvPlan {
     inherit_parent_env: bool,
@@ -257,11 +278,10 @@ impl LocalShellExecuteExecutor {
     fn posix_syntax_hints_for_powershell(command: &str) -> Vec<&'static str> {
         fn has_word(command: &str, word: &str) -> bool {
             command.match_indices(word).any(|(idx, _)| {
-                let before_ok = idx == 0
-                    || !command.as_bytes()[idx - 1].is_ascii_alphanumeric();
+                let before_ok = idx == 0 || !command.as_bytes()[idx - 1].is_ascii_alphanumeric();
                 let after = idx + word.len();
-                let after_ok = after >= command.len()
-                    || !command.as_bytes()[after].is_ascii_alphanumeric();
+                let after_ok =
+                    after >= command.len() || !command.as_bytes()[after].is_ascii_alphanumeric();
                 before_ok && after_ok
             })
         }
@@ -279,9 +299,8 @@ impl LocalShellExecuteExecutor {
             || command.contains("rm -r ")
             || command.contains("Remove-Item -rf")
         {
-            hints.push(
-                "`rm -rf` 在 PowerShell 5.1 中无效：用 `Remove-Item -Recurse -Force <path>`",
-            );
+            hints
+                .push("`rm -rf` 在 PowerShell 5.1 中无效：用 `Remove-Item -Recurse -Force <path>`");
         }
         if has_word(command, "grep") {
             hints.push("`grep` 不存在：用 `Select-String -Pattern <模式>`");
@@ -358,12 +377,12 @@ impl LocalShellExecuteExecutor {
             ));
         }
         // Windows PowerShell 5.1：检测命令里的 bash 语法并给出对应写法。
-        let is_powershell = output
+        let is_legacy_powershell = output
             .get("sandbox")
             .and_then(|sandbox| sandbox.get("shell_kind"))
             .and_then(|v| v.as_str())
-            == Some("windows_powershell");
-        if is_powershell {
+            .is_some_and(|kind| matches!(kind, "windows_powershell" | "windows_powershell_5_1"));
+        if is_legacy_powershell {
             if let Some(command) = output.get("command").and_then(|v| v.as_str()) {
                 let hints = Self::posix_syntax_hints_for_powershell(command);
                 if !hints.is_empty() {
@@ -769,6 +788,7 @@ impl LocalShellExecuteExecutor {
         skill_dir: Option<&SkillDirInjection>,
         env_plan: &ShellEnvPlan,
         allow_network: bool,
+        options: ShellExecuteOptions,
     ) -> Result<SandboxPolicy, String> {
         let state = ctx.window_ref().state::<AppState>();
         let mut readable_roots = Vec::new();
@@ -798,7 +818,12 @@ impl LocalShellExecuteExecutor {
         for root in roots {
             Self::push_canonical_unique(&mut readable_roots, &root.path)?;
             let git_dir = root.path.join(".git");
-            if git_dir.exists() {
+            // 仅语义 Git 工具组（allow_git_metadata_write=true）放开当前所选
+            // root 的 .git 写保护，用于 git add/commit/branch/switch；其他
+            // root 的 .git 与其他保护项一律不变。
+            let protect_git_dir =
+                !(options.allow_git_metadata_write && root.id == selected_root.id);
+            if git_dir.exists() && protect_git_dir {
                 Self::push_canonical_unique(&mut protected_write_roots, &git_dir)?;
             }
             if root.kind == RuntimeRootKind::SkillPackage {
@@ -817,7 +842,7 @@ impl LocalShellExecuteExecutor {
             Self::push_canonical_unique(&mut protected_write_roots, &skill_dir.path)?;
         }
         Self::add_runtime_read_roots(&mut readable_roots, env_plan)?;
-        if selected_root.access == RuntimeRootAccess::ReadWrite {
+        if selected_root.access == RuntimeRootAccess::ReadWrite && !options.force_read_only {
             Self::push_canonical_unique(&mut writable_roots, writable_cwd)?;
         }
 
@@ -895,6 +920,9 @@ impl LocalShellExecuteExecutor {
                 "PATHEXT",
                 "SystemRoot",
                 "WINDIR",
+                "ProgramFiles",
+                "ProgramW6432",
+                "ProgramFiles(x86)",
                 "TEMP",
                 "TMP",
                 "USERPROFILE",
@@ -1559,6 +1587,19 @@ impl LocalShellExecuteExecutor {
     }
 
     async fn execute_shell(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        // 普通 local_shell_execute 路径永远不允许写 .git 元数据。
+        self.execute_shell_with_options(args, ctx, ShellExecuteOptions::default())
+            .await
+    }
+
+    /// 内部 options 路径：仅供进程内受信调用方（语义 Git 工具组）使用。
+    /// `options` 只能来自后端代码，禁止从模型 JSON 参数构造。
+    pub(crate) async fn execute_shell_with_options(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+        options: ShellExecuteOptions,
+    ) -> Result<Value, String> {
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
@@ -1750,6 +1791,7 @@ impl LocalShellExecuteExecutor {
                 skill_dir_injection.as_ref(),
                 &env_plan,
                 allow_network,
+                options,
             )?
         };
         let sandbox_backend: Box<dyn SandboxBackend> = if unsandboxed {
@@ -1757,13 +1799,17 @@ impl LocalShellExecuteExecutor {
         } else {
             Box::new(PlatformSandboxBackend::new())
         };
-        let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
+        let sandbox_effect_report = if options.allow_git_metadata_write || options.force_read_only {
+            sandbox_backend.effect_report_for_git(&sandbox_policy)
+        } else {
+            sandbox_backend.effect_report(&sandbox_policy)
+        };
         let shell_security_fingerprint =
             Self::shell_security_fingerprint(&command_hash, &shell_authority, security_mode);
         let capture_workspace_change_set = track_file_changes
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
-            && Self::command_appears_write_capable(&command);
+            && (Self::command_appears_write_capable(&command) || options.allow_git_metadata_write);
         let (before_snapshot, before_snapshot_error) = if track_file_changes {
             match Self::collect_file_snapshot_blocking(
                 root_abs_for_snapshot.clone(),
@@ -1815,7 +1861,9 @@ impl LocalShellExecuteExecutor {
                     immutable_guard.reason
                 ));
             }
-            ShellCommandGuardEffect::Ask if !ctx.shell_guard_approved => {
+            ShellCommandGuardEffect::Ask
+                if !ctx.shell_guard_approved && !options.structured_command_approved =>
+            {
                 return Err(format!(
                     "Command requires a fresh immutable-guard approval before spawn: {}",
                     immutable_guard.reason
@@ -1842,7 +1890,11 @@ impl LocalShellExecuteExecutor {
         }
 
         let start = Instant::now();
-        let mut shell = sandbox_backend.command(&command, &cwd_abs, &sandbox_policy)?;
+        let mut shell = if options.allow_git_metadata_write || options.force_read_only {
+            sandbox_backend.command_for_git(&command, &cwd_abs, &sandbox_policy)?
+        } else {
+            sandbox_backend.command(&command, &cwd_abs, &sandbox_policy)?
+        };
         Self::apply_env_plan(&mut shell, &env_plan);
         Self::apply_skill_dir_injection(&mut shell, skill_dir_injection.as_ref());
         Self::apply_writable_scratch_dir(
@@ -2272,7 +2324,10 @@ mod tests {
         assert!(hints.iter().any(|h| h.contains("&&")), "{hints:?}");
         assert!(hints.iter().any(|h| h.contains("$env:")), "{hints:?}");
         assert!(hints.iter().any(|h| h.contains("Remove-Item")), "{hints:?}");
-        assert!(hints.iter().any(|h| h.contains("Select-String")), "{hints:?}");
+        assert!(
+            hints.iter().any(|h| h.contains("Select-String")),
+            "{hints:?}"
+        );
 
         let hints = LocalShellExecuteExecutor::posix_syntax_hints_for_powershell(
             "which node; touch out.txt",
@@ -2326,6 +2381,22 @@ mod tests {
         assert!(
             !error.contains("PowerShell syntax hints"),
             "posix shell must not get hints: {error}"
+        );
+
+        let pwsh_output = json!({
+            "success": false,
+            "exit_code": 1,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": "some error",
+            "command": command,
+            "sandbox": { "shell_kind": "windows_powershell_7" },
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&pwsh_output);
+        assert!(
+            !error.contains("PowerShell syntax hints"),
+            "PowerShell 7 supports command chaining: {error}"
         );
     }
 

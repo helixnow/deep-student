@@ -161,6 +161,15 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
 /// 🔧 支持 `<think>` 标签解析：某些中转站（如 yunwu.ai）不支持 Anthropic 的 Extended Thinking API，
 /// 而是将思维链作为 `<think>` 标签嵌入到普通内容中返回。此适配器实时解析这些标签，
 /// 将内容正确路由到 thinking 或 content 块。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StreamedTextSegment {
+    pub(crate) block_id: String,
+    pub(crate) block_type: String,
+    pub(crate) content: String,
+    pub(crate) started_at: i64,
+    pub(crate) ended_at: Option<i64>,
+}
+
 pub struct ChatV2LLMAdapter {
     emitter: Arc<ChatV2EventEmitter>,
     message_id: String,
@@ -169,10 +178,10 @@ pub struct ChatV2LLMAdapter {
     round_id: Option<String>,
     /// thinking 块 ID（活跃的）
     thinking_block_id: std::sync::Mutex<Option<String>>,
-    /// 🔧 修复：已结束的 thinking 块 ID（finalize 后保留，确保 collect_round_blocks 能获取）
-    finalized_thinking_block_id: std::sync::Mutex<Option<String>>,
-    /// content 块 ID
+    /// content 块 ID（活跃的）
     content_block_id: std::sync::Mutex<Option<String>>,
+    /// 本轮按真实流式顺序生成的正文/思维链段落。
+    text_segments: std::sync::Mutex<Vec<StreamedTextSegment>>,
     /// 累积的内容
     accumulated_content: std::sync::Mutex<String>,
     /// 累积的推理
@@ -238,8 +247,8 @@ impl ChatV2LLMAdapter {
             skill_state_version,
             round_id,
             thinking_block_id: std::sync::Mutex::new(None),
-            finalized_thinking_block_id: std::sync::Mutex::new(None),
             content_block_id: std::sync::Mutex::new(None),
+            text_segments: std::sync::Mutex::new(Vec::new()),
             accumulated_content: std::sync::Mutex::new(String::new()),
             accumulated_reasoning: std::sync::Mutex::new(String::new()),
             reasoning_content_observed: std::sync::Mutex::new(false),
@@ -320,12 +329,26 @@ impl ChatV2LLMAdapter {
             return None;
         }
 
+        // reasoning 在正文后再次出现时，上一段正文已经结束。后续正文必须
+        // 创建新块，不能再写回前一个 content 块。
+        self.finalize_content(true);
+
         let mut guard = self
             .thinking_block_id
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if guard.is_none() {
             let block_id = Self::generate_block_id();
+            self.text_segments
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(StreamedTextSegment {
+                    block_id: block_id.clone(),
+                    block_type: block_types::THINKING.to_string(),
+                    content: String::new(),
+                    started_at: chrono::Utc::now().timestamp_millis(),
+                    ended_at: None,
+                });
             self.emitter.emit_start(
                 event_types::THINKING,
                 &self.message_id,
@@ -351,6 +374,16 @@ impl ChatV2LLMAdapter {
             existing
         } else {
             let block_id = Self::generate_block_id();
+            self.text_segments
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(StreamedTextSegment {
+                    block_id: block_id.clone(),
+                    block_type: block_types::CONTENT.to_string(),
+                    content: String::new(),
+                    started_at: chrono::Utc::now().timestamp_millis(),
+                    ended_at: None,
+                });
             self.emitter.emit_start(
                 event_types::CONTENT,
                 &self.message_id,
@@ -370,14 +403,63 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(block_id) = guard.take() {
-            // 🔧 修复：备份 thinking 块 ID，确保 collect_round_blocks 能获取
-            *self
-                .finalized_thinking_block_id
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = Some(block_id.clone());
+            self.finish_text_segment(&block_id);
             self.emitter
                 .emit_end(event_types::THINKING, &block_id, None, None); // variant_id
         }
+    }
+
+    /// 结束当前 content 段。类型切换时带该段的权威文本，流最终结束时由
+    /// `finalize_all_with_authoritative_content` 决定是否携带。
+    fn finalize_content(&self, include_authoritative_content: bool) {
+        let block_id = self
+            .content_block_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(block_id) = block_id {
+            self.finish_text_segment(&block_id);
+            let result = include_authoritative_content
+                .then(|| json!({ "content": self.text_segment_content(&block_id) }));
+            self.emitter
+                .emit_end(event_types::CONTENT, &block_id, result, None);
+        }
+    }
+
+    fn append_text_segment(&self, block_id: &str, text: &str) {
+        if let Some(segment) = self
+            .text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter_mut()
+            .rev()
+            .find(|segment| segment.block_id == block_id)
+        {
+            segment.content.push_str(text);
+        }
+    }
+
+    fn finish_text_segment(&self, block_id: &str) {
+        if let Some(segment) = self
+            .text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter_mut()
+            .rev()
+            .find(|segment| segment.block_id == block_id)
+        {
+            segment.ended_at = Some(chrono::Utc::now().timestamp_millis());
+        }
+    }
+
+    fn text_segment_content(&self, block_id: &str) -> String {
+        self.text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|segment| segment.block_id == block_id)
+            .map(|segment| segment.content.clone())
+            .unwrap_or_default()
     }
 
     /// 结束所有活跃块
@@ -418,6 +500,7 @@ impl ChatV2LLMAdapter {
                 guard.push_str(&reasoning_tail);
             }
             if let Some(block_id) = self.ensure_thinking_started() {
+                self.append_text_segment(&block_id, &reasoning_tail);
                 self.emitter
                     .emit_chunk(event_types::THINKING, &block_id, &reasoning_tail, None);
             }
@@ -430,26 +513,7 @@ impl ChatV2LLMAdapter {
         self.finalize_thinking();
 
         // 结束 content
-        let content_guard = self
-            .content_block_id
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some(ref block_id) = *content_guard {
-            let result = include_authoritative_content.then(|| {
-                let content = self
-                    .accumulated_content
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                json!({ "content": content })
-            });
-            self.emitter.emit_end(
-                event_types::CONTENT,
-                block_id,
-                result,
-                None, // variant_id
-            );
-        }
+        self.finalize_content(include_authoritative_content);
         // 🔧 P0修复：工具块的结束事件由 execute_single_tool 直接发射，不再在这里处理
     }
 
@@ -482,6 +546,7 @@ impl ChatV2LLMAdapter {
                 guard.push_str(&remaining);
             }
             if let Some(block_id) = self.ensure_thinking_started() {
+                self.append_text_segment(&block_id, &remaining);
                 self.emitter
                     .emit_chunk(event_types::THINKING, &block_id, &remaining, None);
             }
@@ -495,6 +560,7 @@ impl ChatV2LLMAdapter {
                 guard.push_str(&remaining);
             }
             let block_id = self.ensure_content_started();
+            self.append_text_segment(&block_id, &remaining);
             self.emitter
                 .emit_chunk(event_types::CONTENT, &block_id, &remaining, None);
         }
@@ -532,28 +598,31 @@ impl ChatV2LLMAdapter {
         }
     }
 
-    /// 获取 thinking 块 ID（如果存在）
-    /// 🔧 修复：优先返回已结束的 thinking 块 ID（因为 finalize_thinking 会清空活跃 ID）
+    /// 获取最后一个 thinking 块 ID（如果存在）。
     pub fn get_thinking_block_id(&self) -> Option<String> {
-        // 先检查已结束的 thinking 块 ID
-        let finalized = self
-            .finalized_thinking_block_id
+        self.text_segments
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        if finalized.is_some() {
-            return finalized;
-        }
-        // 否则返回活跃的 thinking 块 ID
-        self.thinking_block_id
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+            .iter()
+            .rev()
+            .find(|segment| segment.block_type == block_types::THINKING)
+            .map(|segment| segment.block_id.clone())
     }
 
-    /// 获取 content 块 ID（如果存在）
+    /// 获取最后一个 content 块 ID（如果存在）。
     pub fn get_content_block_id(&self) -> Option<String> {
-        self.content_block_id
+        self.text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .rev()
+            .find(|segment| segment.block_type == block_types::CONTENT)
+            .map(|segment| segment.block_id.clone())
+    }
+
+    /// 返回完整的真实交替段落快照，供最终持久化逐块写入。
+    pub(crate) fn get_text_segments(&self) -> Vec<StreamedTextSegment> {
+        self.text_segments
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -566,8 +635,7 @@ impl ChatV2LLMAdapter {
     /// 工具调用，不重置会导致重试响应被追加到旧的部分内容之后（内容重复落库），
     /// 甚至同一工具调用被收集两次而重复执行。
     ///
-    /// 注意：保留 thinking/content 块 ID，使重试内容继续写入同一前端块，
-    /// 避免 UI 留下永远处于 running 状态的孤儿块。
+    /// 自动重试仅允许发生在尚无输出时，因此同时清空段落及活跃块 ID。
     pub fn reset_stream_state(&self) {
         self.accumulated_content
             .lock()
@@ -612,6 +680,18 @@ impl ChatV2LLMAdapter {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.args_delta_buffer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        *self
+            .thinking_block_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .content_block_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        self.text_segments
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
@@ -839,21 +919,17 @@ impl ChatV2LLMAdapter {
                 .web_search_block_id
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            let block_id = match guard.clone() {
-                Some(existing) => existing,
-                None => {
-                    let generated = Self::generate_block_id();
-                    self.emitter.emit_start(
-                        event_types::WEB_SEARCH,
-                        &self.message_id,
-                        Some(&generated),
-                        None,
-                        None,
-                    );
-                    *guard = Some(generated.clone());
-                    generated
-                }
-            };
+            if guard.is_none() {
+                let generated = Self::generate_block_id();
+                self.emitter.emit_start(
+                    event_types::WEB_SEARCH,
+                    &self.message_id,
+                    Some(&generated),
+                    None,
+                    None,
+                );
+                *guard = Some(generated);
+            }
             *self
                 .web_search_started_at
                 .lock()
@@ -872,13 +948,15 @@ impl ChatV2LLMAdapter {
         );
 
         // 如果 content 块已启动但未结束，发射错误事件
-        let content_guard = self
+        let content_block_id = self
             .content_block_id
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some(ref block_id) = *content_guard {
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(block_id) = content_block_id {
+            self.finish_text_segment(&block_id);
             self.emitter
-                .emit_error(event_types::CONTENT, block_id, error, None);
+                .emit_error(event_types::CONTENT, &block_id, error, None);
         }
 
         // 结束 thinking 块（如果有）
@@ -1005,6 +1083,7 @@ impl ChatV2LLMAdapter {
                         }
                         // 发射 thinking chunk
                         if let Some(block_id) = self.ensure_thinking_started() {
+                            self.append_text_segment(&block_id, &thinking_content);
                             self.emitter.emit_chunk(
                                 event_types::THINKING,
                                 &block_id,
@@ -1036,6 +1115,7 @@ impl ChatV2LLMAdapter {
                             guard.push_str(&thinking_content);
                         }
                         if let Some(block_id) = self.ensure_thinking_started() {
+                            self.append_text_segment(&block_id, &thinking_content);
                             self.emitter.emit_chunk(
                                 event_types::THINKING,
                                 &block_id,
@@ -1080,6 +1160,7 @@ impl ChatV2LLMAdapter {
                         }
                         // 发射 content chunk
                         let block_id = self.ensure_content_started();
+                        self.append_text_segment(&block_id, &content_before);
                         self.emitter.emit_chunk(
                             event_types::CONTENT,
                             &block_id,
@@ -1109,6 +1190,7 @@ impl ChatV2LLMAdapter {
                                     guard.push_str(&content_before);
                                 }
                                 let block_id = self.ensure_content_started();
+                                self.append_text_segment(&block_id, &content_before);
                                 self.emitter.emit_chunk(
                                     event_types::CONTENT,
                                     &block_id,
@@ -1132,6 +1214,7 @@ impl ChatV2LLMAdapter {
                             guard.push_str(&content);
                         }
                         let block_id = self.ensure_content_started();
+                        self.append_text_segment(&block_id, &content);
                         self.emitter
                             .emit_chunk(event_types::CONTENT, &block_id, &content, None);
                     }
@@ -1216,6 +1299,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         }
 
         if let Some(block_id) = self.ensure_thinking_started() {
+            self.append_text_segment(&block_id, &filtered);
             self.emitter
                 .emit_chunk(event_types::THINKING, &block_id, &filtered, None);
         }
@@ -1441,6 +1525,55 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // post-processed text in the terminal block event so the frontend can
         // reconcile a delayed or dropped tail before marking the block complete.
         self.finalize_all_with_authoritative_content();
+    }
+}
+
+#[cfg(test)]
+mod interleaved_text_segment_tests {
+    use super::*;
+
+    fn test_adapter() -> ChatV2LLMAdapter {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_interleaved_text".to_string(),
+        ));
+        ChatV2LLMAdapter::new(
+            emitter,
+            "msg_interleaved_text".to_string(),
+            true,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        )
+    }
+
+    #[test]
+    fn preserves_real_reasoning_content_alternation_as_distinct_blocks() {
+        let adapter = test_adapter();
+
+        adapter.on_reasoning_chunk("reasoning-1");
+        adapter.on_content_chunk("content-1");
+        adapter.on_reasoning_chunk("reasoning-2");
+        adapter.on_content_chunk("content-2");
+        adapter.on_complete("content-1content-2", Some("reasoning-1reasoning-2"));
+
+        let segments = adapter.get_text_segments();
+        assert_eq!(segments.len(), 4);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| (segment.block_type.as_str(), segment.content.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (block_types::THINKING, "reasoning-1"),
+                (block_types::CONTENT, "content-1"),
+                (block_types::THINKING, "reasoning-2"),
+                (block_types::CONTENT, "content-2"),
+            ]
+        );
+        assert!(segments.iter().all(|segment| segment.ended_at.is_some()));
+        assert!(segments
+            .windows(2)
+            .all(|pair| pair[0].block_id != pair[1].block_id));
     }
 }
 

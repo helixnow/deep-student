@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::models::ChatMessage as LegacyChatMessage;
 
-use super::pipeline::ChatV2LLMAdapter;
+use super::pipeline::{ChatV2LLMAdapter, StreamedTextSegment};
 use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
 use super::types::{
     block_status, block_types, AttachmentInput, CanonicalContentPart, MessageBlock, MessageSources,
@@ -56,10 +56,12 @@ pub(crate) fn local_shell_contract_for_platform(platform: &str) -> LocalShellRun
         "windows" => LocalShellRuntimeContract {
             os: "Windows",
             sandbox_backend: "windows_appcontainer_job",
-            shell_path: Some(r"System32\WindowsPowerShell\v1.0\powershell.exe"),
+            shell_path: Some(
+                r"Program Files\PowerShell\7\pwsh.exe (preferred), System32\WindowsPowerShell\v1.0\powershell.exe (fallback)",
+            ),
             shell_kind: "windows_powershell",
             invocation: Some(
-                "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand",
+                "pwsh.exe -NoProfile -NonInteractive -EncodedCommand; fallback powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand",
             ),
             output_encoding: Some("utf-8"),
             execution_supported: true,
@@ -382,7 +384,6 @@ pub(crate) struct PipelineContext {
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
 
-
     /// 🔧 F5 修复：最近一轮工具执行是否产生有效心跳
     /// 之前通过扫描 ctx.tool_results 全量历史判断心跳，一次 coordinator_sleep
     /// continue_execution=true 会让所有后续轮次都被视为有心跳；
@@ -396,7 +397,6 @@ pub(crate) struct PipelineContext {
 
     /// 🆕 2026-07: Doom loop 守卫 —— 跨工具轮次追踪「工具名+参数」指纹的连续重复，
     /// 连续第 3 次拦截执行回喂合成失败，连续第 5 次终止本轮循环（见 DoomLoopGuard）
-
 
     /// 🆕 最近一次 load_chat_history 中 FIFO 截断的丢弃报告（dropped > 0 时挂起），
     /// 由 notify_context_trimmed 消费并发射 `context_trimmed` 事件
@@ -772,13 +772,16 @@ impl PipelineContext {
     pub(crate) fn add_interleaved_block(&mut self, mut block: MessageBlock) -> u32 {
         // 🔧 幂等保护：同一块 ID 只收集一次。
         // attempt_completion 路径 / 取消收尾路径可能对同一轮的 thinking/content 块
-        // 重复调用 collect_round_blocks，重复收集会导致 block_ids 列表出现重复项。
-        if let Some(pos) = self
+        // 重复收集，重复 ID 会导致 block_ids 列表出现重复项。
+        if let Some(existing) = self
             .interleaved_blocks
-            .iter()
-            .position(|b| b.id == block.id)
+            .iter_mut()
+            .find(|existing| existing.id == block.id)
         {
-            return self.interleaved_blocks[pos].block_index;
+            let index = existing.block_index;
+            block.block_index = index;
+            *existing = block;
+            return index;
         }
         let index = self.global_block_index;
         block.block_index = index;
@@ -788,83 +791,37 @@ impl PipelineContext {
         index
     }
 
-    /// 收集本轮 LLM 调用产生的 thinking 和 content 块
-    ///
-    /// 在递归调用 execute_with_tools 之前调用，将本轮产生的块添加到交替列表。
-    ///
-    /// ## 参数
-    /// - `thinking_block_id`: thinking 块 ID（如果有）
-    /// - `thinking_content`: thinking 内容（如果有）
-    /// - `content_block_id`: content 块 ID（如果有）
-    /// - `content_text`: content 内容（如果有）
-    /// - `message_id`: 消息 ID
-    pub(crate) fn collect_round_blocks(
+    /// 收集单次 LLM 流中真实交替产生的所有正文/思维链段落。
+    pub(crate) fn collect_streamed_text_segments(
         &mut self,
-        thinking_block_id: Option<String>,
-        thinking_content: Option<String>,
-        content_block_id: Option<String>,
-        content_text: Option<String>,
+        segments: Vec<StreamedTextSegment>,
         message_id: &str,
     ) {
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        let context_start_ms = now_ms - self.elapsed_ms() as i64;
-
-        // 添加 thinking 块（如果有）
-        if let (Some(block_id), Some(content)) = (thinking_block_id, thinking_content) {
-            if !content.is_empty() {
-                // 🔧 P3修复：使用上一个块的结束时间作为本块的开始时间
-                // 第一个块使用 context 开始时间
-                let started_at = self.last_block_ended_at.unwrap_or(context_start_ms);
-                let block = MessageBlock {
-                    id: block_id,
-                    message_id: message_id.to_string(),
-                    block_type: block_types::THINKING.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: Some(content),
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: None,
-                    citations: None,
-                    error: None,
-                    started_at: Some(started_at),
-                    ended_at: Some(now_ms),
-                    // 🔧 递归调用时使用 started_at 作为 first_chunk_at
-                    first_chunk_at: Some(started_at),
-                    block_index: 0, // 会被 add_interleaved_block 重新设置
-                };
-                self.add_interleaved_block(block);
-                // 🔧 P3修复：更新上一个块的结束时间
-                self.last_block_ended_at = Some(now_ms);
+        for segment in segments {
+            if segment.content.is_empty() {
+                continue;
             }
-        }
-
-        // 添加 content 块（如果有）
-        // 注意：在工具调用后可能没有 content（LLM 返回的是 tool_use）
-        if let (Some(block_id), Some(content)) = (content_block_id, content_text) {
-            if !content.is_empty() {
-                // 🔧 P3修复：使用上一个块的结束时间作为本块的开始时间
-                let started_at = self.last_block_ended_at.unwrap_or(context_start_ms);
-                let block = MessageBlock {
-                    id: block_id,
-                    message_id: message_id.to_string(),
-                    block_type: block_types::CONTENT.to_string(),
-                    status: block_status::SUCCESS.to_string(),
-                    content: Some(content),
-                    tool_name: None,
-                    tool_input: None,
-                    tool_output: None,
-                    citations: None,
-                    error: None,
-                    started_at: Some(started_at),
-                    ended_at: Some(now_ms),
-                    // 🔧 递归调用时使用 started_at 作为 first_chunk_at
-                    first_chunk_at: Some(started_at),
-                    block_index: 0,
-                };
-                self.add_interleaved_block(block);
-                // 🔧 P3修复：更新上一个块的结束时间
-                self.last_block_ended_at = Some(now_ms);
-            }
+            let ended_at = segment
+                .ended_at
+                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+            let block = MessageBlock {
+                id: segment.block_id,
+                message_id: message_id.to_string(),
+                block_type: segment.block_type,
+                status: block_status::SUCCESS.to_string(),
+                content: Some(segment.content),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: Some(segment.started_at),
+                ended_at: Some(ended_at),
+                first_chunk_at: Some(segment.started_at),
+                block_index: 0,
+            };
+            self.add_interleaved_block(block);
+            self.last_block_ended_at = Some(ended_at);
         }
     }
 
@@ -1117,10 +1074,10 @@ impl PipelineContext {
         } else {
             format!("当前日期: {}", now.format("%Y-%m-%d"))
         };
-        // Windows 下模型最常犯的错误是写 bash 语法（PS 5.1 不支持 &&/export/
-        // rm -rf 等）——在运行时事实里显式声明，避免"语法错误→盲试"循环。
+        // Windows 下模型最常犯的错误是写 bash 语法。执行器优先 PS 7，但会
+        // 回退到 PS 5.1，因此运行时事实要求使用两者都支持的 PowerShell 语法。
         let shell_notes = if shell.shell_kind == "windows_powershell" {
-            "\nshell_notes: Windows PowerShell 5.1（不是 bash）：不支持 `&&`/`||`（改用 `;` 分隔，或用 `if ($?) { ... }` 判断上一条成败）；不支持 `export X=Y`（用 `$env:X = \"Y\"`）；没有 `rm -rf`（用 `Remove-Item -Recurse -Force`）、`grep`（用 `Select-String`）、`sed`/`awk`（用 `-replace`）、`touch`（用 `New-Item -Force`）、`which`（用 `Get-Command`）；环境变量读取用 `$env:NAME`；路径分隔符用 `\\` 或 `/` 均可；命令必须完全非交互（无 stdin，交互式命令会挂起直到超时）。"
+            "\nshell_notes: PowerShell 7 优先、Windows PowerShell 5.1 回退（不是 bash）；为兼容回退环境，避免 `&&`/`||`（改用 `;` 分隔，或用 `if ($?) { ... }` 判断上一条成败）；不支持 `export X=Y`（用 `$env:X = \"Y\"`）；没有 `rm -rf`（用 `Remove-Item -Recurse -Force`）、`grep`（用 `Select-String`）、`sed`/`awk`（用 `-replace`）、`touch`（用 `New-Item -Force`）、`which`（用 `Get-Command`）；环境变量读取用 `$env:NAME`；路径分隔符用 `\\` 或 `/` 均可；命令必须完全非交互（无 stdin，交互式命令会挂起直到超时）。"
         } else {
             ""
         };

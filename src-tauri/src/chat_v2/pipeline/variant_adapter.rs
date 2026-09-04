@@ -15,7 +15,7 @@ pub(crate) struct VariantLLMAdapter {
     round_id: Option<String>,
     content_block_initialized: Mutex<bool>,
     thinking_block_initialized: Mutex<bool>,
-    finalized_thinking_block_id: Mutex<Option<String>>,
+    text_segments: Mutex<Vec<StreamedTextSegment>>,
     /// 🔧 <think> 标签解析状态：是否当前在 <think> 标签内部
     in_think_tag: Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
@@ -50,7 +50,7 @@ impl VariantLLMAdapter {
             round_id,
             content_block_initialized: Mutex::new(false),
             thinking_block_initialized: Mutex::new(false),
-            finalized_thinking_block_id: Mutex::new(None),
+            text_segments: Mutex::new(Vec::new()),
             in_think_tag: Mutex::new(false),
             think_tag_buffer: Mutex::new(String::new()),
             wrap_token_filter: Mutex::new(
@@ -92,14 +92,109 @@ impl VariantLLMAdapter {
             .unwrap_or_else(|e| e.into_inner());
         if *initialized {
             if let Some(block_id) = self.ctx.get_thinking_block_id() {
-                *self
-                    .finalized_thinking_block_id
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner()) = Some(block_id.clone());
+                self.finish_text_segment(&block_id);
                 self.ctx.emit_end(event_types::THINKING, &block_id, None);
             }
             *initialized = false;
         }
+    }
+
+    fn finalize_content(&self, include_authoritative_content: bool) {
+        let mut initialized = self
+            .content_block_initialized
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if *initialized {
+            if let Some(block_id) = self.ctx.get_content_block_id() {
+                self.finish_text_segment(&block_id);
+                let result = include_authoritative_content
+                    .then(|| authoritative_content_result(self.text_segment_content(&block_id)));
+                self.ctx.emit_end(event_types::CONTENT, &block_id, result);
+            }
+            *initialized = false;
+        }
+    }
+
+    fn start_text_segment(&self, block_id: String, block_type: &str) {
+        self.text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(StreamedTextSegment {
+                block_id,
+                block_type: block_type.to_string(),
+                content: String::new(),
+                started_at: chrono::Utc::now().timestamp_millis(),
+                ended_at: None,
+            });
+    }
+
+    fn sync_text_segment(&self, segment: StreamedTextSegment) {
+        if segment.content.is_empty() {
+            return;
+        }
+        let ended_at = segment
+            .ended_at
+            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+        self.ctx.add_interleaved_block(MessageBlock {
+            id: segment.block_id,
+            message_id: self.ctx.message_id().to_string(),
+            block_type: segment.block_type,
+            status: block_status::SUCCESS.to_string(),
+            content: Some(segment.content),
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: Some(segment.started_at),
+            ended_at: Some(ended_at),
+            first_chunk_at: Some(segment.started_at),
+            block_index: 0,
+        });
+    }
+
+    fn append_text_segment(&self, block_id: &str, text: &str) {
+        let segment = self
+            .text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter_mut()
+            .rev()
+            .find(|segment| segment.block_id == block_id)
+            .map(|segment| {
+                segment.content.push_str(text);
+                segment.clone()
+            });
+        if let Some(segment) = segment {
+            self.sync_text_segment(segment);
+        }
+    }
+
+    fn finish_text_segment(&self, block_id: &str) {
+        let segment = self
+            .text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter_mut()
+            .rev()
+            .find(|segment| segment.block_id == block_id)
+            .map(|segment| {
+                segment.ended_at = Some(chrono::Utc::now().timestamp_millis());
+                segment.clone()
+            });
+        if let Some(segment) = segment {
+            self.sync_text_segment(segment);
+        }
+    }
+
+    fn text_segment_content(&self, block_id: &str) -> String {
+        self.text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|segment| segment.block_id == block_id)
+            .map(|segment| segment.content.clone())
+            .unwrap_or_default()
     }
 
     pub(crate) fn finalize_all(&self) {
@@ -133,6 +228,7 @@ impl VariantLLMAdapter {
         if !reasoning_tail.is_empty() && self.enable_thinking {
             self.ctx.append_reasoning(&reasoning_tail);
             if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+                self.append_text_segment(&block_id, &reasoning_tail);
                 self.ctx
                     .emit_chunk(event_types::THINKING, &block_id, &reasoning_tail);
             }
@@ -141,20 +237,7 @@ impl VariantLLMAdapter {
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
         self.finalize_thinking();
-        let mut content_initialized = self
-            .content_block_initialized
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if *content_initialized {
-            if let Some(block_id) = self.ctx.get_content_block_id() {
-                let result = include_authoritative_content
-                    .then(|| authoritative_content_result(self.ctx.get_accumulated_content()));
-                self.ctx.emit_end(event_types::CONTENT, &block_id, result);
-            }
-            // on_complete is followed by a defensive finalize_all in the
-            // multi-variant pipeline. Do not emit a second payload-less end.
-            *content_initialized = false;
-        }
+        self.finalize_content(include_authoritative_content);
     }
 
     /// 🔧 刷新 think 标签缓冲区中剩余的内容
@@ -179,14 +262,16 @@ impl VariantLLMAdapter {
                 remaining.len()
             );
             self.ctx.append_reasoning(&remaining);
-            if let Some(block_id) = self.ctx.get_thinking_block_id() {
+            if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+                self.append_text_segment(&block_id, &remaining);
                 self.ctx
                     .emit_chunk(event_types::THINKING, &block_id, &remaining);
             }
         } else if !remaining.is_empty() {
             // 剩余内容属于 content
             self.ctx.append_content(&remaining);
-            if let Some(block_id) = self.ctx.get_content_block_id() {
+            if let Some(block_id) = self.ensure_content_started_for_tag() {
+                self.append_text_segment(&block_id, &remaining);
                 self.ctx
                     .emit_chunk(event_types::CONTENT, &block_id, &remaining);
             }
@@ -199,6 +284,8 @@ impl VariantLLMAdapter {
             return None;
         }
 
+        self.finalize_content(true);
+
         let mut initialized = self
             .thinking_block_initialized
             .lock()
@@ -206,6 +293,7 @@ impl VariantLLMAdapter {
         if !*initialized {
             let block_id = MessageBlock::generate_id();
             self.ctx.set_thinking_block_id(&block_id);
+            self.start_text_segment(block_id.clone(), block_types::THINKING);
             self.ctx.emit_start(event_types::THINKING, &block_id, None);
             *initialized = true;
         }
@@ -225,6 +313,7 @@ impl VariantLLMAdapter {
         if !*initialized {
             let block_id = MessageBlock::generate_id();
             self.ctx.set_content_block_id(&block_id);
+            self.start_text_segment(block_id.clone(), block_types::CONTENT);
             self.ctx.emit_start(event_types::CONTENT, &block_id, None);
             *initialized = true;
         }
@@ -280,6 +369,7 @@ impl VariantLLMAdapter {
                         self.ctx.append_reasoning(&thinking_content);
                         // 发射 thinking chunk
                         if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+                            self.append_text_segment(&block_id, &thinking_content);
                             self.ctx.emit_chunk(
                                 event_types::THINKING,
                                 &block_id,
@@ -304,6 +394,7 @@ impl VariantLLMAdapter {
                     if !thinking_content.is_empty() && self.enable_thinking {
                         self.ctx.append_reasoning(&thinking_content);
                         if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+                            self.append_text_segment(&block_id, &thinking_content);
                             self.ctx.emit_chunk(
                                 event_types::THINKING,
                                 &block_id,
@@ -341,6 +432,7 @@ impl VariantLLMAdapter {
                         self.ctx.append_content(&content_before);
                         // 发射 content chunk
                         if let Some(block_id) = self.ensure_content_started_for_tag() {
+                            self.append_text_segment(&block_id, &content_before);
                             self.ctx
                                 .emit_chunk(event_types::CONTENT, &block_id, &content_before);
                         }
@@ -361,6 +453,7 @@ impl VariantLLMAdapter {
                             if !content_before.is_empty() {
                                 self.ctx.append_content(&content_before);
                                 if let Some(block_id) = self.ensure_content_started_for_tag() {
+                                    self.append_text_segment(&block_id, &content_before);
                                     self.ctx.emit_chunk(
                                         event_types::CONTENT,
                                         &block_id,
@@ -378,6 +471,7 @@ impl VariantLLMAdapter {
                     if !content.is_empty() {
                         self.ctx.append_content(&content);
                         if let Some(block_id) = self.ensure_content_started_for_tag() {
+                            self.append_text_segment(&block_id, &content);
                             self.ctx
                                 .emit_chunk(event_types::CONTENT, &block_id, &content);
                         }
@@ -389,15 +483,13 @@ impl VariantLLMAdapter {
     }
 
     pub fn get_thinking_block_id(&self) -> Option<String> {
-        let finalized = self
-            .finalized_thinking_block_id
+        self.text_segments
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        if finalized.is_some() {
-            return finalized;
-        }
-        self.ctx.get_thinking_block_id()
+            .iter()
+            .rev()
+            .find(|segment| segment.block_type == block_types::THINKING)
+            .map(|segment| segment.block_id.clone())
     }
 
     pub fn get_accumulated_reasoning(&self) -> Option<String> {
@@ -409,7 +501,13 @@ impl VariantLLMAdapter {
     }
 
     pub fn get_content_block_id(&self) -> Option<String> {
-        self.ctx.get_content_block_id()
+        self.text_segments
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .rev()
+            .find(|segment| segment.block_type == block_types::CONTENT)
+            .map(|segment| segment.block_id.clone())
     }
 
     pub fn reset_for_new_round(&self) {
@@ -421,10 +519,10 @@ impl VariantLLMAdapter {
             .thinking_block_initialized
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = false;
-        *self
-            .finalized_thinking_block_id
+        self.text_segments
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         // 🔧 重置 <think> 标签解析状态
         *self.in_think_tag.lock().unwrap_or_else(|e| e.into_inner()) = false;
         *self
@@ -498,19 +596,8 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             return;
         }
 
-        let mut initialized = self
-            .thinking_block_initialized
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if !*initialized {
-            let block_id = MessageBlock::generate_id();
-            self.ctx.set_thinking_block_id(&block_id);
-            self.ctx.emit_start(event_types::THINKING, &block_id, None);
-            *initialized = true;
-        }
-        drop(initialized);
-
-        if let Some(block_id) = self.ctx.get_thinking_block_id() {
+        if let Some(block_id) = self.ensure_thinking_started_for_tag() {
+            self.append_text_segment(&block_id, &filtered);
             self.ctx
                 .emit_chunk(event_types::THINKING, &block_id, &filtered);
             self.ctx.append_reasoning(&filtered);
@@ -684,10 +771,56 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::types::SharedContext;
+    use crate::chat_v2::variant_context::VariantExecutionContext;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn variant_content_end_result_carries_authoritative_text() {
         let result = authoritative_content_result("complete variant tail".to_string());
         assert_eq!(result["content"], json!("complete variant tail"));
+    }
+
+    #[test]
+    fn preserves_real_reasoning_content_alternation_as_distinct_variant_blocks() {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_variant_interleaved".to_string(),
+        ));
+        let ctx = Arc::new(VariantExecutionContext::new(
+            "var_interleaved",
+            "model_interleaved",
+            "msg_variant_interleaved",
+            Arc::new(SharedContext::default()),
+            emitter,
+            &CancellationToken::new(),
+        ));
+        let adapter = VariantLLMAdapter::new(
+            Arc::clone(&ctx),
+            true,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        );
+
+        adapter.on_reasoning_chunk("reasoning-1");
+        adapter.on_content_chunk("content-1");
+        adapter.on_reasoning_chunk("reasoning-2");
+        adapter.on_content_chunk("content-2");
+        adapter.on_complete("content-1content-2", Some("reasoning-1reasoning-2"));
+
+        let blocks = ctx.get_interleaved_blocks();
+        assert_eq!(
+            blocks
+                .iter()
+                .map(|block| (block.block_type.as_str(), block.content.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                (block_types::THINKING, Some("reasoning-1")),
+                (block_types::CONTENT, Some("content-1")),
+                (block_types::THINKING, Some("reasoning-2")),
+                (block_types::CONTENT, Some("content-2")),
+            ]
+        );
+        assert_eq!(ctx.block_ids(), ctx.get_interleaved_block_ids());
     }
 }

@@ -12,6 +12,23 @@ const MUTATION_TOOLS = [
   'builtin-workspace_change_revert',
 ] as const;
 
+const GIT_TOOLS = [
+  'builtin-git_status',
+  'builtin-git_diff',
+  'builtin-git_log',
+  'builtin-git_branch',
+  'builtin-git_commit',
+] as const;
+
+const CODE_NAVIGATION_TOOLS = [
+  'builtin-workspace_text_search',
+  'builtin-workspace_symbol_outline',
+  'builtin-workspace_lsp_definition',
+  'builtin-workspace_lsp_references',
+  'builtin-workspace_lsp_hover',
+  'builtin-workspace_lsp_document_symbols',
+] as const;
+
 describe('workspace mutation tool contracts', () => {
   it('exposes every auditable workspace mutation tool to the model', () => {
     const names = workspaceToolsSkill.embeddedTools.map((tool) => tool.name);
@@ -24,6 +41,76 @@ describe('workspace mutation tool contracts', () => {
       const required = (tool?.inputSchema as { required?: string[] })?.required ?? [];
       expect(required).toContain('expected_current_hash');
     }
+  });
+
+  it('exposes the structured git tool group and requires explicit commit paths', () => {
+    const names = workspaceToolsSkill.embeddedTools.map((tool) => tool.name);
+    expect(names).toEqual(expect.arrayContaining(GIT_TOOLS));
+
+    const commit = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-git_commit',
+    );
+    const schema = commit?.inputSchema as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: { paths?: { minItems?: number }; message?: { maxLength?: number } };
+    };
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(expect.arrayContaining(['message', 'paths']));
+    expect(schema.properties?.paths?.minItems).toBe(1);
+    expect(commit?.description).toContain('不会隐式 add -A');
+  });
+
+  it('documents branch read/write sensitivity and safe deletion', () => {
+    const branch = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-git_branch',
+    );
+    expect(branch?.description).toContain('action=list');
+    expect(branch?.description).toContain('High');
+    expect(branch?.description).toContain('-d');
+  });
+
+  it('exposes native cross-platform code navigation with bounded schemas', () => {
+    const names = workspaceToolsSkill.embeddedTools.map((tool) => tool.name);
+    expect(names).toEqual(expect.arrayContaining(CODE_NAVIGATION_TOOLS));
+
+    const search = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-workspace_text_search',
+    );
+    const searchSchema = search?.inputSchema as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: { max_results?: { maximum?: number }; query?: { maxLength?: number } };
+    };
+    expect(searchSchema.additionalProperties).toBe(false);
+    expect(searchSchema.required).toEqual(['query']);
+    expect(searchSchema.properties?.query?.maxLength).toBe(500);
+    expect(searchSchema.properties?.max_results?.maximum).toBe(500);
+    expect(search?.description).toContain('不依赖 rg/shell');
+
+    const outline = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-workspace_symbol_outline',
+    );
+    expect(outline?.description).toContain('不是编译器/LSP');
+
+    const definition = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-workspace_lsp_definition',
+    );
+    const definitionSchema = definition?.inputSchema as {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties?: { line?: { minimum?: number }; column?: { minimum?: number } };
+    };
+    expect(definitionSchema.additionalProperties).toBe(false);
+    expect(definitionSchema.required).toEqual(['path', 'line', 'column']);
+    expect(definitionSchema.properties?.line?.minimum).toBe(1);
+    expect(definitionSchema.properties?.column?.minimum).toBe(1);
+    expect(definition?.description).toContain('rust-analyzer');
+
+    const documentSymbols = workspaceToolsSkill.embeddedTools.find(
+      (tool) => tool.name === 'builtin-workspace_lsp_document_symbols',
+    );
+    expect(documentSymbols?.description).toContain('workspace_symbol_outline');
   });
 
   it('accepts either a complete mutation receipt or a shell change set for rollback', () => {
@@ -48,8 +135,9 @@ describe('workspace mutation tool contracts', () => {
 
   it('describes the real non-interactive shell contract on macOS and Windows', () => {
     expect(workspaceToolsSkill.content).toContain('/bin/sh -c');
-    expect(workspaceToolsSkill.content).toContain('-NoProfile -NonInteractive');
-    expect(workspaceToolsSkill.content).toContain('Windows PowerShell');
+    expect(workspaceToolsSkill.content).toContain('pwsh.exe -NoProfile -NonInteractive');
+    expect(workspaceToolsSkill.content).toContain('Windows PowerShell 5.1');
+    expect(workspaceToolsSkill.content).toContain('Git Bash');
     expect(workspaceToolsSkill.content).toContain('UTF-8');
     expect(workspaceToolsSkill.content).toContain('没有 PTY、stdin 或持久 shell session');
     expect(workspaceToolsSkill.content).toContain('网络默认禁止');

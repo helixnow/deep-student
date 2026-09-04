@@ -52,6 +52,7 @@ pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
 pub mod chatanki_transform; // 🆕 chatanki_transform 声明式变换引擎（ops 模式纯 Rust）
 pub mod chatanki_transform_script; // 🆕 chatanki_transform 沙箱脚本模式（temp root job 目录 + 平台沙箱 + I/O 合同）
+pub mod code_navigation_executor; // 跨平台代码搜索与符号提纲
 pub mod connector_executor; // First-class connector registry and draft/confirm/commit bridge
 pub mod custom_agent_executor; // 🆕 custom_agent_* 自定义子代理 persona 管理（提案+审批两段式）
 pub mod data_governance_executor; // Agent-safe backup and sync tools
@@ -65,6 +66,7 @@ pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthr
 pub mod file_manager_executor;
 pub mod general_executor;
 pub mod generative_ui_executor; // 🆕 生成式 UI 工具执行器（render_generative_ui）
+pub mod git_executor; // 语义 Git 工具组（status/diff/log/branch/commit）
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
 pub mod injector;
@@ -73,6 +75,7 @@ pub mod learning_overview_executor; // Read-only learning overview and Pomodoro 
 pub mod llm_usage_executor; // Agent-safe local LLM usage reporting
 pub mod local_shell_execute_executor;
 pub mod local_shell_preflight_executor;
+pub mod lsp_navigation_executor; // LSP 语义定义/引用/悬停/文档符号
 pub mod mcp_content_materializer; // External MCP image/blob content -> session task files
 pub mod mcp_manage_executor; // 🆕 MCP server 修改/启停/删除执行器（update/remove High，set_enabled Medium）
 pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
@@ -150,6 +153,7 @@ pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
+pub use code_navigation_executor::CodeNavigationExecutor;
 pub use connector_executor::ConnectorToolExecutor;
 pub use custom_agent_executor::CustomAgentExecutor; // 🆕 自定义子代理 persona 管理执行器
 pub use data_governance_executor::DataGovernanceToolExecutor;
@@ -163,6 +167,7 @@ pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use file_manager_executor::FileManagerExecutor;
 pub use general_executor::GeneralToolExecutor;
 pub use generative_ui_executor::GenerativeUiExecutor; // 🆕 生成式 UI 工具执行器
+pub use git_executor::GitToolExecutor; // 语义 Git 工具组执行器
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use index_webpage_executor::IndexWebpageToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
@@ -170,6 +175,7 @@ pub use learning_overview_executor::LearningOverviewExecutor;
 pub use llm_usage_executor::LlmUsageToolExecutor;
 pub use local_shell_execute_executor::LocalShellExecuteExecutor;
 pub use local_shell_preflight_executor::LocalShellPreflightExecutor;
+pub use lsp_navigation_executor::LspNavigationExecutor;
 pub use mcp_manage_executor::McpManageExecutor; // 🆕 MCP server 修改/启停/删除执行器
 pub use mcp_propose_executor::McpProposeExecutor; // 🆕 MCP server 提案执行器
 pub use media_executor::MediaToolExecutor;

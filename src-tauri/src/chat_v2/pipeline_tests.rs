@@ -2223,7 +2223,7 @@ fn test_runtime_facts_platform_contract_covers_desktop_platforms() {
     let windows = super::context::local_shell_contract_for_platform("windows");
     assert_eq!(
         windows.invocation,
-        Some("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand")
+        Some("pwsh.exe -NoProfile -NonInteractive -EncodedCommand; fallback powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand")
     );
     assert_eq!(windows.shell_kind, "windows_powershell");
     assert_eq!(windows.output_encoding, Some("utf-8"));

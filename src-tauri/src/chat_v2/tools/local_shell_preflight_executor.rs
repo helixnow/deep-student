@@ -778,7 +778,9 @@ mod tests {
         let windows = local_shell_contract_for_platform("windows");
         assert_eq!(
             windows.shell_path,
-            Some(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+            Some(
+                r"Program Files\PowerShell\7\pwsh.exe (preferred), System32\WindowsPowerShell\v1.0\powershell.exe (fallback)"
+            )
         );
         assert_eq!(windows.shell_kind, "windows_powershell");
         assert_eq!(windows.output_encoding, Some("utf-8"));

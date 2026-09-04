@@ -109,7 +109,7 @@ import {
   buildStreamStartDiagData,
   emitChatAnkiDebugLifecycle,
 } from './tauri/diagnostics';
-import { normalizeStreamTerminalError } from './tauri/errors';
+import { isActiveStreamConflict, normalizeStreamTerminalError } from './tauri/errors';
 import {
   blockEventChannel,
   sessionEventChannel,
@@ -2823,6 +2823,12 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Sending message:', { content: content.substring(0, 50), attachments });
 
     try {
+      const backendStreamActive = await invoke<boolean>('chat_v2_has_active_stream', {
+        sessionId: this.sessionId,
+      });
+      if (backendStreamActive) {
+        throw new Error('Session has an active stream. Please wait for completion or cancel first.');
+      }
       // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
       resetBridgeState(this.sessionId);
 
@@ -2983,6 +2989,15 @@ export class ChatV2TauriAdapter {
     } catch (error) {
       this.clearStreamExpectation();
       const errorMsg = getErrorMessage(error);
+      if (isActiveStreamConflict(errorMsg)) {
+        console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
+        showGlobalNotification('error', formatUserFacingError(
+          error,
+          'chatV2:error.sendFailed',
+          'Send failed',
+        ));
+        throw error;
+      }
       console.error(LOG_PREFIX, 'Send message failed:', errorMsg);
       // 尝试恢复状态
       try {
@@ -3038,6 +3053,10 @@ export class ChatV2TauriAdapter {
     } catch (error) {
       this.clearStreamExpectation(assistantMessageId);
       const errorMsg = getErrorMessage(error);
+      if (isActiveStreamConflict(errorMsg)) {
+        console.warn(LOG_PREFIX, 'Wake deferred because the backend stream is still active');
+        throw error;
+      }
       console.error(LOG_PREFIX, 'Execute wake session failed:', errorMsg);
       this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
       this.store.completeStream('error', normalizeStreamTerminalError(error));
@@ -3065,6 +3084,12 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Executing sendMessage:', { content: content.substring(0, 50), userMessageId, assistantMessageId });
 
     try {
+      const backendStreamActive = await invoke<boolean>('chat_v2_has_active_stream', {
+        sessionId: this.sessionId,
+      });
+      if (backendStreamActive) {
+        throw new Error('Session has an active stream. Please wait for completion or cancel first.');
+      }
       this.beginStreamExpectation(assistantMessageId);
       const sendStateSnapshot = this.getCurrentState();
 
@@ -3280,6 +3305,15 @@ export class ChatV2TauriAdapter {
     } catch (error) {
       this.clearStreamExpectation();
       const errorMsg = getErrorMessage(error);
+      if (isActiveStreamConflict(errorMsg)) {
+        console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
+        showGlobalNotification('error', formatUserFacingError(
+          error,
+          'chatV2:error.sendFailed',
+          'Send failed',
+        ));
+        throw error;
+      }
       console.error(LOG_PREFIX, 'Execute sendMessage failed:', errorMsg);
       this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
       try {

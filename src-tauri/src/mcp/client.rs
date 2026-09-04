@@ -259,7 +259,11 @@ pub enum Content {
     Text { text: String },
 
     #[serde(rename = "image")]
-    Image { data: String, #[serde(rename = "mimeType")] mime_type: String },
+    Image {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+    },
 
     #[serde(rename = "resource")]
     Resource { resource: ResourceContent },
@@ -1940,10 +1944,7 @@ mod tests {
         }))
         .expect("spec ServerCapabilities");
         assert_eq!(caps.tools.and_then(|t| t.list_changed), Some(true));
-        assert_eq!(
-            caps.resources.and_then(|r| r.subscribe),
-            Some(true)
-        );
+        assert_eq!(caps.resources.and_then(|r| r.subscribe), Some(true));
     }
 
     #[test]

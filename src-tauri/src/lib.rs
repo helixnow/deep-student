@@ -2074,6 +2074,7 @@ pub fn run() {
             ,crate::chat_v2::handlers::send_message::chat_v2_send_message
             ,crate::chat_v2::handlers::send_message::chat_v2_wake_session
             ,crate::chat_v2::handlers::send_message::chat_v2_cancel_stream
+            ,crate::chat_v2::handlers::send_message::chat_v2_has_active_stream
             ,crate::chat_v2::handlers::send_message::chat_v2_retry_message
             ,crate::chat_v2::handlers::send_message::chat_v2_edit_and_resend
             ,crate::chat_v2::handlers::send_message::chat_v2_continue_message
@@ -2821,16 +2822,23 @@ pub fn run() {
         .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 crate::chat_v2::automations::mark_automation_app_exiting();
-                if let Some(pm) = _app_handle.try_state::<crate::plugins::PluginManager>() {
-                    tauri::async_runtime::block_on(pm.shutdown_all());
+                // Android may create the next Activity in this process while the old one is
+                // exiting. Blocking its event loop here leaves the new WebView alive but makes
+                // IPC unresponsive, so startup preflight is misreported as a database failure.
+                // Return immediately and let tao terminate the process after this callback.
+                #[cfg(not(target_os = "android"))]
+                {
+                    if let Some(pm) = _app_handle.try_state::<crate::plugins::PluginManager>() {
+                        tauri::async_runtime::block_on(pm.shutdown_all());
+                    }
+                    tauri::async_runtime::block_on(async {
+                        crate::debug_logger::flush_global_logger().await;
+                        crate::debug_log_service::flush_pending_debug_log_writes().await;
+                        crate::background_tasks::shutdown().await;
+                        crate::debug_logger::flush_global_logger().await;
+                        crate::debug_log_service::flush_pending_debug_log_writes().await;
+                    });
                 }
-                tauri::async_runtime::block_on(async {
-                    crate::debug_logger::flush_global_logger().await;
-                    crate::debug_log_service::flush_pending_debug_log_writes().await;
-                    crate::background_tasks::shutdown().await;
-                    crate::debug_logger::flush_global_logger().await;
-                    crate::debug_log_service::flush_pending_debug_log_writes().await;
-                });
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {

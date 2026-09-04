@@ -56,8 +56,6 @@
 
 use super::*;
 
-
-
 #[derive(Debug, Clone)]
 pub(crate) struct ExternalToolRoute {
     pub raw_tool_name: String,
@@ -461,6 +459,8 @@ impl ChatV2Pipeline {
             std::collections::HashSet::new();
         let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
         let mut cumulative_skill_audit = SkillInjectionAudit::default();
+        let mut previous_empty_required_tools: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         loop {
             // WI-13: PipelineHook 回合边界 —— 每轮迭代开头、doom-loop/上限检查
             // 与本轮 LLM 调用之前触发（内置 TaskAuditHook 在此落审计日志）。
@@ -484,31 +484,31 @@ impl ChatV2Pipeline {
             // 普通限制检查（仅显式配置上限时生效；白名单工具的心跳可绕过）
             if let Some(max_recursion) = max_recursion_opt {
                 if !heartbeat_effective && recursion_depth > max_recursion {
-                log::warn!(
-                    "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
-                    recursion_depth,
-                    max_recursion
-                );
+                    log::warn!(
+                        "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
+                        recursion_depth,
+                        max_recursion
+                    );
 
-                // 创建 tool_limit 块，提示用户达到限制
-                let limit_message = format!(
-                    "⚠️ 已达到工具调用限制（{} 轮）\n\n\
+                    // 创建 tool_limit 块，提示用户达到限制
+                    let limit_message = format!(
+                        "⚠️ 已达到工具调用限制（{} 轮）\n\n\
                 AI 已执行了 {} 轮工具调用。为防止无限循环，已暂停自动执行。\n\n\
                 如果任务尚未完成，您可以：\n\
                 • 发送「继续」让 AI 继续执行\n\
                 • 发送新的指令调整方向\n\
                 • 手动完成剩余步骤",
-                    max_recursion, max_recursion
-                );
-                let result_payload = serde_json::json!({
-                    "content": limit_message,
-                    "recursionDepth": recursion_depth,
-                    "maxRecursion": max_recursion,
-                });
-                self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
+                        max_recursion, max_recursion
+                    );
+                    let result_payload = serde_json::json!({
+                        "content": limit_message,
+                        "recursionDepth": recursion_depth,
+                        "maxRecursion": max_recursion,
+                    });
+                    self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
 
-                // 正常返回，不抛出错误
-                return Ok(());
+                    // 正常返回，不抛出错误
+                    return Ok(());
                 }
             }
 
@@ -1590,15 +1590,10 @@ impl ChatV2Pipeline {
                             ctx.final_reasoning = partial_reasoning;
                             ctx.streaming_thinking_block_id = adapter.get_thinking_block_id();
                             ctx.streaming_content_block_id = adapter.get_content_block_id();
-                            if ctx.has_interleaved_blocks() {
-                                ctx.collect_round_blocks(
-                                    adapter.get_thinking_block_id(),
-                                    adapter.get_accumulated_reasoning(),
-                                    adapter.get_content_block_id(),
-                                    Some(ctx.final_content.clone()),
-                                    &ctx.assistant_message_id.clone(),
-                                );
-                            }
+                            ctx.collect_streamed_text_segments(
+                                adapter.get_text_segments(),
+                                &ctx.assistant_message_id.clone(),
+                            );
                         }
                         adapter.finalize_all();
                         ctx.pending_reasoning_for_api = None;
@@ -1632,15 +1627,10 @@ impl ChatV2Pipeline {
                 }
                 // 已发生过工具轮时，本轮部分内容需进入 interleaved 列表才能被保存
                 // （save_results 检测到 interleaved 块后只保存 interleaved 列表）
-                if ctx.has_interleaved_blocks() {
-                    ctx.collect_round_blocks(
-                        adapter.get_thinking_block_id(),
-                        adapter.get_accumulated_reasoning(),
-                        adapter.get_content_block_id(),
-                        Some(ctx.final_content.clone()),
-                        &ctx.assistant_message_id.clone(),
-                    );
-                }
+                ctx.collect_streamed_text_segments(
+                    adapter.get_text_segments(),
+                    &ctx.assistant_message_id.clone(),
+                );
                 adapter.finalize_all();
                 ctx.pending_reasoning_for_api = None;
                 return Err(ChatV2Error::Cancelled);
@@ -1696,20 +1686,13 @@ impl ChatV2Pipeline {
                 // ============================================================
                 let current_reasoning = adapter.get_accumulated_reasoning();
                 let round_content = adapter.get_accumulated_content();
-                ctx.collect_round_blocks(
-                    adapter.get_thinking_block_id(),
-                    current_reasoning.clone(),
-                    adapter.get_content_block_id(),
-                    if round_content.is_empty() {
-                        None
-                    } else {
-                        Some(round_content.clone())
-                    },
+                ctx.collect_streamed_text_segments(
+                    adapter.get_text_segments(),
                     &ctx.assistant_message_id.clone(),
                 );
 
                 // 🔧 修复：发射 thinking 块的 end 事件，通知前端思维链已结束
-                // 之前只调用了 collect_round_blocks 收集数据，但没有发射 end 事件
+                // 之前只收集数据但没有发射 end 事件
                 // 这导致前端一直显示"思考中..."状态
                 adapter.finalize_all();
 
@@ -1756,18 +1739,65 @@ impl ChatV2Pipeline {
                 let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
                 let round_id = format!("tool-round-{}", recursion_depth);
 
-                // ============================================================
-                // 🆕 2026-07 Doom loop 检测（借鉴 参考实现）：按执行顺序观察每个
-                // 调用的「工具名+参数」指纹，连续第 3 次相同的调用被拦截（不执行），
-                // 以合成失败结果回喂 LLM 要求改变策略；连续第 5 次落终止标记，
-                // 下一轮递归入口生成 tool_limit 块终止循环。
-                // 心跳白名单工具（coordinator_sleep）豁免——重复同参调用是合法轮询。
-                // ============================================================
-                // 2026-09：工具循环完全不设限（长程 agent 支持），
-                // doom loop 拦截机制整体移除——所有调用直接进入执行，无合成结果。
-                // tool_calls 之后仍需用于结果归并，故克隆。
-                let (calls_to_execute, doom_synthetic): (Vec<ToolCall>, Vec<ToolResultInfo>) =
-                    (tool_calls.clone(), Vec::new());
+                // Keep unlimited valid tool rounds, but never execute an empty object for a
+                // schema that declares required fields. Some gateways truncate function
+                // arguments to an empty string and still report a successful tool-call turn.
+                let mut calls_to_execute = Vec::with_capacity(tool_calls.len());
+                let mut empty_required_synthetic = Vec::new();
+                let mut current_empty_required_tools = std::collections::HashSet::new();
+                for tool_call in &tool_calls {
+                    let Some(required) =
+                        required_fields_for_empty_tool_call(tool_call, &frozen_tool_schemas)
+                    else {
+                        calls_to_execute.push(tool_call.clone());
+                        continue;
+                    };
+
+                    current_empty_required_tools.insert(tool_call.name.clone());
+                    let block_id = MessageBlock::generate_id();
+                    let error_message = format!(
+                        "Tool '{}' returned empty arguments but requires: {}. The tool was not executed; retry with complete arguments.",
+                        tool_call.name,
+                        required.join(", ")
+                    );
+                    emitter.emit_start_with_meta(
+                        event_types::TOOL_CALL,
+                        &ctx.assistant_message_id,
+                        Some(&block_id),
+                        Some(json!({
+                            "toolName": tool_call.name,
+                            "toolInput": tool_call.arguments,
+                            "toolCallId": tool_call.id,
+                        })),
+                        None,
+                        ctx.options.skill_state_version,
+                        Some(round_id.as_str()),
+                    );
+                    emitter.emit_error_with_meta(
+                        event_types::TOOL_CALL,
+                        &block_id,
+                        &error_message,
+                        None,
+                        ctx.options.skill_state_version,
+                        Some(round_id.as_str()),
+                    );
+                    empty_required_synthetic.push(ToolResultInfo {
+                        tool_call_id: Some(tool_call.id.clone()),
+                        block_id: Some(block_id),
+                        tool_name: tool_call.name.clone(),
+                        input: tool_call.arguments.clone(),
+                        output: json!({ "error": error_message }),
+                        success: false,
+                        error: Some(error_message),
+                        duration_ms: None,
+                        reasoning_content: None,
+                        thought_signature: None,
+                    });
+                }
+                let stop_after_empty_required_repeat = current_empty_required_tools
+                    .iter()
+                    .any(|name| previous_empty_required_tools.contains(name));
+                previous_empty_required_tools = current_empty_required_tools;
 
                 // 🆕 取消支持：传递取消令牌给工具执行器
                 let cancel_token = ctx.cancellation_token();
@@ -1804,7 +1834,7 @@ impl ChatV2Pipeline {
                 let tool_results = merge_round_results_in_call_order(
                     &tool_calls,
                     executed_results,
-                    doom_synthetic,
+                    empty_required_synthetic,
                 );
 
                 // 记录执行结果
@@ -2085,6 +2115,20 @@ impl ChatV2Pipeline {
                 }
                 ctx.add_tool_results(tool_results_with_reasoning);
 
+                if stop_after_empty_required_repeat {
+                    let limit_message =
+                        "模型连续返回缺少必填参数的空工具调用，已停止自动续轮。请重试或改用其他模型。".to_string();
+                    self.push_tool_limit_block(
+                        ctx,
+                        &emitter,
+                        limit_message.clone(),
+                        json!({
+                            "content": limit_message,
+                            "reason": "repeated_empty_required_arguments",
+                        }),
+                    );
+                }
+
                 // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
                 if !ctx.needs_compaction {
                     let cfg = self.resolve_active_api_config(ctx).await;
@@ -2120,6 +2164,10 @@ impl ChatV2Pipeline {
                     recursion_depth,
                     ctx.interleaved_block_ids.len()
                 );
+                }
+                if stop_after_empty_required_repeat {
+                    ctx.pending_reasoning_for_api = None;
+                    return Ok(());
                 }
 
                 // ============================================================
@@ -2173,11 +2221,8 @@ impl ChatV2Pipeline {
                 );
 
                     // 收集当前轮次的块（无需再次调用 LLM）
-                    ctx.collect_round_blocks(
-                        adapter.get_thinking_block_id(),
-                        adapter.get_accumulated_reasoning(),
-                        adapter.get_content_block_id(),
-                        Some(ctx.final_content.clone()),
+                    ctx.collect_streamed_text_segments(
+                        adapter.get_text_segments(),
                         &ctx.assistant_message_id.clone(),
                     );
 
@@ -2210,11 +2255,8 @@ impl ChatV2Pipeline {
                 adapter.get_response_reasoning_items(),
             );
 
-            ctx.collect_round_blocks(
-                adapter.get_thinking_block_id(),
-                adapter.get_accumulated_reasoning(),
-                adapter.get_content_block_id(),
-                Some(ctx.final_content.clone()),
+            ctx.collect_streamed_text_segments(
+                adapter.get_text_segments(),
                 &ctx.assistant_message_id.clone(),
             );
 
@@ -3532,6 +3574,31 @@ pub(crate) fn merge_round_results_in_call_order(
     merged
 }
 
+fn required_fields_for_empty_tool_call(
+    tool_call: &ToolCall,
+    schemas: &HashMap<String, Value>,
+) -> Option<Vec<String>> {
+    if !tool_call
+        .arguments
+        .as_object()
+        .is_some_and(|args| args.is_empty())
+    {
+        return None;
+    }
+    let required: Vec<String> = schemas
+        .get(&tool_call.name)?
+        .get("function")?
+        .get("parameters")?
+        .get("required")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|field| !field.trim().is_empty())
+        .map(str::to_string)
+        .collect();
+    (!required.is_empty()).then_some(required)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3553,6 +3620,49 @@ mod tests {
 
         let nameless = json!({ "type": "function" });
         assert_eq!(tool_schema_sort_key(&nameless), "");
+    }
+
+    #[test]
+    fn empty_tool_call_is_invalid_only_when_its_schema_has_required_fields() {
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            "needs_command".to_string(),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "needs_command",
+                    "parameters": { "type": "object", "required": ["command"] }
+                }
+            }),
+        );
+        schemas.insert(
+            "no_args".to_string(),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "no_args",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }),
+        );
+
+        assert_eq!(
+            required_fields_for_empty_tool_call(&tool_call("1", "needs_command"), &schemas),
+            Some(vec!["command".to_string()])
+        );
+        assert_eq!(
+            required_fields_for_empty_tool_call(&tool_call("2", "no_args"), &schemas),
+            None
+        );
+        let populated = ToolCall::new(
+            "3".to_string(),
+            "needs_command".to_string(),
+            json!({ "command": "pwd" }),
+        );
+        assert_eq!(
+            required_fields_for_empty_tool_call(&populated, &schemas),
+            None
+        );
     }
 
     #[test]

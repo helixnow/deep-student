@@ -238,7 +238,11 @@ export class SubagentIdleWakeController {
         try {
           const sent = await this.options.sendWake(payload, parentStore);
           if (!sent) {
-            this.armIdleSubscription(parentSessionId, parentStore);
+            if (isIdle(parentStore.getState())) {
+              this.scheduleLookupRetry(parentSessionId);
+            } else {
+              this.armIdleSubscription(parentSessionId, parentStore);
+            }
             return;
           }
           this.pendingWakesByParent.get(parentSessionId)?.shift();
@@ -247,7 +251,9 @@ export class SubagentIdleWakeController {
           // Keep the head queued. A future idle transition or short retry
           // can resend it without losing the wake.
           this.options.onError?.(error, parentSessionId);
-          this.armIdleSubscription(parentSessionId, parentStore);
+          if (!isIdle(parentStore.getState())) {
+            this.armIdleSubscription(parentSessionId, parentStore);
+          }
           this.scheduleLookupRetry(parentSessionId);
           return;
         }

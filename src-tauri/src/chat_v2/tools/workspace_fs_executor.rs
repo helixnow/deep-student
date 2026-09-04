@@ -747,7 +747,9 @@ impl WorkspaceFsExecutor {
             .get("edits")
             .and_then(Value::as_array)
             .cloned()
-            .ok_or_else(|| "edits is required（非空数组，每项含 old_string/new_string）".to_string())?;
+            .ok_or_else(|| {
+                "edits is required（非空数组，每项含 old_string/new_string）".to_string()
+            })?;
         if edits.is_empty() {
             return Err("edits 不能为空数组".to_string());
         }
@@ -1204,7 +1206,10 @@ mod tests {
         let content = "foo bar foo baz foo";
         let edits = vec![serde_json::json!({ "old_string": "foo", "new_string": "qux" })];
         let err = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap_err();
-        assert!(err.contains("3 次"), "expected uniqueness error, got: {err}");
+        assert!(
+            err.contains("3 次"),
+            "expected uniqueness error, got: {err}"
+        );
         // replace_all 放行
         let (out, counts) = WorkspaceFsExecutor::apply_edits(content, &edits, true).unwrap();
         assert_eq!(out, "qux bar qux baz qux");
@@ -1216,7 +1221,10 @@ mod tests {
         let content = "hello world";
         let edits = vec![serde_json::json!({ "old_string": "nonexistent", "new_string": "x" })];
         let err = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap_err();
-        assert!(err.contains("未找到匹配"), "expected not-found error, got: {err}");
+        assert!(
+            err.contains("未找到匹配"),
+            "expected not-found error, got: {err}"
+        );
     }
 
     #[test]

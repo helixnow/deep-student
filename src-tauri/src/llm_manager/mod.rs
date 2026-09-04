@@ -1399,6 +1399,40 @@ mod tests {
     }
 
     #[test]
+    fn merge_consecutive_tool_calls_combines_split_state_for_parallel_responses_calls() {
+        let mut first = tool_call_message("call_1", Some("reasoning text"));
+        first.content = "Calling tools".to_string();
+        let mut second = tool_call_message("call_2", None);
+        second.metadata = Some(json!({
+            "openai_responses_reasoning_item": {
+                "type": "reasoning",
+                "id": "reasoning_1",
+                "content": [{ "type": "reasoning_text", "text": "reasoning text" }]
+            }
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[first, second]);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                tool_calls,
+                thinking_content,
+                response_reasoning_item,
+                ..
+            }) => {
+                assert_eq!(tool_calls.len(), 2);
+                assert_eq!(thinking_content.as_deref(), Some("reasoning text"));
+                assert_eq!(
+                    response_reasoning_item.as_ref().unwrap()["id"],
+                    "reasoning_1"
+                );
+            }
+            _ => panic!("expected one merged parallel tool-call round"),
+        }
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
     fn merge_builtin_profile_user_aware_preserves_user_modified_fields() {
         let mut profiles = vec![profile(
             "builtin-deepseek-reasoner",
@@ -4040,11 +4074,19 @@ impl LLMManager {
                             item.get("type").and_then(Value::as_str) == Some("reasoning")
                         })
                         .cloned();
+                    // A Responses round can carry one reasoning item followed by
+                    // several parallel function calls. The text is attached to the
+                    // first stored result while the full item stays on its adjacent
+                    // call, so either half may arrive after the group has started.
+                    // Only a second value of the same kind proves a new round.
+                    let has_new_reasoning_round =
+                        has_new_reasoning && current_thinking_content.is_some();
                     let has_new_response_reasoning = response_reasoning_item.is_some()
+                        && current_response_reasoning_item.is_some()
                         && current_response_reasoning_item.as_ref()
                             != response_reasoning_item.as_ref();
 
-                    if (has_new_reasoning || has_new_response_reasoning)
+                    if (has_new_reasoning_round || has_new_response_reasoning)
                         && !pending_tool_calls.is_empty()
                     {
                         // 刷新当前组（这是前一轮的工具调用）

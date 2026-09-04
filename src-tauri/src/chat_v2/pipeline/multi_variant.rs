@@ -3046,7 +3046,6 @@ impl ChatV2Pipeline {
         ctx: &Arc<super::super::variant_context::VariantExecutionContext>,
     ) -> ChatV2Result<()> {
         let conn = self.db.get_conn_safe()?;
-        let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 获取消息
         let mut message = ChatV2Repo::get_message_with_conn(&conn, message_id)?
@@ -3077,71 +3076,20 @@ impl ChatV2Pipeline {
             );
         }
 
-        // 保存 thinking 块（如果有）
-        if let Some(thinking_block_id) = ctx.get_thinking_block_id() {
-            let thinking_content = ctx.get_accumulated_reasoning();
-            let thinking_block = MessageBlock {
-                id: thinking_block_id.clone(),
-                message_id: message_id.to_string(),
-                block_type: block_types::THINKING.to_string(),
-                status: block_status::SUCCESS.to_string(),
-                content: thinking_content,
-                tool_name: None,
-                tool_input: None,
-                tool_output: None,
-                citations: None,
-                error: None,
-                // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                started_at: ctx.get_thinking_first_chunk_at().or(Some(now_ms)),
-                ended_at: Some(now_ms),
-                // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                first_chunk_at: ctx.get_thinking_first_chunk_at(),
-                block_index: 0,
-            };
-            ChatV2Repo::create_block_with_conn(&conn, &thinking_block)?;
-
-            // 添加到消息的 block_ids
-            if !message.block_ids.contains(&thinking_block_id) {
-                message.block_ids.push(thinking_block_id);
-            }
-        }
-
-        // 保存 content 块
-        if let Some(content_block_id) = ctx.get_content_block_id() {
-            let content = ctx.get_accumulated_content();
-            let content_block = MessageBlock {
-                id: content_block_id.clone(),
-                message_id: message_id.to_string(),
-                block_type: block_types::CONTENT.to_string(),
-                // 🔧 P1修复：正确处理 CANCELLED 状态
-                status: match ctx.status().as_str() {
+        for mut block in ctx.get_interleaved_blocks() {
+            block.message_id = message_id.to_string();
+            if block.block_type == block_types::CONTENT {
+                block.status = match ctx.status().as_str() {
                     s if s == variant_status::SUCCESS => block_status::SUCCESS.to_string(),
                     s if s == variant_status::ERROR => block_status::ERROR.to_string(),
-                    s if s == variant_status::CANCELLED => block_status::SUCCESS.to_string(), // cancelled 但有内容，标记为 success
+                    s if s == variant_status::CANCELLED => block_status::SUCCESS.to_string(),
                     _ => block_status::RUNNING.to_string(),
-                },
-                content: if content.is_empty() {
-                    None
-                } else {
-                    Some(content)
-                },
-                tool_name: None,
-                tool_input: None,
-                tool_output: None,
-                citations: None,
-                error: ctx.error(),
-                // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                started_at: ctx.get_content_first_chunk_at().or(Some(now_ms)),
-                ended_at: Some(now_ms),
-                // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                first_chunk_at: ctx.get_content_first_chunk_at(),
-                block_index: 1, // content 在 thinking 之后
-            };
-            ChatV2Repo::create_block_with_conn(&conn, &content_block)?;
-
-            // 添加到消息的 block_ids
-            if !message.block_ids.contains(&content_block_id) {
-                message.block_ids.push(content_block_id);
+                };
+                block.error = ctx.error();
+            }
+            ChatV2Repo::create_block_with_conn(&conn, &block)?;
+            if !message.block_ids.contains(&block.id) {
+                message.block_ids.push(block.id);
             }
         }
 
@@ -3349,67 +3297,20 @@ impl ChatV2Pipeline {
             let mut variants: Vec<Variant> = Vec::with_capacity(variant_contexts.len());
 
             for ctx in variant_contexts {
-                let mut block_index = 0;
-
-                // 保存 thinking 块（如果有）
-                if let Some(thinking_block_id) = ctx.get_thinking_block_id() {
-                    let thinking_content = ctx.get_accumulated_reasoning();
-                    let thinking_block = MessageBlock {
-                        id: thinking_block_id.clone(),
-                        message_id: assistant_message_id.to_string(),
-                        block_type: block_types::THINKING.to_string(),
-                        status: block_status::SUCCESS.to_string(),
-                        content: thinking_content,
-                        tool_name: None,
-                        tool_input: None,
-                        tool_output: None,
-                        citations: None,
-                        error: None,
-                        // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                        started_at: ctx.get_thinking_first_chunk_at().or(Some(now_ms)),
-                        ended_at: Some(now_ms),
-                        // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                        first_chunk_at: ctx.get_thinking_first_chunk_at(),
-                        block_index,
-                    };
-                    pending_blocks.push(thinking_block);
-                    all_block_ids.push(thinking_block_id);
-                    block_index += 1;
-                }
-
-                // 收集 content 块
-                if let Some(content_block_id) = ctx.get_content_block_id() {
-                    let content = ctx.get_accumulated_content();
-                    let content_block = MessageBlock {
-                        id: content_block_id.clone(),
-                        message_id: assistant_message_id.to_string(),
-                        block_type: block_types::CONTENT.to_string(),
-                        status: if ctx.status() == variant_status::SUCCESS {
+                for mut block in ctx.get_interleaved_blocks() {
+                    block.message_id = assistant_message_id.to_string();
+                    if block.block_type == block_types::CONTENT {
+                        block.status = if ctx.status() == variant_status::SUCCESS {
                             block_status::SUCCESS.to_string()
                         } else if ctx.status() == variant_status::ERROR {
                             block_status::ERROR.to_string()
                         } else {
                             block_status::RUNNING.to_string()
-                        },
-                        content: if content.is_empty() {
-                            None
-                        } else {
-                            Some(content)
-                        },
-                        tool_name: None,
-                        tool_input: None,
-                        tool_output: None,
-                        citations: None,
-                        error: ctx.error(),
-                        // 🔧 P3修复：使用 first_chunk_at 作为 started_at（真正的开始时间）
-                        started_at: ctx.get_content_first_chunk_at().or(Some(now_ms)),
-                        ended_at: Some(now_ms),
-                        // 🔧 使用 VariantContext 记录的 first_chunk_at 时间戳
-                        first_chunk_at: ctx.get_content_first_chunk_at(),
-                        block_index,
-                    };
-                    pending_blocks.push(content_block);
-                    all_block_ids.push(content_block_id);
+                        };
+                        block.error = ctx.error();
+                    }
+                    all_block_ids.push(block.id.clone());
+                    pending_blocks.push(block);
                 }
 
                 // 创建 Variant 结构
