@@ -29,6 +29,11 @@ pub struct SandboxPolicy {
 mod windows;
 
 #[cfg(windows)]
+pub(crate) fn windows_has_git_bash() -> bool {
+    windows::trusted_git_bash_path().is_some()
+}
+
+#[cfg(windows)]
 pub use windows::maybe_run_helper;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -111,8 +116,19 @@ pub trait SandboxBackend: Send + Sync {
         cwd: &Path,
         policy: &SandboxPolicy,
     ) -> Result<Command, String>;
+    fn command_for_git(
+        &self,
+        shell_command: &str,
+        cwd: &Path,
+        policy: &SandboxPolicy,
+    ) -> Result<Command, String> {
+        self.command(shell_command, cwd, policy)
+    }
     fn cleanup_command_resources(&self, _command: &Command) {}
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport;
+    fn effect_report_for_git(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        self.effect_report(policy)
+    }
 }
 
 pub struct PlatformSandboxBackend;

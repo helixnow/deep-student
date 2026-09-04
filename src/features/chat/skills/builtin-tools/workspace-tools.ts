@@ -20,6 +20,12 @@ const WORKSPACE_TOOL_NAMES = [
   'builtin-workspace_read_document',
   'builtin-workspace_file_list',
   'builtin-workspace_file_read',
+  'builtin-workspace_text_search',
+  'builtin-workspace_symbol_outline',
+  'builtin-workspace_lsp_definition',
+  'builtin-workspace_lsp_references',
+  'builtin-workspace_lsp_hover',
+  'builtin-workspace_lsp_document_symbols',
   'builtin-workspace_artifact_write',
   'builtin-workspace_file_write',
   'builtin-workspace_file_edit',
@@ -29,6 +35,11 @@ const WORKSPACE_TOOL_NAMES = [
   'builtin-attachment_stage',
   'builtin-local_shell_preflight',
   'builtin-local_shell_execute',
+  'builtin-git_status',
+  'builtin-git_diff',
+  'builtin-git_log',
+  'builtin-git_branch',
+  'builtin-git_commit',
   'builtin-coordinator_sleep',
   'builtin-skill_scan',
   'builtin-skill_install',
@@ -109,6 +120,12 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_read_document**: 读取文档
 - **builtin-workspace_file_list**: 列出授权 runtime root 或当前 Skill package root 下的文件
 - **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件
+- **builtin-workspace_text_search**: 在 workspace 中跨文件搜索文本/正则，返回路径、行列和单行预览
+- **builtin-workspace_symbol_outline**: 提取单个源码文件的声明提纲，用于快速定位类、函数、类型等符号
+- **builtin-workspace_lsp_definition**: 使用已安装语言服务器解析符号定义
+- **builtin-workspace_lsp_references**: 使用已安装语言服务器查找符号引用
+- **builtin-workspace_lsp_hover**: 获取符号类型、签名和文档信息
+- **builtin-workspace_lsp_document_symbols**: 获取语言服务器生成的文档符号树
 - **builtin-workspace_artifact_write**: 写入会话产物目录并返回变更摘要
 - **builtin-workspace_file_write**: 在显式授权为读写的 workspace 中创建或覆盖 UTF-8 文本文件
 - **builtin-workspace_file_edit**: 局部编辑 workspace 文件（search/replace），改代码/改文档的首选——只改匹配片段，不重写整个文件；每个 old_string 默认须唯一出现
@@ -118,8 +135,13 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-attachment_stage**: 把聊天附件的原始字节物化到会话 temp root 的 attachments/ 子目录，返回 root_id + relative_path，供 workspace 文件工具或 local_shell_execute（cwd 选 temp）继续处理二进制/大文件
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 提交非交互本地命令，由后端按当前会话档位决定静默执行或展示审批 UI，返回 exit code、stdout/stderr 与截断状态
+- **builtin-git_status**: 结构化读取当前 workspace 仓库状态
+- **builtin-git_diff**: 读取工作区或暂存区 diff，可限定相对路径
+- **builtin-git_log**: 读取最近提交历史
+- **builtin-git_branch**: 列出、创建、切换或安全删除分支；写操作由后端展示 High 审批
+- **builtin-git_commit**: 只暂存并提交显式 paths，不会隐式提交其他改动；由后端展示 High 审批
 
-本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。完全访问会同时免除普通 shell 审批并取消本地 shell 的 runtime root、文件系统和网络沙箱边界；此时命令可以访问当前用户有权访问的宿主机路径。
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 通用 shell 优先使用 PowerShell 7（\`pwsh.exe -NoProfile -NonInteractive\`），未安装时回退受信任 System32 路径下的 Windows PowerShell 5.1；语义 Git 工具在检测到 Git for Windows 时优先使用 Git Bash（\`bash.exe --noprofile --norc -c\`），否则使用上述 PowerShell（均为 UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。完全访问会同时免除普通 shell 审批并取消本地 shell 的 runtime root、文件系统和网络沙箱边界；此时命令可以访问当前用户有权访问的宿主机路径。
 
 ### 本地命令的执行根选择
 - 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。
@@ -397,6 +419,101 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             default: 65536,
             description: '最多返回的字节数，超出会截断',
           },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'builtin-workspace_text_search',
+      description:
+        '在当前授权 workspace 中跨文件搜索文本。原生跨平台实现，不依赖 rg/shell；默认按字面量搜索，可启用 Rust regex，支持目录、扩展名和结果数限制。跳过隐藏目录、依赖/构建产物、符号链接和二进制/超大文件。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          query: { type: 'string', minLength: 1, maxLength: 500, description: '要查找的文本或正则表达式。' },
+          path: { type: 'string', description: '可选的 workspace 相对目录；默认搜索整个 workspace。' },
+          regex: { type: 'boolean', default: false, description: 'true 时将 query 解释为 Rust regex；默认按字面量匹配。' },
+          case_sensitive: { type: 'boolean', default: true, description: '是否区分大小写。' },
+          extensions: {
+            type: 'array', maxItems: 32,
+            items: { type: 'string', pattern: '^\\.?[A-Za-z0-9]+$' },
+            description: '可选扩展名白名单，如 ["rs", "ts", "tsx"]。',
+          },
+          max_results: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'builtin-workspace_symbol_outline',
+      description:
+        '提取 workspace 内单个 UTF-8 源码文件的声明提纲，返回符号名、类型、行号和签名预览。适合先了解文件结构；这是快速声明识别，不是编译器/LSP 级定义或引用解析。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', minLength: 1, description: 'workspace 内的源码文件相对路径。' },
+          max_symbols: { type: 'integer', minimum: 1, maximum: 500, default: 200 },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'builtin-workspace_lsp_definition',
+      description:
+        '通过真实 LSP 查询符号定义。支持 Rust（rust-analyzer）、TypeScript/JavaScript（typescript-language-server）和 Python（pyright-langserver）；服务器须已安装。line/column 均为从 1 开始的 Unicode 字符位置。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', minLength: 1, description: 'workspace 内的源码文件相对路径。' },
+          line: { type: 'integer', minimum: 1, description: '从 1 开始的行号。' },
+          column: { type: 'integer', minimum: 1, description: '从 1 开始的 Unicode 字符列号。' },
+        },
+        required: ['path', 'line', 'column'],
+      },
+    },
+    {
+      name: 'builtin-workspace_lsp_references',
+      description:
+        '通过真实 LSP 查找符号引用。支持 Rust、TypeScript/JavaScript 和 Python；返回语言服务器原始 Location/LocationLink 结果。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', minLength: 1, description: 'workspace 内的源码文件相对路径。' },
+          line: { type: 'integer', minimum: 1, description: '从 1 开始的行号。' },
+          column: { type: 'integer', minimum: 1, description: '从 1 开始的 Unicode 字符列号。' },
+          include_declaration: { type: 'boolean', default: true, description: '是否在结果中包含声明位置。' },
+        },
+        required: ['path', 'line', 'column'],
+      },
+    },
+    {
+      name: 'builtin-workspace_lsp_hover',
+      description:
+        '通过真实 LSP 获取指定符号的类型、签名和文档。支持 Rust、TypeScript/JavaScript 和 Python。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', minLength: 1, description: 'workspace 内的源码文件相对路径。' },
+          line: { type: 'integer', minimum: 1, description: '从 1 开始的行号。' },
+          column: { type: 'integer', minimum: 1, description: '从 1 开始的 Unicode 字符列号。' },
+        },
+        required: ['path', 'line', 'column'],
+      },
+    },
+    {
+      name: 'builtin-workspace_lsp_document_symbols',
+      description:
+        '通过真实 LSP 获取单个源码文件的文档符号树。若语言服务器未安装，可回退使用 workspace_symbol_outline 的启发式声明提纲。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', minLength: 1, description: 'workspace 内的源码文件相对路径。' },
         },
         required: ['path'],
       },
@@ -701,6 +818,62 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
         },
         required: ['command'],
+      },
+    },
+    {
+      name: 'builtin-git_status',
+      description: '读取当前授权 workspace 的 Git 状态，返回 porcelain v1 与分支信息。只读，Medium 敏感度。',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    },
+    {
+      name: 'builtin-git_diff',
+      description: '读取当前授权 workspace 的 Git diff；可选择暂存区并限定相对路径。只读，Medium 敏感度。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          staged: { type: 'boolean', default: false, description: 'true 读取已暂存 diff，false 读取工作区 diff。' },
+          paths: {
+            type: 'array', maxItems: 200, items: { type: 'string', maxLength: 512 },
+            description: '可选的 workspace 相对路径列表；禁止绝对路径、.. 和以 - 开头的路径。',
+          },
+        },
+      },
+    },
+    {
+      name: 'builtin-git_log',
+      description: '读取当前授权 workspace 的最近 Git 提交历史。只读，Medium 敏感度。',
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: { limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+      },
+    },
+    {
+      name: 'builtin-git_branch',
+      description: '管理当前授权 workspace 的本地分支。action=list 为只读 Medium；create/switch/delete 为 High 并走后端审批。delete 只使用安全 -d，不强制删除未合并分支。',
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          action: { type: 'string', enum: ['list', 'create', 'switch', 'delete'] },
+          name: { type: 'string', maxLength: 200, description: 'create/switch/delete 必填的本地分支名。' },
+        },
+        required: ['action'],
+      },
+    },
+    {
+      name: 'builtin-git_commit',
+      description: '在当前授权 workspace 中提交显式路径：先 git add -- paths，再只提交这些 paths；不会隐式 add -A 或卷入其他已暂存文件。High 敏感度，由后端审批。',
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          message: { type: 'string', minLength: 1, maxLength: 4000, description: '提交信息。' },
+          paths: {
+            type: 'array', minItems: 1, maxItems: 200,
+            items: { type: 'string', minLength: 1, maxLength: 512 },
+            description: '必须显式列出的 workspace 相对路径；只提交这些路径。',
+          },
+        },
+        required: ['message', 'paths'],
       },
     },
     {

@@ -459,6 +459,8 @@ export function installDemoIpcMocks(): void {
           }
           return null;
         }
+        case 'chat_v2_has_active_stream':
+          return false;
         case 'chat_v2_wake_session':
         case 'chat_v2_continue_message': {
           const sessionId = String(args.sessionId ?? '');

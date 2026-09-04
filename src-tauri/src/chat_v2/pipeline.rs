@@ -366,6 +366,8 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
         executors.push(Arc::new(super::tools::GenerativeUiExecutor::new())); // 🆕 生成式 UI 工具执行器
         executors.push(Arc::new(WorkspaceFsExecutor::new()));
+        executors.push(Arc::new(super::tools::LspNavigationExecutor::new()));
+        executors.push(Arc::new(super::tools::CodeNavigationExecutor::new()));
         executors.push(Arc::new(FileManagerExecutor::new()));
         executors.push(Arc::new(
             super::tools::attachment_stage_executor::AttachmentStageExecutor::new(),
@@ -389,6 +391,7 @@ impl ChatV2Pipeline {
             super::tools::skill_lifecycle_executor::SkillLifecycleExecutor::new(),
         )); // 🆕 skill_set_enabled / skill_remove / skill_trust_request 技能生命周期治理正门
         executors.push(Arc::new(LocalShellPreflightExecutor::new()));
+        executors.push(Arc::new(super::tools::GitToolExecutor::new()));
         executors.push(Arc::new(
             super::tools::self_inspect_executor::SelfInspectExecutor::new(),
         )); // 🆕 self_inspect 只读自查工具（Low 敏感度，脱敏输出）
@@ -834,6 +837,7 @@ impl ChatV2Pipeline {
 
                 // 🔧 关键修复：从 adapter 获取已累积内容（tokio::select! 取消时不会执行 ctx 更新）
                 if let Some(adapter) = &ctx.current_adapter {
+                    let adapter = adapter.clone();
                     if ctx.final_content.is_empty() {
                         ctx.final_content = adapter.get_accumulated_content();
                     }
@@ -846,6 +850,10 @@ impl ChatV2Pipeline {
                     if ctx.streaming_content_block_id.is_none() {
                         ctx.streaming_content_block_id = adapter.get_content_block_id();
                     }
+                    ctx.collect_streamed_text_segments(
+                        adapter.get_text_segments(),
+                        &assistant_message_id,
+                    );
                     log::info!(
                         "[ChatV2::pipeline] Retrieved partial content from adapter on cancel: content_len={}, reasoning_len={:?}",
                         ctx.final_content.len(),
@@ -881,6 +889,7 @@ impl ChatV2Pipeline {
 
                 // 🔧 关键修复：从 adapter 获取已累积内容
                 if let Some(adapter) = &ctx.current_adapter {
+                    let adapter = adapter.clone();
                     if ctx.final_content.is_empty() {
                         ctx.final_content = adapter.get_accumulated_content();
                     }
@@ -893,6 +902,10 @@ impl ChatV2Pipeline {
                     if ctx.streaming_content_block_id.is_none() {
                         ctx.streaming_content_block_id = adapter.get_content_block_id();
                     }
+                    ctx.collect_streamed_text_segments(
+                        adapter.get_text_segments(),
+                        &assistant_message_id,
+                    );
                     log::info!(
                         "[ChatV2::pipeline] Retrieved partial content from adapter on error: content_len={}, reasoning_len={:?}",
                         ctx.final_content.len(),
@@ -1298,6 +1311,36 @@ mod tests {
             "WorkspaceFsExecutor",
             "WorkspaceFsExecutor must be matched before GeneralToolExecutor"
         );
+    }
+
+    #[test]
+    fn test_code_navigation_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        for tool_name in [
+            "builtin-workspace_text_search",
+            "builtin-workspace_symbol_outline",
+        ] {
+            let executor = registry
+                .get_executor(tool_name)
+                .expect("code navigation tool must have a registered executor");
+            assert_eq!(executor.name(), "CodeNavigationExecutor");
+        }
+    }
+
+    #[test]
+    fn test_lsp_navigation_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        for tool_name in [
+            "builtin-workspace_lsp_definition",
+            "builtin-workspace_lsp_references",
+            "builtin-workspace_lsp_hover",
+            "builtin-workspace_lsp_document_symbols",
+        ] {
+            let executor = registry
+                .get_executor(tool_name)
+                .expect("LSP navigation tool must have a registered executor");
+            assert_eq!(executor.name(), "LspNavigationExecutor");
+        }
     }
 
     #[test]

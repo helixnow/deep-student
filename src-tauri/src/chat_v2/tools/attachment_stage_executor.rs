@@ -1267,13 +1267,13 @@ impl AttachmentStageExecutor {
 
     /// 定位附件并取原始数据（与 attachment_read 相同的 message_id + attachment_id 定位方式）
     fn resolve_attachment(
-        main_db: &crate::database::Database,
+        chat_v2_db: &crate::chat_v2::database::ChatV2Database,
         vfs_db: Option<&crate::vfs::database::VfsDatabase>,
         session_id: &str,
         message_id: &str,
         attachment_id: &str,
     ) -> Result<ResolvedAttachment, String> {
-        let message = ChatV2Repo::get_message(main_db, message_id)
+        let message = ChatV2Repo::get_message_v2(chat_v2_db, message_id)
             .map_err(|e| format!("Failed to get message: {}", e))?
             .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
@@ -1402,7 +1402,10 @@ impl AttachmentStageExecutor {
         );
 
         let start_time = Instant::now();
-        let main_db = ctx.main_db.clone().ok_or("Main database not available")?;
+        let chat_v2_db = ctx
+            .chat_v2_db
+            .clone()
+            .ok_or("Chat V2 database not available")?;
         let vfs_db = ctx.vfs_db.clone();
         let app_handle = ctx.window_ref().app_handle().clone();
         let session_id = ctx.session_id.clone();
@@ -1412,7 +1415,7 @@ impl AttachmentStageExecutor {
         let (staged, temp_id, original_name, mime_type, archive_manifest) =
             tokio::task::spawn_blocking(move || {
                 let resolved = Self::resolve_attachment(
-                    main_db.as_ref(),
+                    chat_v2_db.as_ref(),
                     vfs_db.as_deref(),
                     &session_id,
                     &blocking_message_id,
@@ -1707,6 +1710,10 @@ impl ToolExecutor for AttachmentStageExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::database::ChatV2Database;
+    use crate::chat_v2::types::{AttachmentMeta, ChatMessage, ChatSession};
+    use crate::data_governance::migration::coordinator::MigrationCoordinator;
+    use crate::data_governance::schema_registry::DatabaseId;
 
     #[test]
     fn test_can_handle() {
@@ -1726,6 +1733,51 @@ mod tests {
             executor.sensitivity_level("builtin-attachment_stage"),
             ToolSensitivity::Medium
         );
+    }
+
+    #[test]
+    fn resolves_legacy_attachment_from_chat_v2_database() {
+        let temp_dir = tempfile::tempdir().expect("create ChatV2 test directory");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("apply ChatV2 migrations");
+        let chat_db = ChatV2Database::new(temp_dir.path()).expect("open migrated ChatV2 database");
+
+        let session_id = "sess_attachment_stage_db";
+        ChatV2Repo::create_session_v2(
+            &chat_db,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .expect("persist session");
+        let mut message = ChatMessage::new_user(session_id.to_string(), Vec::new());
+        message.id = "msg_attachment_stage_db".to_string();
+        message.attachments = Some(vec![AttachmentMeta {
+            id: "att_stage".to_string(),
+            name: "data.bin".to_string(),
+            r#type: "document".to_string(),
+            mime_type: "application/octet-stream".to_string(),
+            size: 5,
+            preview_url: Some("data:application/octet-stream;base64,aGVsbG8=".to_string()),
+            status: "ready".to_string(),
+            error: None,
+        }]);
+        ChatV2Repo::create_message_v2(&chat_db, &message).expect("persist attachment message");
+
+        let resolved = AttachmentStageExecutor::resolve_attachment(
+            &chat_db,
+            None,
+            session_id,
+            &message.id,
+            "att_stage",
+        )
+        .expect("resolve attachment from ChatV2 database");
+        assert_eq!(resolved.name, "data.bin");
+        match resolved.payload {
+            AttachmentPayload::Bytes { data } => assert_eq!(data, b"hello"),
+            AttachmentPayload::Disk { .. } => panic!("expected inline attachment bytes"),
+        }
     }
 
     #[test]

@@ -548,6 +548,12 @@ impl VariantExecutionContext {
             .interleaved_blocks
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = blocks.iter_mut().find(|existing| existing.id == block.id) {
+            let index = existing.block_index;
+            block.block_index = index;
+            *existing = block;
+            return index;
+        }
         let index = blocks.len() as u32;
         block.block_index = index;
         self.interleaved_block_ids

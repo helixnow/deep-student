@@ -22,6 +22,7 @@ import {
   wasDeliveredViaSyncToolReturn,
   type ParentWakeStore,
 } from './subagentIdleWake';
+import { isActiveStreamConflict } from '../adapters/tauri/errors';
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../debug/exportSessionDebug';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -251,6 +252,17 @@ const completionWakeController = new SubagentIdleWakeController({
       };
       if (latest.sessionStatus !== 'idle' || latest.currentStreamingMessageId) return false;
 
+      const { invoke } = await import('@tauri-apps/api/core');
+      const backendStreamActive = await invoke<boolean>('chat_v2_has_active_stream', {
+        sessionId: parentSessionId,
+      });
+      if (backendStreamActive) {
+        console.log(
+          `[Workspace Events] [SUBAGENT_WAKE] Parent ${parentSessionId} still has a backend stream; retaining wake`,
+        );
+        return false;
+      }
+
       // 🔧 wait=true 同步交付去重：结果已随工具返回值处理过，跳过冗余唤醒
       if (wasDeliveredViaSyncToolReturn(parentStore, payload)) {
         console.log(
@@ -287,6 +299,12 @@ const completionWakeController = new SubagentIdleWakeController({
         undefined,
         payload.workspace_id,
       );
+      try {
+        await latest.wakeSession(content);
+      } catch (error: unknown) {
+        if (isActiveStreamConflict(error)) return false;
+        throw error;
+      }
       showGlobalNotification(
         'info',
         i18n.t('chatV2:workspace.subagentWakeNotice', {
@@ -294,7 +312,6 @@ const completionWakeController = new SubagentIdleWakeController({
           defaultValue: '后台子代理已完成，唤醒主代理处理结果',
         }),
       );
-      await latest.wakeSession(content);
       return true;
     } finally {
       adapterManager.release(parentSessionId, acquisition.lease);
@@ -499,7 +516,7 @@ async function acquireWorkerAdapterLease(
  * 这类错误说明子代理正在健康运行，不应标记 failed 或弹错误通知。
  */
 export function isActiveStreamError(message: string): boolean {
-  return /active stream/i.test(message);
+  return isActiveStreamConflict(message);
 }
 
 const COMPLETION_STATUSES: ReadonlySet<AgentStatus> = new Set([

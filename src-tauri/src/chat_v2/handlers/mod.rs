@@ -100,7 +100,7 @@ pub use search_handlers::{
 };
 pub use send_message::{
     chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,
-    chat_v2_retry_message, chat_v2_send_message, chat_v2_wake_session,
+    chat_v2_has_active_stream, chat_v2_retry_message, chat_v2_send_message, chat_v2_wake_session,
 };
 pub use variant_handlers::{
     chat_v2_cancel_variant, chat_v2_delete_variant, chat_v2_retry_variant, chat_v2_retry_variants,

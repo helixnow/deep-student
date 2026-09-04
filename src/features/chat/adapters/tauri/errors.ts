@@ -8,6 +8,11 @@ import { formatUserFacingError } from '@/utils/errorUtils';
 const STREAM_LOAD_FAILED_KEY = 'chatV2:error.loadFailed';
 const STREAM_LOAD_FAILED_FALLBACK = 'Load failed';
 
+export function isActiveStreamConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /active stream/i.test(message);
+}
+
 /**
  * Normalize a stream_error payload into a stable, user-facing terminal message.
  * When `error` is absent, falls back to the same i18n key used by the adapter.

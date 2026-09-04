@@ -87,6 +87,7 @@ commands.allow = [
   "chat_v2_get_session",
   "chat_v2_get_session_tags",
   "chat_v2_get_tags_batch",
+  "chat_v2_has_active_stream",
   "chat_v2_kill_switch_status",
   "chat_v2_list_agent_sessions",
   "chat_v2_list_all_tags",

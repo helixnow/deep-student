@@ -774,6 +774,19 @@ pub async fn chat_v2_cancel_stream(
     }
 }
 
+/// Return the backend-owned stream state for a session.
+///
+/// The frontend may be recreated by development hot reload while the Rust pipeline keeps
+/// running. Callers that schedule autonomous work must use this state instead of trusting a
+/// newly-created, idle frontend store.
+#[tauri::command]
+pub fn chat_v2_has_active_stream(
+    session_id: String,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+) -> bool {
+    chat_v2_state.has_active_stream(&session_id)
+}
+
 /// 重试消息生成
 ///
 /// 使用相同的用户输入重新生成助手回复。

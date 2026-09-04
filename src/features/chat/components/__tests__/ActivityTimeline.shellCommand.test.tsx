@@ -105,17 +105,26 @@ describe('ActivityTimeline shell command nodes', () => {
     });
   });
 
-  it('shows the command summary instead of the English tool name', () => {
+  it('puts a shell command under the grouped tool summary and keeps its inner icon', () => {
     render(<ActivityTimeline blocks={[createShellBlock()]} isStreaming={false} />);
+
+    expect(screen.getByText('timeline.tool.groupSummary')).toBeInTheDocument();
+    expect(screen.queryByText('timeline.shell.ran')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /timeline\.tool\.groupSummary/i }));
 
     expect(screen.getByText('timeline.shell.ran')).toBeInTheDocument();
     expect(screen.getByText('uname -s')).toBeInTheDocument();
     expect(screen.queryByText(/Local Shell Execute/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /timeline\.shell\.ran.*uname -s/i }).querySelector('svg'),
+    ).toBeInTheDocument();
   });
 
   it('expands the command into the dedicated shell output block', () => {
     render(<ActivityTimeline blocks={[createShellBlock()]} isStreaming={false} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /timeline\.tool\.groupSummary/i }));
     fireEvent.click(screen.getByRole('button', { name: /timeline\.shell\.ran.*uname -s/i }));
 
     expect(screen.getByText('Darwin')).toBeInTheDocument();
@@ -125,6 +134,8 @@ describe('ActivityTimeline shell command nodes', () => {
 
   it('renders preflight and execute as one command lifecycle', () => {
     render(<ActivityTimeline blocks={[createPreflightBlock(), createShellBlock()]} isStreaming={false} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /timeline\.tool\.groupSummary/i }));
 
     expect(screen.queryByText('timeline.shell.checked')).not.toBeInTheDocument();
     expect(screen.getByText('timeline.shell.ran')).toBeInTheDocument();
@@ -154,6 +165,8 @@ describe('ActivityTimeline shell command nodes', () => {
         },
       }),
     ]} isStreaming={false} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /timeline\.tool\.groupSummary/i }));
 
     expect(screen.getAllByText('timeline.shell.blocked')).toHaveLength(1);
     expect(screen.getAllByText('uname -s')).toHaveLength(1);

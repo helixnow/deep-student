@@ -1,11 +1,12 @@
 use chrono::Utc;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use zip::write::FileOptions;
 
 use crate::database::Database;
@@ -435,7 +436,7 @@ impl NotesExporter {
         note_filter: Option<&HashSet<String>>,
     ) -> Result<SubjectBundle> {
         if let Some(vfs_db) = self.vfs_db.as_ref() {
-            return self.collect_all_notes_bundle_vfs(vfs_db, include_versions, note_filter);
+            return self.collect_all_notes_bundle_vfs(conn, vfs_db, include_versions, note_filter);
         }
 
         log::info!("collect_all_notes_bundle 开始查询所有笔记");
@@ -696,6 +697,7 @@ impl NotesExporter {
 
     fn collect_all_notes_bundle_vfs(
         &self,
+        main_conn: &rusqlite::Connection,
         vfs_db: &Arc<VfsDatabase>,
         _include_versions: bool,
         note_filter: Option<&HashSet<String>>,
@@ -710,7 +712,6 @@ impl NotesExporter {
             .map_err(|e| AppError::database(format!("VFS 查询笔记失败: {}", e)))?;
 
         let mut export_notes: Vec<ExportNote> = Vec::new();
-        let mut note_ids: HashSet<String> = HashSet::new();
         for note in notes {
             if let Some(filter) = note_filter {
                 if !filter.contains(&note.id) {
@@ -721,7 +722,6 @@ impl NotesExporter {
                 .ok()
                 .flatten()
                 .unwrap_or_default();
-            note_ids.insert(note.id.clone());
             export_notes.push(ExportNote {
                 id: note.id,
                 title: note.title,
@@ -738,53 +738,26 @@ impl NotesExporter {
             return Ok(SubjectBundle::default());
         }
 
-        // 读取附件（仍使用旧 assets 表，避免破坏现有资产存储）
-        let conn = self
-            .db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
-        let mut asset_stmt = conn
-            .prepare("SELECT note_id, path, size, mime FROM assets")
-            .map_err(|e| AppError::database(format!("准备附件查询失败: {}", e)))?;
-        let asset_rows = asset_stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                ))
-            })
-            .map_err(|e| AppError::database(format!("遍历附件失败: {}", e)))?;
-
         let mut attachments: Vec<ExportAttachmentInternal> = Vec::new();
-        for row in asset_rows {
-            let (note_id, path_str, _size, _mime) =
-                row.map_err(|e| AppError::database(e.to_string()))?;
-            if !note_ids.contains(&note_id) {
-                continue;
-            }
-            let stored_path = Path::new(&path_str);
-            if is_path_traversal(stored_path) {
-                log::warn!("跳过可能越界的附件路径: {}", path_str);
-                continue;
-            }
-            let abs_path = self.file_manager.get_app_data_dir().join(stored_path);
-            if abs_path.exists() {
-                // ★ 2026-07-19：剥离 notes_assets/ 前缀，保证 zip 条目为
-                // assets/<subject>/...，与导入侧解析约定一致（见
-                // collect_all_notes_bundle 同款修复的详细说明）。
-                let normalized_path = strip_notes_assets_prefix(stored_path)
-                    .unwrap_or_else(|| stored_path.to_path_buf());
-                // A6-23: 不再在此读盘，改为 zip 写入时逐个流式读取
+        let app_data_dir = self.file_manager.get_writable_app_data_dir();
+        let mut referenced_paths: HashSet<PathBuf> = HashSet::new();
+        for note in &export_notes {
+            referenced_paths.extend(extract_note_asset_paths(&note.content_md));
+        }
+        for stored_path in referenced_paths {
+            let abs_path = app_data_dir.join(&stored_path);
+            if abs_path.is_file() {
+                let normalized_path = strip_notes_assets_prefix(&stored_path)
+                    .expect("extract_note_asset_paths only returns notes_assets paths");
                 attachments.push(ExportAttachmentInternal {
                     relative_path: normalized_path,
                     absolute_path: abs_path,
                 });
             }
         }
+        attachments.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
 
-        let preferences = self.collect_all_preferences(&conn)?;
+        let preferences = self.collect_all_preferences(main_conn)?;
 
         Ok(SubjectBundle {
             notes: export_notes,
@@ -920,14 +893,31 @@ fn sanitize_filename(name: &str) -> String {
 
 fn strip_notes_assets_prefix(path: &Path) -> Option<PathBuf> {
     let mut components = path.components();
-    match (components.next(), components.next()) {
-        (Some(Component::Normal(first)), Some(Component::Normal(_second)))
-            if first == "notes_assets" =>
-        {
-            Some(components.collect())
-        }
+    match components.next() {
+        Some(Component::Normal(first)) if first == "notes_assets" => Some(components.collect()),
         _ => None,
     }
+}
+
+fn extract_note_asset_paths(content: &str) -> HashSet<PathBuf> {
+    static NOTE_ASSET_PATH: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"notes_assets[/\\][^\s\)\]\[\}"'<>]+"#)
+            .expect("notes asset path regex must compile")
+    });
+
+    NOTE_ASSET_PATH
+        .find_iter(content)
+        .filter_map(|matched| {
+            let normalized = matched.as_str().replace('\\', "/");
+            let path = PathBuf::from(normalized);
+            if is_path_traversal(&path) || strip_notes_assets_prefix(&path)?.as_os_str().is_empty()
+            {
+                None
+            } else {
+                Some(path)
+            }
+        })
+        .collect()
 }
 
 fn is_path_traversal(path: &Path) -> bool {
@@ -1390,7 +1380,21 @@ impl NotesImporter {
             None => {
                 // 无 manifest.json，尝试作为纯 Markdown 格式导入
                 log::info!("未找到 manifest.json，尝试作为 Markdown 格式导入");
-                self.import_markdown_with_options(zip, options)
+                if let Some(ref vfs_db) = self.vfs_db {
+                    let manifest = Manifest {
+                        schema_version: SCHEMA_VERSION,
+                        exported_at: String::new(),
+                        app_version: String::new(),
+                        note_count: 0,
+                        attachment_count: 0,
+                        version_count: 0,
+                        preferences: Vec::new(),
+                        subjects: Vec::new(),
+                    };
+                    self.import_unified_zip_vfs(zip, manifest, options, vfs_db)
+                } else {
+                    self.import_markdown_with_options(zip, options)
+                }
             }
         }
     }
@@ -1526,7 +1530,8 @@ impl NotesImporter {
             // subject 已废弃，设置为空字符串
             metadata.subject = String::new();
 
-            let normalized_content = rewrite_content_paths_for_import(&note_content, "", path_slug);
+            let normalized_content =
+                rewrite_content_paths_for_import(&note_content, path_slug, path_slug);
 
             // 报告进度（大归档按百分比步进节流，避免事件风暴）
             processed_notes += 1;
@@ -2860,6 +2865,7 @@ struct MarkdownMetadata {
 #[cfg(test)]
 mod zip_slip_tests {
     use super::*;
+    use crate::vfs::database::setup_migrated_test_db;
     use std::io::Write;
     use tempfile::TempDir;
     use zip::write::FileOptions;
@@ -2868,6 +2874,10 @@ mod zip_slip_tests {
     fn write_zip_entry(zip: &mut ZipWriter<fs::File>, name: &str, data: &[u8]) {
         zip.start_file(name, FileOptions::default()).unwrap();
         zip.write_all(data).unwrap();
+    }
+
+    fn empty_main_db(root: &Path) -> Arc<Database> {
+        Arc::new(Database::new(&root.join("mistakes.db")).expect("create main database"))
     }
 
     /// 模拟三条导入路径共用的落盘逻辑：校验后写文件。
@@ -2951,6 +2961,95 @@ mod zip_slip_tests {
             .join("img.png");
         assert!(expected.exists());
         assert_eq!(fs::read(&expected).unwrap(), b"pngdata");
+    }
+
+    #[test]
+    fn vfs_export_collects_referenced_assets_without_legacy_assets_table() {
+        let (temp_dir, vfs_db) = setup_migrated_test_db();
+        let vfs_db = Arc::new(vfs_db);
+        let main_db = empty_main_db(temp_dir.path());
+        main_db
+            .get_conn_safe()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT);",
+            )
+            .unwrap();
+        let file_manager = Arc::new(FileManager::new(temp_dir.path().to_path_buf()).unwrap());
+
+        let note = VfsNoteRepo::create_note(
+            &vfs_db,
+            VfsCreateNoteParams {
+                title: "Asset note".to_string(),
+                content: String::new(),
+                tags: Vec::new(),
+            },
+        )
+        .unwrap();
+        let relative_asset = format!("notes_assets/_global/{}/image.png", note.id);
+        VfsNoteRepo::update_note(
+            &vfs_db,
+            &note.id,
+            VfsUpdateNoteParams {
+                content: Some(format!("![image]({})", relative_asset)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let asset_path = temp_dir.path().join(&relative_asset);
+        fs::create_dir_all(asset_path.parent().unwrap()).unwrap();
+        fs::write(&asset_path, b"image bytes").unwrap();
+
+        let output_path = temp_dir.path().join("export.zip");
+        let summary = NotesExporter::new_with_vfs(main_db, file_manager, Some(vfs_db))
+            .export(ExportOptions {
+                include_versions: false,
+                output_path: Some(output_path.clone()),
+            })
+            .unwrap();
+
+        assert_eq!(summary.attachment_count, 1);
+        let mut archive = zip::ZipArchive::new(fs::File::open(output_path).unwrap()).unwrap();
+        let expected_entry = format!("assets/_global/{}/image.png", note.id);
+        let mut exported_asset = archive.by_name(&expected_entry).unwrap();
+        let mut bytes = Vec::new();
+        exported_asset.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"image bytes");
+    }
+
+    #[test]
+    fn manifestless_markdown_zip_imports_into_vfs_without_legacy_notes_table() {
+        let (temp_dir, vfs_db) = setup_migrated_test_db();
+        let vfs_db = Arc::new(vfs_db);
+        let main_db = empty_main_db(temp_dir.path());
+        let file_manager = Arc::new(FileManager::new(temp_dir.path().to_path_buf()).unwrap());
+        let zip_path = temp_dir.path().join("markdown.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            write_zip_entry(
+                &mut zip,
+                "markdown/imported.md",
+                b"---\ntitle: Imported note\ntags:\n  - test\n---\n\nImported body",
+            );
+            zip.finish().unwrap();
+        }
+
+        let summary = NotesImporter::new_with_vfs(main_db, file_manager, Some(vfs_db.clone()))
+            .import_with_options(zip_path, ImportOptions::default())
+            .unwrap();
+
+        assert_eq!(summary.note_count, 1);
+        let conn = vfs_db.get_conn_safe().unwrap();
+        let notes = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Imported note");
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &notes[0].id)
+                .unwrap()
+                .as_deref(),
+            Some("Imported body")
+        );
     }
 
     #[test]

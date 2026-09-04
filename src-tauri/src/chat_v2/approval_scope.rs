@@ -369,7 +369,10 @@ pub fn redact_tool_arguments_for_display(tool_name: &str, args: &Value) -> Value
                 .and_then(Value::as_str)
                 .is_some_and(|value| !value.is_empty())
             {
-                object.insert("api_key".to_string(), Value::String("<redacted>".to_string()));
+                object.insert(
+                    "api_key".to_string(),
+                    Value::String("<redacted>".to_string()),
+                );
             }
         }
         return redacted;

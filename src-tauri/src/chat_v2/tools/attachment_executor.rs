@@ -50,7 +50,10 @@ impl AttachmentToolExecutor {
 
     /// 执行附件列表
     async fn execute_list(&self, call: &ToolCall, ctx: &ExecutionContext) -> Result<Value, String> {
-        let main_db = ctx.main_db.as_ref().ok_or("Main database not available")?;
+        let chat_v2_db = ctx
+            .chat_v2_db
+            .as_ref()
+            .ok_or("Chat V2 database not available")?;
 
         // P0-01 安全修复：验证 session_id 参数，防止跨会话访问
         if let Some(param_session_id) = call.arguments.get("session_id").and_then(|v| v.as_str()) {
@@ -86,7 +89,7 @@ impl AttachmentToolExecutor {
         let start_time = Instant::now();
 
         // 查询会话中的消息
-        let messages = ChatV2Repo::get_session_messages(main_db, &session_id)
+        let messages = ChatV2Repo::get_session_messages_v2(chat_v2_db, &session_id)
             .map_err(|e| format!("Failed to get messages: {}", e))?;
 
         // 收集所有附件（兼容 legacy attachments + context_snapshot.user_refs）
@@ -186,7 +189,10 @@ impl AttachmentToolExecutor {
     /// 二进制或大文件（xlsx/zip/图片等）应改用 `attachment_stage` 物化到
     /// temp root 拿到 root_id + relative_path 后，再用 workspace/shell 工具处理。
     async fn execute_read(&self, call: &ToolCall, ctx: &ExecutionContext) -> Result<Value, String> {
-        let main_db = ctx.main_db.as_ref().ok_or("Main database not available")?;
+        let chat_v2_db = ctx
+            .chat_v2_db
+            .as_ref()
+            .ok_or("Chat V2 database not available")?;
 
         // 解析参数
         let message_id = call
@@ -213,7 +219,7 @@ impl AttachmentToolExecutor {
         let start_time = Instant::now();
 
         // 获取消息
-        let message = ChatV2Repo::get_message(main_db, message_id)
+        let message = ChatV2Repo::get_message_v2(chat_v2_db, message_id)
             .map_err(|e| format!("Failed to get message: {}", e))?
             .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
@@ -517,6 +523,58 @@ impl ToolExecutor for AttachmentToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::database::ChatV2Database;
+    use crate::chat_v2::events::ChatV2EventEmitter;
+    use crate::chat_v2::types::{AttachmentMeta, ChatMessage, ChatSession};
+    use crate::data_governance::migration::coordinator::MigrationCoordinator;
+    use crate::data_governance::schema_registry::DatabaseId;
+    use crate::tools::ToolRegistry;
+    use std::sync::Arc;
+
+    fn setup_attachment_context() -> (tempfile::TempDir, ExecutionContext) {
+        let temp_dir = tempfile::tempdir().expect("create ChatV2 test directory");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("apply ChatV2 migrations");
+        let chat_db =
+            Arc::new(ChatV2Database::new(temp_dir.path()).expect("open migrated ChatV2 database"));
+
+        let session_id = "sess_attachment_db".to_string();
+        ChatV2Repo::create_session_v2(
+            &chat_db,
+            &ChatSession::new(session_id.clone(), "chat".to_string()),
+        )
+        .expect("persist session");
+        let mut message = ChatMessage::new_user(session_id.clone(), Vec::new());
+        message.id = "msg_attachment_db".to_string();
+        message.attachments = Some(vec![AttachmentMeta {
+            id: "att_text".to_string(),
+            name: "note.txt".to_string(),
+            r#type: "document".to_string(),
+            mime_type: "text/plain".to_string(),
+            size: 5,
+            preview_url: Some("data:text/plain;base64,aGVsbG8=".to_string()),
+            status: "ready".to_string(),
+            error: None,
+        }]);
+        ChatV2Repo::create_message_v2(&chat_db, &message).expect("persist attachment message");
+
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.clone(),
+        ));
+        let ctx = ExecutionContext::new(
+            session_id,
+            message.id,
+            "blk_attachment_db".to_string(),
+            emitter,
+            Arc::new(ToolRegistry::new()),
+            None,
+        )
+        .with_chat_v2_db(Some(chat_db));
+        (temp_dir, ctx)
+    }
 
     #[test]
     fn test_can_handle() {
@@ -547,5 +605,41 @@ mod tests {
             executor.sensitivity_level("builtin-attachment_list"),
             ToolSensitivity::Low
         );
+    }
+
+    #[tokio::test]
+    async fn attachment_queries_use_chat_v2_database_without_main_database() {
+        let (_temp_dir, ctx) = setup_attachment_context();
+        let executor = AttachmentToolExecutor::new();
+
+        let list = executor
+            .execute_list(
+                &ToolCall::new(
+                    "call_list".to_string(),
+                    "builtin-attachment_list".to_string(),
+                    json!({}),
+                ),
+                &ctx,
+            )
+            .await
+            .expect("list attachments from ChatV2 database");
+        assert_eq!(list["count"], 1);
+        assert_eq!(list["attachments"][0]["attachment_id"], "att_text");
+
+        let read = executor
+            .execute_read(
+                &ToolCall::new(
+                    "call_read".to_string(),
+                    "builtin-attachment_read".to_string(),
+                    json!({
+                        "message_id": "msg_attachment_db",
+                        "attachment_id": "att_text"
+                    }),
+                ),
+                &ctx,
+            )
+            .await
+            .expect("read attachment from ChatV2 database");
+        assert_eq!(read["content"], "hello");
     }
 }

@@ -700,10 +700,7 @@ impl ToolExecutor for SettingsModelsToolExecutor {
                 self.execute_model_assignments_set(&call.arguments, ctx)
                     .await
             }
-            MODEL_PROFILE_ADD_TOOL => {
-                self.execute_model_profile_add(&call.arguments, ctx)
-                    .await
-            }
+            MODEL_PROFILE_ADD_TOOL => self.execute_model_profile_add(&call.arguments, ctx).await,
             _ => Err(tool_error(
                 "UNKNOWN_TOOL",
                 format!("Unknown settings/model tool '{}'.", call.name),
@@ -952,7 +949,8 @@ impl ProfileCapabilityFlags {
         };
         // 互斥校验：embedding/reranker/image_generation 是专用模型，
         // 与文本类能力共置几乎一定是调用方搞错了。
-        let specialist = flags.embedding as u8 + flags.reranker as u8 + flags.image_generation as u8;
+        let specialist =
+            flags.embedding as u8 + flags.reranker as u8 + flags.image_generation as u8;
         if specialist > 1 {
             return Err(invalid_argument(
                 "is_embedding",
@@ -970,12 +968,14 @@ impl ProfileCapabilityFlags {
 }
 
 fn validate_base_url(value: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(value).map_err(|_| {
-        invalid_argument("base_url", "expected an absolute http(s) URL")
-    })?;
+    let parsed = url::Url::parse(value)
+        .map_err(|_| invalid_argument("base_url", "expected an absolute http(s) URL"))?;
     let scheme = parsed.scheme();
     if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
-        return Err(invalid_argument("base_url", "only http/https URLs are allowed"));
+        return Err(invalid_argument(
+            "base_url",
+            "only http/https URLs are allowed",
+        ));
     }
     if parsed.host_str().is_none() {
         return Err(invalid_argument("base_url", "URL must include a host"));
@@ -985,9 +985,9 @@ fn validate_base_url(value: &str) -> Result<(), String> {
 
 fn validate_provider_type(value: &str) -> Result<(), String> {
     let valid = !value.is_empty()
-        && value
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'));
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        });
     if valid {
         Ok(())
     } else {
@@ -1000,10 +1000,8 @@ fn validate_provider_type(value: &str) -> Result<(), String> {
 
 /// 与 llm_manager::api_origins_match 同语义（scheme+host+port 归一比较）。
 fn urls_same_origin(left: &str, right: &str) -> bool {
-    let (Ok(left), Ok(right)) = (
-        url::Url::parse(left.trim()),
-        url::Url::parse(right.trim()),
-    ) else {
+    let (Ok(left), Ok(right)) = (url::Url::parse(left.trim()), url::Url::parse(right.trim()))
+    else {
         return false;
     };
     left.scheme().eq_ignore_ascii_case(right.scheme())
@@ -1688,7 +1686,9 @@ mod tests {
 
         // 无 key / 空 key 不产生占位符
         let no_key = json!({"model": "m", "vendor_id": "v"});
-        assert!(redact_credential_arguments(&no_key).get("api_key").is_none());
+        assert!(redact_credential_arguments(&no_key)
+            .get("api_key")
+            .is_none());
         let empty_key = json!({"model": "m", "api_key": ""});
         assert_eq!(redact_credential_arguments(&empty_key)["api_key"], "");
     }
@@ -1726,9 +1726,18 @@ mod tests {
         assert!(validate_provider_type("azure-openai").is_ok());
         assert!(validate_provider_type("bad provider").is_err());
 
-        assert!(urls_same_origin("https://api.a.com/v1", "https://api.a.com/other"));
-        assert!(!urls_same_origin("https://api.a.com/v1", "https://api.b.com/v1"));
-        assert!(!urls_same_origin("https://a.com:8443/v1", "https://a.com/v1"));
+        assert!(urls_same_origin(
+            "https://api.a.com/v1",
+            "https://api.a.com/other"
+        ));
+        assert!(!urls_same_origin(
+            "https://api.a.com/v1",
+            "https://api.b.com/v1"
+        ));
+        assert!(!urls_same_origin(
+            "https://a.com:8443/v1",
+            "https://a.com/v1"
+        ));
 
         let flags = Map::from_iter([
             ("is_multimodal".to_string(), json!(true)),
@@ -1750,7 +1759,9 @@ mod tests {
 
         let window = Map::from_iter([("context_window".to_string(), json!(128_000))]);
         assert_eq!(
-            ProfileCapabilityFlags::parse(&window).unwrap().context_window,
+            ProfileCapabilityFlags::parse(&window)
+                .unwrap()
+                .context_window,
             Some(128_000)
         );
         let bad_window = Map::from_iter([("context_window".to_string(), json!(0))]);
