@@ -25,6 +25,7 @@ pub mod tool_names {
     pub const FILE_READ: &str = "workspace_file_read";
     pub const ARTIFACT_WRITE: &str = "workspace_artifact_write";
     pub const FILE_WRITE: &str = "workspace_file_write";
+    pub const FILE_EDIT: &str = "workspace_file_edit";
     pub const FILE_MOVE: &str = "workspace_file_move";
     pub const FILE_DELETE: &str = "workspace_file_delete";
     pub const CHANGE_REVERT: &str = "workspace_change_revert";
@@ -32,6 +33,9 @@ pub mod tool_names {
 
 const MAX_FILE_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARTIFACT_WRITE_BYTES: usize = 16 * 1024 * 1024;
+/// 局部编辑（workspace_file_edit）需要在内存中对全文做 search/replace，
+/// 因此比流式读取的 64MB 上限更严格：4MB 足够覆盖绝大多数源码/文档。
+const MAX_EDIT_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 const READ_BUFFER_BYTES: usize = 64 * 1024;
 const MAX_DIRECTORY_SCAN_ENTRIES: usize = 2_000;
 
@@ -637,6 +641,157 @@ impl WorkspaceFsExecutor {
         Self::workspace_change_output(&root, receipt)
     }
 
+    /// 读取完整文件内容用于局部编辑（不跟随符号链接，限制 4MB）。
+    /// 返回 (UTF-8 文本, sha256)。
+    fn read_file_full_for_edit(target: &Path) -> Result<(String, String), String> {
+        let mut file = open_regular_file_no_follow(target, "workspace_file_edit path")?;
+        let metadata = file
+            .metadata()
+            .map_err(|error| format!("Failed to read file metadata: {}", error))?;
+        if metadata.len() > MAX_EDIT_SOURCE_BYTES {
+            return Err(format!(
+                "workspace_file_edit 仅支持不超过 {} MiB 的文件（局部编辑需读入全文）；更大文件请用 workspace_file_write 整体覆写",
+                MAX_EDIT_SOURCE_BYTES / (1024 * 1024)
+            ));
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.read_to_end(&mut bytes)
+            .map_err(|error| format!("Failed to read file: {}", error))?;
+        if bytes.len() as u64 > MAX_EDIT_SOURCE_BYTES {
+            return Err(format!(
+                "workspace_file_edit 文件在读取过程中增长超过 {} MiB",
+                MAX_EDIT_SOURCE_BYTES / (1024 * 1024)
+            ));
+        }
+        let sha256 = Self::sha256_hex(&bytes);
+        let content = String::from_utf8(bytes)
+            .map_err(|_| "workspace_file_edit 目前仅支持 UTF-8 文本文件".to_string())?;
+        Ok((content, sha256))
+    }
+
+    /// 顺序应用一组 search/replace 编辑，返回 (新内容, 每处替换次数)。
+    ///
+    /// 语义对齐 Claude Code 的 Edit：每个 `old_string` 默认必须在当前内容中
+    /// **唯一**出现（防止误替换）；`replace_all=true` 时替换所有出现。
+    /// 所有编辑基于同一份快照顺序应用，任一失败则整体不落盘。
+    fn apply_edits(
+        content: &str,
+        edits: &[Value],
+        replace_all: bool,
+    ) -> Result<(String, Vec<usize>), String> {
+        let mut current = content.to_string();
+        let mut counts = Vec::with_capacity(edits.len());
+        for (index, edit) in edits.iter().enumerate() {
+            let old_string = edit
+                .get("old_string")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("edits[{}].old_string is required", index))?;
+            let new_string = edit
+                .get("new_string")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("edits[{}].new_string is required", index))?;
+            if old_string.is_empty() {
+                return Err(format!(
+                    "edits[{}].old_string 不能为空（空匹配有歧义）",
+                    index
+                ));
+            }
+            if old_string == new_string {
+                return Err(format!(
+                    "edits[{}] 的 old_string 与 new_string 相同，无实际变更",
+                    index
+                ));
+            }
+            let occurrences = current.matches(old_string).count();
+            if occurrences == 0 {
+                return Err(format!(
+                    "edits[{}] 未找到匹配的 old_string。可能原因：内容已被修改、空白/缩进不一致、或大小写差异。请先用 workspace_file_read 读取最新内容。",
+                    index
+                ));
+            }
+            if occurrences > 1 && !replace_all {
+                return Err(format!(
+                    "edits[{}] 的 old_string 出现了 {} 次，不唯一。请提供更长的、包含更多上下文的 old_string 以唯一定位，或确认要全部替换时传 replace_all=true。",
+                    index, occurrences
+                ));
+            }
+            let replaced = if replace_all {
+                current.replace(old_string, new_string)
+            } else {
+                current.replacen(old_string, new_string, 1)
+            };
+            current = replaced;
+            counts.push(if replace_all { occurrences } else { 1 });
+        }
+        Ok((current, counts))
+    }
+
+    async fn execute_workspace_edit(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
+        Self::ensure_writable_workspace(&root)?;
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "path is required".to_string())?;
+        let expected = args
+            .get("expected_current_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                "expected_current_hash is required：局部编辑必须基于最近一次 workspace_file_read 返回的 sha256，防止覆盖他人/他处的并发修改".to_string()
+            })?;
+        let edits: Vec<Value> = args
+            .get("edits")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| "edits is required（非空数组，每项含 old_string/new_string）".to_string())?;
+        if edits.is_empty() {
+            return Err("edits 不能为空数组".to_string());
+        }
+        if edits.len() > 100 {
+            return Err("单次最多 100 处编辑".to_string());
+        }
+        let replace_all = args
+            .get("replace_all")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        // 读取全文 + 当前 hash，先做 OCC 前置校验（友好失败，附实际 hash）
+        let relative = Self::normalize_relative_path(Some(path))?;
+        Self::ensure_public_runtime_path(&relative)?;
+        let target = Self::ensure_inside_existing(&root_canon, &relative)?;
+        let (content, current_hash) = Self::read_file_full_for_edit(&target)?;
+        if current_hash != expected {
+            return Err(format!(
+                "expected_current_hash 不匹配：文件当前 sha256 为 {}。文件可能已被并发修改，请重新 workspace_file_read 获取最新内容与 hash 后再编辑。",
+                current_hash
+            ));
+        }
+
+        let (new_content, counts) = Self::apply_edits(&content, &edits, replace_all)?;
+        let total_replacements: usize = counts.iter().sum();
+
+        // 复用 write_text 落盘：内部会重新 read+hash 校验（防 TOCTOU），
+        // 并创建 checkpoint 备份、返回可回滚的 MutationReceipt。
+        let temp = temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
+        let receipt = workspace_change_set::write_text(
+            &root_canon,
+            &temp.path,
+            &root.id,
+            path,
+            &new_content,
+            Some(expected),
+        )?;
+        let mut output = Self::workspace_change_output(&root, receipt)?;
+        output["edits_applied"] = json!(edits.len());
+        output["replacements"] = json!(total_replacements);
+        output["per_edit_replacements"] = json!(counts);
+        Ok(output)
+    }
+
     async fn execute_workspace_move(
         &self,
         args: &Value,
@@ -766,6 +921,7 @@ impl ToolExecutor for WorkspaceFsExecutor {
                 | tool_names::FILE_READ
                 | tool_names::ARTIFACT_WRITE
                 | tool_names::FILE_WRITE
+                | tool_names::FILE_EDIT
                 | tool_names::FILE_MOVE
                 | tool_names::FILE_DELETE
                 | tool_names::CHANGE_REVERT
@@ -787,6 +943,7 @@ impl ToolExecutor for WorkspaceFsExecutor {
             tool_names::FILE_READ => self.execute_file_read(&call.arguments, ctx).await,
             tool_names::ARTIFACT_WRITE => self.execute_artifact_write(&call.arguments, ctx).await,
             tool_names::FILE_WRITE => self.execute_workspace_write(&call.arguments, ctx).await,
+            tool_names::FILE_EDIT => self.execute_workspace_edit(&call.arguments, ctx).await,
             tool_names::FILE_MOVE => self.execute_workspace_move(&call.arguments, ctx).await,
             tool_names::FILE_DELETE => self.execute_workspace_delete(&call.arguments, ctx).await,
             tool_names::CHANGE_REVERT => self.execute_workspace_revert(&call.arguments, ctx).await,
@@ -833,7 +990,9 @@ impl ToolExecutor for WorkspaceFsExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match Self::strip_namespace(tool_name) {
-            tool_names::ARTIFACT_WRITE | tool_names::FILE_WRITE => ToolSensitivity::Medium,
+            tool_names::ARTIFACT_WRITE | tool_names::FILE_WRITE | tool_names::FILE_EDIT => {
+                ToolSensitivity::Medium
+            }
             tool_names::FILE_MOVE | tool_names::FILE_DELETE | tool_names::CHANGE_REVERT => {
                 ToolSensitivity::High
             }
@@ -1026,5 +1185,69 @@ mod tests {
 
         assert!(WorkspaceFsExecutor::atomic_write_bytes(&target, b"unexpected", false).is_err());
         assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+    }
+
+    #[test]
+    fn apply_edits_single_unique_replacement() {
+        let content = "fn main() {\n    println!(\"hello\");\n}\n";
+        let edits = vec![serde_json::json!({
+            "old_string": "println!(\"hello\")",
+            "new_string": "println!(\"world\")",
+        })];
+        let (out, counts) = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap();
+        assert!(out.contains("println!(\"world\")"));
+        assert_eq!(counts, vec![1]);
+    }
+
+    #[test]
+    fn apply_edits_rejects_non_unique_without_replace_all() {
+        let content = "foo bar foo baz foo";
+        let edits = vec![serde_json::json!({ "old_string": "foo", "new_string": "qux" })];
+        let err = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap_err();
+        assert!(err.contains("3 次"), "expected uniqueness error, got: {err}");
+        // replace_all 放行
+        let (out, counts) = WorkspaceFsExecutor::apply_edits(content, &edits, true).unwrap();
+        assert_eq!(out, "qux bar qux baz qux");
+        assert_eq!(counts, vec![3]);
+    }
+
+    #[test]
+    fn apply_edits_rejects_missing_old_string() {
+        let content = "hello world";
+        let edits = vec![serde_json::json!({ "old_string": "nonexistent", "new_string": "x" })];
+        let err = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap_err();
+        assert!(err.contains("未找到匹配"), "expected not-found error, got: {err}");
+    }
+
+    #[test]
+    fn apply_edits_rejects_empty_and_noop_edits() {
+        let content = "abc";
+        let empty = vec![serde_json::json!({ "old_string": "", "new_string": "x" })];
+        assert!(WorkspaceFsExecutor::apply_edits(content, &empty, false).is_err());
+        let noop = vec![serde_json::json!({ "old_string": "abc", "new_string": "abc" })];
+        assert!(WorkspaceFsExecutor::apply_edits(content, &noop, false).is_err());
+    }
+
+    #[test]
+    fn apply_edits_applies_multiple_edits_sequentially() {
+        let content = "let a = 1;\nlet b = 2;\n";
+        let edits = vec![
+            serde_json::json!({ "old_string": "let a = 1;", "new_string": "let a = 10;" }),
+            serde_json::json!({ "old_string": "let b = 2;", "new_string": "let b = 20;" }),
+        ];
+        let (out, counts) = WorkspaceFsExecutor::apply_edits(content, &edits, false).unwrap();
+        assert_eq!(out, "let a = 10;\nlet b = 20;\n");
+        assert_eq!(counts, vec![1, 1]);
+    }
+
+    #[test]
+    fn apply_edits_is_atomic_on_any_failure() {
+        // 第二处编辑失败时，第一处不应生效（返回 Err，调用方不落盘）
+        let content = "aaa bbb";
+        let edits = vec![
+            serde_json::json!({ "old_string": "aaa", "new_string": "xxx" }),
+            serde_json::json!({ "old_string": "missing", "new_string": "yyy" }),
+        ];
+        assert!(WorkspaceFsExecutor::apply_edits(content, &edits, false).is_err());
     }
 }

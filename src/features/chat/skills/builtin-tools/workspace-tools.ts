@@ -22,6 +22,7 @@ const WORKSPACE_TOOL_NAMES = [
   'builtin-workspace_file_read',
   'builtin-workspace_artifact_write',
   'builtin-workspace_file_write',
+  'builtin-workspace_file_edit',
   'builtin-workspace_file_move',
   'builtin-workspace_file_delete',
   'builtin-workspace_change_revert',
@@ -110,6 +111,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件
 - **builtin-workspace_artifact_write**: 写入会话产物目录并返回变更摘要
 - **builtin-workspace_file_write**: 在显式授权为读写的 workspace 中创建或覆盖 UTF-8 文本文件
+- **builtin-workspace_file_edit**: 局部编辑 workspace 文件（search/replace），改代码/改文档的首选——只改匹配片段，不重写整个文件；每个 old_string 默认须唯一出现
 - **builtin-workspace_file_move**: 移动 workspace 文件，要求携带读取时取得的当前 hash
 - **builtin-workspace_file_delete**: 删除 workspace 文件，要求携带读取时取得的当前 hash
 - **builtin-workspace_change_revert**: 使用变更工具返回的完整 mutation_receipt 回滚该次变更
@@ -438,6 +440,44 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
         },
         required: ['path', 'content'],
+      },
+    },
+    {
+      name: 'builtin-workspace_file_edit',
+      description:
+        '局部编辑读写 workspace 中的 UTF-8 文本文件（search/replace），改代码/改文档首选——只替换匹配片段，不重写整个文件。每个 old_string 默认须在文件中唯一出现（防误替换），不唯一时提供更长的带上下文 old_string，或确认全部替换传 replace_all=true。须先 workspace_file_read 取 sha256 作为 expected_current_hash（OCC）。返回可回滚的 mutation_receipt 与每处替换次数。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', description: 'workspace 内的相对文件路径；禁止绝对路径、..、隐藏或敏感目录' },
+          edits: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            description: '按顺序应用的编辑列表；任一失败则整体不落盘',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                old_string: { type: 'string', minLength: 1, description: '要被替换的原文片段（须唯一出现，除非 replace_all）' },
+                new_string: { type: 'string', description: '替换后的新内容（可与 old_string 不同长度）' },
+              },
+              required: ['old_string', 'new_string'],
+            },
+          },
+          expected_current_hash: {
+            type: 'string',
+            minLength: 1,
+            description: '必填：最近 workspace_file_read 返回的 sha256；不匹配说明文件已被并发修改，需重新读取',
+          },
+          replace_all: {
+            type: 'boolean',
+            default: false,
+            description: '为 true 时替换每个 old_string 的所有出现；默认 false 要求唯一匹配',
+          },
+        },
+        required: ['path', 'edits', 'expected_current_hash'],
       },
     },
     {
