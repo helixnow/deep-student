@@ -51,7 +51,7 @@ function writeBuildConfigFixture(
 test('Android release code is one above nightly and build numbers remain monotonic', () => {
   assert.equal(ANDROID_VERSION_CODE, PUBLISHED_ANDROID_VERSION_CODE + 1);
   assert.equal(resolveAndroidVersionCode(ANDROID_VERSION_BASE_APP_VERSION), ANDROID_VERSION_CODE);
-  assert.equal(resolveAndroidVersionCode('0.9.47'), ANDROID_VERSION_CODE + 1);
+  assert.equal(resolveAndroidVersionCode('0.9.53'), ANDROID_VERSION_CODE + 1);
   assert.ok(resolveAndroidVersionCode('0.10.0') > ANDROID_VERSION_CODE + 1);
   assert.throws(() => resolveAndroidVersionCode('0.9.41'), /predates Android baseline/);
   for (const nonStableVersion of [
