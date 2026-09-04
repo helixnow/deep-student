@@ -547,6 +547,18 @@ fn validate_stream_termination(
     Ok(())
 }
 
+fn validate_stream_payload(
+    was_cancelled: bool,
+    content: &str,
+    reasoning: &str,
+    tool_call_count: usize,
+) -> Result<()> {
+    if !was_cancelled && content.is_empty() && reasoning.is_empty() && tool_call_count == 0 {
+        return Err(AppError::llm("模型返回空响应，请重试"));
+    }
+    Ok(())
+}
+
 fn process_sse_stream_input(
     buffer: &mut crate::utils::sse_buffer::SseEventBuffer,
     chunk: Option<&[u8]>,
@@ -1527,6 +1539,18 @@ mod tests {
 
         validate_stream_termination(true, true, None, true)
             .expect("an explicit terminal success should pass");
+    }
+
+    #[test]
+    fn completed_stream_requires_content_reasoning_or_tool_call() {
+        let error = validate_stream_payload(false, "", "", 0)
+            .expect_err("a terminal-only response must not count as success");
+        assert!(error.to_string().contains("空响应"));
+
+        validate_stream_payload(false, "answer", "", 0).unwrap();
+        validate_stream_payload(false, "", "thinking", 0).unwrap();
+        validate_stream_payload(false, "", "", 1).unwrap();
+        validate_stream_payload(true, "", "", 0).unwrap();
     }
 
     #[test]
@@ -5889,6 +5913,16 @@ impl LLMManager {
                 );
             }
             pending_tool_calls.clear();
+        }
+
+        if let Err(error) = validate_stream_payload(
+            was_cancelled,
+            &full_content,
+            &reasoning_content,
+            captured_tool_calls.len(),
+        ) {
+            self.clear_cancel_channel(stream_event).await;
+            return Err(error);
         }
 
         // Clear cancel channel for this stream
