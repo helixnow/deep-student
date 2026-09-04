@@ -1,9 +1,9 @@
 use deep_student_lib::chat_v2::database::ChatV2Database;
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::{
-    AskUserExecutor, ExecutionContext, GeneralToolExecutor, SessionToolExecutor,
-    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolPackExecutor,
-    UserTodoExecutor,
+    AdmittedToolDispatcher, AskUserExecutor, ExecutionContext, GeneralToolExecutor,
+    SessionToolExecutor, TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry,
+    ToolPackExecutor, UserTodoExecutor,
 };
 use deep_student_lib::chat_v2::types::{ToolCall, ToolResultInfo};
 use deep_student_lib::data_governance::migration::coordinator::MigrationCoordinator;
@@ -24,6 +24,21 @@ struct ToolPackTestHarness {
     _app: tauri::App,
     registry: Arc<ToolExecutorRegistry>,
     context: ExecutionContext,
+}
+
+struct DirectTestDispatcher {
+    registry: Arc<ToolExecutorRegistry>,
+}
+
+#[async_trait::async_trait]
+impl AdmittedToolDispatcher for DirectTestDispatcher {
+    async fn dispatch_with_admission(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResultInfo, String> {
+        self.registry.execute(call, ctx).await
+    }
 }
 
 fn create_default_runtime_window(label: &str) -> (tauri::App, tauri::Window) {
@@ -71,6 +86,9 @@ fn create_execution_context(
         Arc::new(ToolRegistry::new()),
         Some(window),
     )
+    .with_admitted_tool_dispatcher(Arc::new(DirectTestDispatcher {
+        registry: registry.clone(),
+    }))
     .with_feature_flags(true, true, true);
 
     ToolPackTestHarness {
@@ -410,7 +428,8 @@ fn tool_pack_selected_real_subtools_shared_state_audit_matches_allowed_paths() {
     );
     assert!(user_todo_source.contains("emit_todo_changed"));
     assert!(tool_pack_source.contains("ToolExecutorRegistry"));
-    assert!(tool_pack_source.contains("registry_clone.execute"));
+    assert!(tool_pack_source.contains("dispatch_with_admission"));
+    assert!(!tool_pack_source.contains("registry_clone.execute"));
 
     let selected_sources = [
         ("template_executor.rs", template_source),
@@ -529,40 +548,6 @@ async fn tool_pack_mixed_success_failure_preserves_successful_results() {
                 .map(|error| !error.is_empty())
                 .unwrap_or(false)
     }));
-}
-
-#[tokio::test]
-async fn tool_pack_blocks_sensitive_subtool_without_bypassing_approval() {
-    let registry = create_tool_pack_registry();
-    let harness = create_execution_context("sensitive-pack", registry.clone());
-    let call = tool_pack_call(json!({
-        "tools": [
-            {
-                "name": "builtin-template_delete",
-                "args": { "templateId": "phase-3-sensitive" }
-            }
-        ]
-    }));
-
-    let result = registry
-        .execute(&call, &harness.context)
-        .await
-        .expect("sensitive sub-tool should be blocked inside aggregate result");
-
-    assert!(result.success);
-    assert_eq!(result.output["succeeded"], 0);
-    assert_eq!(result.output["failed"], 1);
-
-    let results = result.output["results"].as_array().unwrap();
-    assert_eq!(results.len(), 1);
-    let failed = &results[0];
-    assert_eq!(failed["tool_name"], "builtin-template_delete");
-    assert_eq!(failed["success"], false);
-    assert!(failed["output"].is_null());
-    assert!(failed["error"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("requires user approval"));
 }
 
 #[tokio::test]

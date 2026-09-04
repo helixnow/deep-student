@@ -73,6 +73,41 @@ pub(crate) fn is_retryable_llm_error(error: &str) -> bool {
         || error.contains("空响应")
 }
 
+#[async_trait::async_trait]
+impl AdmittedToolDispatcher for ChatV2Pipeline {
+    async fn dispatch_with_admission(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResultInfo, String> {
+        self.execute_single_tool(
+            call,
+            &ctx.block_id,
+            &ctx.emitter,
+            &ctx.session_id,
+            &ctx.message_id,
+            ctx.variant_id.as_deref(),
+            ctx.skill_state_version,
+            ctx.round_id.as_deref(),
+            &ctx.canvas_note_id,
+            &ctx.skill_contents,
+            &ctx.skill_embedded_tools,
+            &ctx.skill_admission_errors,
+            &ctx.skill_package_roots,
+            &None,
+            &ctx.execution_allowed_tools,
+            ctx.cancellation_token.clone(),
+            ctx.rag_top_k,
+            ctx.rag_enable_reranking,
+            ctx.memory_enabled,
+            ctx.rag_enabled,
+            ctx.web_search_enabled,
+        )
+        .await
+        .map_err(|error| error.to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ExternalToolRoute {
     pub raw_tool_name: String,
@@ -3233,6 +3268,7 @@ impl ChatV2Pipeline {
         .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
         .with_shell_guard_approved(admission.shell_guard_admitted())
+        .with_admitted_tool_dispatcher(Arc::new(self.clone()))
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
         if let Some((authority_mode, permission_preset)) = admission.authority_admission() {
             ctx = ctx.with_shell_authority_admission(authority_mode, permission_preset);
@@ -4386,12 +4422,14 @@ mod tests {
         ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
 
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let registry =
-            Arc::new(ToolExecutorRegistry::from_vec(vec![
+        let registry = Arc::new_cyclic(|weak| {
+            ToolExecutorRegistry::from_vec(vec![
                 Arc::new(CountingWriteExecutor {
                     calls: calls.clone(),
                 }) as Arc<dyn crate::chat_v2::tools::ToolExecutor>,
-            ]));
+                Arc::new(crate::chat_v2::tools::ToolPackExecutor::new(weak.clone())),
+            ])
+        });
 
         let mut pipeline = ChatV2Pipeline::new(
             chat_db,
@@ -4473,6 +4511,110 @@ mod tests {
             result.output.get("suggestedMode").and_then(|v| v.as_str()),
             Some("plan")
         );
+    }
+
+    #[tokio::test]
+    async fn tool_pack_child_reenters_ask_authority_gate() {
+        let (_dir, pipeline, emitter, calls, session_id) =
+            authority_test_harness(crate::chat_v2::types::AuthorityMode::Ask);
+        let pack = ToolCall {
+            id: "call_ask_pack".to_string(),
+            name: "builtin-tool_pack".to_string(),
+            arguments: json!({
+                "tools": [{
+                    "name": "builtin-authority_probe_write",
+                    "args": {"path": "/tmp/packed"}
+                }]
+            }),
+        };
+
+        let result = pipeline
+            .execute_single_tool(
+                &pack,
+                "blk_ask_pack",
+                &emitter,
+                &session_id,
+                "msg_ask_pack",
+                None,
+                None,
+                None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                None,
+                None,
+                None,
+                true,
+                true,
+                true,
+            )
+            .await
+            .expect("execute packed tool");
+
+        assert!(!result.success);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let child = &result.output["results"][0];
+        assert_eq!(child["tool_name"], "builtin-authority_probe_write");
+        assert!(child["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("AUTHORITY_BLOCKED")));
+    }
+
+    #[tokio::test]
+    async fn full_access_tool_pack_executes_medium_child() {
+        let (_dir, pipeline, emitter, calls, session_id) =
+            authority_test_harness(crate::chat_v2::types::AuthorityMode::Craft);
+        ChatV2Repo::set_session_permission_preset(
+            &pipeline.db,
+            &session_id,
+            crate::chat_v2::types::PermissionPreset::FullAccess,
+        )
+        .expect("set full access");
+        let pack = ToolCall {
+            id: "call_full_pack".to_string(),
+            name: "builtin-tool_pack".to_string(),
+            arguments: json!({
+                "tools": [{
+                    "name": "builtin-authority_probe_write",
+                    "args": {"path": "/tmp/packed"}
+                }]
+            }),
+        };
+
+        let result = pipeline
+            .execute_single_tool(
+                &pack,
+                "blk_full_pack",
+                &emitter,
+                &session_id,
+                "msg_full_pack",
+                None,
+                None,
+                None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                None,
+                None,
+                None,
+                true,
+                true,
+                true,
+            )
+            .await
+            .expect("execute packed tool");
+
+        assert!(result.success, "packed child was blocked: {result:?}");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(result.output["succeeded"], 1);
     }
 
     /// Behaviour-level Plan-mode state lifecycle test driven through the real

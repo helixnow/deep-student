@@ -6,18 +6,10 @@
 //! ## Design notes
 //! - Runs at most 10 sub-tools concurrently via a semaphore.
 //! - Accepts up to 20 sub-tools per pack.
-//! - Delegates each sub-tool to `ToolExecutorRegistry::execute()`.
+//! - Re-enters the pipeline admission path for every sub-tool.
 //! - Uses a default pack timeout of 300s, overridable by `timeout`.
-//! - Blocks sub-tools whose **effective** sensitivity (executor base +
-//!   user-configured `tool_approval.*` overrides, same resolver as the main
-//!   tool loop) is not Low; unknown sensitivity is fail-closed. Shell deny
-//!   rules are enforced before execution as well.
-//! - Exception (2026-07): a small allowlist of Medium sub-tools
-//!   (`webpage_save`) may run inside a pack to support the common
-//!   web_fetch→webpage_save workflow. Allowlisted Medium sub-tools are
-//!   serialized through a dedicated single-permit semaphore; High and unknown
-//!   sensitivity stay blocked, and user overrides that raise a tool to High
-//!   still block it.
+//! - Central admission owns kill-switch, authority, approval, shell policy,
+//!   feature flags, and runtime allowlist decisions for nested calls.
 //! - Returns a pack-level **failure** (success=false, per-sub results kept in
 //!   `output`) when every sub-tool failed; partial failure stays a success
 //!   with `status: "partial"`.
@@ -52,19 +44,6 @@ const CANCEL_GRACE_PERIOD_SECS: u64 = 3;
 /// Maximum characters of a single sub-tool error quoted in the pack-level
 /// failure summary.
 const MAX_FAILURE_SAMPLE_CHARS: usize = 300;
-
-/// Medium-sensitivity sub-tools explicitly allowed inside a pack.
-///
-/// Approval dialogs cannot run inside parallel spawns, so Medium tools are
-/// blocked by default. `webpage_save` is allowlisted because the canonical
-/// web_fetch→webpage_save archive workflow otherwise cannot use tool_pack;
-/// its writes are idempotent (content-hash deduplicated) and it is further
-/// serialized via a single-permit semaphore. High sensitivity — including a
-/// user override raising `webpage_save` to High — is still blocked.
-fn is_medium_allowlisted_sub_tool(name: &str) -> bool {
-    let stripped = name.strip_prefix("builtin-").unwrap_or(name);
-    matches!(stripped, "webpage_save")
-}
 
 /// ToolPackExecutor — parallel built-in tool pack executor.
 pub struct ToolPackExecutor {
@@ -114,7 +93,8 @@ fn create_sub_context(
         // Guard approval is bound to one concrete top-level command and must
         // never be inherited by a packed sub-call.
         shell_guard_approved: false,
-        shell_authority_admission: parent.shell_authority_admission,
+        shell_authority_admission: None,
+        admitted_tool_dispatcher: parent.admitted_tool_dispatcher(),
         rag_top_k: parent.rag_top_k,
         rag_enable_reranking: parent.rag_enable_reranking,
         pdf_processing_service: parent.pdf_processing_service.clone(),
@@ -172,6 +152,11 @@ impl ToolExecutor for ToolPackExecutor {
             let msg = "ToolExecutorRegistry has been dropped".to_string();
             // Close the pack block we just opened so the UI does not show a
             // forever-running tool call.
+            ctx.emit_tool_call_error(&msg);
+            msg
+        })?;
+        let dispatcher = ctx.admitted_tool_dispatcher().ok_or_else(|| {
+            let msg = "tool_pack requires the central admitted tool dispatcher".to_string();
             ctx.emit_tool_call_error(&msg);
             msg
         })?;
@@ -284,8 +269,6 @@ impl ToolExecutor for ToolPackExecutor {
 
         // === Execute sub-tools in parallel ===
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
-        // Allowlisted Medium sub-tools run one-at-a-time within the pack.
-        let medium_semaphore = Arc::new(Semaphore::new(1));
         let total = sub_tools.len();
         let expected_sub_tools: Vec<(String, Value)> = sub_tools
             .iter()
@@ -295,9 +278,8 @@ impl ToolExecutor for ToolPackExecutor {
 
         for sub in sub_tools {
             let sub_index = sub.index;
-            let registry_clone = registry.clone();
+            let dispatcher = dispatcher.clone();
             let sem = semaphore.clone();
-            let medium_sem = medium_semaphore.clone();
             let token = child_token.clone();
             let sub_block_id = format!("{}-tool_pack-{}", ctx.block_id, sub.index);
             let sub_call_id = format!("{}-tp-{}", ctx.block_id, sub.index);
@@ -357,213 +339,32 @@ impl ToolExecutor for ToolPackExecutor {
                     }
                 };
 
-                // === Security preflight checks (mirrors pipeline execute_single_tool) ===
-                if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
-                    &sub.name,
-                    &sub.args,
-                    &sub_ctx.execution_allowed_tools,
-                ) {
-                    let result = ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name.clone(),
-                        sub.args.clone(),
-                        format!(
-                            "Current runtime policy does not allow sub-tool '{}'; blocked before execution",
-                            sub.name
-                        ),
-                        0,
-                    );
-                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                    return result;
-                }
-
-                // Feature flag checks
-                let sub_short_name = sub.name.strip_prefix("builtin-").unwrap_or(&sub.name);
-                let is_memory_tool = sub_short_name.starts_with("memory_");
-                // rag_enabled 必须覆盖所有知识库检索工具：unified_search / multimodal_search
-                // 与 rag_search 同走 VFS 检索管线（与 tool_loop 预检口径一致）。
-                let is_rag_tool = sub_short_name.starts_with("rag_")
-                    || matches!(sub_short_name, "unified_search" | "multimodal_search");
-                let is_web_search_tool = sub_short_name == "web_search";
-
-                if is_memory_tool && !sub_ctx.memory_enabled {
-                    let result = ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name.clone(),
-                        sub.args.clone(),
-                        "memory function disabled, sub-tool blocked".to_string(),
-                        0,
-                    );
-                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                    return result;
-                }
-                if is_rag_tool && !sub_ctx.rag_enabled {
-                    let result = ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name.clone(),
-                        sub.args.clone(),
-                        "RAG function disabled, sub-tool blocked".to_string(),
-                        0,
-                    );
-                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                    return result;
-                }
-                if is_web_search_tool && !sub_ctx.web_search_enabled {
-                    let result = ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name.clone(),
-                        sub.args.clone(),
-                        "WebSearch function disabled, sub-tool blocked".to_string(),
-                        0,
-                    );
-                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                    return result;
-                }
-
-                // === Approval-policy preflight (mirrors pipeline execute_single_tool) ===
-                // 1. User-configured shell command Deny rules are authoritative for
-                //    every shell implementation and apply before anything else.
-                if crate::chat_v2::approval_scope::is_shell_runtime_tool_for_args(
-                    &sub.name, &sub.args,
-                ) {
-                    if let Some(command) = sub.args.get("command").and_then(Value::as_str) {
-                        let raw_policy = sub_ctx.main_db.as_ref().and_then(|db| {
-                            db.get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
-                                .ok()
-                                .flatten()
-                        });
-                        let decision = crate::chat_v2::shell_command_policy::enforce_for_call(
-                            raw_policy.as_deref(),
-                            command,
-                            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
-                                &sub.name, &sub.args,
-                            ),
-                        );
-                        if decision.effective_effect
-                            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
-                        {
-                            let result = ToolResultInfo::failure(
-                                Some(sub_call_id),
-                                Some(sub_block_id),
-                                sub.name.clone(),
-                                sub.args.clone(),
-                                "终端命令被用户配置的拒绝规则拦截".to_string(),
-                                0,
-                            );
-                            finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                            return result;
-                        }
-                    }
-                }
-
-                // 2. Sensitivity check — uses the same effective-sensitivity resolver
-                //    as the main tool loop, so user overrides (source/domain/tool
-                //    rules) that raise a Low tool to Medium/High cannot be bypassed
-                //    by wrapping the call in tool_pack. Approval dialogs cannot work
-                //    inside parallel async spawns, so anything that is not
-                //    effectively Low is blocked; an unknown sensitivity (no executor
-                //    mapping) is fail-closed, matching the main path.
-                //    Exception: allowlisted Medium sub-tools (webpage_save) are
-                //    admitted and serialized through `medium_sem`; High stays
-                //    blocked even for allowlisted names.
-                let base_sensitivity =
-                    registry_clone.get_sensitivity_for_call(&sub.name, &sub.args);
-                let effective_sensitivity = if let Some(db) = sub_ctx.main_db.as_ref() {
-                    crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
-                        base_sensitivity,
-                        &sub.name,
-                        &sub.args,
-                        |key| db.get_setting(key).ok().flatten(),
-                    )
-                } else {
-                    base_sensitivity
-                };
-                let is_allowlisted_medium = effective_sensitivity == Some(ToolSensitivity::Medium)
-                    && is_medium_allowlisted_sub_tool(&sub.name);
-                if effective_sensitivity != Some(ToolSensitivity::Low) && !is_allowlisted_medium {
-                    log::warn!(
-                        "[ToolPack] Sub-tool '{}' effective sensitivity {:?} (base {:?}) — blocking in parallel context",
-                        sub.name,
-                        effective_sensitivity,
-                        base_sensitivity
-                    );
-                    let reason = match effective_sensitivity {
-                        Some(sensitivity) => format!(
-                            "Tool '{}' requires user approval (effective sensitivity: {:?}) and cannot be executed inside tool_pack",
-                            sub.name, sensitivity
-                        ),
-                        None => format!(
-                            "Tool '{}' has no declared sensitivity; it is blocked inside tool_pack (fail-closed)",
-                            sub.name
-                        ),
-                    };
-                    let result = ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name.clone(),
-                        sub.args.clone(),
-                        reason,
-                        0,
-                    );
-                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                    return result;
-                }
-
-                // Allowlisted Medium sub-tools execute serially (single permit)
-                // so pack parallelism never interleaves their writes.
-                let _medium_permit = if is_allowlisted_medium {
-                    let permit = tokio::select! {
-                        result = medium_sem.acquire() => match result {
-                            Ok(permit) => permit,
-                            Err(e) => {
-                                log::error!(
-                                    "[ToolPack] Medium-serial semaphore error for '{}': {}",
-                                    sub.name,
-                                    e
-                                );
-                                let result = ToolResultInfo::failure(
-                                    Some(sub_call_id),
-                                    Some(sub_block_id),
-                                    sub.name.clone(),
-                                    sub.args.clone(),
-                                    format!("Medium-serial concurrency error: {}", e),
-                                    0,
-                                );
-                                finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                                return result;
-                            }
-                        },
-                        _ = token.cancelled() => {
-                            let result = ToolResultInfo::cancelled(
-                                Some(sub_call_id),
-                                Some(sub_block_id),
-                                sub.name.clone(),
-                                sub.args.clone(),
-                                sub_start.elapsed().as_millis() as u64,
-                            );
-                            finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                            return result;
-                        }
-                    };
-                    Some(permit)
-                } else {
-                    None
-                };
-
-                // Execute with catch_unwind to prevent panic propagation
-                let result =
-                    AssertUnwindSafe(async { registry_clone.execute(&sub_call, &sub_ctx).await })
-                        .catch_unwind()
-                        .await;
+                // Every child gets fresh admission evidence from the pipeline;
+                // no parent approval or model-provided confirmation is reused.
+                let result = AssertUnwindSafe(async {
+                    dispatcher
+                        .dispatch_with_admission(&sub_call, &sub_ctx)
+                        .await
+                })
+                .catch_unwind()
+                .await;
 
                 let elapsed = sub_start.elapsed().as_millis() as u64;
 
                 match result {
-                    Ok(Ok(tool_result)) => tool_result,
+                    Ok(Ok(tool_result)) => {
+                        // Central preflight failures have emitted their events but
+                        // have no executor to persist the child block.
+                        if !tool_result.success {
+                            if let Err(error) = sub_ctx.save_tool_block(&tool_result) {
+                                log::warn!(
+                                    "[ToolPack] Failed to save admitted sub-tool result: {}",
+                                    error
+                                );
+                            }
+                        }
+                        tool_result
+                    }
                     Ok(Err(err_msg)) => {
                         let result = ToolResultInfo::failure(
                             Some(sub_call_id),
@@ -886,6 +687,8 @@ impl ToolExecutor for ToolPackExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::events::ChatV2EventEmitter;
+    use crate::tools::ToolRegistry;
 
     #[test]
     fn test_can_handle() {
@@ -909,13 +712,32 @@ mod tests {
         assert_eq!(DEFAULT_PACK_TIMEOUT_SECS, 300);
     }
 
-    #[test]
-    fn medium_allowlist_only_admits_webpage_save() {
-        assert!(is_medium_allowlisted_sub_tool("builtin-webpage_save"));
-        assert!(is_medium_allowlisted_sub_tool("webpage_save"));
-        // 其他 Medium/High 工具一律不放行
-        assert!(!is_medium_allowlisted_sub_tool("builtin-index_rebuild"));
-        assert!(!is_medium_allowlisted_sub_tool("builtin-memory_write"));
-        assert!(!is_medium_allowlisted_sub_tool("builtin-note_set"));
+    #[tokio::test]
+    async fn requires_central_admitted_dispatcher() {
+        let registry = Arc::new_cyclic(|weak| {
+            ToolExecutorRegistry::from_vec(vec![Arc::new(ToolPackExecutor::new(weak.clone()))])
+        });
+        let context = ExecutionContext::new(
+            "session".to_string(),
+            "message".to_string(),
+            "block".to_string(),
+            Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+                "session".to_string(),
+            )),
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        let call = ToolCall::new(
+            "pack".to_string(),
+            "builtin-tool_pack".to_string(),
+            json!({"tools": [{"name": "builtin-test", "args": {}}]}),
+        );
+
+        let error = registry
+            .execute(&call, &context)
+            .await
+            .expect_err("tool_pack must fail closed without central admission");
+
+        assert!(error.contains("central admitted tool dispatcher"));
     }
 }
