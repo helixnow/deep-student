@@ -24,7 +24,7 @@ use crate::chat_v2::approval_scope::{
 };
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{
-    explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
+    explicit_runtime_root_id_from_args, host_cwd_runtime_root, normalize_runtime_relative_path,
     resolve_effective_runtime_root_id_for_session, revalidate_runtime_root, runtime_root_by_id,
     runtime_roots_for_session, skill_package_runtime_root, temp_root, RuntimeRoot,
     RuntimeRootAccess, RuntimeRootKind,
@@ -241,21 +241,6 @@ impl LocalShellExecuteExecutor {
             return Err("cwd is not a directory".to_string());
         }
         Ok(target_canon)
-    }
-
-    /// 完全信任（unsandboxed）模式下解析宿主机绝对路径 cwd：
-    /// 不做 runtime root 约束，仅要求目录真实存在。
-    fn resolve_absolute_cwd_unsandboxed(cwd: &Path) -> Result<PathBuf, String> {
-        if !cwd.exists() {
-            return Err("cwd does not exist".to_string());
-        }
-        let canonical = cwd
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize cwd: {}", e))?;
-        if !canonical.is_dir() {
-            return Err("cwd is not a directory".to_string());
-        }
-        Ok(canonical)
     }
 
     /// UTF-8 安全的尾部截取（错误信息通常在输出末尾）。
@@ -1662,7 +1647,18 @@ impl LocalShellExecuteExecutor {
         }
 
         let explicit_root_id = explicit_runtime_root_id_from_args(args);
-        let preferred_default = if explicit_root_id.is_none() {
+        let (_, requested_cwd) = normalized_shell_runtime_location_with_default(args, None);
+        let cwd_absolute_input = if unsandboxed {
+            let trimmed = requested_cwd.trim();
+            if !trimmed.is_empty() && trimmed != "." && Path::new(trimmed).is_absolute() {
+                Some(PathBuf::from(trimmed))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let preferred_default = if explicit_root_id.is_none() && cwd_absolute_input.is_none() {
             Some(resolve_effective_runtime_root_id_for_session(
                 ctx.window_ref().app_handle(),
                 &state.database,
@@ -1677,18 +1673,6 @@ impl LocalShellExecuteExecutor {
         let (root_id, cwd_input) =
             normalized_shell_runtime_location_with_default(args, preferred_default.as_deref());
         let root_id_input = Some(root_id.as_str());
-        // 🆓 完全信任模式：cwd 允许宿主机绝对路径（"完全访问"即取消 runtime
-        // root 边界）；相对路径仍按所选 root 解析，沙箱档行为不变。
-        let cwd_absolute_input = if unsandboxed {
-            let trimmed = cwd_input.trim();
-            if !trimmed.is_empty() && trimmed != "." && Path::new(trimmed).is_absolute() {
-                Some(PathBuf::from(trimmed))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
         let cwd_relative = if cwd_absolute_input.is_some() {
             PathBuf::new()
         } else {
@@ -1741,14 +1725,19 @@ impl LocalShellExecuteExecutor {
             .map(str::trim)
             .filter(|value| !value.is_empty());
 
-        let mut root = Self::resolve_root(root_id_input, ctx)?;
-        let validated_root_path = {
-            let state = ctx.window_ref().state::<AppState>();
-            revalidate_runtime_root(&state.database, &root)?
+        let mut root = match &cwd_absolute_input {
+            Some(cwd) => host_cwd_runtime_root(cwd)?,
+            None => Self::resolve_root(root_id_input, ctx)?,
         };
-        root.path = validated_root_path;
+        if cwd_absolute_input.is_none() {
+            let validated_root_path = {
+                let state = ctx.window_ref().state::<AppState>();
+                revalidate_runtime_root(&state.database, &root)?
+            };
+            root.path = validated_root_path;
+        }
         let cwd_abs = match &cwd_absolute_input {
-            Some(abs) => Self::resolve_absolute_cwd_unsandboxed(abs)?,
+            Some(_) => root.path.clone(),
             None => Self::resolve_cwd(&root, &cwd_relative, unsandboxed)?,
         };
         if !unsandboxed {
@@ -1841,15 +1830,19 @@ impl LocalShellExecuteExecutor {
                     .to_string(),
             );
         }
-        let mut guard_roots = runtime_roots_for_session(
-            ctx.window_ref().app_handle(),
-            &state.database,
-            &ctx.session_id,
-            true,
-        )?
-        .into_iter()
-        .map(|runtime_root| runtime_root.path)
-        .collect::<Vec<_>>();
+        let mut guard_roots = if unsandboxed {
+            Vec::new()
+        } else {
+            runtime_roots_for_session(
+                ctx.window_ref().app_handle(),
+                &state.database,
+                &ctx.session_id,
+                true,
+            )?
+            .into_iter()
+            .map(|runtime_root| runtime_root.path)
+            .collect::<Vec<_>>()
+        };
         if let Some(home) = dirs::home_dir() {
             guard_roots.push(home);
         }

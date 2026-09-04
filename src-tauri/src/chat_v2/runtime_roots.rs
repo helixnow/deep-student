@@ -80,6 +80,8 @@ pub enum RuntimeRootKind {
     SkillPackage,
     Artifact,
     Temp,
+    /// Internal locator for an unsandboxed Full Access shell cwd.
+    Host,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -776,6 +778,27 @@ pub fn temp_root(app: &AppHandle, session_id: &str, create: bool) -> Result<Runt
     })
 }
 
+/// Build a non-authorizing location record for an unsandboxed shell cwd.
+/// `runtime_root_by_id` deliberately does not accept this internal root kind.
+pub(crate) fn host_cwd_runtime_root(path: &Path) -> Result<RuntimeRoot, String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("Failed to canonicalize cwd: {error}"))?;
+    if !canonical.is_dir() {
+        return Err("cwd is not a directory".to_string());
+    }
+    Ok(RuntimeRoot {
+        id: "host".to_string(),
+        kind: RuntimeRootKind::Host,
+        path: canonical,
+        access: RuntimeRootAccess::ReadWrite,
+        label: "Host cwd".to_string(),
+        description: "Unsandboxed Full Access shell working directory.".to_string(),
+        session_scoped: false,
+        configured: false,
+    })
+}
+
 /// Ensure the app-owned, session-scoped runtime roots exist before tools need
 /// them. These roots are part of the session environment, not user-selected
 /// filesystem authority, so creating them does not broaden the sandbox.
@@ -1080,6 +1103,26 @@ fn shell_approval_binding_digest(
     Ok(hex::encode(Sha256::digest(approval_payload)))
 }
 
+fn shell_host_cwd_approval_binding(
+    database: &crate::database::Database,
+    session_id: &str,
+    cwd: &Path,
+) -> Result<RuntimeRootApprovalBinding, String> {
+    let selected = host_cwd_runtime_root(cwd)?;
+    let cwd_identity = runtime_root_identity(&selected.path)?;
+    let selected_token = runtime_root_binding_token(database, &selected, session_id)?;
+    let root_binding =
+        shell_approval_binding_digest(&selected_token, &selected.path, &cwd_identity, &[])?;
+    Ok(RuntimeRootApprovalBinding {
+        root_id: selected.id,
+        root_path: strip_windows_verbatim_prefix(&selected.path),
+        root_access: selected.access,
+        root_session_scoped: selected.session_scoped,
+        root_binding,
+        readable_roots: Vec::new(),
+    })
+}
+
 /// Resolve the exact filesystem authority a shell approval would grant.
 ///
 /// The local shell sandbox can read every configured runtime root, not only
@@ -1096,6 +1139,19 @@ pub(crate) fn shell_runtime_approval_binding(
     support_readable_roots: &[PathBuf],
     allow_absolute_cwd: bool,
 ) -> Result<RuntimeRootApprovalBinding, String> {
+    // 完全信任（unsandboxed）档：cwd 允许宿主机绝对路径——审批绑定直接
+    // 锚定到该目录的 canonical 身份，跳过 runtime root 相对性/逃逸检查。
+    // 与 execute 侧 resolve_absolute_cwd_unsandboxed、preflight 侧
+    // cwd_absolute_input 分流保持同一语义。沙箱档行为不变。
+    let cwd_trimmed = cwd.map(str::trim).unwrap_or("");
+    let uses_host_cwd = allow_absolute_cwd
+        && !cwd_trimmed.is_empty()
+        && cwd_trimmed != "."
+        && Path::new(cwd_trimmed).is_absolute();
+    if uses_host_cwd {
+        return shell_host_cwd_approval_binding(database, session_id, Path::new(cwd_trimmed));
+    }
+
     let mut selected = runtime_root_by_id(
         app,
         database,
@@ -1105,39 +1161,17 @@ pub(crate) fn shell_runtime_approval_binding(
         true,
     )?;
     selected.path = revalidate_runtime_root(database, &selected)?;
-
-    // 完全信任（unsandboxed）档：cwd 允许宿主机绝对路径——审批绑定直接
-    // 锚定到该目录的 canonical 身份，跳过 runtime root 相对性/逃逸检查。
-    // 与 execute 侧 resolve_absolute_cwd_unsandboxed、preflight 侧
-    // cwd_absolute_input 分流保持同一语义。沙箱档行为不变。
-    let cwd_trimmed = cwd.map(str::trim).unwrap_or("");
-    let cwd_canonical = if allow_absolute_cwd
-        && !cwd_trimmed.is_empty()
-        && cwd_trimmed != "."
-        && Path::new(cwd_trimmed).is_absolute()
-    {
-        let canonical = Path::new(cwd_trimmed)
-            .canonicalize()
-            .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
-        if !canonical.is_dir() {
-            return Err("Shell cwd is not a directory".to_string());
-        }
-        canonical
-    } else {
-        let cwd_relative = normalize_runtime_relative_path(cwd)?;
-        let cwd_path = selected.path.join(cwd_relative);
-        let cwd_canonical = cwd_path
-            .canonicalize()
-            .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
-        if !cwd_canonical.starts_with(&selected.path) || !cwd_canonical.is_dir() {
-            return Err(
-                "Shell cwd is not a directory inside the selected runtime root".to_string(),
-            );
-        }
-        cwd_canonical
-    };
+    let cwd_relative = normalize_runtime_relative_path(cwd)?;
+    let cwd_path = selected.path.join(cwd_relative);
+    let cwd_canonical = cwd_path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
+    if !cwd_canonical.starts_with(&selected.path) || !cwd_canonical.is_dir() {
+        return Err("Shell cwd is not a directory inside the selected runtime root".to_string());
+    }
     let cwd_identity = runtime_root_identity(&cwd_canonical)?;
 
+    let mut readable = Vec::<(String, String)>::new();
     let mut roots = runtime_roots_for_session(app, database, session_id, true)?;
     roots.retain(|root| {
         root.configured || matches!(root.kind, RuntimeRootKind::Artifact | RuntimeRootKind::Temp)
@@ -1151,7 +1185,6 @@ pub(crate) fn shell_runtime_approval_binding(
         }
     }
 
-    let mut readable = Vec::<(String, String)>::new();
     for mut root in roots {
         root.path = revalidate_runtime_root(database, &root)?;
         let path = strip_windows_verbatim_prefix(&root.path);
@@ -3505,6 +3538,28 @@ mod tests {
             serde_json::to_string(&RuntimeRootKind::Temp).unwrap(),
             "\"temp\""
         );
+        assert_eq!(
+            serde_json::to_string(&RuntimeRootKind::Host).unwrap(),
+            "\"host\""
+        );
+    }
+
+    #[test]
+    fn full_access_absolute_cwd_binding_does_not_require_workspace_root() {
+        let settings_dir = tempfile::tempdir().expect("settings dir");
+        let database = settings_database(&settings_dir.path().join("settings.db"));
+        let host_cwd = tempfile::tempdir().expect("host cwd");
+
+        let binding =
+            shell_host_cwd_approval_binding(&database, "sess_full_access", host_cwd.path())
+                .expect("absolute host cwd must not resolve the unconfigured workspace");
+
+        assert_eq!(binding.root_id, "host");
+        assert_eq!(
+            binding.root_path,
+            strip_windows_verbatim_prefix(&host_cwd.path().canonicalize().unwrap())
+        );
+        assert!(binding.readable_roots.is_empty());
     }
 
     #[test]

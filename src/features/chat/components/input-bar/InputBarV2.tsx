@@ -284,14 +284,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       clearContextRefs,
       // 🆕 工具审批请求
       pendingApprovalRequest,
-      authorityMode,
       permissionPreset,
-      setAuthorityMode,
       setPermissionPreset,
-      setAuthorityAskBlockedHint,
       knowledgeBaseProactive,
       setFeature,
-      liveAuthorityBlockedBlockId,
     } = useStore(
       store,
       useShallow((s) => ({
@@ -335,40 +331,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         clearContextRefs: s.clearContextRefs,
         // 🆕 阻塞交互请求
         pendingApprovalRequest: s.pendingBlockingInteraction,
-        authorityMode: s.authorityMode ?? 'craft',
         permissionPreset: s.permissionPreset ?? 'relaxed',
-        setAuthorityMode: s.setAuthorityMode,
         setPermissionPreset: s.setPermissionPreset,
-        setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
         // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
         // 恢复/测试路径可能给到普通对象）
         knowledgeBaseProactive:
           s.features instanceof Map ? (s.features.get('kbProactive') ?? false) : false,
         setFeature: s.setFeature,
-        liveAuthorityBlockedBlockId: (() => {
-          if (!s.currentStreamingMessageId) return null;
-          const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
-          const blocks = s.blocks instanceof Map ? s.blocks : new Map();
-          const message = messageMap.get(s.currentStreamingMessageId);
-          if (message?.role !== 'assistant') return null;
-          return (message.blockIds ?? []).find((blockId) => {
-            const block = blocks.get(blockId) as {
-              error?: unknown;
-              toolOutput?: unknown;
-              output?: unknown;
-            } | undefined;
-            const error = typeof block?.error === 'string' ? block.error : '';
-            if (error.includes('AUTHORITY_BLOCKED') || error.includes('suggestedMode=plan')) {
-              return true;
-            }
-            const output = block?.toolOutput ?? block?.output;
-            return Boolean(
-              output &&
-              typeof output === 'object' &&
-              (output as { authorityBlocked?: boolean }).authorityBlocked === true,
-            );
-          }) ?? null;
-        })(),
       }))
     );
 
@@ -377,23 +346,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       (enabled: boolean) => setFeature('kbProactive', enabled),
       [setFeature],
     );
-
-    const handledAuthorityBlockRef = useRef<string | null>(null);
-    useEffect(() => {
-      handledAuthorityBlockRef.current = null;
-    }, [sessionId]);
-    useEffect(() => {
-      if (!sessionId) return;
-      if (authorityMode === 'ask' || authorityMode === 'plan') {
-        void setAuthorityMode('craft');
-      }
-    }, [sessionId, authorityMode, setAuthorityMode]);
-    useEffect(() => {
-      if (!liveAuthorityBlockedBlockId) return;
-      if (handledAuthorityBlockRef.current === liveAuthorityBlockedBlockId) return;
-      handledAuthorityBlockRef.current = liveAuthorityBlockedBlockId;
-      if (authorityMode === 'ask') setAuthorityAskBlockedHint(true);
-    }, [authorityMode, liveAuthorityBlockedBlockId, setAuthorityAskBlockedHint]);
 
     // 🆕 队列模式设置（来自本地存储）
     const queueSettings = useQueueSettings();

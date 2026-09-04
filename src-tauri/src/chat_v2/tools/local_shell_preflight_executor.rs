@@ -17,7 +17,7 @@ use crate::chat_v2::approval_scope::{
 };
 use crate::chat_v2::context::local_shell_contract_for_platform;
 use crate::chat_v2::runtime_roots::{
-    explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
+    explicit_runtime_root_id_from_args, host_cwd_runtime_root, normalize_runtime_relative_path,
     resolve_effective_runtime_root_id_for_session, runtime_root_by_id, RuntimeRoot,
     RuntimeRootAccess, RuntimeRootKind,
 };
@@ -268,26 +268,8 @@ impl LocalShellPreflightExecutor {
                 reasons.push(format!("local shell sandbox is unavailable: {}", reason));
             }
         }
-        let state = ctx.window_ref().state::<AppState>();
-        let effective_root_id = resolve_effective_runtime_root_id_for_session(
-            ctx.window_ref().app_handle(),
-            &state.database,
-            ctx.chat_v2_db.as_deref(),
-            &ctx.session_id,
-            ctx.skill_package_roots.as_ref(),
-            explicit_root_id.as_deref(),
-        );
-        let root_id_input = Some(effective_root_id.as_str());
-        let root_result = runtime_root_by_id(
-            ctx.window_ref().app_handle(),
-            &state.database,
-            &ctx.session_id,
-            ctx.skill_package_roots.as_ref(),
-            root_id_input,
-            true,
-        );
         // 🆓 完全信任（unsandboxed）档：cwd 允许宿主机绝对路径，与 execute 侧
-        // resolve_absolute_cwd_unsandboxed 语义对齐——不 join runtime root、不做
+        // host_cwd_runtime_root 语义对齐——不 join runtime root、不做
         // 逃逸检查，仅校验存在且为目录。沙箱档维持相对路径约束不变。
         let cwd_absolute_input = if unsandboxed {
             cwd_input
@@ -297,6 +279,31 @@ impl LocalShellPreflightExecutor {
                 .map(PathBuf::from)
         } else {
             None
+        };
+        let state = ctx.window_ref().state::<AppState>();
+        let effective_root_id = if cwd_absolute_input.is_some() {
+            "host".to_string()
+        } else {
+            resolve_effective_runtime_root_id_for_session(
+                ctx.window_ref().app_handle(),
+                &state.database,
+                ctx.chat_v2_db.as_deref(),
+                &ctx.session_id,
+                ctx.skill_package_roots.as_ref(),
+                explicit_root_id.as_deref(),
+            )
+        };
+        let root_id_input = Some(effective_root_id.as_str());
+        let root_result = match &cwd_absolute_input {
+            Some(cwd) => host_cwd_runtime_root(cwd),
+            None => runtime_root_by_id(
+                ctx.window_ref().app_handle(),
+                &state.database,
+                &ctx.session_id,
+                ctx.skill_package_roots.as_ref(),
+                root_id_input,
+                true,
+            ),
         };
         let cwd_result = match &cwd_absolute_input {
             Some(abs) => Ok(abs.clone()),
