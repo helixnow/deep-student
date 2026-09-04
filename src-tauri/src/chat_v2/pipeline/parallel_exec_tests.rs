@@ -15,8 +15,8 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::tool_loop::{
-    annotate_auto_retry, build_run_scoped_stream_event, is_transient_tool_error,
-    pin_tool_result_to_block, plan_parallel_segments, run_bounded_ordered,
+    annotate_auto_retry, build_run_scoped_stream_event, is_retryable_llm_error,
+    is_transient_tool_error, pin_tool_result_to_block, plan_parallel_segments, run_bounded_ordered,
     PARALLEL_TOOL_CONCURRENCY, TOOL_TRANSIENT_RETRY_BACKOFF_MS,
 };
 use crate::chat_v2::types::ToolResultInfo;
@@ -229,6 +229,15 @@ fn retry_backoff_schedule_matches_spec() {
     assert_eq!(TOOL_TRANSIENT_RETRY_BACKOFF_MS, [500, 2000]);
     // 并发度必须落在 4-6 的规格区间
     assert!((4..=6).contains(&PARALLEL_TOOL_CONCURRENCY));
+}
+
+#[test]
+fn empty_llm_response_is_retryable() {
+    assert!(is_retryable_llm_error("模型返回空响应，请重试"));
+    assert!(is_retryable_llm_error(
+        "provider returned an empty response"
+    ));
+    assert!(!is_retryable_llm_error("invalid request: missing model"));
 }
 
 // ============================================================================

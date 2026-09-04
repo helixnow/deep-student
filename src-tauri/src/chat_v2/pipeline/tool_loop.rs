@@ -56,6 +56,23 @@
 
 use super::*;
 
+pub(crate) fn is_retryable_llm_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("connection")
+        || lower.contains("timeout")
+        || lower.contains("timed out")
+        || lower.contains("reset")
+        || lower.contains("broken pipe")
+        || lower.contains("connect")
+        || lower.contains("temporarily unavailable")
+        || lower.contains("status: 429")
+        || lower.contains("status: 502")
+        || lower.contains("status: 503")
+        || lower.contains("status: 504")
+        || lower.contains("empty response")
+        || error.contains("空响应")
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ExternalToolRoute {
     pub raw_tool_name: String,
@@ -1192,21 +1209,6 @@ impl ChatV2Pipeline {
             let idle_limit = stream_idle_cfg.idle_limit;
             let total_limit = Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS);
             let timeout_error = |reason: String| crate::models::AppError::llm(reason);
-            let is_retryable_llm_error = |err_str: &str| {
-                let lower = err_str.to_ascii_lowercase();
-                lower.contains("connection")
-                    || lower.contains("timeout")
-                    || lower.contains("timed out")
-                    || lower.contains("reset")
-                    || lower.contains("broken pipe")
-                    || lower.contains("connect")
-                    || lower.contains("temporarily unavailable")
-                    || lower.contains("status: 429")
-                    || lower.contains("status: 502")
-                    || lower.contains("status: 503")
-                    || lower.contains("status: 504")
-            };
-
             let mut call_result = {
                 let adapter_for_idle = adapter.clone();
                 match wait_llm_stream_with_idle_timeout(
