@@ -161,7 +161,7 @@ pub use document_processing_executor::DocumentProcessingExecutor; // 🆕 文档
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
 pub use dstu_executor::DstuToolExecutor;
 pub use essay_grading_executor::EssayGradingExecutor; // 🆕 作文批改工具执行器
-pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+pub use executor::{AdmittedToolDispatcher, ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::{ToolExecutorRegistry, ToolRiskSnapshot};
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use file_manager_executor::FileManagerExecutor;

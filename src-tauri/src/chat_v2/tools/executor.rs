@@ -206,6 +206,17 @@ pub enum ToolConcurrency {
 // 执行上下文
 // ============================================================================
 
+/// Re-enters the pipeline's central admission and execution path for a nested
+/// tool call. Aggregating executors must not dispatch children directly.
+#[async_trait]
+pub trait AdmittedToolDispatcher: Send + Sync {
+    async fn dispatch_with_admission(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResultInfo, String>;
+}
+
 /// 工具执行上下文
 ///
 /// 包含工具执行所需的所有依赖和状态。
@@ -272,13 +283,15 @@ pub struct ExecutionContext {
     /// Authority/preset admitted by tool_loop immediately before executor
     /// dispatch. Local shell compares these with a fresh metadata read.
     pub shell_authority_admission: Option<(AuthorityMode, PermissionPreset)>,
+    /// Ephemeral gateway for nested calls that must pass central admission.
+    pub(crate) admitted_tool_dispatcher: Option<Arc<dyn AdmittedToolDispatcher>>,
     /// 🆕 RAG Top-K 设置（从 UI chatParams 传递）
     pub rag_top_k: Option<u32>,
     /// 🆕 RAG 启用重排序设置（从 UI chatParams 传递）
     pub rag_enable_reranking: Option<bool>,
     /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
     pub pdf_processing_service: Option<Arc<PdfProcessingService>>,
-    /// 🆕 Feature flags for sub-tool security preflight (ToolPack)
+    /// Feature flags used by central tool admission and retrieval executors.
     pub memory_enabled: bool,
     /// 🆕 Whether RAG search is enabled
     pub rag_enabled: bool,
@@ -325,6 +338,7 @@ impl ExecutionContext {
             cancellation_token: None,
             shell_guard_approved: false,
             shell_authority_admission: None,
+            admitted_tool_dispatcher: None,
             rag_top_k: None,
             rag_enable_reranking: None,
             pdf_processing_service: None,
@@ -376,6 +390,18 @@ impl ExecutionContext {
         self
     }
 
+    pub fn with_admitted_tool_dispatcher(
+        mut self,
+        dispatcher: Arc<dyn AdmittedToolDispatcher>,
+    ) -> Self {
+        self.admitted_tool_dispatcher = Some(dispatcher);
+        self
+    }
+
+    pub(crate) fn admitted_tool_dispatcher(&self) -> Option<Arc<dyn AdmittedToolDispatcher>> {
+        self.admitted_tool_dispatcher.clone()
+    }
+
     /// 🆕 派生一个替换了取消令牌的上下文副本（其余字段全部共享/克隆）。
     ///
     /// 供 `ToolExecutorRegistry::execute` 为每次执行绑定 scoped child token：
@@ -412,6 +438,7 @@ impl ExecutionContext {
             cancellation_token: Some(token),
             shell_guard_approved: self.shell_guard_approved,
             shell_authority_admission: self.shell_authority_admission,
+            admitted_tool_dispatcher: self.admitted_tool_dispatcher.clone(),
             rag_top_k: self.rag_top_k,
             rag_enable_reranking: self.rag_enable_reranking,
             pdf_processing_service: self.pdf_processing_service.clone(),
@@ -519,7 +546,7 @@ impl ExecutionContext {
         self
     }
 
-    /// 🆕 设置功能开关（用于 ToolPack 子工具安全预检）
+    /// 设置工具功能开关。
     pub fn with_feature_flags(
         mut self,
         memory_enabled: bool,

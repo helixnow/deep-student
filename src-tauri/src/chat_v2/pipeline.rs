@@ -35,15 +35,15 @@ pub(crate) use super::approval_manager::{ApprovalManager, ApprovalRequest};
 pub(crate) use super::database::ChatV2Database;
 pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
-    AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
-    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
-    DstuToolExecutor, ExecutionContext, FetchExecutor, FileManagerExecutor, GeneralToolExecutor,
-    ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
-    LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
-    McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor,
-    SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
-    ToolExecutorRegistry, ToolSensitivity, TranslationToolExecutor, UserTodoExecutor,
-    WorkspaceFsExecutor, WorkspaceToolExecutor,
+    AcademicSearchExecutor, AdmittedToolDispatcher, AttemptCompletionExecutor, AutomationExecutor,
+    BuiltinResourceExecutor, BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor,
+    DataGovernanceToolExecutor, DstuToolExecutor, ExecutionContext, FetchExecutor,
+    FileManagerExecutor, GeneralToolExecutor, ImageGenerationExecutor, IndexWebpageToolExecutor,
+    KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
+    LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor,
+    OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor,
+    TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity, TranslationToolExecutor,
+    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
