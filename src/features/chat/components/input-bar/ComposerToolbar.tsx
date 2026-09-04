@@ -264,11 +264,8 @@ export interface ComposerToolbarProps {
   onCompactContext?: () => void | Promise<void>;
   isCompactingContext: boolean;
   compactContextStatus: 'success' | 'not-needed' | 'skipped' | 'error' | null;
-  authorityMode: 'ask' | 'plan' | 'craft';
-  onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
   permissionPreset: PermissionPreset;
   onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
-  authorityAskBlockedHint: boolean;
   knowledgeBaseProactive: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
   renderSkillPanelMenuVariant?: () => React.ReactNode;
@@ -351,11 +348,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   onCompactContext,
   isCompactingContext,
   compactContextStatus,
-  authorityMode,
-  onAuthorityModeChange,
   permissionPreset,
   onPermissionPresetChange,
-  authorityAskBlockedHint,
   knowledgeBaseProactive,
   onKnowledgeBaseProactiveChange,
   renderSkillPanelMenuVariant,
@@ -540,11 +534,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           compactContextStatus={compactContextStatus}
           compactContextDisabled={isStreaming}
           sessionId={sessionId}
-          authorityMode={authorityMode}
-          onAuthorityModeChange={onAuthorityModeChange}
           permissionPreset={permissionPreset}
           onPermissionPresetChange={onPermissionPresetChange}
-          authorityAskBlockedHint={authorityAskBlockedHint}
           knowledgeBaseProactive={knowledgeBaseProactive}
           onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
           renderSkillPanel={renderSkillPanelMenuVariant}

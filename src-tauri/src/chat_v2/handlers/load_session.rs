@@ -11,7 +11,7 @@ use tauri::State;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::types::LoadSessionResponse;
+use crate::chat_v2::types::{AuthorityMode, LoadSessionResponse, SessionAuthorityState};
 
 /// 加载会话完整数据
 ///
@@ -81,17 +81,33 @@ fn load_session_from_db(
     tail_limit: Option<u32>,
     db: &ChatV2Database,
 ) -> Result<LoadSessionResponse, ChatV2Error> {
-    match tail_limit {
+    let mut response = match tail_limit {
         Some(limit) if limit > 0 => {
             let conn = db.get_conn_safe()?;
             ChatV2Repo::load_session_tail_with_conn(&conn, session_id, limit)
         }
         _ => ChatV2Repo::load_session_full_v2(db, session_id),
+    }?;
+
+    // Ask/Plan were removed from the product UI. Normalize their persisted
+    // backend state before returning so an old session cannot look like Craft
+    // while remaining governed by a hidden authority mode.
+    let authority = SessionAuthorityState::from_metadata(response.session.metadata.as_ref());
+    if authority.authority_mode != AuthorityMode::Craft {
+        response.session =
+            ChatV2Repo::set_session_authority_mode(db, session_id, AuthorityMode::Craft)?;
     }
+
+    Ok(response)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::chat_v2::types::{ChatSession, PermissionPreset};
+    use crate::data_governance::migration::coordinator::MigrationCoordinator;
+    use crate::data_governance::schema_registry::DatabaseId;
+
     #[test]
     fn test_session_id_validation() {
         // 有效的会话 ID
@@ -103,5 +119,40 @@ mod tests {
         // 无效的会话 ID
         assert!(!"invalid_id".starts_with("sess_"));
         assert!(!"session_12345".starts_with("sess_"));
+    }
+
+    #[test]
+    fn loading_session_persists_retired_authority_mode_as_craft() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat v2 migrations");
+        let db = ChatV2Database::new(dir.path()).expect("chat v2 db");
+
+        let mut session = ChatSession::new("sess_retired_plan".into(), "general_chat".into());
+        session.metadata = Some(
+            SessionAuthorityState {
+                authority_mode: AuthorityMode::Plan,
+                permission_preset: PermissionPreset::FullAccess,
+                plan: None,
+            }
+            .apply_to_metadata(None),
+        );
+        ChatV2Repo::create_session_v2(&db, &session).expect("create session");
+
+        let loaded = load_session_from_db(&session.id, None, &db).expect("load session");
+        let loaded_authority =
+            SessionAuthorityState::from_metadata(loaded.session.metadata.as_ref());
+        assert_eq!(loaded_authority.authority_mode, AuthorityMode::Craft);
+        assert_eq!(
+            loaded_authority.permission_preset,
+            PermissionPreset::FullAccess
+        );
+
+        let persisted =
+            ChatV2Repo::get_session_authority_state(&db, &session.id).expect("load authority");
+        assert_eq!(persisted, loaded_authority);
     }
 }

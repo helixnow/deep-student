@@ -280,11 +280,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 🆕 工具审批请求
   pendingApprovalRequest,
   sessionId,
-  authorityMode = 'craft',
-  onAuthorityModeChange,
   permissionPreset = 'relaxed',
   onPermissionPresetChange,
-  authorityAskBlockedHint = false,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
   // ★ PDF 页码引用
@@ -2539,11 +2536,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           onCompactContext={onCompactContext}
           isCompactingContext={isCompactingContext}
           compactContextStatus={compactContextStatus}
-          authorityMode={authorityMode}
-          onAuthorityModeChange={onAuthorityModeChange}
           permissionPreset={permissionPreset}
           onPermissionPresetChange={onPermissionPresetChange}
-          authorityAskBlockedHint={authorityAskBlockedHint}
           knowledgeBaseProactive={knowledgeBaseProactive}
           onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
           renderSkillPanelMenuVariant={renderSkillPanelMenuVariant}

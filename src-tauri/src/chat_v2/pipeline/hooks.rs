@@ -1142,44 +1142,50 @@ impl ChatV2Pipeline {
 
         let window = emitter.window();
         let state = window.state::<crate::commands::AppState>();
+        let authority = ChatV2Repo::get_session_authority_state(&self.db, session_id)
+            .map_err(|error| format!("Failed to resolve shell authority: {error}"))?;
+        let allow_absolute_cwd = matches!(
+            (authority.authority_mode, authority.permission_preset),
+            (
+                crate::chat_v2::types::AuthorityMode::Craft,
+                crate::chat_v2::types::PermissionPreset::FullAccess
+                    | crate::chat_v2::types::PermissionPreset::DangerFullAccess
+            )
+        );
+        let (_, requested_cwd) =
+            crate::chat_v2::approval_scope::normalized_shell_runtime_location(&tool_call.arguments);
+        let uses_host_cwd = allow_absolute_cwd
+            && requested_cwd.trim() != "."
+            && std::path::Path::new(requested_cwd.trim()).is_absolute();
         // Inject group preferred root into approval args (not ToolCall) before
         // binding/scope so approval sees the same root execute will resolve.
         let explicit =
             crate::chat_v2::runtime_roots::explicit_runtime_root_id_from_args(&tool_call.arguments);
-        let effective_root_id =
-            crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
-                window.app_handle(),
-                &state.database,
-                Some(self.db.as_ref()),
-                session_id,
-                skill_package_roots,
-                explicit.as_deref(),
-            );
+        let effective_root_id = uses_host_cwd
+            .then_some("host".to_string())
+            .unwrap_or_else(|| {
+                crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
+                    window.app_handle(),
+                    &state.database,
+                    Some(self.db.as_ref()),
+                    session_id,
+                    skill_package_roots,
+                    explicit.as_deref(),
+                )
+            });
         let mut approval_args = tool_call.arguments.clone();
-        if explicit.is_none() {
+        if uses_host_cwd || explicit.is_none() {
             if let Some(object) = approval_args.as_object_mut() {
                 object.insert("root_id".to_string(), json!(effective_root_id));
             }
         }
         let (root_id, cwd) =
             crate::chat_v2::approval_scope::normalized_shell_runtime_location(&approval_args);
-        let support_readable_roots =
-            LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?;
-        // 完全信任档（craft + full/danger-full-access）允许绝对路径 cwd——审批
-        // 绑定需要与 execute 侧 resolve_absolute_cwd_unsandboxed 同一语义，
-        // 否则模型在绑定阶段就被 "Path must be relative" 劝退。
-        let allow_absolute_cwd = ChatV2Repo::get_session_authority_state(&self.db, session_id)
-            .map(|state| {
-                matches!(
-                    (state.authority_mode, state.permission_preset),
-                    (
-                        crate::chat_v2::types::AuthorityMode::Craft,
-                        crate::chat_v2::types::PermissionPreset::FullAccess
-                            | crate::chat_v2::types::PermissionPreset::DangerFullAccess
-                    )
-                )
-            })
-            .unwrap_or(false);
+        let support_readable_roots = if uses_host_cwd {
+            Vec::new()
+        } else {
+            LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?
+        };
         let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
             window.app_handle(),
             &state.database,

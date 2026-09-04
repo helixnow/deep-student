@@ -50,8 +50,6 @@ import { Z_INDEX } from '@/config/zIndex';
 import type { PermissionPreset } from '../../core/types/store';
 
 export type ComposerPermissionPreset = PermissionPreset;
-export type ComposerAuthorityMode = 'ask' | 'plan' | 'craft';
-
 const PERMISSION_PRESETS: ComposerPermissionPreset[] = [
   'cautious',
   'relaxed',
@@ -84,11 +82,8 @@ export interface ComposerPlusMenuProps {
   isCompactingContext?: boolean;
   compactContextDisabled?: boolean;
   compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
-  authorityMode?: ComposerAuthorityMode;
-  onAuthorityModeChange?: (mode: ComposerAuthorityMode) => void | Promise<void>;
   permissionPreset?: ComposerPermissionPreset;
   onPermissionPresetChange?: (preset: ComposerPermissionPreset) => void | Promise<void>;
-  authorityAskBlockedHint?: boolean;
   renderSkillPanel?: () => React.ReactNode;
   activeSkillCount?: number;
   hasLoadedSkills?: boolean;
