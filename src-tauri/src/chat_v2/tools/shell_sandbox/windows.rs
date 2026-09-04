@@ -364,13 +364,25 @@ fn cleanup_payload_file(path: &Path) {
     let Ok(metadata) = fs::symlink_metadata(&canonical) else {
         return;
     };
-    if canonical.parent() == Some(temp.as_path())
+    if canonical
+        .parent()
+        .is_some_and(|parent| windows_paths_equal(parent, &temp))
         && name.starts_with(PAYLOAD_PREFIX)
         && name.ends_with(".json")
         && metadata.is_file()
         && !metadata.file_type().is_symlink()
     {
         let _ = fs::remove_file(canonical);
+    }
+}
+
+fn windows_paths_equal(left: &Path, right: &Path) -> bool {
+    match (left.to_str(), right.to_str()) {
+        (Some(left), Some(right)) => {
+            crate::pdf_protocol::windows_comparable_path_text(left)
+                == crate::pdf_protocol::windows_comparable_path_text(right)
+        }
+        _ => left == right,
     }
 }
 
@@ -405,9 +417,12 @@ fn write_payload(payload: &WindowsSandboxPayload) -> Result<PathBuf, String> {
 }
 
 fn read_payload(path: &Path) -> Result<WindowsSandboxPayload, String> {
-    let temp = std::env::temp_dir()
+    // The launcher pins helper cwd here because the shell environment later
+    // rewrites TEMP/TMP to the command's writable working directory.
+    let payload_root = std::env::current_dir()
+        .map_err(|error| format!("Failed to locate the Windows payload directory: {error}"))?
         .canonicalize()
-        .map_err(|error| format!("Failed to resolve the Windows temp directory: {error}"))?;
+        .map_err(|error| format!("Failed to resolve the Windows payload directory: {error}"))?;
     let canonical = path
         .canonicalize()
         .map_err(|error| format!("Failed to resolve Windows sandbox payload: {error}"))?;
@@ -415,7 +430,9 @@ fn read_payload(path: &Path) -> Result<WindowsSandboxPayload, String> {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default();
-    if canonical.parent() != Some(temp.as_path())
+    if !canonical
+        .parent()
+        .is_some_and(|parent| windows_paths_equal(parent, &payload_root))
         || !file_name.starts_with(PAYLOAD_PREFIX)
         || !file_name.ends_with(".json")
     {
@@ -478,9 +495,12 @@ impl SandboxBackend for PlatformSandboxBackend {
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the AppContainer launcher: {error}"))?;
         let payload_path = write_payload(&payload)?;
+        let payload_root = payload_path
+            .parent()
+            .ok_or_else(|| "Windows sandbox payload has no parent directory".to_string())?;
         let mut command = Command::new(executable);
-        command.arg(HELPER_ARG).arg(payload_path);
-        configure_stdio(&mut command, cwd);
+        command.arg(HELPER_ARG).arg(&payload_path);
+        configure_stdio(&mut command, payload_root);
         Ok(command)
     }
 
@@ -526,9 +546,12 @@ impl SandboxBackend for PlatformSandboxBackend {
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the AppContainer launcher: {error}"))?;
         let payload_path = write_payload(&payload)?;
+        let payload_root = payload_path
+            .parent()
+            .ok_or_else(|| "Windows sandbox payload has no parent directory".to_string())?;
         let mut command = Command::new(executable);
-        command.arg(HELPER_ARG).arg(payload_path);
-        configure_stdio(&mut command, cwd);
+        command.arg(HELPER_ARG).arg(&payload_path);
+        configure_stdio(&mut command, payload_root);
         Ok(command)
     }
 
@@ -605,9 +628,12 @@ impl SandboxBackend for UnsandboxedShellBackend {
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
         let payload_path = write_payload(&payload)?;
+        let payload_root = payload_path
+            .parent()
+            .ok_or_else(|| "Windows shell payload has no parent directory".to_string())?;
         let mut command = Command::new(executable);
-        command.arg(HELPER_ARG).arg(payload_path);
-        configure_stdio(&mut command, cwd);
+        command.arg(HELPER_ARG).arg(&payload_path);
+        configure_stdio(&mut command, payload_root);
         Ok(command)
     }
 
@@ -640,9 +666,12 @@ impl SandboxBackend for UnsandboxedShellBackend {
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
         let payload_path = write_payload(&payload)?;
+        let payload_root = payload_path
+            .parent()
+            .ok_or_else(|| "Windows shell payload has no parent directory".to_string())?;
         let mut command = Command::new(executable);
-        command.arg(HELPER_ARG).arg(payload_path);
-        configure_stdio(&mut command, cwd);
+        command.arg(HELPER_ARG).arg(&payload_path);
+        configure_stdio(&mut command, payload_root);
         Ok(command)
     }
 
@@ -1738,6 +1767,18 @@ mod tests {
     }
 
     #[test]
+    fn payload_parent_comparison_uses_windows_path_semantics() {
+        assert!(windows_paths_equal(
+            Path::new(r"\\?\C:\Users\Student\AppData\Local\Temp"),
+            Path::new(r"c:\users\student\appdata\local\temp\")
+        ));
+        assert!(!windows_paths_equal(
+            Path::new(r"C:\Users\Student\AppData\Local\Temp2"),
+            Path::new(r"C:\Users\Student\AppData\Local\Temp")
+        ));
+    }
+
+    #[test]
     fn spawn_failure_cleanup_removes_unconsumed_payload() {
         let temp = tempfile::tempdir().unwrap();
         let payload = WindowsSandboxPayload {
@@ -1754,6 +1795,26 @@ mod tests {
 
         PlatformSandboxBackend::new().cleanup_command_resources(&command);
 
+        assert!(!payload_path.exists());
+    }
+
+    #[test]
+    fn full_access_helper_cwd_stays_at_payload_root() {
+        let cwd = tempfile::tempdir().unwrap();
+        let backend = UnsandboxedShellBackend::new();
+        let mut command = backend
+            .command("echo ok", cwd.path(), &policy(cwd.path(), cwd.path()))
+            .unwrap();
+        let payload_path = payload_path_from_command(&command).unwrap();
+        let payload_root = payload_path.parent().unwrap();
+
+        command.env("TEMP", cwd.path()).env("TMP", cwd.path());
+
+        assert!(windows_paths_equal(
+            command.as_std().get_current_dir().unwrap(),
+            payload_root
+        ));
+        backend.cleanup_command_resources(&command);
         assert!(!payload_path.exists());
     }
 

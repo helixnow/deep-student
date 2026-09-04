@@ -1167,7 +1167,7 @@ impl AttachmentStageExecutor {
         let content: Option<String> = conn
             .query_row(
                 r#"
-                SELECT COALESCE(r.content, '')
+                SELECT COALESCE(r.data, '')
                 FROM files f
                 LEFT JOIN resources r ON f.resource_id = r.id
                 WHERE f.id = ?1 AND f.deleted_at IS NULL
@@ -1776,6 +1776,56 @@ mod tests {
         assert_eq!(resolved.name, "data.bin");
         match resolved.payload {
             AttachmentPayload::Bytes { data } => assert_eq!(data, b"hello"),
+            AttachmentPayload::Disk { .. } => panic!("expected inline attachment bytes"),
+        }
+    }
+
+    #[test]
+    fn resolves_legacy_text_content_from_vfs_data_column() {
+        let temp_dir = tempfile::tempdir().expect("create VFS test directory");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Vfs)
+            .expect("apply VFS migrations");
+        let vfs_db = crate::vfs::database::VfsDatabase::new(temp_dir.path())
+            .expect("open migrated VFS database");
+        let conn = vfs_db.get_conn_safe().expect("get VFS connection");
+        conn.execute(
+            r#"
+            INSERT INTO resources
+                (id, hash, type, storage_mode, data, created_at, updated_at)
+            VALUES (?1, ?2, 'file', 'inline', ?3, 1, 1)
+            "#,
+            rusqlite::params!["res_legacy_text", "hash_legacy_text", "legacy plain text"],
+        )
+        .expect("insert resource");
+        conn.execute(
+            r#"
+            INSERT INTO files
+                (id, resource_id, sha256, file_name, size, tags_json, status,
+                 created_at, updated_at, type, name, mime_type)
+            VALUES (?1, ?2, ?3, ?4, ?5, '[]', 'active', ?6, ?6,
+                    'document', ?4, 'text/plain')
+            "#,
+            rusqlite::params![
+                "file_legacy_text",
+                "res_legacy_text",
+                "sha_legacy_text",
+                "legacy.txt",
+                17_i64,
+                "2026-09-04T00:00:00Z"
+            ],
+        )
+        .expect("insert file");
+        drop(conn);
+
+        let resolved = AttachmentStageExecutor::resolve_vfs_attachment(&vfs_db, "file_legacy_text")
+            .expect("resolve legacy VFS text")
+            .expect("attachment exists");
+        assert_eq!(resolved.name, "legacy.txt");
+        match resolved.payload {
+            AttachmentPayload::Bytes { data } => assert_eq!(data, b"legacy plain text"),
             AttachmentPayload::Disk { .. } => panic!("expected inline attachment bytes"),
         }
     }
