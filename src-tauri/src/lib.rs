@@ -2703,6 +2703,7 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
             ,crate::data_governance::commands_sync::data_governance_run_sync
             ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
+            ,crate::data_governance::commands_sync::data_governance_cancel_sync
             ,crate::data_governance::commands_sync::data_governance_export_sync_data
             ,crate::data_governance::commands_sync::data_governance_import_sync_data
             // 同步检疫管理

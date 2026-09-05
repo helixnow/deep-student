@@ -2688,13 +2688,49 @@ pub struct SyncImportResponse {
 ///
 /// ## 返回
 /// - `SyncExecutionResponse`: 同步执行结果
-/// 云存储状态提示链路 RAII 守卫：注册 status hook + 进度 sink，Drop 时配对
-/// 卸下。保证同步命令众多提前返回路径不残留全局钩子（钩子残留会把后续
-/// 非同步时期的云存储等待提示错误地发到已结束的同步进度通道）。
+/// 当前进行中同步的取消令牌（同步有全局信号量串行化，至多一个）。
+static ACTIVE_SYNC_CANCEL: std::sync::OnceLock<
+    std::sync::RwLock<Option<tokio_util::sync::CancellationToken>>,
+> = std::sync::OnceLock::new();
+
+fn active_sync_cancel_slot(
+) -> &'static std::sync::RwLock<Option<tokio_util::sync::CancellationToken>> {
+    ACTIVE_SYNC_CANCEL.get_or_init(|| std::sync::RwLock::new(None))
+}
+
+/// 取消正在进行的数据治理同步。
+///
+/// 协作式取消：限流等待/退避睡眠立即中断，文件传输在当前文件结束后
+/// 于下一检查点（传输原语入口）停止。无进行中同步时返回 Ok(false)。
+#[tauri::command]
+pub async fn data_governance_cancel_sync() -> Result<bool, String> {
+    let token = active_sync_cancel_slot()
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned());
+    match token {
+        Some(token) => {
+            token.cancel();
+            info!("[data_governance] 用户请求取消同步");
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// 云存储状态提示 + 取消链路 RAII 守卫：注册 status hook / 进度 sink /
+/// 取消令牌，Drop 时配对卸下。保证同步命令众多提前返回路径不残留全局
+/// 状态（钩子残留会把后续非同步时期的云存储等待提示错误地发到已结束
+/// 的同步进度通道；令牌残留会让"取消"误伤下一次同步）。
 struct CloudStatusHookGuard;
 
 impl CloudStatusHookGuard {
     fn install(emitter: &SyncProgressEmitter) -> Self {
+        let token = tokio_util::sync::CancellationToken::new();
+        crate::cloud_storage::set_cancel_token(token.clone());
+        if let Ok(mut guard) = active_sync_cancel_slot().write() {
+            *guard = Some(token);
+        }
         crate::cloud_storage::set_status_hook(Box::new(|msg| {
             super::sync::report_sync_status(msg);
         }));
@@ -2706,7 +2742,11 @@ impl CloudStatusHookGuard {
 impl Drop for CloudStatusHookGuard {
     fn drop(&mut self) {
         crate::cloud_storage::clear_status_hook();
+        crate::cloud_storage::clear_cancel_token();
         super::sync::clear_status_sink();
+        if let Ok(mut guard) = active_sync_cancel_slot().write() {
+            *guard = None;
+        }
     }
 }
 
@@ -3152,6 +3192,13 @@ pub async fn data_governance_run_sync_with_progress(
             })
         }
         Err(e) => {
+            // 用户取消优先于底层错误文案（取消时传输原语/等待点返回的
+            // 是内部取消错误，统一替换为明确语义）
+            let e = if crate::cloud_storage::is_sync_cancelled() {
+                "同步已取消".to_string()
+            } else {
+                e
+            };
             emitter.emit_failed(&e).await;
             error!("[data_governance] 带进度同步失败: {}", e);
             #[cfg(feature = "data_governance")]

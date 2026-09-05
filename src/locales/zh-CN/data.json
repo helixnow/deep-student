@@ -590,6 +590,8 @@
     "upload": "上传",
     "download": "下载",
     "bidirectional": "双向同步",
+    "cancel_sync": "取消同步",
+    "cancelling": "正在取消…",
     "eta": "预计剩余",
     "conflict_management": "冲突管理",
     "conflict_description": "检测和解决本地与云端之间的数据冲突",
