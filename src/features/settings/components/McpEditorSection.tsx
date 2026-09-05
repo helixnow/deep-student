@@ -26,6 +26,7 @@ import {
 import { Info as InfoIcon, Plus, Trash, X, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSetting, saveSetting, deleteSetting } from '@/utils/settingsApi';
 import { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
 import { TauriAPI } from '@/utils/tauriApi';
 import { isAndroid } from '@/utils/platform';
@@ -571,7 +572,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
       // 先持久化
       if (invoke) {
-        await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(newList) });
+        await saveSetting('mcp.tools.list', JSON.stringify(newList));
       }
       // 再更新状态
       setConfig(prev => ({ ...prev, mcpTools: newList }));
@@ -669,7 +670,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     const next = (config.mcpTools || []).filter((tool: McpToolConfig) => tool.id !== serverId);
     try {
       if (invoke) {
-        await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(next) });
+        await saveSetting('mcp.tools.list', JSON.stringify(next));
       }
       setConfig(prev => ({ ...prev, mcpTools: next }));
       try {
@@ -727,7 +728,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
       currentList[idx] = updated;
       if (invoke) {
-        await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(currentList) });
+        await saveSetting('mcp.tools.list', JSON.stringify(currentList));
       }
       setConfig(prev => ({ ...prev, mcpTools: currentList }));
       if (enabledChanged) {
@@ -1053,7 +1054,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         }
         try {
           if (invoke) {
-            await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(nextList) });
+            await saveSetting('mcp.tools.list', JSON.stringify(nextList));
           }
           setConfig(prev => ({ ...prev, mcpTools: nextList }));
         } catch (error) {
@@ -1472,7 +1473,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         }
         try {
           if (invoke) {
-            await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(nextList) });
+            await saveSetting('mcp.tools.list', JSON.stringify(nextList));
           }
           setConfig(prev => ({ ...prev, mcpTools: nextList }));
         } catch (e) {
@@ -1723,13 +1724,13 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       try {
         if (invoke) {
           await Promise.all([
-            invoke('save_setting', { key: 'mcp.tools.advertise_all_tools', value: mcpPolicyModal.advertiseAll.toString() }),
-            invoke('save_setting', { key: 'mcp.tools.whitelist', value: mcpPolicyModal.whitelist }),
-            invoke('save_setting', { key: 'mcp.tools.blacklist', value: mcpPolicyModal.blacklist }),
-            invoke('save_setting', { key: 'mcp.performance.timeout_ms', value: String(mcpPolicyModal.timeoutMs) }),
-            invoke('save_setting', { key: 'mcp.performance.rate_limit_per_second', value: String(mcpPolicyModal.rateLimit) }),
-            invoke('save_setting', { key: 'mcp.performance.cache_max_size', value: String(mcpPolicyModal.cacheMax) }),
-            invoke('save_setting', { key: 'mcp.performance.cache_ttl_ms', value: String(mcpPolicyModal.cacheTtlMs) }),
+            saveSetting('mcp.tools.advertise_all_tools', mcpPolicyModal.advertiseAll.toString()),
+            saveSetting('mcp.tools.whitelist', mcpPolicyModal.whitelist),
+            saveSetting('mcp.tools.blacklist', mcpPolicyModal.blacklist),
+            saveSetting('mcp.performance.timeout_ms', String(mcpPolicyModal.timeoutMs)),
+            saveSetting('mcp.performance.rate_limit_per_second', String(mcpPolicyModal.rateLimit)),
+            saveSetting('mcp.performance.cache_max_size', String(mcpPolicyModal.cacheMax)),
+            saveSetting('mcp.performance.cache_ttl_ms', String(mcpPolicyModal.cacheTtlMs)),
           ]);
         }
       } catch (err) {
