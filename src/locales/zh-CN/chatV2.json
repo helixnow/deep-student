@@ -4,6 +4,12 @@
     "continueBusy": "正在回复中，请稍候",
     "continueEmpty": "没有可继续的 AI 回复"
   },
+  "history": {
+    "loadEarlier": "加载更早消息",
+    "loading": "正在加载更早消息…",
+    "loadFailedRetry": "加载失败，点击重试",
+    "exhausted": "已到最早消息"
+  },
   "error": {
     "loadFailed": "加载失败",
     "retry": "重试",

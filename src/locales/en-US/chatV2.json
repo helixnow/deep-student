@@ -4,6 +4,12 @@
     "continueBusy": "A response is in progress, please wait",
     "continueEmpty": "No AI response to continue"
   },
+  "history": {
+    "loadEarlier": "Load earlier messages",
+    "loading": "Loading earlier messages…",
+    "loadFailedRetry": "Failed to load. Tap to retry",
+    "exhausted": "Beginning of conversation"
+  },
   "error": {
     "loadFailed": "Load failed",
     "retry": "Retry",

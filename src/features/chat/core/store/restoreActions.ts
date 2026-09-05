@@ -617,11 +617,28 @@ export function createRestoreActions(
             retainedBackendMessages,
           );
           const orderChanged = !hasSameIdOrder(messageOrder, current.messageOrder);
+          // 分页状态重算：页响应带回总数时按合并后的已加载数更新；
+          // 抵达最早一页时置 exhausted（仅分页发生后才可能为 true）。
+          // totalMessageCount 为 undefined 表示该响应已是全量
+          // （见 LoadSessionResponseType 注释）→ 直接视为无更早历史。
+          const paginationUpdate = (() => {
+            const total = response.totalMessageCount;
+            const hasMore = typeof total === 'number'
+              ? total > messageOrder.length
+              : false;
+            return {
+              hasMoreHistory: hasMore,
+              ...(hasMore ? {} : { earlierHistoryExhausted: true }),
+            };
+          })();
           if (
             !messagesChanged
             && !blocksChanged
             && !orderChanged
           ) {
+            // 内容无变化（页内消息均已存在）也要同步分页标志——
+            // 例如并发补页去重后正好抵达最早一页
+            set(paginationUpdate);
             return;
           }
 
@@ -629,6 +646,7 @@ export function createRestoreActions(
             messageMap,
             messageOrder,
             blocks: blocksMap,
+            ...paginationUpdate,
           });
 
           console.log(
@@ -950,6 +968,13 @@ export function createRestoreActions(
             authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
             isDataLoaded: true,
+            // 历史分页状态：尾部首屏后总数更大则还有更早历史可加载；
+            // 切换会话时重置 loading/error/exhausted
+            hasMoreHistory: typeof response.totalMessageCount === 'number'
+              && response.totalMessageCount > finalMessageOrder.length,
+            isLoadingEarlier: false,
+            loadEarlierError: null,
+            earlierHistoryExhausted: false,
             messageMap: finalMessageMap,
             messageOrder: finalMessageOrder,
             blocks: finalBlocksMap,

@@ -183,6 +183,18 @@ export interface ChatStoreState extends StoreCallbacks {
    */
   isDataLoaded: boolean;
 
+  /** 历史分页：是否还有更早历史未加载（restore/prepend 按 totalMessageCount 重算） */
+  hasMoreHistory: boolean;
+
+  /** 历史分页：正在加载更早消息（防重入守卫 + UI loading） */
+  isLoadingEarlier: boolean;
+
+  /** 历史分页：最近一次加载失败信息（UI 重试入口）；成功/切换会话时清空 */
+  loadEarlierError: string | null;
+
+  /** 历史分页：已通过分页抵达最早一页（exhausted 展示；仅分页发生后置位） */
+  earlierHistoryExhausted: boolean;
+
   /** 消息 Map */
   messageMap: Map<string, Message>;
 
@@ -310,6 +322,10 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     goal: null, // goal 模式 P0：初始无目标，restore 后由 fetchGoal 拉取
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据
+    hasMoreHistory: false,
+    isLoadingEarlier: false,
+    loadEarlierError: null,
+    earlierHistoryExhausted: false,
     messageMap: new Map(),
     messageOrder: [],
     blocks: new Map(),

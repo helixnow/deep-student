@@ -3998,11 +3998,13 @@ export class ChatV2TauriAdapter {
   }
 
   /** 手动加载更早历史：按当前已加载数量请求下一页，并在 generation
-   * 仍有效时复用既有 prepend 锚定逻辑合并。 */
+   * 仍有效时复用既有 prepend 锚定逻辑合并。空闲期自动补页在途/已完成时
+   * 跳过（prepend 幂等，重复拉取只是浪费 IPC）。 */
   async loadEarlierMessages(): Promise<void> {
     const generation = this.setupGeneration;
     const session = this.lastLoadedSessionInfo;
     if (!session || !this.isSessionRuntimeOwner()) return;
+    if (this.fullHistoryLoadInFlight || this.fullHistoryLoadComplete) return;
     const offset = this.store.getOrderedMessages().length;
     const baseline = this.captureRestoreBaseline();
     const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
@@ -4012,7 +4014,12 @@ export class ChatV2TauriAdapter {
     });
     if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
     this.store.prependHistoryFromBackend(
-      { session, messages: page.messages, blocks: page.blocks },
+      {
+        session,
+        messages: page.messages,
+        blocks: page.blocks,
+        totalMessageCount: page.totalMessageCount,
+      },
       baseline,
     );
   }
@@ -4176,7 +4183,12 @@ export class ChatV2TauriAdapter {
 
       if (page.messages.length > 0) {
         this.store.prependHistoryFromBackend(
-          { session, messages: page.messages, blocks: page.blocks },
+          {
+            session,
+            messages: page.messages,
+            blocks: page.blocks,
+            totalMessageCount: page.totalMessageCount,
+          },
           restoreBaseline,
         );
         mergedMessages += page.messages.length;

@@ -222,6 +222,38 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 订阅消息顺序（已通过 useMessageOrder 内部的引用缓存优化）
   const messageOrder = useMessageOrder(store);
 
+  // 历史分页状态（顶部横幅 + 滚动自动触发）
+  const hasMoreHistory = useStore(store, (s) => s.hasMoreHistory);
+  const isLoadingEarlier = useStore(store, (s) => s.isLoadingEarlier);
+  const loadEarlierError = useStore(store, (s) => s.loadEarlierError);
+  const earlierHistoryExhausted = useStore(store, (s) => s.earlierHistoryExhausted);
+
+  // 历史分页：滚动接近顶部时自动加载更早消息。
+  // 出错后自动触发解除（避免失败风暴），由横幅上的重试按钮恢复；
+  // store action 内含防重入与 hasMoreHistory 守卫，这里无需节流。
+  useEffect(() => {
+    if (!viewportElement) return;
+    const maybeLoadEarlier = () => {
+      if (viewportElement.scrollTop > 120) return;
+      const s = store.getState();
+      if (s.hasMoreHistory && !s.isLoadingEarlier && !s.loadEarlierError) {
+        void s.loadEarlierMessages();
+      }
+    };
+    viewportElement.addEventListener('scroll', maybeLoadEarlier, { passive: true });
+    return () => viewportElement.removeEventListener('scroll', maybeLoadEarlier);
+  }, [viewportElement, store]);
+
+  // 历史分页：内容不足一屏时 scrollTop 恒 0、滚动事件不触发，主动补页
+  // 直到填满视口或抵达最早一页（messageOrder.length 驱动逐页复查）
+  useEffect(() => {
+    if (!viewportElement || !hasMoreHistory || isLoadingEarlier || loadEarlierError) return;
+    if (viewportElement.scrollHeight <= viewportElement.clientHeight + 120) {
+      void store.getState().loadEarlierMessages();
+    }
+  }, [viewportElement, hasMoreHistory, isLoadingEarlier, loadEarlierError, messageOrder.length, store]);
+
+
   // 搜索打开时才订阅 blocks：流式输出会频繁替换 blocks Map，避免关闭搜索时
   // 让整个消息列表跟着每个 token 重渲染。
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -1275,6 +1307,36 @@ const MessageListInner: React.FC<MessageListProps> = ({
       viewportClassName="overscroll-contain"
       hideTrackWhenIdle
     >
+      {/* 历史分页横幅：加载中 / 失败重试 / 加载更早 / 已到最早。
+          常驻占位避免 exhausted 时内容跳动；滚动补偿由既有锚定逻辑承担 */}
+      {(hasMoreHistory || isLoadingEarlier || loadEarlierError || earlierHistoryExhausted) && (
+        <div
+          className="flex justify-center py-2 text-xs text-muted-foreground"
+          data-testid="history-pagination-banner"
+        >
+          {isLoadingEarlier ? (
+            <span>{t('history.loading')}</span>
+          ) : loadEarlierError ? (
+            <button
+              type="button"
+              className="transition-colors hover:text-foreground"
+              onClick={() => { void store.getState().loadEarlierMessages(); }}
+            >
+              {t('history.loadFailedRetry')}
+            </button>
+          ) : hasMoreHistory ? (
+            <button
+              type="button"
+              className="transition-colors hover:text-foreground"
+              onClick={() => { void store.getState().loadEarlierMessages(); }}
+            >
+              {t('history.loadEarlier')}
+            </button>
+          ) : (
+            <span>{t('history.exhausted')}</span>
+          )}
+        </div>
+      )}
       {showDirectFlow ? (
         // 直接渲染模式（禁用虚拟化）+ 虚拟化就绪前的尾部窗口兜底（不再渲染空白）
         // P0-4: 底部安全区随输入栏遮挡（键盘 inset 等）动态抬高
