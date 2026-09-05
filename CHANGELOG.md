@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.53](https://github.com/helixnow/deep-student/compare/v0.9.52...v0.9.53) (2026-09-05)
+
+
+### Features
+
+* **chat:** 工具轮次默认不限并整体移除 doom loop 机制（长程 agent 支持） ([897411a](https://github.com/helixnow/deep-student/commit/897411afc6bee3b2b074efdeed54f3bb941411ae))
+* **chat:** 新增 model_profile_add 工具——agent 经逐次审批后可新增模型配置 ([5e8c1cf](https://github.com/helixnow/deep-student/commit/5e8c1cf143d09e9da2e84d8b0028119f3592e672))
+* **memory:** 吸收 Hermes 策略——画像溢出当轮自合并协议 + 记忆内容安全扫描 ([e0cd8bf](https://github.com/helixnow/deep-student/commit/e0cd8bf78eecdeaf9c09e4c156ac800c05b0c6d1))
+* **memory:** 打通记忆蒸馏层到原始会话的回溯链路，记忆模式泛化到工程/通用场景 ([a0906b7](https://github.com/helixnow/deep-student/commit/a0906b75b8701522122d35a9b82f20661fe6a7c1))
+* **settings:** 桌面端获取可用模型改回内联卡片，移除 Dialog 形态 ([962807d](https://github.com/helixnow/deep-student/commit/962807d7d0028695598ace0c7d28c1ee5aec189e))
+* **workspace:** add coding navigation and git tools ([86b4fee](https://github.com/helixnow/deep-student/commit/86b4fee1e302306a1c0cc65c50a05618751a9b6d))
+* **workspace:** 新增 workspace_file_edit 局部编辑工具，补齐 coding 能力最关键的'手' ([8fcdf05](https://github.com/helixnow/deep-student/commit/8fcdf05c7285a4be164b853247c5f3e5c9b78953))
+
+
+### Bug Fixes
+
+* **build:** align Android version baseline ([2da873e](https://github.com/helixnow/deep-student/commit/2da873ecde140181d73999c6325498eeae8711a3))
+* **chat:** admit packed tools through pipeline ([586cf30](https://github.com/helixnow/deep-student/commit/586cf30eb81444434509251a9b89053da8190f54))
+* **chat:** align retired authority and host cwd ([b7d74a5](https://github.com/helixnow/deep-student/commit/b7d74a596885d1351cadf96765eb82270b6d9d6d))
+* **chat:** harden file reads and exports ([603a57e](https://github.com/helixnow/deep-student/commit/603a57e433b9230f2536671a49ae6e23676ec2f2))
+* **chat:** repair attachments and Windows shell payloads ([a538280](https://github.com/helixnow/deep-student/commit/a5382801f7976b052dc90428ef0ded381670452f))
+* **chat:** retry empty model responses ([481c6ef](https://github.com/helixnow/deep-student/commit/481c6efe20d88bc305af9a91ab4bbc04beb6632d))
+* **chat:** 子代理 wait=true 同步交付后不再被完成事件二次唤醒 ([10934c2](https://github.com/helixnow/deep-student/commit/10934c21e63769bbc34a7a2a63915d2c06acbf13))
+* **chat:** 晚到/重放块按时间戳稳定归位——流式期间乱序块不再沉底 ([3e3a470](https://github.com/helixnow/deep-student/commit/3e3a47087d5cc2b280f3b1d3b4f27df3747b83ba))
+
 ## [0.9.52](https://github.com/helixnow/deep-student/compare/v0.9.51...v0.9.52) (2026-09-03)
 
 
