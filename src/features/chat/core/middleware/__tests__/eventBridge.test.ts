@@ -73,6 +73,21 @@ describe('eventBridge guards', () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 
+  it('drops events explicitly tagged for a different session', () => {
+    const store = createStore(3);
+    handleBackendEventWithSequence(store, {
+      sequenceId: 0,
+      sessionId: 'sess_old',
+      type: 'tool_call',
+      phase: 'start',
+      messageId: 'msg_test',
+      blockId: 'blk_stale_session',
+      skillStateVersion: 3,
+    });
+
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
   it('drops stale tool events from an older round', () => {
     const store = createStore(3);
 

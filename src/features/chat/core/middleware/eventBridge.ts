@@ -1099,6 +1099,17 @@ export function flushOrphanTerminals(store: ChatStore): void {
 function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
   const { type, phase, messageId, blockId, variantId, chunk, payload } = event;
 
+  // Drop events explicitly belonging to another session. Backend streams may
+  // outlive a session switch; accepting these late events would append old
+  // content into the newly active store (especially when block ids collide).
+  if (event.sessionId && event.sessionId !== store.sessionId) {
+    console.warn(
+      `[EventBridge] Ignoring stale event for session ${event.sessionId}; ` +
+        `active session is ${store.sessionId}. type=${type}, phase=${phase}`,
+    );
+    return;
+  }
+
   // 🔧 调试打点：追踪变体块事件
   if (variantId && phase === 'start') {
     logMultiVariant('adapter', 'handleBlockEventWithVariant_start', {

@@ -19,12 +19,11 @@ use crate::chat_v2::types::{block_types, ChatMessage, MessageBlock, MessageRole}
 
 /// 会话 ID 前缀校验（sess_ / agent_ / subagent_），导出命令共用。
 fn validate_session_id(session_id: &str) -> Result<(), String> {
-    if !session_id.starts_with("sess_")
-        && !session_id.starts_with("agent_")
-        && !session_id.starts_with("subagent_")
-    {
+    // Legacy databases used additional prefixes. Keep export compatible with
+    // load_session: reject only empty IDs and let the repository check existence.
+    if session_id.trim().is_empty() {
         return Err(
-            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+            ChatV2Error::Validation("Invalid session ID: empty or whitespace-only".into()).into(),
         );
     }
     Ok(())

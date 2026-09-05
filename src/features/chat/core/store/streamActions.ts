@@ -1,6 +1,7 @@
 import type { ChatStoreState, SetState, GetState } from './types';
 import { addToSet, removeFromSet } from './immerHelpers';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { chunkBuffer } from '../middleware/chunkBuffer';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -14,6 +15,12 @@ export function createStreamActions(
           terminalError?: string,
         ): void => {
           const state = getState();
+          // Flush and discard any buffered token batches before transitioning
+          // to idle. This covers terminal events that race with abort/error
+          // state updates and prevents stale chunks leaking into the next run.
+          if (state.sessionId) {
+            chunkBuffer.flushAndCleanupSession(state.sessionId);
+          }
           // 🔧 P0修复：支持 streaming 和 aborting 状态
           // aborting 状态时，后端可能仍然发送 stream_complete/stream_error
           // 需要正确处理以重置状态
