@@ -12,6 +12,7 @@
  */
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { getSetting, saveSetting } from '@/utils/settingsApi';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 import i18n from '@/i18n';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 // 停用事务（缝一）：本模块是设置页之外所有模式开关入口（侧边栏快捷开关 /
