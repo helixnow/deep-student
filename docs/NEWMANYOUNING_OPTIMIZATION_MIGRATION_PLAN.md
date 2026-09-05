@@ -75,3 +75,10 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 - 当前主线已有等价实现：Chat FIFO 多变体与采样 buffer、历史 scroll anchoring 基础、OCR stuck task 自动续跑、WebDAV Retry-After/重试/真实字节进度、Android spawn_blocking 与 sha256sum 回退、单实例聚焦恢复、settings 批量 API 基础。
 - 已吸收：用户迁移级对话快照导入/导出后端协议、事务化 ID remap、50MiB 限制、前端文件导入导出入口；Settings 业务直接 IPC 已迁移为统一 API；历史 PDF 缺失 `preview_json` 的启动后台分批回填（每批 5 个、路径安全校验、`spawn_blocking` 渲染）；WebDAV 同一 provider（endpoint host + 用户名）跨 storage 实例共享主动滑窗限流。
 - 未吸收：历史分页 UI 的完整 loading/retry/exhausted 交互；WebDAV 限流等待的取消、provider/session 全链路并发控制、前端 retrying/backoff/failed/completed 状态闭环；死代码/CSS 依赖审计清理。
+
+### 本轮验证证据
+
+- `cargo check --lib --manifest-path src-tauri/Cargo.toml`：通过（共享 WebDAV 限流与 PDF 回填接线）。
+- `cargo test --lib cloud_storage::webdav::tests::provider_rate_limit_window_is_shared_across_storage_instances --manifest-path src-tauri/Cargo.toml`：1 passed。
+- `cargo test --lib vfs::repos::pdf_preview --manifest-path src-tauri/Cargo.toml`：1 passed。
+- `npm run typecheck`、`cargo fmt`、`git diff --check`：通过。
