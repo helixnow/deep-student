@@ -10,6 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.54](https://github.com/helixnow/deep-student/compare/v0.9.53...v0.9.54) (2026-09-05)
+
+
+### Features
+
+* **chat:** add session goal mode with cross-turn auto-continuation ([5edffa1](https://github.com/helixnow/deep-student/commit/5edffa1a6dd36dfd20bc0e488ec854f62071cf8d))
+* **chat:** add snapshot file import export flow ([9c25d7e](https://github.com/helixnow/deep-student/commit/9c25d7e648ef3255dc4bb062959502923f2d83fe))
+* **chat:** add snapshot import action to session browser ([9ffbfce](https://github.com/helixnow/deep-student/commit/9ffbfcead61224081e9cd96e6d871d0d4c5fe97b))
+* **chat:** add transactional conversation snapshot import ([3ee514d](https://github.com/helixnow/deep-student/commit/3ee514d01e17056cbf5428a18b47109392d67829))
+* **chat:** expose conversation snapshot APIs ([91c9222](https://github.com/helixnow/deep-student/commit/91c9222a03f60af427de419d4575c77ef5eb7356))
+* **chat:** goal mode frontend — status chip, builtin tools, stream race fix ([a6bca19](https://github.com/helixnow/deep-student/commit/a6bca190cb74f225872a0a69e6a54b02ade1ba8c))
+* **chat:** unrestricted host shell tier for danger_full_access ([7191a59](https://github.com/helixnow/deep-student/commit/7191a5910cb41821649380a2991357fb7266d997))
+* **chat:** unrestricted tier contracts and race-free preset switching ([03d007c](https://github.com/helixnow/deep-student/commit/03d007cf1bdb92c8a43f6dcab2634ad00acbc895))
+* **chat:** 历史消息向上懒加载 UI——顶部横幅/自动触发/重试/exhausted ([dadb7ed](https://github.com/helixnow/deep-student/commit/dadb7edd64e250e50b09f563faf3ae947c2b557c))
+* **migration:** absorb safe upstream reliability fixes ([1001b14](https://github.com/helixnow/deep-student/commit/1001b14b3d1882475f088b0cddd6768f19fad024))
+* **migration:** absorb verified reliability improvements ([3d81791](https://github.com/helixnow/deep-student/commit/3d81791fcce06668b03a45a612a7ef18fbd9022f))
+* **migration:** document upstream optimization absorption plan ([ee9024c](https://github.com/helixnow/deep-student/commit/ee9024cf04006cf986252f25525f30f104f343b5))
+* **migration:** harden chat overscroll and settings batching ([b9a1622](https://github.com/helixnow/deep-student/commit/b9a1622dedea993fe530be29ab93fa92c77a33f6))
+* **pdf:** backfill missing historical previews ([1ea4b89](https://github.com/helixnow/deep-student/commit/1ea4b897def4c402bc1b4b43701155b6453fe162))
+* **pdf:** schedule historical preview backfill ([760dd31](https://github.com/helixnow/deep-student/commit/760dd31d99e248e0ada0b084905df7c61ef5e793))
+* **sync:** 云存储等待窗口状态透传前端——消除限流/退避期假卡死 ([fbd6cc2](https://github.com/helixnow/deep-student/commit/fbd6cc2f059e714fb000ef2b4e69566d6053368f))
+* **sync:** 协作式取消 + WebDAV 传输健壮性 ([818db13](https://github.com/helixnow/deep-student/commit/818db13d4dc87e0875581aefecc92addcd0fd3d5))
+
+
+### Bug Fixes
+
+* **build:** align Android version baseline with v0.9.53 release ([a1eaa24](https://github.com/helixnow/deep-student/commit/a1eaa2425d1c4077bd4d374da961f0641c534710))
+* **chat:** enforce snapshot import size limit ([8892af5](https://github.com/helixnow/deep-student/commit/8892af59ad04a1cf3c29ca5ba2a4a93eb610546e))
+* **chat:** guard snapshot file import size ([e9b42f9](https://github.com/helixnow/deep-student/commit/e9b42f9325666ee11481c748e09c72f7c7a94aeb))
+* **chat:** isolate stale streams and corrupt history records ([1d2302e](https://github.com/helixnow/deep-student/commit/1d2302e59639e1eb9dc1462e4b310c4384b8dc41))
+* **chat:** PR [#376](https://github.com/helixnow/deep-student/issues/376) 合并后修复——匿名 Job 防跨执行误杀 + 测试同步 ([1fef7e1](https://github.com/helixnow/deep-student/commit/1fef7e108b975ea75129f46bd96311f02674a442))
+* **chat:** register goal commands in permissions manifest ([b13be90](https://github.com/helixnow/deep-student/commit/b13be90fd64d2e83f38f56a6520d0afe45723d08))
+* **chat:** tolerate legacy stores without goal fetcher ([74255e9](https://github.com/helixnow/deep-student/commit/74255e9788f059c12b759762e965d334f9ae3485))
+* **chat:** tolerate partial staged restore payloads ([34d7216](https://github.com/helixnow/deep-student/commit/34d7216284457d2be5b5164cee583f16fb9c5b42))
+* **chat:** use typed snapshot API schemas ([cf7e9d5](https://github.com/helixnow/deep-student/commit/cf7e9d5d9b7ca3ec30c6de5f165f42120ec90180))
+* **chat:** validate record identifiers during staged restore ([3eb31e1](https://github.com/helixnow/deep-student/commit/3eb31e19acf3ec71061aa8c5e4da5e4fb5efc168))
+* **mcp:** connection-test failures against strict servers (null experimental, swallowed errors, loopback proxy, SSE task leak) ([9eea047](https://github.com/helixnow/deep-student/commit/9eea047cce74f55238b197e02bc8a5abcf1495d4))
+* **mcp:** make propose connection tests work against strict servers ([e0e8b58](https://github.com/helixnow/deep-student/commit/e0e8b58f8d035715b09d5b819d1023abc9b0cb11))
+* **pdf:** expose safe attachment path check ([9b685b2](https://github.com/helixnow/deep-student/commit/9b685b26070723532f6aaa04e483dfaf56a0ddd9))
+* **settings:** restore unified API imports ([3617a71](https://github.com/helixnow/deep-student/commit/3617a718f9885764a1ada3d2b80595f4be6d35d4))
+* **settings:** rollback partial batch writes ([88a48fb](https://github.com/helixnow/deep-student/commit/88a48fb677dd389251792d17701402db7cece903))
+* **shell:** improve Windows shell fallback diagnostics ([d22e345](https://github.com/helixnow/deep-student/commit/d22e345b2144e34ec9045590e8deee15d1c4f2d0))
+* **sync:** add provider-aware WebDAV request limiter ([ba3de70](https://github.com/helixnow/deep-student/commit/ba3de709ad44c06913e5693cb82dd5d9a05cff49))
+* **webdav:** share provider request limiter across sessions ([1bd83dd](https://github.com/helixnow/deep-student/commit/1bd83dda3ec5c0ee73b7fa1d98dc496edbfbb271))
+
 ## [0.9.53](https://github.com/helixnow/deep-student/compare/v0.9.52...v0.9.53) (2026-09-05)
 
 
