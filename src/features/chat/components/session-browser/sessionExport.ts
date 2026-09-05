@@ -63,3 +63,42 @@ export async function exportSessionToFile(options: ExportSessionToFileOptions): 
     );
   }
 }
+
+/** 导出完整迁移快照（元信息+分页消息/块）为单个 JSON 文件。 */
+export async function exportConversationSnapshotToFile(options: ExportSessionToFileOptions): Promise<void> {
+  const { exportConversationSnapshotMeta, exportConversationSnapshotMessages } = await import('../../api/sessionBrowserApi');
+  try {
+    const meta = await exportConversationSnapshotMeta(options.sessionId);
+    const messages: unknown[] = [];
+    const blocks: unknown[] = [];
+    let offset = 0;
+    do {
+      const page = await exportConversationSnapshotMessages(options.sessionId, offset, meta.pageSize);
+      messages.push(...page.messages);
+      blocks.push(...page.blocks);
+      if (page.nextOffset == null) break;
+      offset = page.nextOffset;
+    } while (messages.length <= 100_000);
+    if (messages.length > 100_000) throw new Error('Snapshot exceeds message limit');
+    const content = JSON.stringify({ format: meta.format, version: meta.version, exportedAt: meta.exportedAt, appVersion: meta.appVersion, session: meta.session, sessionState: meta.sessionState, messages, blocks });
+    const baseName = sanitizeFileName(options.title ?? '') || options.sessionId;
+    const result = await fileManager.saveTextFile({ title: i18n.t('chatV2:browser.exportSession'), defaultFileName: `${baseName}.deepstudent.json`, filters: [{ name: 'Deep Student Snapshot', extensions: ['json'] }], content });
+    if (!result.canceled) showGlobalNotification('success', i18n.t('chatV2:browser.exportSuccess', { messageCount: messages.length, path: result.path ?? '' }));
+  } catch (error) {
+    showGlobalNotification('error', getErrorMessage(error));
+  }
+}
+
+/** 从文件选择器读取并导入迁移快照。 */
+export async function importConversationSnapshotFromFile(): Promise<void> {
+  const { importConversationSnapshot } = await import('../../api/sessionBrowserApi');
+  try {
+    const path = await fileManager.pickSingleFile({ title: i18n.t('chatV2:browser.importSession'), filters: [{ name: 'Deep Student Snapshot', extensions: ['json'] }] });
+    if (!path) return;
+    const content = await fileManager.readTextFile(path);
+    const result = await importConversationSnapshot(content);
+    showGlobalNotification('success', i18n.t('chatV2:browser.exportSuccess', { messageCount: result.messageCount, path: result.sessionId }));
+  } catch (error) {
+    showGlobalNotification('error', getErrorMessage(error));
+  }
+}
