@@ -49,9 +49,14 @@ function writeBuildConfigFixture(
 }
 
 test('Android release code is one above nightly and build numbers remain monotonic', () => {
+  // "下一版本"断言从基线版本派生，基线推进（release-please 注解自动 bump）
+  // 时无需手工跟进
+  const [baseMajor, baseMinor, basePatch] = ANDROID_VERSION_BASE_APP_VERSION.split('.')
+    .map(Number);
+  const nextPatchVersion = `${baseMajor}.${baseMinor}.${basePatch + 1}`;
   assert.equal(ANDROID_VERSION_CODE, PUBLISHED_ANDROID_VERSION_CODE + 1);
   assert.equal(resolveAndroidVersionCode(ANDROID_VERSION_BASE_APP_VERSION), ANDROID_VERSION_CODE);
-  assert.equal(resolveAndroidVersionCode('0.9.53'), ANDROID_VERSION_CODE + 1);
+  assert.equal(resolveAndroidVersionCode(nextPatchVersion), ANDROID_VERSION_CODE + 1);
   assert.ok(resolveAndroidVersionCode('0.10.0') > ANDROID_VERSION_CODE + 1);
   assert.throws(() => resolveAndroidVersionCode('0.9.41'), /predates Android baseline/);
   for (const nonStableVersion of [
