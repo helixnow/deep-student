@@ -38,7 +38,7 @@ fn session_lifecycle_guard() -> MutexGuard<'static, ()> {
 /// 将 `Value` 中所有出现在 `id_map` 里的字符串原值替换为新 ID。
 /// 仅替换“整字符串完全等于映射键”的情况，避免对 UUID 子串、URL、日志文本等产生误命中。
 /// 递归遍历对象与数组；对象的 KEY 不变更（避免破坏 schema）。
-fn remap_ids_in_value(
+pub(crate) fn remap_ids_in_value(
     v: &mut serde_json::Value,
     id_map: &std::collections::HashMap<String, String>,
 ) {
