@@ -70,6 +70,7 @@ export function useInputBarV2(
     panelStates,
     sessionStatus,
     queueLength,
+    permissionPresetSyncing,
   } = useStore(
     store,
     useShallow((s) => ({
@@ -78,6 +79,7 @@ export function useInputBarV2(
       panelStates: s.panelStates,
       sessionStatus: s.sessionStatus,
       queueLength: s.queuedMessages?.length ?? 0,
+      permissionPresetSyncing: s.permissionPresetSyncing ?? false,
     }))
   );
 
@@ -86,8 +88,9 @@ export function useInputBarV2(
   // 是否正在流式生成（包含 aborting，避免“可输入但无法发送”的中间态错觉）
   const isStreaming = sessionStatus === 'streaming' || sessionStatus === 'aborting';
 
-  // 是否可以发送：idle 状态下可发送
-  const canSend = sessionStatus === 'idle';
+  // 是否可以发送：idle 状态下可发送；权限档位切换 IPC 在途时暂停发送，
+  // 避免后端以旧档位执行本轮工具（切换竞态）。
+  const canSend = sessionStatus === 'idle' && !permissionPresetSyncing;
 
   // 是否可以中断：streaming 状态下可中断
   const canAbort = sessionStatus === 'streaming';
@@ -96,7 +99,7 @@ export function useInputBarV2(
   const queueEnabled = options?.queueEnabled ?? false;
 
   // 是否可提交（idle 直发 OR streaming 且队列未满）
-  const canSubmit = sessionStatus === 'idle'
+  const canSubmit = (sessionStatus === 'idle' && !permissionPresetSyncing)
     || (queueEnabled && queueLength < QUEUE_HARD_CAP);
 
   // ========== 封装 Actions ==========
@@ -152,6 +155,17 @@ export function useInputBarV2(
       showGlobalNotification(
         'warning',
         i18n.t('chatV2:inputBar.sendGuard.notReady')
+      );
+      return;
+    }
+
+    // 权限档位切换 IPC 在途：暂缓发送，等后端落库确认后再发，
+    // 防止本轮工具调用以旧档位执行（直调 sendMessage 的防御路径）。
+    if (state.permissionPresetSyncing) {
+      console.warn('[useInputBarV2] Cannot send: permission preset switch in flight');
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:authority.permissionPreset.switchInProgress', '权限档位切换中，请稍候再发送')
       );
       return;
     }

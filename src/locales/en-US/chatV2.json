@@ -1695,13 +1695,13 @@
         "cautious": "Confirm each Medium or High action. Dangerous approvals are never remembered.",
         "relaxed": "Low and Medium actions run silently; High actions still require approval.",
         "full_access": "Tools and shell run without step-by-step confirmation, and local-shell runtime-root, host-file, and network sandbox limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied.",
-        "danger_full_access": "Danger: tools and shell run without step-by-step confirmation and local-shell host file/network limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied."
+        "danger_full_access": "Danger: the local shell becomes fully unrestricted — terminal command rules, the catastrophe guard, environment filtering, and timeout/output bounds are all disabled; only cancellation and process reclamation remain. Privilege actions (skill trust / MCP install / runtime root) still require a one-shot confirmation."
       },
       "shortHints": {
         "cautious": "Confirm Medium and High actions",
         "relaxed": "Run Low/Medium silently; approve High",
         "full_access": "Full host-file and network access",
-        "danger_full_access": "Unrestricted host files and network"
+        "danger_full_access": "Local shell with no limits"
       },
       "modePriority": "This preset controls Craft only. Ask and Plan mode restrictions always take precedence.",
       "fullAccessActive": "Full access",
@@ -1709,8 +1709,11 @@
       "dangerActive": "Danger",
       "dangerDowngradeHint": "Danger full access is on. Click to downgrade to Relaxed and restore runtime roots, the OS sandbox, and network boundaries.",
       "dangerConfirmTitle": "Enable danger full access?",
-      "dangerConfirmDescription": "Ordinary tools and every external MCP will run without approval, and local shell will have no file or network sandbox. Recognized catastrophic commands are still denied, but dynamically generated scripts that cannot be classified may still damage the host; external MCP internals are also outside the local shell guard. Continue only if you explicitly accept these risks.",
-      "dangerConfirmAction": "Enable danger full access"
+      "dangerConfirmDescription": "After confirmation the local shell becomes unrestricted: (1) terminal command rules (allow/ask/deny) no longer apply; (2) the catastrophe command guard is disabled; (3) environment variables are inherited in full with explicit overrides allowed; (4) no timeout and no output truncation by default (a crash-protection cap remains). Ordinary tools still run without step-by-step confirmation; cancel/emergency-stop remains available for process reclamation. Privilege actions (skill trust / MCP install / runtime root) still require a one-shot confirmation, and no administrator privileges are granted automatically. External MCP internals are outside the local shell boundary. Continue only if you explicitly accept these risks.",
+      "dangerConfirmAction": "Enable danger full access",
+      "switchFailedTitle": "Permission preset switch failed",
+      "switchFailedDescription": "The backend could not apply the new permission preset; this session keeps the previous preset.",
+      "switchInProgress": "Permission preset is switching; please wait before sending"
     },
     "switchToPlan": "Switch to Plan",
     "askBlocked": "Ask mode refused a write tool",

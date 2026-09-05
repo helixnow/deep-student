@@ -342,7 +342,10 @@ export interface InputBarUIProps {
   sessionId?: string;
 
   permissionPreset?: PermissionPreset;
-  onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
+  onPermissionPresetChange?: (
+    preset: PermissionPreset,
+    confirm?: boolean,
+  ) => void | Promise<void>;
 
   /** 知识库主动检索开关（加号菜单 → 知识库） */
   knowledgeBaseProactive?: boolean;
