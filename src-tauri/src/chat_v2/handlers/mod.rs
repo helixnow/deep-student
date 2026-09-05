@@ -58,6 +58,7 @@ pub mod manage_session;
 pub mod migration;
 pub mod ocr;
 // COMPAT-REMOVED 2026-07-20: resource_handlers.rs 已删除（resource_* 命令注销，替代 = vfs_*）。
+pub mod goal_handlers; // 🆕 Goal 模式命令处理器（P0）
 pub mod search_handlers;
 pub mod send_message;
 pub mod snapshot_handlers;
@@ -76,6 +77,10 @@ pub use block_actions::{
 };
 pub use canvas_handlers::chat_v2_canvas_edit_result;
 pub use export_handlers::{chat_v2_export_session, chat_v2_export_session_jsonl};
+pub use goal_handlers::{
+    chat_v2_goal_clear, chat_v2_goal_edit, chat_v2_goal_get, chat_v2_goal_pause,
+    chat_v2_goal_resume,
+};
 pub use group_handlers::{
     chat_v2_create_group, chat_v2_delete_group, chat_v2_get_group, chat_v2_list_groups,
     chat_v2_move_session_to_group, chat_v2_reorder_groups, chat_v2_update_group,

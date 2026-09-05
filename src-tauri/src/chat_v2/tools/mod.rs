@@ -67,6 +67,7 @@ pub mod file_manager_executor;
 pub mod general_executor;
 pub mod generative_ui_executor; // 🆕 生成式 UI 工具执行器（render_generative_ui）
 pub mod git_executor; // 语义 Git 工具组（status/diff/log/branch/commit）
+pub mod goal_executor; // 🆕 Goal 模式工具执行器（P0：会话级持久目标）
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
 pub mod injector;
@@ -169,6 +170,7 @@ pub use file_manager_executor::FileManagerExecutor;
 pub use general_executor::GeneralToolExecutor;
 pub use generative_ui_executor::GenerativeUiExecutor; // 🆕 生成式 UI 工具执行器
 pub use git_executor::GitToolExecutor; // 语义 Git 工具组执行器
+pub use goal_executor::GoalExecutor; // 🆕 Goal 模式工具执行器（P0）
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use index_webpage_executor::IndexWebpageToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器

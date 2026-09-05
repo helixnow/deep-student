@@ -129,6 +129,26 @@ pub mod session_event_type {
     /// 🆕 FIFO 截断实际丢弃了历史消息
     /// （payload: {"droppedMessages": N, "estimatedDroppedTokens": M}）
     pub const CONTEXT_TRIMMED: &str = "context_trimmed";
+    /// 🆕 Goal 模式（P0）：会话目标变更
+    /// （payload: {"eventType":"goal_updated","sessionId":"...","goal": GoalRecord | null}，
+    /// goal 为 null 表示目标已清除）
+    pub const GOAL_UPDATED: &str = "goal_updated";
+}
+
+/// 🆕 Goal 模式（P0）：构造 `goal_updated` 会话级事件 payload。
+///
+/// 发射通道为 `chat_v2_session_{session_id}`（与 variant_deleted 等自定义
+/// 会话事件同一惯例：调用方用 `window.emit(channel, payload)` 发送）。
+/// `goal` 为 None 表示目标已清除。GoalRecord 按 camelCase 序列化。
+pub fn build_goal_updated_payload(
+    session_id: &str,
+    goal: Option<&crate::chat_v2::repo::GoalRecord>,
+) -> Value {
+    serde_json::json!({
+        "eventType": session_event_type::GOAL_UPDATED,
+        "sessionId": session_id,
+        "goal": goal,
+    })
 }
 
 // ============================================================

@@ -393,6 +393,8 @@ pub struct PromptBuilder {
     project_agents_instructions: Option<String>,
     /// 活跃待办摘要（始终注入）
     active_todos: Option<String>,
+    /// 🆕 活跃目标摘要（Goal 模式 P0；纯文本，本构建器负责 XML 包裹与转义）
+    active_goal: Option<String>,
 }
 
 impl PromptBuilder {
@@ -416,12 +418,23 @@ impl PromptBuilder {
             learner_profile: None,
             project_agents_instructions: None,
             active_todos: None,
+            active_goal: None,
         }
     }
 
     /// 添加活跃待办摘要
     pub fn with_active_todos(mut self, todos: Option<String>) -> Self {
         self.active_todos = todos;
+        self
+    }
+
+    /// 🆕 添加活跃目标摘要（Goal 模式 P0）
+    ///
+    /// 分工约定：调用方只提供纯文本摘要（见
+    /// `chat_v2::goal::format_active_goal_summary`），本构建器负责
+    /// `<active_goal>` 标签包裹与 XML 转义。
+    pub fn with_active_goal(mut self, goal: Option<String>) -> Self {
+        self.active_goal = goal.filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -642,6 +655,17 @@ impl PromptBuilder {
             ));
         }
 
+        // 2.4 🆕 活跃目标（Goal 模式 P0，turn-volatile：账目逐轮变化，
+        // 绝不能进 stable system——有字节级白名单测试守护）
+        // objective 为用户自由输入，必须转义；status=waiting_user 时本块不出现
+        // （用户回复会先由 send_message 入口把目标翻回 active）。
+        if let Some(goal) = &self.active_goal {
+            parts.push(format!(
+                "<active_goal>\n当前会话有一个进行中的目标（用户设定，跨轮次持续存在）：\n{}\n用户的插话与目标推进应服务于该目标。需要用户回答才能继续时，调用 goal_update(status=\"waiting_user\")；确证目标完成后调用 goal_update(status=\"complete\")。\n</active_goal>",
+                escape_xml_content(goal)
+            ));
+        }
+
         // 3. 检索上下文块（引用规则已固定在 system；context 跟随当前 user）
         if !self.context_blocks.is_empty() {
             let context_content = self.context_blocks.join("\n\n");
@@ -768,7 +792,14 @@ pub fn build_system_prompt_with_profile(
     canvas_note: Option<CanvasNoteInfo>,
     user_profile: Option<String>,
 ) -> SystemPromptParts {
-    build_system_prompt_with_profile_and_agents(options, sources, canvas_note, user_profile, None)
+    build_system_prompt_with_profile_and_agents(
+        options,
+        sources,
+        canvas_note,
+        user_profile,
+        None,
+        None,
+    )
 }
 
 /// 带用户画像 + AGENTS.md 常驻指令注入的 System Prompt 构建（拆分形态）
@@ -778,6 +809,7 @@ pub fn build_system_prompt_with_profile_and_agents(
     canvas_note: Option<CanvasNoteInfo>,
     user_profile: Option<String>,
     project_agents_instructions: Option<String>,
+    active_goal: Option<String>,
 ) -> SystemPromptParts {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
@@ -786,6 +818,7 @@ pub fn build_system_prompt_with_profile_and_agents(
         .with_user_profile(user_profile)
         .with_learner_profile(load_learner_profile_block(options))
         .with_project_agents_instructions(project_agents_instructions)
+        .with_active_goal(active_goal)
         .build_split()
 }
 

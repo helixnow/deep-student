@@ -17,6 +17,7 @@
 //! | workspace_index | 工作区索引表 |
 //! | sleep_block | 睡眠块表 |
 //! | subagent_task | 子代理任务表 |
+//! | chat_v2_goals | 会话目标表（goal 模式 P0） |
 
 use super::definitions::{MigrationDef, MigrationSet};
 
@@ -484,6 +485,35 @@ pub const V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY: MigrationDef = MigrationDef
 ])
 .idempotent();
 
+/// V20260905: Goal 模式（P0）会话级持久目标表
+///
+/// `chat_v2_goals` 每会话至多一条目标记录（session_id 主键），跨轮次持续
+/// 存在；status 列 CHECK 约束即七值状态机（active/paused/blocked/
+/// usage_limited/budget_limited/complete/waiting_user）的权威定义。
+pub const V20260905_GOAL_TABLE: MigrationDef = MigrationDef::new(
+    20260905,
+    "goal_table",
+    include_str!("../../../migrations/chat_v2/V20260905__goal_table.sql"),
+)
+.with_expected_tables(&["chat_v2_goals"])
+.with_expected_columns(&[
+    ("chat_v2_goals", "session_id"),
+    ("chat_v2_goals", "goal_id"),
+    ("chat_v2_goals", "objective"),
+    ("chat_v2_goals", "status"),
+    ("chat_v2_goals", "token_budget"),
+    ("chat_v2_goals", "tokens_used"),
+    ("chat_v2_goals", "time_used_seconds"),
+    ("chat_v2_goals", "continuation_count"),
+    ("chat_v2_goals", "created_at_ms"),
+    ("chat_v2_goals", "updated_at_ms"),
+])
+.with_expected_indexes(&["idx_chat_v2_goals_status"])
+.with_expected_queries(&[
+    "SELECT goal_id, objective, status, token_budget, tokens_used, time_used_seconds, continuation_count, created_at_ms, updated_at_ms FROM chat_v2_goals LIMIT 0",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -510,6 +540,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260720_COMPACTION_LINEAGE_AND_SYNC,
     V20260721_WORKSPACE_DELETION_INTENT_JOURNAL,
     V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY,
+    V20260905_GOAL_TABLE,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -529,7 +560,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 24); // V20260130 ~ V20260806
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 25); // V20260130 ~ V20260905
     }
 
     #[test]
@@ -722,6 +753,7 @@ mod tests {
             20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
             20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
             20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721, 20260806,
+            20260905,
         ];
         let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
             .pending(0)
@@ -733,7 +765,7 @@ mod tests {
             let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
             assert_eq!(remaining.len(), expected_versions.len() - index - 1);
         }
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260806).count(), 0);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260905).count(), 0);
     }
 
     #[test]

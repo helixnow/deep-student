@@ -10,6 +10,7 @@ use crate::database::Database;
 use chrono::{DateTime, Utc};
 use log::{debug, info};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Instant;
 
@@ -7766,5 +7767,384 @@ impl ChatV2Repo {
             compacted_message_count: row.get::<_, Option<i64>>(15)?.map(|v| v as u32),
             created_at: row.get(16)?,
         })
+    }
+}
+
+// ============================================================================
+// 🆕 Goal 模式（P0）：会话级持久目标 CRUD
+// ============================================================================
+//
+// 表结构见 migrations/chat_v2/V20260905__goal_table.sql（chat_v2_goals，
+// session_id 主键，每会话至多一条）。状态机七值：active / paused / blocked /
+// usage_limited / budget_limited / complete / waiting_user。
+//
+// 权限划分（由调用方强制，repo 层不做权限判断）：
+// - 模型（goal_update 工具）仅可设 complete / blocked / waiting_user；
+// - pause / resume 走 IPC（chat_v2_goal_pause / chat_v2_goal_resume）；
+// - usage_limited / budget_limited 由系统（goal 运行时）设置。
+
+/// Goal 模式会话目标记录（camelCase 序列化，与前端/事件契约一致）。
+///
+/// 跨代理契约：字段名与顺序不得变更；`status` 取值集合由迁移 SQL 的
+/// CHECK 约束保证。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalRecord {
+    pub session_id: String,
+    pub goal_id: String,
+    pub objective: String,
+    /// "active"|"paused"|"blocked"|"usage_limited"|"budget_limited"|"complete"|"waiting_user"
+    pub status: String,
+    pub token_budget: Option<i64>,
+    pub tokens_used: i64,
+    pub time_used_seconds: i64,
+    pub continuation_count: i64,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+impl ChatV2Repo {
+    /// 读取会话目标（无目标返回 None）
+    pub fn goal_get_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        conn.query_row(
+            r#"
+            SELECT session_id, goal_id, objective, status, token_budget,
+                   tokens_used, time_used_seconds, continuation_count,
+                   created_at_ms, updated_at_ms
+            FROM chat_v2_goals
+            WHERE session_id = ?1
+            "#,
+            params![session_id],
+            Self::row_to_goal,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    /// 插入新目标（会话已有记录时由 PK 约束报错；调用方须先检查）
+    pub fn goal_insert_with_conn(conn: &Connection, record: &GoalRecord) -> ChatV2Result<()> {
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_goals (
+                session_id, goal_id, objective, status, token_budget,
+                tokens_used, time_used_seconds, continuation_count,
+                created_at_ms, updated_at_ms
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+            params![
+                record.session_id,
+                record.goal_id,
+                record.objective,
+                record.status,
+                record.token_budget,
+                record.tokens_used,
+                record.time_used_seconds,
+                record.continuation_count,
+                record.created_at_ms,
+                record.updated_at_ms,
+            ],
+        )?;
+        debug!(
+            "[ChatV2::Repo] Goal inserted: session={}, goal_id={}, status={}",
+            record.session_id, record.goal_id, record.status
+        );
+        Ok(())
+    }
+
+    /// 乐观并发更新目标状态。
+    ///
+    /// 会话无目标或 `expected_goal_id` 与当前记录不匹配（并发变更）时返回
+    /// `Ok(None)`；否则更新 status + updated_at_ms 并返回更新后的完整记录。
+    pub fn goal_update_status_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        expected_goal_id: &str,
+        new_status: &str,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        let now_ms = Utc::now().timestamp_millis();
+        let affected = conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET status = ?3, updated_at_ms = ?4
+            WHERE session_id = ?1 AND goal_id = ?2
+            "#,
+            params![session_id, expected_goal_id, new_status, now_ms],
+        )?;
+        if affected == 0 {
+            return Ok(None);
+        }
+        Self::goal_get_with_conn(conn, session_id)
+    }
+
+    /// 更新目标描述与 token 预算（不改 status）。
+    ///
+    /// 会话无目标时返回 `Ok(None)`；否则返回更新后的完整记录。
+    pub fn goal_update_objective_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        objective: &str,
+        token_budget: Option<i64>,
+    ) -> ChatV2Result<Option<GoalRecord>> {
+        let now_ms = Utc::now().timestamp_millis();
+        let affected = conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET objective = ?2, token_budget = ?3, updated_at_ms = ?4
+            WHERE session_id = ?1
+            "#,
+            params![session_id, objective, token_budget, now_ms],
+        )?;
+        if affected == 0 {
+            return Ok(None);
+        }
+        Self::goal_get_with_conn(conn, session_id)
+    }
+
+    /// 累加用量（轮末由 goal 运行时调用；goal_id 不匹配时静默跳过，
+    /// 防止并发换代后把上一轮用量记到新目标上）。
+    pub fn goal_add_usage_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        goal_id: &str,
+        token_delta: i64,
+        time_delta_seconds: i64,
+    ) -> ChatV2Result<()> {
+        let now_ms = Utc::now().timestamp_millis();
+        conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET tokens_used = tokens_used + ?3,
+                time_used_seconds = time_used_seconds + ?4,
+                updated_at_ms = ?5
+            WHERE session_id = ?1 AND goal_id = ?2
+            "#,
+            params![session_id, goal_id, token_delta, time_delta_seconds, now_ms],
+        )?;
+        Ok(())
+    }
+
+    /// 续跑计数 +1（goal_id 不匹配时静默跳过，语义同 add_usage）。
+    pub fn goal_increment_continuation_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        goal_id: &str,
+    ) -> ChatV2Result<()> {
+        let now_ms = Utc::now().timestamp_millis();
+        conn.execute(
+            r#"
+            UPDATE chat_v2_goals
+            SET continuation_count = continuation_count + 1,
+                updated_at_ms = ?3
+            WHERE session_id = ?1 AND goal_id = ?2
+            "#,
+            params![session_id, goal_id, now_ms],
+        )?;
+        Ok(())
+    }
+
+    /// 删除会话目标（不存在时静默成功）
+    pub fn goal_delete_with_conn(conn: &Connection, session_id: &str) -> ChatV2Result<()> {
+        conn.execute(
+            "DELETE FROM chat_v2_goals WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        debug!("[ChatV2::Repo] Goal deleted: session={}", session_id);
+        Ok(())
+    }
+
+    /// 将数据库行转换为 GoalRecord
+    fn row_to_goal(row: &rusqlite::Row<'_>) -> rusqlite::Result<GoalRecord> {
+        Ok(GoalRecord {
+            session_id: row.get(0)?,
+            goal_id: row.get(1)?,
+            objective: row.get(2)?,
+            status: row.get(3)?,
+            token_budget: row.get(4)?,
+            tokens_used: row.get(5)?,
+            time_used_seconds: row.get(6)?,
+            continuation_count: row.get(7)?,
+            created_at_ms: row.get(8)?,
+            updated_at_ms: row.get(9)?,
+        })
+    }
+}
+
+// ============================================================================
+// Goal 模式单元测试
+// ============================================================================
+
+#[cfg(test)]
+mod goal_tests {
+    use super::*;
+
+    /// 直接执行迁移 SQL 建表（与生产 schema 保持一致）
+    fn setup_goal_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!(
+            "../../migrations/chat_v2/V20260905__goal_table.sql"
+        ))
+        .unwrap();
+        conn
+    }
+
+    fn sample_goal(session_id: &str, goal_id: &str) -> GoalRecord {
+        GoalRecord {
+            session_id: session_id.to_string(),
+            goal_id: goal_id.to_string(),
+            objective: "学完线性代数第 3 章".to_string(),
+            status: "active".to_string(),
+            token_budget: Some(100_000),
+            tokens_used: 0,
+            time_used_seconds: 0,
+            continuation_count: 0,
+            created_at_ms: 1_000,
+            updated_at_ms: 1_000,
+        }
+    }
+
+    #[test]
+    fn goal_crud_roundtrip() {
+        let conn = setup_goal_db();
+        let record = sample_goal("sess_goal_1", "goal_aaa");
+
+        // Create
+        ChatV2Repo::goal_insert_with_conn(&conn, &record).unwrap();
+
+        // Read（字段逐一核对）
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_goal_1")
+            .unwrap()
+            .expect("goal should exist");
+        assert_eq!(loaded, record);
+
+        // 无目标会话返回 None
+        assert!(ChatV2Repo::goal_get_with_conn(&conn, "sess_missing")
+            .unwrap()
+            .is_none());
+
+        // Update objective + budget（status 不变，updated_at 前进）
+        let updated = ChatV2Repo::goal_update_objective_with_conn(
+            &conn,
+            "sess_goal_1",
+            "学完线性代数第 4 章",
+            None,
+        )
+        .unwrap()
+        .expect("update should return record");
+        assert_eq!(updated.objective, "学完线性代数第 4 章");
+        assert_eq!(updated.token_budget, None);
+        assert_eq!(updated.status, "active");
+        assert!(updated.updated_at_ms >= record.updated_at_ms);
+
+        // Update status（乐观并发匹配）
+        let completed =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_goal_1", "goal_aaa", "complete")
+                .unwrap()
+                .expect("status update should return record");
+        assert_eq!(completed.status, "complete");
+
+        // Delete
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_goal_1").unwrap();
+        assert!(ChatV2Repo::goal_get_with_conn(&conn, "sess_goal_1")
+            .unwrap()
+            .is_none());
+        // 重复删除静默成功
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_goal_1").unwrap();
+    }
+
+    #[test]
+    fn goal_update_status_optimistic_concurrency() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_occ", "goal_real")).unwrap();
+
+        // goal_id 不匹配 → None，且原记录不变
+        let mismatched =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_occ", "goal_stale", "paused")
+                .unwrap();
+        assert!(mismatched.is_none());
+        let current = ChatV2Repo::goal_get_with_conn(&conn, "sess_occ")
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.status, "active");
+
+        // 会话无目标 → None
+        let missing =
+            ChatV2Repo::goal_update_status_with_conn(&conn, "sess_missing", "goal_real", "paused")
+                .unwrap();
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn goal_add_usage_accumulates() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_usage", "goal_u1")).unwrap();
+
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_u1", 100, 5).unwrap();
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_u1", 50, 7).unwrap();
+
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_usage")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.tokens_used, 150);
+        assert_eq!(loaded.time_used_seconds, 12);
+
+        // goal_id 不匹配 → 静默跳过不累加
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_usage", "goal_stale", 999, 999).unwrap();
+        let reloaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_usage")
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.tokens_used, 150);
+        assert_eq!(reloaded.time_used_seconds, 12);
+    }
+
+    #[test]
+    fn goal_increment_continuation_counts() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_cont", "goal_c1")).unwrap();
+
+        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_c1").unwrap();
+        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_c1").unwrap();
+        // goal_id 不匹配 → 不计数
+        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_stale")
+            .unwrap();
+
+        let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_cont")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.continuation_count, 2);
+    }
+
+    #[test]
+    fn goal_status_check_constraint_enforced() {
+        let conn = setup_goal_db();
+        let mut bad = sample_goal("sess_bad", "goal_bad");
+        bad.status = "flying".to_string();
+        assert!(ChatV2Repo::goal_insert_with_conn(&conn, &bad).is_err());
+    }
+
+    #[test]
+    fn goal_record_serializes_camel_case() {
+        // 跨代理契约：事件 payload 与 IPC 返回值按 camelCase 序列化
+        let record = sample_goal("sess_ser", "goal_ser");
+        let value = serde_json::to_value(&record).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in [
+            "sessionId",
+            "goalId",
+            "objective",
+            "status",
+            "tokenBudget",
+            "tokensUsed",
+            "timeUsedSeconds",
+            "continuationCount",
+            "createdAtMs",
+            "updatedAtMs",
+        ] {
+            assert!(obj.contains_key(key), "missing camelCase key: {}", key);
+        }
+        assert!(!obj.contains_key("session_id"));
     }
 }

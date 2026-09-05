@@ -346,6 +346,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
         executors.push(Arc::new(KnowledgeExecutor::new()));
         executors.push(Arc::new(super::tools::TodoListExecutor::new()));
+        executors.push(Arc::new(super::tools::GoalExecutor::new())); // 🆕 Goal 模式工具执行器（goal_*，P0）
         executors.push(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
         executors.push(Arc::new(TranslationToolExecutor::new()));
         executors.push(Arc::new(SettingsModelsToolExecutor::new()));
@@ -440,6 +441,83 @@ impl ChatV2Pipeline {
         );
 
         registry
+    }
+
+    /// 🆕 Goal 模式（P0）：把本轮已结算的用量同步累加到会话目标账目。
+    ///
+    /// 仅在 execute() 的 Ok 分支调用（取消/错误轮不记账，P0 简化）；
+    /// 不走 llm_usage 异步 collector——目标账目需要轮级同步语义，续跑循环
+    /// 的下一轮预算决策依赖已落账的 tokens_used。
+    ///
+    /// 目标不存在或状态非 active/waiting_user 时跳过（waiting_user 也算账：
+    /// 置 waiting_user 的本轮已真实消耗了 token）。累加后重新读取记录并
+    /// 广播 goal_updated，供前端目标面板刷新。
+    fn accumulate_goal_usage(
+        &self,
+        session_id: &str,
+        window: &Window,
+        total_tokens: u32,
+        elapsed_ms: u64,
+    ) {
+        let token_delta = i64::from(total_tokens);
+        let time_delta_seconds = (elapsed_ms / 1000) as i64;
+        if token_delta <= 0 && time_delta_seconds <= 0 {
+            return;
+        }
+        let conn = match self.db.get_conn() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] accumulate_goal_usage: get_conn failed (session={}): {}",
+                    session_id,
+                    e
+                );
+                return;
+            }
+        };
+        let goal = match ChatV2Repo::goal_get_with_conn(&conn, session_id) {
+            Ok(Some(goal)) => goal,
+            Ok(None) => return,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] accumulate_goal_usage: load goal failed (session={}): {}",
+                    session_id,
+                    e
+                );
+                return;
+            }
+        };
+        if goal.status != "active" && goal.status != "waiting_user" {
+            return;
+        }
+        if let Err(e) = ChatV2Repo::goal_add_usage_with_conn(
+            &conn,
+            session_id,
+            &goal.goal_id,
+            token_delta,
+            time_delta_seconds,
+        ) {
+            log::warn!(
+                "[ChatV2::pipeline] accumulate_goal_usage: add usage failed (session={}, goal={}): {}",
+                session_id,
+                goal.goal_id,
+                e
+            );
+            return;
+        }
+        // 广播累加后的最新记录（None = 目标被并发删除，前端应移除面板）
+        match ChatV2Repo::goal_get_with_conn(&conn, session_id) {
+            Ok(updated) => {
+                crate::chat_v2::goal::emit_goal_updated(window, session_id, updated.as_ref())
+            }
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] accumulate_goal_usage: reload goal failed (session={}): {}",
+                    session_id,
+                    e
+                );
+            }
+        }
     }
 
     /// 根据工具名称判断正确的 block_type
@@ -776,6 +854,15 @@ impl ChatV2Pipeline {
                     &assistant_message_id,
                     ctx.elapsed_ms(),
                     usage,
+                );
+
+                // 🆕 Goal 模式（P0）：本轮成功完成后同步累加目标账目
+                // （token + 轮时长）；目标不存在/非活跃时内部静默跳过。
+                self.accumulate_goal_usage(
+                    &session_id,
+                    &window,
+                    ctx.token_usage.total_tokens,
+                    ctx.elapsed_ms(),
                 );
 
                 // 注意：不再单独更新 assistant_meta

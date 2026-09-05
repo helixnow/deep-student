@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{Emitter, State, Window};
+use tauri::{Emitter, Manager, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
@@ -561,6 +561,60 @@ pub async fn chat_v2_send_message(
         ..request
     };
 
+    // 🆕 Goal 模式（P0）：用户回复即恢复——waiting_user 目标翻回 active。
+    // 放在内容校验/准入之后、注册流之前：只有确定要起轮的用户消息才翻转，
+    // 校验失败或被杀开关拦截的请求不改目标状态。
+    match db.get_conn() {
+        Ok(conn) => {
+            match ChatV2Repo::goal_get_with_conn(&conn, &request_with_id.session_id) {
+                Ok(Some(goal)) if goal.status == "waiting_user" => {
+                    match ChatV2Repo::goal_update_status_with_conn(
+                        &conn,
+                        &request_with_id.session_id,
+                        &goal.goal_id,
+                        "active",
+                    ) {
+                        Ok(Some(updated)) => {
+                            log::info!(
+                                "[ChatV2::handlers] Goal resumed on user reply: session={}, goal={}",
+                                request_with_id.session_id,
+                                updated.goal_id
+                            );
+                            crate::chat_v2::goal::emit_goal_updated(
+                                &window,
+                                &request_with_id.session_id,
+                                Some(&updated),
+                            );
+                        }
+                        Ok(None) => {} // 目标已被并发替换/删除
+                        Err(e) => {
+                            log::warn!(
+                                "[ChatV2::handlers] Failed to resume waiting_user goal: session={}, error={}",
+                                request_with_id.session_id,
+                                e
+                            );
+                        }
+                    }
+                }
+                Ok(_) => {} // 无目标或非 waiting_user：不动作
+                Err(e) => {
+                    log::warn!(
+                        "[ChatV2::handlers] Failed to load goal for waiting_user flip: session={}, error={}",
+                        request_with_id.session_id,
+                        e
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[ChatV2::handlers] get_conn failed for waiting_user flip: session={}, error={}",
+                request_with_id.session_id,
+                e
+            );
+        }
+    }
+
     // 🔒 P0 修复（2026-01-11）：使用原子操作检查并注册流
     // 避免并发请求同时通过检查导致多个流被创建
     let stream_registration =
@@ -590,6 +644,9 @@ pub async fn chat_v2_send_message(
     // Interactive path carries the atomic registration generation into the spawned task. This is
     // what makes cancel followed by an immediate retry safe even if the old task starts late.
     chat_v2_state.spawn_tracked(async move {
+        // 🆕 Goal 模式（P0）：轮末挂钩需要 window——run_send_message_pipeline_owned
+        // 会移走 window_clone，先克隆一份留给轮末结算/续跑触发。
+        let window_for_goal = window_clone.clone();
         let result = run_send_message_pipeline_owned(
             pipeline_clone,
             chat_v2_state_clone,
@@ -608,11 +665,23 @@ pub async fn chat_v2_send_message(
                     session_id,
                     returned_msg_id
                 );
+                // 🆕 Goal 模式（P0）：本轮正常结束、会话锁已释放，尝试目标续跑
+                // （无目标或目标非 active 时续跑循环读库后静默退出）。
+                crate::chat_v2::goal::runtime::spawn_goal_continuation_if_idle(
+                    window_for_goal.app_handle().clone(),
+                    session_id.clone(),
+                );
             }
             Err(ChatV2Error::Cancelled) => {
                 log::info!(
                     "[ChatV2::handlers] Pipeline cancelled: session_id={}",
                     session_id
+                );
+                // 🆕 Goal 模式（P0）：用户取消即暂停目标（明确的停止语义）
+                crate::chat_v2::goal::runtime::settle_active_goal_on_turn_end(
+                    &window_for_goal,
+                    &session_id,
+                    "paused",
                 );
             }
             Err(e) => {
@@ -620,6 +689,12 @@ pub async fn chat_v2_send_message(
                     "[ChatV2::handlers] Pipeline error: session_id={}, error={}",
                     session_id,
                     e
+                );
+                // 🆕 Goal 模式（P0）：轮级错误置目标 blocked
+                crate::chat_v2::goal::runtime::settle_active_goal_on_turn_end(
+                    &window_for_goal,
+                    &session_id,
+                    "blocked",
                 );
             }
         }
@@ -706,29 +781,56 @@ pub async fn chat_v2_wake_session(
     let pipeline_clone = pipeline.inner().clone();
     let chat_v2_state_clone = chat_v2_state.inner().clone();
     chat_v2_state.spawn_tracked(async move {
-        match run_send_message_pipeline_owned(
+        // 🆕 Goal 模式（P0）：轮末挂钩需要 window——run_send_message_pipeline_owned
+        // 会移走 window_clone，先克隆一份留给轮末结算/续跑触发。
+        let window_for_goal = window_clone.clone();
+        let result = run_send_message_pipeline_owned(
             pipeline_clone,
             chat_v2_state_clone,
             window_clone,
             request,
             stream_registration,
         )
-        .await
-        {
-            Ok(returned_msg_id) => log::info!(
-                "[ChatV2::handlers] Wake pipeline completed: session_id={}, assistant_message_id={}",
-                wake_session_id,
-                returned_msg_id
-            ),
-            Err(ChatV2Error::Cancelled) => log::info!(
-                "[ChatV2::handlers] Wake pipeline cancelled: session_id={}",
-                wake_session_id
-            ),
-            Err(e) => log::error!(
-                "[ChatV2::handlers] Wake pipeline error: session_id={}, error={}",
-                wake_session_id,
-                e
-            ),
+        .await;
+
+        match result {
+            Ok(returned_msg_id) => {
+                log::info!(
+                    "[ChatV2::handlers] Wake pipeline completed: session_id={}, assistant_message_id={}",
+                    wake_session_id,
+                    returned_msg_id
+                );
+                // 🆕 Goal 模式（P0）：本轮正常结束、会话锁已释放，尝试目标续跑
+                crate::chat_v2::goal::runtime::spawn_goal_continuation_if_idle(
+                    window_for_goal.app_handle().clone(),
+                    wake_session_id.clone(),
+                );
+            }
+            Err(ChatV2Error::Cancelled) => {
+                log::info!(
+                    "[ChatV2::handlers] Wake pipeline cancelled: session_id={}",
+                    wake_session_id
+                );
+                // 🆕 Goal 模式（P0）：用户取消即暂停目标（明确的停止语义）
+                crate::chat_v2::goal::runtime::settle_active_goal_on_turn_end(
+                    &window_for_goal,
+                    &wake_session_id,
+                    "paused",
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "[ChatV2::handlers] Wake pipeline error: session_id={}, error={}",
+                    wake_session_id,
+                    e
+                );
+                // 🆕 Goal 模式（P0）：轮级错误置目标 blocked
+                crate::chat_v2::goal::runtime::settle_active_goal_on_turn_end(
+                    &window_for_goal,
+                    &wake_session_id,
+                    "blocked",
+                );
+            }
         }
     });
 

@@ -814,7 +814,7 @@ impl ChatV2Pipeline {
         // 构建系统提示（P1-10 拆分：稳定 system + turn-volatile 块，
         // 共享检索结果随 turn-volatile 进入当前 user 的 <injected_context>）
         let prompt_parts = self
-            .build_system_prompt_with_shared_context(&options, &shared_context)
+            .build_system_prompt_with_shared_context(&options, &shared_context, &session_id)
             .await;
         let system_prompt = prompt_parts.stable_system;
 
@@ -1164,7 +1164,7 @@ impl ChatV2Pipeline {
         // turn-volatile 块（共享检索/画像/待办/Canvas）写入 compile_ctx，
         // 使其随 compile_frozen_context 编入当前 user 的 <injected_context>
         let prompt_parts = self
-            .build_system_prompt_with_shared_context(&options, &shared_context)
+            .build_system_prompt_with_shared_context(&options, &shared_context, &session_id)
             .await;
         compile_ctx.turn_volatile_context = prompt_parts.turn_volatile.clone();
 
@@ -1959,13 +1959,14 @@ impl ChatV2Pipeline {
     /// 返回 `SystemPromptParts`：
     /// - `stable_system`：跨轮字节稳定的 system（LaTeX / instructions /
     ///   preferences / 固定引用规则），作为各变体的 system prompt；
-    /// - `turn_volatile`：共享检索结果、Canvas 笔记、画像、待办等本轮动态块，
-    ///   注入当前 user 消息的 `<injected_context>`（compile 前写入
+    /// - `turn_volatile`：共享检索结果、Canvas 笔记、画像、待办、活跃目标等
+    ///   本轮动态块，注入当前 user 消息的 `<injected_context>`（compile 前写入
     ///   `PipelineContext::turn_volatile_context`），避免打碎历史 prompt cache。
     async fn build_system_prompt_with_shared_context(
         &self,
         options: &SendOptions,
         shared_context: &SharedContext,
+        session_id: &str,
     ) -> prompt_builder::SystemPromptParts {
         let canvas_note = self.build_canvas_note_info_from_options(options).await;
 
@@ -1973,12 +1974,16 @@ impl ChatV2Pipeline {
 
         let active_todos = self.load_active_todo_summary().await;
 
+        // 🆕 Goal 模式（P0）：活跃目标摘要（仅 status=active 注入）
+        let active_goal = self.load_active_goal_summary_for_variant(session_id).await;
+
         prompt_builder::PromptBuilder::new(options.system_prompt_override.as_deref())
             .with_shared_context(shared_context)
             .with_options(options)
             .with_canvas_note(canvas_note)
             .with_user_profile(user_profile)
             .with_active_todos(active_todos)
+            .with_active_goal(active_goal)
             .build_split()
     }
 
@@ -2070,6 +2075,44 @@ impl ChatV2Pipeline {
                 None
             }
         }
+    }
+
+    /// 🆕 Goal 模式（P0）：加载活跃目标摘要（注入 system prompt 的 turn-volatile 块）
+    ///
+    /// 与 `load_active_todo_summary` 同为同步连接调用（todo 读 vfs.db，
+    /// 目标读 chat_v2 db 的 `self.db`）。仅 status=active 时注入；
+    /// waiting_user 会在用户回复时由 send_message 入口先翻回 active。
+    /// 数据方只提供纯文本；`<active_goal>` 的 XML 包裹与转义由 prompt_builder 负责。
+    /// （命名对齐 `load_user_profile_for_variant`：与 prompt.rs 单变体路径的
+    /// 同名逻辑区分，避免同一类型上的固有方法重名。）
+    async fn load_active_goal_summary_for_variant(&self, session_id: &str) -> Option<String> {
+        let conn = match self.db.get_conn() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] load_active_goal_summary (variant): failed to get conn (session={}): {}; skipping goal injection",
+                    session_id,
+                    e
+                );
+                return None;
+            }
+        };
+        let goal = match ChatV2Repo::goal_get_with_conn(&conn, session_id) {
+            Ok(Some(goal)) => goal,
+            Ok(None) => return None,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] load_active_goal_summary (variant): failed to load goal (session={}): {}; skipping goal injection",
+                    session_id,
+                    e
+                );
+                return None;
+            }
+        };
+        if goal.status != "active" {
+            return None;
+        }
+        Some(crate::chat_v2::goal::format_active_goal_summary(&goal))
     }
 
     /// 根据 SendOptions 构建 Canvas 笔记信息
