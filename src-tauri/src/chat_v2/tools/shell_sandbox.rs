@@ -36,6 +36,12 @@ pub(crate) fn windows_has_git_bash() -> bool {
 #[cfg(windows)]
 pub use windows::maybe_run_helper;
 
+#[cfg(windows)]
+#[doc(hidden)]
+pub use windows::{
+    helper_arg as windows_shell_helper_arg, payload_root as windows_shell_payload_root,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxCapability {

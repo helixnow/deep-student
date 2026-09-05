@@ -27,7 +27,7 @@
 //! - `builtin-chatanki_retemplate`：带批量乐观锁地切换一批卡片的模板。
 //! - `builtin-chatanki_transform`：批量声明式变换（正则替换/增删标签），dry_run 预览 + apply 乐观锁写回。
 //! - `builtin-chatanki_control`：控制后台任务（暂停/恢复/重试/取消）。
-//! - `builtin-chatanki_export`：导出 documentId 的卡片（APKG/JSON）。
+//! - `builtin-chatanki_export`：导出当前会话 documentId 的卡片（APKG/JSON），或按 libraryCardIds 无损导出库卡 JSON。
 //! - `builtin-chatanki_sync`：将 documentId 的卡片同步到 AnkiConnect。
 //! - `builtin-chatanki_list_templates`：列出本地可用的制卡模板。
 //! - `builtin-chatanki_analyze`：预分析文本，给出 route/密度估计等。
@@ -1523,11 +1523,15 @@ struct ChatAnkiControlArgs {
     task_id: Option<String>,
 }
 
+const CHATANKI_EXPORT_LIBRARY_CARD_LIMIT: usize = 100;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatAnkiExportArgs {
     #[serde(alias = "documentId")]
-    document_id: String,
+    document_id: Option<String>,
+    #[serde(alias = "libraryCardIds")]
+    library_card_ids: Option<Vec<String>>,
     format: String,
     deck_name: Option<String>,
     note_type: Option<String>,
@@ -1535,6 +1539,77 @@ struct ChatAnkiExportArgs {
     template_id: Option<String>,
     #[serde(alias = "suggestedName")]
     suggested_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatAnkiExportSelector {
+    Document(String),
+    LibraryCards(Vec<String>),
+}
+
+#[derive(Debug)]
+struct NormalizedChatAnkiExportRequest {
+    selector: ChatAnkiExportSelector,
+    format: String,
+    deck_name: Option<String>,
+    note_type: Option<String>,
+    template_id: Option<String>,
+    suggested_name: Option<String>,
+}
+
+impl ChatAnkiExportArgs {
+    fn normalize(self) -> Result<NormalizedChatAnkiExportRequest, String> {
+        let format = self.format.trim().to_lowercase();
+        if format != "json" && format != "apkg" {
+            return Err(format!("Unsupported export format: {}", self.format));
+        }
+
+        let selector = match (self.document_id, self.library_card_ids) {
+            (Some(document_id), None) => {
+                let document_id = document_id.trim().to_string();
+                if document_id.is_empty() {
+                    return Err("documentId must not be empty".to_string());
+                }
+                ChatAnkiExportSelector::Document(document_id)
+            }
+            (None, Some(card_ids)) => {
+                if format != "json" {
+                    return Err("libraryCardIds export only supports format=json".to_string());
+                }
+                if card_ids.is_empty() || card_ids.len() > CHATANKI_EXPORT_LIBRARY_CARD_LIMIT {
+                    return Err("libraryCardIds must contain 1 to 100 unique entries".to_string());
+                }
+                let mut seen = HashSet::new();
+                let mut normalized = Vec::with_capacity(card_ids.len());
+                for card_id in card_ids {
+                    let card_id = card_id.trim().to_string();
+                    if card_id.is_empty() {
+                        return Err("libraryCardIds must not contain empty IDs".to_string());
+                    }
+                    if !seen.insert(card_id.clone()) {
+                        return Err("libraryCardIds must not contain duplicate IDs".to_string());
+                    }
+                    normalized.push(card_id);
+                }
+                ChatAnkiExportSelector::LibraryCards(normalized)
+            }
+            _ => {
+                return Err(
+                    "documentId and libraryCardIds are mutually exclusive; provide exactly one"
+                        .to_string(),
+                );
+            }
+        };
+
+        Ok(NormalizedChatAnkiExportRequest {
+            selector,
+            format,
+            deck_name: self.deck_name,
+            note_type: self.note_type,
+            template_id: self.template_id,
+            suggested_name: self.suggested_name,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -5728,7 +5803,10 @@ impl ChatAnkiToolExecutor {
         ctx: &ExecutionContext,
         start_time: Instant,
     ) -> Result<ToolResultInfo, String> {
-        let args = match serde_json::from_value::<ChatAnkiExportArgs>(call.arguments.clone()) {
+        let args = match serde_json::from_value::<ChatAnkiExportArgs>(call.arguments.clone())
+            .map_err(|e| e.to_string())
+            .and_then(ChatAnkiExportArgs::normalize)
+        {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Invalid chatanki_export arguments: {}", e);
@@ -5764,40 +5842,71 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        if let Err(error_key) = verify_document_ownership(&db, &args.document_id, &ctx.session_id) {
-            ctx.emit_tool_call_error(&error_key);
-            let result = ToolResultInfo::failure(
-                Some(call.id.clone()),
-                Some(ctx.block_id.clone()),
-                call.name.clone(),
-                call.arguments.clone(),
-                error_key,
-                start_time.elapsed().as_millis() as u64,
-            );
-            let _ = ctx.save_tool_block(&result);
-            return Ok(result);
-        }
-
-        let cards = match db.get_cards_for_document(&args.document_id) {
-            Ok(v) => v,
-            Err(e) => {
-                let error_msg = format!("Failed to load cards for document: {}", e);
-                ctx.emit_tool_call_error(&error_msg);
-                let result = ToolResultInfo::failure(
-                    Some(call.id.clone()),
-                    Some(ctx.block_id.clone()),
-                    call.name.clone(),
-                    call.arguments.clone(),
-                    error_msg,
-                    start_time.elapsed().as_millis() as u64,
-                );
-                let _ = ctx.save_tool_block(&result);
-                return Ok(result);
+        let (cards, document_id, library_card_ids) = match &args.selector {
+            ChatAnkiExportSelector::Document(document_id) => {
+                let cards =
+                    match db.get_cards_for_document_for_session(document_id, &ctx.session_id) {
+                        Ok(Some(cards)) => cards,
+                        Ok(None) => {
+                            let error_key = "blocks.ankiCards.errors.statusNotFound".to_string();
+                            ctx.emit_tool_call_error(&error_key);
+                            let result = ToolResultInfo::failure(
+                                Some(call.id.clone()),
+                                Some(ctx.block_id.clone()),
+                                call.name.clone(),
+                                call.arguments.clone(),
+                                error_key,
+                                start_time.elapsed().as_millis() as u64,
+                            );
+                            let _ = ctx.save_tool_block(&result);
+                            return Ok(result);
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to load cards for document: {}", e);
+                            ctx.emit_tool_call_error(&error_msg);
+                            let result = ToolResultInfo::failure(
+                                Some(call.id.clone()),
+                                Some(ctx.block_id.clone()),
+                                call.name.clone(),
+                                call.arguments.clone(),
+                                error_msg,
+                                start_time.elapsed().as_millis() as u64,
+                            );
+                            let _ = ctx.save_tool_block(&result);
+                            return Ok(result);
+                        }
+                    };
+                (cards, Some(document_id.clone()), None)
+            }
+            ChatAnkiExportSelector::LibraryCards(card_ids) => {
+                let cards = match db
+                    .get_anki_agent_library_cards_by_ids(AnkiLibraryScope::agent(), card_ids)
+                {
+                    Ok(cards) => cards,
+                    Err(e) => {
+                        let error_msg = format!("Failed to load library cards: {}", e);
+                        ctx.emit_tool_call_error(&error_msg);
+                        let result = ToolResultInfo::failure(
+                            Some(call.id.clone()),
+                            Some(ctx.block_id.clone()),
+                            call.name.clone(),
+                            call.arguments.clone(),
+                            error_msg,
+                            start_time.elapsed().as_millis() as u64,
+                        );
+                        let _ = ctx.save_tool_block(&result);
+                        return Ok(result);
+                    }
+                };
+                (cards, None, Some(card_ids.clone()))
             }
         };
 
-        let cards: Vec<crate::models::AnkiCard> =
-            cards.into_iter().filter(|c| !c.is_error_card).collect();
+        let cards: Vec<crate::models::AnkiCard> = if library_card_ids.is_some() {
+            cards
+        } else {
+            cards.into_iter().filter(|c| !c.is_error_card).collect()
+        };
         if cards.is_empty() {
             let error_msg = "No cards to export (all cards are empty or error cards)".to_string();
             ctx.emit_tool_call_error(&error_msg);
@@ -5816,7 +5925,7 @@ impl ChatAnkiToolExecutor {
 
         let (deck_name, note_type) =
             resolve_deck_and_note_type(ctx, args.deck_name, args.note_type);
-        let format = args.format.trim().to_lowercase();
+        let format = args.format;
 
         let (export_format, export_path, final_note_type, media_report) = if format == "json" {
             let suggested = args
@@ -5965,7 +6074,7 @@ impl ChatAnkiToolExecutor {
                 Some(media_report),
             )
         } else {
-            let error_msg = format!("Unsupported export format: {}", args.format);
+            let error_msg = format!("Unsupported export format: {}", format);
             ctx.emit_tool_call_error(&error_msg);
             let result = ToolResultInfo::failure(
                 Some(call.id.clone()),
@@ -5981,20 +6090,30 @@ impl ChatAnkiToolExecutor {
 
         let mut output = json!({
             "status": "ok",
-            "documentId": args.document_id,
             "format": export_format,
             "path": export_path,
             "deckName": deck_name,
             "noteType": final_note_type,
             "cardsCount": cards_count,
-            // P8：导出包含库中全部非错误卡（含超限保留卡）；该字段表示其中
-            // 有多少张未展示在预览块里，导出数可能大于块内可见数。
-            "hiddenOverLimitCount": lookup_hidden_over_limit_count(
-                ctx.chat_v2_db.as_deref(),
-                &ctx.session_id,
-                &args.document_id,
-            ),
         });
+        if let Some(object) = output.as_object_mut() {
+            if let Some(document_id) = document_id.as_ref() {
+                object.insert("documentId".to_string(), json!(document_id));
+                // P8：导出包含库中全部非错误卡（含超限保留卡）；该字段表示其中
+                // 有多少张未展示在预览块里，导出数可能大于块内可见数。
+                object.insert(
+                    "hiddenOverLimitCount".to_string(),
+                    json!(lookup_hidden_over_limit_count(
+                        ctx.chat_v2_db.as_deref(),
+                        &ctx.session_id,
+                        document_id,
+                    )),
+                );
+            }
+            if let Some(library_card_ids) = library_card_ids {
+                object.insert("libraryCardIds".to_string(), json!(library_card_ids));
+            }
+        }
         // APKG 媒体完整性透出：打包数始终返回；缺失清单/告警仅在非空时返回，
         // 让 AI 能明确向用户汇报媒体缺失而不是静默丢弃。
         if let Some(report) = media_report {
@@ -14991,6 +15110,241 @@ mod tests {
         .normalize()
         .expect_err("missing expectedReviewVersion must fail");
         assert!(missing.contains("use null"));
+    }
+
+    #[test]
+    fn test_chatanki_export_args_require_xor_selector_and_json_library_ids() {
+        let document = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "documentId": " doc-export ",
+            "format": "APKG"
+        }))
+        .expect("parse document export")
+        .normalize()
+        .expect("normalize document export");
+        assert_eq!(
+            document.selector,
+            ChatAnkiExportSelector::Document("doc-export".to_string())
+        );
+        assert_eq!(document.format, "apkg");
+
+        let library = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "libraryCardIds": [" card-b ", "card-a"],
+            "format": "json"
+        }))
+        .expect("parse library export")
+        .normalize()
+        .expect("normalize library export");
+        assert_eq!(
+            library.selector,
+            ChatAnkiExportSelector::LibraryCards(vec!["card-b".to_string(), "card-a".to_string()])
+        );
+
+        let both = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "documentId": "doc-export",
+            "libraryCardIds": ["card-a"],
+            "format": "json"
+        }))
+        .expect("parse both selectors")
+        .normalize()
+        .expect_err("documentId and libraryCardIds are exclusive");
+        assert!(both.contains("mutually exclusive"));
+
+        let neither = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "format": "json"
+        }))
+        .expect("parse missing selector")
+        .normalize()
+        .expect_err("exactly one selector is required");
+        assert!(neither.contains("mutually exclusive"));
+
+        let apkg_library = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "libraryCardIds": ["card-a"],
+            "format": "apkg"
+        }))
+        .expect("parse library apkg")
+        .normalize()
+        .expect_err("library export is json-only");
+        assert!(apkg_library.contains("format=json"));
+
+        let duplicates = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "libraryCardIds": ["card-a", " card-a "],
+            "format": "json"
+        }))
+        .expect("parse duplicate library ids")
+        .normalize()
+        .expect_err("duplicates after trim are rejected");
+        assert!(duplicates.contains("duplicate"));
+
+        let empty_id = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "libraryCardIds": [" "],
+            "format": "json"
+        }))
+        .expect("parse blank library id")
+        .normalize()
+        .expect_err("blank ids are rejected");
+        assert!(empty_id.contains("empty"));
+
+        let too_many = serde_json::from_value::<ChatAnkiExportArgs>(json!({
+            "libraryCardIds": (0..101).map(|i| format!("card-{i}")).collect::<Vec<_>>(),
+            "format": "json"
+        }))
+        .expect("parse oversized library ids")
+        .normalize()
+        .expect_err("library export is capped at 100");
+        assert!(too_many.contains("1 to 100"));
+    }
+
+    fn make_anki_ctx(
+        session_id: &str,
+        anki_db: Arc<crate::database::Database>,
+    ) -> ExecutionContext {
+        make_windowless_ctx(session_id).with_anki_db(Some(anki_db))
+    }
+
+    #[tokio::test]
+    async fn test_chatanki_export_library_json_writes_full_cards_and_fails_closed() {
+        let (db, _tmp) = make_test_db();
+        let foreign_task = seed_chatanki_document(&db, "doc-foreign", "session-foreign");
+        let other_task = seed_chatanki_document(&db, "doc-other", "session-other");
+        let mut first = make_chatanki_card("card-lib-b", &other_task, "front-b", "back-b");
+        first
+            .extra_fields
+            .insert("hint".to_string(), "keep-me".to_string());
+        let second = make_chatanki_card("card-lib-a", &foreign_task, "front-a", "back-a");
+        let deleted = make_chatanki_card("card-lib-deleted", &foreign_task, "gone", "gone");
+        assert!(db.insert_anki_card(&first).expect("insert first"));
+        assert!(db.insert_anki_card(&second).expect("insert second"));
+        assert!(db.insert_anki_card(&deleted).expect("insert deleted"));
+        db.get_conn_safe()
+            .expect("conn")
+            .execute(
+                "UPDATE anki_cards SET deleted_at = 1 WHERE id = ?1",
+                rusqlite::params!["card-lib-deleted"],
+            )
+            .expect("soft-delete");
+
+        let db = Arc::new(db);
+        let executor = ChatAnkiToolExecutor::new();
+        let ctx = make_anki_ctx("session-caller", db.clone());
+        let ok_call = ToolCall::new(
+            "call-export-lib".to_string(),
+            "chatanki_export".to_string(),
+            json!({
+                "libraryCardIds": ["card-lib-a", "card-lib-b"],
+                "format": "json"
+            }),
+        );
+        let ok = executor
+            .execute_export(&ok_call, &ctx, Instant::now())
+            .await
+            .expect("library json export");
+        assert!(ok.success, "{ok:?}");
+        assert_eq!(ok.output["status"], json!("ok"));
+        assert_eq!(ok.output["format"], json!("json"));
+        assert_eq!(ok.output["cardsCount"], json!(2));
+        assert_eq!(
+            ok.output["libraryCardIds"],
+            json!(["card-lib-a", "card-lib-b"])
+        );
+        assert!(ok.output.get("documentId").is_none());
+        assert!(ok.output.get("cards").is_none());
+        let path = ok.output["path"].as_str().expect("export path");
+        let file = std::fs::read_to_string(path).expect("read export file");
+        let exported: Vec<crate::models::AnkiCard> =
+            serde_json::from_str(&file).expect("full AnkiCard json");
+        assert_eq!(
+            exported
+                .iter()
+                .map(|card| card.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["card-lib-a", "card-lib-b"]
+        );
+        assert_eq!(exported[0].front, "front-a");
+        assert_eq!(
+            exported[1].extra_fields.get("hint").map(String::as_str),
+            Some("keep-me")
+        );
+        assert_eq!(exported[1].template_id.as_deref(), Some("design-swiss"));
+
+        let missing = executor
+            .execute_export(
+                &ToolCall::new(
+                    "call-export-missing".to_string(),
+                    "chatanki_export".to_string(),
+                    json!({
+                        "libraryCardIds": ["card-lib-a", "card-lib-deleted"],
+                        "format": "json"
+                    }),
+                ),
+                &ctx,
+                Instant::now(),
+            )
+            .await
+            .expect("missing library export");
+        assert!(!missing.success);
+        assert!(missing
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("library_cards_unavailable"));
+    }
+
+    #[tokio::test]
+    async fn test_chatanki_export_document_keeps_atomic_ownership() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-owned", "session-owner");
+        let card = make_chatanki_card("card-owned-export", &task_id, "owned-front", "owned-back");
+        assert!(db.insert_anki_card(&card).expect("insert owned"));
+        let db = Arc::new(db);
+        let executor = ChatAnkiToolExecutor::new();
+
+        let foreign = executor
+            .execute_export(
+                &ToolCall::new(
+                    "call-export-foreign".to_string(),
+                    "chatanki_export".to_string(),
+                    json!({
+                        "documentId": "doc-owned",
+                        "format": "json"
+                    }),
+                ),
+                &make_anki_ctx("session-other", db.clone()),
+                Instant::now(),
+            )
+            .await
+            .expect("foreign document export");
+        assert!(!foreign.success);
+        assert!(foreign
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("statusNotFound"));
+
+        let owned = executor
+            .execute_export(
+                &ToolCall::new(
+                    "call-export-owned".to_string(),
+                    "chatanki_export".to_string(),
+                    json!({
+                        "documentId": "doc-owned",
+                        "format": "json"
+                    }),
+                ),
+                &make_anki_ctx("session-owner", db),
+                Instant::now(),
+            )
+            .await
+            .expect("owned document export");
+        assert!(owned.success, "{owned:?}");
+        assert_eq!(owned.output["documentId"], json!("doc-owned"));
+        assert!(owned.output.get("hiddenOverLimitCount").is_some());
+        let path = owned.output["path"].as_str().expect("owned export path");
+        let exported: Vec<crate::models::AnkiCard> =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("read owned export"))
+                .expect("document json stays AnkiCard");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].id, "card-owned-export");
+        assert_eq!(exported[0].front, "owned-front");
     }
 
     #[test]

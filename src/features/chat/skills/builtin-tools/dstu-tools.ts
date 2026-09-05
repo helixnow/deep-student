@@ -76,8 +76,10 @@ export const dstuToolsSkill: SkillDefinition = {
 
 ## 上传来源
 
-- 对话附件：先加载 \`attachment-tools\`，调用 \`builtin-attachment_stage\`，再把其
-  返回的 \`root_id\` 与 \`relative_path\` 原样传给 \`builtin-dstu_upload_file\`。
+- 对话附件：先加载 \`attachment-tools\`。若上下文已有 \`<attachment_metadata>\`，直接把
+  其中的 \`rootId\` / \`relativePath\` 交给 \`builtin-dstu_upload_file\`，不要再 stage。
+  历史附件先 \`builtin-attachment_list\` 再 \`builtin-attachment_stage\`，然后把返回的
+  \`root_id\` 与 \`relative_path\` 原样传入。\`attachment_stage\` 不是列表工具。
 - 其他本地文件必须先经安全后端映射为当前会话授权的 runtime root；不得传绝对路径。
 - \`folder_id\` 省略时上传到资源库默认文件夹；\`name\` / \`mime_type\` 省略时由
   源文件推断。成功返回资源 ID、DSTU path、名称、大小、MIME、目标文件夹和去重状态。

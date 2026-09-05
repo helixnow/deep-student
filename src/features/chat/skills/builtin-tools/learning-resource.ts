@@ -27,7 +27,7 @@ export const learningResourceSkill: SkillDefinition = {
 ## 工具选择指南
 
 - **builtin-resource_list**: 列出学习资源，可按类型和文件夹筛选
-- **builtin-resource_read**: 读取指定资源的内容（支持按页读取 PDF/教材）
+- **builtin-resource_read**: 读取指定资源的内容（支持按页读取 PDF/教材；可用 offset/max_bytes 续读大文本）
 - **builtin-resource_search**: 在资源中全文搜索
 - **builtin-folder_list**: 列出文件夹结构，了解资源组织方式
 
@@ -65,6 +65,8 @@ type 可选：note/textbook/file/image/exam/essay/translation/mindmap/all
 }
 \`\`\`
 首次全量读取会返回 \`totalPages\`，后续可用 page_start/page_end 按需读取特定页，节省 token。
+
+**大文本续读**：返回 \`sha256\`（page_start/page_end 后的完整逻辑内容）、\`offset\`/\`returned_bytes\`/\`next_offset\`/\`eof\`。续读传上次 \`next_offset\`；可用 \`expected_hash\` 校验内容未变。offset 须落在 UTF-8 字符边界，超出 EOF 会拒绝，offset=EOF 返回空块。
 
 ### builtin-resource_search
 搜索资源，参数格式：
@@ -123,14 +125,46 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
     {
       name: 'builtin-resource_read',
       description:
-        '读取资源内容（笔记/教材/整卷/作文/翻译/导图）。多页文档可用 page_start/page_end 按页读取；首次不指定页码返回全文与 totalPages，之后按需读页节省 token。',
+        '读取资源内容（笔记/教材/整卷/作文/翻译/导图）。多页文档可用 page_start/page_end 按页读取；首次不指定页码返回全文与 totalPages，之后按需读页节省 token。大文本用 offset（UTF-8 字节偏移）与 max_bytes 续读，返回 sha256（页范围后完整逻辑内容）、returned_bytes、next_offset、eof。offset 落在字符中间或超出 EOF 会拒绝；offset=EOF 返回空块。',
       inputSchema: {
         type: 'object',
         properties: {
-          resource_id: { type: 'string', description: '资源 ID（DSTU 格式，如 note_xxx/tb_xxx/exam_xxx）；来自 resource_list/resource_search 的 id 或 unified_search 的 readResourceId（优先）/sourceId。不要传 VFS UUID（res_xxx）。' },
-          include_metadata: { type: 'boolean', description: '包含元数据（标题、创建时间等），默认 true' },
-          page_start: { type: 'integer', description: '起始页码（1-based），仅 PDF/教材/文件类型有效', minimum: 1 },
-          page_end: { type: 'integer', description: '结束页码（1-based，含），未指定时等于 page_start', minimum: 1 },
+          resource_id: {
+            type: 'string',
+            description:
+              '资源 ID（DSTU 格式，如 note_xxx/tb_xxx/exam_xxx）；来自 resource_list/resource_search 的 id 或 unified_search 的 readResourceId（优先）/sourceId。不要传 VFS UUID（res_xxx）。',
+          },
+          include_metadata: {
+            type: 'boolean',
+            description: '包含元数据（标题、创建时间等），默认 true',
+          },
+          page_start: {
+            type: 'integer',
+            description: '起始页码（1-based），仅 PDF/教材/文件类型有效',
+            minimum: 1,
+          },
+          page_end: {
+            type: 'integer',
+            description: '结束页码（1-based，含），未指定时等于 page_start',
+            minimum: 1,
+          },
+          offset: {
+            type: 'integer',
+            description: 'UTF-8 字节偏移，须落在字符边界；续读时传上次 next_offset',
+            minimum: 0,
+            default: 0,
+          },
+          max_bytes: {
+            type: 'integer',
+            description: '本次最多返回的正文字节数；结果还会按 30k JSON 预算再缩块，next_offset 按最终正文计算',
+            minimum: 1,
+            maximum: 1048576,
+            default: 65536,
+          },
+          expected_hash: {
+            type: 'string',
+            description: '可选：上次读取返回的逻辑内容 sha256；不匹配则拒绝，需从 offset=0 重读',
+          },
         },
         required: ['resource_id'],
       },

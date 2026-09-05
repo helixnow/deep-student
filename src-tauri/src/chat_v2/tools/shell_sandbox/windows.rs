@@ -9,6 +9,10 @@ use std::ptr::{null, null_mut};
 use std::thread;
 use std::time::Duration;
 
+use super::{
+    configure_stdio, platform_sandbox_contract, PlatformSandboxBackend, SandboxBackend,
+    SandboxCapability, SandboxEffectReport, SandboxPolicy, UnsandboxedShellBackend,
+};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
@@ -54,11 +58,6 @@ use windows_sys::Win32::System::Threading::{
     STARTUPINFOEXW, STARTUPINFOW,
 };
 
-use super::{
-    configure_stdio, platform_sandbox_contract, PlatformSandboxBackend, SandboxBackend,
-    SandboxCapability, SandboxEffectReport, SandboxPolicy, UnsandboxedShellBackend,
-};
-
 const HELPER_ARG: &str = "--deep-student-shell-sandbox-helper";
 const PAYLOAD_PREFIX: &str = "deep-student-shell-sandbox-";
 const PROFILE_PREFIX: &str = "DeepStudent.LocalShell.";
@@ -68,6 +67,10 @@ const MAX_POLICY_ROOTS: usize = 128;
 const ACTIVE_PROCESS_LIMIT: u32 = 128;
 const PROCESS_CPU_TIME_LIMIT_SECS: i64 = 130;
 const STALE_PAYLOAD_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+pub fn helper_arg() -> &'static str {
+    HELPER_ARG
+}
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -318,12 +321,27 @@ fn validate_payload(payload: &mut WindowsSandboxPayload) -> Result<(), String> {
     Ok(())
 }
 
-fn payload_file() -> PathBuf {
-    std::env::temp_dir().join(format!("{PAYLOAD_PREFIX}{}.json", Uuid::new_v4().simple()))
+pub fn payload_root() -> Result<PathBuf, String> {
+    let local_app_data = dirs::data_local_dir()
+        .ok_or_else(|| "Failed to locate LocalAppData for Windows shell payloads".to_string())?;
+    let root = local_app_data
+        .join("com.deepstudent.app")
+        .join("shell-payloads");
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Failed to create Windows shell payload directory: {error}"))?;
+    root.canonicalize()
+        .map_err(|error| format!("Failed to resolve Windows shell payload directory: {error}"))
+}
+
+fn payload_file() -> Result<PathBuf, String> {
+    Ok(payload_root()?.join(format!("{PAYLOAD_PREFIX}{}.json", Uuid::new_v4().simple())))
 }
 
 fn cleanup_stale_payloads() {
-    let Ok(entries) = fs::read_dir(std::env::temp_dir()) else {
+    let Ok(root) = payload_root() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
@@ -352,7 +370,7 @@ fn cleanup_stale_payloads() {
 }
 
 fn cleanup_payload_file(path: &Path) {
-    let Ok(temp) = std::env::temp_dir().canonicalize() else {
+    let Ok(root) = payload_root() else {
         return;
     };
     let Ok(canonical) = path.canonicalize() else {
@@ -366,7 +384,7 @@ fn cleanup_payload_file(path: &Path) {
     };
     if canonical
         .parent()
-        .is_some_and(|parent| windows_paths_equal(parent, &temp))
+        .is_some_and(|parent| windows_paths_equal(parent, &root))
         && name.starts_with(PAYLOAD_PREFIX)
         && name.ends_with(".json")
         && metadata.is_file()
@@ -401,7 +419,7 @@ fn write_payload(payload: &WindowsSandboxPayload) -> Result<PathBuf, String> {
     if bytes.len() as u64 > MAX_PAYLOAD_BYTES {
         return Err("Windows sandbox payload is too large".to_string());
     }
-    let path = payload_file();
+    let path = payload_file()?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -417,12 +435,9 @@ fn write_payload(payload: &WindowsSandboxPayload) -> Result<PathBuf, String> {
 }
 
 fn read_payload(path: &Path) -> Result<WindowsSandboxPayload, String> {
-    // The launcher pins helper cwd here because the shell environment later
-    // rewrites TEMP/TMP to the command's writable working directory.
-    let payload_root = std::env::current_dir()
-        .map_err(|error| format!("Failed to locate the Windows payload directory: {error}"))?
-        .canonicalize()
-        .map_err(|error| format!("Failed to resolve the Windows payload directory: {error}"))?;
+    // TEMP/TMP are rewritten to the command's writable cwd. Authorization must
+    // therefore use an independent OS-known root rather than environment or cwd.
+    let payload_root = payload_root()?;
     let canonical = path
         .canonicalize()
         .map_err(|error| format!("Failed to resolve Windows sandbox payload: {error}"))?;
@@ -1229,12 +1244,10 @@ pub(crate) fn trusted_git_bash_path() -> Option<PathBuf> {
             continue;
         };
         for relative in [
-            ["Git", "bin", "bash.exe"],
-            ["Git", "usr", "bin", "bash.exe"],
+            Path::new(r"Git\bin\bash.exe"),
+            Path::new(r"Git\usr\bin\bash.exe"),
         ] {
-            let bash = relative
-                .iter()
-                .fold(PathBuf::from(&root), |path, segment| path.join(segment));
+            let bash = PathBuf::from(&root).join(relative);
             if bash.is_file() {
                 return Some(bash);
             }

@@ -1156,18 +1156,64 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_export',
-      description: '导出某个 documentId 的卡片：支持 APKG 或 JSON 文件。',
+      description:
+        '导出卡片到文件。documentId 与 libraryCardIds 必须且只能提供一个：documentId 导出当前会话拥有的文档（APKG/JSON）；libraryCardIds 按完整卡片库 ID 无损导出 JSON（1–100 个 trim 后非空且不重复的真实 cardId，仅 format=json）。完整卡片写入文件，不经工具结果正文。',
       inputSchema: {
         type: 'object',
         properties: {
-          documentId: { type: 'string', description: '文档会话 ID（anki_cards 块里的 documentId 或 chatanki_status 返回）' },
-          format: { type: 'string', enum: ['apkg', 'json'], description: '导出格式' },
-          deckName: { type: 'string', description: '可选：牌组名称（默认取设置/Default）' },
-          noteType: { type: 'string', description: '可选：笔记类型（默认取设置/Basic；Cloze 会自动处理）' },
-          templateId: { type: 'string', description: '可选：导出时指定模板（主要用于 APKG 导出渲染）' },
-          suggestedName: { type: 'string', description: '可选：建议文件名（不含路径）' },
+          documentId: {
+            type: 'string',
+            minLength: 1,
+            description:
+              '当前会话拥有的文档 ID（anki_cards 块里的 documentId 或 chatanki_status 返回）；与 libraryCardIds 互斥',
+          },
+          libraryCardIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            uniqueItems: true,
+            items: {
+              type: 'string',
+              minLength: 1,
+              pattern: '^(?:\\S|\\S.*\\S)$',
+            },
+            description:
+              '完整卡片库中的真实 cardId 列表（来自 list_library_cards）；1–100 个、首尾无空白且不重复；仅允许 format=json；与 documentId 互斥',
+          },
+          format: {
+            type: 'string',
+            enum: ['apkg', 'json'],
+            description: '导出格式。libraryCardIds 分支只能是 json',
+          },
+          deckName: {
+            type: 'string',
+            description: '可选：牌组名称（默认取设置/Default）',
+          },
+          noteType: {
+            type: 'string',
+            description: '可选：笔记类型（默认取设置/Basic；Cloze 会自动处理）',
+          },
+          templateId: {
+            type: 'string',
+            description: '可选：导出时指定模板（主要用于 APKG 导出渲染）',
+          },
+          suggestedName: {
+            type: 'string',
+            description: '可选：建议文件名（不含路径）',
+          },
         },
-        required: ['documentId', 'format'],
+        oneOf: [
+          {
+            required: ['documentId', 'format'],
+            not: { required: ['libraryCardIds'] },
+          },
+          {
+            required: ['libraryCardIds', 'format'],
+            not: { required: ['documentId'] },
+            properties: { format: { const: 'json', enum: ['json'] } },
+          },
+        ],
+        additionalProperties: false,
       },
     },
     {
@@ -1322,7 +1368,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
 
 ## 完整卡片库（跨会话 library scope）
 
-- 六个 \`*_library_*\` 工具是**库级工具**：它们面向本机完整 Anki 卡片库，可读取和修改其他 ChatV2 会话创建的卡片，不受当前聊天的 \`documentId\` 所有权范围限制。只有用户明确询问“卡片库 / 以前的卡 / 到期卡 / 全部卡片”或要求操作库中既有卡片时才进入该流程；当前会话刚生成的卡仍优先使用 \`get_cards\` 与会话级写工具。
+- 六个 \`*_library_*\` 工具是**库级工具**：它们面向本机完整 Anki 卡片库，可读取和修改其他 ChatV2 会话创建的卡片，不受当前聊天的 \`documentId\` 所有权范围限制。只有用户明确询问“卡片库 / 以前的卡 / 到期卡 / 全部卡片”或要求操作库中既有卡片时才进入该流程；当前会话刚生成的卡仍优先使用 \`get_cards\` 与会话级写工具。跨会话导出库卡不要用其他会话的 \`documentId\` 调用 \`builtin-chatanki_export\`（所有权不会放宽）；应先 \`list_library_cards\` 拿到真实 cardId，再传 \`libraryCardIds\`（仅 JSON，1–100 个、trim 后非空且不重复）。完整 \`AnkiCard\` 写入导出文件，工具结果只有路径与计数，任一 ID 缺失或已删除则整批失败。
 - 先调用 \`builtin-chatanki_list_library_cards\` 定位目标。按 \`search/templateId/schedule/filter\` 缩小范围，并根据 \`total/page/pageSize\` 继续翻页；\`pageSize\` 最大 20。单字段超过 2,000 字符时返回 \`truncated=true\` 与 \`truncatedFields\`；不得把截断文本当作完整字段，也不得在没有完整替换内容时覆盖该字段。返回的 \`ratingAvailableToAgent=false\` 是硬边界，不是能力提示。
 - **内容 CAS 与复习 CAS 相互独立**：\`version\` 只保护卡片内容，\`reviewState.reviewVersion\` 只保护 FSRS 状态。所有库级写操作必须使用最近一次 \`list_library_cards\` 的同一张卡快照；任何 \`version_conflict\` / \`review_state_conflict\` 后都重新 list，禁止复用旧 token、盲目重试或覆盖新状态。
 - 修改内容：\`list_library_cards -> update_library_card(expectedVersion, patch) -> list_library_cards\`。一次修改超过 3 张库卡、覆盖用户已编辑内容，或目标不唯一时，必须先用 \`builtin-ask_user\` 汇总目标与改动并确认；用户已明确指定单张目标和具体改动时可直接执行。
@@ -1394,7 +1440,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
   - 若 wait 返回 \`status=not_found/invalid_args\`：说明缺少正确的 id（或 id 不存在）。若找不到 \`ankiBlockId\`，请先定位到对应的 \`anki_cards\` 预览块并获取其 blockId/documentId，再重新 wait。
   - 若 wait 返回 \`status=error\`：先调用 \`builtin-chatanki_get_cards\` 核对是否存在可用卡。没有可用卡且错误为不可重试的认证/额度问题时，禁止盲目 retry；用户已明确允许 AI 通用知识生成、目标不超过 10 张时，可用 \`builtin-chatanki_add_cards\` 进行一次备用补卡并再次 \`get_cards\` 验收。其他情况应报告根因并让用户选择调整模型或内容来源。
 - 当用户要暂停/恢复/取消：用 \`builtin-chatanki_control\`。
-- 当用户要导出：用 \`builtin-chatanki_export\`（APKG/JSON；\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
+- 当用户要导出：用 \`builtin-chatanki_export\`。当前会话文档用 \`documentId\`（APKG/JSON；来自 wait 返回或 \`anki_cards\` 块 toolOutput）。跨会话库卡用 \`libraryCardIds\`（仅 JSON；先 \`list_library_cards\` 取真实 cardId，1–100 个且不重复）；不要用其他会话的 documentId，也不要把完整卡片塞进工具结果正文。
 - 当用户要同步到 Anki：可先用 \`builtin-chatanki_check_anki_connect\` 检查 AnkiConnect 是否可用，再用 \`builtin-chatanki_sync\` 同步（\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
 - 当用户同意把卡片加入内置复习计划：用 \`builtin-chatanki_enqueue_review\`。优先按已验收的 \`documentId\` 整批入队；只入队选中卡时传真实 \`cardIds\`。
 - 当用户询问内置复习进度、今日到期量或近期记忆情况：用库级只读的 \`builtin-chatanki_review_stats\`。

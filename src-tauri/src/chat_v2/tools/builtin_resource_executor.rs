@@ -20,6 +20,10 @@ use serde_json::{json, Value};
 use super::arg_utils::get_json_array_arg;
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use super::utf8_paged_read::{
+    check_expected_hash, fit_paged_read_to_default_budget, optional_expected_hash, page_utf8_text,
+    parse_max_bytes, parse_offset, sha256_hex,
+};
 use super::workbench_bridge::{
     acr_bridge_call, apply_ops_timeout_ms, is_bridge_cancelled, is_valid_apply_receipt,
     uncertain_apply_receipt, PROBE_TIMEOUT_MS,
@@ -54,10 +58,6 @@ const MAX_LIST_LIMIT: u64 = 100;
 const DEFAULT_SEARCH_TOP_K: u32 = 10;
 /// ★ L-028: 搜索查询最大数量限制（后端 clamp）
 const MAX_SEARCH_TOP_K: u64 = 50;
-
-/// ★ D15 修复：resource_read 单次返回内容的硬上限（字符数）。
-/// 超过该上限将截断并在结果中附带 truncationNotice，引导 LLM 按页读取。
-const MAX_READ_CONTENT_CHARS: usize = 40_000;
 
 // ============================================================================
 // 内置学习资源工具执行器
@@ -1150,6 +1150,9 @@ impl BuiltinResourceExecutor {
             .get("page_end")
             .and_then(|v| v.as_u64())
             .map(|v| v.max(1) as usize);
+        let offset = parse_offset(&call.arguments)?;
+        let max_bytes = parse_max_bytes(&call.arguments)?;
+        let expected_hash = optional_expected_hash(&call.arguments);
 
         // 获取资源内容（按页或全量）
         let (content, paged_total_pages) = if let Some(ps) = page_start {
@@ -1170,26 +1173,24 @@ impl BuiltinResourceExecutor {
             (content, total)
         };
 
-        // ★ D15 修复：出口硬上限——无论按页还是全量读取，content 超过上限即截断，
-        // 防止超大文档（无页结构的笔记/大文本文件等）一次性撑爆 LLM 上下文。
-        let original_char_count = content.chars().count();
-        let (content, content_truncated) = if original_char_count > MAX_READ_CONTENT_CHARS {
-            log::info!(
-                "[BuiltinResourceExecutor] resource_read content truncated: {} -> {} chars (resource={})",
-                original_char_count,
-                MAX_READ_CONTENT_CHARS,
-                resolved.read_id
-            );
-            (safe_truncate_chars(&content, MAX_READ_CONTENT_CHARS), true)
-        } else {
-            (content, false)
-        };
+        let logical_content = content;
+        let content_hash = sha256_hex(logical_content.as_bytes());
+        if let Some(expected) = expected_hash {
+            check_expected_hash(&expected, &content_hash)?;
+        }
+        let page = page_utf8_text(&logical_content, offset, max_bytes)?;
+        let original_char_count = logical_content.chars().count();
+        let content = page.content;
+        let content_truncated = page.truncated;
 
-        let availability =
-            Self::collect_read_availability(resolved.resource_type, &content, metadata.as_ref());
+        let availability = Self::collect_read_availability(
+            resolved.resource_type,
+            &logical_content,
+            metadata.as_ref(),
+        );
         let degradation = Self::build_degradation_info(
             resolved.resource_type,
-            &content,
+            &logical_content,
             &availability,
             metadata_error.as_ref(),
         );
@@ -1220,6 +1221,12 @@ impl BuiltinResourceExecutor {
             "content": content,
             "contentLength": content.len(),
             "contentTruncated": content_truncated,
+            "sha256": content_hash,
+            "offset": page.offset,
+            "returned_bytes": page.returned_bytes,
+            "next_offset": page.next_offset,
+            "eof": page.eof,
+            "truncated": page.truncated,
             "availability": {
                 "hasExtractedText": availability.has_extracted_text,
                 "hasOcrPages": availability.has_ocr_pages,
@@ -1235,22 +1242,6 @@ impl BuiltinResourceExecutor {
             },
             "durationMs": duration,
         });
-
-        // ★ D15 修复：明确告知 LLM 内容已被截断及应对方式
-        if content_truncated {
-            let paging_hint = if paged_total_pages > 0 {
-                format!(
-                    "请缩小 page_start/page_end 范围分批读取（共 {} 页）。",
-                    paged_total_pages
-                )
-            } else {
-                "该资源没有分页结构，已返回开头部分内容。".to_string()
-            };
-            result["truncationNotice"] = json!(format!(
-                "内容过长已截断：原始 {} 字符，仅返回前 {} 字符。{}",
-                original_char_count, MAX_READ_CONTENT_CHARS, paging_hint
-            ));
-        }
 
         // ★ 按页读取信息：让 LLM 知道总页数和当前读取的范围
         if paged_total_pages > 0 {
@@ -1285,7 +1276,89 @@ impl BuiltinResourceExecutor {
                 json!("Metadata not found for this resource. The content is still available.");
         }
 
+        Self::fit_resource_read_result(&mut result, page.offset, logical_content.len())?;
+        if result
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            let next_offset = result
+                .get("next_offset")
+                .and_then(Value::as_u64)
+                .unwrap_or(page.next_offset as u64);
+            let returned_bytes = result
+                .get("returned_bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let paging_hint = if paged_total_pages > 0 {
+                format!(
+                    "请缩小 page_start/page_end 范围，或用 offset={} 继续读取（共 {} 页）。",
+                    next_offset, paged_total_pages
+                )
+            } else {
+                format!("请用 offset={} 继续读取剩余内容。", next_offset)
+            };
+            result["truncationNotice"] = json!(format!(
+                "内容过长已分页：逻辑内容 {} 字符，本次返回 {} 字节。{}",
+                original_char_count, returned_bytes, paging_hint
+            ));
+        }
+
         Ok(result)
+    }
+
+    fn fit_resource_read_result(
+        result: &mut Value,
+        offset: usize,
+        total_bytes: usize,
+    ) -> Result<(), String> {
+        if fit_paged_read_to_default_budget(result, "content", offset, total_bytes) {
+            return Ok(());
+        }
+
+        if let Some(metadata) = result.get_mut("metadata").and_then(Value::as_object_mut) {
+            if let Some(images) = metadata.remove("previewImages") {
+                let count = images.as_array().map_or(0, Vec::len);
+                metadata.insert("previewImagesOmitted".to_string(), json!(true));
+                metadata.insert("previewImageCount".to_string(), json!(count));
+            }
+        }
+        if fit_paged_read_to_default_budget(result, "content", offset, total_bytes) {
+            return Ok(());
+        }
+
+        let total_preview_images = result
+            .get("previewImages")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        while result
+            .get("previewImages")
+            .and_then(Value::as_array)
+            .is_some_and(|images| !images.is_empty())
+        {
+            let images = result["previewImages"]
+                .as_array_mut()
+                .expect("checked array");
+            images.truncate(images.len() / 2);
+            result["previewImagesTruncated"] = json!(true);
+            result["previewImageCount"] = json!(total_preview_images);
+            if fit_paged_read_to_default_budget(result, "content", offset, total_bytes) {
+                return Ok(());
+            }
+        }
+
+        if result.get("metadata").is_some() {
+            result
+                .as_object_mut()
+                .expect("resource result object")
+                .remove("metadata");
+            result["metadataOmitted"] = json!(true);
+        }
+        if fit_paged_read_to_default_budget(result, "content", offset, total_bytes) {
+            Ok(())
+        } else {
+            Err("resource_read metadata exceeds the tool result budget".to_string())
+        }
     }
 
     /// 获取资源元数据
@@ -5523,6 +5596,14 @@ impl ToolExecutor for BuiltinResourceExecutor {
         strip_tool_namespace(tool_name) == "mindmap_edit_nodes"
     }
 
+    fn result_char_budget(&self, tool_name: &str) -> Option<usize> {
+        if strip_tool_namespace(tool_name) == "resource_read" {
+            None
+        } else {
+            Some(super::executor::DEFAULT_TOOL_RESULT_CHAR_BUDGET)
+        }
+    }
+
     fn name(&self) -> &'static str {
         "BuiltinResourceExecutor"
     }
@@ -5741,6 +5822,62 @@ mod tests {
         );
         assert!(executor.manages_cancellation("builtin-mindmap_edit_nodes"));
         assert!(!executor.manages_cancellation("builtin-resource_read"));
+    }
+
+    #[test]
+    fn resource_read_disables_outer_result_budget() {
+        let executor = BuiltinResourceExecutor::new();
+        assert_eq!(executor.result_char_budget("builtin-resource_read"), None);
+        assert_eq!(
+            executor.result_char_budget("builtin-resource_list"),
+            Some(crate::chat_v2::tools::executor::DEFAULT_TOOL_RESULT_CHAR_BUDGET)
+        );
+    }
+
+    #[test]
+    fn resource_page_hash_covers_page_range_logical_content() {
+        let logical = "第1页\n第2页你好";
+        let hash = super::sha256_hex(logical.as_bytes());
+        let page = super::page_utf8_text(logical, 0, 4).unwrap();
+        assert_eq!(page.content, "第1");
+        assert_eq!(page.next_offset, "第1".len());
+        assert!(!page.eof);
+        super::check_expected_hash(&hash, &hash).unwrap();
+        let rest = super::page_utf8_text(logical, page.next_offset, 64).unwrap();
+        assert_eq!(format!("{}{}", page.content, rest.content), logical);
+        assert!(rest.eof);
+    }
+
+    #[test]
+    fn resource_read_budget_prunes_large_preview_sidecars_and_keeps_progress() {
+        let content = "正文".repeat(20_000);
+        let previews = (0..2_000)
+            .map(|index| {
+                json!({
+                    "pageIndex": index,
+                    "blobHash": format!("blob-{index}-{}", "x".repeat(80)),
+                    "imagePath": format!(r"C:\preview\{}\page.png", "x".repeat(80)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut result = json!({
+            "content": content,
+            "previewImages": previews,
+            "metadata": {
+                "previewImages": previews,
+                "title": "large preview fixture",
+            },
+        });
+
+        BuiltinResourceExecutor::fit_resource_read_result(&mut result, 0, content.len()).unwrap();
+
+        assert!(
+            crate::chat_v2::tools::utf8_paged_read::serialized_char_len(&result)
+                <= crate::chat_v2::tools::executor::DEFAULT_TOOL_RESULT_CHAR_BUDGET - 400
+        );
+        assert!(result["returned_bytes"].as_u64().unwrap() > 0);
+        assert!(result["next_offset"].as_u64().unwrap() > 0);
+        assert_eq!(result["metadata"]["previewImagesOmitted"], true);
     }
 
     /// ★ M-062: 验证 essay 节点的敏感字段被正确移除

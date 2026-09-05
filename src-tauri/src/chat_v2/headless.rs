@@ -721,14 +721,17 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
         ),
         tool(
             "builtin-resource_read",
-            "读取指定学习资源的内容。resource_id 用 DSTU 格式 ID（note_xxx / tb_xxx 等）。多页文档支持 page_start/page_end 按页读取。",
+            "读取指定学习资源的内容。resource_id 用 DSTU 格式 ID（note_xxx / tb_xxx 等）。多页文档支持 page_start/page_end 按页读取。大文本用 offset（UTF-8 字节偏移）与 max_bytes 续读，返回 sha256（页范围后完整逻辑内容）、returned_bytes、next_offset、eof。offset 须落在字符边界。",
             json!({
                 "type": "object",
                 "properties": {
                     "resource_id": { "type": "string", "description": "【必填】资源 ID（DSTU 格式）" },
                     "include_metadata": { "type": "boolean", "description": "是否包含元数据，默认 true" },
                     "page_start": { "type": "integer", "minimum": 1, "description": "可选：起始页码（1-based）" },
-                    "page_end": { "type": "integer", "minimum": 1, "description": "可选：结束页码（含）" }
+                    "page_end": { "type": "integer", "minimum": 1, "description": "可选：结束页码（含）" },
+                    "offset": { "type": "integer", "minimum": 0, "default": 0, "description": "UTF-8 字节偏移，须落在字符边界；续读时传上次 next_offset" },
+                    "max_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536, "description": "本次最多返回的正文字节数" },
+                    "expected_hash": { "type": "string", "description": "可选：上次读取返回的逻辑内容 sha256" }
                 },
                 "required": ["resource_id"]
             }),
@@ -2106,6 +2109,15 @@ mod tests {
         let next = schema_for("builtin-qbank_get_next_question");
         assert_eq!(next["properties"]["review_only"]["default"], false);
         assert!(next["properties"]["current_card_id"].is_object());
+
+        let resource_read = schema_for("builtin-resource_read");
+        assert_eq!(resource_read["properties"]["offset"]["minimum"], 0);
+        assert_eq!(resource_read["properties"]["offset"]["default"], 0);
+        assert_eq!(
+            resource_read["properties"]["max_bytes"]["maximum"],
+            1_048_576
+        );
+        assert!(resource_read["properties"]["expected_hash"].is_object());
     }
 
     // —— headless 工具过滤 ————————————————————————————————

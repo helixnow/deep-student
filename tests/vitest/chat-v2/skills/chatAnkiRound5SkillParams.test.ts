@@ -270,6 +270,41 @@ describe('ChatAnki Round 5 skill params contract', () => {
     );
   });
 
+  it('locks export to an exclusive documentId/libraryCardIds selector', () => {
+    const schema = schemaOf('builtin-chatanki_export');
+    expect(Object.keys(schema.properties).sort()).toEqual(
+      ['documentId', 'libraryCardIds', 'format', 'deckName', 'noteType', 'templateId', 'suggestedName'].sort(),
+    );
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toBeUndefined();
+    expect(schema.oneOf).toEqual([
+      {
+        required: ['documentId', 'format'],
+        not: { required: ['libraryCardIds'] },
+      },
+      {
+        required: ['libraryCardIds', 'format'],
+        not: { required: ['documentId'] },
+        properties: { format: { const: 'json', enum: ['json'] } },
+      },
+    ]);
+    expect(schema.properties.format.enum).toEqual(['apkg', 'json']);
+    expect(schema.properties.libraryCardIds).toMatchObject({
+      type: 'array',
+      minItems: 1,
+      maxItems: 100,
+      uniqueItems: true,
+    });
+    expect(schema.properties.libraryCardIds.items).toMatchObject({
+      type: 'string',
+      minLength: 1,
+      pattern: '^(?:\\S|\\S.*\\S)$',
+    });
+    const description = findTool('builtin-chatanki_export')?.description ?? '';
+    expect(description).toContain('libraryCardIds');
+    expect(description).toContain('format=json');
+  });
+
   // --------------------------------------------------------------------
   // additionalProperties / required：调优参数全部可选，未知旋钮直接拦下
   // --------------------------------------------------------------------

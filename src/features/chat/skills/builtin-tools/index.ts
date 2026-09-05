@@ -13,7 +13,7 @@ export { vfsMemorySkill } from './vfs-memory';
 export { learningResourceSkill } from './learning-resource';
 export { dstuToolsSkill } from './dstu-tools';
 export { mindmapToolsSkill } from './mindmap-tools';
-export { attachmentToolsSkill } from './attachment-tools';
+export { ATTACHMENT_STAGE_TOOL, attachmentToolsSkill } from './attachment-tools';
 export { todoToolsSkill } from './todo-tools';
 export { qbankToolsSkill } from './qbank-tools';
 export { workspaceToolsSkill } from './workspace-tools';

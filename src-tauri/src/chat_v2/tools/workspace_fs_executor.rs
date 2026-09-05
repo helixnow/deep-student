@@ -10,6 +10,11 @@ use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use super::utf8_paged_read::{
+    check_expected_hash, decode_utf8_window, fit_paged_read_to_default_budget,
+    is_continuation_byte, optional_expected_hash, parse_max_bytes, parse_offset,
+    sha256_hex as digest_sha256_hex,
+};
 use crate::chat_v2::runtime_roots::{
     artifact_mutation_guard, create_write_backup_from_file, explicit_runtime_root_id_from_args,
     normalize_runtime_relative_path, open_regular_file_no_follow,
@@ -39,11 +44,12 @@ const MAX_EDIT_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 const READ_BUFFER_BYTES: usize = 64 * 1024;
 const MAX_DIRECTORY_SCAN_ENTRIES: usize = 2_000;
 
+#[derive(Debug)]
 struct BoundedFileRead {
     visible: Vec<u8>,
     bytes: u64,
     sha256: String,
-    truncated: bool,
+    offset: usize,
 }
 
 struct BoundedDirectoryList {
@@ -204,9 +210,7 @@ impl WorkspaceFsExecutor {
     }
 
     fn sha256_hex(bytes: &[u8]) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(bytes);
-        hex::encode(hasher.finalize())
+        digest_sha256_hex(bytes)
     }
 
     fn is_private_component(component: &std::ffi::OsStr) -> bool {
@@ -268,7 +272,18 @@ impl WorkspaceFsExecutor {
         Ok(())
     }
 
-    fn read_file_bounded(target: &Path, max_bytes: usize) -> Result<BoundedFileRead, String> {
+    fn first_char_incomplete(bytes: &[u8]) -> bool {
+        match std::str::from_utf8(bytes) {
+            Err(error) => error.valid_up_to() == 0 && error.error_len().is_none(),
+            Ok(_) => false,
+        }
+    }
+
+    fn read_file_bounded(
+        target: &Path,
+        offset: usize,
+        max_bytes: usize,
+    ) -> Result<BoundedFileRead, String> {
         let mut file = open_regular_file_no_follow(target, "workspace_file_read path")?;
         let metadata = file
             .metadata()
@@ -280,6 +295,7 @@ impl WorkspaceFsExecutor {
             ));
         }
 
+        let offset_u64 = offset as u64;
         let mut visible = Vec::with_capacity(max_bytes.min(metadata.len() as usize));
         let mut hasher = Sha256::new();
         let mut total = 0u64;
@@ -301,30 +317,55 @@ impl WorkspaceFsExecutor {
                 ));
             }
             hasher.update(&buffer[..read]);
-            let remaining = max_bytes.saturating_sub(visible.len());
-            if remaining > 0 {
-                visible.extend_from_slice(&buffer[..read.min(remaining)]);
+            let buf = &buffer[..read];
+            let buf_start = total - read as u64;
+            if total <= offset_u64 {
+                continue;
+            }
+            let start_in_buf = offset_u64.saturating_sub(buf_start) as usize;
+            if start_in_buf >= read {
+                continue;
+            }
+            if visible.is_empty() && offset > 0 && is_continuation_byte(buf[start_in_buf]) {
+                return Err(format!("offset {offset} is not a UTF-8 character boundary"));
+            }
+            let available = &buf[start_in_buf..];
+            if visible.len() < max_bytes {
+                let take = available.len().min(max_bytes - visible.len());
+                visible.extend_from_slice(&available[..take]);
+                if take < available.len() && Self::first_char_incomplete(&visible) {
+                    let extra = available[take..]
+                        .iter()
+                        .take_while(|byte| is_continuation_byte(**byte))
+                        .count();
+                    visible.extend_from_slice(&available[take..take + extra]);
+                }
+            } else if Self::first_char_incomplete(&visible) {
+                let extra = available
+                    .iter()
+                    .take_while(|byte| is_continuation_byte(**byte))
+                    .count();
+                visible.extend_from_slice(&available[..extra]);
             }
         }
 
+        if offset_u64 > total {
+            return Err(format!("offset {offset} exceeds content length {total}"));
+        }
+        if offset_u64 < total && visible.is_empty() && offset > 0 {
+            return Err(format!("offset {offset} is not a UTF-8 character boundary"));
+        }
+
         Ok(BoundedFileRead {
-            truncated: total > visible.len() as u64,
             visible,
             bytes: total,
             sha256: hex::encode(hasher.finalize()),
+            offset,
         })
     }
 
     fn decode_utf8_prefix(bytes: &[u8], truncated: bool) -> Result<String, String> {
-        match std::str::from_utf8(bytes) {
-            Ok(text) => Ok(text.to_string()),
-            Err(error) if truncated && error.error_len().is_none() => {
-                Ok(String::from_utf8_lossy(&bytes[..error.valid_up_to()]).to_string())
-            }
-            Err(_) => {
-                Err("workspace_file_read currently supports UTF-8 text files only".to_string())
-            }
-        }
+        decode_utf8_window(bytes, truncated)
     }
 
     fn list_directory_bounded(
@@ -496,24 +537,43 @@ impl WorkspaceFsExecutor {
             return Err("path is required".to_string());
         }
         Self::ensure_public_runtime_path(&relative)?;
-        let max_bytes = args
-            .get("max_bytes")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(64 * 1024)
-            .clamp(1, 1024 * 1024) as usize;
+        let offset = parse_offset(args)?;
+        let max_bytes = parse_max_bytes(args)?;
+        let expected_hash = optional_expected_hash(args);
         let target = Self::ensure_inside_existing(&root_canon, &relative)?;
-        let read = Self::read_file_bounded(&target, max_bytes)?;
-        let content = Self::decode_utf8_prefix(&read.visible, read.truncated)?;
-
-        Ok(json!({
+        let read = Self::read_file_bounded(&target, offset, max_bytes)?;
+        if let Some(expected) = expected_hash {
+            check_expected_hash(&expected, &read.sha256)?;
+        }
+        let more_remains =
+            (read.offset as u64).saturating_add(read.visible.len() as u64) < read.bytes;
+        let content = if read.offset as u64 == read.bytes {
+            String::new()
+        } else {
+            decode_utf8_window(&read.visible, more_remains)?
+        };
+        let mut output = json!({
             "root": Self::root_json(&root),
             "root_id": root.id.clone(),
             "relative_path": relative.to_string_lossy(),
             "content": content,
             "bytes": read.bytes,
             "sha256": read.sha256,
-            "truncated": read.truncated,
-        }))
+            "offset": read.offset,
+            "returned_bytes": content.len(),
+            "next_offset": read.offset + content.len(),
+            "eof": read.offset + content.len() >= read.bytes as usize,
+            "truncated": read.offset + content.len() < read.bytes as usize,
+        });
+        if !fit_paged_read_to_default_budget(
+            &mut output,
+            "content",
+            read.offset,
+            read.bytes as usize,
+        ) {
+            return Err("workspace_file_read metadata exceeds the tool result budget".to_string());
+        }
+        Ok(output)
     }
 
     async fn execute_artifact_write(
@@ -1002,6 +1062,14 @@ impl ToolExecutor for WorkspaceFsExecutor {
         }
     }
 
+    fn result_char_budget(&self, tool_name: &str) -> Option<usize> {
+        if Self::strip_namespace(tool_name) == tool_names::FILE_READ {
+            None
+        } else {
+            Some(super::executor::DEFAULT_TOOL_RESULT_CHAR_BUDGET)
+        }
+    }
+
     fn name(&self) -> &'static str {
         "WorkspaceFsExecutor"
     }
@@ -1153,17 +1221,91 @@ mod tests {
         let content = "ab你cd";
         fs::write(&target, content).expect("write");
 
-        let read = WorkspaceFsExecutor::read_file_bounded(&target, 4).expect("read");
+        let read = WorkspaceFsExecutor::read_file_bounded(&target, 0, 4).expect("read");
         assert_eq!(read.bytes, content.len() as u64);
         assert_eq!(read.visible.len(), 4);
-        assert!(read.truncated);
+        assert_eq!(read.offset, 0);
         assert_eq!(
             read.sha256,
             WorkspaceFsExecutor::sha256_hex(content.as_bytes())
         );
         assert_eq!(
-            WorkspaceFsExecutor::decode_utf8_prefix(&read.visible, read.truncated).unwrap(),
+            WorkspaceFsExecutor::decode_utf8_prefix(&read.visible, true).unwrap(),
             "ab"
+        );
+    }
+
+    #[test]
+    fn file_read_rejects_mid_utf8_offset() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("unicode.txt");
+        fs::write(&target, "ab你cd").expect("write");
+        let err = WorkspaceFsExecutor::read_file_bounded(&target, 3, 8).unwrap_err();
+        assert!(err.contains("character boundary"));
+    }
+
+    #[test]
+    fn file_read_rejects_offset_past_eof() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("short.txt");
+        fs::write(&target, "hi").expect("write");
+        let err = WorkspaceFsExecutor::read_file_bounded(&target, 3, 8).unwrap_err();
+        assert!(err.contains("exceeds"));
+    }
+
+    #[test]
+    fn file_read_at_eof_returns_empty_visible() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("short.txt");
+        fs::write(&target, "hi").expect("write");
+        let read = WorkspaceFsExecutor::read_file_bounded(&target, 2, 8).expect("read");
+        assert!(read.visible.is_empty());
+        assert_eq!(read.bytes, 2);
+        assert_eq!(read.offset, 2);
+    }
+
+    #[test]
+    fn file_read_pages_reconstruct_full_utf8_and_hash_is_whole_file() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("paged.txt");
+        let content = "ab你cd我ef";
+        fs::write(&target, content).expect("write");
+        let whole = WorkspaceFsExecutor::read_file_bounded(&target, 0, 1024).expect("full");
+        assert_eq!(
+            whole.sha256,
+            WorkspaceFsExecutor::sha256_hex(content.as_bytes())
+        );
+
+        let mut offset = 0usize;
+        let mut acc = String::new();
+        loop {
+            let read = WorkspaceFsExecutor::read_file_bounded(&target, offset, 4).expect("page");
+            assert_eq!(read.sha256, whole.sha256);
+            if offset as u64 == read.bytes {
+                assert!(read.visible.is_empty());
+                break;
+            }
+            let more = (offset as u64).saturating_add(read.visible.len() as u64) < read.bytes;
+            let chunk = decode_utf8_window(&read.visible, more).expect("utf8");
+            acc.push_str(&chunk);
+            offset += chunk.len();
+            if offset as u64 >= read.bytes {
+                break;
+            }
+        }
+        assert_eq!(acc, content);
+    }
+
+    #[test]
+    fn file_read_result_budget_is_disabled() {
+        let executor = WorkspaceFsExecutor::new();
+        assert_eq!(
+            executor.result_char_budget("builtin-workspace_file_read"),
+            None
+        );
+        assert_eq!(
+            executor.result_char_budget("builtin-workspace_file_list"),
+            Some(crate::chat_v2::tools::executor::DEFAULT_TOOL_RESULT_CHAR_BUDGET)
         );
     }
 
@@ -1173,7 +1315,7 @@ mod tests {
         let target = temp_dir.path().join("oversized.txt");
         let file = fs::File::create(&target).expect("create");
         file.set_len(MAX_FILE_SOURCE_BYTES + 1).expect("set length");
-        assert!(WorkspaceFsExecutor::read_file_bounded(&target, 1024).is_err());
+        assert!(WorkspaceFsExecutor::read_file_bounded(&target, 0, 1024).is_err());
     }
 
     #[test]
