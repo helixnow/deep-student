@@ -137,6 +137,7 @@ import {
   STREAM_COMPLETE_SETTLE_DELAY_MS,
   ABORT_TIMEOUT_MS,
   type StreamExpectation,
+  type PendingStreamCompletion,
   createStreamExpectation,
   withStreamExpectationMessageId,
   syncStreamExpectationState,
@@ -149,6 +150,7 @@ import {
   buildStreamReconnectMeta,
   clearStreamReconnectMetaPatch,
   streamErrorMetaPatch,
+  forceSettlePendingStreamCompletion as forceSettlePendingStreamCompletionPure,
 } from './tauri/streamLifecycle';
 
 // ★ context_trimmed 提示节流：模块级（按 sessionId 隔离），
@@ -324,10 +326,7 @@ export class ChatV2TauriAdapter {
   private streamExpectation: StreamExpectation | null = null;
   /** 最近一次已接受的后端流代次，防止同 messageId retry 被旧终态结束。 */
   private lastStreamGenerationByMessageId = new Map<string, number>();
-  private pendingStreamCompletion: {
-    payload: SessionEventPayload;
-    timer: ReturnType<typeof setTimeout> | null;
-  } | null = null;
+  private pendingStreamCompletion: PendingStreamCompletion | null = null;
   /** ChatAnki 桥接 chunk 日志节流计数器（按 blockId） */
   private chatAnkiChunkLogCounter = new Map<string, number>();
   /** 多变体 content/thinking chunk 调试日志采样计数器（1/10 采样，避免流式期间刷屏） */
@@ -448,54 +447,71 @@ export class ChatV2TauriAdapter {
     this.pendingStreamCompletion = null;
   }
 
-  private armPendingStreamCompletion(pending: {
-    payload: SessionEventPayload;
-    timer: ReturnType<typeof setTimeout> | null;
-  }): void {
+  private armPendingStreamCompletion(pending: PendingStreamCompletion): void {
     pending.timer = setTimeout(() => {
       if (this.pendingStreamCompletion !== pending) return;
       this.pendingStreamCompletion = null;
-
-      const { payload } = pending;
-      if (
-        !this.isSessionRuntimeOwner()
-        || !payload.messageId
-        || !this.isTargetingCurrentStreamMessage(payload.messageId)
-        || this.isStaleByStreamGeneration(payload)
-        || this.isStaleByExpectationTimestamp(payload)
-      ) {
-        return;
-      }
-
-      // A terminal event can overtake block events from the separate channel.
-      // First drain sequence-buffered events, then flush their chunk batches,
-      // and only after that tear down the streaming state and bridge context.
-      flushPendingBackendEvents(this.getCurrentState());
-      chunkBuffer.flushSession(this.sessionId);
-      this.clearStreamExpectation(payload.messageId);
-      this.store.completeStream('success');
-      this.store.updateMessageMeta(
-        payload.messageId,
-        clearStreamReconnectMetaPatch({ clearTerminalError: true }),
-      );
-      handleStreamComplete(this.store, {
-        messageId: payload.messageId,
-        usage: payload.usage,
-      }).catch((err) => {
-        reportAdapterError({
-          code: 'stream_cleanup_failed',
-          level: 'dev',
-          sessionId: this.sessionId,
-          message: 'Error in handleStreamComplete',
-          cause: err,
-        });
-      });
+      this.settleStreamCompletion(pending.payload);
     }, STREAM_COMPLETE_SETTLE_DELAY_MS);
+  }
+
+  /**
+   * stream_complete 收尾执行体：32ms 静默窗口到期后由定时器调用，
+   * 或被 goal 续跑的新 stream_start 经 forceSettlePendingStreamCompletion
+   * 同步提前调用（见 handleSessionEvent 的 stream_start 分支）。
+   */
+  private settleStreamCompletion(payload: SessionEventPayload): void {
+    if (
+      !this.isSessionRuntimeOwner()
+      || !payload.messageId
+      || !this.isTargetingCurrentStreamMessage(payload.messageId)
+      || this.isStaleByStreamGeneration(payload)
+      || this.isStaleByExpectationTimestamp(payload)
+    ) {
+      return;
+    }
+
+    // A terminal event can overtake block events from the separate channel.
+    // First drain sequence-buffered events, then flush their chunk batches,
+    // and only after that tear down the streaming state and bridge context.
+    flushPendingBackendEvents(this.getCurrentState());
+    chunkBuffer.flushSession(this.sessionId);
+    this.clearStreamExpectation(payload.messageId);
+    this.store.completeStream('success');
+    this.store.updateMessageMeta(
+      payload.messageId,
+      clearStreamReconnectMetaPatch({ clearTerminalError: true }),
+    );
+    handleStreamComplete(this.store, {
+      messageId: payload.messageId,
+      usage: payload.usage,
+    }).catch((err) => {
+      reportAdapterError({
+        code: 'stream_cleanup_failed',
+        level: 'dev',
+        sessionId: this.sessionId,
+        message: 'Error in handleStreamComplete',
+        cause: err,
+      });
+    });
+  }
+
+  /**
+   * goal 续跑竞态补丁：新 stream_start 到达时旧轮仍在静默窗口内，
+   * 同步结算旧轮（而不是把新轮当冲突丢弃）。
+   */
+  private forceSettlePendingStreamCompletion(): void {
+    const pending = this.pendingStreamCompletion;
+    if (!pending) return;
+    this.pendingStreamCompletion = null;
+    forceSettlePendingStreamCompletionPure(pending, (payload) => {
+      this.settleStreamCompletion(payload);
+    });
   }
 
   private scheduleStreamCompletion(payload: SessionEventPayload): void {
     this.cancelPendingStreamCompletion();
-    const pending = {
+    const pending: PendingStreamCompletion = {
       payload: { ...payload },
       timer: null,
     };
@@ -909,6 +925,7 @@ export class ChatV2TauriAdapter {
         this.continueMessage(messageId, variantId)
       );
       this.store.setLoadCallback(() => this.loadSession());
+      this.store.setLoadEarlierMessagesCallback(() => this.loadEarlierMessages());
       this.store.setSwitchVariantCallback((messageId, variantId) =>
         this.executeSwitchVariant(messageId, variantId)
       );
@@ -1191,6 +1208,7 @@ export class ChatV2TauriAdapter {
     // 清除加载回调
     try {
       this.store.setLoadCallback(null);
+      this.store.setLoadEarlierMessagesCallback(null);
     } catch (error) {
       console.error(LOG_PREFIX, 'Error clearing load callback:', getErrorMessage(error));
     }
@@ -2250,6 +2268,20 @@ export class ChatV2TauriAdapter {
             break;
           }
 
+          // goal 续跑竞态补丁（2026-09）：后端 goal 续跑在上一轮
+          // stream_complete 后约 150ms 发起新一轮 stream_start（新 messageId），
+          // 可能落在 STREAM_COMPLETE_SETTLE_DELAY_MS 静默窗口内——旧轮
+          // completion 已 arm 未执行，currentStreamingMessageId /
+          // streamExpectation 仍指向旧消息，下方冲突守卫会把新轮误丢弃。
+          // 这里先把旧轮同步结算（completeStream('success') + 清 expectation），
+          // 再让新轮走正常（自主流）路径。
+          if (
+            this.pendingStreamCompletion
+            && this.pendingStreamCompletion.payload.messageId !== payload.messageId
+          ) {
+            this.forceSettlePendingStreamCompletion();
+          }
+
           const currentState = this.getCurrentState();
           const currentStreamingMessageId = currentState.currentStreamingMessageId;
           const expectedMessageId = this.streamExpectation?.messageId ?? null;
@@ -2634,6 +2666,13 @@ export class ChatV2TauriAdapter {
             // 通知侧边栏等组件刷新会话列表
             window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
           }
+          break;
+
+        case 'goal_updated':
+          // goal 模式 P0：后端目标状态变更（创建/暂停/恢复/编辑/续跑计数），
+          // payload.goal 为 null 表示目标已清除。setGoal 驱动顶栏
+          // GoalStatusChip 自动更新。
+          this.store.setGoal(payload.goal ?? null);
           break;
 
         case 'variant_deleted':
@@ -3956,6 +3995,26 @@ export class ChatV2TauriAdapter {
       console.error(LOG_PREFIX, 'Load session failed:', getErrorMessage(error));
       throw error;
     }
+  }
+
+  /** 手动加载更早历史：按当前已加载数量请求下一页，并在 generation
+   * 仍有效时复用既有 prepend 锚定逻辑合并。 */
+  async loadEarlierMessages(): Promise<void> {
+    const generation = this.setupGeneration;
+    const session = this.lastLoadedSessionInfo;
+    if (!session || !this.isSessionRuntimeOwner()) return;
+    const offset = this.store.getOrderedMessages().length;
+    const baseline = this.captureRestoreBaseline();
+    const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
+      sessionId: this.sessionId,
+      offset,
+      limit: HISTORY_BACKFILL_PAGE_SIZE,
+    });
+    if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
+    this.store.prependHistoryFromBackend(
+      { session, messages: page.messages, blocks: page.blocks },
+      baseline,
+    );
   }
 
   /**

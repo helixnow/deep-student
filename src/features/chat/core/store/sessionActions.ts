@@ -3,7 +3,7 @@ import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import { invoke } from '@tauri-apps/api/core';
-import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset } from '../types';
+import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset, GoalRecord } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -450,6 +450,59 @@ export function createSessionActions(
           set({ authorityAskBlockedHint: show });
         },
 
+        // ========== Goal 模式 Actions（P0） ==========
+        // 后端 chat_v2_goals 表为权威；以下 IPC 成功后用返回值写 goal，
+        // 同时后端会向会话通道发射 goal_updated 事件（TauriAdapter → setGoal），
+        // 两条路径收敛到同一状态，幂等。
+
+        setGoal: (goal: GoalRecord | null): void => {
+          set({ goal });
+        },
+
+        fetchGoal: async (): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          try {
+            const goal = await invoke<GoalRecord | null>('chat_v2_goal_get', { sessionId });
+            set({ goal: goal ?? null });
+          } catch (error) {
+            // 旧后端无 goal 命令时静默降级为"无目标"，不阻塞会话恢复
+            console.warn('[ChatStore] fetchGoal failed:', getErrorMessage(error));
+          }
+        },
+
+        pauseGoal: async (): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          const goal = await invoke<GoalRecord | null>('chat_v2_goal_pause', { sessionId });
+          set({ goal: goal ?? null });
+        },
+
+        resumeGoal: async (): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          const goal = await invoke<GoalRecord | null>('chat_v2_goal_resume', { sessionId });
+          set({ goal: goal ?? null });
+        },
+
+        editGoal: async (objective: string, tokenBudget?: number): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          const goal = await invoke<GoalRecord | null>('chat_v2_goal_edit', {
+            sessionId,
+            objective,
+            ...(typeof tokenBudget === 'number' ? { tokenBudget } : {}),
+          });
+          set({ goal: goal ?? null });
+        },
+
+        clearGoal: async (): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          await invoke('chat_v2_goal_clear', { sessionId });
+          set({ goal: null });
+        },
+
         // ========== 会话 Actions ==========
 
         initSession: async (mode: string, initConfig?: Record<string, unknown>): Promise<void> => {
@@ -483,6 +536,7 @@ export function createSessionActions(
             authorityMode: 'craft',
             permissionPreset: 'relaxed',
             authorityAskBlockedHint: false,
+            goal: null, // goal 模式 P0：新会话初始化时重置目标
             pendingBlockingInteraction: null,
             pendingApprovalRequest: null,
           });
@@ -719,6 +773,16 @@ export function createSessionActions(
             '[ChatStore] Load callback',
             callback ? 'set' : 'cleared'
           );
+        },
+
+        setLoadEarlierMessagesCallback: (callback: (() => Promise<void>) | null): void => {
+          set({ _loadEarlierMessagesCallback: callback } as Partial<ChatStoreState>);
+        },
+
+        loadEarlierMessages: async (): Promise<void> => {
+          const callback = (getState() as ChatStoreState & { _loadEarlierMessagesCallback?: (() => Promise<void>) | null })._loadEarlierMessagesCallback;
+          if (!callback) throw new Error('[ChatStore] History pagination callback is not configured');
+          await callback();
         },
 
         setUpdateBlockContentCallback: (

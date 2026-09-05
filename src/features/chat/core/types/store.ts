@@ -19,10 +19,12 @@ import type {
 import type { ContextRef } from '../../context/types';
 import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import type { QueuedMessage } from './queue';
+import type { GoalRecord } from './goal';
 
 // 重新导出共享类型
 export type { ChatParams, PanelStates, SessionStatus } from './common';
 export type { Variant, VariantStatus, SharedContext } from './message';
+export type { GoalRecord, GoalStatus } from './goal';
 export { createDefaultChatParams, createDefaultPanelStates } from './common';
 
 // SessionStatus, ChatParams, PanelStates 从 common.ts 导入
@@ -383,6 +385,13 @@ export interface ChatStore {
 
   /** Hint: last Ask-mode write was blocked — show switch-to-Plan CTA */
   authorityAskBlockedHint: boolean;
+
+  /**
+   * 会话级持久目标（goal 模式 P0）
+   * 后端为权威（chat_v2_goals 表）：restore 后 fetchGoal 拉取 +
+   * goal_updated 会话事件驱动更新。❌ 不持久化于前端
+   */
+  goal: GoalRecord | null;
 
   /** 会话状态 */
   sessionStatus: SessionStatus;
@@ -771,6 +780,26 @@ export interface ChatStore {
   /** Mark Ask-mode write refusal for UI CTA */
   setAuthorityAskBlockedHint(show: boolean): void;
 
+  // ========== Goal 模式 Actions（P0） ==========
+
+  /** 写入当前会话目标（goal_updated 事件与各 goal IPC 返回值的唯一入口） */
+  setGoal(goal: GoalRecord | null): void;
+
+  /** 从后端拉取当前会话目标（chat_v2_goal_get；失败静默降级为无目标） */
+  fetchGoal(): Promise<void>;
+
+  /** 暂停目标自动续跑（chat_v2_goal_pause） */
+  pauseGoal(): Promise<void>;
+
+  /** 恢复目标自动续跑（chat_v2_goal_resume） */
+  resumeGoal(): Promise<void>;
+
+  /** 编辑目标描述 / 预算（chat_v2_goal_edit） */
+  editGoal(objective: string, tokenBudget?: number): Promise<void>;
+
+  /** 清除会话目标（chat_v2_goal_clear） */
+  clearGoal(): Promise<void>;
+
   // ========== 🆕 上下文引用 Actions ==========
 
   /**
@@ -1001,6 +1030,12 @@ export interface ChatStore {
   setLoadCallback(
     callback: (() => Promise<void>) | null
   ): void;
+
+  /** 注入历史分页加载回调 */
+  setLoadEarlierMessagesCallback(callback: (() => Promise<void>) | null): void;
+
+  /** 请求加载更早的历史消息 */
+  loadEarlierMessages(): Promise<void>;
 
   /**
    * 设置更新块内容回调函数

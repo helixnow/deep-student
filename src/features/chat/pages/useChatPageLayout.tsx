@@ -5,6 +5,7 @@ import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContrac
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
+import { GoalStatusChip } from '../components/GoalStatusChip';
 import { groupEditorSubmitRef } from '../components/groups/GroupEditorDialog';
 import {
   selectSandboxWorkbenchOwnerState,
@@ -282,7 +283,13 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
       ? browserNewChatAction
       : isMinimalChatHeader
         ? homepageNewChatAction
-        : sessionNewChatAction,
+        : (
+          <>
+            {/* goal 模式 P0：会话目标状态紧凑 chip（goal 为 null 时自渲染空） */}
+            {currentSessionId ? <GoalStatusChip sessionId={currentSessionId} compact /> : null}
+            {sessionNewChatAction}
+          </>
+        ),
   }, [
     currentSessionId, homepageNewChatAction, sessionNewChatAction, browserNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
