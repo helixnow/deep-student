@@ -241,10 +241,9 @@ jobs:
   # ============================================
   backend:
     name: Backend
-    # 钉 22.04：ubuntu-latest(24.04) 上长编译作业反复被 runner 回收
-    # （"runner has received a shutdown signal"，Android 作业同款事故，
-    # 见 reusable-build-android.yml 的钉版注释）
-    runs-on: ubuntu-22.04
+    # 保持 ubuntu-latest：本作业的失败记录是 fmt/clippy 而非 runner 回收；
+    # 钉版会让 rust-cache 恢复到镜像不匹配的缓存（E0463 can't find crate）
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
@@ -405,6 +404,9 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
+          # key 前缀随钉版镜像走：镜像变更时旧镜像构建的缓存会 E0463
+          # （-sys crate 链接期系统库路径漂移），换名空间一次性冷编译后稳定
+          key: ubuntu-22.04
           shared-key: provider-contract
 
       # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
@@ -640,6 +642,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
+          # key 前缀随钉版镜像走（见 provider-contract 处注释）
+          key: ubuntu-22.04
           shared-key: tests
 
       # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
@@ -791,6 +795,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
+          # key 前缀随钉版镜像走（见 provider-contract 处注释）
+          key: ubuntu-22.04
           shared-key: tests
 
       # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释

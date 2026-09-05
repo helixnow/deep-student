@@ -110,8 +110,12 @@ beforeEach(() => {
   }
 });
 
-afterEach(() => {
+afterEach(async () => {
   commandRegistry.clear();
+  // 排干跨用例的异步焦点工作：面板关闭动画（useMotionPresence exitMs 兜底
+  // 150ms）与 rAF 延迟聚焦若泄漏到下一用例，会抢走 trigger 焦点导致
+  // Esc 焦点归还断言捕获到 body（本文件曾因此出现整文件运行才失败的污染）
+  await new Promise((resolve) => setTimeout(resolve, 200));
 });
 
 describe('CommandPalette 键盘 / 读屏契约', () => {
