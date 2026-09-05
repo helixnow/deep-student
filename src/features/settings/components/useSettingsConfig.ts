@@ -5,6 +5,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { normalizeMcpToolList } from './mcpUtils';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSetting } from '@/utils/settingsApi';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { UseSettingsConfigDeps } from './hookDepsTypes';
 import type { SystemConfig } from './types';
@@ -67,45 +68,45 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             compaction_model_config_id: string | null,
             translation_display_mode: string | null,
           }>,
-          invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
-          invoke('get_setting', { key: 'theme' }).catch(() => 'light') as Promise<string>,
-          invoke('get_setting', { key: 'theme_palette' }).catch(() => 'default') as Promise<string>,
-          invoke('get_setting', { key: 'debug_mode' }).catch(() => 'false') as Promise<string>,
-          invoke('get_setting', { key: 'rag_enabled' }).catch(() => 'false') as Promise<string>,
-          invoke('get_setting', { key: 'rag_top_k' }).catch(() => '5') as Promise<string>,
-          invoke('get_setting', { key: 'anki_connect_enabled' }).catch(() => 'false') as Promise<string>,
+          getSetting('auto_save').catch(() => 'true') as Promise<string>,
+          getSetting('theme').catch(() => 'light') as Promise<string>,
+          getSetting('theme_palette').catch(() => 'default') as Promise<string>,
+          getSetting('debug_mode').catch(() => 'false') as Promise<string>,
+          getSetting('rag_enabled').catch(() => 'false') as Promise<string>,
+          getSetting('rag_top_k').catch(() => '5') as Promise<string>,
+          getSetting('anki_connect_enabled').catch(() => 'false') as Promise<string>,
 
           // MCP 工具协议设置（移除全局启用项）
-          invoke('get_setting', { key: 'mcp.transport.command' }).catch(() => 'npx') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.transport.args' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.transport.type' }).catch(() => 'stdio') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.transport.url' }).catch(() => 'ws://localhost:8000') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.tools.advertise_all_tools' }).catch(() => 'false') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.tools.whitelist' }).catch(() => 'read_file, write_file, list_directory') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.tools.blacklist' }).catch(() => 'delete_file, execute_command, rm, sudo') as Promise<string>,
+          getSetting('mcp.transport.command').catch(() => 'npx') as Promise<string>,
+          getSetting('mcp.transport.args').catch(() => '') as Promise<string>,
+          getSetting('mcp.transport.type').catch(() => 'stdio') as Promise<string>,
+          getSetting('mcp.transport.url').catch(() => 'ws://localhost:8000') as Promise<string>,
+          getSetting('mcp.tools.advertise_all_tools').catch(() => 'false') as Promise<string>,
+          getSetting('mcp.tools.whitelist').catch(() => 'read_file, write_file, list_directory') as Promise<string>,
+          getSetting('mcp.tools.blacklist').catch(() => 'delete_file, execute_command, rm, sudo') as Promise<string>,
           // 多工具配置（JSON）
-          invoke('get_setting', { key: 'mcp.tools.list' }).catch(() => '[]') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.performance.timeout_ms' }).catch(() => '15000') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.performance.rate_limit_per_second' }).catch(() => '10') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.performance.cache_max_size' }).catch(() => '500') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.performance.cache_ttl_ms' }).catch(() => '300000') as Promise<string>,
+          getSetting('mcp.tools.list').catch(() => '[]') as Promise<string>,
+          getSetting('mcp.performance.timeout_ms').catch(() => '15000') as Promise<string>,
+          getSetting('mcp.performance.rate_limit_per_second').catch(() => '10') as Promise<string>,
+          getSetting('mcp.performance.cache_max_size').catch(() => '500') as Promise<string>,
+          getSetting('mcp.performance.cache_ttl_ms').catch(() => '300000') as Promise<string>,
 
           // Web Search 设置（移除全局启用项）
-          invoke('get_setting', { key: 'web_search.engine' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.timeout_ms' }).catch(() => '15000') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.google_cse' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.google_cse.cx' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.serpapi' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.tavily' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.brave' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.searxng.endpoint' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.searxng.api_key' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.zhipu' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.api_key.bocha' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.site_whitelist' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.site_blacklist' }).catch(() => '') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.inject.snippet_max_chars' }).catch(() => '180') as Promise<string>,
-          invoke('get_setting', { key: 'web_search.inject.total_max_chars' }).catch(() => '1900') as Promise<string>,
+          getSetting('web_search.engine').catch(() => '') as Promise<string>,
+          getSetting('web_search.timeout_ms').catch(() => '15000') as Promise<string>,
+          getSetting('web_search.api_key.google_cse').catch(() => '') as Promise<string>,
+          getSetting('web_search.google_cse.cx').catch(() => '') as Promise<string>,
+          getSetting('web_search.api_key.serpapi').catch(() => '') as Promise<string>,
+          getSetting('web_search.api_key.tavily').catch(() => '') as Promise<string>,
+          getSetting('web_search.api_key.brave').catch(() => '') as Promise<string>,
+          getSetting('web_search.searxng.endpoint').catch(() => '') as Promise<string>,
+          getSetting('web_search.searxng.api_key').catch(() => '') as Promise<string>,
+          getSetting('web_search.api_key.zhipu').catch(() => '') as Promise<string>,
+          getSetting('web_search.api_key.bocha').catch(() => '') as Promise<string>,
+          getSetting('web_search.site_whitelist').catch(() => '') as Promise<string>,
+          getSetting('web_search.site_blacklist').catch(() => '') as Promise<string>,
+          getSetting('web_search.inject.snippet_max_chars').catch(() => '180') as Promise<string>,
+          getSetting('web_search.inject.total_max_chars').catch(() => '1900') as Promise<string>,
         ]);
 
         // 解构赋值
