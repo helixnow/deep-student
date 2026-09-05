@@ -171,7 +171,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           const parsed = parseInt(mcpCacheMax || '500', 10);
           const val = Number.isFinite(parsed) ? parsed : 500;
           if (val <= 100) {
-            invoke('save_setting', { key: 'mcp.performance.cache_max_size', value: '500' }).catch(() => {});
+            saveSetting('mcp.performance.cache_max_size', '500').catch(() => {});
             return 500;
           }
           return val;

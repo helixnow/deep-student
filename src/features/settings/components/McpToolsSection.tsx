@@ -2243,10 +2243,7 @@ function ShellCommandRulesSection() {
   ) => {
     setSaving(true);
     try {
-      await invoke('save_setting', {
-        key: SHELL_COMMAND_POLICY_SETTING_KEYS.policy,
-        value: serializeShellCommandPolicy(nextDefault, nextRules),
-      });
+      await saveSetting(SHELL_COMMAND_POLICY_SETTING_KEYS.policy, serializeShellCommandPolicy(nextDefault, nextRules));
       setDefaultEffect(nextDefault);
       setRules(nextRules);
       showGlobalNotification('success', t('settings:tool_permissions.shell_rules.saved'));
@@ -2772,7 +2769,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
   const handleSetOverride = useCallback(async (toolName: string, level: SensitivityLevel) => {
     const key = `tool_approval.override.${toolName}`;
     try {
-      await invoke('save_setting', { key, value: level });
+      await saveSetting(key, level);
       setToolOverrides(prev => {
         const existing = prev.find(o => o.toolName === toolName);
         if (existing) {
@@ -2790,7 +2787,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
   const handleRemoveOverride = useCallback(async (toolName: string) => {
     const key = `tool_approval.override.${toolName}`;
     try {
-      await invoke('delete_setting', { key });
+      await deleteSetting(key);
       setToolOverrides(prev => prev.filter(o => o.toolName !== toolName));
     } catch (err) {
       console.error('[ToolPermissions] Remove override failed:', err);
@@ -2815,8 +2812,8 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
     try {
       const results = await Promise.allSettled(settingKeys.map(key => {
         return level
-          ? invoke('save_setting', { key, value: level })
-          : invoke('delete_setting', { key });
+          ? saveSetting(key, level)
+          : deleteSetting(key);
       }));
       const succeededKeys = settingKeys.filter((_, index) => results[index].status === 'fulfilled');
       const failedKeys = new Set(settingKeys.filter((_, index) => results[index].status === 'rejected'));
@@ -2878,8 +2875,8 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
     const key = `tool_approval.${kind}.${group}`;
     setIsBulkUpdating(true);
     try {
-      if (level) await invoke('save_setting', { key, value: level });
-      else await invoke('delete_setting', { key });
+      if (level) await saveSetting(key, level);
+      else await deleteSetting(key);
       const setMap = kind === 'source' ? setSourceOverrides : setDomainOverrides;
       setMap(prev => {
         const next = new Map(prev);

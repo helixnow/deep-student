@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { saveSetting } from '@/utils/settingsApi';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
@@ -109,7 +109,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   useEffect(() => {
     (async () => {
       try {
-        const val = await tauriInvoke('get_setting', { key: SENTRY_CONSENT_KEY }) as string | null;
+        const val = await getSetting(SENTRY_CONSENT_KEY);
         setSentryEnabled(val === 'true');
       } catch {
         setSentryEnabled(false);
@@ -121,9 +121,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
     (async () => {
       try {
         const [persistVal, configVal, legacyLevelVal] = await Promise.all([
-          tauriInvoke('get_setting', { key: 'debug.persist_logs' }).catch(() => 'false') as Promise<string>,
-          tauriInvoke('get_setting', { key: 'debug.filter_config' }).catch(() => '') as Promise<string>,
-          tauriInvoke('get_setting', { key: 'debug.filter_level' }).catch(() => '') as Promise<string>,
+          getSetting('debug.persist_logs').then(v => v ?? 'false'),
+          getSetting('debug.filter_config').then(v => v ?? ''),
+          getSetting('debug.filter_level').then(v => v ?? ''),
         ]);
         setDebugPersistLogs(String(persistVal ?? '') === 'true');
         const raw = String(configVal ?? '').trim();
@@ -545,7 +545,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               const cfg = { ...next, preset: 'custom' as const };
               setFilterConfig(cfg);
               try {
-                await tauriInvoke('save_setting', { key: 'debug.filter_config', value: JSON.stringify(cfg) });
+                await saveSetting('debug.filter_config', JSON.stringify(cfg));
                 window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { copyFilterConfig: cfg } }));
               } catch {
                 // noop
@@ -653,7 +653,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               if (debugPersistLogs === null) return;
               setDebugPersistLogs(newValue);
               try {
-                await tauriInvoke('save_setting', { key: 'debug.persist_logs', value: String(newValue) });
+                await saveSetting('debug.persist_logs', String(newValue));
                 showGlobalNotification('success', t('settings:save_notifications.saved'));
               } catch (error: unknown) {
                 showGlobalNotification('error', getErrorMessage(error));
