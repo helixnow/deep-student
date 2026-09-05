@@ -164,6 +164,8 @@ export interface ChatStoreState extends StoreCallbacks {
   /** Ask / Plan / Craft */
   authorityMode: 'ask' | 'plan' | 'craft';
   permissionPreset: PermissionPreset;
+  /** true：权限档位切换 IPC 在途（后端未确认落库），发送门禁据此等待 */
+  permissionPresetSyncing: boolean;
 
   /** Ask write-blocked CTA */
   authorityAskBlockedHint: boolean;
@@ -303,6 +305,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     sessionMetadata: null,
     authorityMode: 'craft',
     permissionPreset: 'relaxed',
+    permissionPresetSyncing: false,
     authorityAskBlockedHint: false,
     goal: null, // goal 模式 P0：初始无目标，restore 后由 fetchGoal 拉取
     sessionStatus: 'idle',

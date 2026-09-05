@@ -403,21 +403,39 @@ export function createSessionActions(
           });
         },
 
-        setPermissionPreset: async (preset: PermissionPreset): Promise<void> => {
+        setPermissionPreset: async (preset: PermissionPreset, confirm?: boolean): Promise<void> => {
           const sessionId = getState().sessionId;
           if (!sessionId) return;
-          await invoke('chat_v2_set_permission_preset', { sessionId, preset });
-          // 记住上次选择的安全档作为新会话默认（高权限档不记忆，见模块注释）
-          rememberPermissionPreset(preset);
-          const prevMeta = getState().sessionMetadata ?? {};
-          set({
-            permissionPreset: preset,
-            sessionMetadata: {
-              ...prevMeta,
+          set({ permissionPresetSyncing: true });
+          try {
+            // 后端落库并返回含权威 metadata 的会话；本地状态以返回值为准，
+            // 避免 IPC 在途期间发送/工具读到旧档位（切换竞态消除）。
+            // danger_full_access 是后端确认门：confirm=true 只能来自危险
+            // 确认对话框，缺失时后端拒绝落库（fail-closed）。
+            const session = await invoke<{ metadata?: Record<string, unknown> }>(
+              'chat_v2_set_permission_preset',
+              { sessionId, preset, confirm: confirm === true ? true : null },
+            );
+            // 记住上次选择的安全档作为新会话默认（高权限档不记忆，见模块注释）
+            rememberPermissionPreset(preset);
+            const ackedMeta = (session?.metadata ?? null) as Record<string, unknown> | null;
+            const prevMeta = getState().sessionMetadata ?? {};
+            set({
               permissionPreset: preset,
-              permission_preset: preset,
-            },
-          });
+              sessionMetadata: {
+                ...prevMeta,
+                ...(ackedMeta ?? {}),
+                permissionPreset: preset,
+                permission_preset: preset,
+              },
+            });
+          } catch (error) {
+            // 失败时保持旧档位并向上抛出，由调用方提示用户
+            console.error('[ChatV2:Store] setPermissionPreset failed:', preset, error);
+            throw error;
+          } finally {
+            set({ permissionPresetSyncing: false });
+          }
         },
 
         handlePlanGateRequest: (payload: {
@@ -535,6 +553,7 @@ export function createSessionActions(
             panelStates: createDefaultPanelStates(),
             authorityMode: 'craft',
             permissionPreset: 'relaxed',
+            permissionPresetSyncing: false,
             authorityAskBlockedHint: false,
             goal: null, // goal 模式 P0：新会话初始化时重置目标
             pendingBlockingInteraction: null,
