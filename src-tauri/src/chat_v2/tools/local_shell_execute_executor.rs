@@ -30,11 +30,14 @@ use crate::chat_v2::runtime_roots::{
     RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{
-    AuthorityMode, PermissionPreset, SessionAuthorityState, ToolCall, ToolResultInfo,
+    AuthorityMode, HostShellExecutionMode, PermissionPreset, SessionAuthorityState, ToolCall,
+    ToolResultInfo,
 };
 use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
 use crate::commands::AppState;
 
+#[cfg(windows)]
+use super::shell_sandbox::DirectHostShellBackend;
 use super::shell_sandbox::{
     cleanup_finished_process_group, terminate_process_group, PlatformSandboxBackend,
     SandboxBackend, SandboxPolicy, UnsandboxedShellBackend,
@@ -125,11 +128,12 @@ struct FileSnapshot {
     truncated: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ShellSecurityMode {
-    Sandboxed,
-    Unsandboxed,
-}
+/// 超时上限换算的安全余量：无限制档缺省超时用 100 年等效时长表达"无限"，
+/// 避免 tokio `Instant + Duration` 在 Windows/macOS 时钟基数上溢出 panic。
+const UNRESTRICTED_DEFAULT_TIMEOUT_MS: u64 = 100 * 365 * 24 * 3600 * 1000;
+/// 无限制档缺省输出捕获高水位（崩溃保护，不是访问限制）：
+/// BoundedPipeOutput 需要有限缓冲防 OOM，32MiB 远超常规命令输出。
+const UNRESTRICTED_DEFAULT_MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 
 impl Default for LocalShellExecuteExecutor {
     fn default() -> Self {
@@ -622,34 +626,21 @@ impl LocalShellExecuteExecutor {
         })
     }
 
-    fn shell_security_mode(state: &SessionAuthorityState) -> ShellSecurityMode {
-        if state.authority_mode == AuthorityMode::Craft
-            && matches!(
-                state.permission_preset,
-                PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess
-            )
-        {
-            ShellSecurityMode::Unsandboxed
-        } else {
-            ShellSecurityMode::Sandboxed
-        }
+    fn host_execution_mode(state: &SessionAuthorityState) -> HostShellExecutionMode {
+        HostShellExecutionMode::from_authority(state.authority_mode, state.permission_preset)
     }
 
     fn shell_security_fingerprint(
         command_hash: &str,
         state: &SessionAuthorityState,
-        mode: ShellSecurityMode,
+        mode: HostShellExecutionMode,
     ) -> String {
-        let mode_label = match mode {
-            ShellSecurityMode::Sandboxed => "sandboxed",
-            ShellSecurityMode::Unsandboxed => "unsandboxed",
-        };
         let payload = format!(
-            "deep-student-shell-security-v1\0{}\0{}\0{}\0{}",
+            "deep-student-shell-security-v2\0{}\0{}\0{}\0{}",
             command_hash,
             state.authority_mode.as_str(),
             state.permission_preset.as_str(),
-            mode_label
+            mode.as_str()
         );
         hex::encode(Sha256::digest(payload.as_bytes()))
     }
@@ -1074,6 +1065,49 @@ impl LocalShellExecuteExecutor {
         })
     }
 
+    /// 无限制档（HostShellExecutionMode::Unrestricted）环境策略：完整继承
+    /// 父进程环境（inherit_all），不剥离敏感变量与执行控制变量；模型显式
+    /// env 直接放行，仅保留键名/值的基础格式防御（NUL、长度、数量）。
+    /// 只能由后端权威执行档调用，模型参数无法选择此策略。
+    fn build_env_plan_unrestricted(args: &Value) -> Result<ShellEnvPlan, String> {
+        let mut inherited_values = BTreeMap::new();
+        for (key, value) in env::vars() {
+            inherited_values.insert(key, value);
+        }
+        let mut explicit_values = BTreeMap::new();
+        if let Some(env_value) = args.get("env") {
+            let env_object = env_value
+                .as_object()
+                .ok_or_else(|| "env must be an object of string values".to_string())?;
+            if env_object.len() > 256 {
+                return Err("env cannot contain more than 256 variables".to_string());
+            }
+            for (raw_key, raw_value) in env_object {
+                let key = raw_key.trim();
+                if key.is_empty() || key.contains('\0') {
+                    return Err(format!("environment variable name '{key}' is invalid"));
+                }
+                let value = raw_value
+                    .as_str()
+                    .ok_or_else(|| format!("env.{key} must be a string"))?;
+                if value.contains('\0') || value.len() > 8192 {
+                    return Err(format!("env.{key} is too large or contains an invalid character"));
+                }
+                explicit_values.insert(key.to_string(), value.to_string());
+            }
+        }
+        let inherited_keys = inherited_values.keys().cloned().collect();
+        Ok(ShellEnvPlan {
+            inherit_parent_env: true,
+            allowlist_mode: false,
+            inherited_keys,
+            inherited_values,
+            explicit_keys: explicit_values.keys().cloned().collect(),
+            denied_keys: Vec::new(),
+            explicit_values,
+        })
+    }
+
     #[cfg(target_os = "macos")]
     fn trusted_macos_developer_dir() -> Option<PathBuf> {
         let output = std::process::Command::new("/usr/bin/xcode-select")
@@ -1445,8 +1479,11 @@ impl LocalShellExecuteExecutor {
         Self::finish_drain_task_with_timeout(task, Duration::from_secs(5), stream_name).await
     }
 
-    async fn terminate_and_reap(child: &mut tokio::process::Child) -> Result<(), String> {
-        let terminate_error = terminate_process_group(child).err();
+    async fn terminate_and_reap(
+        child: &mut tokio::process::Child,
+        sandbox_backend: &dyn SandboxBackend,
+    ) -> Result<(), String> {
+        let terminate_error = sandbox_backend.terminate_child(child).err();
         match tokio::time::timeout(Self::PROCESS_CLEANUP_GRACE, child.wait()).await {
             Ok(Ok(_status)) => {
                 if let Some(error) = terminate_error {
@@ -1466,7 +1503,7 @@ impl LocalShellExecuteExecutor {
                     // The Windows helper owns temporary ACLs and the AppContainer profile. Retry
                     // its cooperative cancellation and then wait for that helper to unwind; killing
                     // the helper here would skip revoke_policy/Profile::drop.
-                    if let Err(error) = terminate_process_group(child) {
+                    if let Err(error) = sandbox_backend.terminate_child(child) {
                         log::warn!(
                             "[LocalShellExecuteExecutor] Windows cleanup retry warning: {}",
                             error
@@ -1521,6 +1558,7 @@ impl LocalShellExecuteExecutor {
         process_id: u32,
         timeout_duration: Duration,
         cancellation_token: Option<&CancellationToken>,
+        sandbox_backend: &dyn SandboxBackend,
     ) -> Result<ShellWaitOutcome, String> {
         let initial = {
             let wait_future = tokio::time::timeout(timeout_duration, child.wait());
@@ -1554,15 +1592,15 @@ impl LocalShellExecuteExecutor {
                 Ok(ShellWaitOutcome::Exited(status))
             }
             Ok(ShellWaitOutcome::TimedOut) => {
-                Self::terminate_and_reap(child).await?;
+                Self::terminate_and_reap(child, sandbox_backend).await?;
                 Ok(ShellWaitOutcome::TimedOut)
             }
             Ok(ShellWaitOutcome::Cancelled) => {
-                Self::terminate_and_reap(child).await?;
+                Self::terminate_and_reap(child, sandbox_backend).await?;
                 Ok(ShellWaitOutcome::Cancelled)
             }
             Err(error) => {
-                let cleanup_result = Self::terminate_and_reap(child).await;
+                let cleanup_result = Self::terminate_and_reap(child, sandbox_backend).await;
                 match cleanup_result {
                     Ok(()) => Err(error),
                     Err(cleanup_error) => Err(format!("{error}; cleanup failed: {cleanup_error}")),
@@ -1615,8 +1653,12 @@ impl LocalShellExecuteExecutor {
                     .to_string(),
             );
         }
-        let security_mode = Self::shell_security_mode(&shell_authority);
-        let unsandboxed = security_mode == ShellSecurityMode::Unsandboxed;
+        let execution_mode = HostShellExecutionMode::from_authority(
+            shell_authority.authority_mode,
+            shell_authority.permission_preset,
+        );
+        let unsandboxed = execution_mode.unsandboxed();
+        let unrestricted = execution_mode.unrestricted();
         let state = ctx.window_ref().state::<AppState>();
         let raw_command_policy = state
             .database
@@ -1628,8 +1670,11 @@ impl LocalShellExecuteExecutor {
             &command,
             true,
         );
-        if command_policy.effective_effect
-            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        // 无限制档（danger 档显式确认后）不套用终端命令规则；策略决策仍计算
+        // 一次用于审计对账（command_policy_bypassed=true 时仅供人读）。
+        if !unrestricted
+            && command_policy.effective_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
         {
             return Err("Command is denied by the configured terminal command rules".to_string());
         }
@@ -1685,20 +1730,36 @@ impl LocalShellExecuteExecutor {
         } else {
             cwd_relative.to_string_lossy().to_string()
         };
-        let timeout_ms = args
-            .get("timeout_ms")
-            .or_else(|| args.get("timeoutMs"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30_000)
-            // 上限 10 分钟（对齐 Claude Code BASH_MAX_TIMEOUT_MS=600000 的业界
-            // 心智）：npm install 等长任务不再被 120s 墙钟强杀。默认仍 30s。
-            .clamp(1_000, 600_000);
-        let max_output_bytes = args
-            .get("max_output_bytes")
-            .or_else(|| args.get("maxOutputBytes"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(64 * 1024)
-            .clamp(1_024, 1024 * 1024) as usize;
+        // 无限制档不套 timeout/输出 clamp：缺省 timeout 用 100 年等效值表达
+        // 无超时，显式传参则原样尊重；输出缺省保留 32MiB 崩溃保护高水位。
+        let timeout_ms = if unrestricted {
+            args.get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(UNRESTRICTED_DEFAULT_TIMEOUT_MS)
+                .max(1_000)
+        } else {
+            args.get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30_000)
+                // 上限 10 分钟（对齐 Claude Code BASH_MAX_TIMEOUT_MS=600000 的业界
+                // 心智）：npm install 等长任务不再被 120s 墙钟强杀。默认仍 30s。
+                .clamp(1_000, 600_000)
+        };
+        let max_output_bytes = if unrestricted {
+            args.get("max_output_bytes")
+                .or_else(|| args.get("maxOutputBytes"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(UNRESTRICTED_DEFAULT_MAX_OUTPUT_BYTES)
+                .max(1_024) as usize
+        } else {
+            args.get("max_output_bytes")
+                .or_else(|| args.get("maxOutputBytes"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(64 * 1024)
+                .clamp(1_024, 1024 * 1024) as usize
+        };
         let track_file_changes = args
             .get("track_file_changes")
             .or_else(|| args.get("trackFileChanges"))
@@ -1761,7 +1822,11 @@ impl LocalShellExecuteExecutor {
             .canonicalize()
             .unwrap_or_else(|_| root.path.clone());
         let analysis = analyze_shell_command(&command);
-        let env_plan = Self::build_env_plan_with_inherit_default(args, unsandboxed)?;
+        let env_plan = if unrestricted {
+            Self::build_env_plan_unrestricted(args)?
+        } else {
+            Self::build_env_plan_with_inherit_default(args, unsandboxed)?
+        };
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
         let sandbox_policy = if unsandboxed {
             SandboxPolicy {
@@ -1783,7 +1848,19 @@ impl LocalShellExecuteExecutor {
                 options,
             )?
         };
-        let sandbox_backend: Box<dyn SandboxBackend> = if unsandboxed {
+        let sandbox_backend: Box<dyn SandboxBackend> = if unrestricted {
+            // 无限制档：Windows 主进程直启 trusted PowerShell（不经 helper/
+            // payload 链）；Unix 复用 /bin/sh + setpgid、无 RLIMIT 的
+            // unsandboxed backend。
+            #[cfg(windows)]
+            {
+                Box::new(DirectHostShellBackend::new())
+            }
+            #[cfg(not(windows))]
+            {
+                Box::new(UnsandboxedShellBackend::new())
+            }
+        } else if unsandboxed {
             Box::new(UnsandboxedShellBackend::new())
         } else {
             Box::new(PlatformSandboxBackend::new())
@@ -1794,7 +1871,7 @@ impl LocalShellExecuteExecutor {
             sandbox_backend.effect_report(&sandbox_policy)
         };
         let shell_security_fingerprint =
-            Self::shell_security_fingerprint(&command_hash, &shell_authority, security_mode);
+            Self::shell_security_fingerprint(&command_hash, &shell_authority, execution_mode);
         let capture_workspace_change_set = track_file_changes
             && root.kind == RuntimeRootKind::Workspace
             && root.access == RuntimeRootAccess::ReadWrite
@@ -1830,57 +1907,69 @@ impl LocalShellExecuteExecutor {
                     .to_string(),
             );
         }
-        let mut guard_roots = if unsandboxed {
-            Vec::new()
+        // 无限制档跳过灾难守卫与 guard roots 收集：命令分类保护在该档被
+        // 显式关闭（immutable_guard_bypassed=true 写入审计）。
+        let immutable_guard_bypassed = unrestricted;
+        let immutable_guard_json = if unrestricted {
+            json!({
+                "effect": "bypassed",
+                "reason": "unrestricted_execution_mode"
+            })
         } else {
-            runtime_roots_for_session(
-                ctx.window_ref().app_handle(),
-                &state.database,
-                &ctx.session_id,
+            let mut guard_roots = if unsandboxed {
+                Vec::new()
+            } else {
+                runtime_roots_for_session(
+                    ctx.window_ref().app_handle(),
+                    &state.database,
+                    &ctx.session_id,
+                    true,
+                )?
+                .into_iter()
+                .map(|runtime_root| runtime_root.path)
+                .collect::<Vec<_>>()
+            };
+            if let Some(home) = dirs::home_dir() {
+                guard_roots.push(home);
+            }
+            let immutable_guard = immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
+            match immutable_guard.effect {
+                ShellCommandGuardEffect::Deny => {
+                    return Err(format!(
+                        "Command denied by immutable catastrophe guard: {}",
+                        immutable_guard.reason
+                    ));
+                }
+                ShellCommandGuardEffect::Ask
+                    if !ctx.shell_guard_approved && !options.structured_command_approved =>
+                {
+                    return Err(format!(
+                        "Command requires a fresh immutable-guard approval before spawn: {}",
+                        immutable_guard.reason
+                    ));
+                }
+                ShellCommandGuardEffect::Allow | ShellCommandGuardEffect::Ask => {}
+            }
+            let current_raw_policy = state
+                .database
+                .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+                .ok()
+                .flatten();
+            let current_command_policy = crate::chat_v2::shell_command_policy::enforce_for_call(
+                current_raw_policy.as_deref(),
+                &command,
                 true,
-            )?
-            .into_iter()
-            .map(|runtime_root| runtime_root.path)
-            .collect::<Vec<_>>()
-        };
-        if let Some(home) = dirs::home_dir() {
-            guard_roots.push(home);
-        }
-        let immutable_guard = immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
-        match immutable_guard.effect {
-            ShellCommandGuardEffect::Deny => {
-                return Err(format!(
-                    "Command denied by immutable catastrophe guard: {}",
-                    immutable_guard.reason
-                ));
-            }
-            ShellCommandGuardEffect::Ask
-                if !ctx.shell_guard_approved && !options.structured_command_approved =>
-            {
-                return Err(format!(
-                    "Command requires a fresh immutable-guard approval before spawn: {}",
-                    immutable_guard.reason
-                ));
-            }
-            ShellCommandGuardEffect::Allow | ShellCommandGuardEffect::Ask => {}
-        }
-        let current_raw_policy = state
-            .database
-            .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
-            .ok()
-            .flatten();
-        let current_command_policy = crate::chat_v2::shell_command_policy::enforce_for_call(
-            current_raw_policy.as_deref(),
-            &command,
-            true,
-        );
-        if current_command_policy.effective_effect
-            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
-        {
-            return Err(
-                "Command is denied by terminal command rules at the final spawn check".to_string(),
             );
-        }
+            if current_command_policy.effective_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+            {
+                return Err(
+                    "Command is denied by terminal command rules at the final spawn check"
+                        .to_string(),
+                );
+            }
+            json!(immutable_guard)
+        };
 
         let start = Instant::now();
         let mut shell = if options.allow_git_metadata_write || options.force_read_only {
@@ -1902,10 +1991,18 @@ impl LocalShellExecuteExecutor {
                 return Err(format!("Failed to execute local shell command: {error}"));
             }
         };
+        if let Err(error) = sandbox_backend.on_child_spawned(&mut child) {
+            let cleanup_result = Self::terminate_and_reap(&mut child, &*sandbox_backend).await;
+            sandbox_backend.cleanup_command_resources(&shell);
+            if let Err(cleanup_error) = cleanup_result {
+                log::warn!("[LocalShellExecuteExecutor] Spawn-hook cleanup warning: {cleanup_error}");
+            }
+            return Err(error);
+        }
         let process_id = match child.id() {
             Some(process_id) => process_id,
             None => {
-                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                let cleanup_result = Self::terminate_and_reap(&mut child, &*sandbox_backend).await;
                 sandbox_backend.cleanup_command_resources(&shell);
                 cleanup_result?;
                 return Err("Sandboxed local shell process has no process id".to_string());
@@ -1914,7 +2011,7 @@ impl LocalShellExecuteExecutor {
         let stdout_reader = match child.stdout.take() {
             Some(reader) => reader,
             None => {
-                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                let cleanup_result = Self::terminate_and_reap(&mut child, &*sandbox_backend).await;
                 sandbox_backend.cleanup_command_resources(&shell);
                 cleanup_result?;
                 return Err("Failed to capture local shell stdout".to_string());
@@ -1923,7 +2020,7 @@ impl LocalShellExecuteExecutor {
         let stderr_reader = match child.stderr.take() {
             Some(reader) => reader,
             None => {
-                let cleanup_result = Self::terminate_and_reap(&mut child).await;
+                let cleanup_result = Self::terminate_and_reap(&mut child, &*sandbox_backend).await;
                 sandbox_backend.cleanup_command_resources(&shell);
                 cleanup_result?;
                 return Err("Failed to capture local shell stderr".to_string());
@@ -1947,6 +2044,7 @@ impl LocalShellExecuteExecutor {
             process_id,
             Duration::from_millis(timeout_ms),
             ctx.cancellation_token(),
+            &*sandbox_backend,
         )
         .await;
         sandbox_backend.cleanup_command_resources(&shell);
@@ -2066,6 +2164,19 @@ impl LocalShellExecuteExecutor {
             (None, None)
         };
 
+        let resource_limits_json = if unrestricted {
+            json!({
+                "timeout": "none",
+                "output_bound_bytes": max_output_bytes,
+                "output_bound_reason": "crash_protection_high_water_mark"
+            })
+        } else {
+            json!({
+                "timeout": timeout_ms,
+                "output_bound_bytes": max_output_bytes
+            })
+        };
+
         Ok(json!({
             "command": display_command,
             "command_hash": command_hash,
@@ -2074,12 +2185,14 @@ impl LocalShellExecuteExecutor {
             "shell_security_fingerprint": shell_security_fingerprint,
             "authority_mode": shell_authority.authority_mode.as_str(),
             "permission_preset": shell_authority.permission_preset.as_str(),
-            "shell_security_mode": match security_mode {
-                ShellSecurityMode::Sandboxed => "sandboxed",
-                ShellSecurityMode::Unsandboxed => "unsandboxed",
-            },
+            "execution_mode": execution_mode.as_str(),
+            "shell_security_mode": if unsandboxed { "unsandboxed" } else { "sandboxed" },
             "runtime_roots_enforced": !unsandboxed,
-            "immutable_command_guard": immutable_guard,
+            "command_policy_bypassed": unrestricted,
+            "immutable_guard_bypassed": immutable_guard_bypassed,
+            "environment_mode": if unrestricted { "inherit_all" } else { "filtered" },
+            "resource_limits": resource_limits_json,
+            "immutable_command_guard": immutable_guard_json,
             "root": Self::root_json(&root),
             "root_id": root.id,
             "skill_root_id": skill_dir_injection.as_ref().map(|injection| injection.root_id.clone()),
@@ -2495,27 +2608,27 @@ mod tests {
             plan: None,
         };
         assert_eq!(
-            LocalShellExecuteExecutor::shell_security_mode(&full),
-            ShellSecurityMode::Unsandboxed
+            LocalShellExecuteExecutor::host_execution_mode(&full),
+            HostShellExecutionMode::FullAccess
         );
         assert_eq!(
-            LocalShellExecuteExecutor::shell_security_mode(&danger),
-            ShellSecurityMode::Unsandboxed
+            LocalShellExecuteExecutor::host_execution_mode(&danger),
+            HostShellExecutionMode::Unrestricted
         );
         assert_eq!(
-            LocalShellExecuteExecutor::shell_security_mode(&plan_danger),
-            ShellSecurityMode::Sandboxed
+            LocalShellExecuteExecutor::host_execution_mode(&plan_danger),
+            HostShellExecutionMode::Sandboxed
         );
         assert_ne!(
             LocalShellExecuteExecutor::shell_security_fingerprint(
                 "command-hash",
                 &full,
-                ShellSecurityMode::Unsandboxed,
+                HostShellExecutionMode::Unrestricted,
             ),
             LocalShellExecuteExecutor::shell_security_fingerprint(
                 "command-hash",
                 &danger,
-                ShellSecurityMode::Unsandboxed,
+                HostShellExecutionMode::Unrestricted,
             )
         );
     }
