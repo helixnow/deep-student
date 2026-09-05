@@ -309,6 +309,10 @@
   --settings-nav-accent-green: hsl(157 73% 42%);
   --settings-nav-accent-sky: hsl(208 77% 60%);
   --settings-nav-accent-pink: hsl(327 56% 66%);
+  --settings-nav-accent-coral: hsl(14 70% 59%);
+  --settings-nav-accent-teal: hsl(170 38% 50%);
+  --settings-nav-accent-indigo: hsl(216 61% 61%);
+  --settings-nav-accent-violet: hsl(253 54% 66%);
 
   /* Citation/source semantics */
   --citation-badge-bg-alpha: 0.10;
@@ -444,6 +448,10 @@
   --settings-nav-accent-green: hsl(157 55% 58%);
   --settings-nav-accent-sky: hsl(208 70% 70%);
   --settings-nav-accent-pink: hsl(327 52% 74%);
+  --settings-nav-accent-coral: hsl(14 66% 68%);
+  --settings-nav-accent-teal: hsl(170 34% 62%);
+  --settings-nav-accent-indigo: hsl(216 57% 72%);
+  --settings-nav-accent-violet: hsl(253 50% 76%);
 
   /* Keep brand utility colors legible on the dark shell. */
   --brand-secondary: color-mix(in oklab, hsl(var(--info)) 80%, hsl(var(--foreground)) 20%);
@@ -476,6 +484,10 @@
     --settings-nav-accent-green: hsl(157 78% 28%);
     --settings-nav-accent-sky: hsl(208 82% 42%);
     --settings-nav-accent-pink: hsl(327 62% 46%);
+    --settings-nav-accent-coral: hsl(14 76% 42%);
+    --settings-nav-accent-teal: hsl(170 44% 34%);
+    --settings-nav-accent-indigo: hsl(216 66% 44%);
+    --settings-nav-accent-violet: hsl(253 60% 48%);
   }
 
   :root.dark {
@@ -487,6 +499,10 @@
     --settings-nav-accent-green: hsl(157 62% 70%);
     --settings-nav-accent-sky: hsl(208 80% 80%);
     --settings-nav-accent-pink: hsl(327 62% 82%);
+    --settings-nav-accent-coral: hsl(14 78% 78%);
+    --settings-nav-accent-teal: hsl(170 46% 70%);
+    --settings-nav-accent-indigo: hsl(216 68% 80%);
+    --settings-nav-accent-violet: hsl(253 62% 84%);
   }
 }
 

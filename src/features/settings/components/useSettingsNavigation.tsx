@@ -37,6 +37,10 @@ export const SETTINGS_NAV_ACCENT = {
   green: 'var(--settings-nav-accent-green)',
   sky: 'var(--settings-nav-accent-sky)',
   pink: 'var(--settings-nav-accent-pink)',
+  coral: 'var(--settings-nav-accent-coral)',
+  teal: 'var(--settings-nav-accent-teal)',
+  indigo: 'var(--settings-nav-accent-indigo)',
+  violet: 'var(--settings-nav-accent-violet)',
 } as const;
 
 export type SettingsSidebarNavItem = {
@@ -94,21 +98,21 @@ export function useSettingsNavigation() {
         icon: Microphone,
         label: t('settings:tabs.voice_input'),
         mobileDescription: t('settings:mobile_descriptions.voice_input'),
-        mobileAccent: '#e0704f',
+        mobileAccent: SETTINGS_NAV_ACCENT.coral,
       },
       {
         value: 'memory',
         icon: Brain,
         label: t('settings:tabs.memory'),
         mobileDescription: t('settings:mobile_descriptions.memory'),
-        mobileAccent: '#4fae9e',
+        mobileAccent: SETTINGS_NAV_ACCENT.teal,
       },
       {
         value: 'workbench',
         icon: SquaresFour,
         label: t('settings:tabs.workbench'),
         mobileDescription: t('settings:mobile_descriptions.workbench'),
-        mobileAccent: '#5f8fd8',
+        mobileAccent: SETTINGS_NAV_ACCENT.indigo,
       },
       {
         value: 'appearance',
@@ -179,7 +183,7 @@ export function useSettingsNavigation() {
         icon: FileText,
         label: t('settings:tabs.document_processing'),
         mobileDescription: t('settings:mobile_descriptions.document_processing'),
-        mobileAccent: '#8f7bd8',
+        mobileAccent: SETTINGS_NAV_ACCENT.violet,
       },
       ...(!hideShortcuts
         ? [{

@@ -1,7 +1,7 @@
 /**
  * Chat V2 - retrieval 事件处理插件单元测试
  *
- * 测试知识检索事件处理器：rag, memory, web_search, multimodal_rag
+ * 测试知识检索事件处理器：rag, memory, web_search, multimodal_rag, academic_search
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -130,7 +130,7 @@ describe('RetrievalEventHandlers', () => {
   });
 
   it('should export RETRIEVAL_TYPES constant', () => {
-    expect(RETRIEVAL_TYPES).toEqual(['rag', 'memory', 'web_search', 'multimodal_rag']);
+    expect(RETRIEVAL_TYPES).toEqual(['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search']);
   });
 
   // ============================================================================

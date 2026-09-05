@@ -568,7 +568,7 @@ describe('O18 TaskDashboardAppWindow 任务进行中呈现', () => {
     const { container } = render(<TaskDashboardAppWindow {...props} />);
 
     expect(await screen.findByTestId('mock-task-dashboard')).toBeInTheDocument();
-    expect(props.onTitleChange).toHaveBeenLastCalledWith('制卡任务');
+    expect(props.onTitleChange).toHaveBeenLastCalledWith('Anki制卡');
     expect(container.querySelector('[data-wb-sys-activity]')).toHaveAttribute(
       'data-active',
       'false',
@@ -579,7 +579,7 @@ describe('O18 TaskDashboardAppWindow 任务进行中呈现', () => {
       await refreshAnkiTaskCount();
     });
 
-    expect(props.onTitleChange).toHaveBeenLastCalledWith('制卡任务 · 3');
+    expect(props.onTitleChange).toHaveBeenLastCalledWith('Anki制卡 · 3');
     expect(container.querySelector('[data-wb-sys-activity]')).toHaveAttribute(
       'data-active',
       'true',

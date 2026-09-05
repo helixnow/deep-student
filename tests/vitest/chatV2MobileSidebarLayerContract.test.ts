@@ -37,17 +37,26 @@ describe('chat v2 mobile sidebar layer contract', () => {
     expect(responsiveUtilitiesSource).not.toContain('[data-mobile-sliding-main]');
   });
 
-  it('pins the app launcher under drawer chrome instead of the scroll list', () => {
+  it('pins the app launcher at the drawer bottom instead of the scroll list', () => {
     expect(mobileLayoutSource).toContain('data-mobile-unified-drawer');
     expect(mobileLayoutSource).toContain('MobileUnifiedDrawerProvider');
     expect(mobileLayoutSource).toContain('sidebarFixedContent?: ReactNode');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-fixed');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-page');
+    // 抽屉顶部 chrome 只承载设置入口（settingsOnly），品牌行 + 齿轮
     const chromeBlock = mobileLayoutSource.match(/data-mobile-drawer-chrome[\s\S]*?<CustomScrollArea/)?.[0] ?? '';
     expect(chromeBlock).toContain('MobileSidebarNavigation');
-    expect(chromeBlock).toContain('hideSettings');
-    const afterScroll = mobileLayoutSource.slice(mobileLayoutSource.indexOf('<CustomScrollArea'));
-    expect(afterScroll).not.toContain('MobileSidebarNavigation');
+    expect(chromeBlock).toContain('settingsOnly');
+    // 六宫格启动器钉在抽屉底缘（滚动区之外的 shrink-0 兄弟节点），不随列表滚动
+    const launcherBlock = mobileLayoutSource.match(/data-mobile-drawer-launcher[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(launcherBlock).toContain('MobileSidebarNavigation');
+    expect(launcherBlock).toContain('hideSettings');
+    expect(mobileLayoutSource.indexOf('data-mobile-drawer-launcher')).toBeGreaterThan(
+      mobileLayoutSource.indexOf('</CustomScrollArea>'),
+    );
+    // 滚动列表内部不再渲染导航
+    const scrollBlock = mobileLayoutSource.match(/<CustomScrollArea[\s\S]*?<\/CustomScrollArea>/)?.[0] ?? '';
+    expect(scrollBlock).not.toContain('MobileSidebarNavigation');
     expect(mobileLayoutSource).not.toContain("position: 'fixed'");
     expect(mobileLayoutSource).not.toContain('overlayViewport');
     expect(mobileLayoutSource).not.toContain('useSetMobileDrawerOpen');
