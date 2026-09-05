@@ -6,10 +6,15 @@ import { join, relative, resolve } from 'node:path';
  * 移动端可达性契约（2026-08 移动端 UI/UX 统一）
  *
  * 每个 CurrentView 必须至少落入以下三桶之一，杜绝“进不去/出不来”的孤岛视图：
- * 1) F1 抽屉导航：config/navigation.ts 共享导航项 + MobileSidebarNavigation 的
- *    移动端专属管理项（dashboard / data-management）；
+ * 1) F1 抽屉导航：config/navigation.ts 共享导航项 + MOBILE_APP_LAUNCHER_VIEWS
+ *    （2026-09 启动器收口后的移动抽屉二行三列入口）+ MobileSidebarNavigation 手工项；
  * 2) 命令面板：src/command-palette 各 module 中 deps.navigate('view') 的跳转目标；
  * 3) 上下文/DEV 入口 allowlist：由其他视图内的按钮或 DEV 工具跳转抵达。
+ *
+ * 废弃别名例外：仍留在 CurrentView 联合里、但已被 canonicalizeView 字符串级
+ * 重定向的视图（如 dashboard → data-management，2026-09 启动器收口时废弃）
+ * 不是孤岛——任何 navigate('dashboard') 都会落到可达的规范视图。这类视图
+ * 不要求自有入口，但其重定向目标必须可达。
  */
 
 const ROOT = process.cwd();
@@ -64,16 +69,40 @@ const PALETTE_NAVIGATE_LITERAL = /deps\.navigate\(\s*'([a-z0-9-]+)'/g;
 const collectMatches = (source: string, pattern: RegExp): string[] =>
   [...source.matchAll(pattern)].map((match) => match[1]);
 
+/** 解析 config/navigation.ts 的 MOBILE_APP_LAUNCHER_VIEWS 数组（移动抽屉启动器入口） */
+const parseLauncherViews = (sharedNavSource: string): string[] => {
+  const block = sharedNavSource.match(/MOBILE_APP_LAUNCHER_VIEWS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+  return collectMatches(block, /'([a-z0-9-]+)'/g);
+};
+
+/**
+ * 解析 canonicalView.ts 的 DEPRECATED_VIEW_MAP：仍留在 CurrentView 联合里的
+ * 废弃别名 → 重定向目标。键可能不带引号（analysis: 'chat-v2'）或带引号
+ * （'llm-usage-stats': 'data-management'）。
+ */
+const parseDeprecatedViewMap = (canonicalSource: string): Map<string, string> => {
+  const block = canonicalSource.match(/DEPRECATED_VIEW_MAP[^=]*=\s*\{([\s\S]*?)\};/)?.[1] ?? '';
+  return new Map(
+    [...block.matchAll(/'?([a-z0-9-]+)'?\s*:\s*'([a-z0-9-]+)'/g)].map(
+      (match) => [match[1], match[2]] as const,
+    ),
+  );
+};
+
 describe('mobile reachability contract', () => {
   const currentViews = parseCurrentViews();
 
   const sharedNavSource = readSource('src/config/navigation.ts');
   const mobileSidebarSource = readSource('src/components/layout/MobileSidebarNavigation.tsx');
+  const canonicalSource = readSource('src/app/navigation/canonicalView.ts');
 
   const drawerViews = new Set([
     ...collectMatches(sharedNavSource, NAV_ITEM_VIEW_LITERAL),
+    ...parseLauncherViews(sharedNavSource),
     ...collectMatches(mobileSidebarSource, NAV_ITEM_VIEW_LITERAL),
   ]);
+
+  const deprecatedViewMap = parseDeprecatedViewMap(canonicalSource);
 
   const paletteViews = new Set(
     listFiles('src/command-palette')
@@ -81,12 +110,17 @@ describe('mobile reachability contract', () => {
       .flatMap((file) => collectMatches(readSource(file), PALETTE_NAVIGATE_LITERAL)),
   );
 
-  it('keeps the F1 drawer entries for dashboard and data-management in MobileSidebarNavigation', () => {
-    // F1（移动端审计）：这两个视图在桌面侧栏之外只有抽屉「管理」分组这一个移动端入口
-    expect(mobileSidebarSource).toContain("view: 'dashboard' as CurrentView");
-    expect(mobileSidebarSource).toContain("view: 'data-management' as CurrentView");
-    expect(drawerViews.has('dashboard')).toBe(true);
+  const isReachable = (view: string): boolean =>
+    drawerViews.has(view) || paletteViews.has(view) || CONTEXTUAL_ENTRY_VIEWS.has(view);
+
+  it('keeps the mobile drawer launcher entry for data-management (dashboard deprecated)', () => {
+    // F1 后续（2026-09 启动器收口 86212dbbd）：dashboard 视图已废弃，
+    // canonicalizeView 字符串级重定向到 data-management；移动端入口统一收口进
+    // MOBILE_APP_LAUNCHER_VIEWS，抽屉只保留「数据」一格，不再有独立「总览」入口。
+    expect(mobileSidebarSource).toContain('MOBILE_APP_LAUNCHER_VIEWS');
+    expect(deprecatedViewMap.get('dashboard')).toBe('data-management');
     expect(drawerViews.has('data-management')).toBe(true);
+    expect(drawerViews.has('dashboard')).toBe(false);
   });
 
   it('parses non-empty drawer and command palette buckets', () => {
@@ -111,10 +145,16 @@ describe('mobile reachability contract', () => {
   });
 
   it('makes every CurrentView reachable via drawer, command palette, or contextual allowlist', () => {
+    // 废弃别名（dashboard 等）由 canonicalizeView 重定向，不算孤岛；
+    // 但其重定向目标必须可达，否则历史记录里的旧视图会落到空白页。
     const unreachable = currentViews.filter(
-      (view) => !drawerViews.has(view) && !paletteViews.has(view) && !CONTEXTUAL_ENTRY_VIEWS.has(view),
+      (view) => !deprecatedViewMap.has(view) && !isReachable(view),
+    );
+    const orphanedRedirects = currentViews.filter(
+      (view) => deprecatedViewMap.has(view) && !isReachable(deprecatedViewMap.get(view)!),
     );
 
     expect(unreachable).toEqual([]);
+    expect(orphanedRedirects).toEqual([]);
   });
 });

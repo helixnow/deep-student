@@ -12,17 +12,27 @@ const mocks = vi.hoisted(() => ({
   handleBridgeRequest: vi.fn(),
 }));
 
-vi.mock('@/features/workbench', () => ({
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
   workbenchBus: { activate: mocks.activate },
+}));
+
+vi.mock('@/features/workbench/agent/stageManager', () => ({
   stageManager: {
     revertRun: mocks.revertRun,
     hasReversibleRun: mocks.hasRun,
     handleBridgeRequest: mocks.handleBridgeRequest,
   },
-  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
-    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
+}));
+
+vi.mock('@/features/workbench/agent/presenceStore', () => ({
   usePresenceStore: (selector: (state: { byWindow: Record<string, never> }) => unknown) =>
     selector({ byWindow: {} }),
+}));
+
+vi.mock('@/features/workbench/agent/types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/workbench/agent/types')>()),
+  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
+    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
 }));
 
 import { WorkbenchOpsBlock } from '../workbenchOpsBlock';

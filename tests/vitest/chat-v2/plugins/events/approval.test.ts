@@ -13,7 +13,7 @@ vi.mock('i18next', () => ({
 
 const mockActivate = vi.fn(() => true);
 
-vi.mock('@/features/workbench', () => ({
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
   workbenchBus: {
     activate: (...args: unknown[]) => mockActivate(...args),
   },

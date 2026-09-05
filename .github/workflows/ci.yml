@@ -748,7 +748,9 @@ jobs:
   # ============================================
   migration-gate:
     name: Migration Gate (static + production tests + fixtures)
-    runs-on: ubuntu-latest
+    # 钉 22.04：同 Backend 作业的 runner 回收事故（本作业 2026-09-05 在
+    # main 基线上被回收，exit 143）
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0

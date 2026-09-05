@@ -31,10 +31,12 @@ describe('mcp tools section global bypass contract', () => {
     expect(source).toContain(
       `: 'border-border/40 bg-muted/20 hover:border-border/60'`
     );
-    expect(source).toContain(
+    // 2026-09 契约化裁定（368263992）：全局旁路 Switch 不得携带一次性颜色覆盖，
+    // 轨道配色回归 Switch 组件默认（Switch.css token 轨道）。
+    expect(source).not.toContain(
       `data-[state=unchecked]:bg-[color:var(--surface-panel-strong)]`
     );
-    expect(source).toContain(
+    expect(source).not.toContain(
       `data-[state=unchecked]:ring-1 data-[state=unchecked]:ring-[color:var(--button-utility-border)]`
     );
   });

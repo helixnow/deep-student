@@ -70,8 +70,19 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 // ModernSidebar 的会话搜索入口依赖 CommandPaletteProvider 上下文；
 // 本测试只关心会话指示器，stub 掉 useCommandPalette 以免整棵 Provider 树入场。
+// 注意：ModernSidebar 已改深路径 import（绕开 command-palette barrel 瘦身），
+// 必须 mock 深路径模块本身，仅 mock barrel 拦截不到。
 vi.mock('@/command-palette', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/command-palette')>();
+  return {
+    ...actual,
+    useCommandPalette: () => ({
+      openSessionSearch: () => undefined,
+    }),
+  };
+});
+vi.mock('@/command-palette/CommandPaletteProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/command-palette/CommandPaletteProvider')>();
   return {
     ...actual,
     useCommandPalette: () => ({

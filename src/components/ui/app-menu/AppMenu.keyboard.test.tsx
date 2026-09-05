@@ -59,9 +59,10 @@ describe('AppMenu submenu keyboard contract', () => {
     await user.keyboard(key);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    // 打开后焦点落在菜单容器上（不预聚焦任何菜单项，避免"假悬浮"高亮）；
-    // 方向键从容器进入导航，第一次 ArrowDown 聚焦第一项。
-    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
+    // APG 契约（11aefd899 起）：键盘打开直接聚焦当前选中项（无选中则第一项），
+    // 不再先落菜单容器；指针打开才保持焦点在菜单壳。
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus());
+    // 方向键从首项继续漫游（单项菜单循环回自身）
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus();
   });

@@ -676,7 +676,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         }}
         title={t('chatV2:authority.permissionPreset.switchFailedTitle')}
         description={switchError ?? ''}
-        confirmText={t('common:ok')}
+        confirmText={t('common:actions.ok')}
         onConfirm={() => setSwitchError(null)}
       />
     </div>

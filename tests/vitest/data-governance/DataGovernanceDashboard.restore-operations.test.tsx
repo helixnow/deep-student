@@ -633,8 +633,11 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
       name: importButtonName,
     });
 
-    // 入口需要是可见的填充样式，避免 ghost 按钮在深色主题下不明显
-    expect(importBtn.className).toContain('bg-[var(--button-tonal-bg)]');
+    // 入口需要是可见的填充样式，避免 ghost 按钮在深色主题下不明显。
+    // 2026-09 按钮收敛裁定（buttonPrimitiveContract.ts）：tonal 油漆已废除，
+    // 非 danger 变体统一走 --button-plain-* 描边浅填充，可见性由填充+描边保证。
+    expect(importBtn.className).toContain('bg-[var(--button-plain-bg)]');
+    expect(importBtn.className).toContain('border-[color:var(--button-plain-border)]');
   });
 
   it('clicking import button calls open dialog, then importZip API', async () => {
