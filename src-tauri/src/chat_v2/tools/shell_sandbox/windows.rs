@@ -805,7 +805,9 @@ impl DirectHostShellBackend {
     }
 
     fn job_lock(&self) -> std::sync::MutexGuard<'_, Option<OwnedHandle>> {
-        self.job.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.job
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -827,7 +829,9 @@ impl SandboxBackend for DirectHostShellBackend {
         _policy: &SandboxPolicy,
     ) -> Result<Command, String> {
         if let SandboxCapability::Unavailable { reason } = self.capability() {
-            return Err(format!("Unrestricted host shell backend is unavailable: {reason}"));
+            return Err(format!(
+                "Unrestricted host shell backend is unavailable: {reason}"
+            ));
         }
         let powershell = trusted_powershell_path()?;
         // Lifecycle Job first so the spawn hook can bind the child even when

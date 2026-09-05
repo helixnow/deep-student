@@ -7,11 +7,11 @@ use sha2::{Digest, Sha256};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+#[cfg(windows)]
+use super::shell_sandbox::DirectHostShellBackend;
 use super::shell_sandbox::{
     PlatformSandboxBackend, SandboxBackend, SandboxCapability, UnsandboxedShellBackend,
 };
-#[cfg(windows)]
-use super::shell_sandbox::DirectHostShellBackend;
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
     analyze_shell_command, immutable_shell_command_guard, redact_shell_command_for_display,
@@ -540,8 +540,7 @@ impl LocalShellPreflightExecutor {
             || command.len() > 8192
             || !shell.execution_supported
             || !sandbox_available
-            || (!unrestricted
-                && immutable_guard_decision.effect == ShellCommandGuardEffect::Deny)
+            || (!unrestricted && immutable_guard_decision.effect == ShellCommandGuardEffect::Deny)
             || (!unrestricted
                 && command_policy.effective_effect
                     == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny)

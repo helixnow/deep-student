@@ -21,10 +21,10 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    cancellable_sleep, ensure_declared_len_within_budget,
-    ensure_memory_get_matches_declared_len, report_status, BoundedMemoryBody, CloudStorage,
-    DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
-    MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
+    cancellable_sleep, ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len,
+    report_status, BoundedMemoryBody, CloudStorage, DownloadProgressCallback, FileInfo,
+    ListOutcome, Result, UploadProgressCallback, MEMORY_GET_DEFAULT_BUDGET_BYTES,
+    MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -1004,7 +1004,8 @@ impl CloudStorage for WebDavStorage {
             self.acquire_request_slot().await?;
             let send_result = self
                 .http
-                .request(Method::PUT, url.clone()).header("Authorization", self.auth_header())
+                .request(Method::PUT, url.clone())
+                .header("Authorization", self.auth_header())
                 // 显式 Content-Length：坚果云（SabreDAV）对 chunked PUT 会断连；
                 // 文件大小已知，固定长度请求体更兼容
                 .header(reqwest::header::CONTENT_LENGTH, file_size)
@@ -1652,7 +1653,8 @@ mod tests {
     }
 
     #[test]
-    fn provider_rate_limit_window_is_shared_across_storage_instances() {        let config = |username: &str| WebDavConfig {
+    fn provider_rate_limit_window_is_shared_across_storage_instances() {
+        let config = |username: &str| WebDavConfig {
             endpoint: "https://dav.jianguoyun.com/dav/".to_string(),
             username: username.to_string(),
             password: "secret".to_string(),
