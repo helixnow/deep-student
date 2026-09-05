@@ -69,11 +69,11 @@ pub(crate) fn report_status(msg: &str) {
 // 退避重试睡眠经 select! 监听令牌，取消时立即返回错误而非死等到底。
 // 与 STATUS_HOOK 同生命周期：同步全局信号量串行化，注册/卸下配对。
 
-static CANCEL_TOKEN: std::sync::OnceLock<std::sync::RwLock<Option<tokio_util::sync::CancellationToken>>> =
-    std::sync::OnceLock::new();
+static CANCEL_TOKEN: std::sync::OnceLock<
+    std::sync::RwLock<Option<tokio_util::sync::CancellationToken>>,
+> = std::sync::OnceLock::new();
 
-fn cancel_token_slot(
-) -> &'static std::sync::RwLock<Option<tokio_util::sync::CancellationToken>> {
+fn cancel_token_slot() -> &'static std::sync::RwLock<Option<tokio_util::sync::CancellationToken>> {
     CANCEL_TOKEN.get_or_init(|| std::sync::RwLock::new(None))
 }
 

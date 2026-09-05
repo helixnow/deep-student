@@ -1115,7 +1115,9 @@ impl LocalShellExecuteExecutor {
                     .as_str()
                     .ok_or_else(|| format!("env.{key} must be a string"))?;
                 if value.contains('\0') || value.len() > 8192 {
-                    return Err(format!("env.{key} is too large or contains an invalid character"));
+                    return Err(format!(
+                        "env.{key} is too large or contains an invalid character"
+                    ));
                 }
                 explicit_values.insert(key.to_string(), value.to_string());
             }
@@ -2022,7 +2024,8 @@ impl LocalShellExecuteExecutor {
             if let Some(home) = dirs::home_dir() {
                 guard_roots.push(home);
             }
-            let immutable_guard = immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
+            let immutable_guard =
+                immutable_shell_command_guard(&command, Some(&cwd_abs), &guard_roots);
             match immutable_guard.effect {
                 ShellCommandGuardEffect::Deny => {
                     return Err(format!(
@@ -2085,7 +2088,9 @@ impl LocalShellExecuteExecutor {
             let cleanup_result = Self::terminate_and_reap(&mut child, &*sandbox_backend).await;
             sandbox_backend.cleanup_command_resources(&shell);
             if let Err(cleanup_error) = cleanup_result {
-                log::warn!("[LocalShellExecuteExecutor] Spawn-hook cleanup warning: {cleanup_error}");
+                log::warn!(
+                    "[LocalShellExecuteExecutor] Spawn-hook cleanup warning: {cleanup_error}"
+                );
             }
             return Err(error);
         }
