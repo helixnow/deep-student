@@ -14,7 +14,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 
@@ -32,6 +32,8 @@ use crate::models::AppError;
 /// 部分服务器（或代理）会返回夸张的 Retry-After（如 21600 秒 = 6 小时），
 /// 同步流程不能因此挂起数小时——封顶后按上限等待，重试次数本身有界。
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(30);
+const RATE_WINDOW: Duration = Duration::from_secs(30 * 60);
+const NUTSTORE_REQUESTS_PER_WINDOW: usize = 540;
 
 /// WebDAV 存储实现
 pub struct WebDavStorage {
@@ -43,6 +45,9 @@ pub struct WebDavStorage {
     /// 本会话内已确认存在（MKCOL 成功或已存在）的远程目录缓存。
     /// 避免每次 PUT 都对整条路径重发全链 MKCOL。
     created_dirs: Mutex<HashSet<String>>,
+    /// 主动请求滑窗，避免同一 provider/session 短时间打爆 WebDAV。
+    request_window: Mutex<std::collections::VecDeque<Instant>>,
+    requests_per_window: usize,
 }
 
 impl WebDavStorage {
@@ -65,6 +70,13 @@ impl WebDavStorage {
             .build()
             .map_err(|e| AppError::internal(format!("构建 HTTP 客户端失败: {e}")))?;
 
+        let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        let requests_per_window = if host.contains("jianguoyun") || host.contains("nutstore") {
+            NUTSTORE_REQUESTS_PER_WINDOW
+        } else {
+            0
+        };
+
         Ok(Self {
             base_url: url,
             username: config.username,
@@ -72,7 +84,43 @@ impl WebDavStorage {
             root: root.trim_matches('/').to_string(),
             http,
             created_dirs: Mutex::new(HashSet::new()),
+            request_window: Mutex::new(std::collections::VecDeque::new()),
+            requests_per_window,
         })
+    }
+
+    /// 获取主动限流请求槽位；普通 provider 不限速。
+    async fn acquire_request_slot(&self) {
+        if self.requests_per_window == 0 {
+            return;
+        }
+        loop {
+            let wait = {
+                let mut window = self
+                    .request_window
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                let now = Instant::now();
+                while window
+                    .front()
+                    .is_some_and(|t| now.duration_since(*t) >= RATE_WINDOW)
+                {
+                    window.pop_front();
+                }
+                if window.len() < self.requests_per_window {
+                    window.push_back(now);
+                    None
+                } else {
+                    window
+                        .front()
+                        .map(|t| RATE_WINDOW.saturating_sub(now.duration_since(*t)))
+                }
+            };
+            match wait {
+                None => return,
+                Some(delay) => tokio::time::sleep(delay.min(Duration::from_secs(60))).await,
+            }
+        }
     }
 
     /// 判断状态码是否值得有界重试。
@@ -261,6 +309,8 @@ impl WebDavStorage {
                 builder
             };
 
+            self.acquire_request_slot().await;
+
             // send() 覆盖"连接 + 发送内存体 + 等响应头"，不覆盖流式响应体下载，
             // 因此对 get_file 的大文件流式下载无影响（其逐块停滞保护在 get_file 内）。
             // 防止服务器收下 TCP 连接后无限沉默导致 send() 永久挂起。
@@ -336,6 +386,7 @@ impl WebDavStorage {
                 );
             }
 
+            self.acquire_request_slot().await;
             let send_result = tokio::time::timeout(
                 Duration::from_secs(120),
                 self.http
