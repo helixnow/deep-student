@@ -17,12 +17,160 @@ use async_trait::async_trait;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
+use super::arg_utils::{ensure_localized_error, with_localized_message};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::ContextRef;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
+
+pub(crate) fn attachment_error(
+    code: &str,
+    zh_cn: impl Into<String>,
+    en_us: impl Into<String>,
+    hint_zh: impl Into<String>,
+    hint_en: impl Into<String>,
+    retryable: bool,
+) -> String {
+    let zh_cn = zh_cn.into();
+    let en_us = en_us.into();
+    let hint_zh = hint_zh.into();
+    let hint_en = hint_en.into();
+    with_localized_message(
+        json!({
+            "code": code,
+            "hint": hint_zh,
+            "hintFallback": {
+                "zh-CN": hint_zh,
+                "en-US": hint_en,
+            },
+            "retryable": retryable,
+        }),
+        "chat.tools.attachment.error",
+        json!({ "code": code, "detail": zh_cn.clone() }),
+        zh_cn,
+        en_us,
+    )
+    .to_string()
+}
+
+fn schema_unavailable_error() -> String {
+    attachment_error(
+        "ATTACHMENT_STORE_SCHEMA_UNAVAILABLE",
+        "附件存储表不可用，请先完成数据库迁移",
+        "The attachment store schema is unavailable. Run database migrations first.",
+        "完成数据库迁移后再调用 attachment_list/read；不要改试 attachment_stage",
+        "Run database migrations, then retry attachment_list/read. Do not retry with attachment_stage.",
+        false,
+    )
+}
+
+fn invalid_attachment_args_error(param: &str) -> String {
+    attachment_error(
+        "ATTACHMENT_INVALID_ARGS",
+        format!("缺少非空参数 {param}"),
+        format!("Missing non-empty '{param}' parameter"),
+        "必须提供非空 message_id 与 attachment_id。已有 <attachment_metadata> 时直接使用 rootId/relativePath/objectHandle；历史附件先 attachment_list",
+        "Provide non-empty message_id and attachment_id. If <attachment_metadata> is present, use rootId/relativePath/objectHandle directly; otherwise call attachment_list first.",
+        false,
+    )
+}
+
+fn attachment_not_found_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_NOT_FOUND",
+        detail.clone(),
+        detail,
+        "用 attachment_list 或已有 <attachment_metadata> 取得真实 message_id/attachment_id；不要用 attachment_stage 搜索附件",
+        "Use attachment_list or existing <attachment_metadata> to get a real message_id/attachment_id. Do not use attachment_stage to search attachments.",
+        false,
+    )
+}
+
+fn attachment_source_unavailable_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_SOURCE_UNAVAILABLE",
+        detail.clone(),
+        detail,
+        "附件记录仍存在，但原始内容已不可用；attachment_list/stage 无法修复，请让用户重新附加该文件",
+        "The attachment record exists but its source bytes are unavailable. Listing or staging cannot repair it; ask the user to attach the file again.",
+        false,
+    )
+}
+
+fn staged_file_not_found_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_STAGED_FILE_NOT_FOUND",
+        detail.clone(),
+        detail,
+        "暂存文件已失效；重新调用 attachment_stage，并把新返回的 root_id/relative_path 传给 attachment_extract",
+        "The staged file expired. Call attachment_stage again and pass its new root_id/relative_path to attachment_extract.",
+        true,
+    )
+}
+
+pub(crate) fn required_attachment_id(args: &Value, key: &str) -> Result<String, String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| invalid_attachment_args_error(key))
+}
+
+fn is_schema_unavailable(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("no such table")
+}
+
+fn is_attachment_not_found(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.starts_with("attachment not found:") || lower.starts_with("message not found:")
+}
+
+fn is_attachment_source_unavailable(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.starts_with("attachment source not found in vfs:")
+        || lower.starts_with("resource not found in vfs:")
+        || lower.contains("has no raw content available")
+}
+
+fn is_staged_file_not_found(error: &str) -> bool {
+    error
+        .to_ascii_lowercase()
+        .starts_with("staged file not found:")
+}
+
+pub(crate) fn localized_attachment_failure(error: impl Into<String>) -> String {
+    let raw = error.into();
+    let mapped = if serde_json::from_str::<Value>(&raw)
+        .ok()
+        .as_ref()
+        .is_some_and(Value::is_object)
+    {
+        raw
+    } else if is_schema_unavailable(&raw) {
+        schema_unavailable_error()
+    } else if is_staged_file_not_found(&raw) {
+        staged_file_not_found_error(raw)
+    } else if is_attachment_source_unavailable(&raw) {
+        attachment_source_unavailable_error(raw)
+    } else if is_attachment_not_found(&raw) {
+        attachment_not_found_error(raw)
+    } else {
+        raw
+    };
+    ensure_localized_error(
+        mapped,
+        "ATTACHMENT_OPERATION_FAILED",
+        "chat.tools.attachment.error",
+        "附件操作失败",
+        "The attachment operation failed.",
+    )
+}
 
 // ============================================================================
 // 常量
@@ -90,7 +238,7 @@ impl AttachmentToolExecutor {
 
         // 查询会话中的消息
         let messages = ChatV2Repo::get_session_messages_v2(chat_v2_db, &session_id)
-            .map_err(|e| format!("Failed to get messages: {}", e))?;
+            .map_err(|e| localized_attachment_failure(format!("Failed to get messages: {}", e)))?;
 
         // 收集所有附件（兼容 legacy attachments + context_snapshot.user_refs）
         let mut attachments: Vec<Value> = Vec::new();
@@ -194,17 +342,8 @@ impl AttachmentToolExecutor {
             .as_ref()
             .ok_or("Chat V2 database not available")?;
 
-        // 解析参数
-        let message_id = call
-            .arguments
-            .get("message_id")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'message_id' parameter")?;
-        let attachment_id = call
-            .arguments
-            .get("attachment_id")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'attachment_id' parameter")?;
+        let message_id = required_attachment_id(&call.arguments, "message_id")?;
+        let attachment_id = required_attachment_id(&call.arguments, "attachment_id")?;
         let parse_content = call
             .arguments
             .get("parse_content")
@@ -219,9 +358,11 @@ impl AttachmentToolExecutor {
         let start_time = Instant::now();
 
         // 获取消息
-        let message = ChatV2Repo::get_message_v2(chat_v2_db, message_id)
-            .map_err(|e| format!("Failed to get message: {}", e))?
-            .ok_or_else(|| format!("Message not found: {}", message_id))?;
+        let message = ChatV2Repo::get_message_v2(chat_v2_db, &message_id)
+            .map_err(|e| localized_attachment_failure(format!("Failed to get message: {}", e)))?
+            .ok_or_else(|| {
+                attachment_not_found_error(format!("Message not found: {}", message_id))
+            })?;
 
         // P0-01 安全修复：验证消息所属会话，防止跨会话访问
         if message.session_id != ctx.session_id {
@@ -231,7 +372,7 @@ impl AttachmentToolExecutor {
         if let Some(attachment) = message
             .attachments
             .as_ref()
-            .and_then(|atts| atts.iter().find(|a| a.id == attachment_id))
+            .and_then(|atts| atts.iter().find(|a| a.id == attachment_id.as_str()))
         {
             // 从 preview_url 提取内容
             let content = if let Some(preview_url) = &attachment.preview_url {
@@ -321,10 +462,10 @@ impl AttachmentToolExecutor {
                     .find(|r| r.resource_id == attachment_id)
             })
             .ok_or_else(|| {
-                format!(
+                attachment_not_found_error(format!(
                     "Attachment not found: {} in message {}",
                     attachment_id, message_id
-                )
+                ))
             })?;
 
         let (name, mime_type, content) = read_context_ref_content(ctx, context_ref, parse_content)?;
@@ -479,7 +620,7 @@ impl ToolExecutor for AttachmentToolExecutor {
                 Ok(result)
             }
             Err(e) => {
-                // 发射工具调用错误事件
+                let e = localized_attachment_failure(e);
                 ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
@@ -605,6 +746,66 @@ mod tests {
             executor.sensitivity_level("builtin-attachment_list"),
             ToolSensitivity::Low
         );
+        assert_eq!(
+            executor.sensitivity_level("builtin-attachment_read"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.concurrency_class("builtin-attachment_list"),
+            ToolConcurrency::ReadOnly
+        );
+        assert_eq!(
+            executor.concurrency_class("builtin-attachment_read"),
+            ToolConcurrency::ReadOnly
+        );
+        assert!(!executor.can_handle("builtin-attachment_stage"));
+    }
+
+    #[test]
+    fn structured_errors_map_schema_args_and_not_found() {
+        let schema: Value = serde_json::from_str(&localized_attachment_failure(
+            "Failed to get messages: no such table: attachments",
+        ))
+        .expect("schema error");
+        assert_eq!(schema["code"], "ATTACHMENT_STORE_SCHEMA_UNAVAILABLE");
+        assert_eq!(schema["retryable"], false);
+        assert!(schema["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("不要改试 attachment_stage")));
+
+        let missing = required_attachment_id(&json!({}), "message_id").unwrap_err();
+        let args: Value =
+            serde_json::from_str(&localized_attachment_failure(missing)).expect("invalid args");
+        assert_eq!(args["code"], "ATTACHMENT_INVALID_ARGS");
+        assert_eq!(args["retryable"], false);
+        assert!(args["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("attachment_list")));
+
+        let empty =
+            required_attachment_id(&json!({ "attachment_id": " " }), "attachment_id").unwrap_err();
+        let empty_args: Value =
+            serde_json::from_str(&localized_attachment_failure(empty)).expect("empty id");
+        assert_eq!(empty_args["code"], "ATTACHMENT_INVALID_ARGS");
+
+        let missing_attachment: Value = serde_json::from_str(&localized_attachment_failure(
+            "Attachment not found: att_x in message msg_x",
+        ))
+        .expect("not found");
+        assert_eq!(missing_attachment["code"], "ATTACHMENT_NOT_FOUND");
+        assert_eq!(missing_attachment["retryable"], false);
+        assert!(missing_attachment["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("attachment_list")));
+
+        let missing_source: Value = serde_json::from_str(&localized_attachment_failure(
+            "Resource not found in VFS: file_x",
+        ))
+        .expect("missing source");
+        assert_eq!(missing_source["code"], "ATTACHMENT_SOURCE_UNAVAILABLE");
+        assert!(missing_source["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("重新附加")));
     }
 
     #[tokio::test]

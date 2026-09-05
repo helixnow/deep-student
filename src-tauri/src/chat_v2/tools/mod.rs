@@ -110,6 +110,7 @@ pub mod tool_pack_executor; // ToolPack parallel executor
 pub mod translation_executor; // Translation pipeline + explicit VFS save tools
 pub mod types;
 pub mod user_todo_executor;
+pub(crate) mod utf8_paged_read;
 pub mod workbench_bridge; // ACR R1-01：工作台桥 RPC（acr_bridge_call）
 /// ACR R1-02 提供实现文件 `workbench_executor.rs`；本处仅预留 mod/pub use，避免 R1-01 悬空引用。
 pub mod workbench_executor;

@@ -522,7 +522,8 @@ jobs:
     runs-on: windows-latest
     # Cold-sccache runs need ~26m for the test-profile compile alone; 30m
     # kills the job during post-steps after the tests have already passed.
-    timeout-minutes: 45
+    # The helper integration test also builds the real application binary.
+    timeout-minutes: 75
     env:
       CARGO_INCREMENTAL: 0
       RUSTC_WRAPPER: sccache
@@ -545,7 +546,7 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # 单次 cargo test 同时承担编译与执行：此前先 cargo check --lib 再
+      # 首个 cargo test 同时承担 lib 编译与执行：此前先 cargo check --lib 再
       # cargo test --lib 在 Windows 上等于完整编译两遍（check 的 metadata
       # 产物无法被 test 的 codegen 复用），30 分钟超时被取消。编译失败
       # 仍会让本步骤直接红。测试保持默认并行：起进程的 AppContainer 用例
@@ -553,6 +554,10 @@ jobs:
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
         run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+
+      - name: Exercise Windows shell helper end to end
+        working-directory: src-tauri
+        run: cargo test --test windows_shell_helper_e2e -- --nocapture
 
       - name: sccache stats to summary
         if: always()

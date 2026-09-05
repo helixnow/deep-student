@@ -5335,6 +5335,53 @@ impl Database {
         load_anki_library_card_record(&conn, card_id, Utc::now().timestamp_millis())
     }
 
+    /// Reads live library cards by explicit IDs in one snapshot, preserving
+    /// request order. Any missing or soft-deleted ID fails the whole batch.
+    pub fn get_anki_agent_library_cards_by_ids(
+        &self,
+        _scope: AnkiLibraryScope,
+        card_ids: &[String],
+    ) -> Result<Vec<AnkiCard>> {
+        if card_ids.is_empty() {
+            return Err(anyhow::anyhow!("library_card_ids_required"));
+        }
+
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        let mut cards = Vec::with_capacity(card_ids.len());
+        let mut missing = Vec::new();
+        {
+            let mut stmt = tx.prepare(
+                "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                        ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                        COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                        ac.template_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+            )?;
+            for card_id in card_ids {
+                match stmt
+                    .query_row(params![card_id], map_anki_card_row)
+                    .optional()?
+                {
+                    Some(card) => cards.push(card),
+                    None => missing.push(card_id.clone()),
+                }
+            }
+        }
+        if !missing.is_empty() {
+            return Err(anyhow::anyhow!(
+                "library_cards_unavailable: {}",
+                missing.join(",")
+            ));
+        }
+        tx.commit()?;
+        Ok(cards)
+    }
+
     /// Updates one live library card only while its content version remains
     /// current. The card's task and `source_session_id` are never rewritten.
     pub fn update_anki_card_if_version_for_library(
@@ -9141,6 +9188,78 @@ mod tests {
             }
             other => panic!("expected stale content conflict, got {other:?}"),
         }
+        Ok(())
+    }
+
+    #[test]
+    fn agent_library_cards_by_ids_preserve_order_and_fail_closed() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let first = insert_agent_library_fixture(
+            &db,
+            "doc-export-a",
+            "task-export-a",
+            "card-export-a",
+            Some("session-a"),
+        )?;
+        let second = insert_agent_library_fixture(
+            &db,
+            "doc-export-b",
+            "task-export-b",
+            "card-export-b",
+            Some("session-b"),
+        )?;
+        insert_agent_library_fixture(
+            &db,
+            "doc-export-deleted",
+            "task-export-deleted",
+            "card-export-deleted",
+            Some("session-c"),
+        )?;
+        db.get_conn_safe()?.execute(
+            "UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2",
+            params![Utc::now().timestamp_millis(), "card-export-deleted"],
+        )?;
+        let scope = AnkiLibraryScope::agent();
+
+        let ordered = db.get_anki_agent_library_cards_by_ids(
+            scope,
+            &["card-export-b".to_string(), "card-export-a".to_string()],
+        )?;
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|card| card.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["card-export-b", "card-export-a"]
+        );
+        assert_eq!(ordered[0].front, second.front);
+        assert_eq!(ordered[1].back, first.back);
+        assert_eq!(ordered[0].updated_at, second.updated_at);
+
+        let missing = db
+            .get_anki_agent_library_cards_by_ids(
+                scope,
+                &[
+                    "card-export-a".to_string(),
+                    "card-export-missing".to_string(),
+                ],
+            )
+            .expect_err("missing IDs fail the whole batch");
+        assert!(missing.to_string().contains("library_cards_unavailable"));
+        assert!(missing.to_string().contains("card-export-missing"));
+        assert!(!missing.to_string().contains("card-export-a,"));
+
+        let deleted = db
+            .get_anki_agent_library_cards_by_ids(
+                scope,
+                &[
+                    "card-export-a".to_string(),
+                    "card-export-deleted".to_string(),
+                ],
+            )
+            .expect_err("soft-deleted IDs fail the whole batch");
+        assert!(deleted.to_string().contains("card-export-deleted"));
         Ok(())
     }
 

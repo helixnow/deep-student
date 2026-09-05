@@ -64,8 +64,8 @@ export const essayGradingSkill: SkillDefinition = {
 图片或扫描作文不能直接声称已经识别。按以下真实工具链执行，逐步传递上一步返回的 ID：
 
 1. 加载 \`attachment-tools\`、\`dstu-tools\`、\`document-processing\`、\`learning-resource\`。
-2. 用 \`builtin-attachment_stage\`（\`message_id\` + \`attachment_id\`）把附件物化到会话临时目录。
-3. 将返回的 \`root_id\` + \`relative_path\` 原样交给 \`builtin-dstu_upload_file\`，取得真实资源 ID。
+2. 若上下文已有 \`<attachment_metadata>\`，直接使用其中的 \`rootId\` / \`relativePath\`，不要再 stage；否则历史附件先 \`builtin-attachment_list\`，再用 \`builtin-attachment_stage\`（\`message_id\` + \`attachment_id\`）把附件物化到会话临时目录。
+3. 将 \`root_id\` + \`relative_path\` 原样交给 \`builtin-dstu_upload_file\`，取得真实资源 ID。
 4. 对该资源调用 \`builtin-document_parse\`，再用 \`builtin-document_parse_status\` 轮询，直到明确 \`stage=completed\` 或报告错误。
 5. 用 \`builtin-resource_read\` 读取解析后的全文；将返回的文本作为 \`builtin-essay_grade.text\` 输入。解析失败时停止并向用户报告，不得编造 OCR 文本。
 

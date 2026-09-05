@@ -30,6 +30,27 @@ const CODE_NAVIGATION_TOOLS = [
 ] as const;
 
 describe('workspace mutation tool contracts', () => {
+  it('exposes paged UTF-8 workspace_file_read with offset and expected_hash', () => {
+    const tool = workspaceToolsSkill.embeddedTools.find((item) => item.name === 'builtin-workspace_file_read');
+    const schema = tool?.inputSchema as {
+      required?: string[];
+      properties?: {
+        offset?: { type?: string; minimum?: number; default?: number };
+        max_bytes?: { type?: string; minimum?: number; maximum?: number };
+        expected_hash?: { type?: string };
+      };
+    };
+    expect(schema.required).toEqual(['path']);
+    expect(schema.properties?.offset?.minimum).toBe(0);
+    expect(schema.properties?.offset?.default).toBe(0);
+    expect(schema.properties?.max_bytes?.minimum).toBe(1);
+    expect(schema.properties?.max_bytes?.maximum).toBe(1048576);
+    expect(schema.properties?.expected_hash?.type).toBe('string');
+    expect(tool?.description).toContain('next_offset');
+    expect(tool?.description).toContain('sha256');
+    expect(workspaceToolsSkill.content).toContain('offset/max_bytes');
+  });
+
   it('exposes every auditable workspace mutation tool to the model', () => {
     const names = workspaceToolsSkill.embeddedTools.map((tool) => tool.name);
     expect(names).toEqual(expect.arrayContaining(MUTATION_TOOLS));

@@ -7,6 +7,7 @@
  */
 
 import type { SkillDefinition } from '../types';
+import { ATTACHMENT_STAGE_TOOL } from './attachment-tools';
 
 const WORKSPACE_TOOL_NAMES = [
   'builtin-workspace_create',
@@ -119,7 +120,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_update_document**: 创建/更新文档
 - **builtin-workspace_read_document**: 读取文档
 - **builtin-workspace_file_list**: 列出授权 runtime root 或当前 Skill package root 下的文件
-- **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件
+- **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件；可用 offset/max_bytes 续读，返回 sha256（完整文件）、returned_bytes、next_offset、eof
 - **builtin-workspace_text_search**: 在 workspace 中跨文件搜索文本/正则，返回路径、行列和单行预览
 - **builtin-workspace_symbol_outline**: 提取单个源码文件的声明提纲，用于快速定位类、函数、类型等符号
 - **builtin-workspace_lsp_definition**: 使用已安装语言服务器解析符号定义
@@ -132,7 +133,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-workspace_file_move**: 移动 workspace 文件，要求携带读取时取得的当前 hash
 - **builtin-workspace_file_delete**: 删除 workspace 文件，要求携带读取时取得的当前 hash
 - **builtin-workspace_change_revert**: 使用变更工具返回的完整 mutation_receipt 回滚该次变更
-- **builtin-attachment_stage**: 把聊天附件的原始字节物化到会话 temp root 的 attachments/ 子目录，返回 root_id + relative_path，供 workspace 文件工具或 local_shell_execute（cwd 选 temp）继续处理二进制/大文件
+- **builtin-attachment_stage**: 仅物化一个已知附件到 temp root，返回 root_id + relative_path；不是列表或搜索工具。已有 <attachment_metadata> 时直接使用 rootId/relativePath/objectHandle，不要再 stage；历史附件先 attachment_list
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 提交非交互本地命令，由后端按当前会话档位决定静默执行或展示审批 UI，返回 exit code、stdout/stderr 与截断状态
 - **builtin-git_status**: 结构化读取当前 workspace 仓库状态
@@ -154,12 +155,12 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 
 ## 处理用户发送的附件
 
-用户通过聊天输入区上传的文件默认存储在 VFS blob 中，**不在 runtime root 文件系统可达范围内**。\`attachment_read\` 只能返回解析文本或 base64，无法提供磁盘路径，因此 xlsx/zip/图片等二进制附件不能直接交给 shell 或脚本处理。
+用户通过聊天输入区上传的文件默认存储在 VFS blob 中，**不在 runtime root 文件系统可达范围内**。\`attachment_read\` 只能返回解析文本或 base64，无法提供磁盘路径，因此 xlsx/zip/图片等二进制附件不能直接交给 shell 或脚本处理。\`attachment_stage\` 只物化一个已知附件，不是列表或搜索工具。
 
 **推荐流程**：
 
-1. 从消息上下文的 \`<attachment ... source_id="...">\` 或 \`builtin-attachment_list\` 获取 \`message_id\` 与 \`attachment_id\`（context ref 的 \`source_id\` / \`resource_id\` 即 attachment_id）。
-2. 调用 **builtin-attachment_stage**，把附件原始字节物化到当前会话 temp root 的 \`attachments/\` 子目录；返回 \`{ root_id: "temp", relative_path: "attachments/<name>", staged: "staged"|"already_staged" }\`。
+1. 若消息上下文已有 \`<attachment_metadata>\`（含 \`rootId\` / \`relativePath\` / \`objectHandle\`）：直接使用这些字段，**不要**再调用 \`attachment_stage\`。
+2. 历史附件（无 metadata）：先用 \`builtin-attachment_list\` 获取 \`message_id\` 与 \`attachment_id\`（context ref 的 \`source_id\` / \`resource_id\` 即 attachment_id），再调用 **builtin-attachment_stage** 物化到当前会话 temp root 的 \`attachments/\` 子目录；返回 \`{ root_id: "temp", relative_path: "attachments/<name>", staged: "staged"|"already_staged" }\`。
 3. 用 **builtin-workspace_file_read**（\`root_id=temp\`, \`path=<relative_path>\`）读取文本预览，或 **builtin-local_shell_execute**（\`root_id=temp\`，cwd 指向 \`attachments\` 或具体文件所在目录）运行脚本处理。
 4. 处理结果写入 **artifacts** root（\`workspace_artifact_write\`），并在最终回复中告知用户产物路径。
 
@@ -169,7 +170,7 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 
 用户发来 zip 技能包时，**禁止**用 shell 直接写入 \`~/.deep-student/skills\`（会被 local_shell 封侧门拦截）。请走治理正门：
 
-1. 若 zip 在聊天附件里：先用 **builtin-attachment_stage** 物化到 temp root（见上文「处理用户发送的附件」）。
+1. 若 zip 在聊天附件里：已有 \`<attachment_metadata>\` 则直接用其路径；否则先用 **builtin-attachment_stage** 物化到 temp root（见上文「处理用户发送的附件」）。
 2. 调用 **builtin-skill_scan**（Low，免审批）：\`source\` 填 \`{ url: "https://..." }\` 或 \`{ root_id: "temp", path: "attachments/xxx.zip" }\`；返回 \`package_sha256\`、\`risk_level\`、\`risk_signals\` 等扫描摘要。
 3. 向用户展示风险与能力摘要后直接调用 **builtin-skill_install**（High）：携带相同 \`source\`、必填 \`expected_sha256\` 和 \`skill_id\`（均来自 scan 结果）、可选 \`declared_risk_level\` 与 \`overwrite\`。需要确认时由平台审批卡统一承接，不要先追加一次重复的文字确认。
 4. 安装成功后：技能已装入 \`~/.deep-student/skills/<id>/\`，**默认未信任**。下一步调用 \`builtin-skill_trust_request\`（先 \`action=inspect\` 再 \`grant\`）；「技能管理」仅作备用。信任后再 \`load_skills\` / 跑 SKILL_DIR 脚本。
@@ -400,7 +401,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_file_read',
       description:
-        '读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件。path 必须是相对路径，且不能逃逸所选 root。',
+        '读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件。path 必须是相对路径，且不能逃逸所选 root。用 offset（UTF-8 字节偏移，须落在字符边界）与 max_bytes 分页续读；返回 content、returned_bytes、next_offset、eof、truncated，以及完整文件 sha256。offset 落在字符中间或超出 EOF 会拒绝；offset=EOF 返回空块。可用 expected_hash 校验内容未变。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -412,12 +413,22 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'string',
             description: '所选 root 内的相对文件路径',
           },
+          offset: {
+            type: 'integer',
+            minimum: 0,
+            default: 0,
+            description: 'UTF-8 字节偏移，须落在字符边界；续读时传上次 next_offset',
+          },
           max_bytes: {
             type: 'integer',
             minimum: 1,
             maximum: 1048576,
             default: 65536,
-            description: '最多返回的字节数，超出会截断',
+            description: '本次最多返回的正文字节数；结果还会按 30k JSON 预算再缩块，next_offset 按最终正文计算',
+          },
+          expected_hash: {
+            type: 'string',
+            description: '可选：上次读取返回的完整文件 sha256；不匹配则拒绝，需从 offset=0 重读',
           },
         },
         required: ['path'],
@@ -677,29 +688,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
         },
       },
     },
-    {
-      name: 'builtin-attachment_stage',
-      description:
-        '把聊天附件原始字节物化到会话 temp root 的 attachments/ 子目录，返回 { root_id: "temp", relative_path, size, sha256, staged }。二进制/大文件（xlsx/zip/图片等）先物化，再交给 workspace 文件工具或 local_shell_execute（root_id=temp）处理。同内容重复物化复用既有路径，同名不同内容自动加序号；定位参数同 attachment_read。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          message_id: {
-            type: 'string',
-            description: '附件所属的消息 ID（可经 builtin-attachment_list 获取）',
-          },
-          attachment_id: {
-            type: 'string',
-            description: '附件 ID（或消息 context ref 的资源 ID）',
-          },
-          filename: {
-            type: 'string',
-            description: '可选。覆盖物化目标文件名（仅文件名；非法字符会被清洗）',
-          },
-        },
-        required: ['message_id', 'attachment_id'],
-      },
-    },
+    ATTACHMENT_STAGE_TOOL,
     {
       name: 'builtin-local_shell_preflight',
       description:

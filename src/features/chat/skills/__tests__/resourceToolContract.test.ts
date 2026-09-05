@@ -18,6 +18,31 @@ function getDerivedTool(name: string) {
 }
 
 describe('resource tool contract consistency', () => {
+  it('resource_read schema exposes UTF-8 byte paging and expected_hash', () => {
+    const tool = learningResourceSkill.embeddedTools.find((t) => t.name === 'builtin-resource_read');
+    const schema = tool?.inputSchema as {
+      required?: string[];
+      properties?: {
+        offset?: { type?: string; minimum?: number; default?: number };
+        max_bytes?: { type?: string; minimum?: number; maximum?: number };
+        expected_hash?: { type?: string };
+        page_start?: { type?: string };
+        page_end?: { type?: string };
+      };
+    };
+    expect(schema.required).toEqual(['resource_id']);
+    expect(schema.properties?.offset?.minimum).toBe(0);
+    expect(schema.properties?.offset?.default).toBe(0);
+    expect(schema.properties?.max_bytes?.minimum).toBe(1);
+    expect(schema.properties?.max_bytes?.maximum).toBe(1048576);
+    expect(schema.properties?.expected_hash?.type).toBe('string');
+    expect(schema.properties?.page_start).toBeDefined();
+    expect(schema.properties?.page_end).toBeDefined();
+    expect(tool?.description).toContain('next_offset');
+    expect(tool?.description).toContain('sha256');
+    expect(learningResourceSkill.content).toContain('next_offset');
+  });
+
   it('learning-resource list/search schemas expose full resource type set', () => {
     const listTool = learningResourceSkill.embeddedTools.find(t => t.name === 'builtin-resource_list');
     const searchTool = learningResourceSkill.embeddedTools.find(t => t.name === 'builtin-resource_search');

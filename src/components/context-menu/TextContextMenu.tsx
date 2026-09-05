@@ -73,6 +73,18 @@ async function writeClipboardText(text: string): Promise<boolean> {
   }
 }
 
+/** 绕过 React 的节点 value tracker，确保后续 input 事件触发受控组件 onChange。 */
+function setNativeFieldValue(target: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  const proto =
+    target instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) {
+    setter.call(target, value);
+  } else {
+    target.value = value;
+  }
+}
+
 function getSelectedText(target: HTMLElement): string {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     const start = target.selectionStart ?? 0;
@@ -88,7 +100,7 @@ function insertAtSelection(target: HTMLElement, text: string): void {
     const end = target.selectionEnd ?? target.value.length;
     const before = target.value.slice(0, start);
     const after = target.value.slice(end);
-    target.value = before + text + after;
+    setNativeFieldValue(target, before + text + after);
     const cursor = start + text.length;
     target.setSelectionRange(cursor, cursor);
     target.dispatchEvent(new Event('input', { bubbles: true }));
@@ -107,7 +119,7 @@ function deleteSelection(target: HTMLElement): void {
     if (start === end) return;
     const before = target.value.slice(0, start);
     const after = target.value.slice(end);
-    target.value = before + after;
+    setNativeFieldValue(target, before + after);
     target.setSelectionRange(start, start);
     target.dispatchEvent(new Event('input', { bubbles: true }));
     target.dispatchEvent(new Event('change', { bubbles: true }));

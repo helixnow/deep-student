@@ -45,6 +45,7 @@ export interface JsonSchemaProperty {
   allOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
+  not?: JsonSchemaProperty;
   const?: unknown;
   if?: JsonSchemaProperty;
   then?: JsonSchemaProperty;

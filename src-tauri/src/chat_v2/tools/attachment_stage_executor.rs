@@ -37,6 +37,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 
+use super::attachment_executor::{localized_attachment_failure, required_attachment_id};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -1374,18 +1375,8 @@ impl AttachmentStageExecutor {
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let message_id = call
-            .arguments
-            .get("message_id")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'message_id' parameter")?
-            .to_string();
-        let attachment_id = call
-            .arguments
-            .get("attachment_id")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'attachment_id' parameter")?
-            .to_string();
+        let message_id = required_attachment_id(&call.arguments, "message_id")?;
+        let attachment_id = required_attachment_id(&call.arguments, "attachment_id")?;
         let filename_override = call
             .arguments
             .get("filename")
@@ -1673,6 +1664,7 @@ impl ToolExecutor for AttachmentStageExecutor {
                 Ok(result)
             }
             Err(e) => {
+                let e = localized_attachment_failure(e);
                 ctx.emit_tool_call_error(&e);
 
                 let result = ToolResultInfo::failure(
@@ -1711,9 +1703,14 @@ impl ToolExecutor for AttachmentStageExecutor {
 mod tests {
     use super::*;
     use crate::chat_v2::database::ChatV2Database;
+    use crate::chat_v2::tools::attachment_executor::{
+        localized_attachment_failure, required_attachment_id,
+    };
+    use crate::chat_v2::tools::executor::ToolConcurrency;
     use crate::chat_v2::types::{AttachmentMeta, ChatMessage, ChatSession};
     use crate::data_governance::migration::coordinator::MigrationCoordinator;
     use crate::data_governance::schema_registry::DatabaseId;
+    use serde_json::{json, Value};
 
     #[test]
     fn test_can_handle() {
@@ -1733,6 +1730,61 @@ mod tests {
             executor.sensitivity_level("builtin-attachment_stage"),
             ToolSensitivity::Medium
         );
+        assert_eq!(
+            executor.concurrency_class("builtin-attachment_stage"),
+            ToolConcurrency::Serial
+        );
+        assert!(!executor.can_handle("builtin-attachment_list"));
+        assert!(!executor.can_handle("builtin-attachment_read"));
+    }
+
+    #[test]
+    fn stage_failure_maps_args_schema_and_not_found() {
+        let missing = required_attachment_id(&json!({}), "message_id").unwrap_err();
+        let args: Value =
+            serde_json::from_str(&localized_attachment_failure(missing)).expect("invalid args");
+        assert_eq!(args["code"], "ATTACHMENT_INVALID_ARGS");
+        assert!(args["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("<attachment_metadata>")));
+
+        let schema: Value = serde_json::from_str(&localized_attachment_failure(
+            "Failed to get message: no such table: messages",
+        ))
+        .expect("schema error");
+        assert_eq!(schema["code"], "ATTACHMENT_STORE_SCHEMA_UNAVAILABLE");
+        assert_eq!(schema["retryable"], false);
+        assert!(schema["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("不要改试 attachment_stage")));
+
+        let missing_attachment: Value = serde_json::from_str(&localized_attachment_failure(
+            "Attachment not found: att_x in message msg_x",
+        ))
+        .expect("not found");
+        assert_eq!(missing_attachment["code"], "ATTACHMENT_NOT_FOUND");
+        assert!(missing_attachment["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("attachment_list")));
+
+        let missing_source: Value = serde_json::from_str(&localized_attachment_failure(
+            "Attachment source not found in VFS: file_x",
+        ))
+        .expect("source missing");
+        assert_eq!(missing_source["code"], "ATTACHMENT_SOURCE_UNAVAILABLE");
+        assert!(missing_source["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("重新附加")));
+
+        let missing_staged: Value = serde_json::from_str(&localized_attachment_failure(
+            "Staged file not found: staged/archive.zip",
+        ))
+        .expect("staged file missing");
+        assert_eq!(missing_staged["code"], "ATTACHMENT_STAGED_FILE_NOT_FOUND");
+        assert_eq!(missing_staged["retryable"], true);
+        assert!(missing_staged["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("attachment_stage")));
     }
 
     #[test]
