@@ -533,7 +533,7 @@ export function useAppUpdater(): AppUpdaterController {
         ...prev,
         error: {
           phase: 'relaunch',
-          message: '更新已安装，请手动重启应用以完成更新',
+          message: i18n.t('settings:about.update.error.relaunch'),
         },
       }));
     }

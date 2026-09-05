@@ -107,26 +107,26 @@ describe('DockContextMenu', () => {
     expect(itemB).not.toHaveClass('app-menu-item-checked');
   });
 
-  it('键盘 ContextMenu 打开聚焦菜单容器，方向键从选中项进入并跳过禁用项', async () => {
+  it('键盘 ContextMenu 打开聚焦当前选中项，方向键跳过禁用项', async () => {
     openWin('files', 'f', '资源库');
     render(<Dock />);
     const trigger = dockButton('files');
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'ContextMenu' });
     const menu = await screen.findByRole('menu');
-    // 当前契约：打开后焦点落在菜单容器（tabIndex=-1）上，不预聚焦任何菜单项，
-    // 避免鼠标打开时的「假悬浮」高亮；方向键从容器进入导航
-    await waitFor(() => expect(menu).toHaveFocus());
+    // 当前契约（APG）：键盘打开时焦点直接落在当前选中项（前台窗口「资源库」
+    // 带 checked）上；仅指针打开才把焦点留在容器，避免「假悬浮」高亮
+    const checkedItem = within(menu).getByText('资源库').closest('button')!;
+    await waitFor(() => expect(checkedItem).toHaveFocus());
 
-    // 容器上按 ArrowDown：从当前选中项（前台窗口「资源库」带 checked）开始
-    fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    const firstEnabled = within(menu).getByText('资源库').closest('button')!;
-    expect(firstEnabled).toHaveFocus();
-
-    fireEvent.keyDown(firstEnabled, { key: 'ArrowDown' });
+    // 方向键从选中项继续导航；禁用项（single 已运行时的「打开」）被跳过
+    fireEvent.keyDown(checkedItem, { key: 'ArrowDown' });
     expect(within(menu).getByText('固定到 Dock').closest('button')).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
     expect(within(menu).getByText('关闭全部窗口').closest('button')).toHaveFocus();
+    // 末项再 ArrowDown 回绕到选中项，途中跳过禁用的「打开」
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(checkedItem).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(trigger).toHaveFocus();
   });

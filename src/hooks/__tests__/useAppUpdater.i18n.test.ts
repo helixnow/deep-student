@@ -28,6 +28,7 @@ vi.mock('@tauri-apps/plugin-process', () => ({
 
 vi.mock('@/utils/platform', () => ({
   isMobilePlatform: () => false,
+  isAndroid: () => false,
 }));
 
 vi.mock('@/utils/urlOpener', () => ({
@@ -83,9 +84,17 @@ describe('useAppUpdater error message i18n', () => {
       await result.current.downloadAndInstall();
     });
 
-    expect(relaunchMock).toHaveBeenCalledTimes(1);
+    // 安装完成后不再强制重启：进入 readyToRelaunch，由用户选择时机
+    expect(relaunchMock).not.toHaveBeenCalled();
     expect(result.current.downloading).toBe(false);
     expect(result.current.progress).toBe(100);
+
+    // 用户触发重启失败 → i18n relaunch key
+    await act(async () => {
+      await result.current.relaunchApp();
+    });
+
+    expect(relaunchMock).toHaveBeenCalledTimes(1);
     expect(result.current.error).toEqual({
       phase: 'relaunch',
       message: 'settings:about.update.error.relaunch',
