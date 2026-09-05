@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 import { CircleNotch, Image as ImageIcon } from '@phosphor-icons/react';
 
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
@@ -203,7 +204,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     let cancelled = false;
     (async () => {
       const read = (key: string) =>
-        (tauriInvoke('get_setting', { key }) as Promise<string | null>).catch(() => null);
+        getSetting(key);
       const [
         modeResult,
         profileVal,
@@ -274,7 +275,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const persist = useCallback(
     async (key: string, rawValue: string, parsedValue: unknown): Promise<boolean> => {
       try {
-        await tauriInvoke('save_setting', { key, value: rawValue });
+        await saveSetting(key, rawValue);
         dispatchSettingsChanged(key, parsedValue);
         return true;
       } catch (error: unknown) {
