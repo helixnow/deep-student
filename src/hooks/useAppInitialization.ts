@@ -133,7 +133,7 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
         // 添加重试机制，避免迁移期间的瞬态失败导致 banner 永久显示。
         let dbCheckOk = false;
         try {
-          await invoke('get_setting', { key: 'app_initialized' });
+          await getSetting('app_initialized');
           dbCheckOk = true;
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -153,7 +153,7 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
               await new Promise(resolve => setTimeout(resolve, delay));
               if (cancelledRef.current) return;
               try {
-                await invoke('get_setting', { key: 'app_initialized' });
+                await getSetting('app_initialized');
                 // 重试成功：清除错误状态
                 console.log('[Init] Database check succeeded on retry, clearing error banner');
                 updateStep('database', true);
