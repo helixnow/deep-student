@@ -8,6 +8,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { ChatSession } from '../types/session';
+import type { BackendMessage, BackendBlock, SessionInfo, SessionState } from '../adapters/types';
 
 /** chat_v2_export_session 支持的导出格式 */
 export type SessionExportFormat = 'markdown' | 'json';
@@ -62,15 +63,15 @@ export interface ConversationSnapshotMeta {
   version: number;
   exportedAt: string;
   appVersion: string;
-  session: unknown;
-  sessionState: unknown | null;
+  session: SessionInfo;
+  sessionState: SessionState | null;
   messageCount: number;
   pageSize: number;
 }
 
 export interface ConversationSnapshotChunk {
-  messages: unknown[];
-  blocks: unknown[];
+  messages: BackendMessage[];
+  blocks: BackendBlock[];
   nextOffset: number | null;
 }
 
