@@ -443,6 +443,8 @@
   max-height: 80vh;
   width: 100%;
   min-width: 0;
+  /* Native fallback when the custom scrollbar fails to initialize. */
+  overflow: auto;
 }
 
 /* Inner pre inside ScrollArea — let OverlayScrollbars manage overflow */

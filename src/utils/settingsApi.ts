@@ -184,12 +184,14 @@ export async function testAllSearchEngines(): Promise<{
   }
 }
 
-export async function testApiConnection(apiKey: string, apiBase: string, model?: string): Promise<boolean> {
+export async function testApiConnection(apiKey: string, apiBase: string, model?: string, isEmbedding = false, isReranker = false): Promise<boolean> {
   try {
     const response = await invoke<boolean>('test_api_connection', {
       api_key: apiKey,
       api_base: apiBase,
       model: model || null,
+      is_embedding: isEmbedding,
+      is_reranker: isReranker,
     });
     return response;
   } catch (error) {

@@ -664,8 +664,14 @@ export function createRestoreActions(
           const tBlockMapStart = performance.now();
           const blocksMap = new Map<string, Block>();
           const backendMessageById = new Map(messages.map((message) => [message.id, message]));
+          let skippedBlockCount = 0;
           for (const blk of blocks) {
-            blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
+            try {
+              blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
+            } catch (error) {
+              skippedBlockCount++;
+              console.warn('[ChatStore] Skipping incompatible block during restore:', blk.id, error);
+            }
           }
           const tBlockMapEnd = performance.now();
           sessionSwitchPerf.mark('set_data_end', {
@@ -910,6 +916,8 @@ export function createRestoreActions(
             authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
             isDataLoaded: true,
+            hasMoreMessages: false,
+            isLoadingMore: false,
             messageMap: finalMessageMap,
             messageOrder: finalMessageOrder,
             blocks: finalBlocksMap,
@@ -934,6 +942,13 @@ export function createRestoreActions(
                 }
               : {}),
           });
+
+          if (skippedBlockCount > 0) {
+            showGlobalNotification('warning', i18n.t('chatV2:blocks.skippedIncompatible', {
+              count: skippedBlockCount,
+              defaultValue: `${skippedBlockCount} incompatible historical blocks were skipped`,
+            }));
+          }
 
           // 📊 细粒度打点：set 结束
           sessionSwitchPerf.mark('set_end');

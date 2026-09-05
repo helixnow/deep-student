@@ -1445,9 +1445,13 @@ async fn execute_zip_import_with_progress(
     let job_ctx_for_progress = job_ctx.clone();
     let job_ctx_for_cancel = job_ctx.clone();
 
-    let result = import_backup_from_zip_with_progress(
-        &zip_file_path,
-        &target_dir,
+    // ZIP extraction performs synchronous filesystem and archive I/O. Keep it
+    // off the async runtime, especially on Android where worker count is low.
+    let zip_for_task = zip_file_path.clone();
+    let target_for_task = target_dir.clone();
+    let join_result = tauri::async_runtime::spawn_blocking(move || import_backup_from_zip_with_progress(
+        &zip_for_task,
+        &target_for_task,
         |progress| {
             // 将 ZipImportPhase 转换为 BackupJobPhase
             let phase = match progress.phase {
@@ -1467,7 +1471,15 @@ async fn execute_zip_import_with_progress(
         },
         || job_ctx_for_cancel.is_cancelled(),
         password.as_deref(),
-    );
+    )).await;
+
+    let result = match join_result {
+        Ok(result) => result,
+        Err(error) => {
+            job_ctx.fail(format!("ZIP 导入任务异常退出: {}", error));
+            return;
+        }
+    };
 
     match result {
         Ok(file_count) => {
