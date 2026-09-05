@@ -831,8 +831,10 @@ impl SandboxBackend for DirectHostShellBackend {
         }
         let powershell = trusted_powershell_path()?;
         // Lifecycle Job first so the spawn hook can bind the child even when
-        // the command finishes within milliseconds.
-        let job = create_job(true)?;
+        // the command finishes within milliseconds. Must be anonymous: a fixed
+        // per-process name would be shared by all concurrent unrestricted
+        // executions in this process, so terminating one would kill the rest.
+        let job = create_anonymous_job(true)?;
         *self.job_lock() = Some(job);
         let mut command = Command::new(powershell);
         command.args([
@@ -1360,8 +1362,22 @@ fn relaxed_job_limit_information() -> JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
 
 fn create_job(relaxed: bool) -> Result<OwnedHandle, String> {
     let name = wide(&job_name(unsafe { GetCurrentProcessId() }));
+    create_job_object(relaxed, name.as_ptr())
+}
+
+/// 匿名 Job Object（DirectHostShellBackend 专用）。主进程内若沿用固定名
+/// `Local\DeepStudentShellJob-{pid}`，CreateJobObjectW 对同名对象返回既有
+/// 句柄，并发的无限制执行会共享同一 Job，terminate_child 的
+/// TerminateJobObject 会跨执行误杀无关进程树。匿名 Job 由 backend 实例
+/// 自持句柄（on_child_spawned / terminate_child / cleanup 全部经句柄），
+/// 不依赖按名查找。
+fn create_anonymous_job(relaxed: bool) -> Result<OwnedHandle, String> {
+    create_job_object(relaxed, null())
+}
+
+fn create_job_object(relaxed: bool, name: *const u16) -> Result<OwnedHandle, String> {
     let job = OwnedHandle::new(
-        unsafe { CreateJobObjectW(null(), name.as_ptr()) },
+        unsafe { CreateJobObjectW(null(), name) },
         "Failed to create the Windows shell Job Object",
     )?;
     let limits = if relaxed {

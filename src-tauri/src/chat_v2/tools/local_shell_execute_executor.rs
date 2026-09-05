@@ -2881,6 +2881,7 @@ mod tests {
             process_id,
             Duration::from_secs(30),
             Some(&cancellation),
+            &backend,
         )
         .await
         .unwrap();
@@ -2911,6 +2912,7 @@ mod tests {
             process_id,
             Duration::from_secs(5),
             None,
+            &backend,
         )
         .await
         .unwrap();
