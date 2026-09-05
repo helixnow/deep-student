@@ -2172,6 +2172,12 @@ pub fn run() {
             ,crate::chat_v2::handlers::snapshot_handlers::chat_v2_export_session_meta
             ,crate::chat_v2::handlers::snapshot_handlers::chat_v2_export_session_messages
             ,crate::chat_v2::handlers::snapshot_handlers::chat_v2_import_session
+            // Goal 模式（P0）：会话目标查询/暂停/恢复/编辑/清除
+            ,crate::chat_v2::handlers::goal_handlers::chat_v2_goal_get
+            ,crate::chat_v2::handlers::goal_handlers::chat_v2_goal_pause
+            ,crate::chat_v2::handlers::goal_handlers::chat_v2_goal_resume
+            ,crate::chat_v2::handlers::goal_handlers::chat_v2_goal_edit
+            ,crate::chat_v2::handlers::goal_handlers::chat_v2_goal_clear
             // 事件发射失败计数（只读诊断）
             ,crate::chat_v2::events::chat_v2_get_emit_failure_count
             ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts
@@ -3108,6 +3114,11 @@ fn build_app_state(
     // 注册 PdfProcessingService 到 Tauri 状态（供 vfs_get_pdf_processing_status 等命令使用）
     if let Some(ref pps) = pdf_processing_service {
         app_handle.manage(pps.clone());
+
+        // 历史 PDF 可能只有原始文件而缺少页面预览；后台分批补齐，不能阻塞启动。
+        if let Err(e) = pps.backfill_missing_previews() {
+            tracing::warn!("[AppSetup] Failed to schedule PDF preview backfill: {}", e);
+        }
 
         match pps.recover_stuck_tasks() {
             Ok(recovered) if !recovered.is_empty() => {
