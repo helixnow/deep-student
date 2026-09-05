@@ -14,6 +14,7 @@ import '../styles/mcp-preset-oauth.css';
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { getSetting, saveSetting, deleteSetting } from '@/utils/settingsApi';
 import {
   Plus,
   ArrowClockwise,
@@ -2753,10 +2754,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
     const newVal = checked;
     if (newVal && !(await appConfirm(t('settings:tool_permissions.bypass_enable_confirm', { count: allTools.length })))) return;
     try {
-      await invoke('save_setting', {
-        key: 'tool_approval.global_bypass',
-        value: newVal ? 'true' : 'false',
-      });
+      await saveSetting('tool_approval.global_bypass', newVal ? 'true' : 'false',);
       setGlobalBypass(newVal);
       showGlobalNotification(
         'success',

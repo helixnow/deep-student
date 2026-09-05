@@ -825,7 +825,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       payloadValue = String(timeoutMs);
     }
     try {
-      await invoke('save_setting', { key: 'chat.stream.timeout_ms', value: payloadValue });
+      await saveSetting('chat.stream.timeout_ms', payloadValue);
       showGlobalNotification('success', t('common:settings.chat_stream.save_success_timeout'));
       const savedValue = raw ? String(Math.round(Number(raw))) : '';
       setExtra(prev => ({
@@ -851,7 +851,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       return;
     }
     try {
-      await invoke('save_setting', { key: 'chat.stream.auto_cancel_on_timeout', value: checked ? '1' : '0' });
+      await saveSetting('chat.stream.auto_cancel_on_timeout', checked ? '1' : '0');
       showGlobalNotification('success', t('common:settings.chat_stream.save_success_auto_cancel'));
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -1762,13 +1762,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     try {
                       if (invoke) {
                         await Promise.all([
-                          invoke('save_setting', { key: 'mcp.tools.advertise_all_tools', value: mcpPolicyModal.advertiseAll.toString() }),
-                          invoke('save_setting', { key: 'mcp.tools.whitelist', value: mcpPolicyModal.whitelist }),
-                          invoke('save_setting', { key: 'mcp.tools.blacklist', value: mcpPolicyModal.blacklist }),
-                          invoke('save_setting', { key: 'mcp.performance.timeout_ms', value: String(mcpPolicyModal.timeoutMs) }),
-                          invoke('save_setting', { key: 'mcp.performance.rate_limit_per_second', value: String(mcpPolicyModal.rateLimit) }),
-                          invoke('save_setting', { key: 'mcp.performance.cache_max_size', value: String(mcpPolicyModal.cacheMax) }),
-                          invoke('save_setting', { key: 'mcp.performance.cache_ttl_ms', value: String(mcpPolicyModal.cacheTtlMs) }),
+                          saveSetting('mcp.tools.advertise_all_tools', mcpPolicyModal.advertiseAll.toString()),
+                          saveSetting('mcp.tools.whitelist', mcpPolicyModal.whitelist),
+                          saveSetting('mcp.tools.blacklist', mcpPolicyModal.blacklist),
+                          saveSetting('mcp.performance.timeout_ms', String(mcpPolicyModal.timeoutMs)),
+                          saveSetting('mcp.performance.rate_limit_per_second', String(mcpPolicyModal.rateLimit)),
+                          saveSetting('mcp.performance.cache_max_size', String(mcpPolicyModal.cacheMax)),
+                          saveSetting('mcp.performance.cache_ttl_ms', String(mcpPolicyModal.cacheTtlMs)),
                         ]);
                       }
                     } catch (err) {

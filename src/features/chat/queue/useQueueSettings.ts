@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 
 export const QUEUE_MODE_KEY = 'chat.queue.mode';
 
@@ -15,7 +15,7 @@ export interface QueueSettings {
 
 async function readMode(defaultValue: QueueMode): Promise<QueueMode> {
   try {
-    const raw = await tauriInvoke<string | null>('get_setting', { key: QUEUE_MODE_KEY });
+    const raw = await getSetting(QUEUE_MODE_KEY);
     if (raw === 'queue' || raw === 'guide') return raw;
     return defaultValue;
   } catch {
@@ -51,7 +51,7 @@ export function useQueueSettings(): QueueSettings {
       return v;
     });
     try {
-      await tauriInvoke('save_setting', { key: QUEUE_MODE_KEY, value: v });
+      await saveSetting(QUEUE_MODE_KEY, v);
     } catch {
       setModeState((current) => (current === v ? prev : current));
     }
