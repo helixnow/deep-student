@@ -138,6 +138,9 @@ impl Default for LocalShellExecuteExecutor {
 }
 
 impl LocalShellExecuteExecutor {
+    #[cfg(windows)]
+    const WINDOWS_SHELL_KIND_MARKER: &'static str = "__DEEP_STUDENT_SHELL_KIND__=";
+
     const MAX_FILE_SNAPSHOT_ENTRIES: usize = 1_000;
     const MAX_FILE_CHANGE_ENTRIES: usize = 200;
     const MAX_REVERSIBLE_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
@@ -335,9 +338,26 @@ impl LocalShellExecuteExecutor {
             parts.push("Command was cancelled.".to_string());
         }
         match exit_code {
-            Some(code) => parts.push(format!("Exit code {}", code)),
+            Some(code) => {
+                let code_label = output
+                    .get("exit_code_hex")
+                    .and_then(Value::as_str)
+                    .map(|hex| format!("{code} ({hex})"))
+                    .unwrap_or_else(|| code.to_string());
+                parts.push(format!("Exit code {code_label}"));
+            }
             None if !timed_out && !cancelled => parts.push("Exit code <unknown>".to_string()),
             _ => {}
+        }
+        if output
+            .get("shell_startup_failure")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            parts.push(
+                "PowerShell failed during engine initialization before the command ran."
+                    .to_string(),
+            );
         }
         let stderr = output
             .get("stderr")
@@ -911,6 +931,10 @@ impl LocalShellExecuteExecutor {
                 "TEMP",
                 "TMP",
                 "USERPROFILE",
+                "ProgramData",
+                "PUBLIC",
+                "USERNAME",
+                "USERDOMAIN",
             ]
         }
 
@@ -1380,11 +1404,77 @@ impl LocalShellExecuteExecutor {
         } else {
             bytes
         };
-        (
-            String::from_utf8_lossy(visible).to_string(),
-            truncated,
-            total_bytes,
-        )
+        (Self::decode_shell_output(visible), truncated, total_bytes)
+    }
+
+    fn decode_shell_output(bytes: &[u8]) -> String {
+        match std::str::from_utf8(bytes) {
+            Ok(text) => return text.to_string(),
+            Err(error) if error.valid_up_to() > 0 => {
+                return String::from_utf8_lossy(bytes).into_owned();
+            }
+            Err(_) => {}
+        }
+        #[cfg(windows)]
+        {
+            let (text, _, _) = encoding_rs::GB18030.decode(bytes);
+            return text.into_owned();
+        }
+        #[cfg(not(windows))]
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+
+    fn platform_exit_details(exit_code: Option<i32>) -> (Option<u64>, Option<String>, bool) {
+        #[cfg(windows)]
+        {
+            let unsigned = exit_code.map(|code| code as u32);
+            return (
+                unsigned.map(u64::from),
+                unsigned.map(|code| format!("0x{code:08X}")),
+                unsigned == Some(0xFFFF_0000),
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = exit_code;
+            (None, None, false)
+        }
+    }
+
+    fn normalize_platform_shell_stderr(stderr: String) -> (String, Option<&'static str>) {
+        #[cfg(windows)]
+        {
+            if let Some(marker_start) = stderr.find(Self::WINDOWS_SHELL_KIND_MARKER) {
+                let value_start = marker_start + Self::WINDOWS_SHELL_KIND_MARKER.len();
+                let value_end = stderr[value_start..]
+                    .find(|character| character == '\r' || character == '\n')
+                    .map(|offset| value_start + offset)
+                    .unwrap_or(stderr.len());
+                let shell_kind = match &stderr[value_start..value_end] {
+                    "windows_powershell_7" => Some("windows_powershell_7"),
+                    "windows_powershell_5_1" => Some("windows_powershell_5_1"),
+                    _ => None,
+                };
+                let remaining = stderr[value_end..]
+                    .strip_prefix("\r\n")
+                    .or_else(|| stderr[value_end..].strip_prefix('\n'))
+                    .unwrap_or(&stderr[value_end..]);
+                if let Some(shell_kind) = shell_kind {
+                    let remaining = remaining
+                        .split_inclusive('\n')
+                        .filter(|line| {
+                            !line
+                                .trim_end_matches(|character| {
+                                    character == '\r' || character == '\n'
+                                })
+                                .starts_with(Self::WINDOWS_SHELL_KIND_MARKER)
+                        })
+                        .collect();
+                    return (remaining, Some(shell_kind));
+                }
+            }
+        }
+        (stderr, None)
     }
 
     async fn drain_bounded<R>(
@@ -1966,8 +2056,9 @@ impl LocalShellExecuteExecutor {
         let duration_ms = start.elapsed().as_millis() as u64;
         let stdout_capture = stdout_capture.lock().await.clone();
         let stderr_capture = stderr_capture.lock().await.clone();
-        let stdout = String::from_utf8_lossy(&stdout_capture.visible).to_string();
-        let mut stderr = String::from_utf8_lossy(&stderr_capture.visible).to_string();
+        let stdout = Self::decode_shell_output(&stdout_capture.visible);
+        let stderr = Self::decode_shell_output(&stderr_capture.visible);
+        let (mut stderr, actual_shell_kind) = Self::normalize_platform_shell_stderr(stderr);
         if timed_out {
             let timeout_message = format!("Command timed out after {}ms", timeout_ms);
             if stderr.is_empty() {
@@ -1992,6 +2083,8 @@ impl LocalShellExecuteExecutor {
         let stdout_truncated = stdout_bytes > stdout_capture.visible.len();
         let stderr_truncated = stderr_bytes > stderr_capture.visible.len();
         let exit_code = status.as_ref().and_then(|status| status.code());
+        let (exit_code_unsigned, exit_code_hex, shell_startup_failure) =
+            Self::platform_exit_details(exit_code);
         let success = status
             .as_ref()
             .map(|status| status.success())
@@ -2066,6 +2159,11 @@ impl LocalShellExecuteExecutor {
             (None, None)
         };
 
+        let mut sandbox_effect_report = serde_json::to_value(&sandbox_effect_report)
+            .map_err(|error| format!("Failed to encode shell sandbox report: {error}"))?;
+        if let Some(actual_shell_kind) = actual_shell_kind {
+            sandbox_effect_report["shell_kind"] = Value::String(actual_shell_kind.to_string());
+        }
         Ok(json!({
             "command": display_command,
             "command_hash": command_hash,
@@ -2089,6 +2187,9 @@ impl LocalShellExecuteExecutor {
             "timed_out": timed_out,
             "cancelled": cancelled,
             "exit_code": exit_code,
+            "exit_code_unsigned": exit_code_unsigned,
+            "exit_code_hex": exit_code_hex,
+            "shell_startup_failure": shell_startup_failure,
             "success": success,
             "stdout": stdout,
             "stderr": stderr,
@@ -2231,6 +2332,43 @@ mod tests {
     }
 
     #[test]
+    fn truncated_utf8_output_keeps_valid_utf8_prefix() {
+        let bytes = "prefix-中".as_bytes();
+        let (text, truncated, total) =
+            LocalShellExecuteExecutor::truncate_output(bytes, bytes.len() - 1);
+        assert!(truncated);
+        assert_eq!(total, bytes.len());
+        assert!(text.starts_with("prefix-"), "{text:?}");
+        assert!(
+            !text.contains('涓'),
+            "output was mis-decoded as GB18030: {text:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shell_kind_marker_discards_probe_stderr_and_reports_actual_shell() {
+        let stderr = format!(
+            "pwsh startup failed\r\n{}windows_powershell_5_1\r\nreal 5.1 stderr",
+            LocalShellExecuteExecutor::WINDOWS_SHELL_KIND_MARKER
+        );
+        let (stderr, shell_kind) =
+            LocalShellExecuteExecutor::normalize_platform_shell_stderr(stderr);
+        assert_eq!(stderr, "real 5.1 stderr");
+        assert_eq!(shell_kind, Some("windows_powershell_5_1"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_init_failure_exit_code_is_reported_unsigned_and_hex() {
+        let (unsigned, hex, startup_failure) =
+            LocalShellExecuteExecutor::platform_exit_details(Some(-65_536));
+        assert_eq!(unsigned, Some(0xFFFF_0000));
+        assert_eq!(hex.as_deref(), Some("0xFFFF0000"));
+        assert!(startup_failure);
+    }
+
+    #[test]
     fn failure_error_for_llm_includes_exit_code_and_stderr_tail() {
         let output = json!({
             "success": false,
@@ -2258,6 +2396,23 @@ mod tests {
             !error.contains("partial output") || error.contains("stdout (tail)"),
             "stdout must be labelled when included: {error}"
         );
+    }
+
+    #[test]
+    fn failure_error_for_llm_explains_powershell_startup_failure() {
+        let output = json!({
+            "success": false,
+            "exit_code": -65_536,
+            "exit_code_hex": "0xFFFF0000",
+            "shell_startup_failure": true,
+            "timed_out": false,
+            "cancelled": false,
+            "stdout": "",
+            "stderr": "The shell cannot be started.",
+        });
+        let error = LocalShellExecuteExecutor::failure_error_for_llm(&output);
+        assert!(error.contains("Exit code -65536 (0xFFFF0000)"), "{error}");
+        assert!(error.contains("engine initialization"), "{error}");
     }
 
     #[test]
