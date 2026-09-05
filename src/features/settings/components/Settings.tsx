@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Switch } from '@/components/ui/shad/Switch';
 import { cn } from '@/lib/utils';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
+import { saveSetting } from '@/utils/settingsApi';
 
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';

@@ -13,6 +13,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { saveSetting } from '@/utils/settingsApi';
 import { cn } from '@/lib/utils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { invoke } from '@tauri-apps/api/core';
 
 // 分组标题
 

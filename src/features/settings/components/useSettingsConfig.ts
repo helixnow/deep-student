@@ -5,7 +5,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { normalizeMcpToolList } from './mcpUtils';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { getSetting, saveSettings } from '@/utils/settingsApi';
+import { getSetting, saveSetting, saveSettings } from '@/utils/settingsApi';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { UseSettingsConfigDeps } from './hookDepsTypes';
 import type { SystemConfig } from './types';
