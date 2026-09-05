@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getSetting } from '@/utils/settingsApi';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
   UI_FONT_STORAGE_KEY,
@@ -20,14 +21,14 @@ import { APP_EVENTS, dispatchAppEvent } from '../events';
 // 初始化字体设置（应用启动时调用；轻量窗口入口也复用，见 main.tsx）
 export const initializeFontSetting = async () => {
   try {
-    const storedValue = await invoke('get_setting', { key: UI_FONT_STORAGE_KEY }) as string;
+    const storedValue = await getSetting(UI_FONT_STORAGE_KEY);
     const fontValue = storedValue || DEFAULT_UI_FONT;
     applyFontToDocument(fontValue);
   } catch {
     applyFontToDocument(DEFAULT_UI_FONT);
   }
   try {
-    const storedValue = await invoke('get_setting', { key: UI_FONT_SIZE_STORAGE_KEY }) as string;
+    const storedValue = await getSetting(UI_FONT_SIZE_STORAGE_KEY);
     const fontSizeValue = clampFontSize(parseFloat(storedValue));
     applyFontSizeToDocument(fontSizeValue);
   } catch {
@@ -39,7 +40,7 @@ export const initializeFontSetting = async () => {
 const initializeZoomSetting = async () => {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
   try {
-    const storedValue = await invoke('get_setting', { key: UI_ZOOM_STORAGE_KEY }) as string | null;
+    const storedValue = await getSetting(UI_ZOOM_STORAGE_KEY);
     if (storedValue == null || storedValue === '') return;
     const zoom = clampZoom(parseFloat(storedValue));
     const webview = await getCurrentWebview();
@@ -53,7 +54,7 @@ const initializeZoomSetting = async () => {
 // 之前只有打开设置页时才会写入该属性，导致关闭状态重启后不恢复）
 const initializeThinkingAutoCollapseSetting = async () => {
   try {
-    const raw = await invoke('get_setting', { key: 'thinking.auto_collapse' }) as string | null;
+    const raw = await getSetting('thinking.auto_collapse');
     const enabled = String(raw ?? '').trim() !== 'false';
     document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
     window.dispatchEvent(
