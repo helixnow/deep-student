@@ -82,6 +82,12 @@ commands.allow = [
   "chat_v2_export_session_meta",
   "chat_v2_export_session_messages",
   "chat_v2_import_session",
+  "chat_v2_goal_clear",
+  "chat_v2_goal_edit",
+  "chat_v2_goal_get",
+  "chat_v2_goal_pause",
+  "chat_v2_goal_resume",
+
   "chat_v2_freeze_available_skills_snapshot",
   "chat_v2_get_anki_cards_from_block_by_document_id",
   "chat_v2_get_emit_failure_count",
