@@ -1210,6 +1210,7 @@
     "loadSessionsFailed": "Failed to load sessions. Refresh and try again.",
     "loadMoreSessionsFailed": "Failed to load more sessions. Please try again.",
     "exportSession": "Export session",
+    "importSession": "Import session snapshot",
     "analysis_session_title": "Question Analysis",
     "selectSessionFirst": "Please select a session first",
     "loading": "Loading...",

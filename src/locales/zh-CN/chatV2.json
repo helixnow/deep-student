@@ -1210,6 +1210,7 @@
     "loadSessionsFailed": "加载会话失败，请刷新后重试",
     "loadMoreSessionsFailed": "加载更多会话失败，请重试",
     "exportSession": "导出会话",
+    "importSession": "导入会话快照",
     "analysis_session_title": "题目分析",
     "selectSessionFirst": "请先选择一个会话",
     "loading": "加载中...",

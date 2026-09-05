@@ -69,8 +69,8 @@ export async function exportConversationSnapshotToFile(options: ExportSessionToF
   const { exportConversationSnapshotMeta, exportConversationSnapshotMessages } = await import('../../api/sessionBrowserApi');
   try {
     const meta = await exportConversationSnapshotMeta(options.sessionId);
-    const messages: unknown[] = [];
-    const blocks: unknown[] = [];
+    const messages: import('../../adapters/types').BackendMessage[] = [];
+    const blocks: import('../../adapters/types').BackendBlock[] = [];
     let offset = 0;
     do {
       const page = await exportConversationSnapshotMessages(options.sessionId, offset, meta.pageSize);
