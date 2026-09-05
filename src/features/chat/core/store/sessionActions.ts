@@ -799,9 +799,27 @@ export function createSessionActions(
         },
 
         loadEarlierMessages: async (): Promise<void> => {
-          const callback = (getState() as ChatStoreState & { _loadEarlierMessagesCallback?: (() => Promise<void>) | null })._loadEarlierMessagesCallback;
+          const state = getState() as ChatStoreState & { _loadEarlierMessagesCallback?: (() => Promise<void>) | null };
+          const callback = state._loadEarlierMessagesCallback;
           if (!callback) throw new Error('[ChatStore] History pagination callback is not configured');
-          await callback();
+          // 防重入 + 无更多历史时短路（手动按钮与滚动自动触发共用此守卫）
+          if (state.isLoadingEarlier || !state.hasMoreHistory) return;
+          const sessionIdAtStart = state.sessionId;
+          set({ isLoadingEarlier: true, loadEarlierError: null } as Partial<ChatStoreState>);
+          try {
+            await callback();
+          } catch (error) {
+            // 会话已切换时丢弃迟到错误，不污染新会话的分页状态
+            if ((getState() as ChatStoreState).sessionId === sessionIdAtStart) {
+              set({
+                loadEarlierError: error instanceof Error ? error.message : String(error),
+              } as Partial<ChatStoreState>);
+            }
+          } finally {
+            if ((getState() as ChatStoreState).sessionId === sessionIdAtStart) {
+              set({ isLoadingEarlier: false } as Partial<ChatStoreState>);
+            }
+          }
         },
 
         setUpdateBlockContentCallback: (

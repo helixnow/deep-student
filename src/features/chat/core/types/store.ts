@@ -409,6 +409,18 @@ export interface ChatStore {
    */
   isDataLoaded: boolean;
 
+  /** 历史分页：是否还有更早历史未加载 ❌ 不持久化（运行时状态） */
+  hasMoreHistory: boolean;
+
+  /** 历史分页：正在加载更早消息 ❌ 不持久化 */
+  isLoadingEarlier: boolean;
+
+  /** 历史分页：最近一次加载失败信息 ❌ 不持久化 */
+  loadEarlierError: string | null;
+
+  /** 历史分页：已通过分页抵达最早一页 ❌ 不持久化 */
+  earlierHistoryExhausted: boolean;
+
   // ========== 消息（✅ 持久化，性能优化） ==========
 
   /** 消息 Map，O(1) 查找 */
