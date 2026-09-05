@@ -50,7 +50,12 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 210
     env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
+      # vite build 实测峰值 RSS ~4.45GB（含 demo/hero MPA 双入口），4GB 上限
+      # 已在 rebuild-android 路径反复 OOM（exit 134，2026-09-01 起 6 连败中
+      # 3 次）。rebuild 路径有意不传 frontend_dist_artifact（旧 tag 的 artifact
+      # 已过期），必须就地构建前端，因此堆上限提到 6GB（runner 7GB RAM，
+      # vite 阶段独占内存）。
+      NODE_OPTIONS: '--max-old-space-size=6144'
       CARGO_PROFILE_RELEASE_LTO: 'false'
       # WI-6 (R3): 正常发布收紧为 opt-level=z + codegen-units=16 —— .so 体积
       # 直接决定低内存设备启动时 dlopen/重定位压力（见 Sign APK 的 250MB 守卫）。

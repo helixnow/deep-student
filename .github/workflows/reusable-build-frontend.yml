@@ -50,7 +50,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
+      # vite build 实测峰值 RSS ~4.45GB（含 demo/hero MPA 双入口），4GB 已
+      # 无余量（rebuild-android 路径同构建已多次 OOM）——预防性提到 6GB。
+      NODE_OPTIONS: '--max-old-space-size=6144'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
     steps:
       # fetch-depth: 0：generate-version.mjs 需要从 BUILD_NUMBER_BASE_COMMIT

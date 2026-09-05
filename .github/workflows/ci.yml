@@ -241,7 +241,10 @@ jobs:
   # ============================================
   backend:
     name: Backend
-    runs-on: ubuntu-latest
+    # 钉 22.04：ubuntu-latest(24.04) 上长编译作业反复被 runner 回收
+    # （"runner has received a shutdown signal"，Android 作业同款事故，
+    # 见 reusable-build-android.yml 的钉版注释）
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
@@ -377,7 +380,8 @@ jobs:
     name: Cloud Provider Contract Gate
     needs: [changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
-    runs-on: ubuntu-latest
+    # 钉 22.04：同 Backend 作业的 runner 回收事故（24.04 长编译被回收）
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: 0
@@ -593,7 +597,9 @@ jobs:
   # ============================================
   rust-test-build:
     name: Rust Tests · Build Archive
-    runs-on: ubuntu-latest
+    # 钉 22.04：同 Backend 作业的 runner 回收事故（24.04 长编译被回收，
+    # 本作业 2026-09-05 在 main 基线上因此 exit 143）
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
