@@ -214,7 +214,7 @@ export function ButtonAuditPage() {
         <DsButton size="sm" variant="ghost" aria-pressed={filter === 'keep'} onClick={() => setFilter('keep')}>只看保留</DsButton>
         <DsButton size="sm" variant="ghost" aria-pressed={filter === 'discard'} onClick={() => setFilter('discard')}>只看打叉</DsButton>
         <DsButton size="sm" variant="ghost" onClick={toggleTheme}>{dark ? '浅色' : '深色'}</DsButton>
-        <span className="ba-count">保留 {keepCount} / {items.length}　打叉 {active.discarded.size}</span>
+        <span className="ba-count">保留 {keepCount} / {items.length} 打叉 {active.discarded.size}</span>
       </div>
 
       {tab === 'buttons' ? (

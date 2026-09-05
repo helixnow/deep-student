@@ -218,6 +218,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260905,
+      "name": "goal_table",
+      "path": "chat_v2/V20260905__goal_table.sql",
+      "sha256": "2bc843a2d508837f0c3c0039113876e73824245a24604562b657f4fe37346b07",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
