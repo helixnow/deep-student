@@ -96,6 +96,9 @@ export async function importConversationSnapshotFromFile(): Promise<void> {
     const path = await fileManager.pickSingleFile({ title: i18n.t('chatV2:browser.importSession'), filters: [{ name: 'Deep Student Snapshot', extensions: ['json'] }] });
     if (!path) return;
     const content = await fileManager.readTextFile(path);
+    if (new TextEncoder().encode(content).byteLength > 50 * 1024 * 1024) {
+      throw new Error('Snapshot exceeds maximum size of 50 MiB');
+    }
     const result = await importConversationSnapshot(content);
     showGlobalNotification('success', i18n.t('chatV2:browser.exportSuccess', { messageCount: result.messageCount, path: result.sessionId }));
   } catch (error) {
