@@ -265,7 +265,10 @@ export interface ComposerToolbarProps {
   isCompactingContext: boolean;
   compactContextStatus: 'success' | 'not-needed' | 'skipped' | 'error' | null;
   permissionPreset: PermissionPreset;
-  onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
+  onPermissionPresetChange?: (
+    preset: PermissionPreset,
+    confirm?: boolean,
+  ) => void | Promise<void>;
   knowledgeBaseProactive: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
   renderSkillPanelMenuVariant?: () => React.ReactNode;

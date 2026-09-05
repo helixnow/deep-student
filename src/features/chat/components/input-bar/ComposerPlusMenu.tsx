@@ -83,7 +83,10 @@ export interface ComposerPlusMenuProps {
   compactContextDisabled?: boolean;
   compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
   permissionPreset?: ComposerPermissionPreset;
-  onPermissionPresetChange?: (preset: ComposerPermissionPreset) => void | Promise<void>;
+  onPermissionPresetChange?: (
+    preset: ComposerPermissionPreset,
+    confirm?: boolean,
+  ) => void | Promise<void>;
   renderSkillPanel?: () => React.ReactNode;
   activeSkillCount?: number;
   hasLoadedSkills?: boolean;
@@ -130,6 +133,10 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
   const [confirmDangerOpen, setConfirmDangerOpen] = React.useState(false);
   const [mobilePane, setMobilePane] = React.useState<'root' | 'mode'>('root');
+  // 权限档位切换等待后端落库确认（IPC 在途期间禁用菜单项）；
+  // 失败时弹窗提示并保持旧档位，避免假 active 或静默丢档。
+  const [permissionSyncing, setPermissionSyncing] = React.useState(false);
+  const [switchError, setSwitchError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) setMobilePane('root');
@@ -139,11 +146,20 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   const modeDescription = t('chatV2:inputBar.plusMenu.modeDefaultDescription');
 
   const applyPermissionPreset = useCallback(
-    (preset: ComposerPermissionPreset) => {
+    async (preset: ComposerPermissionPreset, confirm?: boolean) => {
       if (!onPermissionPresetChange || preset === permissionPreset) return;
-      void onPermissionPresetChange(preset);
+      if (permissionSyncing) return;
+      setPermissionSyncing(true);
+      try {
+        await onPermissionPresetChange(preset, confirm);
+      } catch (error) {
+        console.error('[ComposerPlusMenu] permission preset switch failed:', preset, error);
+        setSwitchError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setPermissionSyncing(false);
+      }
     },
-    [onPermissionPresetChange, permissionPreset],
+    [onPermissionPresetChange, permissionPreset, permissionSyncing],
   );
 
   const handlePermissionPresetSelect = useCallback(
@@ -276,6 +292,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                         mobileItemClass,
                         preset === 'danger_full_access' && 'text-destructive',
                       )}
+                      disabled={permissionSyncing}
                       onClick={() => handlePermissionPresetSelect(preset)}
                       data-testid={`plus-menu-permission-${preset}`}
                       title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
@@ -465,6 +482,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     <AppMenuItem
                       key={preset}
                       className={cn(preset === 'danger_full_access' && 'text-destructive')}
+                      disabled={permissionSyncing}
                       onClick={() => handlePermissionPresetSelect(preset)}
                       data-testid={`plus-menu-permission-${preset}`}
                       title={t(`chatV2:authority.permissionPreset.hints.${preset}`)}
@@ -647,8 +665,19 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         confirmVariant="danger"
         onConfirm={() => {
           setConfirmDangerOpen(false);
-          applyPermissionPreset('danger_full_access');
+          // 危险确认对话框的"确认"就是后端 confirm 门的一次性凭据
+          void applyPermissionPreset('danger_full_access', true);
         }}
+      />
+      <DsAlertDialog
+        open={switchError !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSwitchError(null);
+        }}
+        title={t('chatV2:authority.permissionPreset.switchFailedTitle')}
+        description={switchError ?? ''}
+        confirmText={t('common:ok')}
+        onConfirm={() => setSwitchError(null)}
       />
     </div>
   );

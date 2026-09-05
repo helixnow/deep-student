@@ -1317,7 +1317,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pendingApprovalRequest={pendingApprovalRequest}
         sessionId={sessionId}
         permissionPreset={permissionPreset}
-        onPermissionPresetChange={(preset) => setPermissionPreset(preset)}
+        onPermissionPresetChange={(preset, confirm) => setPermissionPreset(preset, confirm)}
         // 🆕 知识库主动检索
         knowledgeBaseProactive={knowledgeBaseProactive}
         onKnowledgeBaseProactiveChange={handleKnowledgeBaseProactiveChange}

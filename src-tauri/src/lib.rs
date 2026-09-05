@@ -1,6 +1,8 @@
 // Deep Student library entry
 // 提供 run() 供 bin 目标调用，以解决编译错误。
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
+// 大型 json! 审计块（local shell 工具结果）需要更深的宏展开余量。
+#![recursion_limit = "512"]
 
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;

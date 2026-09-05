@@ -1904,10 +1904,16 @@ pub async fn chat_v2_set_authority_mode(
 }
 
 /// Set the session-only approval behavior preset.
+///
+/// `danger_full_access` upgrades the session to the unrestricted host-shell
+/// execution tier, so the backend requires an explicit one-shot confirmation:
+/// the frontend must send `confirm: true` (produced by the danger confirmation
+/// dialog). Any other transition ignores `confirm`.
 #[tauri::command]
 pub async fn chat_v2_set_permission_preset(
     session_id: String,
     preset: String,
+    confirm: Option<bool>,
     db: State<'_, Arc<ChatV2Database>>,
     approval_manager: State<'_, Arc<crate::chat_v2::approval_manager::ApprovalManager>>,
 ) -> Result<ChatSession, String> {
@@ -1917,6 +1923,16 @@ pub async fn chat_v2_set_permission_preset(
             preset
         )))
     })?;
+    // 无限制档的后端一次性确认：前端危险确认对话框产出的 confirm=true 必须
+    // 随切换请求一起提交；后端不记忆该确认，之后每次切换 danger 档都要重新
+    // 显式确认（fail-closed）。
+    if parsed == crate::chat_v2::types::PermissionPreset::DangerFullAccess
+        && confirm != Some(true)
+    {
+        return Err(String::from(ChatV2Error::Validation(String::from(
+            "Enabling danger_full_access requires the explicit danger confirmation (confirm=true).",
+        ))));
+    }
     // Switching policy invalidates prior session-memory so a relaxed approval
     // cannot survive a transition back to cautious.
     approval_manager.clear_session_remembered(&session_id);

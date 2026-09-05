@@ -382,6 +382,11 @@ export interface ChatStore {
    */
   authorityMode: AuthorityMode;
   permissionPreset: PermissionPreset;
+  /**
+   * true：一次权限档位切换的 IPC 仍在途（后端尚未落库确认）。
+   * 发送门禁据此等待，避免本轮工具以旧档位执行（竞态消除）。
+   */
+  permissionPresetSyncing: boolean;
 
   /** Hint: last Ask-mode write was blocked — show switch-to-Plan CTA */
   authorityAskBlockedHint: boolean;
@@ -762,7 +767,8 @@ export interface ChatStore {
 
   /** Persist Ask/Plan/Craft mode via backend */
   setAuthorityMode(mode: AuthorityMode): Promise<void>;
-  setPermissionPreset(preset: PermissionPreset): Promise<void>;
+  /** confirm=true 仅用于 danger_full_access 的危险确认对话框一次性确认 */
+  setPermissionPreset(preset: PermissionPreset, confirm?: boolean): Promise<void>;
 
   /** Apply plan_gate start payload from backend events */
   handlePlanGateRequest(payload: {

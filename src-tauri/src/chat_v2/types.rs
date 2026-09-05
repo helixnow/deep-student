@@ -554,9 +554,11 @@ impl AuthorityMode {
 /// Session-only Craft approval behavior preset.
 ///
 /// Ask and Plan keep their authority semantics and do not inherit these
-/// bypasses. In Craft mode, both full-access presets select the explicit
-/// unsandboxed local-shell backend. `DangerFullAccess` remains a wire-compatible
-/// alias with stronger UI warnings for existing sessions.
+/// bypasses. In Craft mode, `FullAccess` selects the unsandboxed local-shell
+/// backend while retaining command-policy, catastrophe-guard, env-filter and
+/// timeout/output controls. `DangerFullAccess` — after an explicit one-shot
+/// backend confirmation — upgrades to the unrestricted host-shell execution
+/// mode (see [`HostShellExecutionMode`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PermissionPreset {
     /// Prompt for every Medium/High operation and never remember approvals.
@@ -592,6 +594,57 @@ impl PermissionPreset {
             "danger_full_access" => Some(Self::DangerFullAccess),
             _ => None,
         }
+    }
+}
+
+/// Backend-authoritative execution tier for the local shell tool.
+///
+/// Derived ONLY from the session authority state (authority mode × permission
+/// preset) inside the executors/preflight. It is never selectable through tool
+/// arguments, so a model cannot upgrade its own execution tier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HostShellExecutionMode {
+    /// Platform sandbox (AppContainer/Seatbelt/bubblewrap) + runtime roots +
+    /// full command/env/resource controls.
+    #[default]
+    Sandboxed,
+    /// Craft + FullAccess: no filesystem/network sandbox and no runtime-root
+    /// boundary, but command policy, immutable catastrophe guard, env
+    /// filtering and timeout/output bounds stay enforced.
+    FullAccess,
+    /// Craft + DangerFullAccess (explicit one-shot confirmation): every
+    /// access-class control is bypassed — command policy, catastrophe guard,
+    /// env filtering, timeout/output bounds. Cancellation and app-exit process
+    /// reclamation remain available as lifecycle recovery, not as a sandbox.
+    Unrestricted,
+}
+
+impl HostShellExecutionMode {
+    pub fn from_authority(authority_mode: AuthorityMode, preset: PermissionPreset) -> Self {
+        match (authority_mode, preset) {
+            (AuthorityMode::Craft, PermissionPreset::FullAccess) => Self::FullAccess,
+            (AuthorityMode::Craft, PermissionPreset::DangerFullAccess) => Self::Unrestricted,
+            _ => Self::Sandboxed,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sandboxed => "sandboxed",
+            Self::FullAccess => "full_access",
+            Self::Unrestricted => "unrestricted",
+        }
+    }
+
+    /// True when filesystem/network sandbox boundaries are absent (legacy
+    /// "unsandboxed" tier shared by FullAccess and Unrestricted).
+    pub fn unsandboxed(self) -> bool {
+        matches!(self, Self::FullAccess | Self::Unrestricted)
+    }
+
+    /// True only for the unrestricted tier (danger preset after confirmation).
+    pub fn unrestricted(self) -> bool {
+        self == Self::Unrestricted
     }
 }
 

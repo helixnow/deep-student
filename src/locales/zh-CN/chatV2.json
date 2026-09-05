@@ -1696,13 +1696,13 @@
         "cautious": "中高风险操作逐项确认，危险授权从不记住。",
         "relaxed": "低风险和中风险操作静默执行；高风险操作仍逐项审批。",
         "full_access": "工具与 shell 免逐步确认，并取消本地 shell 的 runtime root、宿主机文件与网络沙箱限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。",
-        "danger_full_access": "危险：沙箱内工具与 shell 免逐步确认，并取消本地 shell 的宿主机文件与网络限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。"
+        "danger_full_access": "危险：本地 shell 完全无限制——命令规则、灾难守卫、环境变量过滤、超时与输出上限全部关闭；仅保留取消与进程回收。特权操作（技能信任/MCP 安装/runtime root）仍单次确认。"
       },
       "shortHints": {
         "cautious": "中高风险逐项确认",
         "relaxed": "中低风险静默执行，仅 High 审批",
         "full_access": "宿主机文件与网络完全访问",
-        "danger_full_access": "宿主机文件与网络无限制"
+        "danger_full_access": "本地 shell 无任何限制"
       },
       "modePriority": "此档位只控制做一做；问一问/想一想模式本身的限制始终优先。",
       "fullAccessActive": "完全访问",
@@ -1710,8 +1710,11 @@
       "dangerActive": "危险访问",
       "dangerDowngradeHint": "危险完全访问已开启。点击降为宽松，立即恢复 runtime roots、操作系统沙箱与网络边界。",
       "dangerConfirmTitle": "开启危险完全访问？",
-      "dangerConfirmDescription": "这会让普通工具和全部外部 MCP 免审批，并允许本地 shell 不受文件与网络沙箱限制。可识别的灾难命令仍会拒绝，无法静态判定的动态脚本仍可能破坏宿主机；外部 MCP 的内部行为也不受本地 shell guard 约束。仅在你明确理解风险时继续。",
-      "dangerConfirmAction": "确认开启危险完全访问"
+      "dangerConfirmDescription": "确认后本地 shell 进入无限制模式：① 命令规则（允许/询问/拒绝）不再生效；② 不可降级的灾难命令守卫被关闭；③ 环境变量不再过滤（完整继承并允许显式覆盖）；④ 默认不设超时、不截断输出（仅保留崩溃保护上限）。普通工具仍免逐步确认；取消/紧急停止作为进程回收手段保留。特权操作（技能信任/MCP 安装/runtime root）仍单次确认，且不会自动获得管理员权限。外部 MCP 的内部行为不受本地 shell 约束。仅在你明确理解风险时继续。",
+      "dangerConfirmAction": "确认开启危险完全访问",
+      "switchFailedTitle": "权限档位切换失败",
+      "switchFailedDescription": "后端未能应用新的权限档位，当前会话仍保持原有档位。",
+      "switchInProgress": "权限档位切换中，请稍候再发送"
     },
     "switchToPlan": "切换到想一想",
     "askBlocked": "当前为问一问模式，写操作已被拒绝",

@@ -10,6 +10,8 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::shell_sandbox::{
     PlatformSandboxBackend, SandboxBackend, SandboxCapability, UnsandboxedShellBackend,
 };
+#[cfg(windows)]
+use super::shell_sandbox::DirectHostShellBackend;
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
     analyze_shell_command, immutable_shell_command_guard, redact_shell_command_for_display,
@@ -22,7 +24,8 @@ use crate::chat_v2::runtime_roots::{
     RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{
-    AuthorityMode, PermissionPreset, SessionAuthorityState, ToolCall, ToolResultInfo,
+    AuthorityMode, HostShellExecutionMode, PermissionPreset, SessionAuthorityState, ToolCall,
+    ToolResultInfo,
 };
 use crate::commands::AppState;
 
@@ -150,16 +153,15 @@ impl LocalShellPreflightExecutor {
         )
     }
 
-    fn full_access_unsandboxed(
+    fn host_execution_mode(
         authority_admission: Option<(AuthorityMode, PermissionPreset)>,
-    ) -> bool {
-        matches!(
-            authority_admission,
-            Some((
-                AuthorityMode::Craft,
-                PermissionPreset::FullAccess | PermissionPreset::DangerFullAccess
-            ))
-        )
+    ) -> HostShellExecutionMode {
+        let Some((authority_mode, permission_preset)) = authority_admission else {
+            // No admitted session authority: preflight must assume the most
+            // restrictive tier and never advertise a bypass.
+            return HostShellExecutionMode::Sandboxed;
+        };
+        HostShellExecutionMode::from_authority(authority_mode, permission_preset)
     }
 
     fn inspect_cwd(root: &RuntimeRoot, cwd: &Path) -> (String, bool, Vec<String>) {
@@ -231,13 +233,26 @@ impl LocalShellPreflightExecutor {
             .or_else(|| args.get("working_dir"))
             .or_else(|| args.get("workingDir"))
             .and_then(|v| v.as_str());
-        let timeout_ms = args
-            .get("timeout_ms")
-            .or_else(|| args.get("timeoutMs"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30_000)
-            // 与执行侧 clamp 保持一致（上限 10 分钟）。
-            .clamp(1_000, 600_000);
+        // 后端权威执行档（模型参数不可选）：preflight 与 execute 侧同源派生。
+        let execution_mode = Self::host_execution_mode(ctx.shell_authority_admission);
+        let unsandboxed = execution_mode.unsandboxed();
+        let unrestricted = execution_mode.unrestricted();
+        let timeout_ms = if unrestricted {
+            args.get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(|v| v.as_u64())
+                .map(|value| value.max(1_000))
+        } else {
+            Some(
+                args.get("timeout_ms")
+                    .or_else(|| args.get("timeoutMs"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(30_000)
+                    // 与执行侧 clamp 保持一致（上限 10 分钟）。
+                    .clamp(1_000, 600_000),
+            )
+        };
+        let timeout_ms = timeout_ms.unwrap_or(30_000);
         let purpose = args
             .get("purpose")
             .and_then(|v| v.as_str())
@@ -253,11 +268,21 @@ impl LocalShellPreflightExecutor {
                 platform
             ));
         }
-        let unsandboxed = Self::full_access_unsandboxed(ctx.shell_authority_admission);
         // 🔒 运行时执行能力探测：受限档位检查平台沙箱，完全访问检查无沙箱后端。
         // （如 Linux 桌面未安装 bubblewrap）时，预检直接标 blocked，
         // 并把安装指引透传给模型/用户，避免 execute 阶段才失败。
-        let sandbox_capability = if unsandboxed {
+        let sandbox_capability = if unrestricted {
+            // 无限制档：Windows 主进程直启 trusted PowerShell；Unix 复用
+            // /bin/sh 无限制 backend。
+            #[cfg(windows)]
+            {
+                DirectHostShellBackend::new().capability()
+            }
+            #[cfg(not(windows))]
+            {
+                UnsandboxedShellBackend::new().capability()
+            }
+        } else if unsandboxed {
             UnsandboxedShellBackend::new().capability()
         } else {
             PlatformSandboxBackend::new().capability()
@@ -332,10 +357,17 @@ impl LocalShellPreflightExecutor {
         // 命令（如 `mkfs /dev/disk0`），浪费一轮且误导用户。
         let immutable_guard_decision = immutable_shell_command_guard(&command, None, &[]);
         if immutable_guard_decision.effect == ShellCommandGuardEffect::Deny {
-            reasons.push(format!(
-                "immutable command guard denies this command (reason={}); it can never be executed in any preset",
-                immutable_guard_decision.reason
-            ));
+            if unrestricted {
+                reasons.push(format!(
+                    "immutable command guard would deny this command (reason={}); it is bypassed in the unrestricted tier",
+                    immutable_guard_decision.reason
+                ));
+            } else {
+                reasons.push(format!(
+                    "immutable command guard denies this command (reason={}); it can never be executed in any preset",
+                    immutable_guard_decision.reason
+                ));
+            }
         }
         if command.len() > 8192 {
             reasons.push("command is too long for local shell preflight".to_string());
@@ -360,17 +392,26 @@ impl LocalShellPreflightExecutor {
         if Self::has_dangerous_command_prefix(&command) {
             reasons.push("command prefix is write-capable or externally effectful".to_string());
         }
-        if command_policy.effective_effect
-            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        if !unrestricted
+            && command_policy.effective_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
         {
             reasons.push("command is denied by the configured terminal command rules".to_string());
-        } else if command_policy.configured_effect
-            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow
+        } else if !unrestricted
+            && command_policy.configured_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow
             && command_policy.effective_effect
                 != crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow
         {
             reasons.push(
                 "matching allow rule cannot bypass approval for a protected command".to_string(),
+            );
+        } else if unrestricted
+            && command_policy.effective_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        {
+            reasons.push(
+                "command matches deny rules but the unrestricted tier bypasses terminal command rules".to_string(),
             );
         }
 
@@ -499,9 +540,11 @@ impl LocalShellPreflightExecutor {
             || command.len() > 8192
             || !shell.execution_supported
             || !sandbox_available
-            || immutable_guard_decision.effect == ShellCommandGuardEffect::Deny
-            || command_policy.effective_effect
-                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+            || (!unrestricted
+                && immutable_guard_decision.effect == ShellCommandGuardEffect::Deny)
+            || (!unrestricted
+                && command_policy.effective_effect
+                    == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny)
             || (touches_skills_directory && !unsandboxed)
             || skill_cwd_blocked
             || readonly_write_blocked
@@ -537,6 +580,22 @@ impl LocalShellPreflightExecutor {
             "command_redacted": command_redacted,
             "command_prefix": display_analysis.command_prefix,
             "first_token": display_analysis.first_token,
+            "execution_mode": execution_mode.as_str(),
+            "command_policy_bypassed": unrestricted,
+            "immutable_guard_bypassed": unrestricted,
+            "environment_mode": if unrestricted { "inherit_all" } else { "filtered" },
+            "resource_limits": if unrestricted {
+                json!({
+                    "timeout": "none",
+                    "output_bound_bytes": 33554432_u64,
+                    "output_bound_reason": "crash_protection_high_water_mark"
+                })
+            } else {
+                json!({
+                    "timeout": timeout_ms,
+                    "output_bound_bytes": 65536_u64
+                })
+            },
             "root": root.as_ref().map(Self::root_json),
             "root_id": root.as_ref().map(|root| root.id.clone()).unwrap_or_else(|| root_id_input.unwrap_or("workspace").to_string()),
             "skill_root_id": skill_root_id_input,
@@ -557,7 +616,13 @@ impl LocalShellPreflightExecutor {
             "platform": platform,
             "os": shell.os,
             "shell_path": shell.shell_path,
-            "sandbox_backend": if unsandboxed { "unsandboxed" } else { shell.sandbox_backend },
+            "sandbox_backend": if unrestricted {
+                "direct_host_unrestricted"
+            } else if unsandboxed {
+                "unsandboxed"
+            } else {
+                shell.sandbox_backend
+            },
             "sandbox_available": sandbox_available,
             "shell_kind": shell.shell_kind,
             "shell_invocation": shell.invocation,
@@ -716,16 +781,31 @@ mod tests {
 
     #[test]
     fn only_craft_full_access_presets_select_unsandboxed_preflight() {
-        assert!(LocalShellPreflightExecutor::full_access_unsandboxed(Some(
-            (AuthorityMode::Craft, PermissionPreset::FullAccess,)
-        )));
-        assert!(LocalShellPreflightExecutor::full_access_unsandboxed(Some(
-            (AuthorityMode::Craft, PermissionPreset::DangerFullAccess,)
-        )));
-        assert!(!LocalShellPreflightExecutor::full_access_unsandboxed(Some(
-            (AuthorityMode::Plan, PermissionPreset::FullAccess,)
-        )));
-        assert!(!LocalShellPreflightExecutor::full_access_unsandboxed(None));
+        assert_eq!(
+            LocalShellPreflightExecutor::host_execution_mode(Some((
+                AuthorityMode::Craft,
+                PermissionPreset::FullAccess,
+            ))),
+            HostShellExecutionMode::FullAccess
+        );
+        assert_eq!(
+            LocalShellPreflightExecutor::host_execution_mode(Some((
+                AuthorityMode::Craft,
+                PermissionPreset::DangerFullAccess,
+            ))),
+            HostShellExecutionMode::Unrestricted
+        );
+        assert_eq!(
+            LocalShellPreflightExecutor::host_execution_mode(Some((
+                AuthorityMode::Plan,
+                PermissionPreset::FullAccess,
+            ))),
+            HostShellExecutionMode::Sandboxed
+        );
+        assert_eq!(
+            LocalShellPreflightExecutor::host_execution_mode(None),
+            HostShellExecutionMode::Sandboxed
+        );
     }
 
     #[test]

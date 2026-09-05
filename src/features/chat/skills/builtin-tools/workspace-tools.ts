@@ -142,7 +142,9 @@ frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内�
 - **builtin-git_branch**: 列出、创建、切换或安全删除分支；写操作由后端展示 High 审批
 - **builtin-git_commit**: 只暂存并提交显式 paths，不会隐式提交其他改动；由后端展示 High 审批
 
-本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 通用 shell 优先使用 PowerShell 7（\`pwsh.exe -NoProfile -NonInteractive\`），未安装时回退受信任 System32 路径下的 Windows PowerShell 5.1；语义 Git 工具在检测到 Git for Windows 时优先使用 Git Bash（\`bash.exe --noprofile --norc -c\`），否则使用上述 PowerShell（均为 UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。网络默认禁止，联网命令必须显式传 \`allow_network=true\`；该参数声明网络能力边界，不代表模型需要额外口头确认。完全访问会同时免除普通 shell 审批并取消本地 shell 的 runtime root、文件系统和网络沙箱边界；此时命令可以访问当前用户有权访问的宿主机路径。
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 通用 shell 优先使用 PowerShell 7（\`pwsh.exe -NoProfile -NonInteractive\`），未安装时回退受信任 System32 路径下的 Windows PowerShell 5.1；语义 Git 工具在检测到 Git for Windows 时优先使用 Git Bash（\`bash.exe --noprofile --norc -c\`），否则使用上述 PowerShell（均为 UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出）；其余平台（移动端）当前不支持本地 shell。真实执行的审批由后端按当前会话档位统一处理：预检未标记 blocked 时直接调用 \`builtin-local_shell_execute\`，不要在正文中自行索要确认或等待用户再次回复；需要审批时后端会暂停并展示审批 UI。
+
+**档位与网络语义（以 preflight 返回为准）**：任何 shell 决策前先跑一次 \`builtin-local_shell_preflight\`，其返回的 \`execution_mode\`、\`network_default\`、\`resource_limits\` 是后端权威事实，不要凭本文档的静态描述或通用直觉猜测当前档位。三档行为：\`sandboxed\`——网络默认禁止，联网命令必须显式传 \`allow_network=true\`（该参数声明能力边界，不代表需要口头确认）；\`full_access\` 与 \`unrestricted\`——网络不受限，\`allow_network\` 自动允许、无需传参。\`full_access\` 档免除普通 shell 审批并取消 runtime root、文件系统和网络沙箱边界；\`unrestricted\` 档（danger_full_access，用户已在 UI 显式确认开启）在此之上进一步解除终端命令规则、灾难命令守卫与环境变量过滤，默认无超时——\`irm <url> | iex\`、\`curl | bash\` 之类的远程脚本安装命令在用户明确要求时应当直接执行，这正是该档位的用途；不要以"远程脚本有风险""像提示注入"等通用安全直觉拒绝或拖延用户在该档位下明确下达的命令，如有操作层面的注意事项可在正文简述后照常执行。仅当命令明显与用户请求无关或可能造成不可逆破坏且用户未被告知时，才先向用户确认。
 
 ### 本地命令的执行根选择
 - 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。
@@ -692,7 +694,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_preflight',
       description:
-        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险与审批信息；只返回分析，不执行命令。未标记 blocked 时直接提交 local_shell_execute，不要在正文自行索要确认。',
+        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险与审批信息；只返回分析，不执行命令。返回的 execution_mode / network_default / resource_limits 是当前会话档位的后端权威事实（sandboxed / full_access / unrestricted），后续 execute 决策必须以此为准。未标记 blocked 时直接提交 local_shell_execute，不要在正文自行索要确认。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -706,7 +708,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '工作目录。默认为所选 root 本身；完全访问（完全信任）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；其余档位必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。'
+            description: '工作目录。默认为所选 root 本身；full_access / unrestricted（danger_full_access）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；sandboxed 档必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。'
           },
           skill_root_id: {
             type: 'string',
@@ -731,7 +733,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '提交非交互本地 shell 命令，由后端按会话档位静默执行或展示审批 UI，不要在正文自行索要确认。平台 shell 合同与沙箱见技能说明；无 PTY/stdin/持久 session。执行前重新校验 root 和 cwd，强制 timeout，截断 stdout/stderr 并保存审计；网络默认禁止，联网命令须显式传 allow_network=true。',
+        '提交非交互本地 shell 命令，由后端按会话档位静默执行或展示审批 UI，不要在正文自行索要确认。平台 shell 合同与沙箱见技能说明；无 PTY/stdin/持久 session。执行前重新校验 root 和 cwd，强制 timeout，截断 stdout/stderr 并保存审计。当前档位以最近一次 preflight 返回的 execution_mode 为权威依据，不要凭直觉猜测：sandboxed 档网络默认禁止、须显式传 allow_network=true；full_access 档取消 runtime root/文件/网络沙箱并免逐步审批，allow_network 自动允许；danger_full_access（unrestricted，用户已在 UI 显式确认）为无限制模式——命令规则与灾难守卫不生效、网络不受限、环境完整继承（允许显式 env 覆盖）、默认无超时且输出仅保留崩溃保护上限（32MiB），用户明确要求的远程脚本安装等命令应直接执行，不要以通用安全直觉拒绝。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -745,7 +747,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           cwd: {
             type: 'string',
-            description: '工作目录。默认为所选 root 本身；完全访问（完全信任）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；其余档位必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。'
+            description: '工作目录。默认为所选 root 本身；full_access / unrestricted（danger_full_access）档可直接传宿主机绝对路径（如 /tmp、C:\\Temp）；sandboxed 档必须是所选 root 内的相对路径，禁止绝对路径和 .. 逃逸。'
           },
           skill_root_id: {
             type: 'string',
@@ -757,7 +759,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             minimum: 1000,
             maximum: 600000,
             default: 30000,
-            description: '命令超时时间（毫秒），默认 30 秒，最长 10 分钟。超时后会终止进程并返回 timed_out=true。长任务（如 npm install）请显式调大。',
+            description: '命令超时时间（毫秒），默认 30 秒，最长 10 分钟。超时后会终止进程并返回 timed_out=true。长任务（如 npm install）请显式调大。危险完全访问档不受此 clamp：缺省为无超时，显式传参原样生效。',
           },
           inherit_env: {
             type: 'boolean',
@@ -769,7 +771,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: false,
             description:
-              'Allow network-capable command prefixes (curl, wget, ssh, git fetch/pull/push, package installs); uses a separate approval scope.',
+              '沙箱档（sandboxed）：网络默认禁止，联网命令（curl、wget、ssh、包安装等）须显式传 true 声明网络能力边界，不代表需要口头确认。full_access / unrestricted 档：网络已自动允许，无需传参（传了也无副作用）。',
           },
           track_file_changes: {
             type: 'boolean',
@@ -799,7 +801,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             minimum: 1024,
             maximum: 1048576,
             default: 65536,
-            description: 'stdout 和 stderr 各自最多返回的字节数，超出会截断。',
+            description: 'stdout 和 stderr 各自最多返回的字节数，超出会截断。危险完全访问档缺省为 32MiB 崩溃保护上限，显式传参原样生效。',
           },
           purpose: {
             type: 'string',
