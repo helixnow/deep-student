@@ -1059,10 +1059,6 @@ export interface ChatStore {
     response: LoadSessionResponseType,
     baseline?: SessionRestoreBaseline,
   ): void;
-  loadMoreMessages?(): Promise<void>;
-  setLoadMoreMessagesCallback?(
-    callback: ((oldestMessageId: string) => Promise<LoadSessionResponseType>) | null
-  ): void;
 
   // ========== 辅助方法（O(1) 查找） ==========
 
