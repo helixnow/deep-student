@@ -8,8 +8,9 @@ use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use reqwest::{header::HeaderMap, Client, Method, StatusCode, Url};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
+use std::sync::OnceLock;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -35,6 +36,9 @@ const MAX_RETRY_WAIT: Duration = Duration::from_secs(30);
 const RATE_WINDOW: Duration = Duration::from_secs(30 * 60);
 const NUTSTORE_REQUESTS_PER_WINDOW: usize = 540;
 
+type RequestWindow = Arc<Mutex<VecDeque<Instant>>>;
+static PROVIDER_REQUEST_WINDOWS: OnceLock<Mutex<HashMap<String, RequestWindow>>> = OnceLock::new();
+
 /// WebDAV 存储实现
 pub struct WebDavStorage {
     base_url: Url,
@@ -46,7 +50,7 @@ pub struct WebDavStorage {
     /// 避免每次 PUT 都对整条路径重发全链 MKCOL。
     created_dirs: Mutex<HashSet<String>>,
     /// 主动请求滑窗，避免同一 provider/session 短时间打爆 WebDAV。
-    request_window: Mutex<std::collections::VecDeque<Instant>>,
+    request_window: RequestWindow,
     requests_per_window: usize,
 }
 
@@ -77,6 +81,17 @@ impl WebDavStorage {
             0
         };
 
+        // 共享同一 provider 的限流窗口：多个同步任务/会话创建不同 storage
+        // 实例时仍共同受坚果云请求上限约束。
+        let provider_key = format!("{}|{}", host, config.username);
+        let windows = PROVIDER_REQUEST_WINDOWS.get_or_init(|| Mutex::new(HashMap::new()));
+        let request_window = {
+            let mut all = windows.lock().unwrap_or_else(|p| p.into_inner());
+            all.entry(provider_key)
+                .or_insert_with(|| Arc::new(Mutex::new(VecDeque::new())))
+                .clone()
+        };
+
         Ok(Self {
             base_url: url,
             username: config.username,
@@ -84,7 +99,7 @@ impl WebDavStorage {
             root: root.trim_matches('/').to_string(),
             http,
             created_dirs: Mutex::new(HashSet::new()),
-            request_window: Mutex::new(std::collections::VecDeque::new()),
+            request_window,
             requests_per_window,
         })
     }
