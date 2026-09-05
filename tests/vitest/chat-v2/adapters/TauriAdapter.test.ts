@@ -130,6 +130,7 @@ function createMockStore(): ChatStore {
     setContinueMessageCallback: vi.fn(),
     continueMessage: vi.fn().mockResolvedValue(undefined),
     setLoadCallback: vi.fn(),
+    setLoadEarlierMessagesCallback: vi.fn(),
     setSwitchVariantCallback: vi.fn(),
     setDeleteVariantCallback: vi.fn(),
     setRetryVariantCallback: vi.fn(),
@@ -276,7 +277,10 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('should send message and update store', async () => {
-      vi.mocked(invoke).mockResolvedValue('assistant-msg-id');
+      // sendMessage 先查 chat_v2_has_active_stream（布尔），其余命令返回消息 ID
+      vi.mocked(invoke).mockImplementation(async (command) =>
+        command === 'chat_v2_has_active_stream' ? false : 'assistant-msg-id',
+      );
 
       await adapter.sendMessage('Hello, world!');
 

@@ -140,7 +140,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           )}
           {/* 这个按钮只重挂子树，不重载页面——文案必须是「重试」。
               真正的刷新在 TopLevelFallback（那里才用 error_boundary.refresh）。 */}
-          <DsButton variant="ghost" size="sm" onClick={this.resetError} className="text-xs !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={this.resetError} className="text-xs [@media(pointer:coarse)]:!min-h-11">
             {i18n.t('common:error_boundary.retry', 'Try again')}
           </DsButton>
         </div>

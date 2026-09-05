@@ -91,7 +91,9 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: showGlobalNotificationMock,
 }));
 
-vi.mock('@/command-palette', () => ({
+// ModernSidebar 为瘦身构建改为深路径 import（绕开 barrel），
+// mock 必须打在同一个模块路径上才生效
+vi.mock('@/command-palette/CommandPaletteProvider', () => ({
   useCommandPalette: () => ({
     openSessionSearch: openSessionSearchMock,
   }),
