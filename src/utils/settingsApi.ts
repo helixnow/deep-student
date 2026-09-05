@@ -42,7 +42,24 @@ export async function getSettings(keys: readonly string[]): Promise<Record<strin
 
 /** Persist a group of settings without exposing raw IPC details to callers. */
 export async function saveSettings(settings: Record<string, string>): Promise<void> {
-  await Promise.all(Object.entries(settings).map(([key, value]) => saveSetting(key, value)));
+  const entries = Object.entries(settings);
+  const previous = await getSettings(entries.map(([key]) => key));
+  const applied: string[] = [];
+  try {
+    for (const [key, value] of entries) {
+      await saveSetting(key, value);
+      applied.push(key);
+    }
+  } catch (error) {
+    // Best-effort rollback keeps in-memory/UI configuration from diverging
+    // when a later IPC write fails.
+    for (const key of applied.reverse()) {
+      const oldValue = previous[key];
+      if (oldValue == null) await deleteSetting(key);
+      else await saveSetting(key, oldValue);
+    }
+    throw error;
+  }
 }
 
 export async function deleteSetting(key: string): Promise<void> {
