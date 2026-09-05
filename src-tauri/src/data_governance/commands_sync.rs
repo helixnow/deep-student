@@ -2688,6 +2688,28 @@ pub struct SyncImportResponse {
 ///
 /// ## 返回
 /// - `SyncExecutionResponse`: 同步执行结果
+/// 云存储状态提示链路 RAII 守卫：注册 status hook + 进度 sink，Drop 时配对
+/// 卸下。保证同步命令众多提前返回路径不残留全局钩子（钩子残留会把后续
+/// 非同步时期的云存储等待提示错误地发到已结束的同步进度通道）。
+struct CloudStatusHookGuard;
+
+impl CloudStatusHookGuard {
+    fn install(emitter: &SyncProgressEmitter) -> Self {
+        crate::cloud_storage::set_status_hook(Box::new(|msg| {
+            super::sync::report_sync_status(msg);
+        }));
+        super::sync::set_status_sink(emitter.clone());
+        Self
+    }
+}
+
+impl Drop for CloudStatusHookGuard {
+    fn drop(&mut self) {
+        crate::cloud_storage::clear_status_hook();
+        super::sync::clear_status_sink();
+    }
+}
+
 #[tauri::command]
 pub async fn data_governance_run_sync_with_progress(
     app: tauri::AppHandle,
@@ -2815,6 +2837,9 @@ pub async fn data_governance_run_sync_with_progress(
 
     // 只有拿到全局锁后才宣告本次操作开始，避免第二个请求制造幽灵 preparing 事件。
     emitter.emit_preparing().await;
+
+    // 云存储等待窗口（限流/退避/重试）的状态提示接入本次同步的进度通道
+    let _status_hook_guard = CloudStatusHookGuard::install(&emitter);
 
     // 发送检测变更状态
     emitter.emit_detecting_changes().await;

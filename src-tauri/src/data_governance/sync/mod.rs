@@ -55,7 +55,10 @@ pub use conflict_resolver::{
     ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
     ConflictResolver, ConflictSide,
 };
-pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EVENT_NAME};
+pub use emitter::{
+    clear_status_sink, report_sync_status, set_status_sink, OptionalEmitter, SyncProgressCallback,
+    SyncProgressEmitter, EVENT_NAME,
+};
 pub use hlc::{Hlc, MAX_DRIFT_MS};
 pub use progress::{ProgressTracker, SpeedCalculator, SyncOutcome, SyncPhase, SyncProgress};
 use state::SyncStateStore;

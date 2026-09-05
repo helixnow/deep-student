@@ -21,9 +21,9 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len, BoundedMemoryBody,
-    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
-    MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
+    ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len, report_status,
+    BoundedMemoryBody, CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result,
+    UploadProgressCallback, MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -133,7 +133,17 @@ impl WebDavStorage {
             };
             match wait {
                 None => return,
-                Some(delay) => tokio::time::sleep(delay.min(Duration::from_secs(60))).await,
+                Some(delay) => {
+                    // 限流等待期无字节流动，上报状态避免前端"假卡死"；
+                    // 短等待（<2s）不上报，避免 current_item 频繁闪烁
+                    if delay >= Duration::from_secs(2) {
+                        report_status(&format!(
+                            "云端限流保护，约 {} 秒后自动继续…",
+                            delay.as_secs()
+                        ));
+                    }
+                    tokio::time::sleep(delay.min(Duration::from_secs(60))).await;
+                }
             }
         }
     }
@@ -309,6 +319,12 @@ impl WebDavStorage {
                 let delay = pending_delay
                     .take()
                     .unwrap_or_else(|| Self::backoff_delay(attempt));
+                report_status(&format!(
+                    "云端请求暂不可用，{} 秒后自动重试（第 {}/{} 次）…",
+                    delay.as_secs(),
+                    attempt + 1,
+                    max_retries
+                ));
                 tokio::time::sleep(delay).await;
                 tracing::debug!("WebDAV {} 重试 {}/{}", method, attempt + 1, max_retries);
             }
@@ -392,6 +408,12 @@ impl WebDavStorage {
                 let delay = pending_delay
                     .take()
                     .unwrap_or_else(|| Self::backoff_delay(attempt));
+                report_status(&format!(
+                    "云端目录查询暂不可用，{} 秒后自动重试（第 {}/{} 次）…",
+                    delay.as_secs(),
+                    attempt + 1,
+                    max_retries
+                ));
                 tokio::time::sleep(delay).await;
                 tracing::debug!(
                     "WebDAV PROPFIND {} 重试 {}/{}",
@@ -925,6 +947,12 @@ impl CloudStorage for WebDavStorage {
                 let delay = pending_delay
                     .take()
                     .unwrap_or_else(|| Self::backoff_delay(attempt));
+                report_status(&format!(
+                    "云端上传暂不可用，{} 秒后自动重试（第 {}/{} 次）…",
+                    delay.as_secs(),
+                    attempt + 1,
+                    max_retries
+                ));
                 tokio::time::sleep(delay).await;
                 tracing::debug!("WebDAV PUT {} 重试 {}/{}", key, attempt + 1, max_retries);
             }

@@ -18,6 +18,7 @@ const THROTTLE_INTERVAL: Duration = Duration::from_millis(100);
 ///
 /// 负责向前端发送同步进度事件。
 /// 使用节流机制避免过于频繁的事件发送，但阶段变化时会强制发送。
+#[derive(Clone)]
 pub struct SyncProgressEmitter {
     /// Tauri AppHandle
     app: AppHandle,
@@ -29,6 +30,9 @@ pub struct SyncProgressEmitter {
     last_percent: Arc<StdMutex<f32>>,
     /// 一次同步的稳定关联 ID；clone 后仍共享同一值。
     operation_id: Arc<String>,
+    /// 供同步上下文（status sink）读取的最近发射阶段影子；
+    /// do_emit 同步更新，避免在 sync fn 里 await tokio Mutex。
+    last_phase_plain: Arc<StdMutex<SyncPhase>>,
 }
 
 impl SyncProgressEmitter {
@@ -43,6 +47,7 @@ impl SyncProgressEmitter {
             last_phase: Arc::new(Mutex::new(None)),
             last_percent: Arc::new(StdMutex::new(0.0)),
             operation_id: Arc::new(uuid::Uuid::new_v4().to_string()),
+            last_phase_plain: Arc::new(StdMutex::new(SyncPhase::Preparing)),
         }
     }
 
@@ -224,6 +229,10 @@ impl SyncProgressEmitter {
 
     /// 实际发射事件
     fn do_emit(&self, progress: &SyncProgress) {
+        *self
+            .last_phase_plain
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = progress.phase;
         if let Err(e) = self.app.emit(EVENT_NAME, progress) {
             tracing::error!("[sync_emitter] 发送进度事件失败: {}", e);
         } else {
@@ -238,16 +247,55 @@ impl SyncProgressEmitter {
     }
 }
 
-impl Clone for SyncProgressEmitter {
-    fn clone(&self) -> Self {
-        Self {
-            app: self.app.clone(),
-            last_emit: Arc::clone(&self.last_emit),
-            last_phase: Arc::clone(&self.last_phase),
-            last_percent: Arc::clone(&self.last_percent),
-            operation_id: Arc::clone(&self.operation_id),
-        }
+// ==================== 云存储状态提示 sink ====================
+//
+// 云存储层（滑窗限速 / 429/503 退避 / 网络重试等待）经
+// `cloud_storage::set_status_hook` 上报的文字提示，由这里注册的全局 sink
+// 转成普通进度事件（`current_item` 承载文案），消除等待窗口期前端
+// "假卡死"。percent 传 0 由 normalize_progress 抬到 last_percent（单调
+// 不回退）；phase 取最近实际发射阶段，避免 UI 阶段标签跳动。
+// 同步有全局信号量串行化，sink 注册/卸下由命令入口 RAII 守卫配对。
+
+static STATUS_SINK: std::sync::OnceLock<StdMutex<Option<SyncProgressEmitter>>> =
+    std::sync::OnceLock::new();
+
+fn status_sink_slot() -> &'static StdMutex<Option<SyncProgressEmitter>> {
+    STATUS_SINK.get_or_init(|| StdMutex::new(None))
+}
+
+/// 注册状态提示 sink（同步命令入口调用）
+pub fn set_status_sink(emitter: SyncProgressEmitter) {
+    *status_sink_slot().lock().unwrap_or_else(|e| e.into_inner()) = Some(emitter);
+}
+
+/// 卸下状态提示 sink（同步命令结束/失败时调用）
+pub fn clear_status_sink() {
+    *status_sink_slot().lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// 上报云存储状态提示为进度事件（未注册 sink 时为 no-op）。
+pub fn report_sync_status(message: &str) {
+    let sink = status_sink_slot()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let Some(sink) = sink else { return };
+    let phase = *sink
+        .last_phase_plain
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    // 终态阶段（Completed/Failed）不应再被状态提示覆盖
+    if phase.is_terminal() {
+        return;
     }
+    sink.emit_force(SyncProgress {
+        phase,
+        percent: 0.0,
+        current: 0,
+        total: 0,
+        current_item: Some(message.to_string()),
+        ..Default::default()
+    });
 }
 
 /// 同步进度回调 trait
