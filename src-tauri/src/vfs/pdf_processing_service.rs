@@ -60,6 +60,7 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::indexing::VfsFullIndexingService;
 use crate::vfs::lance_store::VfsLanceStore;
+use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPreviewConfig};
 use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
 use crate::vfs::types::PdfPreviewJson;
 use crate::vfs::unit_builder::UnitBuildInput;
@@ -3518,6 +3519,214 @@ impl PdfProcessingService {
                 Err(e)
             }
         }
+    }
+    /// Backfill preview_json for historical PDFs that lack it.
+    ///
+    /// 在应用启动时调用，补全历史 PDF 的 preview_json，确保旧教科书拥有 OCR 所需的数据。
+    /// 每次启动最多处理 5 个文件，避免阻塞应用启动。
+    pub fn backfill_missing_previews(&self) -> VfsResult<usize> {
+        const BACKFILL_LIMIT: usize = 5;
+
+        let conn = self.db.get_conn_safe()?;
+
+        // 查询缺少 preview_json 但有 page_count 的 PDF（page_count > 0 说明文件可访问）
+        let files: Vec<(String, Option<String>, Option<String>)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, blob_hash, original_path \
+                     FROM files \
+                     WHERE mime_type = 'application/pdf' \
+                       AND preview_json IS NULL \
+                       AND page_count > 0 \
+                     LIMIT ?1",
+                )
+                .map_err(|e| {
+                    VfsError::Database(format!("[Backfill] Failed to prepare query: {}", e))
+                })?;
+
+            let rows = stmt
+                .query_map(params![BACKFILL_LIMIT as i64], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })
+                .map_err(|e| VfsError::Database(format!("[Backfill] Failed to query: {}", e)))?;
+
+            rows.filter_map(log_and_skip_err).collect()
+        };
+
+        let count = files.len();
+        if count == 0 {
+            info!("[PdfProcessingService] Backfill: no historical PDFs missing preview_json");
+            return Ok(0);
+        }
+
+        info!(
+            "[PdfProcessingService] Backfill: found {} historical PDFs missing preview_json, processing in background",
+            count
+        );
+
+        let db = self.db.clone();
+
+        // 后台处理：逐个文件生成 preview（不阻塞启动）
+        tauri::async_runtime::spawn(async move {
+            let blobs_dir = db.blobs_dir().to_path_buf();
+            let total = files.len();
+
+            for (idx, (file_id, blob_hash, original_path)) in files.iter().enumerate() {
+                // Step a/b: 获取 PDF 字节 — 优先 blob_hash，其次 original_path（带安全校验）
+                let pdf_bytes = {
+                    let conn = match db.get_conn_safe() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            warn!("[Backfill] Failed to get DB connection: {}", e);
+                            continue;
+                        }
+                    };
+
+                    if let Some(ref hash) = blob_hash {
+                        match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, hash) {
+                            Ok(Some(path)) => match std::fs::read(&path) {
+                                Ok(bytes) => Some(bytes),
+                                Err(e) => {
+                                    warn!(
+                                        "[Backfill] Failed to read blob {} for {}: {}",
+                                        hash, file_id, e
+                                    );
+                                    None
+                                }
+                            },
+                            Ok(None) => {
+                                warn!(
+                                    "[Backfill] Blob path not found for hash {} (file {})",
+                                    hash, file_id
+                                );
+                                None
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "[Backfill] Failed to resolve blob path for {}: {}",
+                                    file_id, e
+                                );
+                                None
+                            }
+                        }
+                    } else if let Some(ref path_str) = original_path {
+                        if !crate::vfs::repos::attachment_repo::VfsAttachmentRepo::is_safe_original_path(
+                            &blobs_dir,
+                            path_str,
+                        ) {
+                            warn!(
+                                "[Backfill] Unsafe original_path for {}: {}",
+                                file_id, path_str
+                            );
+                            None
+                        } else {
+                            match std::fs::read(path_str) {
+                                Ok(bytes) => Some(bytes),
+                                Err(e) => {
+                                    warn!(
+                                        "[Backfill] Failed to read {} for {}: {}",
+                                        path_str, file_id, e
+                                    );
+                                    None
+                                }
+                            }
+                        }
+                    } else {
+                        warn!(
+                            "[Backfill] No blob_hash or original_path for file: {}",
+                            file_id
+                        );
+                        None
+                    }
+                };
+
+                if let Some(bytes) = pdf_bytes {
+                    // Step c: 调用 render_pdf_preview 生成 preview_json + extracted_text
+                    let config = PdfPreviewConfig::default();
+                    let db_clone = db.clone();
+                    let blobs_dir_clone = blobs_dir.clone();
+                    let file_id_clone = file_id.clone();
+
+                    let render_result = tokio::task::spawn_blocking(move || {
+                        let conn = match db_clone.get_conn_safe() {
+                            Ok(c) => c,
+                            Err(e) => {
+                                warn!("[Backfill] spawn_blocking: failed to get DB conn: {}", e);
+                                return None;
+                            }
+                        };
+                        match render_pdf_preview_with_progress(
+                            &conn,
+                            &blobs_dir_clone,
+                            &bytes,
+                            &config,
+                            |_, _| {},
+                        ) {
+                            Ok(result) => Some((result, conn)),
+                            Err(e) => {
+                                warn!(
+                                    "[Backfill] render_pdf_preview failed for {}: {}",
+                                    file_id_clone, e
+                                );
+                                None
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!("[Backfill] spawn_blocking panicked: {}", e);
+                        None
+                    });
+
+                    if let Some((result, conn)) = render_result {
+                        // Step d: UPDATE files SET preview_json=?, extracted_text=?, page_count=? WHERE id=?
+                        if let Some(pj_ref) = &result.preview_json {
+                            let pj_str = match serde_json::to_string(pj_ref) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    warn!("[Backfill] Failed to serialize preview_json: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            if let Err(e) = conn.execute(
+                                "UPDATE files SET preview_json = ?1, extracted_text = ?2, page_count = ?3 WHERE id = ?4",
+                                params![
+                                    pj_str,
+                                    result.extracted_text.as_deref(),
+                                    result.page_count as i32,
+                                    file_id,
+                                ],
+                            ) {
+                                warn!(
+                                    "[Backfill] Failed to update files row for {}: {}",
+                                    file_id, e
+                                );
+                            } else {
+                                // Step e: 日志进度
+                                info!(
+                                    "[Backfill] Backfilled preview for file {} ({}/{})",
+                                    file_id,
+                                    idx + 1,
+                                    total
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            info!(
+                "[PdfProcessingService] Backfill completed: processed {}/{} files",
+                total, total
+            );
+        });
+
+        Ok(count)
     }
 }
 
