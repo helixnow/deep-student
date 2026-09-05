@@ -1,0 +1,68 @@
+# Newmanyouning 优化吸收方案
+
+## 目标
+
+以当前 `main` 为唯一集成基线，充分吸收 `newmanyouning/main` 中仍对应现实问题的优化，同时保持当前主线已有功能、协议和安全边界。目标不是机械 cherry-pick，而是使对方想解决的问题在新架构中得到等价或更完整的解决。
+
+## 基线与原则
+
+- 当前主线基线：`d22e345b2`（已先提交原工作区改动）。
+- 对方分支：`newmanyouning/main`，远端快照 `3c134a71c`。
+- 不整体合并个人发行版、旧架构重构或大规模删除提交。
+- 每项改造先核对当前代码是否仍存在对应问题；已有修复只补测试，不重复实现。
+- 保留当前主线最近的 Chat、工具、附件、Windows shell 和数据治理修复。
+- 子代理不得编译、测试、切换分支、stash、reset 或修改无关文件。
+
+## 工作域
+
+### A. Chat 流式与消息列表
+
+吸收目标：chunk buffer、批量 store 更新、complete/cancel/error flush、迟到事件隔离、恢复代际保护、稳定 session key、程序化滚动锁、测量节流、代码块原生滚动兜底。
+
+重点文件：`src/features/chat/core/middleware/eventBridge.ts`、`src/features/chat/core/store/streamActions.ts`、`src/features/chat/core/store/restoreActions.ts`、`src/features/chat/components/MessageList.tsx`、`src/features/chat/components/renderers/StreamingBlockRenderer.tsx`、聊天样式。
+
+验收：多变体、乱序、取消、错误、快速切换会话、长 Markdown、公式/代码块/Anki block 不串内容、不回弹、不明显增加渲染压力。
+
+### B. Chat 会话分页与快照
+
+吸收目标：staged restore、宽松旧数据校验、单 block 损坏隔离、历史消息向上懒加载、scroll anchoring、对话快照导入导出及全量 ID 重映射。
+
+重点文件：`src-tauri/src/chat_v2/handlers/load_session.rs`、`src-tauri/src/chat_v2/repo.rs`、Chat store session/restore 文件、必要的新 snapshot handler 和前端导出 API。
+
+验收：旧数据、缺失 block、未知 block、tail/full 一致；长会话初始只取尾部；导入事务失败可回滚，所有内部 ID 和资源引用不冲突。
+
+### C. 同步、备份与移动构建
+
+吸收目标：Android 本地备份导入的 `spawn_blocking` 边界和进度节流、`shasum` 回退、WebDAV 主动滑窗限流、字节级单调进度及退避状态透传。
+
+重点文件：`src-tauri/src/data_governance/commands_restore.rs`、`src-tauri/src/backup_job_manager.rs`、`src-tauri/src/cloud_storage/webdav.rs`、`src-tauri/src/data_governance/sync/*`、`scripts/build_android.sh`。
+
+不得重复移植当前已有的 PROPFIND、Retry-After、基础重试、密钥槽位路径和 Android 工具探测实现。
+
+### D. PDF/OCR、设置与清理
+
+吸收目标：OCR 卡住任务启动恢复、旧 PDF 预览后台回填、必要时 PaddleOCR 分层接入、settings API 统一、vendor/profile/config 统一刷新、经依赖审计确认后的死代码和 CSS 清理。
+
+重点文件：PDF/OCR 初始化和服务、`src/api/settingsApi.ts` 及 settings 组件、归档清理清单。
+
+PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小、超时、取消和回退策略时直接接入生产流程。
+
+## 不纳入整体迁移
+
+- 对方旧版 Chat/VFS/DSTU/LLM 全量重构。
+- 包名、图标、签名、个人发布渠道。
+- 未经动态 import、移动端、demo、command registry 审计的批量删除。
+- 全局替换滚动条或完全取消流式自动追底。
+
+## 集成顺序
+
+1. A、B、C、D 分域改造，避免多个代理编辑同一文件。
+2. 主代理审查 diff，解决协议和命名冲突。
+3. 补齐跨域测试，优先覆盖流式竞态、恢复竞态、同步进度和 Android 恢复。
+4. 执行 `cargo check --lib`、相关 Rust 测试、前端类型检查和定向 Vitest。
+5. 执行构建与 demo/桌面关键路径验证。
+6. 最后进行死代码和 CSS 清理，逐批提交并保留 manifest。
+
+## 交付要求
+
+每个工作域必须返回：修改文件、吸收的对方提交/问题、未吸收项目及原因、与当前主线融合点。不得以“代码已复制”替代行为验收。所有实现最终必须在当前 `main` 上可编译、可测试、可运行。

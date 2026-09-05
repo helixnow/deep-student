@@ -925,7 +925,14 @@ fi
 say "生成文件信息..."
 
 APK_SIZE=$(du -h "$FINAL_APK_PATH" | cut -f1)
-APK_SHA256=$(shasum -a 256 "$FINAL_APK_PATH" | cut -d' ' -f1)
+if command -v shasum >/dev/null 2>&1; then
+    APK_SHA256=$(shasum -a 256 "$FINAL_APK_PATH" | cut -d' ' -f1)
+elif command -v sha256sum >/dev/null 2>&1; then
+    APK_SHA256=$(sha256sum "$FINAL_APK_PATH" | cut -d' ' -f1)
+else
+    APK_SHA256="unavailable"
+    warn "未找到 shasum 或 sha256sum，跳过 APK SHA-256 计算"
+fi
 
 # 确定包名显示
 if [[ "$USE_DEV_PACKAGE" == true && -n "$ORIGINAL_IDENTIFIER" ]]; then
