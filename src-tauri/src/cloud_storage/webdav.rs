@@ -1536,6 +1536,25 @@ mod tests {
     }
 
     #[test]
+    fn provider_rate_limit_window_is_shared_across_storage_instances() {
+        let config = |username: &str| WebDavConfig {
+            endpoint: "https://dav.jianguoyun.com/dav/".to_string(),
+            username: username.to_string(),
+            password: "secret".to_string(),
+        };
+        let first = WebDavStorage::new(config("alice"), "one".to_string()).unwrap();
+        let second = WebDavStorage::new(config("alice"), "two".to_string()).unwrap();
+        let other_user = WebDavStorage::new(config("bob"), "one".to_string()).unwrap();
+
+        assert!(Arc::ptr_eq(&first.request_window, &second.request_window));
+        assert!(!Arc::ptr_eq(
+            &first.request_window,
+            &other_user.request_window
+        ));
+        assert_eq!(first.requests_per_window, NUTSTORE_REQUESTS_PER_WINDOW);
+    }
+
+    #[test]
     fn build_url_adds_root_once() {
         let storage = test_storage();
         let url = storage
