@@ -59,6 +59,37 @@ pub struct SSETransport {
     buffer: Arc<Mutex<SseLineBuffer>>,
     /// 最后接收的事件ID，用于断线续传
     last_event_id: Arc<RwLock<Option<String>>>,
+    /// 停止信号：drop/close 后接收与发送任务必须退出，
+    /// 否则连测超时被上层放弃后，重连循环会在后台无限重试（泄漏）。
+    stop: StopSignal,
+}
+
+/// watch 通道封装的停止标志（接收/发送任务可 select 等待，立即退出）。
+#[derive(Clone)]
+struct StopSignal {
+    tx: tokio::sync::watch::Sender<bool>,
+    rx: tokio::sync::watch::Receiver<bool>,
+}
+
+impl StopSignal {
+    fn new() -> Self {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        Self { tx, rx }
+    }
+
+    fn signal(&self) {
+        let _ = self.tx.send(true);
+    }
+
+    fn rx(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.rx.clone()
+    }
+}
+
+impl Drop for SSETransport {
+    fn drop(&mut self) {
+        self.stop.signal();
+    }
 }
 
 impl SSETransport {
@@ -94,7 +125,7 @@ impl SSETransport {
             );
         }
 
-        let client = Client::builder()
+        let client = super::reqwest_builder_for_endpoint(&config.endpoint)
             .timeout(config.timeout)
             .default_headers(headers)
             .build()
@@ -113,6 +144,7 @@ impl SSETransport {
             connected: Arc::new(AtomicBool::new(false)),
             buffer: Arc::new(Mutex::new(SseLineBuffer::new())),
             last_event_id: Arc::new(RwLock::new(None)),
+            stop: StopSignal::new(),
         };
 
         // 启动发送任务
@@ -130,9 +162,17 @@ impl SSETransport {
         let endpoint = self.config.endpoint.clone();
         let session_id = self.session_id.clone();
         let wait_timeout = self.config.timeout; // 在首次发送前等待会话建立
+        let mut stop_rx = self.stop.rx();
 
         tokio::spawn(async move {
-            while let Some(message) = send_rx.recv().await {
+            loop {
+                let message = tokio::select! {
+                    msg = send_rx.recv() => match msg {
+                        Some(m) => m,
+                        None => break,
+                    },
+                    _ = stop_rx.changed() => break,
+                };
                 // 发送前尽量等待会话ID（部分服务端要求）
                 let start = std::time::Instant::now();
                 loop {
@@ -182,6 +222,7 @@ impl SSETransport {
         let session_id = self.session_id.clone();
         let last_event_id = self.last_event_id.clone();
         let open_timeout = self.config.timeout; // 复用配置超时作为连接建立超时
+        let stop_rx = self.stop.rx();
 
         // 创建SSE连接（保留认证/自定义头）
         let client = {
@@ -211,7 +252,7 @@ impl SSETransport {
                         .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
                 );
             }
-            reqwest::Client::builder()
+            super::reqwest_builder_for_endpoint(&endpoint)
                 .default_headers(headers)
                 .build()
                 .map_err(|e| McpError::TransportError(e.to_string()))?
@@ -231,9 +272,17 @@ impl SSETransport {
                 }
             };
             let mut backoff_ms = 500u64;
+            let mut stop_rx = stop_rx;
 
             loop {
-                match es.next().await {
+                let event = tokio::select! {
+                    ev = es.next() => ev,
+                    _ = stop_rx.changed() => {
+                        info!("SSE receive task stopping (transport dropped or closed)");
+                        break;
+                    }
+                };
+                match event {
                     Some(Ok(SSEEvent::Open)) => {
                         connected.store(true, Ordering::SeqCst);
                         backoff_ms = 500; // 重置退避时间
@@ -287,8 +336,11 @@ impl SSETransport {
                         error!("SSE error: {:?}", e);
                         connected.store(false, Ordering::SeqCst);
 
-                        // 指数退避重连
-                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                        // 指数退避重连（可被停止信号立即打断）
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_millis(backoff_ms)) => {}
+                            _ = stop_rx.changed() => break,
+                        }
                         backoff_ms = (backoff_ms * 2).min(30_000);
 
                         // 尝试重新创建连接，携带 Last-Event-ID 以支持断线续传
@@ -402,6 +454,8 @@ impl Transport for SSETransport {
 
     async fn close(&self) -> McpResult<()> {
         self.connected.store(false, Ordering::SeqCst);
+        // 通知接收/发送任务退出（与 Drop 相同的停止路径）
+        self.stop.signal();
 
         // 清理会话
         if let Some(session_id) = self.session_id.read().await.as_ref() {
@@ -431,6 +485,62 @@ impl Transport for SSETransport {
 mod tests {
     use super::*;
     use crate::mcp::auth::resolve_authorization_header;
+
+    /// 回归：连测超时/上层放弃后 transport 被 drop，接收任务必须停止重连，
+    /// 而不是在后台无限 `reconnecting → error` 循环（2026-09-05 安装版日志泄漏证据）。
+    #[tokio::test]
+    async fn sse_receive_task_stops_after_transport_drop() {
+        use tokio::io::AsyncWriteExt;
+
+        // 本地假 SSE server：发一条事件后挂住连接（不关流）
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (sock, _) = listener.accept().await.expect("accept");
+            let mut sock = sock;
+            sock.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n",
+            )
+            .await
+            .expect("write headers");
+            sock.write_all(b"data: {\"sessionId\":\"s1\"}\n\n")
+                .await
+                .expect("write event");
+            // 保持连接打开，模拟服务器不结束流
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        });
+
+        let config = SSEConfig {
+            endpoint: format!("http://{addr}/sse"),
+            api_key: None,
+            oauth: None,
+            auth_provider: None,
+            headers: reqwest::header::HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+        };
+        let transport = SSETransport::new(config).await.expect("transport connects");
+        let connected = transport.connected.clone();
+        assert!(
+            connected.load(Ordering::SeqCst),
+            "SSE should be connected after new()"
+        );
+
+        // drop → Drop 发停止信号 → 接收任务应尽快退出并置 connected=false
+        drop(transport);
+        let mut stopped = false;
+        for _ in 0..50 {
+            if !connected.load(Ordering::SeqCst) {
+                stopped = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(
+            stopped,
+            "receive task must stop after transport drop (no background reconnect loop)"
+        );
+        server.abort();
+    }
 
     #[tokio::test]
     async fn test_sse_config() {
