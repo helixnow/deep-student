@@ -74,7 +74,9 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 - 本轮已吸收：迟到流事件会话隔离、终态前 chunk flush、损坏历史 message/block 单项隔离、旧 session ID 兼容、WebDAV provider-aware 主动滑窗限流、Android ZIP blocking/工具回退格式修复。
 - 当前主线已有等价实现：Chat FIFO 多变体与采样 buffer、历史 scroll anchoring 基础、OCR stuck task 自动续跑、WebDAV Retry-After/重试/真实字节进度、Android spawn_blocking 与 sha256sum 回退、单实例聚焦恢复、settings 批量 API 基础。
 - 已吸收：用户迁移级对话快照导入/导出后端协议、事务化 ID remap、50MiB 限制、前端文件导入导出入口；Settings 业务直接 IPC 已迁移为统一 API；历史 PDF 缺失 `preview_json` 的启动后台分批回填（每批 5 个、路径安全校验、`spawn_blocking` 渲染）；WebDAV 同一 provider（endpoint host + 用户名）跨 storage 实例共享主动滑窗限流。
-- 未吸收：历史分页 UI 的完整 loading/retry/exhausted 交互；WebDAV 限流等待的取消、provider/session 全链路并发控制、前端 retrying/backoff/failed/completed 状态闭环；死代码/CSS 依赖审计清理。
+- 已吸收（本轮）：历史消息向上懒加载完整 UI（store 分页状态四件套、MessageList 顶部横幅 loading/retry/exhausted、滚动近顶自动触发、内容不足一屏主动补页、会话切换迟到错误隔离；滚动补偿复用既有锚定逻辑）；WebDAV 等待窗口状态透传前端（traits STATUS_HOOK + emitter 全局 sink + commands_sync RAII 守卫，消除限流/退避期假卡死，事件契约零变更）；协作式同步取消（CancellationToken 全局槽、cancellable_sleep、SyncError::Cancelled、传输原语检查点、`data_governance_cancel_sync` 命令、前端取消按钮）；WebDAV 健壮性残余（put_file 显式 Content-Length 修坚果云 chunked PUT 断连、put_file/get_file_resumable 挂滑窗限流、`DEEP_STUDENT_WEBDAV_RATE_LIMIT` env 覆盖）。
+- 并发控制决策（最小子集）：上游 permit.rs 写门体系未移植——main 已有 BACKUP_GLOBAL_LIMITER 全局互斥 + WorkspaceMaintenanceGuard 连接池屏障 + 前端入口互斥，写门接线面大且与维护模式职责重叠；已用 CloudStatusHookGuard RAII 获得"错误路径不残留全局状态"的核心价值。try_acquire 立即失败语义保留（前端 busy 分类依赖）。
+- 未吸收：文件级进度的两遍化真实比例（上游 dd46457e5 的 report_file_sync_totals）——main 的 FileLevelProgress 按 3 固定步骤分摊区间，步骤带内 percent 在首个文件完成后被 normalize 钉在带边界（单调但不线性）；修复需在 sync/mod.rs 三个 2000 行级函数中预收集传输清单，风险收益比不佳，记录为已知限制。死代码/CSS 依赖审计清理。
 
 ### 本轮验证证据
 
@@ -85,3 +87,9 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 - 本轮 `npm run typecheck`：通过，无 TypeScript 错误。
 - `npm run build:demo`：通过（Vite 构建完成；存在既有 chunk size/circular chunk 警告，未导致构建失败）。
 - `npm run typecheck`、`cargo fmt`、`git diff --check`：通过。
+
+### 2026-09-05 分页 + WebDAV 切片验证证据
+
+- 分页 UI（commit 见 git log "历史消息向上懒加载"）：`npx vitest run src/features/chat/core/store/__tests__/`（含新增 sessionActions.historyPagination.test.ts 12 例：成功/失败重试/最早页/防重入/快速切会话/restore 与 prepend 标志/全量语义/去重同步/旧请求丢弃）15 文件 139 全绿；`npm run typecheck` 干净。
+- WebDAV 状态透传（"云存储等待窗口状态透传前端"）：`cargo check --lib` 绿；`cargo test --lib cloud_storage::webdav` 27 + `data_governance::sync::emitter` 3 全绿。
+- 协作式取消 + WebDAV 健壮性（"协作式取消 + WebDAV 传输健壮性"）：`cargo check --lib` 绿；`cargo test --lib cloud_storage` 176（含新增 cancelled_token_aborts_waits）+ `cargo test --lib data_governance` 675 全绿；`npm run typecheck` 干净。
