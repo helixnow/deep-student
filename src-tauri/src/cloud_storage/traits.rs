@@ -63,6 +63,64 @@ pub(crate) fn report_status(msg: &str) {
     }
 }
 
+// ==================== 云存储取消令牌 ====================
+//
+// 同步命令入口注册本次同步的 CancellationToken；云存储层的限流等待/
+// 退避重试睡眠经 select! 监听令牌，取消时立即返回错误而非死等到底。
+// 与 STATUS_HOOK 同生命周期：同步全局信号量串行化，注册/卸下配对。
+
+static CANCEL_TOKEN: std::sync::OnceLock<std::sync::RwLock<Option<tokio_util::sync::CancellationToken>>> =
+    std::sync::OnceLock::new();
+
+fn cancel_token_slot(
+) -> &'static std::sync::RwLock<Option<tokio_util::sync::CancellationToken>> {
+    CANCEL_TOKEN.get_or_init(|| std::sync::RwLock::new(None))
+}
+
+/// 注册取消令牌（同步命令入口调用）
+pub fn set_cancel_token(token: tokio_util::sync::CancellationToken) {
+    if let Ok(mut guard) = cancel_token_slot().write() {
+        *guard = Some(token);
+    }
+}
+
+/// 卸下取消令牌（同步命令结束/失败时调用）
+pub fn clear_cancel_token() {
+    if let Ok(mut guard) = cancel_token_slot().write() {
+        *guard = None;
+    }
+}
+
+/// 当前是否已请求取消（未注册令牌 = 不可取消场景，恒 false）
+pub(crate) fn is_sync_cancelled() -> bool {
+    cancel_token_slot()
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|t| t.is_cancelled()))
+        .unwrap_or(false)
+}
+
+/// 可取消的睡眠：注册了取消令牌时，取消立即以 Err 中断等待；
+/// 未注册时退化为普通 sleep（非同步场景行为不变）。
+pub(crate) async fn cancellable_sleep(duration: std::time::Duration) -> Result<()> {
+    let token = cancel_token_slot()
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned());
+    match token {
+        Some(token) => {
+            tokio::select! {
+                _ = tokio::time::sleep(duration) => Ok(()),
+                _ = token.cancelled() => Err(AppError::internal("云同步已取消")),
+            }
+        }
+        None => {
+            tokio::time::sleep(duration).await;
+            Ok(())
+        }
+    }
+}
+
 /// 分块上传配置
 pub const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB per chunk
 

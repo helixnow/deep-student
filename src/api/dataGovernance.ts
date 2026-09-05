@@ -1002,6 +1002,18 @@ export async function runSyncWithProgress(
 }
 
 /**
+ * 取消正在进行的数据治理同步
+ *
+ * 协作式取消：限流等待/退避重试立即中断，文件传输在当前文件结束后
+ * 于下一检查点停止。无进行中同步时返回 false（no-op）。
+ *
+ * @returns 是否成功发出了取消请求
+ */
+export async function cancelSync(): Promise<boolean> {
+  return invoke<boolean>("data_governance_cancel_sync");
+}
+
+/**
  * 执行同步并自动管理进度监听
  *
  * 这是一个便捷函数，自动设置和清理进度监听器。

@@ -188,6 +188,7 @@ commands.allow = [
   "data_governance_backup_and_export_zip",
   "data_governance_backup_tiered",
   "data_governance_cancel_backup",
+  "data_governance_cancel_sync",
   "data_governance_check_disk_space_for_restore",
   "data_governance_cleanup_audit_logs",
   "data_governance_cleanup_persisted_jobs",

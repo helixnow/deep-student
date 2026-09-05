@@ -392,6 +392,10 @@ pub enum SyncError {
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 
+    /// 用户主动取消本次同步（限流等待/退避/文件间检查点触发）。
+    #[error("Sync cancelled by user")]
+    Cancelled,
+
     /// 云端变更时间戳超出本地 wall clock 未来容忍窗口（疑似时钟漂移/篡改）。
     /// 此类变更必须进入隔离区（可见、可重放），绝不允许静默丢弃——
     /// 否则一台时钟超前的设备的全部写入会被其他设备永久忽略（违反 INV-1）。
@@ -2313,6 +2317,10 @@ impl SyncManager {
         progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
         context: &str,
     ) -> Result<(), SyncError> {
+        // 文件间取消检查点：所有上传循环都经此原语
+        if crate::cloud_storage::is_sync_cancelled() {
+            return Err(SyncError::Cancelled);
+        }
         storage
             .put_file(key, path, progress)
             .await
@@ -9728,6 +9736,10 @@ impl SyncManager {
         progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
         label: &str,
     ) -> Result<(), SyncError> {
+        // 文件间取消检查点：所有下载循环都经此原语
+        if crate::cloud_storage::is_sync_cancelled() {
+            return Err(SyncError::Cancelled);
+        }
         let Some(expected_cipher) = cipher_sha256 else {
             if self.encryption_enabled() {
                 return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(

@@ -590,6 +590,8 @@
     "upload": "Upload",
     "download": "Download",
     "bidirectional": "Bidirectional",
+    "cancel_sync": "Cancel sync",
+    "cancelling": "Cancelling…",
     "eta": "ETA",
     "conflict_management": "Conflict Management",
     "conflict_description": "Detect and resolve data conflicts between local and cloud",

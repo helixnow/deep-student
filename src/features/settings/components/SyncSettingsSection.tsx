@@ -56,6 +56,7 @@ import {
 } from '@/stores/syncStatusStore';
 import {
   DataGovernanceApi,
+  cancelSync,
   listenSyncProgress,
   runSyncWithProgress,
 } from '@/api/dataGovernance';
@@ -106,6 +107,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // 同步进度状态
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  // 取消请求已发出（等待后端协作式停止）；新同步开始时复位
+  const [cancelRequested, setCancelRequested] = useState(false);
   // 全局同步状态：与数据治理面板等其他入口共享，任一入口同步时本入口按钮禁用
   const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
@@ -234,6 +237,21 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     setShowConflictDialog(false);
   }, []);
 
+  // 请求取消当前同步（协作式：等待/退避立即中断，文件传输在下一检查点停止）
+  const handleCancelSync = useCallback(async () => {
+    setCancelRequested(true);
+    try {
+      const accepted = await cancelSync();
+      if (!accepted) {
+        // 后端无进行中同步（可能刚好结束）——复位让 UI 回到真实状态
+        setCancelRequested(false);
+      }
+    } catch (error) {
+      console.error('[SyncSettings] cancel sync failed:', error);
+      setCancelRequested(false);
+    }
+  }, []);
+
   // 执行同步（带进度跟踪）
   const handleSync = useCallback(
     async (direction: 'upload' | 'download' | 'bidirectional') => {
@@ -257,6 +275,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
       let unlisten: (() => void) | null = null;
       try {
+        setCancelRequested(false);
         setSyncProgress({
           phase: 'preparing',
           percent: 0,
@@ -620,9 +639,22 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                     </span>
                     {syncProgress.phase !== 'completed' &&
                       syncProgress.phase !== 'failed' && (
-                        <Badge variant="secondary" className="ml-auto">
-                          {syncProgress.percent.toFixed(0)}%
-                        </Badge>
+                        <>
+                          <Badge variant="secondary" className="ml-auto">
+                            {syncProgress.percent.toFixed(0)}%
+                          </Badge>
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-8"
+                            disabled={cancelRequested}
+                            onClick={() => { void handleCancelSync(); }}
+                          >
+                            {cancelRequested
+                              ? t('data:sync_settings.cancelling')
+                              : t('data:sync_settings.cancel_sync')}
+                          </DsButton>
+                        </>
                       )}
                   </div>
 

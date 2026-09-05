@@ -76,9 +76,11 @@ pub use sync_manager::{
     EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
 };
 pub use traits::{
-    clear_status_hook, set_status_hook, CloudStorage, DownloadProgressCallback, FileInfo,
-    ListOutcome, Result, UploadProgressCallback, RESUMABLE_DOWNLOAD_UNSUPPORTED,
+    clear_cancel_token, clear_status_hook, set_cancel_token, set_status_hook, CloudStorage,
+    DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    RESUMABLE_DOWNLOAD_UNSUPPORTED,
 };
+pub(crate) use traits::is_sync_cancelled;
 
 /// 本端启用加密后拒收明文遗留对象 / 拒明文上传。
 pub const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE: &str = "E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED";

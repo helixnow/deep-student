@@ -21,9 +21,10 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len, report_status,
-    BoundedMemoryBody, CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result,
-    UploadProgressCallback, MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
+    cancellable_sleep, ensure_declared_len_within_budget,
+    ensure_memory_get_matches_declared_len, report_status, BoundedMemoryBody, CloudStorage,
+    DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -75,11 +76,7 @@ impl WebDavStorage {
             .map_err(|e| AppError::internal(format!("构建 HTTP 客户端失败: {e}")))?;
 
         let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
-        let requests_per_window = if host.contains("jianguoyun") || host.contains("nutstore") {
-            NUTSTORE_REQUESTS_PER_WINDOW
-        } else {
-            0
-        };
+        let requests_per_window = Self::resolve_requests_per_window(&host);
 
         // 共享同一 provider 的限流窗口：多个同步任务/会话创建不同 storage
         // 实例时仍共同受坚果云请求上限约束。
@@ -104,10 +101,35 @@ impl WebDavStorage {
         })
     }
 
+    /// 每 30 分钟窗口的请求上限：坚果云默认 540；可用环境变量
+    /// `DEEP_STUDENT_WEBDAV_RATE_LIMIT` 覆盖（0 = 关闭主动限流，
+    /// 非法值告警后回退默认）。其他 provider 不做主动限速。
+    fn resolve_requests_per_window(host: &str) -> usize {
+        let is_nutstore = host.contains("jianguoyun") || host.contains("nutstore");
+        if !is_nutstore {
+            return 0;
+        }
+        match std::env::var("DEEP_STUDENT_WEBDAV_RATE_LIMIT") {
+            Ok(raw) => match raw.trim().parse::<usize>() {
+                Ok(value) => value,
+                Err(_) => {
+                    tracing::warn!(
+                        "DEEP_STUDENT_WEBDAV_RATE_LIMIT={:?} 不是合法整数，回退默认 {}",
+                        raw,
+                        NUTSTORE_REQUESTS_PER_WINDOW
+                    );
+                    NUTSTORE_REQUESTS_PER_WINDOW
+                }
+            },
+            Err(_) => NUTSTORE_REQUESTS_PER_WINDOW,
+        }
+    }
+
     /// 获取主动限流请求槽位；普通 provider 不限速。
-    async fn acquire_request_slot(&self) {
+    /// 等待可被同步取消令牌中断（取消时返回 Err 终止本次请求）。
+    async fn acquire_request_slot(&self) -> Result<()> {
         if self.requests_per_window == 0 {
-            return;
+            return Ok(());
         }
         loop {
             let wait = {
@@ -132,7 +154,7 @@ impl WebDavStorage {
                 }
             };
             match wait {
-                None => return,
+                None => return Ok(()),
                 Some(delay) => {
                     // 限流等待期无字节流动，上报状态避免前端"假卡死"；
                     // 短等待（<2s）不上报，避免 current_item 频繁闪烁
@@ -142,7 +164,7 @@ impl WebDavStorage {
                             delay.as_secs()
                         ));
                     }
-                    tokio::time::sleep(delay.min(Duration::from_secs(60))).await;
+                    cancellable_sleep(delay.min(Duration::from_secs(60))).await?;
                 }
             }
         }
@@ -325,7 +347,7 @@ impl WebDavStorage {
                     attempt + 1,
                     max_retries
                 ));
-                tokio::time::sleep(delay).await;
+                cancellable_sleep(delay).await?;
                 tracing::debug!("WebDAV {} 重试 {}/{}", method, attempt + 1, max_retries);
             }
 
@@ -340,7 +362,7 @@ impl WebDavStorage {
                 builder
             };
 
-            self.acquire_request_slot().await;
+            self.acquire_request_slot().await?;
 
             // send() 覆盖"连接 + 发送内存体 + 等响应头"，不覆盖流式响应体下载，
             // 因此对 get_file 的大文件流式下载无影响（其逐块停滞保护在 get_file 内）。
@@ -414,7 +436,7 @@ impl WebDavStorage {
                     attempt + 1,
                     max_retries
                 ));
-                tokio::time::sleep(delay).await;
+                cancellable_sleep(delay).await?;
                 tracing::debug!(
                     "WebDAV PROPFIND {} 重试 {}/{}",
                     context,
@@ -423,7 +445,7 @@ impl WebDavStorage {
                 );
             }
 
-            self.acquire_request_slot().await;
+            self.acquire_request_slot().await?;
             let send_result = tokio::time::timeout(
                 Duration::from_secs(120),
                 self.http
@@ -953,7 +975,7 @@ impl CloudStorage for WebDavStorage {
                     attempt + 1,
                     max_retries
                 ));
-                tokio::time::sleep(delay).await;
+                cancellable_sleep(delay).await?;
                 tracing::debug!("WebDAV PUT {} 重试 {}/{}", key, attempt + 1, max_retries);
             }
 
@@ -978,10 +1000,14 @@ impl CloudStorage for WebDavStorage {
                 chunk
             });
 
+            // 流式 PUT 也要过滑窗限流：blob 批量上传是请求数主力
+            self.acquire_request_slot().await?;
             let send_result = self
                 .http
-                .request(Method::PUT, url.clone())
-                .header("Authorization", self.auth_header())
+                .request(Method::PUT, url.clone()).header("Authorization", self.auth_header())
+                // 显式 Content-Length：坚果云（SabreDAV）对 chunked PUT 会断连；
+                // 文件大小已知，固定长度请求体更兼容
+                .header(reqwest::header::CONTENT_LENGTH, file_size)
                 .timeout(upload_timeout)
                 .body(reqwest::Body::wrap_stream(stream))
                 .send()
@@ -1162,6 +1188,8 @@ impl CloudStorage for WebDavStorage {
         }
 
         let url = self.build_url(key)?;
+        // 续传下载的裸 GET 同样过滑窗限流（批量 blob 下载是请求数主力）
+        self.acquire_request_slot().await?;
         let mut builder = self
             .http
             .request(Method::GET, url)
@@ -1563,9 +1591,68 @@ mod tests {
         .expect("create test storage")
     }
 
+    /// 取消语义：已取消的令牌让限流等待/退避睡眠立即返回 Err，而非死等。
+    /// 全局令牌槽是进程级单例，相关断言收敛在单个测试内串行执行，
+    /// 避免与并行测试互相污染。
+    #[tokio::test]
+    async fn cancelled_token_aborts_waits() {
+        use tokio_util::sync::CancellationToken;
+
+        // 1. 未注册令牌：不可取消场景，sleep 正常完成
+        assert!(!crate::cloud_storage::is_sync_cancelled());
+        cancellable_sleep(Duration::from_millis(1))
+            .await
+            .expect("无令牌时 sleep 应正常完成");
+
+        // 2. 注册未取消的令牌：行为不变
+        let token = CancellationToken::new();
+        crate::cloud_storage::set_cancel_token(token.clone());
+        assert!(!crate::cloud_storage::is_sync_cancelled());
+        cancellable_sleep(Duration::from_millis(1))
+            .await
+            .expect("未取消的令牌不应中断 sleep");
+
+        // 3. 取消后：长睡眠立即以 Err 中断
+        token.cancel();
+        assert!(crate::cloud_storage::is_sync_cancelled());
+        let started = Instant::now();
+        let result = cancellable_sleep(Duration::from_secs(60)).await;
+        assert!(result.is_err(), "已取消令牌必须中断睡眠");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "取消中断不应等待完整时长"
+        );
+
+        // 4. 限流窗口排满时，acquire_request_slot 同样被取消中断
+        let storage = WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "https://dav.jianguoyun.com/dav/".to_string(),
+                username: "cancel-test".to_string(),
+                password: "secret".to_string(),
+            },
+            "root".to_string(),
+        )
+        .expect("create nutstore storage");
+        if storage.requests_per_window > 0 {
+            {
+                let mut window = storage.request_window.lock().unwrap();
+                for _ in 0..storage.requests_per_window {
+                    window.push_back(Instant::now());
+                }
+            }
+            let started = Instant::now();
+            let result = storage.acquire_request_slot().await;
+            assert!(result.is_err(), "窗口排满 + 已取消 = 立即 Err");
+            assert!(started.elapsed() < Duration::from_secs(5));
+        }
+
+        // 5. 卸下令牌：状态复位，后续同步不受影响
+        crate::cloud_storage::clear_cancel_token();
+        assert!(!crate::cloud_storage::is_sync_cancelled());
+    }
+
     #[test]
-    fn provider_rate_limit_window_is_shared_across_storage_instances() {
-        let config = |username: &str| WebDavConfig {
+    fn provider_rate_limit_window_is_shared_across_storage_instances() {        let config = |username: &str| WebDavConfig {
             endpoint: "https://dav.jianguoyun.com/dav/".to_string(),
             username: username.to_string(),
             password: "secret".to_string(),
