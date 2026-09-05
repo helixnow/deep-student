@@ -663,10 +663,19 @@ export function createRestoreActions(
           // 2. 转换块数据（先处理，后面可能需要添加从 sources 恢复的块）
           const tBlockMapStart = performance.now();
           const blocksMap = new Map<string, Block>();
+          // Legacy snapshots may contain malformed message rows. Build the
+          // message map first and only retain blocks whose parent message can
+          // be restored; this isolates corruption to one message/block.
           const backendMessageById = new Map(messages.map((message) => [message.id, message]));
           let skippedBlockCount = 0;
           for (const blk of blocks) {
             try {
+              // A dangling block cannot be rendered safely. Keep the rest of
+              // the session usable when old databases contain such rows.
+              if (!backendMessageById.has(blk.messageId)) {
+                skippedBlockCount++;
+                continue;
+              }
               blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
             } catch (error) {
               skippedBlockCount++;
@@ -687,9 +696,34 @@ export function createRestoreActions(
           const messageMap = new Map<string, Message>();
           const messageOrder: string[] = [];
 
+          let skippedMessageCount = 0;
           for (const msg of sortedMessages) {
-            messageMap.set(msg.id, convertBackendMessage(msg));
-            messageOrder.push(msg.id);
+            try {
+              if (!msg || typeof msg.id !== 'string' || msg.id.length === 0) {
+                skippedMessageCount++;
+                continue;
+              }
+              const converted = convertBackendMessage(msg);
+              // Drop references to blocks that were isolated above. The
+              // message itself remains visible even when one block is corrupt.
+              converted.blockIds = converted.blockIds.filter((id) => blocksMap.has(id));
+              converted.variants = converted.variants?.map((variant) => ({
+                ...variant,
+                blockIds: variant.blockIds.filter((id) => blocksMap.has(id)),
+              }));
+              messageMap.set(msg.id, converted);
+              messageOrder.push(msg.id);
+            } catch (error) {
+              skippedMessageCount++;
+              console.warn('[ChatStore] Skipping incompatible message during restore:', msg?.id, error);
+            }
+          }
+          if (skippedMessageCount > 0 || skippedBlockCount > 0) {
+            console.warn('[ChatStore] Restore isolated corrupt records:', {
+              skippedMessageCount,
+              skippedBlockCount,
+              sessionId: session.id,
+            });
           }
           const tMsgMapEnd = performance.now();
           sessionSwitchPerf.mark('set_data_end', {

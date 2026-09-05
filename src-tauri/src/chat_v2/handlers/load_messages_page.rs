@@ -36,13 +36,12 @@ pub async fn chat_v2_load_messages_page(
     limit: Option<u32>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<LoadMessagesPageResponse, String> {
-    // 与 chat_v2_load_session 保持一致的会话 ID 校验
-    if !session_id.starts_with("sess_")
-        && !session_id.starts_with("agent_")
-        && !session_id.starts_with("subagent_")
-    {
+    // Keep pagination compatible with chat_v2_load_session and legacy
+    // databases: historical IDs used several prefixes. Reject only empty
+    // values and let the repository decide whether the session exists.
+    if session_id.trim().is_empty() {
         return Err(
-            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+            ChatV2Error::Validation("Invalid session ID: empty or whitespace-only".into()).into(),
         );
     }
 
