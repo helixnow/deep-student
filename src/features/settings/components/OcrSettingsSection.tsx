@@ -10,7 +10,7 @@ import { SettingRow, SwitchRow, SettingsSlider, GroupTitle } from './settingsTab
 import { Switch } from '@/components/ui/shad/Switch';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { invoke } from '@tauri-apps/api/core';
+import { saveSetting } from '@/utils/settingsApi';
 import { cn } from '@/lib/utils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -101,7 +101,7 @@ export const OcrSettingsSection: React.FC = () => {
   const saveSetting = useCallback(async (key: string, value: string) => {
     try {
       setSaving(true);
-      await invoke('save_setting', { key, value });
+      await saveSetting(key, value);
       showGlobalNotification('success', t('common:config_saved'));
     } finally {
       setSaving(false);
@@ -145,7 +145,7 @@ export const OcrSettingsSection: React.FC = () => {
   const handleReset = useCallback(async () => {
     try {
       setSaving(true);
-      const save = (key: string, value: string) => invoke('save_setting', { key, value });
+      const save = (key: string, value: string) => saveSetting(key, value);
       await Promise.all([
         save('ocr.enabled', 'true'),
         save('ocr.skip_for_multimodal', 'false'),
