@@ -641,16 +641,7 @@ export function createRestoreActions(
           response: LoadSessionResponseType,
           baseline?: SessionRestoreBaseline,
         ): void => {
-          const { session, state } = response;
-          // Staged restore accepts legacy/partially-written payloads. Treat
-          // missing or non-array collections as empty so one corrupt row does
-          // not abort the entire session restore.
-          const messages = Array.isArray(response.messages)
-            ? response.messages.filter((item): item is NonNullable<typeof response.messages[number]> => !!item && typeof item === 'object')
-            : [];
-          const blocks = Array.isArray(response.blocks)
-            ? response.blocks.filter((item): item is NonNullable<typeof response.blocks[number]> => !!item && typeof item === 'object')
-            : [];
+          const { session, messages, blocks, state } = response;
           const t0 = performance.now();
 
           // 🔧 P1: 递增恢复代际；后续异步链的每次写回前校验代际与会话未变
