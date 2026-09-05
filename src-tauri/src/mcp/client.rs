@@ -158,6 +158,9 @@ pub struct ClientInfo {
 pub struct ClientCapabilities {
     pub roots: Option<RootsCapability>,
     pub sampling: Option<SamplingCapability>,
+    // MCP 服务器（如 @modelcontextprotocol/sdk 的 Zod 校验）把 experimental 定义为
+    // optional record<string, unknown>；None 序列化成 null 会被判 invalid_type 而拒绝 initialize。
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<HashMap<String, Value>>,
 }
 
@@ -632,6 +635,9 @@ impl RequestManager {
         let mut pending = self.pending.lock().await;
         if let Some(request) = pending.remove(&id) {
             let _ = request.tx.send(response);
+        } else {
+            // 响应 id 无对应 pending 请求：可能超时清理先行，或 server 回了错乱 id
+            log::warn!("[McpClient] complete_request: no pending request for id={}", id);
         }
     }
 
@@ -978,6 +984,7 @@ impl McpClient {
                     match result {
                         Ok(message) => {
                             attempt = 0; // reset
+                            log::debug!("[McpClient] message_loop recv: {}", &message.chars().take(200).collect::<String>());
                             if let Err(e) = Self::handle_message(
                                 &message,
                                 request_manager.clone(),
@@ -1016,6 +1023,12 @@ impl McpClient {
     ) -> McpResult<()> {
         // 尝试解析为响应
         if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(message) {
+            log::debug!(
+                "[McpClient] handle_message response: id={:?} has_result={} has_error={}",
+                response.id,
+                response.result.is_some(),
+                response.error.is_some()
+            );
             if let Some(id) = response.id.as_ref() {
                 let id_str = match id {
                     Value::String(s) => s.clone(),
@@ -1183,7 +1196,18 @@ impl McpClient {
 
             Ok(server_info)
         } else {
-            Err(McpError::ProtocolError("Initialize failed".to_string()))
+            // 服务器返回了 JSON-RPC error（或无 result）。把真实拒绝原因透传，
+            // 否则只报 "Initialize failed" 无法定位（如 capabilities 字段校验失败）。
+            let detail = response
+                .error
+                .as_ref()
+                .map(|e| format!("code={} message={}", e.code, e.message))
+                .unwrap_or_else(|| "response contained no result".to_string());
+            log::error!("[McpClient] initialize rejected by server: {}", detail);
+            Err(McpError::ProtocolError(format!(
+                "Initialize failed: {}",
+                detail
+            )))
         }
     }
 
@@ -1913,6 +1937,29 @@ impl ReconnectingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_capabilities_none_experimental_is_omitted_not_null() {
+        // 回归：experimental: None 曾被序列化为 "experimental": null，
+        // 严格校验的 server（@modelcontextprotocol/sdk Zod）会以
+        // -32603 invalid_type (params.capabilities.experimental expected record, received null)
+        // 拒绝 initialize，propose 连测报 "Initialize failed" 且细节被吞。
+        let caps = ClientCapabilities {
+            roots: Some(RootsCapability {
+                list_changed: Some(true),
+            }),
+            sampling: Some(SamplingCapability { enabled: true }),
+            experimental: None,
+        };
+        let value = serde_json::to_value(&caps).expect("serialize capabilities");
+        assert!(
+            value.get("experimental").is_none(),
+            "experimental: None must be omitted from wire format, got: {}",
+            value
+        );
+        assert_eq!(value["roots"]["listChanged"], true);
+        assert_eq!(value["sampling"]["enabled"], true);
+    }
 
     #[test]
     fn tool_deserializes_spec_camel_case_fields() {

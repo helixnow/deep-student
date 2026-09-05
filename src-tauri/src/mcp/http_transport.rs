@@ -96,7 +96,7 @@ impl HttpTransport {
             HeaderValue::from_static("application/json, text/event-stream"),
         );
 
-        let client = Client::builder()
+        let client = super::reqwest_builder_for_endpoint(&config.url)
             .timeout(config.timeout)
             .default_headers(headers)
             .build()
