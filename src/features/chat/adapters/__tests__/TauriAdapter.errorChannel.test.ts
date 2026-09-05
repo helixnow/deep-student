@@ -88,6 +88,7 @@ function createStreamingStore() {
     setAbortCallback: vi.fn(),
     setContinueMessageCallback: vi.fn(),
     setLoadCallback: vi.fn(),
+    setLoadEarlierMessagesCallback: vi.fn(),
     setSwitchVariantCallback: vi.fn(),
     setDeleteVariantCallback: vi.fn(),
     setRetryVariantCallback: vi.fn(),

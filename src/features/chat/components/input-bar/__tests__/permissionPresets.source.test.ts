@@ -45,7 +45,9 @@ describe('permission preset source contract', () => {
     expect(zhLocale.authority.permissionPreset.hints.full_access).toContain('特权仍单次确认');
     expect(zhLocale.authority.permissionPreset.hints.full_access).toContain('灾难命令拒绝');
     expect(zhLocale.authority.permissionPreset.hints.full_access).toContain('宿主机文件与网络沙箱限制');
-    expect(zhLocale.authority.permissionPreset.hints.danger_full_access).toContain('特权仍单次确认');
+    expect(zhLocale.authority.permissionPreset.hints.danger_full_access).toContain(
+      '特权操作（技能信任/MCP 安装/runtime root）仍单次确认',
+    );
     expect(enLocale.authority.permissionPreset.hints.full_access).toContain('one-shot confirmation');
     expect(enLocale.authority.permissionPreset.hints.full_access).toContain(
       'catastrophic commands are denied',

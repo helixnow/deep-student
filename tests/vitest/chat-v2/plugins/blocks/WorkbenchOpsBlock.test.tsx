@@ -60,19 +60,29 @@ const mockPresenceSubscribe = vi.fn((selector: (s: { byWindow: Record<string, ne
   selector({ byWindow: {} })
 );
 
-vi.mock('@/features/workbench', () => ({
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
   workbenchBus: {
     activate: (...args: unknown[]) => mockActivate(...args),
   },
+}));
+
+vi.mock('@/features/workbench/agent/stageManager', () => ({
   stageManager: {
     revertRun: (runId: string, sessionId?: string) => mockRevertRun(runId, sessionId),
     hasReversibleRun: (runId: string, sessionId?: string) => mockHasRun(runId, sessionId),
     handleBridgeRequest: (request: unknown) => mockHandleBridgeRequest(request),
   },
-  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
-    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
+}));
+
+vi.mock('@/features/workbench/agent/presenceStore', () => ({
   usePresenceStore: (selector: (s: { byWindow: Record<string, never> }) => unknown) =>
     mockPresenceSubscribe(selector),
+}));
+
+vi.mock('@/features/workbench/agent/types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/workbench/agent/types')>()),
+  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
+    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
 }));
 
 vi.mock('@/features/chat/utils/toolDisplayName', () => ({

@@ -197,6 +197,14 @@
     "file_manager_commit": "执行文件整理",
     "file_manager_plan": "规划文件整理",
     "file_manager_restore": "还原已删除文件",
+    "git_branch": "管理 Git 分支",
+    "git_commit": "提交 Git 更改",
+    "git_diff": "查看 Git 差异",
+    "git_log": "查看 Git 提交历史",
+    "git_status": "查看 Git 状态",
+    "goal_create": "创建会话目标",
+    "goal_get": "获取会话目标",
+    "goal_update": "更新会话目标",
     "group_create": "创建会话分组",
     "group_list": "列出会话分组",
     "group_update": "更新会话分组",
@@ -327,10 +335,17 @@
     "workspace_artifact_write": "写入工作区产物",
     "workspace_change_revert": "撤销工作区变更",
     "workspace_file_delete": "删除工作区文件",
+    "workspace_file_edit": "编辑工作区文件",
     "workspace_file_list": "列出工作区文件",
     "workspace_file_move": "移动工作区文件",
     "workspace_file_read": "读取工作区文件",
-    "workspace_file_write": "写入工作区文件"
+    "workspace_file_write": "写入工作区文件",
+    "workspace_lsp_definition": "跳转符号定义",
+    "workspace_lsp_document_symbols": "列出文档符号",
+    "workspace_lsp_hover": "查看符号悬停信息",
+    "workspace_lsp_references": "查找符号引用",
+    "workspace_symbol_outline": "提取符号大纲",
+    "workspace_text_search": "搜索工作区文本"
   },
   "labels": {
     "skill": "技能"

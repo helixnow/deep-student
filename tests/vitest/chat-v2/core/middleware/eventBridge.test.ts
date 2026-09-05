@@ -40,6 +40,7 @@ vi.mock('@/features/chat/core/middleware/chunkBuffer', () => ({
   chunkBuffer: {
     setStore: vi.fn(),
     push: vi.fn(),
+    flushBlock: vi.fn(),
     flushSession: vi.fn(),
   },
 }));

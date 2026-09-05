@@ -197,6 +197,14 @@
     "file_manager_commit": "Apply File Organization",
     "file_manager_plan": "Plan File Organization",
     "file_manager_restore": "Restore Deleted File",
+    "git_branch": "Manage Git Branches",
+    "git_commit": "Commit Git Changes",
+    "git_diff": "View Git Diff",
+    "git_log": "View Git Log",
+    "git_status": "View Git Status",
+    "goal_create": "Create Session Goal",
+    "goal_get": "Get Session Goal",
+    "goal_update": "Update Session Goal",
     "group_create": "Create Session Group",
     "group_list": "List Session Groups",
     "group_update": "Update Session Group",
@@ -327,10 +335,17 @@
     "workspace_artifact_write": "Write Workspace Artifact",
     "workspace_change_revert": "Revert Workspace Change",
     "workspace_file_delete": "Delete Workspace File",
+    "workspace_file_edit": "Edit Workspace File",
     "workspace_file_list": "List Workspace Files",
     "workspace_file_move": "Move Workspace File",
     "workspace_file_read": "Read Workspace File",
-    "workspace_file_write": "Write Workspace File"
+    "workspace_file_write": "Write Workspace File",
+    "workspace_lsp_definition": "Go to Symbol Definition",
+    "workspace_lsp_document_symbols": "List Document Symbols",
+    "workspace_lsp_hover": "View Symbol Hover Info",
+    "workspace_lsp_references": "Find Symbol References",
+    "workspace_symbol_outline": "Extract Symbol Outline",
+    "workspace_text_search": "Search Workspace Text"
   },
   "labels": {
     "skill": "Skill"

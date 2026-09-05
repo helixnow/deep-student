@@ -39,6 +39,13 @@ const { invokeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => (
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+// workbenchMode 的读写已收口到 settingsApi（jsdom 下非 Tauri 运行时会落
+// localStorage 而非 invoke）——把 get/saveSetting 路由回 invokeMock，
+// 让「退出学习桌面」的 save_setting 调用断言继续生效。
+vi.mock('@/utils/settingsApi', () => ({
+  getSetting: (key: string) => invokeMock('get_setting', { key }),
+  saveSetting: (key: string, value: string) => invokeMock('save_setting', { key, value }),
+}));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => () => undefined),
 }));
