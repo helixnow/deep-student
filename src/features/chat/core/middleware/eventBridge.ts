@@ -1296,6 +1296,8 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
         return;
       }
 
+      // Flush the final buffered tokens before terminal handlers read the block.
+      chunkBuffer.flushBlock(store.sessionId, effectiveBlockId);
       applyTerminalEvent(store, handler, context, event, effectiveBlockId);
       autoSave.scheduleAutoSave(store);
       break;

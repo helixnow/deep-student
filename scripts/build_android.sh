@@ -428,6 +428,12 @@ find_build_tools_cmd() {
       return 0
     fi
   done
+  for ext in .exe .bat .cmd; do
+    if command -v "${cmd}${ext}" >/dev/null 2>&1; then
+      command -v "${cmd}${ext}"
+      return 0
+    fi
+  done
 
   local search_dirs=()
   local android_home=""

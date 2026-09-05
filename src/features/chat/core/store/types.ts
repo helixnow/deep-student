@@ -174,6 +174,8 @@ export interface ChatStoreState extends StoreCallbacks {
    * - false: 需要从后端加载数据
    */
   isDataLoaded: boolean;
+  hasMoreMessages: boolean;
+  isLoadingMore: boolean;
 
   /** 消息 Map */
   messageMap: Map<string, Message>;
@@ -300,6 +302,8 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     authorityAskBlockedHint: false,
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据
+    hasMoreMessages: false,
+    isLoadingMore: false,
     messageMap: new Map(),
     messageOrder: [],
     blocks: new Map(),

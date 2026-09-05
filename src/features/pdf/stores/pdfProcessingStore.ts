@@ -76,6 +76,7 @@ interface PdfProcessingStoreActions {
    * @param stage 出错的阶段
    */
   setError: (fileId: string, error: string, stage?: string) => void;
+  setFullStatus: (fileId: string, status: PdfProcessingStatus) => void;
   
   /**
    * 移除文件的处理状态
@@ -103,7 +104,7 @@ const MAX_ENTRIES = 100;
 /** Delay (ms) before auto-removing completed/error entries */
 const AUTO_CLEANUP_DELAY = 60_000;
 
-const TERMINAL_STAGES: ReadonlySet<ProcessingStage> = new Set(['completed', 'completed_with_issues', 'error']);
+export const TERMINAL_STAGES: ReadonlySet<ProcessingStage> = new Set(['completed', 'completed_with_issues', 'error']);
 
 const STAGE_ORDER: Record<ProcessingStage, number> = {
   pending: 0,
@@ -234,6 +235,15 @@ export const usePdfProcessingStore = create<PdfProcessingStore>((set, get) => ({
         get().remove(fileId);
       }
     }, AUTO_CLEANUP_DELAY);
+  },
+
+  setFullStatus: (fileId, status) => {
+    set(state => {
+      const statusMap = new Map(state.statusMap);
+      statusMap.set(fileId, status);
+      enforceMaxEntries(statusMap);
+      return { statusMap };
+    });
   },
   
   remove: (fileId) => {

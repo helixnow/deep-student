@@ -66,3 +66,9 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 ## 交付要求
 
 每个工作域必须返回：修改文件、吸收的对方提交/问题、未吸收项目及原因、与当前主线融合点。不得以“代码已复制”替代行为验收。所有实现最终必须在当前 `main` 上可编译、可测试、可运行。
+
+## 当前进度
+
+- 已完成并验证：Android ZIP 导入移出 async runtime，Android 构建摘要工具回退，Chat 终态前 flush，历史 block 单项隔离，代码块原生滚动兜底，PDF 状态完整覆盖基础 API，vendor/profile 刷新入口，宽松历史 session ID 校验。
+- 当前主线已有：Chat chunkBuffer 主接入与采样、OCR stuck task 自动续跑、WebDAV PROPFIND/Retry-After/基础重试、备份密钥槽位修复、Windows shell fallback、Android 构建工具探测。
+- 仍需后续独立实现：Chat staged restore 的完整兼容测试，历史消息实际向上分页和 scroll anchoring，对话快照导入导出及事务化 ID remap，WebDAV 主动滑窗限流与精确字节进度，OCR 历史预览后台回填，settings 全量调用迁移，死代码/CSS 引用审计后的分批清理。
