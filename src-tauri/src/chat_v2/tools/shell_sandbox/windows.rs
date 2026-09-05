@@ -77,7 +77,7 @@ unsafe extern "system" {
     fn GetSystemDirectoryW(buffer: *mut u16, size: u32) -> u32;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WindowsSandboxPayload {
     command: String,
     cwd: PathBuf,
@@ -87,6 +87,8 @@ struct WindowsSandboxPayload {
     prefer_git_bash: bool,
     #[serde(default)]
     shell_path: Option<PathBuf>,
+    #[serde(default)]
+    fallback_shell_path: Option<PathBuf>,
 }
 
 struct OwnedHandle(HANDLE);
@@ -288,15 +290,21 @@ fn validate_payload(payload: &mut WindowsSandboxPayload) -> Result<(), String> {
     if !payload.cwd.is_dir() {
         return Err("Windows sandbox cwd is not a directory".to_string());
     }
-    if let Some(shell_path) = payload.shell_path.as_mut() {
-        *shell_path = canonical_policy_path(shell_path)?;
-        let trusted = if payload.prefer_git_bash {
-            trusted_git_bash_path()
-        } else {
-            Some(trusted_powershell_path()?)
-        };
-        if trusted.and_then(|path| path.canonicalize().ok()).as_ref() != Some(shell_path) {
-            return Err("Windows sandbox payload selected an untrusted shell path".to_string());
+    for shell_path in [&mut payload.shell_path, &mut payload.fallback_shell_path] {
+        if let Some(shell_path) = shell_path.as_mut() {
+            *shell_path = canonical_policy_path(shell_path)?;
+            let trusted = if payload.prefer_git_bash {
+                trusted_git_bash_path().into_iter().collect::<Vec<_>>()
+            } else {
+                trusted_powershell_paths()?
+            };
+            let trusted = trusted
+                .into_iter()
+                .filter_map(|path| path.canonicalize().ok())
+                .any(|path| path == *shell_path);
+            if !trusted {
+                return Err("Windows sandbox payload selected an untrusted shell path".to_string());
+            }
         }
     }
     for roots in [
@@ -494,9 +502,19 @@ impl SandboxBackend for PlatformSandboxBackend {
             ));
         }
         let profile_name = format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple());
-        let shell_path = trusted_powershell_path()?;
+        let mut shell_paths = trusted_powershell_paths()?.into_iter();
+        let shell_path = shell_paths
+            .next()
+            .expect("PowerShell candidates are non-empty");
+        let fallback_shell_path = shell_paths.next();
         let mut policy = policy.clone();
-        if let Some(parent) = shell_path.parent() {
+        for parent in [
+            shell_path.parent(),
+            fallback_shell_path.as_deref().and_then(Path::parent),
+        ]
+        .into_iter()
+        .flatten()
+        {
             policy.readable_roots.push(parent.to_path_buf());
         }
         let payload = WindowsSandboxPayload {
@@ -506,6 +524,7 @@ impl SandboxBackend for PlatformSandboxBackend {
             profile_name,
             prefer_git_bash: false,
             shell_path: Some(shell_path),
+            fallback_shell_path,
         };
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the AppContainer launcher: {error}"))?;
@@ -538,17 +557,31 @@ impl SandboxBackend for PlatformSandboxBackend {
         }
         let git_bash = trusted_git_bash_path();
         let prefer_git_bash = git_bash.is_some();
-        let shell_path = match git_bash {
-            Some(path) => path,
-            None => trusted_powershell_path()?,
+        let (shell_path, fallback_shell_path) = match git_bash {
+            Some(path) => (path, None),
+            None => {
+                let mut paths = trusted_powershell_paths()?.into_iter();
+                (
+                    paths.next().expect("PowerShell candidates are non-empty"),
+                    paths.next(),
+                )
+            }
         };
         let mut policy = policy.clone();
         if prefer_git_bash {
             if let Some(root) = git_install_root_from_bash(&shell_path) {
                 policy.readable_roots.push(root);
             }
-        } else if let Some(parent) = shell_path.parent() {
-            policy.readable_roots.push(parent.to_path_buf());
+        } else {
+            for parent in [
+                shell_path.parent(),
+                fallback_shell_path.as_deref().and_then(Path::parent),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                policy.readable_roots.push(parent.to_path_buf());
+            }
         }
         let payload = WindowsSandboxPayload {
             command: shell_command.to_string(),
@@ -557,6 +590,7 @@ impl SandboxBackend for PlatformSandboxBackend {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash,
             shell_path: Some(shell_path),
+            fallback_shell_path,
         };
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the AppContainer launcher: {error}"))?;
@@ -631,7 +665,11 @@ impl SandboxBackend for UnsandboxedShellBackend {
                 "Full Access shell backend is unavailable: {reason}"
             ));
         }
-        let shell_path = trusted_powershell_path()?;
+        let mut shell_paths = trusted_powershell_paths()?.into_iter();
+        let shell_path = shell_paths
+            .next()
+            .expect("PowerShell candidates are non-empty");
+        let fallback_shell_path = shell_paths.next();
         let payload = WindowsSandboxPayload {
             command: shell_command.to_string(),
             cwd: cwd.to_path_buf(),
@@ -639,6 +677,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
             profile_name: format!("{UNSANDBOXED_PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: Some(shell_path),
+            fallback_shell_path,
         };
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
@@ -666,9 +705,15 @@ impl SandboxBackend for UnsandboxedShellBackend {
     ) -> Result<Command, String> {
         let git_bash = trusted_git_bash_path();
         let prefer_git_bash = git_bash.is_some();
-        let shell_path = match git_bash {
-            Some(path) => path,
-            None => trusted_powershell_path()?,
+        let (shell_path, fallback_shell_path) = match git_bash {
+            Some(path) => (path, None),
+            None => {
+                let mut paths = trusted_powershell_paths()?.into_iter();
+                (
+                    paths.next().expect("PowerShell candidates are non-empty"),
+                    paths.next(),
+                )
+            }
         };
         let payload = WindowsSandboxPayload {
             command: shell_command.to_string(),
@@ -677,6 +722,7 @@ impl SandboxBackend for UnsandboxedShellBackend {
             profile_name: format!("{UNSANDBOXED_PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash,
             shell_path: Some(shell_path),
+            fallback_shell_path,
         };
         let executable = std::env::current_exe()
             .map_err(|error| format!("Cannot locate the Windows Job Object helper: {error}"))?;
@@ -1185,19 +1231,7 @@ fn create_job(relaxed: bool) -> Result<OwnedHandle, String> {
     Ok(job)
 }
 
-fn trusted_powershell_path() -> Result<PathBuf, String> {
-    for key in ["ProgramW6432", "ProgramFiles"] {
-        if let Some(root) = std::env::var_os(key) {
-            let pwsh = PathBuf::from(root)
-                .join("PowerShell")
-                .join("7")
-                .join("pwsh.exe");
-            if pwsh.is_file() {
-                return Ok(pwsh);
-            }
-        }
-    }
-
+fn trusted_windows_powershell_path() -> Result<PathBuf, String> {
     let mut system_directory = vec![0u16; 32_768];
     let length = unsafe {
         GetSystemDirectoryW(system_directory.as_mut_ptr(), system_directory.len() as u32)
@@ -1224,6 +1258,31 @@ fn trusted_powershell_path() -> Result<PathBuf, String> {
         ));
     }
     Ok(powershell)
+}
+
+fn trusted_powershell_paths() -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for key in ["ProgramW6432", "ProgramFiles"] {
+        if let Some(root) = std::env::var_os(key) {
+            let pwsh = PathBuf::from(root)
+                .join("PowerShell")
+                .join("7")
+                .join("pwsh.exe");
+            if pwsh.is_file() && !paths.contains(&pwsh) {
+                paths.push(pwsh);
+                break;
+            }
+        }
+    }
+    paths.push(trusted_windows_powershell_path()?);
+    Ok(paths)
+}
+
+fn trusted_powershell_path() -> Result<PathBuf, String> {
+    trusted_powershell_paths()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No trusted PowerShell executable is available".to_string())
 }
 
 fn powershell_kind(path: &Path) -> &'static str {
@@ -1276,6 +1335,8 @@ fn encoded_powershell_command(command: &str) -> String {
          try {{ [Console]::OutputEncoding = $utf8 }} catch {{}}\n\
          $OutputEncoding = $utf8\n\
          $ProgressPreference = 'SilentlyContinue'\n\
+         $deepStudentShellKind = if ($PSVersionTable.PSVersion.Major -ge 6) {{ 'windows_powershell_7' }} else {{ 'windows_powershell_5_1' }}\n\
+         [Console]::Error.WriteLine('__DEEP_STUDENT_SHELL_KIND__=' + $deepStudentShellKind)\n\
          $global:LASTEXITCODE = 0\n\
          & {{\n{command}\n}}\n\
          $deepStudentSucceeded = $?\n\
@@ -1356,6 +1417,44 @@ fn run_payload(
         if is_cancelled(cancellation_event) {
             return Ok(124);
         }
+        if !payload.prefer_git_bash {
+            let mut probe = payload.clone();
+            probe.command = "$null".to_string();
+            let mut probe_exit = run_unsandboxed_job_process(&probe, cancellation_event)?;
+            if probe_exit != 0 {
+                if is_cancelled(cancellation_event) {
+                    return Ok(124);
+                }
+                let Some(fallback) = payload.fallback_shell_path.take() else {
+                    eprintln!(
+                        "PowerShell failed its startup probe with exit code 0x{:08X}",
+                        probe_exit as u32
+                    );
+                    return Ok(probe_exit);
+                };
+                eprintln!(
+                    "Preferred PowerShell failed its startup probe; retrying with {}",
+                    fallback.display()
+                );
+                payload.shell_path = Some(fallback);
+                probe = payload.clone();
+                probe.command = "$null".to_string();
+                probe_exit = run_unsandboxed_job_process(&probe, cancellation_event)?;
+                if probe_exit != 0 {
+                    if is_cancelled(cancellation_event) {
+                        return Ok(124);
+                    }
+                    eprintln!(
+                        "Fallback PowerShell failed its startup probe with exit code 0x{:08X}",
+                        probe_exit as u32
+                    );
+                    return Ok(probe_exit);
+                }
+            }
+        }
+        if is_cancelled(cancellation_event) {
+            return Ok(124);
+        }
         return run_unsandboxed_job_process(&payload, cancellation_event);
     }
     let Some(_acl_guard) = acquire_acl_mutex(cancellation_event)? else {
@@ -1384,11 +1483,54 @@ fn run_payload(
         .collect();
     let profile = create_profile(&payload.profile_name, &capabilities)?;
     let (granted_paths, protected_paths) = grant_policy(&payload.policy, profile.sid)?;
-    let result = if is_cancelled(cancellation_event) {
-        Ok(124)
-    } else {
-        run_appcontainer_process(&payload, profile.sid, &capabilities, cancellation_event)
-    };
+    let result = (|| {
+        if !payload.prefer_git_bash {
+            let mut probe = payload.clone();
+            probe.command = "$null".to_string();
+            let mut probe_exit =
+                run_appcontainer_process(&probe, profile.sid, &capabilities, cancellation_event)?;
+            if probe_exit != 0 {
+                if is_cancelled(cancellation_event) {
+                    return Ok(124);
+                }
+                let Some(fallback) = payload.fallback_shell_path.take() else {
+                    eprintln!(
+                        "PowerShell failed its AppContainer startup probe with exit code 0x{:08X}",
+                        probe_exit as u32
+                    );
+                    return Ok(probe_exit);
+                };
+                eprintln!(
+                    "Preferred PowerShell failed its AppContainer startup probe; retrying with {}",
+                    fallback.display()
+                );
+                payload.shell_path = Some(fallback);
+                probe = payload.clone();
+                probe.command = "$null".to_string();
+                probe_exit = run_appcontainer_process(
+                    &probe,
+                    profile.sid,
+                    &capabilities,
+                    cancellation_event,
+                )?;
+                if probe_exit != 0 {
+                    if is_cancelled(cancellation_event) {
+                        return Ok(124);
+                    }
+                    eprintln!(
+                        "Fallback PowerShell failed its AppContainer startup probe with exit code 0x{:08X}",
+                        probe_exit as u32
+                    );
+                    return Ok(probe_exit);
+                }
+            }
+        }
+        if is_cancelled(cancellation_event) {
+            Ok(124)
+        } else {
+            run_appcontainer_process(&payload, profile.sid, &capabilities, cancellation_event)
+        }
+    })();
     revoke_policy(&granted_paths, &protected_paths, profile.sid);
     result
 }
@@ -1773,6 +1915,7 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         assert!(validate_payload(&mut payload)
             .unwrap_err()
@@ -1801,6 +1944,7 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         let payload_path = write_payload(&payload).unwrap();
         let mut command = Command::new(std::env::current_exe().unwrap());
@@ -1833,8 +1977,15 @@ mod tests {
 
     #[test]
     fn powershell_contract_uses_trusted_binary_encoded_script_and_utf8() {
-        let powershell = trusted_powershell_path().unwrap();
+        let candidates = trusted_powershell_paths().unwrap();
+        let powershell = candidates.first().unwrap();
         assert!(powershell.ends_with("pwsh.exe") || powershell.ends_with("powershell.exe"));
+        assert!(candidates.last().unwrap().ends_with("powershell.exe"));
+        assert!(candidates.len() <= 2);
+        if candidates.len() == 2 {
+            assert!(candidates[0].ends_with("pwsh.exe"));
+            assert!(candidates[1].ends_with("powershell.exe"));
+        }
 
         let command = "Write-Output '中文 output'";
         let encoded = encoded_powershell_command(command);
@@ -1925,6 +2076,7 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         let _ = run_payload(payload, None).unwrap();
         assert!(inside_file.exists());
@@ -1936,6 +2088,7 @@ mod tests {
         let writable = tempfile::tempdir().unwrap();
         let protected = writable.path().join(".git");
         fs::create_dir(&protected).unwrap();
+        let executed = writable.path().join("executed.txt");
         let blocked_file = protected.join("config");
         // Discriminator: a write outside every granted root must be denied by
         // the AppContainer default-deny. If this file appears, the process was
@@ -1947,7 +2100,8 @@ mod tests {
         sandbox_policy.protected_write_roots.push(protected);
         let payload = WindowsSandboxPayload {
             command: format!(
-                "Set-Content -LiteralPath '{}' -Value blocked; Set-Content -LiteralPath '{}' -Value outside",
+                "Set-Content -LiteralPath '{}' -Value executed; Set-Content -LiteralPath '{}' -Value blocked; Set-Content -LiteralPath '{}' -Value outside",
+                executed.display(),
                 blocked_file.display(),
                 outside_file.display()
             ),
@@ -1956,8 +2110,10 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         let _ = run_payload(payload, None).unwrap();
+        assert!(executed.exists());
         assert!(!blocked_file.exists());
         assert!(!outside_file.exists());
     }
@@ -1992,6 +2148,7 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         let _ = run_payload(payload, None).unwrap();
         accept_thread.join().unwrap();
@@ -2014,6 +2171,7 @@ mod tests {
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
             prefer_git_bash: false,
             shell_path: None,
+            fallback_shell_path: None,
         };
         assert_eq!(run_payload(payload, Some(event.0)).unwrap(), 124);
         assert!(!output.exists());
