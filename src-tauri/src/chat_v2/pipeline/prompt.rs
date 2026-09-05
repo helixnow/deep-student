@@ -25,15 +25,56 @@ impl ChatV2Pipeline {
         // AGENTS.md：会话绑定 workspace 根 → ~/.deep-student/AGENTS.md
         let agents_instructions = self.load_project_agents_instructions(ctx);
 
+        // 🆕 Goal 模式（P0）：活跃目标摘要（仅 status=active 注入；
+        // waiting_user 会在用户回复时由 send_message 入口先翻回 active）
+        let active_goal = self.load_active_goal_summary(&ctx.session_id);
+
         let parts = prompt_builder::build_system_prompt_with_profile_and_agents(
             &ctx.options,
             &ctx.retrieved_sources,
             canvas_note,
             user_profile,
             agents_instructions,
+            active_goal,
         );
         ctx.turn_volatile_context = parts.turn_volatile;
         parts.stable_system
+    }
+
+    /// 🆕 Goal 模式（P0）：从 chat_v2 db 读取活跃目标并格式化为注入纯文本。
+    ///
+    /// repo 是同步连接调用——与 `load_project_agents_instructions` 经
+    /// `runtime_roots` 同步读库的现有惯例一致（本函数虽在 async 上下文，
+    /// 但池化连接的读操作为微秒级，不引入 spawn_blocking）。
+    /// 数据方只提供纯文本；`<active_goal>` 的 XML 包裹与转义由 prompt_builder 负责。
+    fn load_active_goal_summary(&self, session_id: &str) -> Option<String> {
+        let conn = match self.db.get_conn() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] load_active_goal_summary: failed to get conn (session={}): {}; skipping goal injection",
+                    session_id,
+                    e
+                );
+                return None;
+            }
+        };
+        let goal = match ChatV2Repo::goal_get_with_conn(&conn, session_id) {
+            Ok(Some(goal)) => goal,
+            Ok(None) => return None,
+            Err(e) => {
+                log::warn!(
+                    "[ChatV2::pipeline] load_active_goal_summary: failed to load goal (session={}): {}; skipping goal injection",
+                    session_id,
+                    e
+                );
+                return None;
+            }
+        };
+        if goal.status != "active" {
+            return None;
+        }
+        Some(crate::chat_v2::goal::format_active_goal_summary(&goal))
     }
 
     /// 解析会话绑定 workspace 根并加载 AGENTS.md 常驻指令

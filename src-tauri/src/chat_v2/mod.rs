@@ -22,6 +22,7 @@ pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
 pub mod events;
+pub mod goal; // 🆕 Goal 模式（P0）：跨轮次会话目标（续跑运行时 + 提示词注入）
 pub mod handlers;
 pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
 pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）

@@ -23,6 +23,9 @@ pub const META_TOOL_WHITELIST: &[&str] = &[
     "todo_update",
     "todo_add",
     "todo_get",
+    "goal_create",
+    "goal_update",
+    "goal_get",
     "load_skills",
     "ask_user",
 ];
@@ -43,7 +46,7 @@ pub fn canonical_tool_name(tool_name: &str) -> &str {
 /// Whether this tool is an always-read meta tool.
 pub fn is_meta_read_tool(tool_name: &str) -> bool {
     let short = canonical_tool_name(tool_name);
-    META_TOOL_WHITELIST.contains(&short) || short.starts_with("todo_")
+    META_TOOL_WHITELIST.contains(&short) || short.starts_with("todo_") || short.starts_with("goal_")
 }
 
 /// Write = effective Medium/High and not a meta read tool.

@@ -11,6 +11,7 @@ use serde_json::Value;
 use super::attempt_completion::{
     self, TOOL_DESCRIPTION as ATTEMPT_COMPLETION_DESCRIPTION, TOOL_NAME as ATTEMPT_COMPLETION_NAME,
 };
+use super::goal_executor;
 use super::todo_executor;
 use super::types::{ToolCategory, ToolDefinition};
 
@@ -54,6 +55,7 @@ impl SchemaToolRegistry {
         let mut registry = Self::new();
         registry.register_todo_tools();
         registry.register_attempt_completion_tool();
+        registry.register_goal_tools();
         registry
     }
 
@@ -184,6 +186,38 @@ impl SchemaToolRegistry {
         ));
 
         log::info!("[SchemaToolRegistry] Registered 4 TodoList tools (Agent category)");
+    }
+
+    /// 🆕 注册 Goal 模式工具（P0：会话级持久目标 + 自动续跑）
+    ///
+    /// 续跑轮经 `schema_tool_ids` 显式注入这三个工具，保证模型在续跑轮
+    /// 无需先 load_skills 即可调用 goal_update / goal_get。
+    fn register_goal_tools(&mut self) {
+        self.register(ToolDefinition::new(
+            goal_executor::tool_names::GOAL_CREATE,
+            "goal_create",
+            "创建会话目标（跨轮次持续存在，系统自动续跑推进直到完成）",
+            goal_executor::get_goal_create_schema(),
+            ToolCategory::Agent,
+        ));
+
+        self.register(ToolDefinition::new(
+            goal_executor::tool_names::GOAL_UPDATE,
+            "goal_update",
+            "更新会话目标状态（仅 complete / blocked / waiting_user）",
+            goal_executor::get_goal_update_schema(),
+            ToolCategory::Agent,
+        ));
+
+        self.register(ToolDefinition::new(
+            goal_executor::tool_names::GOAL_GET,
+            "goal_get",
+            "获取当前会话目标的状态、预算与已用 token/时间",
+            goal_executor::get_goal_get_schema(),
+            ToolCategory::Agent,
+        ));
+
+        log::info!("[SchemaToolRegistry] Registered 3 Goal tools (Agent category)");
     }
 }
 
