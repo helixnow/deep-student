@@ -83,4 +83,5 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 - `cargo test --lib vfs::repos::pdf_preview --manifest-path src-tauri/Cargo.toml`：1 passed。
 - `npm exec vitest run src/features/chat/core/middleware/__tests__/eventBridge.test.ts src/features/chat/core/store/__tests__/restoreActions.historyMerge.test.ts`：16 passed。
 - 本轮 `npm run typecheck`：通过，无 TypeScript 错误。
+- `npm run build:demo`：通过（Vite 构建完成；存在既有 chunk size/circular chunk 警告，未导致构建失败）。
 - `npm run typecheck`、`cargo fmt`、`git diff --check`：通过。
