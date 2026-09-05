@@ -37,6 +37,9 @@ pub(crate) fn windows_has_git_bash() -> bool {
 pub use windows::maybe_run_helper;
 
 #[cfg(windows)]
+pub use windows::DirectHostShellBackend;
+
+#[cfg(windows)]
 #[doc(hidden)]
 pub use windows::{
     helper_arg as windows_shell_helper_arg, payload_root as windows_shell_payload_root,
@@ -129,6 +132,18 @@ pub trait SandboxBackend: Send + Sync {
         policy: &SandboxPolicy,
     ) -> Result<Command, String> {
         self.command(shell_command, cwd, policy)
+    }
+    /// Called once after the backend command has been spawned. Backends that
+    /// bind the live child into process-tree resources (e.g. a Job Object)
+    /// implement this hook; the default is a no-op.
+    fn on_child_spawned(&self, _child: &mut Child) -> Result<(), String> {
+        Ok(())
+    }
+    /// Tree-aware termination used by cancellation/timeout paths. Defaults to
+    /// the helper-based Job lookup (`terminate_process_group`); backends that
+    /// own their lifecycle resources override this.
+    fn terminate_child(&self, child: &mut Child) -> Result<(), String> {
+        terminate_process_group(child)
     }
     fn cleanup_command_resources(&self, _command: &Command) {}
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport;

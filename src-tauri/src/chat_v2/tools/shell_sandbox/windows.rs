@@ -6,6 +6,7 @@ use std::mem::{size_of, zeroed};
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -702,9 +703,11 @@ impl SandboxBackend for UnsandboxedShellBackend {
             enforced: false,
             network_enforced: false,
             process_group_isolated: true,
-            cpu_time_limit_seconds: Some(PROCESS_CPU_TIME_LIMIT_SECS as u64),
+            // 完全信任通道的 Job 仅设置 KILL_ON_JOB_CLOSE（进程树回收），
+            // 不施加 CPU/进程数资源限制；与 Unix unsandboxed 报告保持一致。
+            cpu_time_limit_seconds: None,
             file_size_limit_bytes: None,
-            active_process_limit: Some(ACTIVE_PROCESS_LIMIT),
+            active_process_limit: None,
             readable_roots: policy.readable_roots.len(),
             writable_roots: policy.writable_roots.len(),
             protected_read_roots: policy.protected_read_roots.len(),
@@ -718,6 +721,157 @@ impl SandboxBackend for UnsandboxedShellBackend {
             report.shell_kind = "git_bash";
         }
         report
+    }
+}
+
+/// Unrestricted host-shell backend (Craft + `DangerFullAccess` after the
+/// explicit one-shot backend confirmation). It spawns the trusted System32
+/// Windows PowerShell directly from this process: no helper process, no
+/// payload file, no AppContainer/ACL rewriting, and no helper→PowerShell
+/// double hop. The only lifecycle resource is a kill-on-close Job Object
+/// created in-process, used for cancellation and app-exit process-tree
+/// reclamation — never CPU/process-count/file-size limits. Access-class
+/// policy (command rules, guards, env, output bounds) lives in the executor.
+pub struct DirectHostShellBackend {
+    /// Per-execution Job Object: created in `command()`, bound to the live
+    /// child in `on_child_spawned()`, dropped in `cleanup_command_resources()`
+    /// (the drop fires KILL_ON_JOB_CLOSE and reclaims any survivors).
+    job: Mutex<Option<OwnedHandle>>,
+}
+
+// SAFETY: the only interior state is a raw Windows HANDLE guarded by a Mutex.
+// HANDLEs are plain integer-like tokens safe to move between threads, and all
+// accesses are serialized, so the backend is neither racy nor thread-bound.
+unsafe impl Send for DirectHostShellBackend {}
+unsafe impl Sync for DirectHostShellBackend {}
+
+impl Default for DirectHostShellBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DirectHostShellBackend {
+    pub fn new() -> Self {
+        Self {
+            job: Mutex::new(None),
+        }
+    }
+
+    fn job_lock(&self) -> std::sync::MutexGuard<'_, Option<OwnedHandle>> {
+        self.job.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl SandboxBackend for DirectHostShellBackend {
+    fn capability(&self) -> SandboxCapability {
+        match trusted_powershell_path() {
+            Ok(path) if path.is_file() => SandboxCapability::Available,
+            Ok(_) => SandboxCapability::Unavailable {
+                reason: "trusted Windows PowerShell is not a regular file".to_string(),
+            },
+            Err(reason) => SandboxCapability::Unavailable { reason },
+        }
+    }
+
+    fn command(
+        &self,
+        shell_command: &str,
+        cwd: &Path,
+        _policy: &SandboxPolicy,
+    ) -> Result<Command, String> {
+        if let SandboxCapability::Unavailable { reason } = self.capability() {
+            return Err(format!("Unrestricted host shell backend is unavailable: {reason}"));
+        }
+        let powershell = trusted_powershell_path()?;
+        // Lifecycle Job first so the spawn hook can bind the child even when
+        // the command finishes within milliseconds.
+        let job = create_job(true)?;
+        *self.job_lock() = Some(job);
+        let mut command = Command::new(powershell);
+        command.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-EncodedCommand",
+            &encoded_powershell_command(shell_command),
+        ]);
+        configure_stdio(&mut command, cwd);
+        Ok(command)
+    }
+
+    fn on_child_spawned(&self, child: &mut Child) -> Result<(), String> {
+        let Some(process_handle) = child.raw_handle() else {
+            return Err("Unrestricted host shell child has no raw process handle".to_string());
+        };
+        let job_guard = self.job_lock();
+        let Some(job) = job_guard.as_ref() else {
+            // Backend already cleaned up (spawn failure path); nothing to bind.
+            return Ok(());
+        };
+        if unsafe { AssignProcessToJobObject(job.0, process_handle) } == 0 {
+            // A millisecond command may have exited before the assignment; the
+            // result is already produced, so an exited child is not an error.
+            if child
+                .try_wait()
+                .map_err(|error| format!("Failed to inspect the unrestricted host shell: {error}"))?
+                .is_some()
+            {
+                return Ok(());
+            }
+            return Err(last_error(
+                "Failed to bind the unrestricted host shell to its Job Object",
+            ));
+        }
+        Ok(())
+    }
+
+    fn terminate_child(&self, child: &mut Child) -> Result<(), String> {
+        {
+            let job_guard = self.job_lock();
+            if let Some(job) = job_guard.as_ref() {
+                if unsafe { TerminateJobObject(job.0, 124) } != 0 {
+                    return Ok(());
+                }
+            }
+        }
+        // Job termination failed (or was already dropped): fall back to a
+        // synchronous direct kill of the shell process itself.
+        child
+            .start_kill()
+            .map_err(|error| format!("Failed to kill the unrestricted host shell: {error}"))
+    }
+
+    fn cleanup_command_resources(&self, _command: &Command) {
+        // Dropping the Job handle fires KILL_ON_JOB_CLOSE, reclaiming any
+        // survivors after cancellation, timeout, or normal exit.
+        *self.job_lock() = None;
+    }
+
+    fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        SandboxEffectReport {
+            backend: "direct_host_unrestricted",
+            shell_kind: trusted_powershell_path()
+                .ok()
+                .as_deref()
+                .map(powershell_kind)
+                .unwrap_or("windows_powershell"),
+            output_encoding: "utf-8",
+            enforced: false,
+            network_enforced: false,
+            process_group_isolated: true,
+            // The in-process Job only provides process-tree reclamation; no
+            // resource limits exist in this tier.
+            cpu_time_limit_seconds: None,
+            file_size_limit_bytes: None,
+            active_process_limit: None,
+            readable_roots: policy.readable_roots.len(),
+            writable_roots: policy.writable_roots.len(),
+            protected_read_roots: policy.protected_read_roots.len(),
+            protected_write_roots: policy.protected_write_roots.len(),
+        }
     }
 }
 
@@ -1829,6 +1983,20 @@ mod tests {
         ));
         backend.cleanup_command_resources(&command);
         assert!(!payload_path.exists());
+    }
+
+    #[test]
+    fn unsandboxed_effect_report_honestly_reports_no_resource_limits() {
+        let backend = UnsandboxedShellBackend::new();
+        let report = backend.effect_report(&policy(Path::new("C:\\"), Path::new("C:\\")));
+        assert_eq!(report.backend, "unsandboxed_job");
+        assert!(!report.enforced);
+        assert!(!report.network_enforced);
+        // relaxed Job 只保留 KILL_ON_JOB_CLOSE（进程树回收），报告不得
+        // 宣称存在 CPU/文件大小/进程数资源限制。
+        assert_eq!(report.cpu_time_limit_seconds, None);
+        assert_eq!(report.file_size_limit_bytes, None);
+        assert_eq!(report.active_process_limit, None);
     }
 
     #[test]
