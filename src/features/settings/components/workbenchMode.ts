@@ -11,6 +11,7 @@
  * 刻意保持零 UI 依赖（仅 bus + invoke），避免把设置页组件链拖进侧边栏 bundle。
  */
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 import i18n from '@/i18n';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 // 停用事务（缝一）：本模块是设置页之外所有模式开关入口（侧边栏快捷开关 /
@@ -73,27 +74,20 @@ export function setCachedWorkbenchModeEnabled(enabled: boolean): void {
  */
 export async function resolveWorkbenchModeEnabled(): Promise<WorkbenchModeResolveResult> {
   try {
-    const raw = await tauriInvoke<string | null>('get_setting', {
-      key: WORKBENCH_MODE_SETTING_KEY,
-    });
+    const raw = await getSetting(WORKBENCH_MODE_SETTING_KEY);
     const explicit = parseWorkbenchModeRaw(raw);
     if (explicit !== null) {
       setCachedWorkbenchModeEnabled(explicit);
       return { enabled: explicit, migratedNow: false };
     }
 
-    const migratedRaw = await tauriInvoke<string | null>('get_setting', {
-      key: WORKBENCH_MODE_MIGRATED_KEY,
-    });
+    const migratedRaw = await getSetting(WORKBENCH_MODE_MIGRATED_KEY);
     const alreadyMigrated = String(migratedRaw ?? '').trim() === 'true';
 
     if (alreadyMigrated) {
       // 哨兵已在、mode 键意外缺失：静默回填，不再提示
       try {
-        await tauriInvoke('save_setting', {
-          key: WORKBENCH_MODE_SETTING_KEY,
-          value: 'true',
-        });
+        await saveSetting(WORKBENCH_MODE_SETTING_KEY, 'true');
       } catch {
         /* 回填失败仍按默认启用 */
       }
@@ -101,14 +95,8 @@ export async function resolveWorkbenchModeEnabled(): Promise<WorkbenchModeResolv
       return { enabled: true, migratedNow: false };
     }
 
-    await tauriInvoke('save_setting', {
-      key: WORKBENCH_MODE_SETTING_KEY,
-      value: 'true',
-    });
-    await tauriInvoke('save_setting', {
-      key: WORKBENCH_MODE_MIGRATED_KEY,
-      value: 'true',
-    });
+    await saveSetting(WORKBENCH_MODE_SETTING_KEY, 'true');
+    await saveSetting(WORKBENCH_MODE_MIGRATED_KEY, 'true');
 
     showGlobalNotification(
       'info',
@@ -166,10 +154,7 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
     if (!precheckOk) return false;
   }
   try {
-    await tauriInvoke('save_setting', {
-      key: WORKBENCH_MODE_SETTING_KEY,
-      value: String(enabled),
-    });
+    await saveSetting(WORKBENCH_MODE_SETTING_KEY, String(enabled));
   } catch (error) {
     showGlobalNotification('error', getErrorMessage(error));
     return false;
