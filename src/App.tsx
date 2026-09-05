@@ -117,6 +117,7 @@ import { debugLog } from './debug-panel/debugMasterSwitch';
 import { toggleDevtools } from './dev/devtools';
 import { useIsUILabEnabled } from './utils/uiLabToggle';
 import { sessionManager } from './features/chat/core/session/sessionManager';
+import { GoalStatusChip } from './features/chat/components/GoalStatusChip';
 import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
 import { groupCache } from './features/chat/core/store/groupCache';
 import { getSessionTitleText } from './features/chat/utils/sessionTitle';
@@ -2859,6 +2860,8 @@ function App() {
                         className="desktop-shell-header-title"
                       />
                     </div>
+                    {/* goal 模式 P0：会话目标状态 chip（goal 为 null 时自渲染空） */}
+                    <GoalStatusChip sessionId={currentChatHeaderSessionId} />
                   </div>
                 ) : (
                   <div

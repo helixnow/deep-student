@@ -297,6 +297,52 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
     );
   });
 
+  it('force-settles the pending completion when a goal-continuation stream_start arrives inside the quiet window', async () => {
+    const { store, storeApi, getState } = createAutonomousStore();
+    const adapter = new ChatV2TauriAdapter('agent_test', store as any, storeApi as any);
+    vi.spyOn(chunkBuffer, 'flushSession').mockImplementation(() => undefined);
+
+    // 第一轮：自主流开始并完成，进入 32ms 静默窗口
+    (adapter as any).handleSessionEvent({
+      sessionId: 'agent_test',
+      eventType: 'stream_start',
+      messageId: 'msg_autonomous',
+      timestamp: 101,
+      modelId: 'model_runtime',
+    });
+    (adapter as any).handleSessionEvent({
+      sessionId: 'agent_test',
+      eventType: 'stream_complete',
+      messageId: 'msg_autonomous',
+      timestamp: 102,
+    });
+
+    // 静默窗口未到期：旧轮尚未结算
+    expect(store.completeStream).not.toHaveBeenCalled();
+    expect((adapter as any).pendingStreamCompletion).not.toBeNull();
+
+    // goal 续跑：新一轮 stream_start（新 messageId）落在静默窗口内。
+    // 补丁前：因 currentStreamingMessageId/streamExpectation 仍指向旧消息被冲突丢弃；
+    // 补丁后：旧轮同步结算，新轮按自主流路径接受。
+    (adapter as any).handleSessionEvent({
+      sessionId: 'agent_test',
+      eventType: 'stream_start',
+      messageId: 'msg_goal_continuation',
+      timestamp: 103,
+      modelId: 'model_runtime',
+    });
+
+    expect(store.completeStream).toHaveBeenCalledWith('success');
+    expect((adapter as any).pendingStreamCompletion).toBeNull();
+    expect(getState().sessionStatus).toBe('streaming');
+    expect(getState().currentStreamingMessageId).toBe('msg_goal_continuation');
+    expect(getState().messageMap.has('msg_goal_continuation')).toBe(true);
+
+    // 窗口定时器已清除，不会重复结算旧轮
+    await vi.runAllTimersAsync();
+    expect(store.completeStream).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects delayed terminal events from the previous generation of a same-ID retry', async () => {
     const { store, storeApi, getState } = createAutonomousStore();
     const adapter = new ChatV2TauriAdapter('agent_test', store as any, storeApi as any);

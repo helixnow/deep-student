@@ -231,3 +231,36 @@ export function shouldIgnoreStreamLifecycleEvent(
     || isStaleByExpectationTimestamp(options.expectation, payload)
   );
 }
+
+/**
+ * 适配器侧已 arm 的 pending stream completion（32ms 静默窗口句柄）形状。
+ * 可变状态（timer 引用、Map）仍归适配器所有，此处仅定义结构供强制结算使用。
+ */
+export interface PendingStreamCompletion {
+  payload: SessionEventPayload;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * goal 续跑竞态补丁（2026-09）：
+ * 后端 goal 续跑会在上一轮 stream_complete 后约 150ms 发起新一轮
+ * stream_start（新 messageId）。若新轮落在 STREAM_COMPLETE_SETTLE_DELAY_MS
+ * 静默窗口内，旧轮 completion 已 arm 但未执行，currentStreamingMessageId /
+ * streamExpectation 仍指向旧消息，stream_start 冲突守卫会把新轮当 stale
+ * 丢弃。调用方（TauriAdapter 的 stream_start 冲突分支前）先用本函数同步
+ * 结算旧轮：清除定时器并立即执行结算回调，随后新轮按正常流程处理。
+ *
+ * @returns 被同步结算的 payload；无 pending 时返回 null
+ */
+export function forceSettlePendingStreamCompletion(
+  pending: PendingStreamCompletion | null,
+  settle: (payload: SessionEventPayload) => void,
+): SessionEventPayload | null {
+  if (!pending) return null;
+  if (pending.timer !== null) {
+    clearTimeout(pending.timer);
+    pending.timer = null;
+  }
+  settle(pending.payload);
+  return pending.payload;
+}

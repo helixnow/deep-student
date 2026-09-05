@@ -7,6 +7,7 @@
 import type { Block, BlockStatus, BlockType } from '../core/types/block';
 import type { AttachmentMeta, MessageMeta, SourceInfo } from '../core/types/message';
 import type { ChatParams, PanelStates, TokenUsage } from '../core/types/common';
+import type { GoalRecord } from '../core/types/goal';
 import type { SendContextRef, ContentBlock } from '../resources/types';
 import {
   isWorkbenchToolName,
@@ -268,7 +269,8 @@ export type SessionEventType =
   | 'summary_updated'
   | 'variant_deleted'
   | 'compaction_failed'
-  | 'context_trimmed';
+  | 'context_trimmed'
+  | 'goal_updated';
 
 /**
  * 会话级事件 Payload
@@ -331,6 +333,9 @@ export interface SessionEventPayload {
 
   /** 新的激活变体 ID（variant_deleted 事件携带） */
   newActiveVariantId?: string;
+
+  /** 会话目标（goal_updated 事件携带；null 表示目标已清除） */
+  goal?: GoalRecord | null;
 
   /**
    * 事件附加数据（camelCase 序列化）：

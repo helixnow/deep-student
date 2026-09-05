@@ -13,6 +13,7 @@ import type {
   ChatStore,
   BlockingInteraction,
   PermissionPreset,
+  GoalRecord,
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
@@ -85,6 +86,8 @@ export interface StoreCallbacks {
 
   /** 加载会话回调 */
   _loadCallback?: (() => Promise<void>) | null;
+  /** 加载更早历史消息回调（分页） */
+  _loadEarlierMessagesCallback?: (() => Promise<void>) | null;
 
   /** 中断流式回调 */
   _abortCallback?: (() => Promise<void>) | null;
@@ -164,6 +167,9 @@ export interface ChatStoreState extends StoreCallbacks {
 
   /** Ask write-blocked CTA */
   authorityAskBlockedHint: boolean;
+
+  /** 会话级持久目标（goal 模式 P0，后端为权威，❌ 不持久化于前端） */
+  goal: GoalRecord | null;
 
   /** 会话状态 */
   sessionStatus: SessionStatus;
@@ -298,6 +304,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     authorityMode: 'craft',
     permissionPreset: 'relaxed',
     authorityAskBlockedHint: false,
+    goal: null, // goal 模式 P0：初始无目标，restore 后由 fetchGoal 拉取
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据
     messageMap: new Map(),
@@ -331,6 +338,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     _editAndResendCallback: null,
     _saveCallback: null,
     _loadCallback: null,
+    _loadEarlierMessagesCallback: null,
     _abortCallback: null,
     _updateBlockContentCallback: null,
     _updateSessionSettingsCallback: null,

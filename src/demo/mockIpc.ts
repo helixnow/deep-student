@@ -461,6 +461,19 @@ export function installDemoIpcMocks(): void {
         }
         case 'chat_v2_has_active_stream':
           return false;
+
+        // ---------- Goal 模式（P0）：演示会话无目标 ----------
+        // goal_get → null：GoalStatusChip 的 fetchGoal 拿到 null 自渲染空；
+        // pause/resume/edit 契约返回 GoalRecord，演示无目标可操作，
+        // ok(null) → store setGoal(null)，chip 保持隐藏不崩溃。
+        case 'chat_v2_goal_get':
+          return null;
+        case 'chat_v2_goal_pause':
+        case 'chat_v2_goal_resume':
+        case 'chat_v2_goal_edit':
+          return null;
+        case 'chat_v2_goal_clear':
+          return null;
         case 'chat_v2_wake_session':
         case 'chat_v2_continue_message': {
           const sessionId = String(args.sessionId ?? '');
