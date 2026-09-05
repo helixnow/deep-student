@@ -81,4 +81,5 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 - `cargo check --lib --manifest-path src-tauri/Cargo.toml`：通过（共享 WebDAV 限流与 PDF 回填接线）。
 - `cargo test --lib cloud_storage::webdav::tests::provider_rate_limit_window_is_shared_across_storage_instances --manifest-path src-tauri/Cargo.toml`：1 passed。
 - `cargo test --lib vfs::repos::pdf_preview --manifest-path src-tauri/Cargo.toml`：1 passed。
+- `npm exec vitest run src/features/chat/core/middleware/__tests__/eventBridge.test.ts src/features/chat/core/store/__tests__/restoreActions.historyMerge.test.ts`：16 passed。
 - `npm run typecheck`、`cargo fmt`、`git diff --check`：通过。
