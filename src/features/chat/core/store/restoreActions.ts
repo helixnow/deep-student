@@ -916,8 +916,6 @@ export function createRestoreActions(
             authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
             isDataLoaded: true,
-            hasMoreMessages: false,
-            isLoadingMore: false,
             messageMap: finalMessageMap,
             messageOrder: finalMessageOrder,
             blocks: finalBlocksMap,
