@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { getSettings as getSettingsApi, saveSetting as saveSettingApi, saveSettings as saveSettingsApi } from '@/utils/settingsApi';
 import i18n from '@/i18n';
 import { useEventRegistry } from './useEventRegistry';
 
@@ -22,8 +22,6 @@ export interface SystemSettings {
 // AnkiConnect 开关统一使用 `anki_connect_enabled`（见 ankiConnectClient）。
 
 // 检查是否在Tauri环境中
-const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
-const invoke = isTauri ? tauriInvoke : null;
 
 // 默认设置 - 强制亮色主题
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -45,7 +43,7 @@ export const useSystemSettings = () => {
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      if (invoke) {
+      {
         const settingsKeys = [
           'autoSave',
           'theme',
@@ -56,16 +54,11 @@ export const useSystemSettings = () => {
           'markdownRendererMode'
         ];
         
-        const settingsPromises = settingsKeys.map(async (key) => {
-          try {
-            const value = await invoke('get_setting', { key }) as string;
-            return { key, value };
-          } catch {
-            return { key, value: String(DEFAULT_SETTINGS[key as keyof SystemSettings]) };
-          }
-        });
-
-        const settingsResults = await Promise.all(settingsPromises);
+        const values = await getSettingsApi(settingsKeys);
+        const settingsResults = settingsKeys.map((key) => ({
+          key,
+          value: values[key] ?? String(DEFAULT_SETTINGS[key as keyof SystemSettings]),
+        }));
         const loadedSettings: SystemSettings = { ...DEFAULT_SETTINGS };
 
         for (const { key, value } of settingsResults) {
@@ -105,8 +98,8 @@ export const useSystemSettings = () => {
   const saveSetting = useCallback(async (key: keyof SystemSettings, value: any) => {
     setSaving(true);
     try {
-      if (invoke) {
-        await invoke('save_setting', { key: key as string, value: String(value) });
+      {
+        await saveSettingApi(key as string, String(value));
         if (key === 'theme') {
           try {
             localStorage.setItem('dstu-theme-mode', String(value));
@@ -120,7 +113,7 @@ export const useSystemSettings = () => {
         setSettings(prev => ({ ...prev, [key]: value }));
         return true;
       }
-      return false;
+      return true;
     } catch (error: unknown) {
       console.error(`保存设置 ${key} 失败:`, error);
       return false;
@@ -133,16 +126,12 @@ export const useSystemSettings = () => {
   const saveAllSettings = useCallback(async (newSettings: SystemSettings) => {
     setSaving(true);
     try {
-      if (invoke) {
-        const savePromises = Object.entries(newSettings).map(([key, value]) =>
-          invoke('save_setting', { key, value: String(value) })
-        );
-        
-        await Promise.all(savePromises);
+      {
+        await saveSettingsApi(Object.fromEntries(Object.entries(newSettings).map(([key, value]) => [key, String(value)])));
         setSettings(newSettings);
         return true;
       }
-      return false;
+      return true;
     } catch (error: unknown) {
       console.error('保存系统设置失败:', error);
       return false;
