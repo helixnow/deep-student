@@ -36,7 +36,7 @@ import { SearchResultList } from './SearchResultList';
 import { TagFilterPanel, SessionTagBadges, AddTagInput } from './TagFilter';
 import { Input } from '@/components/ui/shad/Input';
 import { groupTaskSessions, summarizeTaskSession } from './taskCenter';
-import { exportSessionToFile } from './sessionExport';
+import { exportSessionToFile, importConversationSnapshotFromFile } from './sessionExport';
 import { useSessionSearch } from './useSessionSearch';
 
 // ============================================================================
@@ -760,6 +760,12 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 />
               </div>
             </div>
+
+            {/* 导入迁移快照 */}
+            <DsButton variant="ghost" size="sm" onClick={() => void importConversationSnapshotFromFile()} className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('browser.importSession')} title={t('browser.importSession')}>
+              <DownloadSimple size={16} className="rotate-180" />
+              <span className="hidden xs:inline">{t('browser.importSession')}</span>
+            </DsButton>
 
             {/* 新建按钮 */}
             <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
