@@ -55,7 +55,9 @@ jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   full-fixture-gate:
     name: Full Fixture Gate (upgrade + fault)
-    runs-on: ubuntu-latest
+    # 钉 22.04：与 ci.yml 的 tests 缓存作业同镜像（runner 回收事故 +
+    # 跨镜像缓存 E0463 双重考虑），保持共享缓存名空间一致
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - name: Free disk space
@@ -79,6 +81,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
+          # key 前缀随钉版镜像走（见 ci.yml provider-contract 处注释）
+          key: ubuntu-22.04
           shared-key: tests
 
       # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）：
@@ -175,7 +179,8 @@ jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   scale-fixture-gate:
     name: Scale Fixture Gate (wall-clock budget)
-    runs-on: ubuntu-latest
+    # 钉 22.04：同 full-fixture-gate
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
       - name: Free disk space
@@ -192,6 +197,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
+          # key 前缀随钉版镜像走（见 ci.yml provider-contract 处注释）
+          key: ubuntu-22.04
           shared-key: tests
 
       # apt 文件快照缓存；作用域与动机见 full-fixture-gate 同名步骤注释

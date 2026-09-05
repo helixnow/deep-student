@@ -266,15 +266,17 @@ export function CommandPalette() {
   
   // 打开时聚焦输入框并重置状态
   useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setSelectedIndex(0);
-      setViewMode('search');
-      // 延迟聚焦，等待动画完成
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }
+    if (!isOpen) return;
+    setQuery('');
+    setSelectedIndex(0);
+    setViewMode('search');
+    // 延迟聚焦，等待动画完成；清理时取消——否则打开后一帧内按 Esc，
+    // 过期 rAF 会把焦点抢回正在退场/已卸载的输入框，焦点最终掉回 body
+    // （读屏丢失上下文，commandPaletteA11yContract 的 Esc 用例捕获）
+    const raf = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
   }, [isOpen, sessionSearchOnly]);
 
   // 关闭后把焦点还给打开面板的那个元素，避免焦点掉回 body（读屏丢失上下文）
