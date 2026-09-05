@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { saveSetting } from '@/utils/settingsApi';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
@@ -422,7 +423,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       setTopbarTopMargin(String(platformDefault));
                       return;
                     }
-                    await invoke('save_setting', { key: 'topbar.top_margin', value: String(numValue) });
+                    await saveSetting('topbar.top_margin', String(numValue));
                     setTopbarTopMargin(String(numValue));
                     showGlobalNotification('success', t('settings:save_success'));
                     try {
@@ -526,7 +527,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               setShowRawRequest(newValue);
               if (!invoke) return;
               try {
-                await invoke('save_setting', { key: 'dev.show_raw_request', value: String(newValue) });
+                await saveSetting('dev.show_raw_request', String(newValue));
                 showGlobalNotification('success', t('settings:save_notifications.saved'));
                 try {
                   window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { showRawRequest: newValue } }));
