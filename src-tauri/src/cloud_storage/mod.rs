@@ -76,8 +76,8 @@ pub use sync_manager::{
     EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
 };
 pub use traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
-    RESUMABLE_DOWNLOAD_UNSUPPORTED,
+    clear_status_hook, set_status_hook, CloudStorage, DownloadProgressCallback, FileInfo,
+    ListOutcome, Result, UploadProgressCallback, RESUMABLE_DOWNLOAD_UNSUPPORTED,
 };
 
 /// 本端启用加密后拒收明文遗留对象 / 拒明文上传。

@@ -23,6 +23,46 @@ pub type UploadProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 /// 下载进度回调类型
 pub type DownloadProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
+// ==================== 云存储状态提示钩子 ====================
+//
+// 限流退避（429/503 等待 Retry-After）、主动滑窗限速、网络重试等
+// "没有字节流动"的窗口期，进度回调完全静默，UI 看起来像卡死。
+// 云存储层在这些窗口前上报状态提示（如"云端限流，32 秒后自动重试…"），
+// 让上层进度系统能展示真实原因。全局单例钩子由同步命令层注册/卸下；
+// 同步有全局信号量串行化，无并发冲突。
+
+type StatusHook = Box<dyn Fn(&str) + Send + Sync>;
+
+static STATUS_HOOK: std::sync::OnceLock<std::sync::RwLock<Option<StatusHook>>> =
+    std::sync::OnceLock::new();
+
+fn status_hook_slot() -> &'static std::sync::RwLock<Option<StatusHook>> {
+    STATUS_HOOK.get_or_init(|| std::sync::RwLock::new(None))
+}
+
+/// 注册状态提示钩子（同步命令入口调用）
+pub fn set_status_hook(hook: StatusHook) {
+    if let Ok(mut guard) = status_hook_slot().write() {
+        *guard = Some(hook);
+    }
+}
+
+/// 卸下状态提示钩子（同步命令结束/失败时调用）
+pub fn clear_status_hook() {
+    if let Ok(mut guard) = status_hook_slot().write() {
+        *guard = None;
+    }
+}
+
+/// 上报云存储状态提示（未注册钩子时为 no-op）
+pub(crate) fn report_status(msg: &str) {
+    if let Ok(guard) = status_hook_slot().read() {
+        if let Some(hook) = guard.as_ref() {
+            hook(msg);
+        }
+    }
+}
+
 /// 分块上传配置
 pub const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB per chunk
 
