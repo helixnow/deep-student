@@ -55,7 +55,7 @@ describe('ComposerPlusMenu', () => {
     expect(confirmButton).toBeDefined();
     fireEvent.click(confirmButton!);
     await waitFor(() => {
-      expect(onPermissionPresetChange).toHaveBeenCalledWith('danger_full_access');
+      expect(onPermissionPresetChange).toHaveBeenCalledWith('danger_full_access', true);
     });
   });
 
@@ -79,7 +79,7 @@ describe('ComposerPlusMenu', () => {
     expect(fullAccessChip.className).toContain('inline-flex');
     expect(fullAccessChip.textContent ?? '').not.toMatch(/点击降为宽松|click to downgrade/i);
     fireEvent.click(fullAccessChip);
-    expect(onPermissionPresetChange).toHaveBeenCalledWith('relaxed');
+    expect(onPermissionPresetChange).toHaveBeenCalledWith('relaxed', undefined);
 
     rerender(
       <ComposerPlusMenu

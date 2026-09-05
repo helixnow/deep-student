@@ -119,7 +119,7 @@ describe('sessionActions authority mode', () => {
     const actions = createSessionActions(set as never, () => state as never, () => {});
     await actions.setPermissionPreset('relaxed');
     expect(invokeMock).toHaveBeenCalledWith('chat_v2_set_permission_preset', {
-      sessionId: 'sess_1', preset: 'relaxed',
+      sessionId: 'sess_1', preset: 'relaxed', confirm: null,
     });
     expect(state.permissionPreset).toBe('relaxed');
     expect(state.sessionMetadata).toMatchObject({
@@ -138,10 +138,10 @@ describe('sessionActions authority mode', () => {
     await actions.setPermissionPreset('danger_full_access');
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'chat_v2_set_permission_preset', {
-      sessionId: 'sess_1', preset: 'full_access',
+      sessionId: 'sess_1', preset: 'full_access', confirm: null,
     });
     expect(invokeMock).toHaveBeenNthCalledWith(2, 'chat_v2_set_permission_preset', {
-      sessionId: 'sess_1', preset: 'danger_full_access',
+      sessionId: 'sess_1', preset: 'danger_full_access', confirm: null,
     });
     expect(state.permissionPreset).toBe('danger_full_access');
   });
