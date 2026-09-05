@@ -34,6 +34,17 @@ export async function getSetting(key: string): Promise<string | null> {
   }
 }
 
+/** Read a group of settings with identical fallback semantics. */
+export async function getSettings(keys: readonly string[]): Promise<Record<string, string | null>> {
+  const entries = await Promise.all(keys.map(async (key) => [key, await getSetting(key)] as const));
+  return Object.fromEntries(entries);
+}
+
+/** Persist a group of settings without exposing raw IPC details to callers. */
+export async function saveSettings(settings: Record<string, string>): Promise<void> {
+  await Promise.all(Object.entries(settings).map(([key, value]) => saveSetting(key, value)));
+}
+
 export async function deleteSetting(key: string): Promise<void> {
   try {
     if (!isTauriRuntime) {
