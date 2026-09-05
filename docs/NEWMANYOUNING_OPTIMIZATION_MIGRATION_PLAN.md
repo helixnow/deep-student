@@ -71,4 +71,6 @@ PaddleOCR 先实现边界清晰的客户端/协议，不在没有安全、大小
 
 - 已完成并验证：Android ZIP 导入移出 async runtime，Android 构建摘要工具回退，Chat 终态前 flush，历史 block 单项隔离，代码块原生滚动兜底，PDF 状态完整覆盖基础 API，vendor/profile 刷新入口，宽松历史 session ID 校验。
 - 当前主线已有：Chat chunkBuffer 主接入与采样、OCR stuck task 自动续跑、WebDAV PROPFIND/Retry-After/基础重试、备份密钥槽位修复、Windows shell fallback、Android 构建工具探测。
-- 仍需后续独立实现：Chat staged restore 的完整兼容测试，历史消息实际向上分页和 scroll anchoring，对话快照导入导出及事务化 ID remap，WebDAV 主动滑窗限流与精确字节进度，OCR 历史预览后台回填，settings 全量调用迁移，死代码/CSS 引用审计后的分批清理。
+- 本轮已吸收：迟到流事件会话隔离、终态前 chunk flush、损坏历史 message/block 单项隔离、旧 session ID 兼容、WebDAV provider-aware 主动滑窗限流、Android ZIP blocking/工具回退格式修复。
+- 当前主线已有等价实现：Chat FIFO 多变体与采样 buffer、历史 scroll anchoring 基础、OCR stuck task 自动续跑、WebDAV Retry-After/重试/真实字节进度、Android spawn_blocking 与 sha256sum 回退、单实例聚焦恢复、settings 批量 API 基础。
+- 未吸收：用户迁移级对话快照导入/事务化 ID remap（当前不存在完整后端协议，避免留下未接线半成品）；历史分页 UI 的完整 loading/retry/exhausted 交互；OCR 历史 preview 后台回填；settings 直接 invoke 全量迁移；死代码/CSS 依赖审计清理。
