@@ -637,7 +637,10 @@ impl RequestManager {
             let _ = request.tx.send(response);
         } else {
             // 响应 id 无对应 pending 请求：可能超时清理先行，或 server 回了错乱 id
-            log::warn!("[McpClient] complete_request: no pending request for id={}", id);
+            log::warn!(
+                "[McpClient] complete_request: no pending request for id={}",
+                id
+            );
         }
     }
 

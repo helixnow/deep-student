@@ -493,16 +493,16 @@ mod tests {
         use tokio::io::AsyncWriteExt;
 
         // 本地假 SSE server：发一条事件后挂住连接（不关流）
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
         let addr = listener.local_addr().expect("addr");
         let server = tokio::spawn(async move {
             let (sock, _) = listener.accept().await.expect("accept");
             let mut sock = sock;
-            sock.write_all(
-                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n",
-            )
-            .await
-            .expect("write headers");
+            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+                .await
+                .expect("write headers");
             sock.write_all(b"data: {\"sessionId\":\"s1\"}\n\n")
                 .await
                 .expect("write event");
