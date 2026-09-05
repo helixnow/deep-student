@@ -56,6 +56,11 @@ jobs:
       # 已过期），必须就地构建前端，因此堆上限提到 6GB（runner 7GB RAM，
       # vite 阶段独占内存）。
       NODE_OPTIONS: '--max-old-space-size=6144'
+      # sccache（GHA 后端）：编译单元在构建进行中逐条上传缓存——runner 被回收
+      # （"shutdown signal"，v0.9.44 后 Android 连败的次因）时已完成的单元不丢，
+      # 下次重跑直接命中断点续传；rust-cache 只在 job 收尾保存，回收即全损。
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
       CARGO_PROFILE_RELEASE_LTO: 'false'
       # WI-6 (R3): 正常发布收紧为 opt-level=z + codegen-units=16 —— .so 体积
       # 直接决定低内存设备启动时 dlopen/重定位压力（见 Sign APK 的 250MB 守卫）。
@@ -169,6 +174,8 @@ jobs:
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
