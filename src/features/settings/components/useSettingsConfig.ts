@@ -5,7 +5,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { normalizeMcpToolList } from './mcpUtils';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { getSetting } from '@/utils/settingsApi';
+import { getSetting, saveSettings } from '@/utils/settingsApi';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { UseSettingsConfigDeps } from './hookDepsTypes';
 import type { SystemConfig } from './types';
@@ -340,49 +340,43 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
     setSaving(true);
     try {
       if (invoke) {
-        await Promise.all([
-          invoke('save_setting', { key: 'auto_save', value: config.autoSave.toString() }),
-          invoke('save_setting', { key: 'theme', value: config.theme }),
-          invoke('save_setting', { key: 'theme_palette', value: config.themePalette ?? 'default' }),
-          invoke('save_setting', { key: 'rag_enabled', value: config.ragEnabled.toString() }),
-          invoke('save_setting', { key: 'rag_top_k', value: config.ragTopK.toString() }),
-          invoke('save_setting', { key: 'anki_connect_enabled', value: config.ankiConnectEnabled.toString() }),
-          invoke('save_setting', { key: 'debug_mode', value: config.debugMode.toString() }),
-          // MCP 工具协议设置保存（移除全局启用项）
-          invoke('save_setting', { key: 'mcp.transport.type', value: String(config.mcpTransportType || 'stdio') }),
-          invoke('save_setting', { key: 'mcp.transport.command', value: config.mcpCommand }),
-          invoke('save_setting', { key: 'mcp.transport.args', value: config.mcpArgs }),
-          invoke('save_setting', { key: 'mcp.transport.url', value: String(config.mcpUrl || '') }),
-          invoke('save_setting', { key: 'mcp.tools.advertise_all_tools', value: config.mcpAdvertiseAll.toString() }),
-          invoke('save_setting', { key: 'mcp.tools.whitelist', value: config.mcpWhitelist }),
-          invoke('save_setting', { key: 'mcp.tools.blacklist', value: config.mcpBlacklist }),
-          invoke('save_setting', { key: 'mcp.performance.timeout_ms', value: String(config.mcpTimeoutMs ?? 15000) }),
-          invoke('save_setting', { key: 'mcp.performance.rate_limit_per_second', value: String(config.mcpRateLimit ?? 10) }),
-          invoke('save_setting', { key: 'mcp.performance.cache_max_size', value: String(config.mcpCacheMax ?? 500) }),
-          invoke('save_setting', { key: 'mcp.performance.cache_ttl_ms', value: String(config.mcpCacheTtlMs ?? 300000) }),
-          // 保存多工具配置（过滤掉内置服务器）
-          invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify((config.mcpTools || []).filter(s => s.id !== BUILTIN_SERVER_ID)) }),
-          // 强制使用前端SDK模式
-          invoke('save_setting', { key: 'mcp.mode', value: 'frontend' }),
-
-          // Web Search 设置保存
-          // 外部搜索保存（移除全局启用项）
-          invoke('save_setting', { key: 'web_search.engine', value: config.webSearchEngine ?? '' }),
-          invoke('save_setting', { key: 'web_search.timeout_ms', value: String(config.webSearchTimeoutMs ?? 15000) }),
-          invoke('save_setting', { key: 'web_search.api_key.google_cse', value: config.webSearchGoogleKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.google_cse.cx', value: config.webSearchGoogleCx ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.serpapi', value: config.webSearchSerpApiKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.tavily', value: config.webSearchTavilyKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.brave', value: config.webSearchBraveKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.searxng.endpoint', value: config.webSearchSearxngEndpoint ?? '' }),
-          invoke('save_setting', { key: 'web_search.searxng.api_key', value: config.webSearchSearxngKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.zhipu', value: config.webSearchZhipuKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.api_key.bocha', value: config.webSearchBochaKey ?? '' }),
-          invoke('save_setting', { key: 'web_search.site_whitelist', value: config.webSearchWhitelist ?? '' }),
-          invoke('save_setting', { key: 'web_search.site_blacklist', value: config.webSearchBlacklist ?? '' }),
-          invoke('save_setting', { key: 'web_search.inject.snippet_max_chars', value: String(config.webSearchInjectSnippetMax ?? 180) }),
-          invoke('save_setting', { key: 'web_search.inject.total_max_chars', value: String(config.webSearchInjectTotalMax ?? 1900) }),
-      ]);
+        await saveSettings({
+          'auto_save': String(config.autoSave.toString()),
+          'theme': String(config.theme),
+          'theme_palette': String(config.themePalette ?? 'default'),
+          'rag_enabled': String(config.ragEnabled.toString()),
+          'rag_top_k': String(config.ragTopK.toString()),
+          'anki_connect_enabled': String(config.ankiConnectEnabled.toString()),
+          'debug_mode': String(config.debugMode.toString()),
+          'mcp.transport.type': String(String(config.mcpTransportType || 'stdio')),
+          'mcp.transport.command': String(config.mcpCommand),
+          'mcp.transport.args': String(config.mcpArgs),
+          'mcp.transport.url': String(String(config.mcpUrl || '')),
+          'mcp.tools.advertise_all_tools': String(config.mcpAdvertiseAll.toString()),
+          'mcp.tools.whitelist': String(config.mcpWhitelist),
+          'mcp.tools.blacklist': String(config.mcpBlacklist),
+          'mcp.performance.timeout_ms': String(String(config.mcpTimeoutMs ?? 15000)),
+          'mcp.performance.rate_limit_per_second': String(String(config.mcpRateLimit ?? 10)),
+          'mcp.performance.cache_max_size': String(String(config.mcpCacheMax ?? 500)),
+          'mcp.performance.cache_ttl_ms': String(String(config.mcpCacheTtlMs ?? 300000)),
+          'mcp.tools.list': String(JSON.stringify((config.mcpTools || []).filter(s => s.id !== BUILTIN_SERVER_ID))),
+          'mcp.mode': String('frontend'),
+          'web_search.engine': String(config.webSearchEngine ?? ''),
+          'web_search.timeout_ms': String(String(config.webSearchTimeoutMs ?? 15000)),
+          'web_search.api_key.google_cse': String(config.webSearchGoogleKey ?? ''),
+          'web_search.google_cse.cx': String(config.webSearchGoogleCx ?? ''),
+          'web_search.api_key.serpapi': String(config.webSearchSerpApiKey ?? ''),
+          'web_search.api_key.tavily': String(config.webSearchTavilyKey ?? ''),
+          'web_search.api_key.brave': String(config.webSearchBraveKey ?? ''),
+          'web_search.searxng.endpoint': String(config.webSearchSearxngEndpoint ?? ''),
+          'web_search.searxng.api_key': String(config.webSearchSearxngKey ?? ''),
+          'web_search.api_key.zhipu': String(config.webSearchZhipuKey ?? ''),
+          'web_search.api_key.bocha': String(config.webSearchBochaKey ?? ''),
+          'web_search.site_whitelist': String(config.webSearchWhitelist ?? ''),
+          'web_search.site_blacklist': String(config.webSearchBlacklist ?? ''),
+          'web_search.inject.snippet_max_chars': String(String(config.webSearchInjectSnippetMax ?? 180)),
+          'web_search.inject.total_max_chars': String(String(config.webSearchInjectTotalMax ?? 1900)),
+        });
         if (!silent) {
           showGlobalNotification('success', t('settings:notifications.config_save_success'));
         }
