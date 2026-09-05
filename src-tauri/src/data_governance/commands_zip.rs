@@ -1449,29 +1449,32 @@ async fn execute_zip_import_with_progress(
     // off the async runtime, especially on Android where worker count is low.
     let zip_for_task = zip_file_path.clone();
     let target_for_task = target_dir.clone();
-    let join_result = tauri::async_runtime::spawn_blocking(move || import_backup_from_zip_with_progress(
-        &zip_for_task,
-        &target_for_task,
-        |progress| {
-            // 将 ZipImportPhase 转换为 BackupJobPhase
-            let phase = match progress.phase {
-                ZipImportPhase::Scan => BackupJobPhase::Scan,
-                ZipImportPhase::Extract => BackupJobPhase::Extract,
-                ZipImportPhase::Verify => BackupJobPhase::Verify,
-                ZipImportPhase::Completed => BackupJobPhase::Completed,
-            };
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
+        import_backup_from_zip_with_progress(
+            &zip_for_task,
+            &target_for_task,
+            |progress| {
+                // 将 ZipImportPhase 转换为 BackupJobPhase
+                let phase = match progress.phase {
+                    ZipImportPhase::Scan => BackupJobPhase::Scan,
+                    ZipImportPhase::Extract => BackupJobPhase::Extract,
+                    ZipImportPhase::Verify => BackupJobPhase::Verify,
+                    ZipImportPhase::Completed => BackupJobPhase::Completed,
+                };
 
-            job_ctx_for_progress.mark_running(
-                phase,
-                progress.progress,
-                Some(progress.message),
-                progress.processed_files as u64,
-                progress.total_files as u64,
-            );
-        },
-        || job_ctx_for_cancel.is_cancelled(),
-        password.as_deref(),
-    )).await;
+                job_ctx_for_progress.mark_running(
+                    phase,
+                    progress.progress,
+                    Some(progress.message),
+                    progress.processed_files as u64,
+                    progress.total_files as u64,
+                );
+            },
+            || job_ctx_for_cancel.is_cancelled(),
+            password.as_deref(),
+        )
+    })
+    .await;
 
     let result = match join_result {
         Ok(result) => result,
