@@ -21,6 +21,10 @@
           "type": "toml",
           "path": "src-tauri/Cargo.lock",
           "jsonpath": "$.package[?(@.name==='deep-student')].version"
+        },
+        {
+          "type": "generic",
+          "path": "scripts/generate-version.mjs"
         }
       ]
     }
