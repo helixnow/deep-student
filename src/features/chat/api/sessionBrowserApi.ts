@@ -55,3 +55,40 @@ export function searchChatSessions(input: SearchChatSessionsInput): Promise<Chat
     includeArchived: input.includeArchived,
   });
 }
+
+/** 用户迁移快照元信息与分页消息导出。 */
+export interface ConversationSnapshotMeta {
+  format: string;
+  version: number;
+  exportedAt: string;
+  appVersion: string;
+  session: unknown;
+  sessionState: unknown | null;
+  messageCount: number;
+  pageSize: number;
+}
+
+export interface ConversationSnapshotChunk {
+  messages: unknown[];
+  blocks: unknown[];
+  nextOffset: number | null;
+}
+
+export interface ImportSessionResult {
+  sessionId: string;
+  messageCount: number;
+  blockCount: number;
+  warnings: string[];
+}
+
+export function exportConversationSnapshotMeta(sessionId: string): Promise<ConversationSnapshotMeta> {
+  return invoke<ConversationSnapshotMeta>('chat_v2_export_session_meta', { sessionId });
+}
+
+export function exportConversationSnapshotMessages(sessionId: string, offset = 0, limit?: number): Promise<ConversationSnapshotChunk> {
+  return invoke<ConversationSnapshotChunk>('chat_v2_export_session_messages', { sessionId, offset, limit });
+}
+
+export function importConversationSnapshot(snapshotJson: string): Promise<ImportSessionResult> {
+  return invoke<ImportSessionResult>('chat_v2_import_session', { snapshotJson });
+}
