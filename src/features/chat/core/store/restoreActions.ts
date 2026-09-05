@@ -996,6 +996,11 @@ export function createRestoreActions(
           
           console.log('[ChatStore] Session restored from backend:', session.id, 'isDataLoaded: true');
 
+          // goal 模式 P0：恢复完成后拉取会话目标（fire-and-forget，不阻塞恢复链；
+          // fetchGoal 内部已捕获错误，旧后端无该命令时静默降级为无目标）
+          const fetchGoal = getState().fetchGoal;
+          if (typeof fetchGoal === 'function') void fetchGoal();
+
           // 🔧 统一的异步恢复路径：资源验证 + 技能 ContextRef 重建
           // 合并原有的三条竞态路径为单一 queueMicrotask
           queueMicrotask(async () => {
