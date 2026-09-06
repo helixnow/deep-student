@@ -211,6 +211,14 @@ jobs:
               ACTUAL_SHA=$(git rev-list -n 1 "${TAG}")
               EXPECTED_SHA=$(git rev-parse "${TARGET_SHA}^{commit}")
               if [[ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]]; then
+                # 兼容合并提交：Path 3（merge 父提交检测）把 tag 打在合并提交上，
+                # 而 catch-up（Path 4）以 release 提交为基准。tag 指向包含
+                # release 提交的下游提交（如合并提交）时内容同源，允许恢复；
+                # 指向其它无关提交仍 fail-closed。
+                if git merge-base --is-ancestor "${EXPECTED_SHA}" "${ACTUAL_SHA}"; then
+                  echo "  ℹ️ Tag ${TAG} points to ${ACTUAL_SHA:0:7} (descendant of release commit ${EXPECTED_SHA:0:7}); accepted"
+                  return 0
+                fi
                 echo "❌ Existing tag ${TAG} points to ${ACTUAL_SHA}, expected ${EXPECTED_SHA}"
                 exit 1
               fi
@@ -338,10 +346,15 @@ jobs:
           while IFS=$'\t' read -r COMMIT_SHA COMMIT_SUBJECT; do
             if [[ "${COMMIT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
               TAG="v${BASH_REMATCH[1]}"
-              if [[ "$(release_state "${TAG}")" != "published" ]]; then
-                ensure_draft_release "${TAG}" "catch-up scan (${COMMIT_SHA:0:7})" "${COMMIT_SHA}"
-                exit 0
+              if [[ "$(release_state "${TAG}")" == "published" ]]; then
+                # 扫描按从新到旧排序：遇到已发布的更新版本即停止——更早的
+                # 未发布 release commit 已被取代（superseded），补建它们只会
+                # 用过期/损坏的内容毒化后续每次 push（v0.9.55 事故）。
+                echo "ℹ️ Newer release ${TAG} already published; older unpublished release commits are superseded, stopping scan"
+                break
               fi
+              ensure_draft_release "${TAG}" "catch-up scan (${COMMIT_SHA:0:7})" "${COMMIT_SHA}"
+              exit 0
             fi
           done < <(git log --format='%H%x09%s' -n 10)
 
