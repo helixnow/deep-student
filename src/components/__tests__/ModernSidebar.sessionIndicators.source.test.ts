@@ -13,8 +13,10 @@ const appSource = readFileSync(
 
 describe('ModernSidebar session indicators', () => {
   it('prioritizes streaming and unread indicators over hover archive controls', () => {
+    // 57bf33a41 重构：三态指示器收敛进单个 hover 让位包装 span，
+    // 外层守卫为 || 三选一，内层按 streaming > blocking > unread 链式分派。
     const rightSlotBranch = modernSidebarSource.match(
-      /rightSlot=\{isSessionStreaming \? \([\s\S]*?\) : \(\s*<span className="ml-1 shrink-0 text-\[11px\]/
+      /rightSlot=\{isSessionStreaming \|\| hasBlockingInteraction \|\| hasUnreadAssistantReply \? \([\s\S]*?\) : \(\s*<span className="ml-1 shrink-0 text-\[11px\]/
     )?.[0] ?? '';
     const archiveActionBranch = modernSidebarSource.match(
       /\{!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && \([\s\S]*?<CommonTooltip content=\{isConfirmingArchive/
@@ -26,13 +28,13 @@ describe('ModernSidebar session indicators', () => {
     expect(rightSlotBranch).toContain('<SidebarStreamingIndicator />');
     expect(rightSlotBranch).toContain('hasBlockingInteraction ? (');
     expect(rightSlotBranch).toContain('<SidebarBlockingContinueBadge');
-    expect(rightSlotBranch).toContain('hasUnreadAssistantReply ? (');
+    // 未读分支是内层链的 else 归宿（守卫条件已上提外层 ||），不再单独出现 hasUnreadAssistantReply ? (
     expect(rightSlotBranch).toContain('<SidebarUnreadReplyDot />');
     expect(rightSlotBranch.indexOf('isSessionStreaming ?')).toBeLessThan(
       rightSlotBranch.indexOf('hasBlockingInteraction ?')
     );
     expect(rightSlotBranch.indexOf('hasBlockingInteraction ?')).toBeLessThan(
-      rightSlotBranch.indexOf('hasUnreadAssistantReply ?')
+      rightSlotBranch.indexOf('<SidebarUnreadReplyDot />')
     );
     expect(archiveActionBranch).toContain(
       '!isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply'

@@ -53,7 +53,6 @@ pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
-pub mod startup_gate;
 #[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
@@ -115,6 +114,7 @@ pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
+pub mod startup_gate;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
 pub mod system_notification;
