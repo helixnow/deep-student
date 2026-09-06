@@ -5376,7 +5376,7 @@ export class ChatV2TauriAdapter {
       // ========== MCP 工具 Schema 注入 ==========
       // 从 mcpService 获取选中服务器的工具 Schema，传递给后端
       // 后端直接使用这些 Schema 注入到 LLM，而不需要自己连接 MCP 服务器
-      mcpToolSchemas: this.collectMcpToolSchemas(
+      mcpToolSchemas: await this.collectMcpToolSchemas(
         chatParams.selectedMcpServers,
         authoritativeToolSkillIds,
       ),
@@ -5511,10 +5511,10 @@ export class ChatV2TauriAdapter {
    * - description: 工具描述
    * - inputSchema: JSON Schema 定义参数
    */
-  private collectMcpToolSchemas(
+  private async collectMcpToolSchemas(
     selectedServerIds?: string[],
     loadedSkillIds?: string[],
-  ): Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> {
+  ): Promise<Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> {
     const schemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [];
 
     // 渐进披露模式：只注入 load_skills 元工具 + 已加载的 Skills 工具
@@ -5591,7 +5591,12 @@ export class ChatV2TauriAdapter {
         }
 
         // 从 McpService 缓存获取该服务器的工具列表
-        const tools = McpService.getCachedToolsFor(serverId);
+        let tools = McpService.getCachedToolsFor(serverId);
+        if (tools.length === 0) {
+          // 页面重载/首启后缓存为空（WebView 重载清空内存态且尚未重连）：
+          // 发送路径兜底，连接并完成工具发现后再注入，避免模型只看到 load_skills。
+          tools = await McpService.ensureServerTools(serverId);
+        }
         for (const tool of tools) {
           schemas.push({
             name: tool.name,
