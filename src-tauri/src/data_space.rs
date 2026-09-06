@@ -2155,9 +2155,21 @@ impl SlotIntegrityReport {
 }
 
 #[tauri::command]
-pub fn get_startup_recovery_status(
-    state: tauri::State<'_, StartupRecoveryState>,
+pub async fn get_startup_recovery_status(
+    app: tauri::AppHandle,
 ) -> Result<StartupRecoveryStatus, AppError> {
+    // 启动完成闸门（startup_gate）：Tauri 先创建窗口再跑 setup 闭包，且 Android 上
+    // IPC 在 WebView JavaBridge 后台线程与 setup 并发执行——不等待就可能因
+    // StartupRecoveryState 尚未 manage 而立即报错（与超时时长无关的误报 blocked）。
+    if !crate::startup_gate::wait_startup_ready(crate::startup_gate::STARTUP_READY_WAIT).await {
+        return Err(AppError::internal(format!(
+            "应用启动初始化超时（{} 秒），请重启应用",
+            crate::startup_gate::STARTUP_READY_WAIT.as_secs()
+        )));
+    }
+    let state = app.try_state::<StartupRecoveryState>().ok_or_else(|| {
+        AppError::internal("启动恢复状态未注册（setup 异常退出）".to_string())
+    })?;
     state
         .status()
         .map_err(|error| AppError::internal(format!("读取启动恢复状态失败: {error}")))

@@ -53,6 +53,7 @@ pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
+pub mod startup_gate;
 #[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
@@ -674,6 +675,11 @@ pub fn run() {
         .plugin(log_plugin_builder.build())
         //.manage(init_app_state())
         .setup(|app| {
+            // 启动完成闸门守卫（startup_gate）：闭包任意路径退出（含恢复模式
+            // 提前返回）时自动标记就绪，放行正在等待的启动预检命令。
+            // 必须置于闭包首行，保证所有退出路径都被覆盖。
+            let _startup_ready_guard = crate::startup_gate::StartupReadyGuard::new();
+
             let app_handle = app.handle().clone();
 
             // 设置全局 AppHandle，用于在任意位置发送事件
