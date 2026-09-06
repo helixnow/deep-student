@@ -45,6 +45,14 @@ export {
   serializeSkillToMarkdown,
 } from './parser';
 
+// P3 产物模板骨架
+export {
+  renderSkillContentWithArtifact,
+  validateArtifactSkeletonTypes,
+  validateIntentAgainstSkeleton,
+  findActiveArtifactSkill,
+} from './artifactSkeleton';
+
 // API
 export {
   listSkillDirectories,

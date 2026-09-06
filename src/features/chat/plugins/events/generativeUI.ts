@@ -13,6 +13,12 @@ import {
 import { finalizeGenerativeUIStream } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 import { registerGenerativeUIArtifact } from '../../core/store/artifactRegistry';
+import {
+  findActiveArtifactSkill,
+  validateIntentAgainstSkeleton,
+} from '../../skills/artifactSkeleton';
+import { skillRegistry } from '../../skills/registry';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 const generativeUIEventHandler: EventHandler = {
   onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
@@ -60,6 +66,32 @@ const generativeUIEventHandler: EventHandler = {
     // P1 产物一等公民化：终态登记进会话产物索引（intent 已写入、status 已 success）。
     // 刷新快照在 registry 内部沿 messageOrder 前溯前一用户消息取得。
     registerGenerativeUIArtifact(store, blockId);
+
+    // P3 产物模板校验（执行面方案 d）：激活 skill 声明了骨架时，对照校验块序列。
+    // 不符则降级为普通产物 + 提示（无工具错误通道，零协议改动；产物本身仍保留）。
+    // intent 为 string 时表示解析失败的原始文本，无法对照骨架，跳过。
+    if (intent !== null && typeof intent !== 'string') {
+      const skeletonRef = store.blocks.get(blockId)?.toolInput?.skeletonRef;
+      const match = findActiveArtifactSkill(
+        store.activeSkillIds ?? [],
+        (id) => skillRegistry.get(id),
+        typeof skeletonRef === 'string' ? skeletonRef : undefined,
+      );
+      if (match) {
+        const check = validateIntentAgainstSkeleton(intent, match.artifact);
+        if (!check.valid) {
+          console.warn(
+            '[GenerativeUI] 产物不符合 skill 骨架，已降级为普通产物:',
+            match.skillId,
+            check.errors,
+          );
+          showGlobalNotification(
+            'info',
+            `生成内容与「${match.skillId}」模板布局不符，已按普通产物保留（${check.errors[0] ?? ''}）`,
+          );
+        }
+      }
+    }
   },
 
   onError: (store: ChatStore, blockId: string, error: string) => {
