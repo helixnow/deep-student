@@ -45,7 +45,7 @@ describe('serializeNodesToOutlineText', () => {
   it('超过最大深度时截断并追加标记', () => {
     const deep = node('a', 'L1', [node('b', 'L2', [node('c', 'L3', [node('d', 'L4')])])]);
     const result = serializeNodesToOutlineText([deep], { maxDepth: 2 });
-    expect(result).toBe(['- L1', '  - L2', '- …（已截断）'].join('\n'));
+    expect(result).toBe(['- L1', '  - L2', '- …（已截断，尚有 2 个节点）'].join('\n'));
   });
 
   it('超过最大节点数时截断并追加标记', () => {
@@ -55,7 +55,7 @@ describe('serializeNodesToOutlineText', () => {
       node('d', '子三'),
     ]);
     const result = serializeNodesToOutlineText([wide], { maxNodes: 2 });
-    expect(result).toBe(['- 根', '  - 子一', '- …（已截断）'].join('\n'));
+    expect(result).toBe(['- 根', '  - 子一', '- …（已截断，尚有 2 个节点）'].join('\n'));
   });
 
   it('超过最大字符数时截断并追加标记', () => {
@@ -63,7 +63,7 @@ describe('serializeNodesToOutlineText', () => {
       [node('a', '一'.repeat(50), [node('b', '二'.repeat(50))])],
       { maxChars: 60 },
     );
-    expect(result).toBe(`- ${'一'.repeat(50)}\n- …（已截断）`);
+    expect(result).toBe(`- ${'一'.repeat(50)}\n- …（已截断，尚有 1 个节点）`);
   });
 
   it('空输入返回空字符串', () => {
