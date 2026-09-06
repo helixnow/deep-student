@@ -393,15 +393,25 @@ const recoveryTree = (
   </ErrorBoundary>
 );
 
-const getStartupRecoveryStatusWithTimeout = async () => {
+// 启动预检超时语义（2026-09 Android "startup_preflight blocked" 修复）：
+// 后端 `get_startup_recovery_status` 现在会先经 startup_gate 有界等待 setup 完成
+// （上限 120s，见 src-tauri/src/startup_gate.rs），再返回真实状态——前端这里的
+// 超时只是「IPC 彻底无响应」的兜底，取值 = 后端闸门 120s + 15s 余量。
+// 注意：Tauri 先创建窗口再跑 setup 闭包，慢设备上 setup 数十秒属正常，
+// 此前 15s 硬超时会把「启动慢」误报成「预检失败」的 blocked 屏。
+const BACKEND_STARTUP_GATE_MS = 120_000;
+const STARTUP_PREFLIGHT_TIMEOUT_MS = BACKEND_STARTUP_GATE_MS + 15_000;
+const MAINTENANCE_STATUS_TIMEOUT_MS = 30_000;
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      getStartupRecoveryStatus(),
+      promise,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
-          () => reject(new Error('Startup recovery preflight timed out after 120 seconds')),
-          120_000,
+          () => reject(new Error(`${label} timed out after ${timeoutMs / 1000} seconds`)),
+          timeoutMs,
         );
       }),
     ]);
@@ -409,6 +419,13 @@ const getStartupRecoveryStatusWithTimeout = async () => {
     if (timeoutId) clearTimeout(timeoutId);
   }
 };
+
+const getStartupRecoveryStatusWithTimeout = () =>
+  withTimeout(
+    getStartupRecoveryStatus(),
+    STARTUP_PREFLIGHT_TIMEOUT_MS,
+    'Startup recovery preflight',
+  );
 
 // F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
 // 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。
@@ -469,14 +486,20 @@ if (IS_POMODORO_MINI_WINDOW) {
         return;
       }
 
-      const maintenanceStatus = await getMaintenanceStatus().catch((error) => ({
+      const maintenanceStatus = await withTimeout(
+        getMaintenanceStatus(),
+        MAINTENANCE_STATUS_TIMEOUT_MS,
+        'Maintenance status',
+      ).catch((error) => ({
+        // 诚实兜底：维护状态不可用时不伪装成 vfs 核心组件 blocked（旧实现会把
+        // 瞬态 IPC 失败误导成「vfs 数据损坏」恢复屏），而是如实标记来源组件。
         is_in_maintenance_mode: false,
         blocked_components: [],
         component_health: {
           components: [{
-            component: 'vfs',
+            component: 'maintenance_status',
             status: 'blocked' as const,
-            reason: `Startup component health unavailable: ${String(error)}`,
+            reason: `Maintenance status unavailable: ${String(error)}`,
             dependency: null,
           }],
         },
@@ -487,7 +510,9 @@ if (IS_POMODORO_MINI_WINDOW) {
       const coreRecoveryRequired = componentHealth.some(
         (component) =>
           component.status === 'blocked'
-          && (component.component === 'vfs' || component.component === 'mistakes'),
+          && (component.component === 'vfs'
+            || component.component === 'mistakes'
+            || component.component === 'maintenance_status'),
       );
       if (coreRecoveryRequired) {
         root.render(
