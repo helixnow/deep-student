@@ -44,6 +44,7 @@ import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
+import { ArtifactsPanel } from '../components/artifacts/ArtifactsPanel';
 import {
   createSandboxOwnerKey,
   selectSandboxWorkbenchOwnerState,
@@ -89,7 +90,7 @@ interface OpenApp {
   filePath?: string;
 }
 
-type DesktopSecondaryPanelMode = 'sandbox' | 'attachment' | 'canvas';
+type DesktopSecondaryPanelMode = 'sandbox' | 'attachment' | 'canvas' | 'artifacts';
 
 interface DesktopSecondaryPanelSnapshot {
   mode: DesktopSecondaryPanelMode;
@@ -184,6 +185,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     if (newId !== prev) {
       setOpenApp(null);
       setAttachmentPreviewOpen(false);
+      setArtifactsPanelOpen(false);
       useSandboxWorkbenchStore.getState().closeSession(sandboxOwnerKey);
     }
     setCurrentSessionIdState(newId);
@@ -261,6 +263,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       window.dispatchEvent(new CustomEvent(next ? 'canvas:opened' : 'canvas:closed'));
       return next;
     });
+  }, []);
+  // P1 产物面板（DesktopSecondaryPanelMode 'artifacts'）：入口/互斥/切会话重置均显式接线
+  const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
+  const toggleArtifactsPanel = useCallback(() => {
+    setArtifactsPanelOpen(prev => !prev);
   }, []);
   const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
@@ -810,9 +817,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     ? 'sandbox'
     : attachmentPreviewOpen && openApp
       ? 'attachment'
-      : canvasSidebarOpen
-        ? 'canvas'
-        : null;
+      : artifactsPanelOpen
+        ? 'artifacts'
+        : canvasSidebarOpen
+          ? 'canvas'
+          : null;
   const desktopSecondaryPanelOpen = !isSmallScreen && desktopSecondaryPanelMode !== null;
   const desktopSecondaryPanelSnapshotApp = desktopSecondaryPanelMode === 'attachment'
     ? openApp
@@ -884,6 +893,17 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
     if (panelMode === 'attachment' && panelOpenApp) {
       return renderOpenAppPanel({ openAppOverride: panelOpenApp });
+    }
+
+    if (panelMode === 'artifacts') {
+      if (!currentSessionId) return null;
+      return (
+        <ArtifactsPanel
+          sessionId={currentSessionId}
+          store={sessionManager.get(currentSessionId)}
+          onClose={() => setArtifactsPanelOpen(false)}
+        />
+      );
     }
 
     return (
@@ -1404,7 +1424,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           className="absolute z-20"
           style={{
             top: `calc(var(--topbar-safe-area, 0px) + ${(DESKTOP_SHELL.titlebarBaseHeight - 32) / 2}px)`,
-            right: '16px',
+            right: '52px',
           }}
         >
           <CommonTooltip
@@ -1445,6 +1465,39 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   <SidebarFrameWithLeftRailIcon />
                 </span>
               </span>
+            </DsButton>
+          </CommonTooltip>
+        </div>
+      )}
+
+      {/* P1 产物面板入口（桌面端浮动钮，与 sandbox 钮同族；互斥由推导链处理） */}
+      {!isSmallScreen && currentSessionId && (
+        <div
+          className="absolute z-20"
+          style={{
+            top: `calc(var(--topbar-safe-area, 0px) + ${(DESKTOP_SHELL.titlebarBaseHeight - 32) / 2}px)`,
+            right: '16px',
+          }}
+        >
+          <CommonTooltip
+            content={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
+            position="bottom"
+          >
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={toggleArtifactsPanel}
+              className={cn(
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+                artifactsPanelOpen
+                  ? '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
+                  : '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
+              )}
+              aria-label={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
+              title={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
+            >
+              <SquaresFour size={17} />
             </DsButton>
           </CommonTooltip>
         </div>
