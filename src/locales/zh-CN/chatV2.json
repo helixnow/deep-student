@@ -1749,6 +1749,16 @@
     "title": "工具执行确认",
     "toolName": "工具名称",
     "description": "操作描述",
+    "ankiDiff": {
+      "title": "字段变更预览",
+      "loading": "读取当前卡片…",
+      "unavailable": "无法读取当前卡片内容，请核对下方参数",
+      "noChange": "patch 与当前内容一致（无实际变更）",
+      "fieldFront": "正面",
+      "fieldBack": "背面",
+      "fieldText": "填空文本",
+      "fieldTags": "标签"
+    },
     "arguments": "参数",
     "approve": "本次允许",
     "allowSession": "本会话允许",
@@ -2315,6 +2325,16 @@
     "intentUnavailable": "产物内容不可用",
     "expandPanel": "产物面板",
     "collapsePanel": "收起产物面板",
+    "changes": {
+      "title": "变更记录",
+      "action": {
+        "create": "新建",
+        "update": "修改",
+        "delete": "删除",
+        "append": "追加",
+        "write": "写入"
+      }
+    },
     "kind": {
       "generativeUi": "生成式 UI",
       "ankiCards": "Anki 卡片",

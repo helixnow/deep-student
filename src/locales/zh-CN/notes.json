@@ -100,8 +100,10 @@
   },
   "aiCheckpoint": {
     "applied": "AI 编辑已应用",
-    "rollback": "回滚整轮",
-    "keep": "保留"
+    "appliedCount": "AI 编辑已应用（可回滚 {{count}} 次）",
+    "stale": "内容已有新变化，该次编辑不可回滚",
+    "rollback": "回滚",
+    "keep": "全部保留"
   },
   "errors": {
     "noteNotFound": "笔记未找到",

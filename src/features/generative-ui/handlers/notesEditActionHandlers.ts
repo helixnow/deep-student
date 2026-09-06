@@ -3,6 +3,7 @@
  */
 
 import type { CanvasEditOperation } from '@/features/notes/hooks/useAIEditState';
+import { getNoteAIEditControl } from '@/features/notes/aiEditControlRegistry';
 import type { GenerativeActionDefinition } from '../types';
 import {
   createCanvasEditRequestId,
@@ -56,6 +57,23 @@ export function createNotesEditActionHandlers(
           { onSettled: callbacks?.onSettled },
         );
         callbacks?.onApplyDispatched?.(result);
+
+        // P2 人机双写 #4：undo 两态语义——dispatch 即 resolve、undoStack 当即
+        // 入栈，而用户 accept 在其后。undo 时按当下状态分流：
+        //   未 accept（建议仍 pending）→ 撤回建议（reject）；
+        //   已 accept → checkpoint 栈顶回滚（经 aiEditControlRegistry 通道）。
+        if (!result.claimed) return undefined;
+        return {
+          undo: async () => {
+            const control = getNoteAIEditControl(suggestion.noteId);
+            if (!control) return;
+            if (control.hasPendingSuggestion()) {
+              await control.rejectPendingSuggestion();
+            } else {
+              await control.rollbackLatestCheckpoint();
+            }
+          },
+        };
       },
     },
     'dismiss-note-suggestion': {

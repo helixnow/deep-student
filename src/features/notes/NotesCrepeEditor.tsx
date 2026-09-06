@@ -1448,6 +1448,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     handleReject,
     isApplying: isAIEditApplying,
     checkpoint: aiCheckpoint,
+    checkpoints: aiCheckpoints,
     rollbackCheckpoint,
     dismissCheckpoint,
   } = useCanvasAIEditHandler({
@@ -2120,17 +2121,24 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           />
         )}
 
-        {/* ★ 2.1 AI 编辑检查点：接受后仍可整轮回滚。
+        {/* ★ 2.1 AI 编辑检查点栈：接受后仍可逐条回滚（顺序 undo，栈顶优先）。
             内联 info bar（参与布局、不遮挡文档标题），随 pane 顶栏保持可见 */}
         {aiCheckpoint && !aiEditState.isActive && (
           <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
             <div className="mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-2 px-5 py-1.5 sm:px-12">
               <Robot size={14} className="text-primary shrink-0" />
-              <span className="min-w-0 truncate text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
+              <span className="min-w-0 truncate text-xs text-foreground">
+                {aiCheckpoint.stale
+                  ? t('notes:aiCheckpoint.stale')
+                  : aiCheckpoints.length > 1
+                    ? t('notes:aiCheckpoint.appliedCount', { count: aiCheckpoints.length })
+                    : t('notes:aiCheckpoint.applied')}
+              </span>
               <div className="ml-auto flex flex-shrink-0 items-center gap-1">
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  disabled={aiCheckpoint.stale}
                   className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => { void rollbackCheckpoint(); }}
                 >
@@ -2141,7 +2149,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                  onClick={dismissCheckpoint}
+                  onClick={() => dismissCheckpoint()}
                   aria-label={t('notes:aiCheckpoint.keep')}
                 >
                   <X size={12} />

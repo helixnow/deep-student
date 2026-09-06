@@ -569,6 +569,18 @@
     "all_ops_failed": "全部操作未能应用（锚点缺失或限制）",
     "partially_applied": "部分操作已应用（自动保存）；未执行项见 undone",
     "applied": "已应用（自动保存）",
-    "no_active_run": "无活跃 run"
+    "no_active_run": "无活跃 run",
+    "suggestion_bar": {
+      "title": "AI 建议修改",
+      "accept": "接受",
+      "reject": "拒绝",
+      "added": "+{{count}} 新增",
+      "removed": "−{{count}} 删除",
+      "updated": "改 {{count}}",
+      "moved": "移 {{count}}",
+      "accepted": "已应用 {{count}} 项修改",
+      "accept_partial": "已应用 {{applied}} 项，{{failed}} 项失败",
+      "save_failed": "内容已应用但保存失败，请手动保存"
+    }
   }
 }

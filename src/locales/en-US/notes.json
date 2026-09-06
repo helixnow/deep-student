@@ -100,8 +100,10 @@
   },
   "aiCheckpoint": {
     "applied": "AI edit applied",
+    "appliedCount": "AI edits applied ({{count}} undoable)",
+    "stale": "Content has changed; this edit can't be rolled back",
     "rollback": "Roll back",
-    "keep": "Keep"
+    "keep": "Keep all"
   },
   "errors": {
     "noteNotFound": "Note not found",

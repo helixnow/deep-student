@@ -3,12 +3,16 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import i18n from '@/i18n';
 import type { CrepeEditorApi } from '@/components/crepe';
+import { registerNoteAIEditControl } from '../aiEditControlRegistry';
 import {
   useAIEditState,
   computeProposedContent,
+  computeDiffLines,
   type CanvasAIEditRequest,
   type CanvasAIEditResult,
   type AIEditState,
+  type DiffLine,
+  type CanvasEditOperation,
 } from './useAIEditState';
 
 interface UseCanvasAIEditHandlerOptions {
@@ -32,15 +36,28 @@ type LocalCanvasAIEditRequest = CanvasAIEditRequest & {
   onSettled?: () => void;
 };
 
-/** ★ 2.1 AI 编辑检查点：接受后仍可回滚整轮 */
+/** ★ 2.1 AI 编辑检查点：接受后仍可回滚整轮（P2 起为每笔记栈，上限 MAX_AI_EDIT_CHECKPOINTS 条） */
 export interface AIEditCheckpoint {
+  /** 栈条目 id（回滚/忽略按 id 定位） */
+  id: string;
   /** 编辑前的完整内容 */
   originalContent: string;
+  /** 编辑后的完整内容（回滚安全性基线：current !== resultContent 时该条不可回滚） */
+  resultContent: string;
   /** 应用时间戳 */
   appliedAt: number;
   /** 所属笔记（切换笔记后检查点失效） */
   noteId: string;
+  /** 冲突标记：内容已偏离 resultContent（用户中间编辑/其他写入），不可回滚不强行覆盖 */
+  stale?: boolean;
+  /** accept 时重算的行级 diff（等待期间用户编辑会使 startEdit 时的 diff 陈旧） */
+  diffLines: DiffLine[];
+  /** 触发该次编辑的操作摘要（人读核对用） */
+  operation: CanvasEditOperation;
 }
+
+/** 每笔记 checkpoint 栈上限（超出丢弃最旧） */
+export const MAX_AI_EDIT_CHECKPOINTS = 5;
 
 interface UseCanvasAIEditHandlerReturn {
   aiEditState: AIEditState;
@@ -48,12 +65,14 @@ interface UseCanvasAIEditHandlerReturn {
   handleReject: () => Promise<void>;
   isLocked: boolean;
   isApplying: boolean;
-  /** ★ 2.1 最近一次已接受 AI 编辑的检查点（可回滚） */
+  /** ★ 2.1 已接受 AI 编辑的检查点栈（新→旧在尾部；只有栈顶可回滚，顺序 undo） */
+  checkpoints: AIEditCheckpoint[];
+  /** 栈顶条目（back-compat：单槽时代的 checkpoint） */
   checkpoint: AIEditCheckpoint | null;
-  /** ★ 2.1 回滚到检查点（恢复 AI 编辑前内容并落盘） */
-  rollbackCheckpoint: () => Promise<void>;
-  /** ★ 2.1 放弃检查点（保留 AI 编辑结果） */
-  dismissCheckpoint: () => void;
+  /** ★ 2.1 回滚栈顶检查点（恢复 AI 编辑前内容并落盘；冲突时标记 stale 不覆盖） */
+  rollbackCheckpoint: (checkpointId?: string) => Promise<void>;
+  /** ★ 2.1 放弃检查点（无 id 清空全部；有 id 移除指定条） */
+  dismissCheckpoint: (checkpointId?: string) => void;
 }
 
 export function useCanvasAIEditHandler({
@@ -84,12 +103,14 @@ export function useCanvasAIEditHandler({
     }
   }, []);
 
-  // ★ 2.1 AI 编辑检查点
-  const [checkpoint, setCheckpoint] = useState<AIEditCheckpoint | null>(null);
+  // ★ 2.1 AI 编辑检查点栈（P2：单槽 → 每笔记栈，上限 MAX_AI_EDIT_CHECKPOINTS）
+  const [checkpoints, setCheckpoints] = useState<AIEditCheckpoint[]>([]);
+  const checkpointsRef = useRef<AIEditCheckpoint[]>([]);
+  checkpointsRef.current = checkpoints;
 
-  // 切换笔记后检查点失效（回滚目标已不在编辑器中）
+  // 切换笔记后检查点栈失效（回滚目标已不在编辑器中）
   useEffect(() => {
-    setCheckpoint((prev) => (prev && prev.noteId !== noteId ? null : prev));
+    setCheckpoints((prev) => (prev.length > 0 && prev[0].noteId !== noteId ? [] : prev));
   }, [noteId]);
 
   useEffect(() => {
@@ -219,11 +240,18 @@ export function useCanvasAIEditHandler({
       clear();
       settlePendingRequest();
       if (noteIdRef.current) {
-        setCheckpoint({
+        // P2：accept 时补算 diffLines（等待确认期间的用户编辑会使 startEdit 时的 diff 陈旧），
+        // 随检查点入栈供回滚与核对。
+        const entry: AIEditCheckpoint = {
+          id: `cp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           originalContent: contentBeforeApply,
+          resultContent: proposedContent,
           appliedAt: Date.now(),
           noteId: noteIdRef.current,
-        });
+          diffLines: computeDiffLines(contentBeforeApply, proposedContent),
+          operation: request.operation,
+        };
+        setCheckpoints((prev) => [...prev.slice(-(MAX_AI_EDIT_CHECKPOINTS - 1)), entry]);
       }
       await sendResult(result);
     } finally {
@@ -232,25 +260,39 @@ export function useCanvasAIEditHandler({
     }
   }, [accept, clear, sendResult, settlePendingRequest]);
 
-  // ★ 2.1 回滚到检查点
-  const rollbackCheckpoint = useCallback(async () => {
-    if (!checkpoint) return;
+  // ★ 2.1 回滚栈顶检查点（顺序 undo：只有栈顶可回滚；冲突标记 stale 不强行覆盖）
+  const rollbackCheckpoint = useCallback(async (checkpointId?: string) => {
+    const stack = checkpointsRef.current;
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    if (checkpointId && checkpointId !== top.id) {
+      console.warn('[useCanvasAIEditHandler] Rollback rejected: not the top checkpoint', checkpointId);
+      return;
+    }
     const editor = editorApiRef.current;
     if (!editor || editor.isReadonly()) {
       console.warn('[useCanvasAIEditHandler] Rollback skipped: editor not writable');
       return;
     }
 
+    // 冲突检测：当前内容偏离该条的 resultContent（用户中间编辑/其他写入）→
+    // 标记不可回滚，不强行覆盖（P2 冲突语义）。
+    const current = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+    if (current !== top.resultContent) {
+      setCheckpoints((prev) => prev.map((e) => (e.id === top.id ? { ...e, stale: true } : e)));
+      console.warn('[useCanvasAIEditHandler] Rollback rejected: content diverged, checkpoint marked stale');
+      return;
+    }
+
     try {
-      const current = editor.getFullMarkdown?.() ?? editor.getMarkdown();
       if (editor.replaceFullMarkdown) {
-        const restored = await editor.replaceFullMarkdown(checkpoint.originalContent, {
+        const restored = await editor.replaceFullMarkdown(top.originalContent, {
           expectedMarkdown: current,
         });
         if (!restored) {
           throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
         }
-      } else if (!editor.setMarkdown(checkpoint.originalContent)) {
+      } else if (!editor.setMarkdown(top.originalContent)) {
         throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
       }
     } catch (err) {
@@ -259,17 +301,21 @@ export function useCanvasAIEditHandler({
     }
     if (!editor.replaceFullMarkdown && onSaveRef.current) {
       try {
-        await onSaveRef.current(checkpoint.originalContent);
+        await onSaveRef.current(top.originalContent);
       } catch (err) {
         console.warn('[useCanvasAIEditHandler] Rollback save failed:', err);
         // 保留 checkpoint，允许用户稍后再次触发回滚保存；不要把未落盘状态伪装成完成。
         return;
       }
     }
-    setCheckpoint(null);
-  }, [checkpoint]);
+    setCheckpoints((prev) => prev.slice(0, -1));
+  }, []);
 
-  const dismissCheckpoint = useCallback(() => setCheckpoint(null), []);
+  const dismissCheckpoint = useCallback((checkpointId?: string) => {
+    setCheckpoints((prev) => (
+      checkpointId ? prev.filter((e) => e.id !== checkpointId) : []
+    ));
+  }, []);
 
   const handleReject = useCallback(async () => {
     if (isApplyingRef.current) return;
@@ -279,6 +325,27 @@ export function useCanvasAIEditHandler({
     settlePendingRequest();
     await sendResult(result);
   }, [reject, sendResult, settlePendingRequest]);
+
+  // P2 人机双写 #4：向 generative-ui action undo 暴露查询/回滚通道
+  // （未 accept = 撤回建议；已 accept = checkpoint 栈顶回滚）。
+  useEffect(() => {
+    if (!noteId || !enabled) return;
+    return registerNoteAIEditControl(noteId, {
+      hasPendingSuggestion: () => pendingRequestRef.current != null,
+      rejectPendingSuggestion: async () => {
+        if (pendingRequestRef.current != null) {
+          await handleReject();
+        }
+      },
+      rollbackLatestCheckpoint: async () => {
+        const top = checkpointsRef.current[checkpointsRef.current.length - 1];
+        if (!top || top.stale) return false;
+        await rollbackCheckpoint();
+        // rollbackCheckpoint 冲突时会把条目标记 stale 而不出栈——以出栈与否判定成败
+        return checkpointsRef.current[checkpointsRef.current.length - 1]?.id !== top.id;
+      },
+    });
+  }, [noteId, enabled, handleReject, rollbackCheckpoint]);
 
   const handleEditRequest = useCallback(
     async (request: LocalCanvasAIEditRequest) => {
@@ -354,7 +421,7 @@ export function useCanvasAIEditHandler({
         return;
       }
       request.onLocalDisposition?.({ accepted: true });
-      setCheckpoint(null);
+      // P2：新建议不再清空 checkpoint 栈——历史条目仍是有效回滚目标（stale 惰性检测）
 
       // 认领请求：告知后端目标编辑器存在（失败不阻断后续流程，
       // 后端会在 ACK 超时后以"笔记未打开"失败，结果回调仍可兜底）
@@ -454,7 +521,8 @@ export function useCanvasAIEditHandler({
     handleReject,
     isLocked: aiEditState.isActive,
     isApplying,
-    checkpoint,
+    checkpoints,
+    checkpoint: checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : null,
     rollbackCheckpoint,
     dismissCheckpoint,
   };
