@@ -376,12 +376,21 @@ jobs:
   # On PRs it only runs when cloud-storage-related paths change (see `changes`
   # job above); pushes to main/develop/nightly always run it in full.
   provider-contract:
-    name: Cloud Provider Contract Gate
+    name: Cloud Provider Contract Gate (${{ matrix.provider }})
     needs: [changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
     # 钉 22.04：同 Backend 作业的 runner 回收事故（24.04 长编译被回收）
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    # 按 provider 拆 matrix 并行：原单 job 串行跑三 provider 的 ignored 契约
+    # 测试（--test-threads=1 网络 I/O 等待叠加），墙钟 60-120min，是 runner
+    # 回收的最大目标（2026-09-05/06 连续 3 次被回收 exit 143）。拆分后单
+    # job 墙钟降到 ~1/3，编译经 sccache/rust-cache 跨 job 共享，回收重跑
+    # 成本也可控。fail-fast: false——单 provider 被回收不拖累其他两家。
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [webdav, s3, ftp]
     env:
       CARGO_INCREMENTAL: 0
       DS_SYNC_TEST_DOCKER: '1'
@@ -444,53 +453,50 @@ jobs:
       - name: Start healthy provider services
         run: |
           set -euo pipefail
+          # 按 matrix provider 只起本家服务：s3 → minio(+minio-init 建桶)，
+          # webdav/ftp → 同名服务。健康检查也只查本家。
+          case "${{ matrix.provider }}" in
+            s3) SERVICES=(minio); RUN_INIT=1 ;;
+            webdav) SERVICES=(webdav); RUN_INIT=0 ;;
+            ftp) SERVICES=(ftp); RUN_INIT=0 ;;
+            *) echo "::error::unknown provider ${{ matrix.provider }}"; exit 1 ;;
+          esac
           docker compose -f scripts/dev/docker-compose.sync-test.yml \
-            up --detach --build --wait --wait-timeout 180 minio webdav ftp
-          docker compose -f scripts/dev/docker-compose.sync-test.yml run --rm minio-init
-          for service in minio webdav ftp; do
+            up --detach --build --wait --wait-timeout 180 "${SERVICES[@]}"
+          if [ "$RUN_INIT" = "1" ]; then
+            docker compose -f scripts/dev/docker-compose.sync-test.yml run --rm minio-init
+          fi
+          for service in "${SERVICES[@]}"; do
             container_id="$(docker compose -f scripts/dev/docker-compose.sync-test.yml ps -q "$service")"
             test -n "$container_id"
             test "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" = healthy
           done
 
-      - name: Run every provider contract test
+      - name: Run provider contract tests (${{ matrix.provider }})
         working-directory: src-tauri
         run: |
           set -euo pipefail
+          PREFIX="${{ matrix.provider }}_"
           LIST_FILE="$RUNNER_TEMP/provider-contract-tests.txt"
           RUN_FILE="$RUNNER_TEMP/provider-contract-run.txt"
 
-          # Write the complete harness list before parsing it. Avoid a
-          # cargo|filter pipeline whose downstream close/truncation could hide
-          # tests or turn a broken stream into a misleading count.
+          # 全量列表写出后再解析（避免管道截断掩盖计数），然后按 provider
+          # 前缀（行首 starts-with，非子串）取本家子集。
           cargo test --test sync_provider_contract_tests -- --ignored --list > "$LIST_FILE"
-          TEST_COUNT="$(awk '/: test$/ { count++ } END { print count+0 }' "$LIST_FILE")"
-          LIST_SUMMARY_COUNT="$(
-            awk '/^[0-9]+ tests?, 0 benchmarks$/ { summaries++; listed=$1 }
-                 END {
-                   if (summaries != 1) exit 2;
-                   print listed+0
-                 }' "$LIST_FILE"
-          )"
+          PROVIDER_LIST="$RUNNER_TEMP/provider-tests.txt"
+          awk -v prefix="$PREFIX" \
+            'index($0, prefix) == 1 && /: test$/ { print }' \
+            "$LIST_FILE" > "$PROVIDER_LIST"
+          TEST_COUNT="$(awk 'NF { count++ } END { print count+0 }' "$PROVIDER_LIST")"
           if [ "$TEST_COUNT" -le 0 ]; then
-            echo "::error::sync_provider_contract_tests selected zero ignored tests"
+            echo "::error::sync_provider_contract_tests selected zero ignored tests for ${PREFIX}"
             exit 1
           fi
-          if [ "$TEST_COUNT" -ne "$LIST_SUMMARY_COUNT" ]; then
-            echo "::error::Provider contract list was truncated or malformed: parsed=$TEST_COUNT summary=$LIST_SUMMARY_COUNT"
-            exit 1
-          fi
-          for provider in webdav s3 ftp; do
-            if ! awk -v prefix="${provider}_" \
-              'index($0, prefix) == 1 && /: test$/ { found=1 } END { exit(found ? 0 : 1) }' \
-              "$LIST_FILE"; then
-              echo "::error::Provider contract list contains no ${provider} tests"
-              exit 1
-            fi
-          done
 
-          echo "Running $TEST_COUNT provider contract tests"
-          cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture \
+          # 子串过滤可能跨界匹配（如 s3_xxx_webdav_ 命名），fail-closed：
+          # 运行计数必须等于行首前缀子集计数，不等即名单被污染。
+          echo "Running $TEST_COUNT ${PREFIX} provider contract tests"
+          cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture "$PREFIX" \
             2>&1 | tee "$RUN_FILE"
           PASSED_COUNT="$(
             awk '/^test result: ok\./ { summaries++; passed=$4 }
@@ -500,7 +506,7 @@ jobs:
                  }' "$RUN_FILE"
           )"
           if [ "$PASSED_COUNT" -ne "$TEST_COUNT" ]; then
-            echo "::error::Not every listed provider contract ran: listed=$TEST_COUNT passed=$PASSED_COUNT"
+            echo "::error::Provider contract count mismatch: listed(prefix)=$TEST_COUNT passed=$PASSED_COUNT"
             exit 1
           fi
 
