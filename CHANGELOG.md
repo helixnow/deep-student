@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.57](https://github.com/helixnow/deep-student/compare/v0.9.56...v0.9.57) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ci:** main 基线四项红修复——fmt 债/cooldown 漂移守卫/侧栏源契约/provider 契约矩阵适配 ([8bda386](https://github.com/helixnow/deep-student/commit/8bda386db474b67cdda631993c70fa34a1e4cdb0))
+* **startup:** retry recovery preflight to survive Android IPC race ([92ae5f1](https://github.com/helixnow/deep-student/commit/92ae5f166a85f6fa0bb5767a062bd667045ee86d))
+* **startup:** retry recovery preflight to survive Android IPC race ([f623869](https://github.com/helixnow/deep-student/commit/f623869b7d6f18723275de62f489a5537773a260))
+
 ## [0.9.56](https://github.com/helixnow/deep-student/compare/v0.9.55...v0.9.56) (2026-09-06)
 
 
