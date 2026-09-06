@@ -12,6 +12,7 @@ import {
 } from '@/features/generative-ui/bridge/chatBlockBridge';
 import { finalizeGenerativeUIStream } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
+import { registerGenerativeUIArtifact } from '../../core/store/artifactRegistry';
 
 const generativeUIEventHandler: EventHandler = {
   onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
@@ -55,6 +56,10 @@ const generativeUIEventHandler: EventHandler = {
     }
 
     store.updateBlockStatus(blockId, 'success');
+
+    // P1 产物一等公民化：终态登记进会话产物索引（intent 已写入、status 已 success）。
+    // 刷新快照在 registry 内部沿 messageOrder 前溯前一用户消息取得。
+    registerGenerativeUIArtifact(store, blockId);
   },
 
   onError: (store: ChatStore, blockId: string, error: string) => {

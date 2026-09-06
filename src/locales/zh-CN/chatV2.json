@@ -2298,5 +2298,34 @@
   "qbankCitation": {
     "openQbank": "打开题目集：{{title}}",
     "qbank": "题目集"
+  },
+  "artifacts": {
+    "title": "产物",
+    "empty": "暂无产物",
+    "emptyHint": "AI 生成的看板、卡片组、笔记和文件会出现在这里",
+    "back": "返回列表",
+    "refresh": "用新数据刷新（作为新消息发送）",
+    "refreshFailed": "刷新失败",
+    "close": "关闭",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "openInApp": "在应用中打开",
+    "openInAppHint": "该产物在完整应用中查看与编辑",
+    "storeUnavailable": "会话数据未加载，产物暂不可用",
+    "intentUnavailable": "产物内容不可用",
+    "expandPanel": "产物面板",
+    "collapsePanel": "收起产物面板",
+    "kind": {
+      "generativeUi": "生成式 UI",
+      "ankiCards": "Anki 卡片",
+      "note": "笔记",
+      "file": "文件"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前"
+    }
   }
 }

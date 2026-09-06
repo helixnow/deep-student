@@ -2298,5 +2298,34 @@
   "qbankCitation": {
     "openQbank": "Open question set: {{title}}",
     "qbank": "Question Set"
+  },
+  "artifacts": {
+    "title": "Artifacts",
+    "empty": "No artifacts yet",
+    "emptyHint": "AI-generated dashboards, card sets, notes and files will appear here",
+    "back": "Back to list",
+    "refresh": "Refresh with fresh data (sent as a new message)",
+    "refreshFailed": "Refresh failed",
+    "close": "Close",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "openInApp": "Open in app",
+    "openInAppHint": "View and edit this artifact in its full app",
+    "storeUnavailable": "Session data not loaded; artifacts unavailable",
+    "intentUnavailable": "Artifact content unavailable",
+    "expandPanel": "Artifacts",
+    "collapsePanel": "Collapse artifacts",
+    "kind": {
+      "generativeUi": "Generative UI",
+      "ankiCards": "Anki cards",
+      "note": "Note",
+      "file": "File"
+    },
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    }
   }
 }
