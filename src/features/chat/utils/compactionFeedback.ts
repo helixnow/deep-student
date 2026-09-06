@@ -63,6 +63,7 @@ const KNOWN_COMPACTION_REASONS = new Set([
   'summaryFailed',
   'cancelled',
   'staleLineage',
+  'cooldown',
   'invalidResponse',
 ]);
 

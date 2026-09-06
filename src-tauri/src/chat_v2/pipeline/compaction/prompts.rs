@@ -162,6 +162,168 @@ pub(super) fn summary_is_structurally_valid(
 }
 
 // ============================================================================
+// 静态降级摘要（LLM 摘要失败时的确定性兜底）
+// ============================================================================
+
+/// 静态降级摘要中最多保留的用户消息条数
+const STATIC_FALLBACK_MAX_USER_SNIPPETS: usize = 8;
+/// 单条用户消息摘录的最大字符数
+const STATIC_FALLBACK_SNIPPET_CHARS: usize = 120;
+/// 静态降级摘要中最多保留的标识符数量
+const STATIC_FALLBACK_MAX_IDENTIFIERS: usize = 20;
+
+/// 🆕 2026-09：LLM 摘要调用失败时的确定性降级摘要。
+///
+/// 此前摘要失败会让整个 compaction 中止并退化为 FIFO 头删（实测 309→35 条，
+/// 丢失约 90% 上下文）。静态摘要只依赖本地确定性提取（用户诉求 / 工具使用
+/// 统计 / opaque 标识符），结构满足 `summary_is_structurally_valid`，
+/// 保证压缩仍能提交——「降级的摘要」远好于「静默丢历史」。
+///
+/// 输入 `chunk_text` 是 `render_messages_for_prompt` 渲染出的对话文本
+/// （`[#N USER]` / `[#N ASSISTANT]` 分节，`[tool-call NAME input]` 标记工具）。
+/// 输出控制在 `hard_cap_tokens` 以内（按构造有界，再兜底截断保留标题）。
+pub(super) fn build_static_fallback_summary(
+    profile: &CompactionPromptProfile,
+    chunk_text: &str,
+    hard_cap_tokens: usize,
+    model_id: Option<&str>,
+) -> String {
+    // 1. 解析渲染文本：按 [#N ROLE] 分节
+    let mut user_snippets: Vec<String> = Vec::new();
+    let mut user_count = 0usize;
+    let mut assistant_count = 0usize;
+    let mut tool_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut current_role: Option<&str> = None;
+    let mut current_lines: Vec<&str> = Vec::new();
+
+    let flush = |role: Option<&str>,
+                 lines: &mut Vec<&str>,
+                 user_snippets: &mut Vec<String>,
+                 user_count: &mut usize,
+                 assistant_count: &mut usize| {
+        let body = lines.join("\n");
+        lines.clear();
+        match role {
+            Some("USER") => {
+                *user_count += 1;
+                let first_line = body.lines().map(str::trim).find(|l| !l.is_empty());
+                if let Some(line) = first_line {
+                    let snippet: String = line
+                        .chars()
+                        .take(STATIC_FALLBACK_SNIPPET_CHARS)
+                        .collect::<String>();
+                    if !snippet.is_empty()
+                        && user_snippets.len() < STATIC_FALLBACK_MAX_USER_SNIPPETS
+                    {
+                        user_snippets.push(snippet);
+                    }
+                }
+            }
+            Some("ASSISTANT") => *assistant_count += 1,
+            _ => {}
+        }
+    };
+
+    for line in chunk_text.lines() {
+        if let Some(rest) = line.strip_prefix("[#") {
+            if let Some(role_end) = rest.find(' ') {
+                let role = &rest[role_end + 1..rest.len().min(role_end + 10)];
+                let role = role.trim_end_matches(']');
+                if role == "USER" || role == "ASSISTANT" {
+                    flush(
+                        current_role.take(),
+                        &mut current_lines,
+                        &mut user_snippets,
+                        &mut user_count,
+                        &mut assistant_count,
+                    );
+                    current_role = Some(if role == "USER" { "USER" } else { "ASSISTANT" });
+                    continue;
+                }
+            }
+        }
+        if let Some(body) = line
+            .strip_prefix("[tool-call ")
+            .and_then(|l| l.split_whitespace().next())
+        {
+            *tool_counts.entry(body.to_string()).or_insert(0) += 1;
+        }
+        if current_role.is_some() {
+            current_lines.push(line);
+        }
+    }
+    flush(
+        current_role.take(),
+        &mut current_lines,
+        &mut user_snippets,
+        &mut user_count,
+        &mut assistant_count,
+    );
+
+    // 2. 标识符逐字提取（渲染文本未转义；逐字拷贝进摘要即满足审计语义）
+    let identifiers = extract_opaque_identifiers(chunk_text, STATIC_FALLBACK_MAX_IDENTIFIERS);
+
+    // 3. 工具统计行
+    let mut tool_stat: Vec<String> = tool_counts
+        .iter()
+        .map(|(name, count)| format!("{}×{}", name, count))
+        .collect();
+    tool_stat.sort();
+    let tool_line = if tool_stat.is_empty() {
+        "无工具调用".to_string()
+    } else {
+        tool_stat.join(", ")
+    };
+
+    let first_user = user_snippets
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "未知".to_string());
+    let last_user = user_snippets
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "未知".to_string());
+    let recent_lines = user_snippets
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("- 第{}轮：{}", i + 1, s))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let recent_lines = if recent_lines.is_empty() {
+        "- 暂无".to_string()
+    } else {
+        recent_lines
+    };
+    let identifiers_line = if identifiers.is_empty() {
+        "暂无".to_string()
+    } else {
+        identifiers.join("、")
+    };
+    let degraded_note = "（本节为静态降级摘要：LLM 摘要调用失败，以下内容由本地确定性提取生成，可能不完整）";
+
+    // 4. 按模板档案填充全部必需标题
+    let is_learning = profile
+        .required_headings
+        .iter()
+        .any(|h| *h == "## 学习主题");
+    let summary = if is_learning {
+        format!(
+            "## 学习主题\n{}\n\n## 学习目标\n{}\n\n## 已掌握的概念\n- 暂无{}\n\n## 识别出的薄弱点 / 易错点\n- 暂无\n\n## 当前任务\n{}\n\n## 关键决策与结论\n- 暂无\n\n## 失败尝试与教训\n- 暂无\n\n## 最近问答主题（按时序）\n{}\n（用户消息 {} 条、助手消息 {} 条；工具：{}）\n\n## 关键事实和偏好\n关键标识符：{}",
+            first_user, first_user, degraded_note, last_user, recent_lines, user_count, assistant_count, tool_line, identifiers_line
+        )
+    } else {
+        format!(
+            "## 会话主题\n{}\n\n## 当前任务\n{}\n\n## 关键决策与结论\n- 暂无{}\n\n## 失败尝试与教训\n- 暂无\n\n## 最近进展（按时序）\n{}\n（用户消息 {} 条、助手消息 {} 条；工具：{}）\n\n## 关键事实和偏好\n关键标识符：{}",
+            first_user, last_user, degraded_note, recent_lines, user_count, assistant_count, tool_line, identifiers_line
+        )
+    };
+
+    // 5. 预算兜底：正常构造远小于 hard_cap；极端情况下截断（标题在头部，安全）
+    truncate_text_to_token_budget(&summary, hard_cap_tokens.max(256), model_id)
+}
+
+// ============================================================================
 // 标识符保真审计（用于压缩前后的标识符保真）
 // ============================================================================
 
@@ -586,5 +748,110 @@ mod tests {
             "摘要正文的字面内容应保留（仅标签被转义），实际：{}",
             msg.content
         );
+    }
+
+    // ====================================================================
+    // 🆕 2026-09：静态降级摘要（LLM 摘要失败时的确定性兜底）
+    // ====================================================================
+
+    /// 两个模板的静态降级摘要都必须通过结构校验、且不超预算
+    #[test]
+    fn static_fallback_summary_is_structurally_valid_for_both_profiles() {
+        let chunk = "\
+[#0 USER]
+帮我分析 src/main.rs 的渲染性能问题，https://example.com/bench 是基准
+
+[#1 ASSISTANT]
+先看下代码
+
+[tool-call workspace_file_read input]
+{\"path\":\"/repo/src/main.rs\"}
+
+[tool-call workspace_file_read output]
+fn main() { /* 3000 lines */ }
+
+[#2 USER]
+找到问题了，是重复渲染
+";
+        for profile in [&LEARNING_COMPACTION_PROFILE, &GENERIC_COMPACTION_PROFILE] {
+            let summary = build_static_fallback_summary(profile, chunk, 4_000, None);
+            assert!(
+                summary_is_structurally_valid(&summary, profile),
+                "静态降级摘要必须通过结构校验（profile 标题 {:?}）：\n{}",
+                profile.required_headings,
+                summary
+            );
+            let tokens = crate::utils::token_budget::estimate_tokens_with_model(&summary, None);
+            assert!(tokens <= 4_000, "静态降级摘要不得超预算：{} tokens", tokens);
+        }
+    }
+
+    /// 静态降级摘要必须逐字保留 opaque 标识符（URL / 路径 / ID）
+    #[test]
+    fn static_fallback_summary_preserves_identifiers_verbatim() {
+        let chunk = "\
+[#0 USER]
+请修复 sess_3f2a9b7c-1d2e-4f5a-8b6c-7d8e9f0a1b2c 的问题，日志在 /var/log/app/error.log，参考 https://docs.example.com/fix
+";
+        let summary =
+            build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, chunk, 4_000, None);
+        for needle in [
+            "sess_3f2a9b7c-1d2e-4f5a-8b6c-7d8e9f0a1b2c",
+            "/var/log/app/error.log",
+            "https://docs.example.com/fix",
+        ] {
+            assert!(
+                summary.contains(needle),
+                "标识符必须逐字出现在静态摘要中: {}\n摘要:\n{}",
+                needle,
+                summary
+            );
+        }
+    }
+
+    /// 用户诉求摘录：首条用户消息进主题、末条进当前任务、工具统计出现
+    #[test]
+    fn static_fallback_summary_extracts_users_and_tools() {
+        let chunk = "\
+[#0 USER]
+第一个诉求：分析滚动吸底实现
+
+[#1 ASSISTANT]
+[tool-call git_log input]
+{\"limit\":5}
+
+[#2 USER]
+最后一个诉求：改成 transform 分页
+";
+        let summary =
+            build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, chunk, 4_000, None);
+        assert!(summary.contains("第一个诉求：分析滚动吸底实现"), "{}", summary);
+        assert!(summary.contains("最后一个诉求：改成 transform 分页"), "{}", summary);
+        assert!(summary.contains("git_log"), "工具统计应包含 git_log：{}", summary);
+        assert!(
+            summary.contains("静态降级摘要"),
+            "必须明确标注降级来源：{}",
+            summary
+        );
+    }
+
+    /// 空输入也要产出结构合法的摘要（不 panic、不为空）
+    #[test]
+    fn static_fallback_summary_handles_empty_input() {
+        let summary = build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, "", 1_000, None);
+        assert!(summary_is_structurally_valid(
+            &summary,
+            &GENERIC_COMPACTION_PROFILE
+        ));
+    }
+
+    /// 超大输入：输出仍受预算约束
+    #[test]
+    fn static_fallback_summary_respects_hard_cap() {
+        let huge = format!("[#0 USER]\n{}\n", "汉".repeat(50_000));
+        let summary =
+            build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, &huge, 512, None);
+        let tokens = crate::utils::token_budget::estimate_tokens_with_model(&summary, None);
+        assert!(tokens <= 512, "输出必须受 hard_cap 约束：{} tokens", tokens);
     }
 }

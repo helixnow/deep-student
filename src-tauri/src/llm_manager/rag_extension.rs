@@ -961,7 +961,8 @@ impl LLMManager {
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
+            // 非流式请求只声明 application/json（避免网关按 Accept 误判流式返回 SSE）
+            .header("Accept", "application/json")
             .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
@@ -1151,7 +1152,8 @@ impl LLMManager {
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
+            // 非流式请求只声明 application/json（避免网关按 Accept 误判流式返回 SSE）
+            .header("Accept", "application/json")
             .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");

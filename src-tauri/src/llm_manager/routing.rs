@@ -30,7 +30,7 @@ pub const FAILOVER_POLICY_SETTING_KEY: &str = "llm_failover_policy";
 pub const FAILOVER_EVENT_NAME: &str = "llm-failover";
 
 /// 无 fallback 候选时，建立阶段（429/5xx）的最大内部重试次数——保持旧行为
-const ESTABLISH_RETRIES_WITHOUT_FALLBACK: u32 = 5;
+pub(crate) const ESTABLISH_RETRIES_WITHOUT_FALLBACK: u32 = 5;
 /// 有 fallback 候选时，建立阶段只做一次短退避重试，之后尽快让位给 key 轮换/模型切换
 const ESTABLISH_RETRIES_WITH_FALLBACK: u32 = 1;
 

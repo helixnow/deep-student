@@ -192,6 +192,7 @@ tempfile = "3.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 # 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
 proptest = "1.5"
+env_logger = "0.11.11"
 
 [[test]]
 name = "chatanki_apkg_executor_e2e"

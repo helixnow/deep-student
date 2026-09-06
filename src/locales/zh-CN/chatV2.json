@@ -1313,6 +1313,7 @@
       "summaryFailed": "摘要生成失败",
       "cancelled": "压缩已取消",
       "staleLineage": "会话上下文已变化，请重试",
+      "cooldown": "压缩暂时冷却中，稍后再试",
       "invalidResponse": "返回结果异常",
       "unknown": "未知原因"
     }

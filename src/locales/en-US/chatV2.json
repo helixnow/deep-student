@@ -1313,6 +1313,7 @@
       "summaryFailed": "Summary generation failed",
       "cancelled": "Compaction was cancelled",
       "staleLineage": "The session context changed, please retry",
+      "cooldown": "Compaction is cooling down, try again later",
       "invalidResponse": "Unexpected backend response",
       "unknown": "Unknown reason"
     }

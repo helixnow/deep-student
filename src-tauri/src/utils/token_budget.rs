@@ -79,10 +79,10 @@ pub fn estimate_tokens_with_model(text: &str, model_hint: Option<&str>) -> usize
         }
         if let Some(m) = model_hint {
             let enc = pick_encoding(m);
-            enc.encode_with_special_tokens(text).len()
+            encode_capped(&enc, text)
         } else {
             let enc = cl100k_base().unwrap();
-            enc.encode_with_special_tokens(text).len()
+            encode_capped(&enc, text)
         }
     }
     #[cfg(not(feature = "tokenizer_tiktoken"))]
@@ -100,6 +100,44 @@ pub fn estimate_tokens_with_model(text: &str, model_hint: Option<&str>) -> usize
 
         estimate_tokens(text)
     }
+}
+
+/// 🆕 2026-09：超长文本的采样外推阈值（字符数）。超过后按首/中/尾采样线性外推。
+/// tiktoken BPE 合并是近似平方级复杂度：病态内容（单字符重复、minified、
+/// 重复日志）几千字符就要数秒（实测 15K 重复字符 ≈5.7s，75K >60s），
+/// 会把压缩/预算流水线整体卡死。采样把单次估算压到亚秒级。
+#[cfg(feature = "tokenizer_tiktoken")]
+const TIKTOKEN_SAMPLE_THRESHOLD_CHARS: usize = 8_000;
+/// 首/中/尾各采样的字符数（2K 重复字符的 BPE 耗时约 0.1s，可接受）
+#[cfg(feature = "tokenizer_tiktoken")]
+const TIKTOKEN_SAMPLE_PART_CHARS: usize = 2_000;
+
+#[cfg(feature = "tokenizer_tiktoken")]
+fn encode_capped(enc: &tiktoken_rs::CoreBPE, text: &str) -> usize {
+    let total_chars = text.chars().count();
+    if total_chars <= TIKTOKEN_SAMPLE_THRESHOLD_CHARS {
+        return enc.encode_with_special_tokens(text).len();
+    }
+    // 首/中/尾采样 + 按密度线性外推（超长文本的精度损失可接受——它们通常远超预算）
+    let head: String = text.chars().take(TIKTOKEN_SAMPLE_PART_CHARS).collect();
+    let mid_start = (total_chars - TIKTOKEN_SAMPLE_PART_CHARS) / 2;
+    let mid: String = text
+        .chars()
+        .skip(mid_start)
+        .take(TIKTOKEN_SAMPLE_PART_CHARS)
+        .collect();
+    let tail: String = text
+        .chars()
+        .skip(total_chars - TIKTOKEN_SAMPLE_PART_CHARS)
+        .collect();
+    let sampled_tokens = enc.encode_with_special_tokens(&head).len()
+        + enc.encode_with_special_tokens(&mid).len()
+        + enc.encode_with_special_tokens(&tail).len();
+    let sampled_chars = TIKTOKEN_SAMPLE_PART_CHARS * 3;
+    // 按采样密度外推，并保证不低于采样值（防低估导致预算失控）
+    let extrapolated =
+        (sampled_tokens as f64 * (total_chars as f64 / sampled_chars as f64)).round() as usize;
+    extrapolated.max(sampled_tokens)
 }
 
 fn is_cjk(cp: u32) -> bool {
@@ -189,5 +227,65 @@ pub fn budget_messages(
         kept,
         dropped,
         summary,
+    }
+}
+
+#[cfg(all(test, feature = "tokenizer_tiktoken"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_tokens_with_model_short_text_matches_exact_encoding() {
+        // 短文本走精确编码路径
+        let text = "hello world 你好，世界";
+        let direct = tiktoken_rs::cl100k_base()
+            .unwrap()
+            .encode_with_special_tokens(text)
+            .len();
+        assert_eq!(estimate_tokens_with_model(text, None), direct);
+    }
+
+    #[test]
+    fn estimate_tokens_with_model_huge_repetitive_text_is_fast_and_reasonable() {
+        // 病态输入：单字符重复 200K 次。BPE 全量编码在此形态下合并轮次爆炸（>60s），
+        // 采样外推必须秒回且量级正确（"数"在 cl100k 里约 1 token/字符）。
+        let pathological = "数".repeat(200_000);
+        let start = std::time::Instant::now();
+        let estimate = estimate_tokens_with_model(&pathological, None);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "采样外推应在 5s 内完成，实际 {:?}",
+            elapsed
+        );
+        // 量级校验：应在精确值（≈200K）的 0.5x ~ 2x 之间
+        assert!(
+            (100_000..=400_000).contains(&estimate),
+            "外推估算量级异常: {}",
+            estimate
+        );
+    }
+
+    #[test]
+    fn estimate_tokens_with_model_varied_huge_text_extrapolates_close_to_exact() {
+        // 多样化长文本：外推误差应较小（±20%）
+        let varied: String = "fn process_frame(idx: usize) -> Result<Frame, RenderError> { /* 渲染管线 */ }"
+            .chars()
+            .cycle()
+            .take(120_000)
+            .collect();
+        let exact = tiktoken_rs::cl100k_base()
+            .unwrap()
+            .encode_with_special_tokens(&varied)
+            .len();
+        let estimate = estimate_tokens_with_model(&varied, None);
+        let ratio = estimate as f64 / exact as f64;
+        assert!(
+            (0.8..=1.25).contains(&ratio),
+            "外推偏差过大: estimate={} exact={} ratio={:.2}",
+            estimate,
+            exact,
+            ratio
+        );
     }
 }
