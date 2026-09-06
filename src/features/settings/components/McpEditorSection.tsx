@@ -192,7 +192,7 @@ function McpOAuthControls({
 }
 
 export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
-  const { config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo } = deps;
+  const { config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo, mcpStatusInfo } = deps;
 
   const closeRightPanel = useCallback(() => {
     setRightPanelType('none');
@@ -336,7 +336,6 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     ),
     []
   );
-  const [localMcpStatusInfo, setLocalMcpStatusInfo] = useState<McpStatusInfo | null>(null);
   const rebuildCachedDetailsFromSnapshots = useCallback((
     toolSnap: Record<string, { at: number; tools: Array<{ name: string; description?: string; input_schema?: unknown }> }> = {},
     promptSnap: Record<string, { at: number; prompts: Array<{ name: string; description?: string; arguments?: unknown }> }> = {},
@@ -2103,11 +2102,11 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const mcpServers = normalizedMcpServers;
   const serverStatusMap = useMemo(() => {
     const map = new Map<string, { connected: boolean; error?: string }>();
-    (localMcpStatusInfo?.servers || []).forEach(s => {
+    (mcpStatusInfo?.servers || []).forEach(s => {
       map.set(s.id, { connected: s.connected, error: s.error });
     });
     return map;
-  }, [localMcpStatusInfo]);
+  }, [mcpStatusInfo]);
   const totalServers = mcpServers.length;
   const connectedServers = useMemo(() => {
     if (!totalServers) return 0;
@@ -2133,7 +2132,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const lastCacheUpdatedText = lastCacheUpdatedAt
     ? new Date(lastCacheUpdatedAt).toLocaleString()
     : '—';
-  const lastError = localMcpStatusInfo?.lastError;
+  const lastError = mcpStatusInfo?.lastError;
   const displayedLastError = lastError && lastError.length > 96 ? `${lastError.slice(0, 96)}…` : lastError;
   const cacheCapacity = useMemo(() => {
     const candidate = Number(config.mcpCacheMax ?? 500);
