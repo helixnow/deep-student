@@ -1529,7 +1529,8 @@
       "essay": "Essay",
       "translation": "Translation",
       "folder": "Folder",
-      "skill": "Skill"
+      "skill": "Skill",
+        "selection": "Selection"
     },
     "sticky": "Sticky Reference",
     "clearAll": "Clear all references"
@@ -1614,6 +1615,12 @@
     "prevVariant": "Previous variant",
     "nextVariant": "Next variant"
   },
+  "selectionRef": {
+    "fallbackName": "Selection",
+    "noSession": "No active session",
+    "added": "Added to chat context",
+    "failed": "Failed to add reference"
+  },
   "selectionToolbar": {
     "ariaLabel": "Selected text actions",
     "copy": "Copy",
@@ -1621,6 +1628,7 @@
     "explain": "Explain",
     "translate": "Translate",
     "addToChat": "Add to chat",
+    "addAsContext": "Reference in chat",
     "makeCards": "Make cards",
     "makeCardsEmpty": "Select some text to make cards",
     "makeCardsTooShort": "Selection is too short. Please select at least {{count}} characters.",
@@ -1910,6 +1918,9 @@
     },
     "retrieval": {
       "label": "Reference"
+    },
+    "selection": {
+      "label": "Selection"
     },
     "translation": {
       "label": "Translation",

@@ -17,7 +17,7 @@
  */
 
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Copy, Check, Sparkle, Translate, ChatDots, Cards, NotePencil } from '@phosphor-icons/react';
+import { Copy, Check, Sparkle, Translate, ChatDots, Cards, NotePencil, Quotes } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -48,6 +48,12 @@ export interface SelectionToolbarProps {
   onTranslate?: (text: string) => void;
   /** 添加到聊天输入框回调 */
   onAddToChat?: (text: string) => void;
+  /**
+   * 引用到聊天回调（P0 选区即上下文）：把选区作为结构化 contextRef 注入。
+   * 与 onAddToChat（纯文本/整资源）语义不同——精准选区快照 + 来源定位。
+   * 只在宿主真正提供时渲染（不参与 hideUnavailableActions 的灰显占位）。
+   */
+  onAddAsContext?: (text: string) => void;
   /** 划词制卡回调 */
   onMakeCards?: (text: string) => void;
   /** 保存为笔记回调（宿主负责弹目录选择器） */
@@ -103,6 +109,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   onExplain,
   onTranslate,
   onAddToChat,
+  onAddAsContext,
   onMakeCards,
   onSaveAsNote,
   hideUnavailableActions = false,
@@ -305,6 +312,16 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     onClear();
   }, [selectedText, onAddToChat, onClear]);
 
+  // 引用到聊天（P0：结构化 contextRef 注入）
+  const handleAddAsContext = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onAddAsContext) {
+      onAddAsContext(selectedText);
+    }
+    onClear();
+  }, [selectedText, onAddAsContext, onClear]);
+
   if (!isVisible || !selectionRect) return null;
 
   const touchTarget = isTouchPrimary;
@@ -315,6 +332,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const showSaveAsNote = Boolean(onSaveAsNote);
   const showMakeCards = Boolean(onMakeCards) || !hideUnavailableActions;
   const showAddToChat = Boolean(onAddToChat) || !hideUnavailableActions;
+  // 新能力只在宿主真正接入时渲染，不做灰显占位
+  const showAddAsContext = Boolean(onAddAsContext);
 
   return (
     <div
@@ -419,6 +438,20 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             icon={<ChatDots size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.addToChat')}
             disabled={!onAddToChat}
+            isLast={!showAddAsContext}
+            touchTarget={touchTarget}
+          />
+        </>
+      )}
+
+      {/* 引用到聊天（P0 选区即上下文） */}
+      {showAddAsContext && (
+        <>
+          <Divider />
+          <ToolbarButton
+            onClick={handleAddAsContext}
+            icon={<Quotes size={touchTarget ? 16 : 14} />}
+            label={t('selectionToolbar.addAsContext')}
             isLast
             touchTarget={touchTarget}
           />

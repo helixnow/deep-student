@@ -1529,7 +1529,8 @@
       "essay": "作文",
       "translation": "翻译",
       "folder": "文件夹",
-      "skill": "技能"
+      "skill": "技能",
+        "selection": "选区"
     },
     "sticky": "持久引用",
     "clearAll": "清空所有引用"
@@ -1614,6 +1615,12 @@
     "prevVariant": "上一个变体",
     "nextVariant": "下一个变体"
   },
+  "selectionRef": {
+    "fallbackName": "选区引用",
+    "noSession": "没有可用的会话",
+    "added": "已引用到对话",
+    "failed": "引用失败"
+  },
   "selectionToolbar": {
     "ariaLabel": "选中文本操作",
     "copy": "复制",
@@ -1621,6 +1628,7 @@
     "explain": "解释",
     "translate": "翻译",
     "addToChat": "添加到聊天",
+    "addAsContext": "引用到聊天",
     "makeCards": "制卡",
     "makeCardsEmpty": "请先选中要制卡的文本",
     "makeCardsTooShort": "选中文本太短，请至少选择 {{count}} 个字符",
@@ -1910,6 +1918,9 @@
     },
     "retrieval": {
       "label": "参考资料"
+    },
+    "selection": {
+      "label": "选区"
     },
     "translation": {
       "label": "翻译",

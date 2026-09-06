@@ -70,6 +70,12 @@ export interface PdfSelectionActionsProps {
    * 缺省（或选区页码不可得）时走 PREFILL_CHAT_INPUT 文本注入兜底。
    */
   onQuoteToChat?: (payload: PdfSelectionPayload) => void;
+  /**
+   * P0 选区即上下文：源资源 id（tb_xxx / file_xxx）。提供时工具条渲染
+   * 「引用到聊天」动作——选区文本快照 + page locator 作为结构化 contextRef
+   * 注入（与 onQuoteToChat 的整资源引用语义不同，精准且省 token）。
+   */
+  selectionSourceId?: string;
 }
 
 export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
@@ -78,6 +84,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   isMobileLike,
   documentTitle,
   onQuoteToChat,
+  selectionSourceId,
 }) => {
   const { t } = useTranslation(['pdf', 'chatV2', 'common']);
   const selection = useTextSelection(containerRef);
@@ -191,6 +198,24 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     sendSelectionToChatInput({ text, sourceName: documentTitle, page });
   }, [onQuoteToChat, documentTitle, resolveSelectionPage]);
 
+  // P0 选区即上下文：选区快照 + page locator → 结构化 contextRef。
+  // 动态 import 避免把 chat context 链路静态打进 PDF 侧 chunk（同制卡的纪律）。
+  const handleAddAsContext = useCallback((text: string) => {
+    if (!selectionSourceId) return;
+    const page = resolveSelectionPage();
+    void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+      selectionToChat({
+        text,
+        source: {
+          kind: 'pdf',
+          sourceId: selectionSourceId,
+          locator: typeof page === 'number' ? `page:${page}` : undefined,
+          title: documentTitle,
+        },
+      })
+    );
+  }, [selectionSourceId, documentTitle, resolveSelectionPage]);
+
   // 解释/翻译结果面板的「添加到输入框」：内容是 AI 生成文本而非原文选区，
   // 不适用 locator 引用语义，固定走 PREFILL 文本注入（此时选区已清，无页码）
   const handleAddDerivedTextToChat = useCallback((text: string) => {
@@ -212,6 +237,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         onSaveAsNote={handleSaveAsNote}
         onMakeCards={handleMakeCards}
         onAddToChat={handleAddToChat}
+        onAddAsContext={selectionSourceId ? handleAddAsContext : undefined}
         hideUnavailableActions
         placement="below"
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}
