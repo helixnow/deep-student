@@ -4,6 +4,12 @@
   "unknown_block_title": "Unknown component: {{type}}",
   "unknown_block_desc": "Skipped — check component registry",
   "validation_failed_title": "{{type}} props validation failed",
+  "skeleton": {
+    "mismatch_notice": "Output doesn't match the \"{{skillId}}\" template layout; kept as a regular artifact ({{reason}})",
+    "err_count_mismatch": "layoutLock requires {{expected}} blocks, got {{actual}}",
+    "err_block_mismatch": "block {{index}} should be {{expected}}, got {{actual}}",
+    "err_missing_type": "missing skeleton block type {{type}}"
+  },
   "chrome": {
     "streaming": "Generating…",
     "stream_done": "Interface ready",

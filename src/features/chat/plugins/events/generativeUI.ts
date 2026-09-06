@@ -19,6 +19,7 @@ import {
 } from '../../skills/artifactSkeleton';
 import { skillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import i18n from 'i18next';
 
 const generativeUIEventHandler: EventHandler = {
   onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
@@ -71,7 +72,16 @@ const generativeUIEventHandler: EventHandler = {
     // 不符则降级为普通产物 + 提示（无工具错误通道，零协议改动；产物本身仍保留）。
     // intent 为 string 时表示解析失败的原始文本，无法对照骨架，跳过。
     if (intent !== null && typeof intent !== 'string') {
-      const skeletonRef = store.blocks.get(blockId)?.toolInput?.skeletonRef;
+      // skeletonRef 来源：live 路径走 executor end 载荷回显（live 块无 toolInput，
+      // tool_input 仅持久化到 DB）；toolInput 回退覆盖 restore/测试路径。
+      const echoedSkeletonRef =
+        result && typeof result === 'object' && 'skeletonRef' in result
+          ? (result as { skeletonRef?: unknown }).skeletonRef
+          : undefined;
+      const skeletonRef =
+        typeof echoedSkeletonRef === 'string'
+          ? echoedSkeletonRef
+          : store.blocks.get(blockId)?.toolInput?.skeletonRef;
       const match = findActiveArtifactSkill(
         store.activeSkillIds ?? [],
         (id) => skillRegistry.get(id),
@@ -85,9 +95,13 @@ const generativeUIEventHandler: EventHandler = {
             match.skillId,
             check.errors,
           );
+          const first = check.errors[0];
+          const reason = first
+            ? i18n.t(`generativeUi:skeleton.err_${first.code}`, first.params)
+            : '';
           showGlobalNotification(
             'info',
-            `生成内容与「${match.skillId}」模板布局不符，已按普通产物保留（${check.errors[0] ?? ''}）`,
+            i18n.t('generativeUi:skeleton.mismatch_notice', { skillId: match.skillId, reason }),
           );
         }
       }

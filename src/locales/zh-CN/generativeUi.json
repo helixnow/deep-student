@@ -4,6 +4,12 @@
   "unknown_block_title": "未知组件：{{type}}",
   "unknown_block_desc": "已跳过，请检查组件注册表",
   "validation_failed_title": "{{type}} 参数校验失败",
+  "skeleton": {
+    "mismatch_notice": "生成内容与「{{skillId}}」模板布局不符，已按普通产物保留（{{reason}}）",
+    "err_count_mismatch": "layoutLock 要求 {{expected}} 个块，实际 {{actual}} 个",
+    "err_block_mismatch": "第 {{index}} 块应为 {{expected}}，实际为 {{actual}}",
+    "err_missing_type": "缺少骨架声明的块类型 {{type}}"
+  },
   "chrome": {
     "streaming": "生成中…",
     "stream_done": "界面已生成完毕",
