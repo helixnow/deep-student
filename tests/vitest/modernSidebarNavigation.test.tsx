@@ -72,6 +72,17 @@ vi.mock('@/components/ui/app-menu/AppMenu', () => {
         <span>{children}</span>
       </button>
     ),
+    AppMenuSwitchItem: ({ children, icon, checked, onCheckedChange }) => (
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={checked}
+        onClick={() => onCheckedChange?.(!checked)}
+      >
+        {icon}
+        <span>{children}</span>
+      </button>
+    ),
   };
 });
 

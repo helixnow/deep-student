@@ -20,6 +20,10 @@ import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { ThreadEmptyStateShell } from '../components/ui/ThreadEmptyStateShell';
 import { SessionBrowser } from '../components/session-browser';
+import {
+  filterSidebarSessions,
+  useSidebarFilterPrefs,
+} from '../hooks/useSidebarFilterPrefs';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
@@ -298,15 +302,22 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // ★ 当前打开的应用（复用 Learning Hub 的 UnifiedAppPanel）
   const [openApp, setOpenApp] = useState<OpenApp | null>(null);
   
+  // 侧栏过滤偏好（方案 A 纯前端过滤）：默认隐藏子代理会话，过滤菜单一处切换
+  const showSubagentSessions = useSidebarFilterPrefs((state) => state.showSubagentSessions);
+  const sidebarVisibleSessions = useMemo(
+    () => filterSidebarSessions(sessions, { showSubagentSessions }),
+    [sessions, showSubagentSessions]
+  );
+
   const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
 
   // 过滤会话
   const filteredSessions = useMemo(() => {
     const filtered = !normalizedSearchQuery
-      ? sessions
-      : sessions.filter((s) => (s.title || '').toLowerCase().includes(normalizedSearchQuery));
+      ? sidebarVisibleSessions
+      : sidebarVisibleSessions.filter((s) => (s.title || '').toLowerCase().includes(normalizedSearchQuery));
     return [...filtered].sort(compareSessionsForSidebar);
-  }, [normalizedSearchQuery, sessions]);
+  }, [normalizedSearchQuery, sidebarVisibleSessions]);
 
   // 按分组归类会话
   const sessionsByGroup = useMemo(() => {
@@ -752,7 +763,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     onEditGroup: openEditGroup,
     // 移动侧栏自带分组归档行内确认，确认后直接执行（不再走 pendingArchiveGroup 主区确认条）
     onArchiveGroup: (group) => { void archiveGroupDirect(group); },
-    isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
+    isInitialLoading, sessions: sidebarVisibleSessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId,
     hasMoreSessions, isLoadingMore,
     t,

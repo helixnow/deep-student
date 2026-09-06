@@ -55,6 +55,11 @@ import type { SessionGroup } from '@/features/chat/types/group';
 import { buildPinnedSessionMetadata, isSessionPinned } from '@/features/chat/utils/sessionPin';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { useSidebarSessionData } from '@/features/chat/hooks/useSessionManagement';
+import {
+  filterSidebarSessions,
+  useSidebarFilterPrefs,
+} from '@/features/chat/hooks/useSidebarFilterPrefs';
+import { SidebarFilterMenu } from '@/features/chat/components/SidebarFilterMenu';
 import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
@@ -419,9 +424,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     setSessions: setRecentSessions,
     setGroups: setRecentGroups,
   } = useSidebarSessionData();
+  // 侧栏过滤偏好（方案 A 纯前端过滤）：默认隐藏子代理会话，过滤菜单统一切换
+  const showSubagentSessions = useSidebarFilterPrefs((state) => state.showSubagentSessions);
   const recentSessions = useMemo(
-    () => sortSessionsByUpdatedAt(rawRecentSessions),
-    [rawRecentSessions]
+    () => sortSessionsByUpdatedAt(filterSidebarSessions(rawRecentSessions, { showSubagentSessions })),
+    [rawRecentSessions, showSubagentSessions]
   );
   const recentGroups = useMemo(
     () => sortGroups(rawRecentGroups.filter(isSessionGroup)),
@@ -1129,12 +1136,18 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!pr-[4.25rem]',
                 pinned && '!pl-3',
               )}
-              rightSlot={isSessionStreaming ? (
-                <SidebarStreamingIndicator />
-              ) : hasBlockingInteraction ? (
-                <SidebarBlockingContinueBadge label={blockingContinueLabel} />
-              ) : hasUnreadAssistantReply ? (
-                <SidebarUnreadReplyDot />
+              rightSlot={isSessionStreaming || hasBlockingInteraction || hasUnreadAssistantReply ? (
+                // 与时间戳同一让位模式：hover/focus 操作簇淡入时指示器淡出，
+                // 避免置顶按钮压住圆圈指示器；opacity-0 保留占位，无布局位移。
+                <span className="inline-flex items-center transition-opacity group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
+                  {isSessionStreaming ? (
+                    <SidebarStreamingIndicator />
+                  ) : hasBlockingInteraction ? (
+                    <SidebarBlockingContinueBadge label={blockingContinueLabel} />
+                  ) : (
+                    <SidebarUnreadReplyDot />
+                  )}
+                </span>
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
                   {/* 触屏（coarse pointer）没有 hover：操作簇在所有行常显，时间戳同步让位 */}
@@ -1596,18 +1609,24 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           <span className="min-w-0 truncate font-[var(--font-family-display,var(--font-family))] text-[18px] font-semibold leading-none text-[color:var(--shell-navigation-foreground)]">
             DeepStudent
           </span>
-          <CommonTooltip content={t('command_palette:session_search_placeholder', '搜索会话...')} position="right">
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
-              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-              onClick={openSessionSearch}
-            >
-              <MagnifyingGlass size={16} weight="bold" />
-            </DsButton>
-          </CommonTooltip>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <SidebarFilterMenu
+              t={t}
+              triggerClassName="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            />
+            <CommonTooltip content={t('command_palette:session_search_placeholder', '搜索会话...')} position="right">
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
+                className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                onClick={openSessionSearch}
+              >
+                <MagnifyingGlass size={16} weight="bold" />
+              </DsButton>
+            </CommonTooltip>
+          </div>
         </div>
       </WorkbenchSidebarFixed>
 

@@ -1209,6 +1209,8 @@
     "collapseSidebar": "收起侧边栏",
     "expandSidebar": "展开侧边栏",
     "searchPlaceholder": "搜索会话...",
+    "sidebarFilter": "筛选会话",
+    "showSubagentSessions": "显示子代理会话",
     "switchingSession": "切换会话中...",
     "deleteSessionFailed": "删除会话失败",
     "createSessionFailed": "创建会话失败，请稍后重试",
