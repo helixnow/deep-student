@@ -1643,6 +1643,7 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('routes by documentId and does not cross-write between two anki blocks', () => {
+      vi.useFakeTimers();
       seedAnkiBlock('anki-block-a', { documentId: 'doc-a', status: 'running' });
       seedAnkiBlock('anki-block-b', { documentId: 'doc-b', status: 'running' });
 
@@ -1664,6 +1665,8 @@ describe('ChatV2TauriAdapter', () => {
           },
         },
       });
+      // 🚀 性能修复（2026-09-06）：NewCard 经 100ms 合并缓冲批量落盘，推进定时器后断言
+      vi.advanceTimersByTime(100);
 
       const blockA = mockStore.blocks.get('anki-block-a') as any;
       const blockB = mockStore.blocks.get('anki-block-b') as any;
@@ -1675,6 +1678,7 @@ describe('ChatV2TauriAdapter', () => {
       expect(blockB.toolOutput.documentId).toBe('doc-b');
       expect(blockB.toolOutput.cards).toHaveLength(1);
       expect(blockB.toolOutput.cards[0].id).toBe('card-b1');
+      vi.useRealTimers();
     });
 
     it('keeps the document running when only one task completes', async () => {
@@ -1724,6 +1728,7 @@ describe('ChatV2TauriAdapter', () => {
     });
 
     it('allows latest-active fallback only when event has no documentId (owner)', () => {
+      vi.useFakeTimers();
       seedAnkiBlock('anki-block-1', { documentId: 'doc-1', status: 'running' });
       seedAnkiBlock('anki-block-2', { status: 'running' }); // latest active without doc id
 
@@ -1736,11 +1741,15 @@ describe('ChatV2TauriAdapter', () => {
         },
       });
 
+      // 🚀 性能修复（2026-09-06）：NewCard 经 100ms 合并缓冲批量落盘，推进定时器后断言
+      vi.advanceTimersByTime(100);
+
       const block1 = mockStore.blocks.get('anki-block-1') as any;
       const block2 = mockStore.blocks.get('anki-block-2') as any;
       expect(block1.toolOutput.cards).toEqual([]);
       expect(block2.toolOutput.cards).toHaveLength(1);
       expect(block2.toolOutput.cards[0].id).toBe('card-fallback');
+      vi.useRealTimers();
     });
 
     it('recovers a terminal error block when its retried task completes', async () => {
@@ -1998,6 +2007,103 @@ describe('ChatV2TauriAdapter', () => {
         expect(block.toolOutput.syncStatus).toBe('error');
         expect(block.toolOutput.syncError).toBe('anki-connect-down');
         expect(block.toolOutput.finalStatus).toBe('completed_with_errors');
+      });
+    });
+
+    // ==========================================================================
+    // 🚀 制卡事件合并缓冲（2026-09-06 性能修复）
+    // 验证 NewCard/NewErrorCard 事件在 100ms 窗口内合并为一次 updateBlock（O(N²)→O(N)），
+    // 非卡片事件到达前先冲刷缓冲，cleanup 时冲刷而非丢弃。
+    // ==========================================================================
+    describe('anki card event coalescing (perf fix 2026-09-06)', () => {
+      const makeCard = (id: string) => ({
+        id,
+        template_id: 'tpl-test',
+        fields: { front: `Q-${id}`, back: `A-${id}` },
+      });
+
+      const newCardEvent = (id: string) => ({
+        payload: {
+          type: 'NewCard',
+          data: { card: makeCard(id), document_id: 'doc-1' },
+        },
+      });
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+        // 预置一个 running 的 anki_cards 块作为事件路由目标
+        seedAnkiBlock('blk-1', { documentId: 'doc-1', status: 'running' });
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('batches N NewCard events in one 100ms window into a single updateBlock', () => {
+        for (let i = 0; i < 50; i++) {
+          ankiEventCallback(newCardEvent(`c${i}`));
+        }
+        // 窗口未到期：不落盘
+        expect(mockStore.updateBlock).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(100);
+
+        expect(mockStore.updateBlock).toHaveBeenCalledTimes(1);
+        const [blockId, updates] = vi.mocked(mockStore.updateBlock).mock.calls[0];
+        expect(blockId).toBe('blk-1');
+        expect((updates as any).toolOutput.cards).toHaveLength(50);
+        expect((updates as any).toolOutput.progress.cardsGenerated).toBe(50);
+      });
+
+      it('batches each window separately (O(windows) writes, not O(cards))', () => {
+        for (let i = 0; i < 10; i++) ankiEventCallback(newCardEvent(`w1-${i}`));
+        vi.advanceTimersByTime(100);
+        for (let i = 0; i < 10; i++) ankiEventCallback(newCardEvent(`w2-${i}`));
+        vi.advanceTimersByTime(100);
+
+        expect(mockStore.updateBlock).toHaveBeenCalledTimes(2);
+        const block = mockStore.blocks.get('blk-1') as any;
+        expect(block.toolOutput.cards).toHaveLength(20);
+      });
+
+      it('flushes buffered cards before DocumentProcessingCompleted so terminal state keeps all cards', () => {
+        for (let i = 0; i < 5; i++) ankiEventCallback(newCardEvent(`c${i}`));
+        ankiEventCallback({
+          payload: { type: 'DocumentProcessingCompleted', data: { document_id: 'doc-1' } },
+        });
+
+        // 第一次 updateBlock 是冲刷卡片，第二次是终态
+        const calls = vi.mocked(mockStore.updateBlock).mock.calls;
+        expect(calls.length).toBe(2);
+        expect((calls[0][1] as any).toolOutput.cards).toHaveLength(5);
+        expect((calls[1][1] as any).toolOutput.finalStatus).toBe('completed');
+        // 终态块仍保留全部卡片（未被旧 toolOutput 覆盖）
+        const block = mockStore.blocks.get('blk-1') as any;
+        expect(block.toolOutput.cards).toHaveLength(5);
+        expect(block.toolOutput.finalStatus).toBe('completed');
+        expect(block.status).toBe('success');
+      });
+
+      it('cleanup flushes pending cards instead of dropping them', async () => {
+        for (let i = 0; i < 3; i++) ankiEventCallback(newCardEvent(`c${i}`));
+        await adapter.cleanup();
+
+        expect(mockStore.updateBlock).toHaveBeenCalledTimes(1);
+        const block = mockStore.blocks.get('blk-1') as any;
+        expect(block.toolOutput.cards).toHaveLength(3);
+      });
+
+      it('drops duplicate cards (against state and against queue)', () => {
+        // 状态中已有 c0
+        (mockStore.blocks.get('blk-1') as any).toolOutput.cards = [makeCard('c0')];
+
+        ankiEventCallback(newCardEvent('c0')); // 与状态重复 → 丢弃
+        ankiEventCallback(newCardEvent('c1'));
+        ankiEventCallback(newCardEvent('c1')); // 与队列重复 → 丢弃
+        vi.advanceTimersByTime(100);
+
+        expect(mockStore.updateBlock).toHaveBeenCalledTimes(1);
+        expect((mockStore.blocks.get('blk-1') as any).toolOutput.cards).toHaveLength(2);
       });
     });
   });
