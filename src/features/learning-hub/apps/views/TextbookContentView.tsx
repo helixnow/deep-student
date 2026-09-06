@@ -825,6 +825,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         bookmarks={bookmarks}
         onBookmarksChange={handleBookmarksChange}
         onQuoteToChat={handleQuoteToChat}
+        selectionSourceId={node.sourceId || node.id}
       />
     </div>
   );

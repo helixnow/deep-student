@@ -170,6 +170,9 @@ export interface EnhancedPdfViewerProps {
    *  （上层视图接 useReferenceToChat：资源引用 + `page:N` locator，Agent 可回读原文）。
    *  缺省时工具条走 PREFILL_CHAT_INPUT 文本注入兜底。 */
   onQuoteToChat?: (payload: PdfSelectionPayload) => void;
+  /** P0 选区即上下文：源资源 id（tb_xxx/file_xxx），透传给 PdfSelectionActions。
+   *  提供时划词条渲染「引用到聊天」（选区快照 + page locator 的结构化 contextRef）。 */
+  selectionSourceId?: string;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
@@ -333,6 +336,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   bookmarks: externalBookmarks,
   onBookmarksChange,
   onQuoteToChat,
+  selectionSourceId,
 }) => {
   const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
@@ -3199,6 +3203,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           isMobileLike={isMobileLike}
           documentTitle={fileName}
           onQuoteToChat={onQuoteToChat}
+          selectionSourceId={selectionSourceId}
         />
       </React.Suspense>
 

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
+import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
 import { useNotesOptional } from './NotesContext';
@@ -411,6 +412,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  // P0 选区即上下文：笔记选区 → 结构化 contextRef（与 dropZone 共用同一 relative 容器）
+  const selectionContainerRef = useRef<HTMLDivElement>(null);
+  const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
 
@@ -464,6 +468,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+
+  // P0 选区即上下文：笔记选区 → 结构化 contextRef 注入聊天。
+  // 动态 import 避免把 chat context 链路静态打进笔记 chunk。
+  const handleSelectionAddAsContext = useCallback((text: string) => {
+    if (!noteId) return;
+    const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
+    void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+      selectionToChat({
+        text,
+        source: { kind: 'note', sourceId: noteId, title },
+      })
+    );
+  }, [noteId, isDstuMode, initialTitle, active?.title]);
 
   useEffect(() => {
     const onFindQuery = (event: Event) => {
@@ -2189,8 +2206,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               ? 'calc(var(--mobile-toolbar-height, 52px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12vh)'
               : '30vh',
           }}
-          ref={dropZoneRef}
+          ref={(el) => {
+            dropZoneRef.current = el;
+            selectionContainerRef.current = el;
+          }}
         >
+          {/* P0 选区即上下文：笔记面只启用「引用到聊天」（解释/翻译沿用 PDF 面模式，后续按需补） */}
+          <SelectionToolbar
+            selectedText={noteSelection.selectedText}
+            selectionRect={noteSelection.selectionRect}
+            isVisible={noteSelection.isVisible && !effectiveReadOnly}
+            containerRef={selectionContainerRef}
+            onClear={noteSelection.clear}
+            onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
+            hideUnavailableActions
+            dismissOnLeaveView={null}
+          />
           <NotesEditorHeader
             lastSaved={lastSaved}
             saveStatus={saveStatus}

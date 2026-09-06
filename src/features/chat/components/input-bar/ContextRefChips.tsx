@@ -11,7 +11,7 @@
 
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning } from '@phosphor-icons/react';
+import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning, Quotes } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
@@ -58,6 +58,8 @@ const getTypeIcon = (typeId: string): React.ElementType => {
     case 'skill':
     case 'skill_instruction':
       return Lightning;
+    case 'selection':
+      return Quotes;
     default:
       return FileText;
   }
@@ -75,6 +77,7 @@ const getTypeLabelKey = (typeId: string): string => {
     case 'translation':
     case 'folder':
     case 'skill':
+    case 'selection':
       return `chatV2:contextRef.type.${typeId}`;
     default:
       return typeId;
@@ -123,6 +126,8 @@ const getTypeColorClass = (typeId: string): string => {
       return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300';
     case 'folder':
       return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+    case 'selection':
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300';
     case 'skill':
     case 'skill_instruction':
       return 'bg-primary/20 text-primary';

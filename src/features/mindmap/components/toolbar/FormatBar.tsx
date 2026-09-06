@@ -22,12 +22,14 @@ import {
   TextT,
   Palette,
   Highlighter,
+  Quotes,
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { useMindMapStore } from '../../store';
 import { findNodeById } from '../../utils/node/find';
+import { serializeNodesToOutlineText } from '../../utils/node/outlineText';
 import type { MindMapNode, NodeStyle } from '../../types';
 import { getQuickBgColors, getQuickTextColors } from '../../constants/colors';
 import { useMindMapDarkMode } from '../../hooks/useMindMapTheme';
@@ -97,6 +99,8 @@ export const MindMapFormatBar: React.FC = () => {
   const focusedNodeId = useMindMapStore((state) => state.focusedNodeId);
   const selection = useMindMapStore((state) => state.selection);
   const updateNode = useMindMapStore((state) => state.updateNode);
+  const mindmapId = useMindMapStore((state) => state.mindmapId);
+  const mapTitle = useMindMapStore((state) => state.metadata?.title);
 
   const targetIds = useMemo(() => {
     if (selection.length > 0) return selection;
@@ -122,6 +126,30 @@ export const MindMapFormatBar: React.FC = () => {
     },
     [targetIds, document, updateNode],
   );
+
+  // P0 选区即上下文：选中节点（含子树大纲）→ 结构化 contextRef 注入聊天。
+  // 动态 import 避免把 chat context 链路静态打进导图 chunk。
+  const handleAddAsContext = useCallback(() => {
+    if (!mindmapId) return;
+    const nodes: MindMapNode[] = [];
+    for (const id of targetIds) {
+      const node = findNodeById(document.root, id);
+      if (node) nodes.push(node);
+    }
+    if (nodes.length === 0) return;
+    const text = serializeNodesToOutlineText(nodes);
+    void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+      selectionToChat({
+        text,
+        source: {
+          kind: 'mindmap',
+          sourceId: mindmapId,
+          locator: targetIds.length === 1 ? `node:${targetIds[0]}` : `nodes:${targetIds.length}`,
+          title: mapTitle || undefined,
+        },
+      })
+    );
+  }, [mindmapId, targetIds, document, mapTitle]);
 
   if (!primaryNode) return null;
 
@@ -229,6 +257,22 @@ export const MindMapFormatBar: React.FC = () => {
         clearLabel={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}
         selectLabel={(color) => t('contextMenu.selectColor', { color, defaultValue: `选择颜色 ${color}` })}
       />
+
+      {/* P0 选区即上下文：选中节点引用到聊天（触屏不挂载本条，见 MindMapContentView 的 isCoarsePointer 门） */}
+      {mindmapId && (
+        <>
+          <div className="w-px h-4 bg-[var(--mm-border)]" />
+          <DsButton
+            variant="ghost"
+            className={formatBtnClass(false)}
+            onClick={handleAddAsContext}
+            title={t('chatV2:selectionToolbar.addAsContext', { defaultValue: '引用到聊天' })}
+            aria-label={t('chatV2:selectionToolbar.addAsContext', { defaultValue: '引用到聊天' })}
+          >
+            <Quotes className="w-4 h-4" />
+          </DsButton>
+        </>
+      )}
     </div>
   );
 };

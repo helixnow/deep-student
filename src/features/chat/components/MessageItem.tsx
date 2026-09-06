@@ -56,6 +56,7 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { TranslationPopover } from './TranslationPopover';
 import { ExplainPopover } from './ExplainPopover';
 import { generateCardsFromSelection } from '../services/selectionCardGeneration';
+import { selectionToChat } from '../context/selectionRef';
 import { MessageSearchProvider } from './messageSearchContext';
 
 // ============================================================================
@@ -346,12 +347,28 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     setTranslationPopoverState({ isVisible: false, sourceText: '', contextBefore: '', contextAfter: '' });
   }, []);
 
-  // 选中文本后的操作回调：添加到聊天输入框
+  // 选中文本后的操作回调：引用到聊天（P0 选区即上下文——结构化 contextRef，
+  // 选区快照 + 消息来源定位注入 pendingContextRefs，替代旧的纯文本预填）
+  // 选中文本后的操作回调：添加到聊天输入框（翻译/解释 Popover 的 onAddToInput 仍走预填）
   const handleSelectionAddToChat = useCallback((text: string) => {
     window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
       detail: { content: text, autoSend: false },
     }));
   }, []);
+
+  // P0 选区即上下文：划选消息文本 → 结构化 contextRef（替换 SelectionToolbar 的旧预填入口）
+  const handleSelectionAddAsContext = useCallback((text: string) => {
+    if (!message) return;
+    const state = store.getState();
+    void selectionToChat({
+      text,
+      source: {
+        kind: 'message',
+        messageId: message.id,
+        title: state.title || undefined,
+      },
+    });
+  }, [message, store]);
 
   // 选中文本后的操作回调：划词制卡
   const handleSelectionMakeCards = useCallback((text: string) => {
@@ -1485,7 +1502,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onSendMessage={isReadOnlySession ? undefined : handleSelectionSendMessage}
         onExplain={handleSelectionExplain}
         onTranslate={handleSelectionTranslate}
-        onAddToChat={handleSelectionAddToChat}
+        onAddAsContext={isReadOnlySession ? undefined : handleSelectionAddAsContext}
         onMakeCards={handleSelectionMakeCards}
         onSaveAsNote={handleSelectionSaveAsNote}
       />
