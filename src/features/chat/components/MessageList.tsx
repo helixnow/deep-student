@@ -56,6 +56,9 @@ const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
 const VIRTUALIZATION_THRESHOLD = 80;
 
+/** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
+const BOTTOM_THRESHOLD_PX = 50;
+
 const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
 /**
@@ -403,7 +406,23 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 上一次消息顺序：用于识别头部或视口上方的中部历史插入。
   const prevMessageOrderRef = useRef(messageOrder);
-  const historyInsertionRef = useRef(false);
+  // 本次 render 检测到的"既有消息之前插入"条数（幂等赋值，StrictMode 安全）；
+  // 供提交后的布局效应区分追加 vs 插入（锚定补偿也在布局效应执行）
+  const lastInsertedCountRef = useRef(0);
+
+  // ===== 吸底跟随 v2：observedTop 账本（参考 deepseek-harness ChatView）=====
+  // 所有程序化 scrollTop 写入必须经 writeScroll 记账；scroll 事件里
+  // |scrollTop - min(observedTop, floor)| > 0.5 才算用户滚动——设备无关
+  //（滚轮/触控板/滚动条拖拽/键盘/触摸全覆盖），且浏览器收缩 clamp 恰好
+  // 落在 min(observedTop, floor) 上，天然不会被误判为用户上滚。
+  const observedTopRef = useRef(0);
+  // 是否处于吸底跟随状态（即滚动所有权在不在程序手里）
+  const atBottomRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // P1-8: 用户滚离底部期间有新消息追加时，回到底部按钮上显示小圆点提示
+  const [hasUnseenNewMessages, setHasUnseenNewMessages] = useState(false);
+  // 🔧 优化：使用 ref 追踪上一次消息数量（追加 vs 插入检测）
+  const prevMessageCountRef = useRef(messageOrder.length);
 
   // 列表纪元：按会话递增，作为消息容器的 key。切换会话时旧列表子树整体卸载，
   // AnimatePresence 不再对旧会话消息播放退场动画（避免新旧内容短暂混排）；
@@ -421,7 +440,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
     pendingScrollCompensationRef.current = null;
     initialMessageCountRef.current = messageOrder.length;
     prevMessageOrderRef.current = messageOrder;
-    historyInsertionRef.current = false;
+    lastInsertedCountRef.current = 0;
+    // 会话切换：从底部锚定的吸底状态重新开始（render 阶段重置，保证提交后
+    // 的布局效应/scroll 分类器读到的已是新会话状态）
+    atBottomRef.current = true;
+    observedTopRef.current = 0;
     listEpochRef.current += 1;
     if (tailWindowExpanded) {
       // render 阶段的条件 setState（React 官方 adjust-state-during-render 模式）
@@ -440,9 +463,17 @@ const MessageListInner: React.FC<MessageListProps> = ({
     const previousOrder = prevMessageOrderRef.current;
     if (previousOrder !== messageOrder) {
       const insertedBeforeExisting = countInsertedBeforeExisting(previousOrder, messageOrder);
-      historyInsertionRef.current = insertedBeforeExisting > 0;
+      // 幂等赋值（StrictMode 双调用安全）；供提交后的布局效应区分追加 vs 插入
+      lastInsertedCountRef.current = insertedBeforeExisting;
       if (insertedBeforeExisting > 0) {
+        // 入场动画门槛（isNewlyAppended）在 render 中消费 initialMessageCount，
+        // 必须在这里同步累加（移到布局效应会让本次 render 读到旧值，导致插入时
+        // 末条消息被误判为新增而播放入场动画）。安全性：本块由
+        // previousOrder !== messageOrder + prevMessageOrderRef 写回保护，
+        // StrictMode 双调用/并发重放的后续调用整体跳过，每次 order 迁移恰好累加一次
         initialMessageCountRef.current += insertedBeforeExisting;
+        // render 阶段读取的是提交前 DOM（与被丢弃的并发 render 看到的一致，
+        // 几何是确定性的）；此处仅记录快照，补偿在布局效应中执行
         if (viewportElement && !pendingScrollCompensationRef.current) {
           pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);
         }
@@ -509,6 +540,22 @@ const MessageListInner: React.FC<MessageListProps> = ({
         : element?.getBoundingClientRect().height) ?? estimatedItemSize,
   });
 
+  // 吸底跟随中禁止虚拟化器的尺寸变化补偿：其 scrollTop 调整写入未记账，
+  // 会被账本分类器误判为用户滚离而中断跟随；阅读时保持 core 默认行为
+  //（仅补偿视口上方的行，保持阅读位置稳定）。
+  // 注意：shouldAdjustScrollPositionOnItemSizeChange 是 virtual-core 的
+  // Virtualizer 实例属性而非构造选项（scrollAdjustments 私有，默认判定中的
+  // 瞬态修正项无法复刻，省略不影响主场景）
+  useEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      if (atBottomRef.current) return false;
+      return item.start < (instance.scrollOffset ?? 0) && instance.scrollDirection !== 'backward';
+    };
+    return () => {
+      virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
+    };
+  }, [virtualizer]);
+
   if (!hasLoggedVirtualizerRef.current && virtualizerReady) {
     const virtualizerInitMs = performance.now() - virtualizerInitStart;
     sessionSwitchPerf.mark('ml_virtualizer_done', {
@@ -542,42 +589,85 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => cancel(id);
   }, [useDirectRender, tailWindowExpanded, messageOrder.length, viewportElement]);
 
-  // 补齐后的滚动锚定补偿：优先按首个可见消息的像素偏移补偿，
-  // 兼容头插和中部插入；找不到锚点时才回退到 scrollHeight 差值。
-  useLayoutEffect(() => {
-    const pending = pendingScrollCompensationRef.current;
-    if (!pending || !viewportElement) return;
-    pendingScrollCompensationRef.current = null;
+  // ===== 吸底跟随 v2：程序化写入唯一入口（写入即记账）=====
+  const writeScroll = useCallback((top: number) => {
+    const el = viewportElement;
+    if (!el) return;
+    el.scrollTop = top;
+    // 写后回读：浏览器可能把越界值 clamp 到 [0, floor]，账本记真实落点
+    observedTopRef.current = el.scrollTop;
+  }, [viewportElement]);
 
-    let delta: number | null = null;
-    if (pending.anchorMessageId && pending.anchorViewportOffset !== undefined) {
-      const viewportRect = viewportElement.getBoundingClientRect();
-      const anchor = Array.from(
-        viewportElement.querySelectorAll<HTMLElement>('[data-chat-message-id]'),
-      ).find((element) => element.dataset.chatMessageId === pending.anchorMessageId);
-      if (anchor) {
-        delta = anchor.getBoundingClientRect().top
-          - viewportRect.top
-          - pending.anchorViewportOffset;
+  // 跟随写入：仅在拥有滚动所有权（atBottom）时生效
+  const followBottom = useCallback(() => {
+    const el = viewportElement;
+    if (!el || !atBottomRef.current) return;
+    writeScroll(el.scrollHeight);
+  }, [viewportElement, writeScroll]);
+
+  // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
+  const prevIsStreamingRef = useRef(isStreaming);
+
+  // 统一的提交后结算（布局效应，绘制前完成）：
+  // 1) 历史插入/尾部窗口补齐的锚定补偿（优先首可见行像素偏移，兜底 scrollHeight 差值）
+  // 2) 流式开始的所有权转移（发送即回底）
+  // 3) 追加/流式边沿/会话切换时的吸底跟随
+  // 4) 滚离期间尾部追加 → 未读圆点
+  useLayoutEffect(() => {
+    // --- 插入补偿 ---
+    const insertedCount = lastInsertedCountRef.current;
+    lastInsertedCountRef.current = 0;
+    const pending = pendingScrollCompensationRef.current;
+    pendingScrollCompensationRef.current = null;
+    if (pending && viewportElement) {
+      let delta: number | null = null;
+      if (pending.anchorMessageId && pending.anchorViewportOffset !== undefined) {
+        const viewportRect = viewportElement.getBoundingClientRect();
+        const anchor = Array.from(
+          viewportElement.querySelectorAll<HTMLElement>('[data-chat-message-id]'),
+        ).find((element) => element.dataset.chatMessageId === pending.anchorMessageId);
+        if (anchor) {
+          delta = anchor.getBoundingClientRect().top
+            - viewportRect.top
+            - pending.anchorViewportOffset;
+        }
+      }
+      if (delta === null) {
+        delta = viewportElement.scrollHeight - pending.scrollHeight;
+      }
+      if (Math.abs(delta) > 0.5) {
+        writeScroll(pending.scrollTop + delta);
       }
     }
 
-    if (delta === null) {
-      delta = viewportElement.scrollHeight - pending.scrollHeight;
+    // --- 流式开始：发送即回底（所有权转移）---
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+    if (isStreaming && !wasStreaming) {
+      atBottomRef.current = true;
+      setShowScrollToBottom(false);
+      setHasUnseenNewMessages(false);
     }
-    if (Math.abs(delta) > 0.5) {
-      viewportElement.scrollTop = pending.scrollTop + delta;
-      resetScrollBaselineRef.current();
+
+    // --- 跟随 / 未读圆点 ---
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = messageOrder.length;
+    const appended = messageOrder.length > prevCount && insertedCount === 0;
+    if (atBottomRef.current) {
+      followBottom();
+    } else if (appended) {
+      // P1-8: 用户滚离底部期间尾部有新消息追加 → 回到底部按钮显示未读圆点
+      setHasUnseenNewMessages(true);
     }
-  }, [messageOrder, tailWindowExpanded, viewportElement]);
+  }, [messageOrder, tailWindowExpanded, isStreaming, store, viewportElement, followBottom, writeScroll]);
 
   // 🚀 会话打开即底部锚定：在绘制前执行，避免"先见顶部再跳底部"的闪动
   useLayoutEffect(() => {
     if (hasAnchoredRef.current) return;
     if (!viewportElement || messageOrder.length === 0) return;
-    viewportElement.scrollTop = viewportElement.scrollHeight;
+    writeScroll(viewportElement.scrollHeight);
     hasAnchoredRef.current = true;
-  }, [store, viewportElement, messageOrder.length]);
+  }, [store, viewportElement, messageOrder.length, writeScroll]);
 
   // 直渲兜底 → 虚拟模式交接时按帧重测，清掉旧会话/估算值的测量缓存避免重叠。
   // 注意不依赖消息数/流式状态：virtualizer.measure() 会清空全部行高缓存，
@@ -591,33 +681,12 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [useDirectRender, virtualizerReady, virtualizer]);
 
-  // 🔧 优化：使用 ref 追踪上一次消息数量和滚动状态
-  const prevMessageCountRef = useRef(messageOrder.length);
-  const isAutoScrollingRef = useRef(false);
-  const rafIdRef = useRef<number | null>(null);
-  const programmaticScrollLockRef = useRef(false);
-  const programmaticScrollUnlockTimerRef = useRef<number | null>(null);
-  // scroll 事件本身无法区分用户操作和流式内容重排。仅在指针拖动期间，
-  // 或由 wheel/key 明确报告向上意图时，才允许中断吸底跟随。
-  const userScrollInteractionRef = useRef(false);
-
-  // 🔧 用户滚动意图检测：根据实际滚动位置决定是否保持吸底跟随
-  const userHasScrolledRef = useRef(false);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  // P1-8: 用户滚离底部期间有新消息追加时，回到底部按钮上显示小圆点提示
-  const [hasUnseenNewMessages, setHasUnseenNewMessages] = useState(false);
   // P0-4: 输入栏（键盘 inset / 浮动态）盖到消息视口上的像素数，动态抬高底部安全区
   const [inputOverlapPx, setInputOverlapPx] = useState(0);
-  // 由下方 scroll 监听 effect 填充：状态同步器 / 方向检测基准重置
-  const syncScrollStateRef = useRef<() => void>(() => {});
-  const resetScrollBaselineRef = useRef<() => void>(() => {});
-  // 由流式吸底 effect 填充：用户回到底部时重新启动 rAF 跟随循环
-  // （用户上滚阅读时循环彻底退出，不再每帧空转）
-  const resumeAutoScrollRef = useRef<() => void>(() => {});
 
-  // 切换会话（不 remount）：清除上一会话的滚动意图，从底部锚定的吸底状态重新开始
+  // 切换会话（不 remount）：清理上一会话的按钮/未读点 UI 状态
+  //（atBottomRef 等 ref 已在 render 阶段的 storeChanged 块重置）
   useEffect(() => {
-    userHasScrolledRef.current = false;
     setShowScrollToBottom(false);
     setHasUnseenNewMessages(false);
   }, [store]);
@@ -666,386 +735,79 @@ const MessageListInner: React.FC<MessageListProps> = ({
     };
   }, [store]);
 
-  const scheduleProgrammaticScrollUnlock = useCallback((delayMs: number) => {
-    if (programmaticScrollUnlockTimerRef.current !== null) {
-      window.clearTimeout(programmaticScrollUnlockTimerRef.current);
-    }
-    programmaticScrollUnlockTimerRef.current = window.setTimeout(() => {
-      programmaticScrollLockRef.current = false;
-      programmaticScrollUnlockTimerRef.current = null;
-      // 兜底：锁窗口内没有等到"抵达底部"的滚动事件时，按最终位置校正状态
-      syncScrollStateRef.current();
-    }, delayMs);
-  }, []);
+  // 滚动到底部（"回到底部"按钮）：瞬时定位并收回滚动所有权。
+  // 与 deepseek/opencode 一致使用瞬时滚动：smooth 动画途中若内容继续增长，
+  // 落点会短缺且跟随状态难以结算；瞬时写入即记账，后续增长由 ResizeObserver 跟随
+  const scrollToBottom = useCallback(() => {
+    atBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setHasUnseenNewMessages(false);
+    followBottom();
+  }, [followBottom]);
 
-  // 滚动到底部
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-    if (!viewportElement) return;
-
-    const top = viewportElement.scrollHeight;
-
-    if (behavior === 'smooth') {
-      programmaticScrollLockRef.current = true;
-      // Chromium 平滑滚动动画最长约 500ms；锁窗口盖住全程，
-      // 抵达底部或用户上滚接管时由 syncScrollState 提前解锁
-      scheduleProgrammaticScrollUnlock(600);
-    }
-
-    if (typeof viewportElement.scrollTo === 'function') {
-      viewportElement.scrollTo({ top, behavior });
-    } else {
-      viewportElement.scrollTop = top;
-    }
-  }, [scheduleProgrammaticScrollUnlock, viewportElement]);
-
-  // 🚀 虚拟化就绪交接：从直渲兜底切到虚拟定位时，若用户未主动滚离底部则重新吸底
+  // 🚀 虚拟化就绪交接：从直渲兜底切到虚拟定位时，若仍在吸底则重新钉底
   useEffect(() => {
     if (!virtualizerReady || useDirectRender) return;
-    const rafId = requestAnimationFrame(() => {
-      if (!userHasScrolledRef.current) {
-        scrollToBottom();
-      }
-    });
+    const rafId = requestAnimationFrame(() => { followBottom(); });
     return () => cancelAnimationFrame(rafId);
-  }, [virtualizerReady, useDirectRender, scrollToBottom]);
-
-  // P0-4: 遮挡出现/增大时，吸底状态下保持末条消息贴底可见（不打断用户上滚阅读）
-  useEffect(() => {
-    if (inputOverlapPx === 0 || !viewportElement) return;
-    if (userHasScrolledRef.current) return;
-    const rafId = requestAnimationFrame(() => { scrollToBottom(); });
-    return () => cancelAnimationFrame(rafId);
-  }, [inputOverlapPx, viewportElement, scrollToBottom]);
+  }, [virtualizerReady, useDirectRender, followBottom]);
 
   /** 点击"回到底部"按钮 */
   const handleScrollToBottomClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.currentTarget.blur();
-    userHasScrolledRef.current = false;
-    setShowScrollToBottom(false);
-    setHasUnseenNewMessages(false);
-    scrollToBottom('smooth');
-    // 流式期间：重新启动吸底跟随循环（用户上滚时已退出）
-    resumeAutoScrollRef.current();
+    scrollToBottom();
   }, [scrollToBottom]);
 
-  const pauseAutoFollow = useCallback(() => {
-    if (!isAutoScrollingRef.current) return;
-    userHasScrolledRef.current = true;
-    setShowScrollToBottom(true);
-  }, []);
-
-  // 基于真实滚动位置同步吸底状态与按钮可见性
+  // ===== 账本分类器：scroll 事件里区分用户滚动与程序化写入 =====
+  // 偏离账本（|scrollTop - min(observedTop, floor)| > 0.5）才算用户滚动；
+  // 浏览器收缩 clamp 恰好落在 min(observedTop, floor) 上，天然免疫误判。
+  // 设备无关：滚轮/触控板/滚动条拖拽/键盘/触摸/辅助技术全覆盖。
   useEffect(() => {
-    if (!viewportElement) return;
+    const el = viewportElement;
+    if (!el) return;
 
-    let lastScrollTop = viewportElement.scrollTop;
-    let lastScrollHeight = viewportElement.scrollHeight;
-
-    const releaseLock = () => {
-      programmaticScrollLockRef.current = false;
-      if (programmaticScrollUnlockTimerRef.current !== null) {
-        window.clearTimeout(programmaticScrollUnlockTimerRef.current);
-        programmaticScrollUnlockTimerRef.current = null;
+    const onScroll = () => {
+      const floor = Math.max(0, el.scrollHeight - el.clientHeight);
+      const movedByReader =
+        Math.abs(el.scrollTop - Math.min(observedTopRef.current, floor)) > 0.5;
+      const isAtBottom = movedByReader
+        ? floor - el.scrollTop <= BOTTOM_THRESHOLD_PX
+        : atBottomRef.current;
+      if (!movedByReader && isAtBottom) {
+        // 账本内事件且贴底：异步内容增长可能落在两次记账之间，补钉到底
+        followBottom();
+        return;
       }
-    };
-
-    const syncScrollState = () => {
-      const prevScrollTop = lastScrollTop;
-      const prevScrollHeight = lastScrollHeight;
-      const { scrollTop, scrollHeight, clientHeight } = viewportElement;
-      lastScrollTop = scrollTop;
-      lastScrollHeight = scrollHeight;
-
-      const distanceToBottom = scrollHeight - scrollTop - clientHeight;
-      // 底部附近阈值 50px（主流聊天产品 同级灵敏度）
-      const nearBottom = distanceToBottom < 50;
-      // 流式期间 viewport 关闭了原生 overflow-anchor，上方内容收缩/重排（思维链
-      // 折叠、preparing 工具块被移除、markdown/KaTeX 重新布局）会让浏览器把
-      // scrollTop 向下 clamp。这种 clamp 不是用户操作，却会让 scrollTop 减小，
-      // 若据此判定"用户上滚"会错误地永久中断吸底跟随。因此当本次 scrollTop 的
-      // 减小量可由 scrollHeight 的收缩解释时（含少量重排抖动余量），排除误判。
-      const heightShrunk = prevScrollHeight - scrollHeight;
-      const scrollTopDrop = prevScrollTop - scrollTop;
-      const dropExplainedByShrink =
-        heightShrunk > 0 && scrollTopDrop <= heightShrunk + 4;
-      // 吸底循环/平滑回底只会增大 scrollTop，因此 scrollTop 减小通常是用户向上滚
-      // （滚动条拖拽/键盘/触摸等 wheel 之外的输入）。真正的 wheel/触控板上滚由
-      // useSmoothWheel 的 onUserScrollUp 第一时间捕获，这里只作兜底：
-      // distanceToBottom > 1 排除内容收缩时浏览器 clamp 落在底部的减小；
-      // !dropExplainedByShrink 进一步排除收缩量大于 1px 的 clamp。
-      const scrolledUp =
-        scrollTop < prevScrollTop - 1 &&
-        distanceToBottom > 1 &&
-        !dropExplainedByShrink;
-      const userScrolledUp = scrolledUp && userScrollInteractionRef.current;
-
-      if (programmaticScrollLockRef.current) {
-        if (userScrolledUp) {
-          // 锁窗口内用户上滚接管：立即解锁并暂停自动跟随
-          releaseLock();
-          userHasScrolledRef.current = true;
-          setShowScrollToBottom(true);
-          return;
-        }
-        if (!nearBottom) return; // 平滑滚动仍在途中，忽略中间位置
-        releaseLock(); // 已抵达底部：提前解锁并落地状态
-      }
-
-      // 吸底跟随期间程序化滚动会经过"距底 > 50px"的中间位置（大块内容 easing 追赶），
-      // 不能据此判定用户离开底部；跟随中只有向上滚动才代表用户接管。
-      // 再要求 !nearBottom：跟随中若 scrollTop 因重排被下拉但仍贴近底部（距底 < 50px），
-      // 视为抖动而非用户离开，避免收缩/clamp 抖动错误中断吸底。
-      const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;
-      const awayFromBottom = followingBottom ? (userScrolledUp && !nearBottom) : !nearBottom;
-      userHasScrolledRef.current = awayFromBottom;
-      setShowScrollToBottom(awayFromBottom);
+      atBottomRef.current = isAtBottom;
+      setShowScrollToBottom(!isAtBottom);
       // P1-8: 回到底部即视为"已读"，清除新消息圆点
-      if (!awayFromBottom) {
-        setHasUnseenNewMessages(false);
-      }
-      // 用户手动滚回底部：流式期间恢复吸底跟随循环（循环内部有防重入保护）
-      if (!awayFromBottom && isAutoScrollingRef.current) {
-        resumeAutoScrollRef.current();
-      }
+      if (isAtBottom) setHasUnseenNewMessages(false);
+      observedTopRef.current = el.scrollTop;
     };
 
-    syncScrollStateRef.current = syncScrollState;
-    resetScrollBaselineRef.current = () => {
-      lastScrollTop = viewportElement.scrollTop;
-      lastScrollHeight = viewportElement.scrollHeight;
-    };
-    syncScrollState();
-    viewportElement.addEventListener('scroll', syncScrollState, { passive: true });
-    const beginUserScrollInteraction = () => {
-      userScrollInteractionRef.current = true;
-    };
-    const endUserScrollInteraction = () => {
-      userScrollInteractionRef.current = false;
-    };
-    const handleScrollKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
-        pauseAutoFollow();
-      }
-    };
-    viewportElement.addEventListener('pointerdown', beginUserScrollInteraction, { passive: true });
-    window.addEventListener('pointerup', endUserScrollInteraction, { passive: true });
-    window.addEventListener('pointercancel', endUserScrollInteraction, { passive: true });
-    viewportElement.addEventListener('keydown', handleScrollKeyDown);
+    observedTopRef.current = el.scrollTop;
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [viewportElement, followBottom]);
 
-    return () => {
-      syncScrollStateRef.current = () => {};
-      resetScrollBaselineRef.current = () => {};
-      viewportElement.removeEventListener('scroll', syncScrollState);
-      viewportElement.removeEventListener('pointerdown', beginUserScrollInteraction);
-      window.removeEventListener('pointerup', endUserScrollInteraction);
-      window.removeEventListener('pointercancel', endUserScrollInteraction);
-      viewportElement.removeEventListener('keydown', handleScrollKeyDown);
-      userScrollInteractionRef.current = false;
-    };
-  }, [pauseAutoFollow, viewportElement]);
-
+  // 内容原地增长（流式 token / 图片加载 / 块展开 / 输入栏遮挡抬 padding）→ 贴底时同帧跟随。
+  // ResizeObserver 回调运行于布局后、绘制前，无可见跳动；不吸底时不写。
+  // 常驻（不限流式）：非流式期间底部内容增长同样保持贴底。
+  // log 节点随会话/模式切换 remount（key=listEpoch），用 state 跟踪保证重新观察。
+  const [logElement, setLogElement] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    return () => {
-      if (programmaticScrollUnlockTimerRef.current !== null) {
-        window.clearTimeout(programmaticScrollUnlockTimerRef.current);
-      }
-    };
-  }, []);
+    if (!logElement || typeof ResizeObserver !== 'function') return;
+    const resizeObserver = new ResizeObserver(() => { followBottom(); });
+    resizeObserver.observe(logElement);
+    return () => resizeObserver.disconnect();
+  }, [logElement, followBottom]);
 
-  // 🖱️ 平滑滚轮惯性 + 第一时间检测向上滚动意图（主流聊天产品 同级手感）
+  // 🖱️ 平滑滚轮惯性（纯手感层）：其写入不记账，自然被分类为用户滚动，
+  // 无需再向上滚回调与跟随判定耦合
   useSmoothWheel(containerRef.current, {
     // 直接提供已知 viewport，避免缓动循环每帧 querySelector
     getScrollElement: () => viewportElement,
-    onUserScrollUp: pauseAutoFollow,
   });
-
-  // 🚀 P1优化：流式生成时使用 rAF 自动滚动（替代 setInterval）
-  useEffect(() => {
-    if (!isStreaming || !viewportElement) {
-      isAutoScrollingRef.current = false;
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
-      return;
-    }
-
-    isAutoScrollingRef.current = true;
-
-    // ★ 低-15：贴底空转降频——连续 N 帧 distance<=0 后改用 setTimeout 低频轮询，
-    // 避免流式全程每帧强制 layout read（scrollHeight/scrollTop）
-    const IDLE_FRAMES_BEFORE_THROTTLE = 10;
-    const IDLE_POLL_MS = 120;
-    let idleFrames = 0;
-    let idleTimerId: number | null = null;
-
-    // 使用 rAF 循环，仅在流式时执行
-    // 大块内容（代码块/图片）出现时用 easing 平滑追赶，逐行文本用 instant 紧跟
-    const scrollLoop = () => {
-      // 本帧已被消费：先清空 id，让 resumeAutoScroll 的防重入判断保持准确
-      rafIdRef.current = null;
-      if (!isAutoScrollingRef.current) return;
-
-      // 用户已主动滚离底部 → 彻底退出循环（不再每帧空转）；
-      // 用户滚回底部 / 点击"回到底部"时由 resumeAutoScrollRef 重启
-      if (userHasScrolledRef.current) return;
-
-      const maxScroll = viewportElement.scrollHeight - viewportElement.clientHeight;
-      const currentBottom = viewportElement.scrollTop + viewportElement.clientHeight;
-      const distance = maxScroll + viewportElement.clientHeight - currentBottom;
-
-      if (distance <= 0) {
-        idleFrames += 1;
-        if (idleFrames >= IDLE_FRAMES_BEFORE_THROTTLE) {
-          // 已稳定贴底：降频轮询，等新内容把 distance 拉开后自动回到 rAF 节奏
-          idleTimerId = window.setTimeout(() => {
-            idleTimerId = null;
-            scrollLoop();
-          }, IDLE_POLL_MS);
-        } else {
-          rafIdRef.current = requestAnimationFrame(scrollLoop);
-        }
-        return;
-      }
-      idleFrames = 0;
-
-      // 大块内容（>200px，如代码块/图片）→ easing 追赶，避免视觉跳动
-      // 小块内容（逐行文本）→ instant 紧跟
-      if (distance > 200) {
-        const eased = currentBottom + distance * 0.35 - viewportElement.clientHeight;
-        viewportElement.scrollTop = Math.min(eased, maxScroll);
-      } else {
-        viewportElement.scrollTop = maxScroll;
-      }
-
-      rafIdRef.current = requestAnimationFrame(scrollLoop);
-    };
-
-    // 重启入口。内容增长时清掉贴底降频定时器，下一帧立即追上最新内容；
-    // 这也保证点击“回到底部”后会持续跟随，而不是只跳到点击瞬间的底部。
-    const startLoop = () => {
-      if (!isAutoScrollingRef.current || userHasScrolledRef.current) return;
-      if (idleTimerId !== null) {
-        window.clearTimeout(idleTimerId);
-        idleTimerId = null;
-      }
-      if (rafIdRef.current !== null) return;
-      idleFrames = 0;
-      rafIdRef.current = requestAnimationFrame(scrollLoop);
-    };
-    resumeAutoScrollRef.current = startLoop;
-
-    const streamedContent = viewportElement.querySelector<HTMLElement>('[role="log"]');
-    const resizeObserver = typeof ResizeObserver === 'function' && streamedContent
-      ? new ResizeObserver(startLoop)
-      : null;
-    if (resizeObserver && streamedContent) {
-      resizeObserver.observe(streamedContent);
-    }
-
-    startLoop();
-
-    return () => {
-      isAutoScrollingRef.current = false;
-      resumeAutoScrollRef.current = () => {};
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
-      if (idleTimerId !== null) {
-        window.clearTimeout(idleTimerId);
-        idleTimerId = null;
-      }
-      resizeObserver?.disconnect();
-    };
-  }, [isStreaming, viewportElement]);
-
-  // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
-  const prevIsStreamingRef = useRef(isStreaming);
-
-  // 新消息定位：用户发送新消息时，以该消息在顶部开始（主流聊天产品 同级体验）
-  // 流式开始后由 rAF 循环接管滚动；非流式新增消息仍 scrollToBottom
-  useEffect(() => {
-    const wasStreaming = prevIsStreamingRef.current;
-    prevIsStreamingRef.current = isStreaming;
-
-    // 流式刚开始 → 用户刚发了新消息，定位用户消息到顶部
-    // 流式开始后由 rAF 循环接管，默认跟随 AI 输出滚动到底部
-    // 用户向上滚动时 rAF 检测到 userHasScrolledRef 后暂停跟随，让用户接管
-    if (isStreaming && !wasStreaming) {
-      userHasScrolledRef.current = false;
-      setShowScrollToBottom(false);
-      const rafId = requestAnimationFrame(() => {
-        if (!viewportElement) return;
-        // 程序化滚动锁：防止 scrollIntoView 触发的原生 scroll 事件
-        // 被 syncScrollState 误判为"用户滚动"，从而错误地阻断 rAF 自动跟随
-        programmaticScrollLockRef.current = true;
-        scheduleProgrammaticScrollUnlock(300);
-        // 定位可能向上跳（超长用户消息对齐到视口顶部时），完成后立即重置
-        // 方向检测基准，避免这次程序化跳变被当成"用户向上滚"
-        if (useDirectRender) {
-          // viewportElement.lastElementChild 是 div[role="log"] 包装元素
-          // 其内部 children 按 messageOrder 排列，末尾两条是 [用户消息, 助手占位]
-          // 需要定位到倒数第二条（用户消息）使其在视口顶部
-          const logDiv = viewportElement.lastElementChild as HTMLElement | null;
-          const messageItems = logDiv?.children;
-          if (messageItems && messageItems.length >= 2) {
-            const userMessageEl = messageItems[messageItems.length - 2] as HTMLElement;
-            // Do not use scrollIntoView here: it may scroll every ancestor, including
-            // the OS/workbench window host. Keep the scroll confined to the message viewport.
-            const viewportRect = viewportElement.getBoundingClientRect();
-            const messageRect = userMessageEl.getBoundingClientRect();
-            const target = viewportElement.scrollTop + messageRect.top - viewportRect.top;
-            viewportElement.scrollTop = Math.max(
-              0,
-              Math.min(target, viewportElement.scrollHeight - viewportElement.clientHeight),
-            );
-            resetScrollBaselineRef.current();
-            return;
-          }
-        }
-        // 虚拟模式下用 scrollToIndex 定位用户消息（倒数第二条）
-        if (messageOrder.length >= 2) {
-          virtualizer.scrollToIndex(messageOrder.length - 2, { align: 'start', behavior: 'auto' });
-          resetScrollBaselineRef.current();
-          return;
-        }
-        scrollToBottom();
-        resetScrollBaselineRef.current();
-      });
-      return () => cancelAnimationFrame(rafId);
-    }
-
-    // 流式结束 → 确保停在底部
-    if (!isStreaming && wasStreaming) {
-      if (!userHasScrolledRef.current) {
-        const rafId = requestAnimationFrame(() => { scrollToBottom(); });
-        return () => cancelAnimationFrame(rafId);
-      }
-    }
-    // 依赖补全（B10）：闭包引用 useDirectRender / messageOrder.length / virtualizer /
-    // scheduleProgrammaticScrollUnlock；仅 isStreaming 边沿触发定位（wasStreaming ref 守卫），
-    // 其余依赖变化重跑 effect 是安全的 no-op
-  }, [isStreaming, viewportElement, scrollToBottom, useDirectRender, messageOrder.length, virtualizer, scheduleProgrammaticScrollUnlock]);
-
-  // 非流式期间新消息到达时滚动到底部（如加载历史记录）
-  useEffect(() => {
-    const appended = messageOrder.length > prevMessageCountRef.current;
-    prevMessageCountRef.current = messageOrder.length;
-    if (historyInsertionRef.current) {
-      historyInsertionRef.current = false;
-      return;
-    }
-    if (!appended) return;
-    // P1-8: 用户滚离底部期间尾部有新消息追加 → 回到底部按钮显示未读圆点
-    if (userHasScrolledRef.current) {
-      setHasUnseenNewMessages(true);
-      return;
-    }
-    if (isStreaming) return;
-    const rafId = requestAnimationFrame(() => { scrollToBottom(); });
-    return () => cancelAnimationFrame(rafId);
-  }, [messageOrder.length, isStreaming, scrollToBottom]);
 
   // ==========================================================================
   // A45-5（docs/dev/acr/ACR-4.5.md）：agent 程序化滚动到指定消息
@@ -1080,9 +842,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
       const viewport = agentScrollStateRef.current.viewportElement;
       if (!viewport) return { status: 'view_not_ready' };
 
-      // 程序化定位视为用户接管滚动：流式吸底 rAF 循环立即停跟随，
-      // 避免刚定位到历史消息又被自动拉回底部
-      userHasScrolledRef.current = true;
+      // 程序化定位视为用户接管滚动：立即释放吸底所有权，
+      // 避免刚定位到历史消息又被自动拉回底部。
+      // 定位写入不记账，其 scroll 事件会被账本分类为读者移动，状态随事件结算
+      atBottomRef.current = false;
 
       // 直渲模式且尾部窗口未补齐：目标可能在窗口之外，先展开再等挂载
       if (
@@ -1150,9 +913,6 @@ const MessageListInner: React.FC<MessageListProps> = ({
               );
             }
           }
-          resetScrollBaselineRef.current();
-          // 按最终位置校正吸底状态与「回到底部」按钮可见性
-          syncScrollStateRef.current();
           return { status: 'scrolled', element: el };
         }
         await nextFrame();
@@ -1342,6 +1102,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
         // P0-4: 底部安全区随输入栏遮挡（键盘 inset 等）动态抬高
         <div
           key={`direct-${listEpochRef.current}`}
+          ref={setLogElement}
           role="log"
           aria-live="polite"
           aria-relevant="additions"
@@ -1414,6 +1175,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
         // 新消息通知统一由顶部 sr-only status 区域承担
         <div
           key={`virtual-${listEpochRef.current}`}
+          ref={setLogElement}
           role="log"
           aria-live="off"
           style={{

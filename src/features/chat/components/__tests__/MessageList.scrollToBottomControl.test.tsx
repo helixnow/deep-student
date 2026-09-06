@@ -154,6 +154,7 @@ function configureViewportMetrics(
 ) {
   let currentScrollTop = scrollTop;
   let currentScrollHeight = scrollHeight;
+  const floor = () => Math.max(0, currentScrollHeight - clientHeight);
 
   Object.defineProperty(viewport, 'scrollHeight', {
     configurable: true,
@@ -167,12 +168,13 @@ function configureViewportMetrics(
     configurable: true,
     get: () => currentScrollTop,
     set: (value: number) => {
-      currentScrollTop = value;
+      // 浏览器行为：程序化写入 clamp 到 [0, floor]
+      currentScrollTop = Math.max(0, Math.min(value, floor()));
     },
   });
 
   const scrollTo = vi.fn(({ top }: { top: number }) => {
-    currentScrollTop = Math.max(0, Math.min(top, currentScrollHeight - clientHeight));
+    currentScrollTop = Math.max(0, Math.min(top, floor()));
     fireEvent.scroll(viewport);
   });
 
@@ -191,6 +193,11 @@ function configureViewportMetrics(
       currentScrollHeight = value;
     },
   };
+}
+
+/** 触发所有已注册的 ResizeObserver（模拟 [role="log"] 内容增长/收缩） */
+function fireResizeObservers() {
+  resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
 }
 
 describe('MessageList scroll-to-bottom control', () => {
@@ -245,7 +252,7 @@ describe('MessageList scroll-to-bottom control', () => {
     expect(animatedContainer).toHaveAttribute('aria-hidden', 'false');
   });
 
-  it('smooth-scrolls to the latest message and fades the control into its closed state after click', async () => {
+  it('jumps instantly to the latest message and fades the control into its closed state after click', async () => {
     renderMessageList();
 
     const viewport = requireViewport();
@@ -258,7 +265,9 @@ describe('MessageList scroll-to-bottom control', () => {
 
     fireEvent.click(button);
 
-    expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+    // 瞬时定位（deepseek/opencode 同款）：不走 scrollTo({behavior:'smooth'})，
+    // 直接写 scrollTop（浏览器 clamp 到 floor = 1000-400 = 600）
+    expect(scrollTo).not.toHaveBeenCalled();
     expect(getScrollTop()).toBe(600);
     expect(animatedContainer).toHaveAttribute('data-open', 'false');
     expect(animatedContainer).toHaveAttribute('aria-hidden', 'true');
@@ -268,23 +277,7 @@ describe('MessageList scroll-to-bottom control', () => {
     });
   });
 
-  it('keeps following streamed growth after the user clicks back to bottom', async () => {
-    const frameCallbacks = new Map<number, FrameRequestCallback>();
-    let nextFrameId = 1;
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      const id = nextFrameId++;
-      frameCallbacks.set(id, callback);
-      return id;
-    });
-    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
-      frameCallbacks.delete(id);
-    });
-    const flushFrame = () => {
-      const callbacks = [...frameCallbacks.values()];
-      frameCallbacks.clear();
-      callbacks.forEach((callback) => callback(0));
-    };
-
+  it('keeps following streamed growth, breaks on any reader scroll, and resumes after click back to bottom', async () => {
     mockSessionStatus = 'streaming';
     renderMessageList();
     const viewport = requireViewport();
@@ -294,38 +287,94 @@ describe('MessageList scroll-to-bottom control', () => {
       scrollTop: 600,
     });
 
-    flushFrame();
+    // 内容增长：ResizeObserver 同帧跟随（无 rAF 循环）
     metrics.setScrollHeight(1120);
-    resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
-    flushFrame();
+    fireResizeObservers();
     expect(metrics.getScrollTop()).toBe(720);
 
-    // 明确的指针滚动才会暂停跟随；单纯内容重排产生的 scroll 事件不会。
-    fireEvent.scroll(viewport);
-    fireEvent.pointerDown(viewport);
+    // 读者滚动（滚动条拖拽/触控板/键盘——任何设备）：仅 scroll 事件偏离账本即解除跟随，
+    // 不再需要 pointerdown 等意图监听（修复流式期间拖滚动条被拽回的问题）
     metrics.setScrollTop(400);
     fireEvent.scroll(viewport);
-    fireEvent.pointerUp(window);
+    await screen.findByRole('button', { name: 'Scroll to bottom' });
 
-    const button = await screen.findByRole('button', { name: 'Scroll to bottom' });
+    // 跟随已解除：内容继续增长不再拽回
+    metrics.setScrollHeight(1220);
+    fireResizeObservers();
+    expect(metrics.getScrollTop()).toBe(400);
+
+    // 回到底部：瞬时定位并恢复跟随
+    const button = screen.getByRole('button', { name: 'Scroll to bottom' });
     fireEvent.click(button);
+    expect(metrics.getScrollTop()).toBe(820);
+
+    metrics.setScrollHeight(1320);
+    fireResizeObservers();
+    expect(metrics.getScrollTop()).toBe(920);
+  });
+
+  it('does not break follow when browser clamps scrollTop after content shrink', async () => {
+    mockSessionStatus = 'streaming';
+    renderMessageList();
+    const viewport = requireViewport();
+    const metrics = configureViewportMetrics(viewport, {
+      scrollHeight: 1000,
+      clientHeight: 400,
+      scrollTop: 600,
+    });
+
+    metrics.setScrollHeight(1120);
+    fireResizeObservers();
     expect(metrics.getScrollTop()).toBe(720);
 
-    metrics.setScrollHeight(1220);
-    resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
-    flushFrame();
-    expect(metrics.getScrollTop()).toBe(820);
+    // 上方内容收缩（思维链折叠）：浏览器把 scrollTop clamp 到新 floor（720 → 500）。
+    // clamp 恰好落在 min(observedTop, floor) 上 → 不算读者滚动 → 跟随保持
+    metrics.setScrollHeight(900);
+    metrics.setScrollTop(500);
+    fireEvent.scroll(viewport);
+
+    metrics.setScrollHeight(1000);
+    fireResizeObservers();
+    expect(metrics.getScrollTop()).toBe(600);
+  });
+
+  it('still breaks follow when a real reader scroll rides along with a shrink clamp', async () => {
+    mockSessionStatus = 'streaming';
+    renderMessageList();
+    const viewport = requireViewport();
+    const metrics = configureViewportMetrics(viewport, {
+      scrollHeight: 1000,
+      clientHeight: 400,
+      scrollTop: 600,
+    });
+
+    metrics.setScrollHeight(1120);
+    fireResizeObservers();
+    expect(metrics.getScrollTop()).toBe(720);
+
+    // 收缩 clamp（720→500）叠加真实上滚（500→400）：
+    // 偏离账本 100px > 0.5 → 读者移动 → 解除跟随（旧 shrink 启发式会误吞这次上滚）
+    metrics.setScrollHeight(900);
+    metrics.setScrollTop(400);
+    fireEvent.scroll(viewport);
+    await screen.findByRole('button', { name: 'Scroll to bottom' });
+
+    metrics.setScrollHeight(1000);
+    fireResizeObservers();
+    expect(metrics.getScrollTop()).toBe(400);
   });
 
   it('preserves the visible anchor offset when history is inserted at the head', () => {
-    mockMessageOrder = ['a', 'b', 'c', 'd'];
+    mockMessageOrder = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     const { rerender, store } = renderMessageList();
     const viewport = requireViewport();
     const { getScrollTop } = configureViewportMetrics(viewport, {
-      scrollHeight: 400,
+      scrollHeight: 800,
       clientHeight: 300,
-      scrollTop: 150,
+      scrollTop: 200,
     });
+    // 产生该滚动位置的读者滚动事件，让账本分类器结算为"阅读中"（非吸底）
+    fireEvent.scroll(viewport);
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
       if (this === viewport) {
         return { top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON() {} } as DOMRect;
@@ -338,21 +387,23 @@ describe('MessageList scroll-to-bottom control', () => {
       return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} } as DOMRect;
     });
 
-    mockMessageOrder = ['old', 'a', 'b', 'c', 'd'];
+    mockMessageOrder = ['old', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     rerender(<MessageList store={store} className="history-updated" />);
 
-    expect(getScrollTop()).toBe(250);
+    // 锚点 'c'（首个可见行）下移 100px → 补偿 scrollTop 200 → 300，且不触发吸底跟随
+    expect(getScrollTop()).toBe(300);
   });
 
   it('preserves the visible anchor offset for a middle insertion above the viewport', () => {
-    mockMessageOrder = ['a', 'b', 'c', 'd', 'e'];
+    mockMessageOrder = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     const { rerender, store } = renderMessageList();
     const viewport = requireViewport();
     const { getScrollTop } = configureViewportMetrics(viewport, {
-      scrollHeight: 500,
+      scrollHeight: 800,
       clientHeight: 300,
-      scrollTop: 250,
+      scrollTop: 200,
     });
+    fireEvent.scroll(viewport);
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
       if (this === viewport) {
         return { top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON() {} } as DOMRect;
@@ -365,10 +416,31 @@ describe('MessageList scroll-to-bottom control', () => {
       return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} } as DOMRect;
     });
 
-    mockMessageOrder = ['a', 'b', 'middle-history', 'c', 'd', 'e'];
+    mockMessageOrder = ['a', 'b', 'middle-history', 'c', 'd', 'e', 'f', 'g', 'h'];
     rerender(<MessageList store={store} className="history-updated" />);
 
-    expect(getScrollTop()).toBe(350);
+    expect(getScrollTop()).toBe(300);
+  });
+
+  it('gates entry animation: history insertion does not animate the existing tail, append does', () => {
+    mockMessageOrder = ['a', 'b', 'c', 'd'];
+    const { rerender, store, container } = renderMessageList();
+
+    // 初始挂载：无入场动画
+    expect(container.querySelectorAll('.chat-msg-enter')).toHaveLength(0);
+
+    // 头部历史插入：既有消息（含末条）不得播放入场动画——
+    // initialMessageCount 必须在 render 阶段同步累加（由 previousOrder !==
+    // messageOrder + prevMessageOrderRef 写回保证 StrictMode 下恰好一次），
+    // 否则本次 render 读到旧计数，末条消息会被误判为新增而播放动画
+    mockMessageOrder = ['old', 'a', 'b', 'c', 'd'];
+    rerender(<MessageList store={store} className="history-updated" />);
+    expect(container.querySelectorAll('.chat-msg-enter')).toHaveLength(0);
+
+    // 尾部追加：仅新消息播放入场动画
+    mockMessageOrder = ['old', 'a', 'b', 'c', 'd', 'e'];
+    rerender(<MessageList store={store} className="appended" />);
+    expect(container.querySelectorAll('.chat-msg-enter')).toHaveLength(1);
   });
 
   it('keys virtualized measurements by message ID across head insertion', () => {

@@ -42,37 +42,84 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).not.toContain("'hover:border-[color:var(--button-utility-border)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)]'");
   });
 
-  it('shows the control based on scroll position rather than streaming state alone', () => {
-    expect(source).toContain("viewportElement.addEventListener('scroll', syncScrollState");
-    // scrolledUp 现在额外排除内容收缩/clamp 造成的 scrollTop 下降（!dropExplainedByShrink），
-    // 避免流式重排把 clamp 误判为用户上滚而中断吸底
-    expect(source).toContain('scrollTop < prevScrollTop - 1');
-    expect(source).toContain('!dropExplainedByShrink');
-    expect(source).toContain('const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;');
-    expect(source).toContain('const userScrolledUp = scrolledUp && userScrollInteractionRef.current;');
-    expect(source).toContain('const awayFromBottom = followingBottom ? (userScrolledUp && !nearBottom) : !nearBottom;');
-    expect(source).toContain('userHasScrolledRef.current = awayFromBottom;');
-    expect(source).toContain('setShowScrollToBottom(awayFromBottom);');
+  it('classifies reader scrolls via the observedTop ledger (device-agnostic)', () => {
+    // 账本法（deepseek-harness ChatView 同款）：所有程序化写入经 writeScroll 记账，
+    // scroll 事件里偏离 min(observedTop, floor) 才算读者滚动——
+    // 滚轮/触控板/滚动条拖拽/键盘/触摸全覆盖，浏览器收缩 clamp 天然免疫
+    expect(source).toContain('const observedTopRef = useRef(0);');
+    expect(source).toContain('const atBottomRef = useRef(true);');
+    expect(source).toContain('const writeScroll = useCallback((top: number) => {');
+    expect(source).toContain('observedTopRef.current = el.scrollTop;');
+    expect(source).toContain('Math.abs(el.scrollTop - Math.min(observedTopRef.current, floor)) > 0.5');
+    expect(source).toContain('floor - el.scrollTop <= BOTTOM_THRESHOLD_PX');
+    expect(source).toContain("el.addEventListener('scroll', onScroll, { passive: true })");
+    expect(source).toContain('setShowScrollToBottom(!isAtBottom);');
+    expect(source).toContain('atBottomRef.current = isAtBottom;');
+    // 按钮可见性由位置决定，而非流式状态
     expect(source).toContain("data-open={showScrollToBottom ? 'true' : 'false'}");
     expect(source).not.toContain('{showScrollToBottom && isStreaming && (');
   });
 
-  it('wakes sticky bottom-follow immediately when streamed content grows', () => {
-    expect(source).toContain("viewportElement.querySelector<HTMLElement>('[role=\"log\"]')");
-    expect(source).toContain('new ResizeObserver(startLoop)');
-    expect(source).toContain('window.clearTimeout(idleTimerId);');
-    expect(source).toContain('resizeObserver?.disconnect();');
+  it('eliminates device-specific intent listeners, scroll locks and shrink heuristics', () => {
+    expect(source).not.toContain('userScrollInteractionRef');
+    expect(source).not.toContain('dropExplainedByShrink');
+    expect(source).not.toContain('programmaticScrollLockRef');
+    expect(source).not.toContain('programmaticScrollUnlockTimerRef');
+    expect(source).not.toContain('resumeAutoScrollRef');
+    expect(source).not.toContain('isAutoScrollingRef');
+    expect(source).not.toContain('syncScrollStateRef');
+    expect(source).not.toContain('resetScrollBaselineRef');
+    expect(source).not.toContain('onUserScrollUp');
+    expect(source).not.toContain("viewportElement.addEventListener('pointerdown'");
+    expect(source).not.toContain("viewportElement.addEventListener('keydown'");
+  });
+
+  it('follows bottom via layout effect + ResizeObserver instead of a rAF polling loop', () => {
+    expect(source).toContain('const followBottom = useCallback(() => {');
+    expect(source).toContain('if (!el || !atBottomRef.current) return;');
+    expect(source).toContain('writeScroll(el.scrollHeight);');
+    // 常驻 RO 跟随（不限流式），log 节点随 listEpoch remount 时用 state 重新观察
+    expect(source).toContain('new ResizeObserver(() => { followBottom(); })');
+    expect(source).toContain('const [logElement, setLogElement] = useState<HTMLElement | null>(null);');
+    expect(source).toContain('ref={setLogElement}');
+    // 不再有 rAF 吸底循环 / 降频轮询 / 缓动追赶
+    expect(source).not.toContain('scrollLoop');
+    expect(source).not.toContain('IDLE_POLL_MS');
+    expect(source).not.toContain('distance * 0.35');
+  });
+
+  it('transfers scroll ownership to bottom-follow when streaming starts', () => {
+    // 发送即回底：统一布局效应里做所有权转移，替代旧的"用户消息对齐顶部"定位
+    //（旧实现因助手占位无 min-height 且 rAF 循环立即接管，已退化为 toBottom）
+    expect(source).toContain('if (isStreaming && !wasStreaming) {');
+    expect(source).toContain('atBottomRef.current = true;');
+    expect(source).not.toContain('userMessageEl');
+    expect(source).not.toContain('scrollToIndex(messageOrder.length - 2');
+  });
+
+  it('settles history-insertion compensation in the layout effect (ledger-recorded)', () => {
+    // 插入检测与 initialMessageCount 累加在 render 阶段（由 previousOrder !==
+    // messageOrder + prevMessageOrderRef 写回保护，StrictMode 重放恰好执行一次）——
+    // 累加必须在 render：isNewlyAppended 入场动画门槛在 render 中消费该计数；
+    // 补偿写入统一在提交后的布局效应结算，且走 writeScroll 记账
+    expect(source).toContain('lastInsertedCountRef.current = insertedBeforeExisting;');
+    expect(source).toContain('initialMessageCountRef.current += insertedBeforeExisting;');
+    expect(source).toContain('const insertedCount = lastInsertedCountRef.current;');
+    expect(source).toContain('writeScroll(pending.scrollTop + delta);');
+    expect(source).not.toContain('initialMessageCountRef.current += insertedCount;');
+    expect(source).not.toContain('historyInsertionRef');
+  });
+
+  it('gates virtualizer size-change adjustments while following', () => {
+    // virtual-core 的实例属性（非构造选项）：跟随时禁止补偿写入（会被账本误判为
+    // 读者滚离），阅读时保持 core 默认（仅补偿视口上方的行）
+    expect(source).toContain('virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {');
+    expect(source).toContain('if (atBottomRef.current) return false;');
+    expect(source).toContain("instance.scrollDirection !== 'backward'");
   });
 
   it('uses transitions-dev panel reveal semantics for fade-out', () => {
     expect(source).toContain('className="t-panel-slide ml-auto w-fit"');
     expect(source).toContain('aria-hidden={!showScrollToBottom}');
-  });
-
-  it('confines sent-message positioning to the message viewport', () => {
-    expect(source).toContain('const viewportRect = viewportElement.getBoundingClientRect();');
-    expect(source).toContain('const messageRect = userMessageEl.getBoundingClientRect();');
-    expect(source).toContain('viewportElement.scrollTop = Math.max(');
-    expect(source).not.toContain('userMessageEl.scrollIntoView(');
   });
 });
