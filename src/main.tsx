@@ -400,8 +400,8 @@ const getStartupRecoveryStatusWithTimeout = async () => {
       getStartupRecoveryStatus(),
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
-          () => reject(new Error('Startup recovery preflight timed out after 15 seconds')),
-          15_000,
+          () => reject(new Error('Startup recovery preflight timed out after 120 seconds')),
+          120_000,
         );
       }),
     ]);
