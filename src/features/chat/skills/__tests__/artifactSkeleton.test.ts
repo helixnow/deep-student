@@ -185,13 +185,19 @@ describe('validateIntentAgainstSkeleton', () => {
   it('layoutLock：顺序不符 → 报错', () => {
     const result = validateIntentAgainstSkeleton(intent(['progress', 'stat-card']), artifact(true));
     expect(result.valid).toBe(false);
-    expect(result.errors[0]).toContain('第 1 块');
+    expect(result.errors[0]).toEqual({
+      code: 'block_mismatch',
+      params: { index: 1, expected: 'stat-card', actual: 'progress' },
+    });
   });
 
   it('layoutLock：块数不符 → 报错', () => {
     const result = validateIntentAgainstSkeleton(intent(['stat-card']), artifact(true));
     expect(result.valid).toBe(false);
-    expect(result.errors[0]).toContain('2 个块');
+    expect(result.errors[0]).toEqual({
+      code: 'count_mismatch',
+      params: { expected: 2, actual: 1 },
+    });
   });
 
   it('非 layoutLock：骨架块全部出现即可（可补充）', () => {
@@ -205,7 +211,7 @@ describe('validateIntentAgainstSkeleton', () => {
   it('非 layoutLock：缺骨架块 → 报错', () => {
     const result = validateIntentAgainstSkeleton(intent(['stat-card']), artifact(false));
     expect(result.valid).toBe(false);
-    expect(result.errors[0]).toContain('progress');
+    expect(result.errors[0]).toEqual({ code: 'missing_type', params: { type: 'progress' } });
   });
 
   it('骨架无 blocks → 恒通过', () => {

@@ -81,8 +81,13 @@ export function validateArtifactSkeletonTypes(
 
 export interface IntentSkeletonValidation {
   valid: boolean;
-  /** 校验失败原因（layoutLock 语义） */
-  errors: string[];
+  /** 校验失败原因（机器可读 code + 参数，由调用方映射 i18n 文案） */
+  errors: SkeletonValidationError[];
+}
+
+export interface SkeletonValidationError {
+  code: 'count_mismatch' | 'block_mismatch' | 'missing_type';
+  params: Record<string, string | number>;
 }
 
 function skeletonBlockTypes(skeleton: Record<string, unknown>): string[] {
@@ -115,15 +120,18 @@ export function validateIntentAgainstSkeleton(
   if (expected.length === 0) return { valid: true, errors: [] };
 
   const actual = intentBlockTypes(intent);
-  const errors: string[] = [];
+  const errors: SkeletonValidationError[] = [];
 
   if (artifact.layoutLock === true) {
     if (actual.length !== expected.length) {
-      errors.push(`layoutLock 要求 ${expected.length} 个块，实际 ${actual.length} 个`);
+      errors.push({ code: 'count_mismatch', params: { expected: expected.length, actual: actual.length } });
     } else {
       for (let i = 0; i < expected.length; i++) {
         if (actual[i] !== expected[i]) {
-          errors.push(`第 ${i + 1} 块应为 ${expected[i]}，实际为 ${actual[i] ?? '(缺失)'}`);
+          errors.push({
+            code: 'block_mismatch',
+            params: { index: i + 1, expected: expected[i], actual: actual[i] ?? '' },
+          });
         }
       }
     }
@@ -131,7 +139,7 @@ export function validateIntentAgainstSkeleton(
     const actualSet = new Set(actual);
     for (const type of expected) {
       if (!actualSet.has(type)) {
-        errors.push(`缺少骨架声明的块类型 ${type}`);
+        errors.push({ code: 'missing_type', params: { type } });
       }
     }
   }
