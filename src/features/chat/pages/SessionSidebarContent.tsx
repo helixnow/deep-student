@@ -46,6 +46,7 @@ import {
 } from '@/components/layout/mobileDrawerStyles';
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
+import { SidebarFilterMenu } from '../components/SidebarFilterMenu';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
@@ -707,45 +708,52 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   };
 
   // 侧栏内联搜索框（接通 ChatV2Page 的 searchQuery 过滤链路，替代原先被 void 的死状态）
+  // 右侧过滤菜单：子代理会话显隐等过滤选项（后续可扩展排序策略）
   const renderSearchInput = () => (
-    <div className="relative px-3">
-      <MagnifyingGlass
-        size={18}
-        className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
-        aria-hidden="true"
-      />
-      <Input
-        type="search"
-        value={searchQuery}
-        onChange={(event) => handleSearchChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && searchQuery) {
-            event.stopPropagation();
-            handleSearchChange('');
-          }
-        }}
-        placeholder={t('page.searchPlaceholder')}
-        aria-label={t('page.searchPlaceholder')}
-        className={cn(
-          'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
-          // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
-          '[@media(pointer:coarse)]:text-[16px]',
-          'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
-          'transition-colors duration-150 focus:border-primary/40 focus:bg-background'
+    <div className="flex items-center gap-1 px-3">
+      <div className="relative min-w-0 flex-1">
+        <MagnifyingGlass
+          size={18}
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
+          aria-hidden="true"
+        />
+        <Input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => handleSearchChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && searchQuery) {
+              event.stopPropagation();
+              handleSearchChange('');
+            }
+          }}
+          placeholder={t('page.searchPlaceholder')}
+          aria-label={t('page.searchPlaceholder')}
+          className={cn(
+            'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
+            // 📱 coarse 指针下 16px 防 iOS 聚焦自动放大
+            '[@media(pointer:coarse)]:text-[16px]',
+            'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
+            'transition-colors duration-150 focus:border-primary/40 focus:bg-background'
+          )}
+        />
+        {searchQuery && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="absolute right-2 top-1/2 !h-8 !w-8 -translate-y-1/2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
+            aria-label={t('page.clearSearch')}
+            onClick={() => handleSearchChange('')}
+          >
+            <X size={12} />
+          </DsButton>
         )}
+      </div>
+      <SidebarFilterMenu
+        t={t}
+        triggerClassName="!h-9 !w-9 shrink-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
       />
-      {searchQuery && (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
-          aria-label={t('page.clearSearch')}
-          onClick={() => handleSearchChange('')}
-        >
-          <X size={12} />
-        </DsButton>
-      )}
     </div>
   );
 

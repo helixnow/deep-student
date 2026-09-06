@@ -1209,6 +1209,8 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "searchPlaceholder": "Search sessions...",
+    "sidebarFilter": "Filter sessions",
+    "showSubagentSessions": "Show subagent sessions",
     "switchingSession": "Switching session...",
     "deleteSessionFailed": "Failed to delete session",
     "createSessionFailed": "Failed to create session. Please try again.",
