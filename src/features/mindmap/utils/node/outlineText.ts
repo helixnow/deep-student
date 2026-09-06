@@ -41,17 +41,19 @@ function visit(node: MindMapNode, depth: number, opts: Required<OutlineSerialize
     return;
   }
 
-  state.visited += 1;
   const indent = '  '.repeat(depth - 1);
   const note = opts.maxNoteChars > 0 && node.note
     ? `（备注：${node.note.length > opts.maxNoteChars ? `${node.note.slice(0, opts.maxNoteChars)}…` : node.note}）`
     : '';
   const line = `${indent}- ${node.text}${note}`;
 
+  // 字符超限：本节点不产出行，visited 不计数（保持 visited == 已输出行数，
+  // 截断后缀的"尚有 N 个节点"才准确）
   if (state.totalChars + line.length > opts.maxChars) {
     state.truncated = true;
     return;
   }
+  state.visited += 1;
   state.lines.push(line);
   state.totalChars += line.length;
 
@@ -63,7 +65,8 @@ function visit(node: MindMapNode, depth: number, opts: Required<OutlineSerialize
 
 /**
  * 序列化若干节点（各自带子树）为大纲文本。
- * 发生截断时末尾追加 `…（已截断）` 标记。
+ * 发生截断时末尾追加 `…（已截断，尚有 N 个节点）` 标记（设计文档风险 1：
+ * 截断需带计数，让模型/用户知晓子树规模）。
  */
 export function serializeNodesToOutlineText(
   nodes: MindMapNode[],
@@ -78,5 +81,21 @@ export function serializeNodesToOutlineText(
   }
 
   const body = state.lines.join('\n');
-  return state.truncated ? `${body}\n- …（已截断）` : body;
+  if (!state.truncated) return body;
+  const remaining = countNodes(nodes) - state.visited;
+  return remaining > 0
+    ? `${body}\n- …（已截断，尚有 ${remaining} 个节点）`
+    : `${body}\n- …（已截断）`;
+}
+
+/** 统计子树节点总数（含各根节点本身） */
+function countNodes(nodes: MindMapNode[]): number {
+  let count = 0;
+  const stack = [...nodes];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    count += 1;
+    if (node.children) stack.push(...node.children);
+  }
+  return count;
 }

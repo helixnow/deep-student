@@ -169,7 +169,39 @@ export const WorkbenchEventBridge: React.FC = () => {
           const resource = await invoke<{
             sourceId?: string;
             metadata?: { title?: string; name?: string };
+            data?: unknown;
           } | null>('vfs_get_resource', { resourceId });
+
+          // P0 选区即上下文：selection 快照资源没有 sourceId，回链目标在
+          // data.source（kind/sourceId/locator/title）。ChatV2Page 也监听同一事件
+          // （经典壳路由 + message 滚动定位），本桥负责 workbench 壳开窗：
+          // - message：交给 ChatV2Page scrollToMessage，本桥无动作（且不报错）
+          // - pdf：launch 对应资源窗 + pdf-ref:focus 三连发跳页
+          // - mindmap/note：launch 对应资源窗（与 CHAT_OPEN_ATTACHMENT_PREVIEW
+          //   同 instanceKey，重复 launch 退化为聚焦，无害）
+          if (typeId === 'selection') {
+            let parsed: { source?: { kind?: string; sourceId?: string; locator?: string; title?: string } } | null = null;
+            try {
+              const raw = resource?.data;
+              parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as typeof parsed;
+            } catch {
+              parsed = null;
+            }
+            const source = parsed?.source;
+            if (!source?.kind || source.kind === 'message') return;
+            if (!source.sourceId) return;
+            if (source.kind === 'pdf') {
+              launchResourceWindow(source.sourceId, undefined, source.title);
+              const pageMatch = /^page:(\d+)$/.exec(source.locator ?? '');
+              if (pageMatch) dispatchPdfFocus(source.sourceId, Number(pageMatch[1]));
+              return;
+            }
+            if (source.kind === 'mindmap' || source.kind === 'note') {
+              launchResourceWindow(source.sourceId, undefined, source.title);
+            }
+            return;
+          }
+
           const sourceId = resource?.sourceId;
           if (!sourceId) {
             console.warn('[workbench] context-ref:preview resource has no sourceId:', resourceId);

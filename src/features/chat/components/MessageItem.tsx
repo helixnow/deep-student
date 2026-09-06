@@ -1505,6 +1505,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onAddAsContext={isReadOnlySession ? undefined : handleSelectionAddAsContext}
         onMakeCards={handleSelectionMakeCards}
         onSaveAsNote={handleSelectionSaveAsNote}
+        // P0 复审修复：旧「添加到聊天」纯文本预填已由「引用到聊天」（onAddAsContext）
+        // 取代，onAddToChat 不再传入——隐藏未接线动作，避免永久 disabled 的死按钮
+        hideUnavailableActions
       />
 
       {/* 保存为笔记的目录选择器（窄屏走全屏子屏，Android 返回键先关它） */}

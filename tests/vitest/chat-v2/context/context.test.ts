@@ -28,6 +28,7 @@ import {
   retrievalDefinition,
   builtInDefinitions,
   builtInTypeIds,
+  definitionMap,
   isBuiltInType,
   getAllBuiltInToolIds,
   // 初始化函数
@@ -496,6 +497,22 @@ describe('批量导出', () => {
   describe('builtInDefinitions', () => {
     it('应该包含 11 个预定义类型', () => {
       expect(builtInDefinitions.length).toBe(11);
+    });
+  });
+
+  describe('三处注册结构一致性（P0 设计文档点名要求）', () => {
+    it('builtInDefinitions / definitionMap / builtInTypeIds 三者同步', () => {
+      const fromDefs = builtInDefinitions.map((d) => d.typeId).sort();
+      const fromMap = Object.keys(definitionMap).sort();
+      const fromIds = [...builtInTypeIds].sort();
+      expect(fromDefs).toEqual(fromIds);
+      expect(fromMap).toEqual(fromIds);
+    });
+
+    it('selection 类型在三处结构中均注册', () => {
+      expect(builtInDefinitions.some((d) => d.typeId === 'selection')).toBe(true);
+      expect(definitionMap.selection).toBeDefined();
+      expect(builtInTypeIds).toContain('selection');
     });
   });
 
