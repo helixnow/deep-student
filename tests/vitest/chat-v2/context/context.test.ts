@@ -135,9 +135,10 @@ describe('ContextTypeRegistry', () => {
   describe('registerAll', () => {
     it('应该批量注册所有类型', () => {
       registry.registerAll(builtInDefinitions);
-      expect(registry.size).toBe(10);
+      expect(registry.size).toBe(11);
       expect(registry.has('system_prompt')).toBe(true);
       expect(registry.has('note')).toBe(true);
+      expect(registry.has('selection')).toBe(true);
       expect(registry.has('exam')).toBe(true);
       expect(registry.has('essay')).toBe(true);
       expect(registry.has('translation')).toBe(true);
@@ -154,18 +155,19 @@ describe('ContextTypeRegistry', () => {
       registry.registerAll(builtInDefinitions);
       const all = registry.getAll();
       
-      // 验证顺序：system_prompt(1) > note(10) > exam(22) > essay(23) > translation(24) > textbook(25) > image(30) = file(30) > retrieval(50) > folder(100)
+      // 验证顺序：system_prompt(1) > note(10) > selection(15) > exam(22) > essay(23) > translation(24) > textbook(25) > image(30) = file(30) > retrieval(50) > folder(100)
       expect(all[0].typeId).toBe('system_prompt');
       expect(all[1].typeId).toBe('note');
-      expect(all[2].typeId).toBe('exam');
-      expect(all[3].typeId).toBe('essay');
-      expect(all[4].typeId).toBe('translation');
-      expect(all[5].typeId).toBe('textbook');
+      expect(all[2].typeId).toBe('selection');
+      expect(all[3].typeId).toBe('exam');
+      expect(all[4].typeId).toBe('essay');
+      expect(all[5].typeId).toBe('translation');
+      expect(all[6].typeId).toBe('textbook');
       // image 和 file 都是 30，顺序可能不定
-      expect(['image', 'file']).toContain(all[6].typeId);
       expect(['image', 'file']).toContain(all[7].typeId);
-      expect(all[8].typeId).toBe('retrieval');
-      expect(all[9].typeId).toBe('folder');
+      expect(['image', 'file']).toContain(all[8].typeId);
+      expect(all[9].typeId).toBe('retrieval');
+      expect(all[10].typeId).toBe('folder');
     });
   });
 
@@ -248,7 +250,7 @@ describe('ContextTypeRegistry', () => {
   describe('clear', () => {
     it('应该清空所有注册', () => {
       registry.registerAll(builtInDefinitions);
-      expect(registry.size).toBe(10);
+      expect(registry.size).toBe(11);
       registry.clear();
       expect(registry.size).toBe(0);
     });
@@ -492,8 +494,8 @@ describe('预定义类型 formatToBlocks', () => {
 
 describe('批量导出', () => {
   describe('builtInDefinitions', () => {
-    it('应该包含 10 个预定义类型', () => {
-      expect(builtInDefinitions.length).toBe(10);
+    it('应该包含 11 个预定义类型', () => {
+      expect(builtInDefinitions.length).toBe(11);
     });
   });
 
@@ -543,21 +545,21 @@ describe('初始化函数', () => {
     it('应该注册所有预定义类型到全局注册表', () => {
       expect(contextTypeRegistry.size).toBe(0);
       initializeContextSystem();
-      expect(contextTypeRegistry.size).toBe(10);
+      expect(contextTypeRegistry.size).toBe(11);
       expect(contextTypeRegistry.has('note')).toBe(true);
     });
 
     it('重复调用应该是幂等的', () => {
       initializeContextSystem();
       initializeContextSystem();
-      expect(contextTypeRegistry.size).toBe(10);
+      expect(contextTypeRegistry.size).toBe(11);
     });
   });
 
   describe('resetContextSystem', () => {
     it('应该清空注册表', () => {
       initializeContextSystem();
-      expect(contextTypeRegistry.size).toBe(10);
+      expect(contextTypeRegistry.size).toBe(11);
       resetContextSystem();
       expect(contextTypeRegistry.size).toBe(0);
     });
