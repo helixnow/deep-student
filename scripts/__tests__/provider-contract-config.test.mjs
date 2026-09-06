@@ -26,28 +26,32 @@ test('provider contract is a fixed fail-closed CI job', () => {
   const jobs = yamlTopLevelSection(workflow, 'jobs', 0);
   const job = yamlTopLevelSection(jobs, 'provider-contract');
 
-  assert.match(job, /^\s{4}name: Cloud Provider Contract Gate$/m);
+  // 2026-09-06 matrix 拆分（603eba83c）：单 job 串行三 provider 墙钟 60-120min
+  // 是 runner 回收的最大目标，拆为 webdav/s3/ftp 三并行 job，fail-fast: false
+  // 保证单 provider 被回收不拖累其他两家。fail-closed 语义不变。
+  assert.match(job, /^\s{4}name: Cloud Provider Contract Gate \(\$\{\{ matrix\.provider \}\}\)$/m);
   assert.doesNotMatch(job, /continue-on-error:/);
+  assert.match(job, /fail-fast: false/);
+  assert.match(job, /provider: \[webdav, s3, ftp\]/);
   assert.match(job, /DS_SYNC_TEST_DOCKER: '1'/);
   assert.match(job, /config --images > "\$IMAGES_FILE"/);
   assert.match(job, /provider contract images must not use mutable latest tags/i);
-  assert.match(
-    job,
-    /up --detach --build --wait --wait-timeout 180 minio webdav ftp/,
-  );
-  assert.match(job, /for service in minio webdav ftp; do/);
+  // 按 matrix provider 只起本家服务并查本家健康（s3 → minio + minio-init 建桶）
+  assert.match(job, /up --detach --build --wait --wait-timeout 180 "\$\{SERVICES\[@\]\}"/);
+  assert.match(job, /for service in "\$\{SERVICES\[@\]\}"; do/);
   assert.match(job, /State\.Health\.Status.*healthy/);
 
   assert.match(
     job,
     /cargo test --test sync_provider_contract_tests -- --ignored --list > "\$LIST_FILE"/,
   );
-  assert.match(job, /for provider in webdav s3 ftp; do/);
+  // 行首前缀取子集（非子串，防 s3_xxx_webdav_ 跨界污染），计数不等即 fail-closed
+  assert.match(job, /index\(\$0, prefix\) == 1/);
   assert.match(
     job,
-    /cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture/,
+    /cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture "\$PREFIX"/,
   );
-  assert.match(job, /Not every listed provider contract ran/);
+  assert.match(job, /Provider contract count mismatch/);
   assert.match(job, /set -euo pipefail/);
 });
 

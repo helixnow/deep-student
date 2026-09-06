@@ -363,14 +363,8 @@ mod tests {
         // 用数量级差距保证启发式与 tiktoken 两种计数下切点一致。
         let big_a = "word ".repeat(1600);
         let small_a = "word ".repeat(80);
-        blocks_by_msg.insert(
-            "a4".to_string(),
-            vec![make_text_block("b4", "a4", &big_a)],
-        );
-        blocks_by_msg.insert(
-            "a5".to_string(),
-            vec![make_text_block("b5", "a5", &big_a)],
-        );
+        blocks_by_msg.insert("a4".to_string(), vec![make_text_block("b4", "a4", &big_a)]);
+        blocks_by_msg.insert("a5".to_string(), vec![make_text_block("b5", "a5", &big_a)]);
         blocks_by_msg.insert(
             "a6".to_string(),
             vec![make_text_block("b6", "a6", &small_a)],
@@ -385,10 +379,7 @@ mod tests {
         let result = select_tail(&msgs, &turns, 500, &blocks_by_msg, None);
         let sel = result.expect("应切进 turn 内部而不是放弃");
         let a6_idx = msgs.iter().position(|m| m.id == "a6").unwrap();
-        assert_eq!(
-            sel.tail_start_idx, a6_idx,
-            "tail 应从 turn3 内部的 a6 开始"
-        );
+        assert_eq!(sel.tail_start_idx, a6_idx, "tail 应从 turn3 内部的 a6 开始");
         assert!(sel.tail_tokens <= 1000, "tail 不得超过 hard_cap");
         assert!(
             sel.tail_start_idx >= turns[HEAD_USER_TURNS - 1].end,
@@ -419,8 +410,13 @@ mod tests {
         // end=4 落在 turn1 内部：旧实现会把 turn1 整个过滤掉（区间只到 [0,2)），
         // 新实现把相交部分并入——预算充足时合并为单个 chunk [0,4)，
         // 关键是 turn1 被裁剪的头部 [2,4) 必须进入摘要区间。
-        let ranges = split_summary_ranges(&msgs, &turns, &blocks_by_msg, 0, 4, 100_000, 8_000, None);
-        assert_eq!(ranges, vec![(0, 4)], "跨边界 turn 的相交部分必须并入摘要区间");
+        let ranges =
+            split_summary_ranges(&msgs, &turns, &blocks_by_msg, 0, 4, 100_000, 8_000, None);
+        assert_eq!(
+            ranges,
+            vec![(0, 4)],
+            "跨边界 turn 的相交部分必须并入摘要区间"
+        );
 
         // 预算紧张时按裁剪后的范围分 chunk
         let tight = split_summary_ranges(&msgs, &turns, &blocks_by_msg, 0, 4, 1, 8_000, None);
@@ -437,7 +433,8 @@ mod tests {
         );
 
         // turn 边界对齐时行为不变
-        let aligned = split_summary_ranges(&msgs, &turns, &blocks_by_msg, 0, 2, 100_000, 8_000, None);
+        let aligned =
+            split_summary_ranges(&msgs, &turns, &blocks_by_msg, 0, 2, 100_000, 8_000, None);
         assert_eq!(aligned, vec![(0, 2)]);
     }
 

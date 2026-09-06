@@ -55,12 +55,12 @@ use self::memory_flush::{
     build_memory_flush_segment_id, enqueue_memory_flush_with_conn, split_memory_flush_segment,
     PendingMemoryFlush,
 };
+use self::prompts::build_static_fallback_summary;
 use self::prompts::{
     actual_model_from_raw_response, build_compaction_prompt, escape_untrusted_prompt_data,
     make_summary_system_message, render_messages_for_prompt, summary_is_structurally_valid,
     truncate_text_to_token_budget,
 };
-use self::prompts::build_static_fallback_summary;
 use self::segmentation::{select_tail, split_into_turns, split_summary_ranges};
 use super::ChatV2Pipeline;
 use crate::chat_v2::context::PipelineContext;
@@ -188,9 +188,7 @@ struct PreparedCompaction {
 /// - 压缩失败 → 120s（摘要链路/DB 故障通常不会秒级恢复）
 /// - 无可压缩区间 → 60s（区间形状在下一条用户消息前通常不变，重复准备是浪费）
 /// - 成功 / 其它跳过 → 不冷却（并清除既有冷却）
-fn cooldown_duration_for_outcome(
-    outcome: &CompactionOutcome,
-) -> Option<std::time::Duration> {
+fn cooldown_duration_for_outcome(outcome: &CompactionOutcome) -> Option<std::time::Duration> {
     match outcome {
         CompactionOutcome::Failed(_) => Some(std::time::Duration::from_secs(120)),
         CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange) => {
@@ -1443,8 +1441,8 @@ pub fn apply_compaction_view(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::prompts::GENERIC_COMPACTION_PROFILE;
+    use super::*;
     use crate::chat_v2::database::ChatV2Database;
     use crate::llm_manager::LLMManager;
     use crate::tools::ToolRegistry;
@@ -1627,12 +1625,15 @@ mod tests {
         main_coordinator
             .migrate_single(DatabaseId::Mistakes)
             .expect("main migrate");
-        let main_db =
-            std::sync::Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
-        let file_manager =
-            std::sync::Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
-        let llm_manager =
-            std::sync::Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+        let main_db = std::sync::Arc::new(
+            Database::new(&main_dir.path().join("mistakes.db")).expect("main db"),
+        );
+        let file_manager = std::sync::Arc::new(
+            FileManager::new(main_dir.path().join("app-data")).expect("file manager"),
+        );
+        let llm_manager = std::sync::Arc::new(
+            LLMManager::new(main_db.clone(), file_manager).expect("llm manager"),
+        );
 
         if let Some(base_url) = base_url {
             eprintln!("[e2e] saving vendor config...");
@@ -1778,8 +1779,16 @@ mod tests {
         };
 
         // turn 0-1：头部锚点（短小）
-        push_turn("我想学习 Rust 的所有权机制", vec!["好的，我们从基础开始。"], 0);
-        push_turn("什么是借用检查器？", vec!["借用检查器负责在编译期验证引用有效性。"], 0);
+        push_turn(
+            "我想学习 Rust 的所有权机制",
+            vec!["好的，我们从基础开始。"],
+            0,
+        );
+        push_turn(
+            "什么是借用检查器？",
+            vec!["借用检查器负责在编译期验证引用有效性。"],
+            0,
+        );
         // turn 2-4：中间待摘要区间（每轮 ~2K tokens 实质内容）
         for t in 2..=4 {
             push_turn(
@@ -1810,7 +1819,15 @@ mod tests {
         seed_compactible_session(&pipeline, &session_id);
 
         let outcome = pipeline
-            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
             .await
             .expect("compaction run");
         assert_eq!(
@@ -1863,7 +1880,15 @@ mod tests {
         eprintln!("[e2e] seeded, running compaction...");
 
         let outcome = pipeline
-            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
             .await
             .expect("compaction run");
         eprintln!("[e2e] first compaction outcome: {:?}", outcome);
@@ -1906,7 +1931,15 @@ mod tests {
 
         // 失败后必须进入冷却：120s 内再次自动触发应被冷却拦截
         let second = pipeline
-            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
             .await
             .expect("second run");
         // 注意：第一次已提交（降级），第二次无新增量区间 → NoCompactibleRange 或冷却
@@ -1923,7 +1956,15 @@ mod tests {
 
         // 手动压缩不受冷却限制（应能跑完整个流程，结果不限）
         let manual = pipeline
-            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "manual", &[], None, Some(false), None)
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "manual",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
             .await
             .expect("manual run");
         assert!(

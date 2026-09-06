@@ -209,6 +209,7 @@ export const COMPACTION_REASON_CODES = [
   'summaryFailed',
   'cancelled',
   'staleLineage',
+  'cooldown',
   'invalidResponse',
 ] as const;
 

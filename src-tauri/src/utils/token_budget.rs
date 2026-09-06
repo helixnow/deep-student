@@ -269,11 +269,12 @@ mod tests {
     #[test]
     fn estimate_tokens_with_model_varied_huge_text_extrapolates_close_to_exact() {
         // 多样化长文本：外推误差应较小（±20%）
-        let varied: String = "fn process_frame(idx: usize) -> Result<Frame, RenderError> { /* 渲染管线 */ }"
-            .chars()
-            .cycle()
-            .take(120_000)
-            .collect();
+        let varied: String =
+            "fn process_frame(idx: usize) -> Result<Frame, RenderError> { /* 渲染管线 */ }"
+                .chars()
+                .cycle()
+                .take(120_000)
+                .collect();
         let exact = tiktoken_rs::cl100k_base()
             .unwrap()
             .encode_with_special_tokens(&varied)
