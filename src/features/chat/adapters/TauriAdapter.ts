@@ -78,6 +78,7 @@ import {
 import { collectSchemaToolIds } from '../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../skills/registry';
+import { renderSkillContentWithArtifact } from '../skills/artifactSkeleton';
 import { getSkillRuntimeAdmissionWithDependencies } from '../skills/runtimeAdmission';
 import { SKILL_INSTRUCTION_TYPE_ID, type SkillDefinition } from '../skills/types';
 import { groupCache } from '../core/store/groupCache';
@@ -5043,7 +5044,9 @@ export class ChatV2TauriAdapter {
       // Keep an explicit entry even for tool-only skills. The backend uses
       // membership in this map as the admitted-set check; omitting an empty
       // body would incorrectly classify an admitted tool-only skill as missing.
-      skillContents[skill.id] = skill.content ?? '';
+      // P3：产物模板骨架随正文注入（renderSkillContentWithArtifact 对无
+      // artifact 声明的 skill 原样返回）。
+      skillContents[skill.id] = renderSkillContentWithArtifact(skill);
       if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
         skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
       }
@@ -5433,8 +5436,8 @@ export class ChatV2TauriAdapter {
           console.log(LOG_PREFIX, '[TransientSkills] Skip rejected skill injection:', skill.id, admission.code);
           continue;
         }
-        skillContents[skill.id] = skill.content ?? '';
-        replaySkillContents[skill.id] = skill.content ?? '';
+        skillContents[skill.id] = renderSkillContentWithArtifact(skill);
+        replaySkillContents[skill.id] = renderSkillContentWithArtifact(skill);
         if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
           skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
         }

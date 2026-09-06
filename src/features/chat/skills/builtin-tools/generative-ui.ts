@@ -148,6 +148,11 @@ type 必须属于 registry（含 markdown、chart、steps、table）；JSON Sche
             description:
               '【可选】HPIAS 研究会话 ID；与 research-plan/research-report 块联用时，前端订阅 hpias_event 实时渲染研究进度。也可写在 intent.meta.researchSessionId（顶层优先）。',
           },
+          skeletonRef: {
+            type: 'string',
+            description:
+              '【可选】产物模板骨架引用（skill id）。当激活的 skill 在 frontmatter 声明了 artifact.intentSkeleton 时必填该 skill id，承诺 intent 遵循骨架布局（layoutLock=true 时只允许填充数据，不得增删块）。',
+          },
         },
         required: ['intent'],
         additionalProperties: false,

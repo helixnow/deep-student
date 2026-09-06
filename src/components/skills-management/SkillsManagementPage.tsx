@@ -588,6 +588,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
             relatedSkills: data.relatedSkills,
             dependencies: data.dependencies,
             embeddedTools: data.embeddedTools,
+            // 表单无 artifact 编辑器——保留解析出的原值，避免保存后静默丢失
+            artifact: editingSkill.artifact,
             preservedFrontmatter: editingSkill.preservedFrontmatter,
           },
           data.content
@@ -714,6 +716,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         disableAutoInvoke: skill.disableAutoInvoke,
         allowedTools: skill.allowedTools,
         embeddedTools: skill.embeddedTools,
+        artifact: skill.artifact,
         skillType: skill.skillType,
         relatedSkills: skill.relatedSkills,
         dependencies: skill.dependencies,
@@ -770,6 +773,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           disableAutoInvoke: skill.disableAutoInvoke,
           allowedTools: skill.allowedTools,
           embeddedTools: skill.embeddedTools,
+          artifact: skill.artifact,
           skillType: skill.skillType,
           relatedSkills: skill.relatedSkills,
           dependencies: skill.dependencies,

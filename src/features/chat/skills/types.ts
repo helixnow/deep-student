@@ -238,6 +238,15 @@ export interface SkillMetadata {
   embeddedTools?: ToolSchema[];
 
   /**
+   * P3 产物模板声明（canvas-in-skills，可选）
+   *
+   * skill 声明产物布局：触发描述并入 description（目录发现零改动），
+   * intentSkeleton 在激活时随 skill 正文注入 prompt（经现有 skill content
+   * 通道，零新管道）；模型调 render_generative_ui 时按骨架填充数据。
+   */
+  artifact?: SkillArtifactDeclaration;
+
+  /**
    * 技能类型
    *
    * - composite (整合型): 内部会引用/建议加载其他 skills
@@ -687,6 +696,22 @@ export function validateSkillMetadata(metadata: Partial<SkillMetadata>): SkillVa
 // ============================================================================
 // 常量
 // ============================================================================
+
+/**
+ * P3 产物模板声明（frontmatter `artifact:` 键的形状）
+ *
+ * 注意：intentSkeleton 有意用结构化 Record 而非直接引用 GenerativeUIIntent——
+ * skills 是底层模块，不反向依赖 generative-ui（块类型合法性由
+ * artifactSkeleton.ts 对照 generativeUIRegistry 单独校验）。
+ */
+export interface SkillArtifactDeclaration {
+  /** generative-ui intent 骨架（模型按此填充数据；layoutLock 时不得增删块） */
+  intentSkeleton?: Record<string, unknown>;
+  /** 数据工具名列表（指向本 skill embeddedTools 的 name） */
+  dataTools?: string[];
+  /** true = 模型只能填数据，不能增删块（前端 onEnd 校验，不符降级为普通产物） */
+  layoutLock?: boolean;
+}
 
 /**
  * Skill 上下文类型 ID

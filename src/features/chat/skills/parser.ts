@@ -17,6 +17,7 @@ import type {
   SkillType,
   SkillRequires,
   JsonSchemaProperty,
+  SkillArtifactDeclaration,
 } from './types';
 import { validateSkillMetadata, SKILL_DEFAULT_PRIORITY } from './types';
 
@@ -62,6 +63,8 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'requires',
   'manifest-version',
   'manifestVersion',
+  // P3 产物模板（canvas-in-skills）：声明产物布局骨架
+  'artifact',
 ]);
 
 // ============================================================================
@@ -325,6 +328,60 @@ function parseEmbeddedTools(value: unknown, warnings: string[]): ToolSchema[] | 
   return tools.length > 0 ? tools : undefined;
 }
 
+/**
+ * 解析并验证 P3 产物模板声明（frontmatter `artifact:` 键）
+ *
+ * 宽松解析：形状不符的字段进 warnings 并丢弃，不阻断 skill 加载。
+ * intentSkeleton 的块类型合法性不在此校验（需对照 generativeUIRegistry，
+ * 见 artifactSkeleton.ts——加载/激活时校验，避免 skills → generative-ui 的
+ * 模块依赖倒灌进解析热路径）。
+ */
+function parseArtifactField(value: unknown, warnings: string[]): SkillArtifactDeclaration | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    warnings.push(i18n.t('skills:parser.artifactMustBeObject', {
+      defaultValue: 'artifact 字段必须是对象（含 intentSkeleton/dataTools/layoutLock）',
+    }));
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const declaration: SkillArtifactDeclaration = {};
+
+  if (record.intentSkeleton !== undefined) {
+    if (typeof record.intentSkeleton === 'object' && record.intentSkeleton !== null && !Array.isArray(record.intentSkeleton)) {
+      declaration.intentSkeleton = record.intentSkeleton as Record<string, unknown>;
+    } else {
+      warnings.push(i18n.t('skills:parser.artifactSkeletonMustBeObject', {
+        defaultValue: 'artifact.intentSkeleton 必须是对象（generative-ui intent 骨架）',
+      }));
+    }
+  }
+
+  const dataTools = coerceStringArrayField(record.dataTools);
+  if (dataTools && dataTools.length > 0) {
+    declaration.dataTools = dataTools;
+  } else if (record.dataTools !== undefined) {
+    warnings.push(i18n.t('skills:parser.artifactDataToolsMustBeArray', {
+      defaultValue: 'artifact.dataTools 必须是字符串数组（指向 embeddedTools 的 name）',
+    }));
+  }
+
+  if (record.layoutLock !== undefined) {
+    if (typeof record.layoutLock === 'boolean') {
+      declaration.layoutLock = record.layoutLock;
+    } else {
+      warnings.push(i18n.t('skills:parser.artifactLayoutLockMustBeBoolean', {
+        defaultValue: 'artifact.layoutLock 必须是布尔值',
+      }));
+    }
+  }
+
+  return Object.keys(declaration).length > 0 ? declaration : undefined;
+}
+
 function parseRequiresMap(value: unknown): SkillRequires | undefined {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -455,6 +512,7 @@ export function parseSkillFile(
     userInvocable: userInvocableRaw,
     argumentHint: coerceStringField(argumentHintRaw),
     embeddedTools: parseEmbeddedTools(embeddedToolsRaw, warnings),
+    artifact: parseArtifactField(rawMetadata.artifact, warnings),
     skillType: parseSkillType(skillTypeRaw),
     relatedSkills: coerceStringArrayField(relatedSkillsRaw),
     dependencies: coerceStringArrayField(dependenciesRaw),
@@ -499,6 +557,7 @@ export function parseSkillFile(
     userInvocable: metadata.userInvocable,
     argumentHint: metadata.argumentHint,
     embeddedTools: metadata.embeddedTools, // 渐进披露架构核心字段
+    artifact: metadata.artifact, // P3 产物模板声明
     skillType: metadata.skillType ?? 'standalone', // 默认独立型
     relatedSkills: metadata.relatedSkills,
     dependencies: metadata.dependencies,
@@ -765,6 +824,28 @@ export function serializeSkillToMarkdown(
   } else {
     delete frontmatter.embeddedTools;
     delete frontmatter['embedded-tools'];
+  }
+
+  // P3 产物模板：显式序列化（关键陷阱——artifact 已进 KNOWN_FRONTMATTER_KEYS，
+  // 不再走 preservedFrontmatter，漏序列化会在技能编辑保存后静默丢失）
+  if (metadata.artifact) {
+    const artifact: Record<string, unknown> = {};
+    if (metadata.artifact.intentSkeleton) {
+      artifact.intentSkeleton = metadata.artifact.intentSkeleton;
+    }
+    if (metadata.artifact.dataTools && metadata.artifact.dataTools.length > 0) {
+      artifact.dataTools = metadata.artifact.dataTools;
+    }
+    if (metadata.artifact.layoutLock !== undefined) {
+      artifact.layoutLock = metadata.artifact.layoutLock;
+    }
+    if (Object.keys(artifact).length > 0) {
+      frontmatter.artifact = artifact;
+    } else {
+      delete frontmatter.artifact;
+    }
+  } else {
+    delete frontmatter.artifact;
   }
 
   const lines: string[] = ['---', YAML.stringify(frontmatter).trimEnd(), '---', ''];

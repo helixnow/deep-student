@@ -19,6 +19,7 @@ import type {
 import { SKILL_DEFAULT_PRIORITY } from './types';
 import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
 import { isSkillPromptVisible } from './runtimeAdmission';
+import { validateArtifactSkeletonTypes } from './artifactSkeleton';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 
@@ -134,6 +135,20 @@ class SkillRegistry {
   register(skill: SkillDefinition): void {
     if (!this.guardRegistration(skill)) {
       return;
+    }
+
+    // P3 产物模板：加载时对照 generativeUIRegistry 校验骨架块类型合法性
+    // （白名单以前端 registry 为准；不合法仅告警不阻断——骨架不进 prompt
+    // 时才真正影响模型，告警足以暴露配置错误）。
+    if (skill.artifact?.intentSkeleton) {
+      const check = validateArtifactSkeletonTypes(skill.artifact.intentSkeleton);
+      if (!check.valid) {
+        console.warn(
+          LOG_PREFIX,
+          `Skill "${skill.id}" artifact.intentSkeleton 含未注册块类型:`,
+          check.unknownTypes.join(', '),
+        );
+      }
     }
 
     this.skills.set(skill.id, skill);
