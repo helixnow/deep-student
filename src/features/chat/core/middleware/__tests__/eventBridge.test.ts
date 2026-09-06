@@ -195,3 +195,100 @@ describe('eventBridge duplicate start guard', () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 });
+
+describe('eventBridge virtual-block terminal delivery (deliverTerminalByBlockId)', () => {
+  const onStart = vi.fn((_, __, ___, backendBlockId?: string) => backendBlockId ?? 'blk_generated');
+  const onEnd = vi.fn();
+  const onError = vi.fn();
+  const orphanOnError = vi.fn();
+
+  beforeEach(() => {
+    eventRegistry.clear();
+    eventRegistry.register('tool_approval_request', {
+      onStart,
+      onEnd,
+      onError,
+      deliverTerminalByBlockId: true,
+    });
+    eventRegistry.register('web_search', { onStart, onEnd, onError: orphanOnError });
+    onStart.mockClear();
+    onEnd.mockClear();
+    onError.mockClear();
+    orphanOnError.mockClear();
+    resetBridgeState('sess_test');
+  });
+
+  afterEach(() => {
+    clearProcessedEventIds('sess_test');
+    clearEventContext('sess_test');
+    clearBridgeState('sess_test');
+    eventRegistry.clear();
+  });
+
+  it('delivers terminal events by blockId when the stream already ended (untracked virtual block)', () => {
+    const store = createStore(3);
+    // 流已结束：无 currentStreamingMessageId，事件上下文按 '' 重建，
+    // approval_* 虚拟块从未落库，必然未被追踪
+    store.currentStreamingMessageId = null;
+
+    handleBackendEventWithSequence(store, {
+      type: 'tool_approval_request',
+      phase: 'error',
+      blockId: 'approval_call-1',
+      error: 'approval_expired',
+    });
+
+    expect(onError).toHaveBeenCalledWith(store, 'approval_call-1', 'approval_expired');
+  });
+
+  it('delivers end events by blockId for opted-in handlers', () => {
+    const store = createStore(3);
+    store.currentStreamingMessageId = null;
+
+    handleBackendEventWithSequence(store, {
+      type: 'tool_approval_request',
+      phase: 'end',
+      blockId: 'approval_call-2',
+      result: { toolCallId: 'call-2', approved: true },
+    });
+
+    expect(onEnd).toHaveBeenCalledWith(
+      store,
+      'approval_call-2',
+      expect.objectContaining({ toolCallId: 'call-2', approved: true })
+    );
+  });
+
+  it('delivers sequenced terminal events after the gap buffer drains', () => {
+    const store = createStore(3);
+    store.currentStreamingMessageId = null;
+
+    // 流结束后桥状态已重置：首包非 start 会进序列缓冲，flush 后仍应直投
+    handleBackendEventWithSequence(store, {
+      sequenceId: 5,
+      type: 'tool_approval_request',
+      phase: 'error',
+      blockId: 'approval_call-3',
+      error: 'approval_expired',
+    });
+    expect(onError).not.toHaveBeenCalled();
+
+    flushPendingBackendEvents(store);
+    expect(onError).toHaveBeenCalledWith(store, 'approval_call-3', 'approval_expired');
+  });
+
+  it('keeps orphan buffering for handlers without the opt-in', () => {
+    const store = createStore(3);
+    store.currentStreamingMessageId = null;
+
+    handleBackendEventWithSequence(store, {
+      type: 'web_search',
+      phase: 'error',
+      blockId: 'blk_unknown',
+      error: 'late error',
+    });
+
+    // 未 opt-in：进孤儿缓冲等待 start，不直投
+    expect(orphanOnError).not.toHaveBeenCalled();
+  });
+});

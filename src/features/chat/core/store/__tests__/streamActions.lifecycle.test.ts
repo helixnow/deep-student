@@ -233,4 +233,48 @@ describe('completeStream lifecycle cleanup', () => {
       'Stream cancelled before tool execution',
     );
   });
+
+  it('clears a pending tool approval when the stream terminates', () => {
+    const pendingApproval = {
+      kind: 'tool_approval',
+      toolCallId: 'call_1',
+      toolName: 'note_set',
+      arguments: {},
+      sensitivity: 'high',
+      description: 'd',
+      timeoutSeconds: 300,
+    } as unknown as ChatStoreState['pendingBlockingInteraction'];
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_1',
+      pendingBlockingInteraction: pendingApproval,
+      pendingApprovalRequest: { toolCallId: 'call-1' } as unknown as ChatStoreState['pendingApprovalRequest'],
+      // setPendingApproval 是 action（在 ChatStore 而非 ChatStoreState 上），
+      // completeStream 用它做审批运行时清理的 WeakMap key
+      ...({ setPendingApproval: () => undefined } as unknown as Partial<ChatStoreState>),
+    });
+
+    harness.actions.completeStream('error');
+
+    expect(harness.getState().pendingBlockingInteraction).toBeNull();
+    expect(harness.getState().pendingApprovalRequest).toBeNull();
+  });
+
+  it('keeps non-approval blocking interactions untouched on stream terminate', () => {
+    const toolLimit = {
+      kind: 'tool_limit',
+      blockId: 'b1',
+      content: '',
+      onContinue: null,
+    } as unknown as ChatStoreState['pendingBlockingInteraction'];
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_1',
+      pendingBlockingInteraction: toolLimit,
+    });
+
+    harness.actions.completeStream('cancelled');
+
+    expect(harness.getState().pendingBlockingInteraction).toBe(toolLimit);
+  });
 });

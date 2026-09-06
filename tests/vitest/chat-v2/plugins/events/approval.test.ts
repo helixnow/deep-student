@@ -168,10 +168,11 @@ describe('ApprovalEventHandler', () => {
     });
 
     handler.onEnd!(storeA, 'approval_a-1', { toolCallId: 'a-1', approved: true });
-    vi.advanceTimersByTime(500);
+    // 推进幅度大于出队窗口（1000ms 旧值 / 0ms 现值均覆盖）：A 出队、a-2 上场
+    vi.advanceTimersByTime(1500);
     handler.onEnd!(storeB, 'approval_b-1', { toolCallId: 'b-1', approved: true });
 
-    vi.advanceTimersByTime(500);
+    // B 的出队定时器已设定但时间未推进——A 的出队/定时器清理不得影响 B。
     expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
     expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
     expect(storeB.pendingBlockingInteraction).toMatchObject({
@@ -180,7 +181,7 @@ describe('ApprovalEventHandler', () => {
     });
     expect(storeB.clearPendingApproval).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(1500);
     expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
     expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
     expect(storeB.pendingBlockingInteraction).toBeNull();

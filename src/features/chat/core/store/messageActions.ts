@@ -16,6 +16,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { generateId, showOperationLockNotification, OPERATION_LOCK_TIMEOUT_MS, IS_VITEST } from './createChatStore';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { isStoreSubagentSession } from '../subagentSession';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -1184,6 +1185,15 @@ export function createMessageActions(
             }
           }
 
+          // 流中断时收掉未决审批栏：后端取消令牌会 reject 等待中的审批，
+          // 但其终止事件（无 messageId 的虚拟块）在流结束后会被事件桥
+          // 静默丢弃；本地直接清理，避免审批栏永久占位。审批队列运行时
+          // 一并重置（队列里的审批同属于这条死流，后端不会再有人等待）。
+          const hasPendingToolApproval = getState().pendingBlockingInteraction?.kind === 'tool_approval';
+          if (hasPendingToolApproval) {
+            resetTransientRuntimes(getState().setPendingApproval);
+          }
+
           // 处理活跃块
           set((s) => {
             const newBlocks = new Map(s.blocks);
@@ -1196,7 +1206,7 @@ export function createMessageActions(
                 const plugin = blockRegistry.get(block.type);
                 const onAbort = plugin?.onAbort ?? 'mark-error';
                 const shouldKeepContent = onAbort === 'keep-content';
-                
+
                 newBlocks.set(blockId, {
                   ...block,
                   status: shouldKeepContent ? 'success' : 'error',
@@ -1212,6 +1222,9 @@ export function createMessageActions(
               currentStreamingMessageId: null,
               activeBlockIds: new Set(),
               blocks: newBlocks,
+              ...(hasPendingToolApproval
+                ? { pendingBlockingInteraction: null, pendingApprovalRequest: null }
+                : {}),
             };
           });
 

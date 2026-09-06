@@ -508,6 +508,45 @@ describe('Store Actions', () => {
       expect(block?.status).toBe('error');
       expect(block?.error).toBe('aborted');
     });
+
+    it('should clear a pending tool approval on abort', async () => {
+      const state = getState();
+      await state.sendMessage('Test');
+
+      state.setPendingApproval({
+        toolCallId: 'call-1',
+        toolName: 'note_set',
+        arguments: { noteId: 'n1' },
+        sensitivity: 'high',
+        description: 'Will replace note n1',
+        timeoutSeconds: 300,
+      });
+      expect(getState().pendingBlockingInteraction?.kind).toBe('tool_approval');
+      expect(getState().pendingApprovalRequest).not.toBeNull();
+
+      await state.abortStream();
+
+      // 审批栏随流中断收摊（后端取消令牌会 reject 等待中的审批，
+      // 其终止事件在流结束后会被事件桥丢弃，不能依赖事件投递）
+      expect(getState().pendingBlockingInteraction).toBeNull();
+      expect(getState().pendingApprovalRequest).toBeNull();
+    });
+
+    it('should keep non-approval blocking interactions on abort', async () => {
+      const state = getState();
+      await state.sendMessage('Test');
+
+      state.setBlockingInteraction({
+        kind: 'tool_limit',
+        blockId: 'b1',
+        content: 'limit reached',
+        onContinue: null,
+      } as unknown as ChatStore['pendingBlockingInteraction']);
+
+      await state.abortStream();
+
+      expect(getState().pendingBlockingInteraction?.kind).toBe('tool_limit');
+    });
   });
 
   // ==========================================================================
