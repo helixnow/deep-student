@@ -186,6 +186,10 @@ pub struct ChatV2Pipeline {
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
     /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
     compaction_locks: Arc<Mutex<HashSet<String>>>,
+    /// 🆕 2026-09：compaction 失败/空转冷却表：session_id → 冷却截止时刻。
+    /// 失败 120s、无可压缩区间 60s 内的自动触发直接跳过（手动压缩不受限），
+    /// 防止「每轮触发 → 昂贵准备 → 失败/空转」的抖动循环。
+    compaction_cooldowns: Arc<Mutex<HashMap<String, std::time::Instant>>>,
     /// 🆕 microcompact 锚点（会话级状态）：session_id → 锚点。
     /// 锚点只随 compaction 事件（活跃 compaction id 变化）批量推进，两次
     /// compaction 之间冻结，保证历史头部字节逐轮稳定（prompt cache 友好）。
@@ -256,6 +260,7 @@ impl ChatV2Pipeline {
             question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
+            compaction_cooldowns: Arc::new(Mutex::new(HashMap::new())),
             microcompact_anchors: Arc::new(Mutex::new(HashMap::new())),
             frozen_tool_schema_orders: Arc::new(Mutex::new(HashMap::new())),
             memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),

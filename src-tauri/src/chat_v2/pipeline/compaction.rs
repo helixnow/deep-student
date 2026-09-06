@@ -60,6 +60,7 @@ use self::prompts::{
     make_summary_system_message, render_messages_for_prompt, summary_is_structurally_valid,
     truncate_text_to_token_budget,
 };
+use self::prompts::build_static_fallback_summary;
 use self::segmentation::{select_tail, split_into_turns, split_summary_ranges};
 use super::ChatV2Pipeline;
 use crate::chat_v2::context::PipelineContext;
@@ -105,6 +106,8 @@ pub enum CompactionSkipReason {
     StaleLineage,
     /// DB 等内部硬错误（仅事件上报使用，命令层此情形返回 Err）
     InternalError,
+    /// 🆕 2026-09：失败/无效压缩后的冷却期内跳过（防抖动；手动压缩不受限）
+    Cooldown,
 }
 
 impl CompactionSkipReason {
@@ -120,6 +123,7 @@ impl CompactionSkipReason {
             Self::Cancelled => "cancelled",
             Self::StaleLineage => "staleLineage",
             Self::InternalError => "internalError",
+            Self::Cooldown => "cooldown",
         }
     }
 }
@@ -178,6 +182,22 @@ struct PreparedCompaction {
     source_fingerprint: String,
     summary_tokens: u32,
     memory_flushes: Vec<PendingMemoryFlush>,
+}
+
+/// 🆕 2026-09 防抖动冷却时长决策（纯函数，便于回归测试）：
+/// - 压缩失败 → 120s（摘要链路/DB 故障通常不会秒级恢复）
+/// - 无可压缩区间 → 60s（区间形状在下一条用户消息前通常不变，重复准备是浪费）
+/// - 成功 / 其它跳过 → 不冷却（并清除既有冷却）
+fn cooldown_duration_for_outcome(
+    outcome: &CompactionOutcome,
+) -> Option<std::time::Duration> {
+    match outcome {
+        CompactionOutcome::Failed(_) => Some(std::time::Duration::from_secs(120)),
+        CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange) => {
+            Some(std::time::Duration::from_secs(60))
+        }
+        _ => None,
+    }
 }
 
 fn compaction_range_fingerprint(
@@ -366,6 +386,67 @@ impl ChatV2Pipeline {
     /// `Ok(其它变体)` — 无需/跳过/失败（含细分原因，见 `CompactionOutcome`）
     /// `Err(_)` — DB / 事务硬错误
     pub(crate) async fn run_compaction_for_session(
+        &self,
+        session_id: &str,
+        model_id: Option<&str>,
+        reason: &str,
+        exclude_ids: &[String],
+        context_limit: Option<u32>,
+        session_memory_enabled: Option<bool>,
+        cancellation_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> ChatV2Result<CompactionOutcome> {
+        // 🆕 2026-09 防抖动冷却：失败（或无可压缩区间）后在冷却期内的自动
+        // 触发直接跳过，避免「每轮触发 → 昂贵准备 → 失败/空转」循环
+        // （实测曾 7 分钟内空转 12 次 + 3 次 75 秒无效摘要调用）。
+        // 手动压缩（reason="manual"）不受冷却限制。
+        if reason != "manual" {
+            let cooling = self
+                .compaction_cooldowns
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get(session_id)
+                .map(|until| std::time::Instant::now() < *until)
+                .unwrap_or(false);
+            if cooling {
+                info!(
+                    "[compaction] session={} in failure cooldown; skip auto trigger",
+                    session_id
+                );
+                return Ok(CompactionOutcome::Skipped(CompactionSkipReason::Cooldown));
+            }
+        }
+
+        let outcome = self
+            .run_compaction_for_session_inner(
+                session_id,
+                model_id,
+                reason,
+                exclude_ids,
+                context_limit,
+                session_memory_enabled,
+                cancellation_token,
+            )
+            .await?;
+
+        // 按结果更新冷却表：成功清除；失败/无可压缩区间进入冷却
+        {
+            let mut cooldowns = self
+                .compaction_cooldowns
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            match cooldown_duration_for_outcome(&outcome) {
+                Some(duration) => {
+                    cooldowns.insert(session_id.to_string(), std::time::Instant::now() + duration);
+                }
+                None => {
+                    cooldowns.remove(session_id);
+                }
+            }
+        }
+        Ok(outcome)
+    }
+
+    async fn run_compaction_for_session_inner(
         &self,
         session_id: &str,
         model_id: Option<&str>,
@@ -753,8 +834,28 @@ impl ChatV2Pipeline {
                 let abort_reason = abort_reason_summary;
                 let mut rolling_summary = previous_summary_for_prompt.clone();
                 let mut actual_summary_model: Option<String> = None;
+                // 🆕 2026-09：任一 chunk 走了静态降级摘要时置位，写入块元数据
+                let mut used_static_fallback = false;
                 let hard_cap_tokens = (tail_budget_raw / 2).clamp(512, 12_000);
                 for (chunk_index, chunk_text) in summary_chunks.iter().enumerate() {
+                    // LLM 摘要失败时的确定性兜底：用本 chunk 的渲染文本做本地提取，
+                    // 保证压缩仍能提交（降级摘要远好于中止后 FIFO 静默丢历史）。
+                    let mut static_fallback = |reason: &str| {
+                        used_static_fallback = true;
+                        warn!(
+                            "[compaction] static fallback summary used session={} chunk={}/{} reason={}",
+                            session_id,
+                            chunk_index + 1,
+                            summary_chunks.len(),
+                            reason
+                        );
+                        build_static_fallback_summary(
+                            profile,
+                            chunk_text,
+                            hard_cap_tokens,
+                            model_id_for_tokens,
+                        )
+                    };
                     rolling_summary = rolling_summary.map(|summary| {
                         truncate_text_to_token_budget(
                             &summary,
@@ -793,8 +894,9 @@ impl ChatV2Pipeline {
                                 summary_chunks.len(),
                                 error
                             );
-                            set_abort_reason(&abort_reason, CompactionSkipReason::SummaryFailed);
-                            return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                            // 🆕 不再中止：落入静态降级摘要，继续后续 chunk
+                            rolling_summary = Some(static_fallback("llm_call_failed"));
+                            continue;
                         }
                     };
                     if let Some(model) =
@@ -869,11 +971,9 @@ impl ChatV2Pipeline {
                                     summary_chunks.len(),
                                     error
                                 );
-                                set_abort_reason(
-                                    &abort_reason,
-                                    CompactionSkipReason::SummaryFailed,
-                                );
-                                return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                                // 🆕 修复调用失败：落入静态降级摘要
+                                rolling_summary = Some(static_fallback("repair_call_failed"));
+                                continue;
                             }
                             Some(Ok(repaired)) => repaired,
                         };
@@ -895,8 +995,9 @@ impl ChatV2Pipeline {
                     if !summary_is_structurally_valid(&candidate, profile)
                         || candidate_tokens > hard_cap_tokens
                     {
-                        set_abort_reason(&abort_reason, CompactionSkipReason::SummaryFailed);
-                        return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                        // 🆕 修复后仍不合规：落入静态降级摘要而非中止
+                        rolling_summary = Some(static_fallback("invalid_after_repair"));
+                        continue;
                     }
                     // 标识符审计是软要求：修复重试后仍缺失只告警，不再消耗额外重试轮数、
                     // 也不放弃本次压缩（放弃会退化成 FIFO 无声丢消息，损失更大）。
@@ -971,6 +1072,7 @@ impl ChatV2Pipeline {
                         "tokensAfter": tokens_after,
                         "summaryTokens": summary_tokens,
                         "summaryPasses": summary_chunks.len(),
+                        "summaryDegraded": used_static_fallback,
                         "modelId": actual_model_id.clone(),
                         "modelConfigId": effective_model_id,
                     })),
@@ -1342,6 +1444,10 @@ pub fn apply_compaction_view(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::prompts::GENERIC_COMPACTION_PROFILE;
+    use crate::chat_v2::database::ChatV2Database;
+    use crate::llm_manager::LLMManager;
+    use crate::tools::ToolRegistry;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -1446,6 +1552,386 @@ mod tests {
         assert_eq!(
             CompactionSkipReason::InternalError.as_code(),
             "internalError"
+        );
+        assert_eq!(CompactionSkipReason::Cooldown.as_code(), "cooldown");
+    }
+
+    /// 🆕 2026-09 防抖动：冷却时长映射——失败 120s、无可压缩区间 60s、成功清除
+    #[test]
+    fn cooldown_duration_mapping() {
+        use std::time::Duration;
+        assert_eq!(
+            cooldown_duration_for_outcome(&CompactionOutcome::Failed(
+                CompactionSkipReason::SummaryFailed
+            )),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(
+            cooldown_duration_for_outcome(&CompactionOutcome::NotNeeded(
+                CompactionSkipReason::NoCompactibleRange
+            )),
+            Some(Duration::from_secs(60))
+        );
+        assert_eq!(
+            cooldown_duration_for_outcome(&CompactionOutcome::Compacted),
+            None
+        );
+        assert_eq!(
+            cooldown_duration_for_outcome(&CompactionOutcome::Skipped(
+                CompactionSkipReason::LockBusy
+            )),
+            None
+        );
+        assert_eq!(
+            cooldown_duration_for_outcome(&CompactionOutcome::NotNeeded(
+                CompactionSkipReason::SessionTooShort
+            )),
+            None
+        );
+    }
+
+    // ====================================================================
+    // 🆕 2026-09 真实端到端测试：完整 Pipeline + 真实/故障网关
+    //
+    // 运行方式（统一入口 k3 模型）：
+    //   DS_E2E_K3_BASE_URL=http://47.88.78.106/v1 \
+    //   DS_E2E_K3_API_KEY=<key> \
+    //   cargo test --lib compaction::tests::e2e -- --ignored --nocapture
+    // ====================================================================
+
+    /// 构建迁移完备的双库 + Pipeline，并（可选）写入一个指向给定 base_url 的
+    /// 测试模型配置（id = "vm_e2e_k3"）。返回 TempDir 保持文件存活。
+    async fn e2e_pipeline_with_model(
+        base_url: Option<&str>,
+        api_key: &str,
+        model: &str,
+    ) -> (tempfile::TempDir, ChatV2Pipeline, String) {
+        use crate::chat_v2::types::ChatSession;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+        use crate::llm_manager::{ModelProfile, VendorConfig};
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut coordinator =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = std::sync::Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_coordinator =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            std::sync::Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            std::sync::Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            std::sync::Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        if let Some(base_url) = base_url {
+            eprintln!("[e2e] saving vendor config...");
+            llm_manager
+                .save_vendor_configs(&[VendorConfig {
+                    id: "vendor_e2e_k3".to_string(),
+                    name: "E2E K3 Gateway".to_string(),
+                    provider_type: "custom".to_string(),
+                    auth_mode: Some("api_key".to_string()),
+                    api_protocol: Some("openai_chat_completions".to_string()),
+                    base_url: base_url.to_string(),
+                    api_key: api_key.to_string(),
+                    ..Default::default()
+                }])
+                .await
+                .expect("save vendor config");
+            llm_manager
+                .save_model_profiles(&[ModelProfile {
+                    id: "vm_e2e_k3".to_string(),
+                    vendor_id: "vendor_e2e_k3".to_string(),
+                    label: "E2E K3".to_string(),
+                    model: model.to_string(),
+                    // 小窗口让 tail 预算/hard_cap 收缩（usable≈28K → tail≈7K，
+                    // hard_cap≈14K），测试语料的巨型 turn 才会超出 tail 预算
+                    max_output_tokens: 4_096,
+                    context_window: Some(32_000),
+                    enabled: true,
+                    ..Default::default()
+                }])
+                .await
+                .expect("save vendor config");
+            eprintln!("[e2e] vendor config saved");
+        }
+
+        let session_id = ChatSession::generate_id();
+        let session = ChatSession::new(session_id.clone(), "chat".to_string());
+        ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
+
+        let pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            std::sync::Arc::new(ToolRegistry::new()),
+            None,
+        );
+        std::mem::forget(main_dir);
+        (chat_dir, pipeline, session_id)
+    }
+
+    /// 向 E2E 会话播种 6 个 turn：头 2 轮短小（锚点），中间 3 轮中等（待摘要），
+    /// 最后一轮 ~75K tokens 巨型工具输出（迫使 tail 只含末轮）。
+    fn seed_compactible_session(pipeline: &ChatV2Pipeline, session_id: &str) {
+        let make_msg = |id: String, role: MessageRole, ts: i64, block_ids: Vec<String>| {
+            crate::chat_v2::types::ChatMessage {
+                id,
+                session_id: session_id.to_string(),
+                role,
+                block_ids,
+                timestamp: ts,
+                persistent_stable_id: None,
+                parent_id: None,
+                supersedes: None,
+                meta: None,
+                attachments: None,
+                active_variant_id: None,
+                variants: None,
+                shared_context: None,
+            }
+        };
+        let make_block = |id: String, msg_id: String, content: Option<String>| MessageBlock {
+            id,
+            message_id: msg_id,
+            block_type: block_types::CONTENT.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content,
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        };
+
+        let mut ts = 1_700_000_000_000i64;
+        let mut msg_seq = 0usize;
+        let mut push_turn = |user_text: &str, assistant_texts: Vec<&str>, big_tool_chars: usize| {
+            msg_seq += 1;
+            let user_id = format!("msg_e2e_u{}", msg_seq);
+            let user_block_id = format!("blk_e2e_u{}", msg_seq);
+            let user_msg = make_msg(
+                user_id.clone(),
+                MessageRole::User,
+                ts,
+                vec![user_block_id.clone()],
+            );
+            ts += 1000;
+            ChatV2Repo::create_message_v2(&pipeline.db, &user_msg).expect("create user msg");
+            ChatV2Repo::create_block_v2(
+                &pipeline.db,
+                &make_block(user_block_id, user_id, Some(user_text.to_string())),
+            )
+            .expect("create user block");
+
+            for (i, text) in assistant_texts.iter().enumerate() {
+                msg_seq += 1;
+                let aid = format!("msg_e2e_a{}", msg_seq);
+                let block_id = format!("blk_e2e_a{}", msg_seq);
+                let assistant_msg = make_msg(
+                    aid.clone(),
+                    MessageRole::Assistant,
+                    ts,
+                    vec![block_id.clone()],
+                );
+                ts += 1000;
+                ChatV2Repo::create_message_v2(&pipeline.db, &assistant_msg)
+                    .expect("create assistant msg");
+                let block = if big_tool_chars > 0 && i == assistant_texts.len() - 1 {
+                    // 末条 assistant 消息挂巨型工具输出块。
+                    // 注意：内容用多样化文本循环而非单字符重复——单字符重复是
+                    // BPE 的最坏形态（合并轮次近似平方级），会拖慢 token 估算。
+                    let varied: String = "fn process_frame(idx: usize) -> Result<Frame, RenderError> { /* 渲染管线第N阶段：布局、绘制、合成 */ }"
+                        .chars()
+                        .cycle()
+                        .take(big_tool_chars)
+                        .collect();
+                    MessageBlock {
+                        tool_name: Some("workspace_file_read".to_string()),
+                        tool_input: Some(serde_json::json!({"path": "/repo/src/big.rs"})),
+                        tool_output: Some(serde_json::json!({"content": varied})),
+                        block_type: block_types::MCP_TOOL.to_string(),
+                        ..make_block(block_id, aid, None)
+                    }
+                } else {
+                    make_block(block_id, aid, Some(text.to_string()))
+                };
+                ChatV2Repo::create_block_v2(&pipeline.db, &block).expect("create assistant block");
+            }
+        };
+
+        // turn 0-1：头部锚点（短小）
+        push_turn("我想学习 Rust 的所有权机制", vec!["好的，我们从基础开始。"], 0);
+        push_turn("什么是借用检查器？", vec!["借用检查器负责在编译期验证引用有效性。"], 0);
+        // turn 2-4：中间待摘要区间（每轮 ~2K tokens 实质内容）
+        for t in 2..=4 {
+            push_turn(
+                &format!("第{}轮：请详细讲解生命周期标注，参见 https://doc.rust-lang.org/book/ch10-03 和 /repo/src/lifetime_{}.rs", t, t),
+                vec![&"生命周期标注帮助编译器理解引用的存活范围。".repeat(40)],
+                0,
+            );
+        }
+        // turn 5：巨型工具输出轮（~10K tokens，超 tail 预算 ~7K 但低于 hard_cap ~14K）
+        push_turn("把 big.rs 的内容总结一下", vec!["文件内容如下："], 25_000);
+    }
+
+    /// 真实网关 E2E：统一入口 k3 模型完成 LLM 摘要压缩并落盘。
+    /// 需要 DS_E2E_K3_BASE_URL / DS_E2E_K3_API_KEY 环境变量。
+    #[tokio::test]
+    #[ignore = "需要真实网关凭据：DS_E2E_K3_BASE_URL / DS_E2E_K3_API_KEY"]
+    async fn e2e_compaction_commits_with_real_k3_summary() {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Info)
+            .is_test(true)
+            .try_init();
+        let base_url = std::env::var("DS_E2E_K3_BASE_URL").expect("DS_E2E_K3_BASE_URL");
+        let api_key = std::env::var("DS_E2E_K3_API_KEY").expect("DS_E2E_K3_API_KEY");
+        let model = std::env::var("DS_E2E_K3_MODEL").unwrap_or_else(|_| "kimi-k3-max".to_string());
+
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some(&base_url), &api_key, &model).await;
+        seed_compactible_session(&pipeline, &session_id);
+
+        let outcome = pipeline
+            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .await
+            .expect("compaction run");
+        assert_eq!(
+            outcome,
+            CompactionOutcome::Compacted,
+            "真实 k3 摘要必须提交压缩"
+        );
+
+        // 验证落盘：compaction 记录 + 摘要块
+        let conn = pipeline.db.get_conn_safe().expect("conn");
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+            .expect("query")
+            .expect("active compaction must exist");
+        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &record.summary_message_id)
+            .expect("summary blocks");
+        let summary_block = blocks
+            .iter()
+            .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
+            .expect("compaction_summary block");
+        let summary = summary_block.content.clone().unwrap_or_default();
+        println!("=== k3 生成的摘要 ===\n{}\n====================", summary);
+        assert!(
+            summary_is_structurally_valid(&summary, &GENERIC_COMPACTION_PROFILE),
+            "k3 摘要必须通过通用模板结构校验：\n{}",
+            summary
+        );
+        let meta = summary_block.tool_output.clone().expect("block meta");
+        assert_eq!(
+            meta.get("summaryDegraded").and_then(|v| v.as_bool()),
+            Some(false),
+            "真实网关下不应走静态降级"
+        );
+        // 摘要应覆盖中间轮次的关键标识符（URL / 文件路径）
+        assert!(
+            summary.contains("doc.rust-lang.org") || summary.contains("lifetime"),
+            "摘要应保留中间轮次的关键信息：\n{}",
+            summary
+        );
+    }
+
+    /// 故障网关 E2E：摘要 LLM 全部重试失败后，静态降级摘要仍提交压缩
+    /// （回归：此前该场景退化为 FIFO 头删，实测 309→35 条丢失 90% 历史）。
+    /// 连接 127.0.0.1:9（discard 端口）立即拒绝，无需凭据。
+    #[tokio::test]
+    async fn e2e_compaction_static_fallback_when_gateway_unreachable() {
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some("http://127.0.0.1:9"), "sk-dead", "dead-model").await;
+        eprintln!("[e2e] pipeline built, seeding...");
+        seed_compactible_session(&pipeline, &session_id);
+        eprintln!("[e2e] seeded, running compaction...");
+
+        let outcome = pipeline
+            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .await
+            .expect("compaction run");
+        eprintln!("[e2e] first compaction outcome: {:?}", outcome);
+        assert_eq!(
+            outcome,
+            CompactionOutcome::Compacted,
+            "摘要失败也必须通过静态降级提交压缩，不得退化为 FIFO"
+        );
+
+        let conn = pipeline.db.get_conn_safe().expect("conn");
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+            .expect("query")
+            .expect("active compaction must exist");
+        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &record.summary_message_id)
+            .expect("summary blocks");
+        let summary_block = blocks
+            .iter()
+            .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
+            .expect("compaction_summary block");
+        let summary = summary_block.content.clone().unwrap_or_default();
+        println!("=== 静态降级摘要 ===\n{}\n====================", summary);
+        assert!(
+            summary_is_structurally_valid(&summary, &GENERIC_COMPACTION_PROFILE),
+            "静态降级摘要必须通过结构校验：\n{}",
+            summary
+        );
+        assert!(summary.contains("静态降级摘要"), "必须标注降级来源");
+        // 中间轮次的标识符必须逐字保留
+        assert!(
+            summary.contains("https://doc.rust-lang.org/book/ch10-03"),
+            "静态摘要必须保留标识符：\n{}",
+            summary
+        );
+        let meta = summary_block.tool_output.clone().expect("block meta");
+        assert_eq!(
+            meta.get("summaryDegraded").and_then(|v| v.as_bool()),
+            Some(true),
+            "降级摘要必须打标"
+        );
+
+        // 失败后必须进入冷却：120s 内再次自动触发应被冷却拦截
+        let second = pipeline
+            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "auto", &[], None, Some(false), None)
+            .await
+            .expect("second run");
+        // 注意：第一次已提交（降级），第二次无新增量区间 → NoCompactibleRange 或冷却
+        // 两种都合法；关键是不能再 Panic/失败
+        assert!(
+            matches!(
+                second,
+                CompactionOutcome::Skipped(CompactionSkipReason::Cooldown)
+                    | CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange)
+            ),
+            "二次触发应被冷却或识别为无增量：{:?}",
+            second
+        );
+
+        // 手动压缩不受冷却限制（应能跑完整个流程，结果不限）
+        let manual = pipeline
+            .run_compaction_for_session(&session_id, Some("vm_e2e_k3"), "manual", &[], None, Some(false), None)
+            .await
+            .expect("manual run");
+        assert!(
+            !matches!(
+                manual,
+                CompactionOutcome::Skipped(CompactionSkipReason::Cooldown)
+            ),
+            "手动压缩不得被冷却拦截"
         );
     }
 }

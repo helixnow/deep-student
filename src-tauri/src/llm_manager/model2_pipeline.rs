@@ -2936,6 +2936,232 @@ mod tests {
         assert_eq!(cached, None);
         assert_eq!(cache_write, None);
     }
+
+    // ====================================================================
+    // 🆕 2026-09：RAW_PROMPT 瞬态失败重试（回归：网关 200+空 body 曾导致
+    // compaction 摘要一次失败即终局，退化为 FIFO 头删 90% 历史）
+    // ====================================================================
+
+    use std::sync::atomic::{AtomicUsize as AtomicCount, Ordering as AtomicOrdering};
+
+    /// 启动一个按调用次数返回不同响应的测试服务器：
+    /// 前 `empty_responses` 次返回 200+空 body，之后返回合法 OpenAI JSON。
+    async fn spawn_flaky_raw_prompt_server(
+        empty_responses: usize,
+    ) -> (String, Arc<AtomicCount>, tokio::task::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let calls = Arc::new(AtomicCount::new(0));
+        let calls_clone = calls.clone();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let calls = calls_clone.clone();
+                async move {
+                    let calls = calls.clone();
+                    Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                        let calls = calls.clone();
+                        async move {
+                            assert_eq!(request.uri().path(), "/v1/chat/completions");
+                            let n = calls.fetch_add(1, AtomicOrdering::SeqCst);
+                            let response = if n < empty_responses {
+                                // 网关故障形态：200 但空 body
+                                Response::builder().status(200).body(Body::empty()).unwrap()
+                            } else {
+                                Response::builder()
+                                    .status(200)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(
+                                        r#"{"id":"chatcmpl-t","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"摘要结果"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"#,
+                                    ))
+                                    .unwrap()
+                            };
+                            Ok::<_, Infallible>(response)
+                        }
+                    }))
+                }
+            }));
+        let handle = tokio::spawn(async move {
+            let _ = server.await;
+        });
+        (format!("http://{}/v1", address), calls, handle)
+    }
+
+    fn raw_prompt_test_config(base_url: String) -> ApiConfig {
+        ApiConfig {
+            id: "cfg_raw_prompt_test".to_string(),
+            name: "raw-prompt-test".to_string(),
+            model: "test-model".to_string(),
+            base_url,
+            api_key: "sk-test".to_string(),
+            enabled: true,
+            ..Default::default()
+        }
+    }
+
+    /// 200+空 body 是瞬态故障：内部重试后成功，且第二次请求确实发出
+    #[tokio::test]
+    async fn raw_prompt_retries_on_empty_200_then_succeeds() {
+        let (base_url, calls, _server) = spawn_flaky_raw_prompt_server(1).await;
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        let out = manager
+            .call_raw_prompt_with_config(
+                raw_prompt_test_config(base_url),
+                "总结一下对话",
+                None,
+                crate::llm_usage::CallerType::ChatV2,
+                "compaction",
+            )
+            .await
+            .expect("transient empty-200 must be retried to success");
+
+        assert_eq!(out.assistant_message, "摘要结果");
+        assert_eq!(calls.load(AtomicOrdering::SeqCst), 2);
+    }
+
+    /// 持续空 body：耗尽内部重试预算（5 次）后报错，不再无重试一次即终局
+    #[tokio::test]
+    async fn raw_prompt_exhausts_retries_on_persistent_empty_200() {
+        let (base_url, calls, _server) = spawn_flaky_raw_prompt_server(usize::MAX).await;
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        let err = manager
+            .call_raw_prompt_with_config(
+                raw_prompt_test_config(base_url),
+                "总结一下对话",
+                None,
+                crate::llm_usage::CallerType::ChatV2,
+                "compaction",
+            )
+            .await
+            .expect_err("persistent empty-200 must eventually fail");
+
+        assert!(
+            err.to_string().contains("解析RAW_PROMPT响应失败"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            calls.load(AtomicOrdering::SeqCst),
+            routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK as usize,
+            "应耗尽内部重试预算"
+        );
+    }
+
+    /// 🆕 2026-09 回归：非流式 RAW_PROMPT 请求的 Accept 必须只含 application/json。
+    /// 带 text/event-stream 会让某些网关按 Accept（而非 stream 字段）判定流式，
+    /// 返回 SSE 分块流导致 response.json() 解析失败（生产事故根因）。
+    #[tokio::test]
+    async fn raw_prompt_sends_json_only_accept_header() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let seen_accept = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let seen_clone = seen_accept.clone();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let seen = seen_clone.clone();
+                async move {
+                    let seen = seen.clone();
+                    Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                        let seen = seen.clone();
+                        async move {
+                            let accept = request
+                                .headers()
+                                .get("accept")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or_default()
+                                .to_string();
+                            *seen.lock().unwrap() = accept;
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .status(200)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(
+                                        r#"{"id":"chatcmpl-t","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+                                    ))
+                                    .unwrap(),
+                            )
+                        }
+                    }))
+                }
+            }));
+        let _handle = tokio::spawn(async move {
+            let _ = server.await;
+        });
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        manager
+            .call_raw_prompt_with_config(
+                raw_prompt_test_config(format!("http://{}/v1", address)),
+                "ping",
+                None,
+                crate::llm_usage::CallerType::ChatV2,
+                "compaction",
+            )
+            .await
+            .expect("request must succeed");
+
+        let accept = seen_accept.lock().unwrap().clone();
+        assert_eq!(
+            accept, "application/json",
+            "非流式请求不得声明可接受 SSE（text/event-stream）"
+        );
+    }
+
+    /// 400 参数错误不可重试：只发一次请求
+    #[tokio::test]
+    async fn raw_prompt_does_not_retry_on_400() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let calls = Arc::new(AtomicCount::new(0));
+        let calls_clone = calls.clone();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let calls = calls_clone.clone();
+                async move {
+                    let calls = calls.clone();
+                    Ok::<_, Infallible>(service_fn(move |_request: Request<Body>| {
+                        let calls = calls.clone();
+                        async move {
+                            calls.fetch_add(1, AtomicOrdering::SeqCst);
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .status(400)
+                                    .body(Body::from(r#"{"error":"bad request"}"#))
+                                    .unwrap(),
+                            )
+                        }
+                    }))
+                }
+            }));
+        tokio::spawn(async move {
+            let _ = server.await;
+        });
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let err = manager
+            .call_raw_prompt_with_config(
+                raw_prompt_test_config(format!("http://{}/v1", address)),
+                "总结一下对话",
+                None,
+                crate::llm_usage::CallerType::ChatV2,
+                "compaction",
+            )
+            .await
+            .expect_err("400 must fail immediately");
+
+        assert!(err.to_string().contains("400"), "unexpected error: {err}");
+        assert_eq!(calls.load(AtomicOrdering::SeqCst), 1, "400 不应重试");
+    }
 }
 
 fn apply_runtime_reasoning_overrides(
@@ -6497,7 +6723,9 @@ impl LLMManager {
         } else {
             let mut request_builder = self.client
                 .post(&preq.url)
-                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                // 非流式请求只声明 application/json：带 text/event-stream 会让某些
+                // 网关按 Accept 而非 stream 字段判定流式，返回 SSE 导致解析失败
+                .header("Accept", "application/json")
                 .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
@@ -7064,7 +7292,9 @@ impl LLMManager {
 
             let mut request_builder = self.client
                 .post(&preq.url)
-                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                // 非流式请求只声明 application/json：带 text/event-stream 会让某些
+                // 网关按 Accept 而非 stream 字段判定流式，返回 SSE 导致解析失败
+                .header("Accept", "application/json")
                 .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
@@ -7412,12 +7642,15 @@ impl LLMManager {
             )));
         }
 
+        // 该路径有意不做 failover（视觉观察模型冻结），但仍享受建立/解析阶段的
+        // 内部瞬态重试预算。
         self.call_raw_prompt_attempt(
             config,
             user_prompt,
             Some(image_payloads),
             RawPromptOptions { force_json: false },
             caller_type,
+            routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK,
         )
         .await
     }
@@ -7502,19 +7735,27 @@ impl LLMManager {
             param_overrides: routing::ParamOverrides::default(),
         };
         let image_payloads_ref = &image_payloads;
-        self.run_with_failover(run, config, |cfg, _establish_retries| {
+        self.run_with_failover(run, config, |cfg, establish_retries| {
             self.call_raw_prompt_attempt(
                 cfg,
                 user_prompt,
                 image_payloads_ref.clone(),
                 opts,
                 caller_type.clone(),
+                establish_retries,
             )
         })
         .await
     }
 
-    /// raw prompt 的单次尝试（Failover 由 `call_raw_prompt_with_config_opts` 驱动）
+    /// raw prompt 的单次尝试（Failover 由 `call_raw_prompt_with_config_opts` 驱动）。
+    ///
+    /// `establish_max_retries` 控制「发送 → 状态码检查 → 响应解析」阶段的内部重试。
+    /// 本路径恒为非流式（`stream: false`）：响应体解析失败时没有任何内容被消费，
+    /// 重试是安全的——因此解析失败与网络层失败一样打 establish 标，归入
+    /// `RetryableTransient` 参与内部重试与外层 Failover。
+    /// （2026-09 修复：此前解析失败不打标 → NonRetryable → 网关间歇性返回
+    /// 200+空 body 时一次失败即终局，compaction 摘要因此反复失败退化为 FIFO 头删。）
     async fn call_raw_prompt_attempt(
         &self,
         config: ApiConfig,
@@ -7522,6 +7763,7 @@ impl LLMManager {
         image_payloads: Option<Vec<ImagePayload>>,
         opts: RawPromptOptions,
         caller_type: crate::llm_usage::CallerType,
+        establish_max_retries: u32,
     ) -> Result<StandardModel2Output> {
         if image_payloads
             .as_ref()
@@ -7630,112 +7872,156 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        // 5. 发送请求
-        let response = if preq.is_codex() {
-            self.send_codex_request_with_single_refresh(&mut preq, None)
-                .await?
-        } else {
-            let mut request_builder = self.client
-                .post(&preq.url)
-                .header("Accept", "text/event-stream, application/json, text/plain, */*")
-                .header("Accept-Encoding", "identity")
-                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-            for (k, v) in &preq.headers {
-                request_builder = request_builder.header(k, v);
-            }
-
-            // 设置 Origin/Referer 头（与其它调用保持一致）
-            if let Ok(parsed_url) = Url::parse(&config.base_url) {
-                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                    && parsed_url.host_str().is_some()
-                {
-                    let origin_val = format!(
-                        "{}://{}",
-                        parsed_url.scheme(),
-                        parsed_url.host_str().unwrap_or_default()
-                    );
-                    let referer_val = format!(
-                        "{}://{}/",
-                        parsed_url.scheme(),
-                        parsed_url.host_str().unwrap_or_default()
-                    );
-                    request_builder = request_builder
-                        .header("Origin", origin_val)
-                        .header("Referer", referer_val);
-                }
-            }
-
-            request_builder
-                .json(&preq.body)
-                .send()
-                .await
-                // 🆕 建立阶段网络层失败：打标供 Failover 分类
-                .map_err(|e| {
-                    routing::tag_establish_failure(
-                        AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())),
-                        None,
-                    )
-                })?
-        };
-
-        // 6. 检查响应状态
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            // 🆕 打标 HTTP 状态码供 Failover 分类
-            return Err(routing::tag_establish_failure(
-                AppError::llm(format!(
-                    "RAW_PROMPT API请求失败: {} - {}",
-                    status, error_text
-                )),
-                Some(status.as_u16()),
-            ));
-        }
-
         // 生效协议归属，供本函数内所有用量记录使用（报表按协议拆分）
         let usage_protocol = super::effective_api_protocol_for_config(&config);
 
-        // 7. 解析响应
-        let response_json: serde_json::Value = response.json().await.map_err(|e| {
-            let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-            crate::llm_usage::record_llm_usage_ext(
-                caller_type.clone(),
-                &config.model,
-                0,
-                0,
-                None,
-                None,
-                None,
-                None,
-                false,
-                Some(err_msg.clone()),
-                Some(usage_protocol.clone()),
-                // 响应解析失败没有任何 API usage，0 token 记录标注为本地估算
-                Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
-            );
-            AppError::llm(err_msg)
-        })?;
+        // 5-7. 发送 → 状态检查 → 解析：瞬态失败（网络错误 / 5xx / 408 /
+        // 200+空body 等响应解析失败）按 establish 重试预算内部退避重试。
+        // 非流式路径重试安全：解析失败时响应体未被消费，无副作用。
+        let max_attempts = establish_max_retries.max(1);
+        let mut attempt_idx = 0u32;
+        let openai_like_json = loop {
+            attempt_idx += 1;
+            let attempt_result: Result<serde_json::Value> = async {
+                // 5. 发送请求
+                let response = if preq.is_codex() {
+                    self.send_codex_request_with_single_refresh(&mut preq, None)
+                        .await?
+                } else {
+                    let mut request_builder = self.client
+                        .post(&preq.url)
+                        // 🆕 2026-09 修复：非流式请求必须只声明 Accept: application/json。
+                        // 此前带上 text/event-stream，某些网关按 Accept 而非 stream 字段
+                        // 判定流式——返回 SSE 分块流，response.json() 解析失败
+                        // （"expected value at line 1 column 1"，首字符是 'd'），
+                        // 表现为间歇性"200+解析失败"。
+                        .header("Accept", "application/json")
+                        .header("Accept-Encoding", "identity")
+                        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                    for (k, v) in &preq.headers {
+                        request_builder = request_builder.header(k, v);
+                    }
 
-        // All non-streaming protocols converge on the OpenAI chat-shaped response used below.
-        // This also converts canonical Responses JSON produced by the Codex SSE bridge.
-        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)
-            .inspect_err(|error| {
-                crate::llm_usage::record_llm_usage_ext(
-                    caller_type.clone(),
-                    &config.model,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                    Some(error.to_string()),
-                    Some(usage_protocol.clone()),
-                    Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
-                );
-            })?;
+                    // 设置 Origin/Referer 头（与其它调用保持一致）
+                    if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                        if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                            && parsed_url.host_str().is_some()
+                        {
+                            let origin_val = format!(
+                                "{}://{}",
+                                parsed_url.scheme(),
+                                parsed_url.host_str().unwrap_or_default()
+                            );
+                            let referer_val = format!(
+                                "{}://{}/",
+                                parsed_url.scheme(),
+                                parsed_url.host_str().unwrap_or_default()
+                            );
+                            request_builder = request_builder
+                                .header("Origin", origin_val)
+                                .header("Referer", referer_val);
+                        }
+                    }
+
+                    request_builder
+                        .json(&preq.body)
+                        .send()
+                        .await
+                        // 🆕 建立阶段网络层失败：打标供 Failover 分类
+                        .map_err(|e| {
+                            routing::tag_establish_failure(
+                                AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())),
+                                None,
+                            )
+                        })?
+                };
+
+                // 6. 检查响应状态
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_default();
+                    // 🆕 打标 HTTP 状态码供 Failover 分类
+                    return Err(routing::tag_establish_failure(
+                        AppError::llm(format!(
+                            "RAW_PROMPT API请求失败: {} - {}",
+                            status, error_text
+                        )),
+                        Some(status.as_u16()),
+                    ));
+                }
+
+                // 7. 解析响应
+                // 🆕 2026-09 修复：解析失败（如网关间歇性返回 200+空 body / 非 JSON）
+                // 同样打 establish 标——非流式路径下响应体未被消费，归入
+                // RetryableTransient 后可安全重试。此前不打标 → NonRetryable →
+                // 一次抖动即终局（compaction 摘要因此反复失败）。
+                let response_json: serde_json::Value = response.json().await.map_err(|e| {
+                    let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
+                    crate::llm_usage::record_llm_usage_ext(
+                        caller_type.clone(),
+                        &config.model,
+                        0,
+                        0,
+                        None,
+                        None,
+                        None,
+                        None,
+                        false,
+                        Some(err_msg.clone()),
+                        Some(usage_protocol.clone()),
+                        // 响应解析失败没有任何 API usage，0 token 记录标注为本地估算
+                        Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
+                    );
+                    routing::tag_establish_failure(AppError::llm(err_msg), None)
+                })?;
+
+                // All non-streaming protocols converge on the OpenAI chat-shaped response used below.
+                // This also converts canonical Responses JSON produced by the Codex SSE bridge.
+                // 归一化失败同样是「响应体不是预期形态」，打标后可重试。
+                normalize_nonstream_response_to_openai(&config, &response_json).map_err(|error| {
+                    crate::llm_usage::record_llm_usage_ext(
+                        caller_type.clone(),
+                        &config.model,
+                        0,
+                        0,
+                        None,
+                        None,
+                        None,
+                        None,
+                        false,
+                        Some(error.to_string()),
+                        Some(usage_protocol.clone()),
+                        Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
+                    );
+                    routing::tag_establish_failure(error, None)
+                })
+            }
+            .await;
+
+            match attempt_result {
+                Ok(value) => break value,
+                Err(err) => {
+                    let class = routing::classify_llm_error(&err);
+                    if class == routing::LlmErrorClass::RetryableTransient
+                        && attempt_idx < max_attempts
+                    {
+                        // 300ms 起步指数退避（封顶 2.4s）：覆盖网关瞬时抖动，
+                        // 持续性故障交给外层 Failover / 调用方冷却处理
+                        let backoff_ms = 300u64 << (attempt_idx - 1).min(3);
+                        warn!(
+                            "[RAW_PROMPT] 瞬态失败（{err}），{}ms 后重试 {}/{}",
+                            backoff_ms,
+                            attempt_idx + 1,
+                            max_attempts
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue;
+                    }
+                    return Err(err);
+                }
+            }
+        };
 
         let assistant_message = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -8341,7 +8627,9 @@ impl LLMManager {
         } else {
             let mut request_builder = self.client
                 .post(&preq.url)
-                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                // 非流式请求只声明 application/json：带 text/event-stream 会让某些
+                // 网关按 Accept 而非 stream 字段判定流式，返回 SSE 导致解析失败
+                .header("Accept", "application/json")
                 .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
