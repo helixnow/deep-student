@@ -65,6 +65,8 @@ interface ApprovalRequestPayload {
 
 type ApprovalResolutionStatus = 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
 
+export type { ApprovalResolutionStatus };
+
 interface ApprovalResultPayload {
   toolCallId?: string;
   approved?: boolean;
@@ -270,6 +272,33 @@ function notifyApprovalError(kind: 'timeout' | 'expired' | 'error') {
   );
 }
 
+/**
+ * 本地收摊：不等待事件桥投递终止事件，直接 resolve 当前审批并推进队列。
+ *
+ * 审批的终止事件是虚拟块事件（BackendEvent::error/end 不携带 messageId），
+ * 流结束后事件桥上下文已重建，终止事件会进孤儿缓冲并在冲刷时因 messageId
+ * 缺失被静默丢弃——所以不能只吃事件投递这一条路。典型调用方：
+ * - BlockingApprovalBar：respond 命令返回 approval_expired（后端已权威告知
+ *   等待者不存在），立即本地收摊，避免审批栏永久占位、反复弹"审批已失效"。
+ *
+ * 不弹通知（调用方已给反馈）；幂等：pending 不存在或已决时只记账不动作。
+ */
+export function resolveApprovalLocally(
+  store: ChatStore,
+  toolCallId: string,
+  status: ApprovalResolutionStatus,
+  reason?: string,
+): void {
+  const runtime = getApprovalRuntime(store);
+  if (toolCallId) {
+    runtime.terminalToolCallIds.add(toolCallId);
+    removeQueuedApproval(runtime, toolCallId);
+  }
+  if (!shouldResolveApproval(store, toolCallId)) return;
+  resolvePendingApproval(store, status, reason);
+  scheduleAdvanceQueue(store);
+}
+
 // ============================================================================
 // 事件处理器
 // ============================================================================
@@ -281,9 +310,14 @@ function notifyApprovalError(kind: 'timeout' | 'expired' | 'error') {
  * 此处理器将请求数据存储到 Store，供 UI 组件渲染审批对话框。
  */
 export const approvalEventHandler: EventHandler = {
+  // 审批块是虚拟块（onStart 不创建真实块、不落库），终止事件必须能在
+  // 块未被追踪（流结束、上下文已清理）时仍按 blockId 直投到 onEnd/onError，
+  // 否则审批栏永远收不到终止信号。
+  deliverTerminalByBlockId: true,
+
   /**
    * 事件开始时调用
-   * 
+   *
    * 将审批请求数据存储到 Store 的 pendingApprovalRequest
    */
   onStart: (store: ChatStore, _messageId: string, payload: Record<string, unknown>): string => {

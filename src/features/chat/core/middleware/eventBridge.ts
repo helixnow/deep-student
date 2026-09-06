@@ -1302,6 +1302,15 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
       }
 
       if (!effectiveBlockId) {
+        // 虚拟块（如审批）终止事件直投：此类 handler 只依赖 blockId 解析目标，
+        // 不要求块真实存在。后端的 end/error 事件不携带 messageId，流结束后
+        // 事件上下文已按新 messageId 重建，若进孤儿缓冲会在冲刷时因
+        // messageId 缺失被静默丢弃——审批栏曾因此永久占位。
+        if (blockId && handler.deliverTerminalByBlockId) {
+          applyTerminalEvent(store, handler, context, event, blockId);
+          autoSave.scheduleAutoSave(store);
+          return;
+        }
         // 孤儿终止事件：start 可能因 gap 丢失或尚未到达，缓存等待/兜底
         bufferOrphanTerminal(store, context, event);
         return;

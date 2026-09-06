@@ -67,6 +67,16 @@ export interface EventHandler {
    * @param error 错误信息
    */
   onError?: (store: ChatStore, blockId: string, error: string) => void;
+
+  /**
+   * 虚拟块事件（不落库、无真实块，如 tool_approval_request）置 true：
+   * end/error 终止事件在块未被追踪（流已结束、事件上下文已清理）时，
+   * 仍按事件携带的 blockId 直接投递给 onEnd/onError，而不是进入孤儿缓冲
+   * ——孤儿冲刷在 messageId 缺失时会丢弃事件，导致审批栏这类无块 UI
+   * 永远收不到终止信号。开启前提：onEnd/onError 只依赖 blockId 解析目标，
+   * 不要求块真实存在。
+   */
+  deliverTerminalByBlockId?: boolean;
 }
 
 // ============================================================================

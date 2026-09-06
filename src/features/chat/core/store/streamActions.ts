@@ -2,6 +2,7 @@ import type { ChatStoreState, SetState, GetState } from './types';
 import { addToSet, removeFromSet } from './immerHelpers';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { chunkBuffer } from '../middleware/chunkBuffer';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -58,6 +59,15 @@ export function createStreamActions(
           const currentMessageId = state.currentStreamingMessageId;
           const currentMessage = currentMessageId ? state.messageMap.get(currentMessageId) : null;
           const messageBlockIds = currentMessage?.blockIds || [];
+
+          // 流终止（成功/错误/取消）时收掉未决审批栏：pipeline 等待审批期间不可能
+          // 发出 stream_complete，pending 审批与流终止并存即意味着审批已随流死亡；
+          // 其终止事件（无 messageId 的虚拟块）在流结束后会被事件桥静默丢弃，
+          // 本地直接清理，避免审批栏永久占位。审批队列运行时一并重置。
+          const hasPendingToolApproval = state.pendingBlockingInteraction?.kind === 'tool_approval';
+          if (hasPendingToolApproval) {
+            resetTransientRuntimes(state.setPendingApproval);
+          }
 
           // 根据 reason 将所有活跃块标记为对应状态
           set((s) => {
@@ -228,6 +238,9 @@ export function createStreamActions(
               activeBlockIds: new Set(),
               blocks: newBlocks,
               messageMap: newMessageMap,
+              ...(hasPendingToolApproval
+                ? { pendingBlockingInteraction: null, pendingApprovalRequest: null }
+                : {}),
             };
           });
 
