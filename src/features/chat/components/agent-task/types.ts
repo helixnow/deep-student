@@ -82,7 +82,7 @@ export interface ArtifactItem {
 // ============================================================================
 
 export type ChangeAction = 'create' | 'update' | 'delete' | 'append' | 'write';
-export type ChangeKind = 'note' | 'file' | 'document';
+export type ChangeKind = 'note' | 'file' | 'document' | 'mindmap' | 'anki';
 
 export interface ChangeItem {
   id: string;

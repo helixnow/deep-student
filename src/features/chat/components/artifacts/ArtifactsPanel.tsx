@@ -175,13 +175,18 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
     return extractChanges([...store.getState().blocks.values()]);
   }, [store, blocksVersion]);
 
-  /** 变更条目点击：打开目标（note → DSTU_OPEN_NOTE；其余 → openResource） */
+  /** 变更条目点击：打开目标（note → DSTU_OPEN_NOTE；mindmap → 附件预览面板；其余 → openResource） */
   const openChangeTarget = useCallback((change: ChangeItem) => {
     const targetId = change.openId ?? change.target;
     if (!targetId) return;
     if (change.kind === 'note') {
       window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
         detail: { noteId: targetId, source: 'artifacts_panel_changes' },
+      }));
+    } else if (change.kind === 'mindmap') {
+      // 与 MindmapCitationCard 同一打开通道
+      window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+        detail: { id: targetId, type: 'mindmap', title: change.label },
       }));
     } else {
       void openResource(`/${targetId}`, { handlerNamespace: 'chat-v2' });

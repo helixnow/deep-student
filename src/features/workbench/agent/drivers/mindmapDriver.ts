@@ -81,17 +81,16 @@ function agentExitingMs(): number {
 export const VIEWPORT_FOLLOW_EVERY = 5;
 
 /**
- * R2-02 定稿：维持 v1 拒绝式（不升级 AIDiff 式预览）。
- * 理由见 progress/R2-02.md「设计决策」。
- * ACR 4.0 A4：types.ts 回执状态枚举无 blocked/rejected 可选，维持 completed +
- * suggestionPending，但 message 改为明确指令式文案，避免 LLM 傻等一个
- * 永远不会到来的确认回执。
+ * P2 人机双写：破坏性 ops 暂存为建议，画布确认条（MindmapAgentSuggestionBar）
+ * 裁决——接受经 acceptMindmapSuggestion 合成 instant run 应用，拒绝丢弃。
+ * 文案必须明确"不要重复提交"：接受会自动应用暂存 ops，若 LLM 同时按旧
+ * 拒绝式语义从后端路径重提，同一批改动会双重应用。
  */
 export const SUGGESTION_MESSAGE =
-  '目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：'
-  + '用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。'
-  + 'suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，'
-  + '或提示用户保存/结束编辑后重试。';
+  '目标导图存在未保存编辑或正在编辑，破坏性操作已暂存为建议（suggestionPending=true）：'
+  + '画布上已弹出确认条，用户会接受或拒绝，接受时暂存操作会自动应用。'
+  + '请勿重复提交同一批操作（会导致双重应用），也不要改走后端数据路径重提；'
+  + '如需调整，等用户反馈后再行动。';
 
 /**
  * 写入回执时走 i18n（mindmap:agent.*；语言可运行时切换，故用函数而非模块级常量）。
