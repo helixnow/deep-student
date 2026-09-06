@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.55](https://github.com/helixnow/deep-student/compare/v0.9.54...v0.9.55) (2026-09-06)
+
+
+### Features
+
+* add pelican bicycle svg animation ([6de34e3](https://github.com/helixnow/deep-student/commit/6de34e3a5f8ed24d98daef72d6670e69be4568b2))
+* **chat:** 侧栏会话筛选菜单（默认隐藏子代理会话）+ 行内指示器与操作簇重叠让位 ([57bf33a](https://github.com/helixnow/deep-student/commit/57bf33a412d592e028ef28ebf317d4ab2be74c70))
+
+
+### Bug Fixes
+
+* **build:** bump Android baseline to v0.9.54, fix release-please annotation ([a80956f](https://github.com/helixnow/deep-student/commit/a80956fd3ce50fae59a07e5c615b060cf5211997))
+* **chat:** 制卡事件合并缓冲，修复批量制卡前端 O(N²) 卡顿 ([d5dcc18](https://github.com/helixnow/deep-student/commit/d5dcc186674640ba81a1eb3bdfecad37faca9c81))
+* **chat:** 制卡事件合并缓冲，修复批量制卡前端 O(N²) 卡顿 ([5df87c3](https://github.com/helixnow/deep-student/commit/5df87c3fbb53613a23497544ab58f2ce1921f77a))
+* **chat:** 审批已决态即点即出队——APPROVAL_RESOLUTION_DISPLAY_MS 1000ms→0 ([dd46b14](https://github.com/helixnow/deep-student/commit/dd46b149b3554962eea8bcf88a100206ee052ae4))
+* **chat:** 审批栏卡死——approval_expired 反复弹通知但审批栏不消失 ([dbfc7d0](https://github.com/helixnow/deep-student/commit/dbfc7d0de4e6139e3502246c6846aeecc7562a6a))
+* **ci:** Android 作业接入 sccache——runner 回收后编译单元不丢 ([05f2a78](https://github.com/helixnow/deep-student/commit/05f2a7804d5c1d30286f292eb75f283c418b637d))
+* **ci:** Cloud Provider Contract Gate 按 provider 拆 matrix 并行 ([2ef82f6](https://github.com/helixnow/deep-student/commit/2ef82f6dc3630de6c738dd91af6d9f5e20f4a896))
+* **ci:** Vitest 长尾 17 文件 160 例全绿 + Migration Gate 钉版 ([3389725](https://github.com/helixnow/deep-student/commit/3389725b2f4a95e7ddc799f3d9a141daf491e9cb))
+* **ci:** 修复 main 基线五项红项——lint/迁移锁/测试 mock/样式契约 ([7f8be1d](https://github.com/helixnow/deep-student/commit/7f8be1d8eda1726b3ed6ef3d227527ddcd96abb1))
+* **ci:** 修复 Vitest 2/4+3/4 基线——18 例失败全修（118 绿） ([d5c41f1](https://github.com/helixnow/deep-student/commit/d5c41f166c16dc65d69f3475be02bc77ca34555d))
+* **ci:** 根治 Android 构建连败与 runner 回收——堆上限/钉版/fmt ([1727aaa](https://github.com/helixnow/deep-student/commit/1727aaa5c3f623db477b5b42ef56e08047416218))
+* **command-palette:** 取消过期聚焦 rAF——Esc 竞态致焦点掉 body；CI 缓存随钉版镜像隔离 ([21adb95](https://github.com/helixnow/deep-student/commit/21adb9539dee0baefd9657deb6590a4f043ac8b1))
+* **llm:** compaction 健壮性——失败冷却防抖动 + RAW_PROMPT 瞬态重试 + token 估算采样外推 ([4952286](https://github.com/helixnow/deep-student/commit/4952286d64b69b2f207c379c64b48c528cf633c0))
+* **mcp:** harden stdio spawn path & self-heal tool injection on send ([1a1661d](https://github.com/helixnow/deep-student/commit/1a1661db62e4078ff9dace8bbc730bd60ee32cc9))
+* **mcp:** harden stdio spawn, self-heal tool injection, wire Settings status ([25de0b4](https://github.com/helixnow/deep-student/commit/25de0b4ee3dd14bfc53a0a03b6d6487cce55561d))
+* **settings:** wire MCP connection status into editor section ([f8ebb63](https://github.com/helixnow/deep-student/commit/f8ebb63ec18f433812c0aaacdbe9db24f3aaaf69))
+* **startup:** raise recovery preflight timeout 15s -&gt; 120s ([b3d1652](https://github.com/helixnow/deep-student/commit/b3d16528266a4620bdd54c75fb09b0d058870be7))
+* **startup:** setup 完成闸门修复启动预检误报 blocked ([4ccd2c1](https://github.com/helixnow/deep-student/commit/4ccd2c121a58c505604864c76ad3718b3fdbf13b))
+
 ## [0.9.54](https://github.com/helixnow/deep-student/compare/v0.9.53...v0.9.54) (2026-09-05)
 
 
