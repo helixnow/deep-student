@@ -1127,6 +1127,23 @@ class McpServiceImpl {
     return this.toolCacheByServer.get(serverId)?.tools || [];
   }
 
+  /**
+   * 发送路径兜底：缓存为空（WebView 页面重载清空内存态 / 首启未发现）时，
+   * 连接 server 并完成工具发现后返回；失败返回空数组，不阻塞发送。
+   * Settings 显示"未连接"而配置已启用的场景由此自愈。
+   */
+  async ensureServerTools(serverId: string): Promise<ToolInfo[]> {
+    const cached = this.getCachedToolsFor(serverId);
+    if (cached.length > 0) return cached;
+    if (!this.getServer(serverId)) return [];
+    try {
+      return await this.fetchServerTools(serverId);
+    } catch (err: unknown) {
+      debugLog.warn(`[MCP] ensureServerTools failed for ${serverId}:`, err);
+      return [];
+    }
+  }
+
   getCachedToolsSnapshot(): Record<string, { at: number; tools: ToolInfo[] }> {
     const out: Record<string, { at: number; tools: ToolInfo[] }> = {};
     for (const [sid, snap] of this.toolCacheByServer.entries()) {

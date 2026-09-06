@@ -123,4 +123,6 @@ export interface UseMcpEditorSectionDeps {
   handleSave: (silent?: boolean) => Promise<void>;
   normalizedMcpServers: McpToolConfig[];
   setMcpStatusInfo: (v: McpStatusInfo | null) => void;
+  /** 父组件已订阅的 MCP 连接状态快照；本组件只读，不再自建恒空 state */
+  mcpStatusInfo: McpStatusInfo | null;
 }
