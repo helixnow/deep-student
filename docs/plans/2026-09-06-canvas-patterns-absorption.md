@@ -491,3 +491,38 @@ ACR 2.0 语义 action。
 - GenerativeUIPanel 本体零 store 依赖，可在聊天外渲染 intent。
 - HITL 审批通道（approval_scope + BlockingApprovalBar + sensitivity 分级）成熟可用。
 - 导图 ACR 路径每 op 的 ledger 逆操作带 stableValue 冲突检测，行号全部命中。
+
+---
+
+## 落地复审记录（2026-09-07，P0–P3 实现后四路并行复审 + 修复）
+
+实现完成后对四个 phase 做了并行代码复审，发现的 FAIL/CONCERN 及处置：
+
+**已修复**（各附测试）：
+1. P0 workbench 壳 `context-ref:preview` 未适配 selection（WorkbenchEventBridge 误报失败/
+   错类型开窗）→ 桥内解析 data.source 路由，message 交 ChatV2Page、pdf launch+跳页、
+   mindmap/note launch（commit 729d70fd5）。
+2. P0 消息面工具条旧「添加到聊天」成永久 disabled 死按钮 → hideUnavailableActions（同上）。
+3. P0 导图截断后缀缺计数 → 「尚有 N 个节点」+ visited 语义修正（同上）。
+4. P1/P3 skeletonRef 精确匹配 live 路径不生效（live 块无 toolInput）→ executor end 载荷
+   回显 skeletonRef（commit b03c1b6bc）。
+5. P3 用户可见通知硬编码中文 → i18n 化（generativeUi:skeleton.*）（同上）。
+6. P3 三处块类型白名单无契约测试 → generativeUiContract.test.ts 三方对齐断言（同上）。
+7. P2 变更记录缺导图/anki 来源 → extractChanges 增 mindmap_edit_nodes（kind=mindmap，
+   点击开预览面板）与 chatanki_update_library_card（kind=anki 仅留痕）分支
+   （commit 47882ef25）。
+8. P2 导图 suggestion_pending 文案仍是旧拒绝式语义（诱导 LLM 后端重提 → 与用户接受
+   并存构成双重应用）→ 改为暂存语义+禁止重复提交（同上）。
+9. P0 demo 壳缺 vfs_create_or_reuse mock（__TAURI_INTERNALS__ 已装，resourceStoreApi
+   走 tauri 实现直打 IPC）→ 内存表 mock + get/exists 回源（commit 729d70fd5）。
+
+**有意的范围收窄（记录备查，不视为缺陷）**：
+- generative-ui / anki-cards 产物无「在 X 中打开」：产物即视图（面板内重渲染就是完整
+  形态）；导图类打开经 mindmap-embed 块内嵌的既有打开入口。note/file 两kind 有打开通道。
+- P2 会话级 change-log store 未建：变更记录 = extractChanges 扫 blocks 派生（含本轮补的
+  导图/anki 工具块）；导图版本表枚举、Anki provenance 枚举、ACR receipt 接入留作二期。
+- anki 改卡留痕由 `_content_provenance` 的 code 字段承担（gold 契约不动），未追加
+  `_qa_flags` 条目；CAS 撤销 UI 未接线（High 审批 + 字段级 diff 预览为主防护）。
+- P2 demo 壳未加「AI 改导图→预览确认→撤销」剧本（需完整导图编辑器上屏，演示壳成本
+  过高）；demo 已含会话④周度看板覆盖 P1/P3 闭环（commit 1adbb01ca）。
+- P0 笔记面只启用「引用到聊天」（解释/翻译未接）；移动端导图无入口（风险 7 桌面先行）。
