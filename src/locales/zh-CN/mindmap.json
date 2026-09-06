@@ -513,7 +513,7 @@
     }
   },
   "agent": {
-    "suggestion_pending": "目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，或提示用户保存/结束编辑后重试。",
+    "suggestion_pending": "目标导图存在未保存编辑或正在编辑，破坏性操作已暂存为建议（suggestionPending=true）：画布上已弹出确认条，用户会接受或拒绝，接受时暂存操作会自动应用。请勿重复提交同一批操作（会导致双重应用），也不要改走后端数据路径重提；如需调整，等用户反馈后再行动。",
     "validation_children_not_array": "data.children 必须是数组",
     "validation_item_not_node": "children 中每一项都必须是节点对象",
     "validation_cycle": "children 中存在循环引用",

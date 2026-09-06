@@ -213,8 +213,8 @@ describe('update_node 更新高亮（agentUpdatedIds，与 entering 区分）', 
   });
 });
 
-describe('拒绝式建议回执的诚实指令式文案', () => {
-  it('dirty + delete → message 明示不会有确认回执、给出替代路径', async () => {
+describe('暂存式建议回执的诚实指令式文案', () => {
+  it('dirty + delete → message 明示已暂存待确认、禁止重复提交（双重应用防护）', async () => {
     seedStore({ isDirty: true });
     const receipt = await mindmapDriver.apply(makeRun('suggestion'), [
       {
@@ -229,10 +229,10 @@ describe('拒绝式建议回执的诚实指令式文案', () => {
     expect(receipt.mode).toBe('suggestion');
     expect(receipt.suggestionPending).toBe(true);
     expect(receipt.message).toBe(SUGGESTION_MESSAGE);
-    // 指令式要素：不发生、无回执勿等待、替代路径
-    expect(receipt.message).toContain('用户未确认前这些操作不会发生');
-    expect(receipt.message).toContain('不会有后续回执');
-    expect(receipt.message).toContain('后端数据路径');
+    // P2 暂存语义要素：已暂存待确认、接受自动应用、禁止重复提交（双重应用防护）
+    expect(receipt.message).toContain('已暂存为建议');
+    expect(receipt.message).toContain('确认条');
+    expect(receipt.message).toContain('请勿重复提交');
     // 文档未被改动
     expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')).not.toBeNull();
     // dirty 屏障不播退场动画

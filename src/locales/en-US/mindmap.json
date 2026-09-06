@@ -520,7 +520,7 @@
     }
   },
   "agent": {
-    "suggestion_pending": "The target mind map has unsaved or in-progress edits, so destructive operations were rejected and suspended: they will not happen until the user confirms, there is no confirmation UI, and no follow-up receipt will arrive — do not wait. suggestionPending=true only conveys this rejection semantics. Resubmit via the backend data path instead, or ask the user to save/finish editing and retry.",
+    "suggestion_pending": "The target mind map has unsaved or in-progress edits, so destructive operations were stashed as a suggestion (suggestionPending=true): a confirmation bar is now shown on the canvas, and accepting it applies the stashed operations automatically. Do NOT resubmit the same batch (that would double-apply) and do not retry via the backend data path; wait for user feedback before further action.",
     "validation_children_not_array": "data.children must be an array",
     "validation_item_not_node": "Every item in children must be a node object",
     "validation_cycle": "children contains a circular reference",
