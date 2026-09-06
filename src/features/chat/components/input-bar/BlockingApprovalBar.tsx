@@ -303,8 +303,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
   const disabled = isResponding || hasResponded || isResolved || isTimedOutLocally;
 
-  // 已决态反馈（收敛自遗留 ToolApprovalCard）：出队前的 1s 窗口内明确告知结果，
-  // 避免审批栏「无声消失」
+  // 已决态反馈（收敛自遗留 ToolApprovalCard）。生产路径已取消固定的 1s 展示窗口
+  // （APPROVAL_RESOLUTION_DISPLAY_MS=0，后端确认后立即出队消失），此 UI 仅在
+  // dev playground（900ms 窗口）与状态恢复等边缘场景下可见。
   const resolution = useMemo(() => {
     const status = interaction.resolvedStatus;
     if (!status) return null;
