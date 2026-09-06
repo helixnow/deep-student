@@ -102,6 +102,7 @@ import { StructureSelector } from './components/mindmap/StructureSelector';
 import { StyleSettings } from './components/toolbar/StylePanel';
 // W09 契约：选中节点时的内联格式条（无必需 props，内部消费当前 store）
 import { MindMapFormatBar } from './components/toolbar/FormatBar';
+import { MindmapAgentSuggestionBar } from './components/agent/MindmapAgentSuggestionBar';
 import { VersionHistoryPanel } from './components/toolbar/VersionHistoryPanel';
 // 快捷键帮助：内联面板（W07 键表消费与归一化已移入该组件）
 import { ShortcutHelpPanel } from './components/toolbar/ShortcutHelpPanel';
@@ -1399,6 +1400,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           </InlineCollapse>
         )}
       </AnimatePresence>
+
+      {/* P2 人机双写：AI 建议确认条（suggestion 屏障暂存的 ops，diff 摘要裁决）。
+          组件内部自行订阅/空态返回 null，不套 InlineCollapse（null 子级会破坏高度动画） */}
+      {resourceId && <MindmapAgentSuggestionBar mindmapId={resourceId} />}
 
       {/* 大文件导入进行中：内联忙碌横幅（进度反馈，防止界面看似卡死） */}
       <AnimatePresence initial={false}>

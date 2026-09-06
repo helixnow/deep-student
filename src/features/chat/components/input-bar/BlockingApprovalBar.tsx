@@ -20,6 +20,7 @@ import {
   getReadableToolName,
 } from '@/features/chat/utils/toolDisplayName';
 import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
+import { AnkiCardUpdateDiff } from './AnkiCardUpdateDiff';
 import { sessionManager } from '../../core/session/sessionManager';
 import { resolveApprovalLocally } from '../../plugins/events/approval';
 import type { BlockingInteraction } from '../../core/types/store';
@@ -598,6 +599,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           )}
         </div>
       )}
+
+      {/* P2 人机双写：anki 库卡更新的字段级 diff 预览（非 anki 工具时组件返回 null） */}
+      <AnkiCardUpdateDiff toolName={interaction.toolName} arguments={interaction.arguments} />
 
       {/* Row 2: 参数预览（可折叠） */}
       {argsText !== '{}' && (

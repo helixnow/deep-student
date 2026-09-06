@@ -359,6 +359,7 @@ commands.allow = [
   "get_all_custom_templates",
   "get_all_recent_cards",
   "get_anki_deck_names",
+  "get_anki_library_card_content",
   "get_anki_model_names",
   "get_anki_stats",
   "get_api_configurations",

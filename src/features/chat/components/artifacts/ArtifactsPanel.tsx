@@ -50,6 +50,8 @@ import {
   type ArtifactEntry,
   type ArtifactKind,
 } from '../../core/store/artifactRegistry';
+import { extractChanges } from '../agent-task/extractors';
+import type { ChangeItem } from '../agent-task/types';
 
 // ============================================================================
 // 工具
@@ -113,6 +115,8 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
   const [registryVersion, setRegistryVersion] = useState(0);
   // sessionMetadata 版本（pin 后触发重渲染）
   const [metaVersion, setMetaVersion] = useState(0);
+  // blocks 规模版本（变更分段派生触发器；restore 分页 prepend 也会 bump）
+  const [blocksVersion, setBlocksVersion] = useState(0);
 
   useEffect(() => {
     return subscribeArtifactRegistry((changedSessionId) => {
@@ -124,9 +128,23 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
   useEffect(() => {
     if (!store) return;
     hydrateSessionArtifacts(sessionId, store.getState());
+    // 变更分段派生触发器：工具块终态计数（size 不变的原地 toolOutput 落库也要覆盖；
+    // 用计数而非 Map 引用比较，避免流式 chunk 更新触发全量重派生）
+    const countTerminalToolBlocks = (blocks: Map<string, { toolName?: string; status: string }>) => {
+      let n = 0;
+      for (const b of blocks.values()) {
+        if (b.toolName && (b.status === 'success' || b.status === 'error')) n += 1;
+      }
+      return n;
+    };
+    let lastTerminalCount = countTerminalToolBlocks(store.getState().blocks);
     const unsub = store.subscribe((state, prev) => {
-      if (state.blocks.size !== prev.blocks.size) {
+      if (state.blocks === prev.blocks) return;
+      const terminalCount = countTerminalToolBlocks(state.blocks);
+      if (state.blocks.size !== prev.blocks.size || terminalCount !== lastTerminalCount) {
+        lastTerminalCount = terminalCount;
         hydrateSessionArtifacts(sessionId, state);
+        setBlocksVersion((v) => v + 1);
       }
     });
     return unsub;
@@ -148,6 +166,27 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
   }, [sessionId, registryVersion, metaVersion, sessionMetadata]);
 
   const selected = selectedId ? artifacts.find((a) => a.artifactId === selectedId) ?? null : null;
+
+  // P2 变更聚合分段（薄壳）：复用 AgentTaskPanel 的 extractChanges 扫会话 blocks
+  // （两壳通用的已持久化数据源——写工具块 toolOutput；ACR receipt 亦走块持久化）
+  const changes = useMemo<ChangeItem[]>(() => {
+    void blocksVersion;
+    if (!store) return [];
+    return extractChanges([...store.getState().blocks.values()]);
+  }, [store, blocksVersion]);
+
+  /** 变更条目点击：打开目标（note → DSTU_OPEN_NOTE；其余 → openResource） */
+  const openChangeTarget = useCallback((change: ChangeItem) => {
+    const targetId = change.openId ?? change.target;
+    if (!targetId) return;
+    if (change.kind === 'note') {
+      window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
+        detail: { noteId: targetId, source: 'artifacts_panel_changes' },
+      }));
+    } else {
+      void openResource(`/${targetId}`, { handlerNamespace: 'chat-v2' });
+    }
+  }, []);
 
   // ========== 动作 ==========
 
@@ -292,13 +331,14 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
         renderDetail(selected)
       ) : (
         <div className="flex-1 min-h-0 overflow-auto">
-          {artifacts.length === 0 ? (
+          {artifacts.length === 0 && changes.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 h-full p-6 text-center">
               <SquaresFour size={22} className="text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">{t('artifacts.empty')}</p>
               <p className="text-xs text-muted-foreground/70">{t('artifacts.emptyHint')}</p>
             </div>
           ) : (
+            <>
             <ul className="py-1">
               {artifacts.map((entry) => {
                 const Icon = KIND_ICON[entry.kind];
@@ -336,6 +376,48 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
                 );
               })}
             </ul>
+
+            {/* P2 变更分段（WorkBuddy「产物+变更」同构）：会话内 AI 写入/修改记录 */}
+            {changes.length > 0 && (
+              <div className="border-t border-border/60 mt-1">
+                <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  {t('artifacts.changes.title')}
+                </div>
+                <ul className="pb-1">
+                  {changes.map((change) => (
+                    <li key={change.id}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openChangeTarget(change)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openChangeTarget(change); }}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 px-3 py-1.5 text-left',
+                          (change.openId ?? change.target)
+                            ? 'cursor-pointer hover:bg-foreground/[0.04] transition-colors'
+                            : 'cursor-default opacity-80',
+                        )}
+                      >
+                        <span className={cn(
+                          'shrink-0 rounded px-1 py-px text-[10px] font-medium',
+                          change.action === 'delete'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                            : change.action === 'create'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                        )}>
+                          {t(`artifacts.changes.action.${change.action}`, { defaultValue: change.action })}
+                        </span>
+                        <span className="flex-1 min-w-0 truncate text-xs text-foreground/90">
+                          {change.label}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}

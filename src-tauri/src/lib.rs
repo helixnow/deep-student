@@ -1828,6 +1828,7 @@ pub fn run() {
             crate::commands::export_apkg_for_selection,
             crate::commands::get_document_cards,
             crate::commands::list_anki_library_cards,
+            crate::cmd::enhanced_anki::get_anki_library_card_content,
             crate::commands::export_anki_cards,
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,

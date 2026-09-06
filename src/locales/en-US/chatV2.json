@@ -1749,6 +1749,16 @@
     "title": "Tool Execution Confirmation",
     "toolName": "Tool Name",
     "description": "Description",
+    "ankiDiff": {
+      "title": "Field change preview",
+      "loading": "Loading current card…",
+      "unavailable": "Current card content unavailable; check the raw arguments below",
+      "noChange": "Patch matches current content (no effective change)",
+      "fieldFront": "Front",
+      "fieldBack": "Back",
+      "fieldText": "Cloze text",
+      "fieldTags": "Tags"
+    },
     "arguments": "Arguments",
     "approve": "Allow Once",
     "allowSession": "Allow for Session",
@@ -2315,6 +2325,16 @@
     "intentUnavailable": "Artifact content unavailable",
     "expandPanel": "Artifacts",
     "collapsePanel": "Collapse artifacts",
+    "changes": {
+      "title": "Changes",
+      "action": {
+        "create": "Create",
+        "update": "Update",
+        "delete": "Delete",
+        "append": "Append",
+        "write": "Write"
+      }
+    },
     "kind": {
       "generativeUi": "Generative UI",
       "ankiCards": "Anki cards",
