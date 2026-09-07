@@ -52,6 +52,7 @@ pub mod state;
 pub mod task_audit; // Deterministic task audit manifests and export redaction
 pub mod task_objects; // Unified file/message/event/record identity and delivery receipts
 pub mod tool_approval_policy;
+pub mod tool_descriptors; // 🆕 G01-c：ToolDescriptor 后端权威注册表（内建工具静态元数据 SSOT）
 pub mod tool_policy;
 pub mod tools;
 pub mod types;

@@ -726,18 +726,25 @@ impl WorkspaceToolExecutor {
 #[async_trait]
 impl ToolExecutor for WorkspaceToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        let name = Self::strip_namespace(tool_name);
-        matches!(
-            name,
-            tool_names::CREATE
-                | tool_names::CREATE_AGENT
-                | tool_names::SEND
-                | tool_names::QUERY
-                | tool_names::SET_CONTEXT
-                | tool_names::GET_CONTEXT
-                | tool_names::UPDATE_DOCUMENT
-                | tool_names::READ_DOCUMENT
-        )
+        // G01-c 注册表同步测试发现：strip_namespace 会先剥 "workspace_" 前缀，
+        // 使裸名 "workspace_create" 变成 "create" 永远匹配不上常量（生产里
+        // 裸名因此静默落进 GeneralToolExecutor 死路）。同时接受规范形
+        // （仅去 builtin- 前缀）与历史双前缀形（workspace_workspace_*）。
+        let stripped = Self::strip_namespace(tool_name);
+        let canonical = strip_tool_namespace(tool_name);
+        [stripped, canonical].iter().any(|name| {
+            matches!(
+                *name,
+                tool_names::CREATE
+                    | tool_names::CREATE_AGENT
+                    | tool_names::SEND
+                    | tool_names::QUERY
+                    | tool_names::SET_CONTEXT
+                    | tool_names::GET_CONTEXT
+                    | tool_names::UPDATE_DOCUMENT
+                    | tool_names::READ_DOCUMENT
+            )
+        })
     }
 
     async fn execute(
