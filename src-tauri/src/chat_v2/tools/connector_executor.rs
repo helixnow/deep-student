@@ -1,7 +1,12 @@
 //! First-class connector registry and object-operation bridge.
+//!
+//! G04-P0：操作状态持久化到 chat_v2 库 `connector_operations` 账本
+//! （[`crate::chat_v2::connector_ledger`]），替代旧的进程内 Map——
+//! submitting 先于 provider 调用落库，重启后遗留 submitting 由启动对账
+//! 收敛为 outcome_unknown；幂等键由系统在 draft 时生成
+//! （`sha256(operation_id || preview_sha256)`），不再接受模型提供的键。
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::{Mutex, OnceLock};
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -11,6 +16,10 @@ use sha2::{Digest, Sha256};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use crate::chat_v2::connector_ledger::{
+    system_idempotency_key, ConnectorLedger, ConnectorOperation, ConnectorOperationState,
+    NewConnectorOperation,
+};
 use crate::chat_v2::task_objects::{
     ConnectorOperationReceipt, ObjectCapabilities, ObjectProvenance, OperationState,
     ProviderObjectRef, TaskObjectHandle, TaskObjectKind,
@@ -21,7 +30,6 @@ use crate::tools::ToolContext;
 const CONNECTOR_REGISTRY_KEY: &str = "connectors.registry.v1";
 const DEFAULT_CONFIRM_TTL_SECS: u64 = 600;
 const MAX_CONFIRM_TTL_SECS: u64 = 3600;
-const MAX_DRAFTS: usize = 512;
 
 pub mod tool_names {
     pub const REGISTRY: &str = "connector_registry";
@@ -92,39 +100,15 @@ struct DraftPreview {
     payload: Value,
 }
 
-#[derive(Debug, Clone)]
-struct PendingOperation {
-    session_id: String,
-    receipt: ConnectorOperationReceipt,
-    preview: DraftPreview,
-    capability_fingerprint: String,
-    expires_at_ms: u64,
-}
-
-#[derive(Debug, Clone)]
-struct CommittedOperation {
-    session_id: String,
-    operation_id: String,
-    preview_sha256: String,
-    output: Option<Value>,
-}
-
-static PENDING: OnceLock<Mutex<HashMap<String, PendingOperation>>> = OnceLock::new();
-static COMMITTED: OnceLock<Mutex<HashMap<String, CommittedOperation>>> = OnceLock::new();
-
-fn pending() -> &'static Mutex<HashMap<String, PendingOperation>> {
-    PENDING.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn committed() -> &'static Mutex<HashMap<String, CommittedOperation>> {
-    COMMITTED.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339()
 }
 
 fn require_same_session(expected: &str, actual: &str) -> Result<(), String> {
@@ -135,8 +119,13 @@ fn require_same_session(expected: &str, actual: &str) -> Result<(), String> {
     }
 }
 
-fn idempotency_store_key(session_id: &str, idempotency_key: &str) -> String {
-    format!("{}:{}", session_id, idempotency_key)
+/// 账本句柄：DB 为权威，无 chat_v2 库时连接器操作直接不可用（fail-close）。
+fn ledger(ctx: &ExecutionContext) -> Result<ConnectorLedger, String> {
+    let db = ctx
+        .chat_v2_db
+        .as_ref()
+        .ok_or("connector operation ledger is unavailable (chat_v2 database not attached)")?;
+    Ok(ConnectorLedger::new(db.clone()))
 }
 
 fn sha256_json<T: Serialize>(value: &T) -> Result<String, String> {
@@ -344,18 +333,57 @@ fn parse_draft(args: &Value) -> Result<DraftPreview, String> {
     })
 }
 
-fn cleanup_pending_locked(entries: &mut HashMap<String, PendingOperation>, now: u64) {
-    entries.retain(|_, operation| operation.expires_at_ms > now);
-    if entries.len() > MAX_DRAFTS {
-        let mut ordered = entries
-            .iter()
-            .map(|(id, operation)| (id.clone(), operation.expires_at_ms))
-            .collect::<Vec<_>>();
-        ordered.sort_by_key(|(_, expires)| *expires);
-        for (id, _) in ordered.into_iter().take(entries.len() - MAX_DRAFTS) {
-            entries.remove(&id);
+/// 账本状态 → 对外 receipt 状态（task_objects::OperationState 没有
+/// submitting/outcome_unknown；submitting 对模型呈现为已确认未提交，
+/// outcome_unknown 呈现为 failed 并在 error 中保留语义）。
+fn receipt_state(state: ConnectorOperationState) -> OperationState {
+    match state {
+        ConnectorOperationState::Draft => OperationState::Draft,
+        ConnectorOperationState::Confirmed | ConnectorOperationState::Submitting => {
+            OperationState::Confirmed
+        }
+        ConnectorOperationState::Committed => OperationState::Committed,
+        ConnectorOperationState::OutcomeUnknown | ConnectorOperationState::Failed => {
+            OperationState::Failed
         }
     }
+}
+
+/// 从账本行重建对外 receipt（committed 的 object_handle_ids 在 commit 流程内补齐）。
+fn receipt_of(row: &ConnectorOperation, preview: &DraftPreview) -> ConnectorOperationReceipt {
+    ConnectorOperationReceipt {
+        operation_id: row.operation_id.clone(),
+        idempotency_key: row.idempotency_key.clone(),
+        provider: row.provider_id.clone(),
+        action: format!("{}:{}", preview.capability, preview.action),
+        state: receipt_state(row.state),
+        object_handle_ids: Vec::new(),
+        recipient_ids: preview.recipients.clone(),
+        destination: preview.destination.clone(),
+        irreversible: true,
+        preview_sha256: row.preview_sha256.clone().unwrap_or_default(),
+        committed_at: if row.state == ConnectorOperationState::Committed {
+            row.resolved_at.clone()
+        } else {
+            None
+        },
+        error: row.error.clone(),
+    }
+}
+
+fn parse_stored_preview(row: &ConnectorOperation) -> Result<DraftPreview, String> {
+    let raw = row
+        .preview_json
+        .as_deref()
+        .ok_or("connector operation is missing its stored preview")?;
+    serde_json::from_str(raw)
+        .map_err(|error| format!("failed to parse stored connector preview: {}", error))
+}
+
+fn operation_expired(row: &ConnectorOperation, now: u64) -> bool {
+    row.expires_at_ms
+        .map(|expires| expires >= 0 && expires as u64 <= now)
+        .unwrap_or(false)
 }
 
 fn registry_output(registry: &[ConnectorConfig]) -> Value {
@@ -405,6 +433,8 @@ impl ConnectorToolExecutor {
     }
 
     fn execute_draft(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        // 账本为权威：无 chat_v2 库时 fail-close，不创建任何瞬态草稿
+        let ledger = ledger(ctx)?;
         let registry =
             read_registry(ctx).map_err(|error| format!("capability_unavailable: {}", error))?;
         let preview = parse_draft(args)?;
@@ -421,15 +451,33 @@ impl ConnectorToolExecutor {
         }
         let preview_sha256 = sha256_json(&preview)?;
         let operation_id = format!("connector-op-{}", uuid::Uuid::new_v4());
+        // 系统幂等键：draft 时生成并持久化，confirm/commit 不接受模型提供的键
+        let idempotency_key = system_idempotency_key(&operation_id, &preview_sha256);
         let ttl_secs = args
             .get("confirm_ttl_seconds")
             .and_then(Value::as_u64)
             .unwrap_or(DEFAULT_CONFIRM_TTL_SECS)
             .clamp(30, MAX_CONFIRM_TTL_SECS);
         let expires_at_ms = now_ms().saturating_add(ttl_secs.saturating_mul(1000));
+        let preview_json = serde_json::to_string(&preview)
+            .map_err(|error| format!("failed to persist connector preview: {}", error))?;
+        ledger.insert_draft(&NewConnectorOperation {
+            operation_id: operation_id.clone(),
+            session_id: ctx.session_id.clone(),
+            provider_id: connector.id.clone(),
+            capability: Some(preview.capability.clone()),
+            action: preview.action.clone(),
+            preview_sha256: preview_sha256.clone(),
+            idempotency_key: idempotency_key.clone(),
+            account_id: connector.oauth.account_id.clone(),
+            capability_fingerprint: Some(capability_fingerprint(connector, capability)?),
+            preview_json,
+            expires_at_ms: Some(expires_at_ms as i64),
+            created_at: now_rfc3339(),
+        })?;
         let receipt = ConnectorOperationReceipt {
             operation_id: operation_id.clone(),
-            idempotency_key: String::new(),
+            idempotency_key,
             provider: connector.id.clone(),
             action: format!("{}:{}", preview.capability, preview.action),
             state: OperationState::Draft,
@@ -445,18 +493,6 @@ impl ConnectorToolExecutor {
             committed_at: None,
             error: None,
         };
-        let operation = PendingOperation {
-            session_id: ctx.session_id.clone(),
-            receipt: receipt.clone(),
-            preview: preview.clone(),
-            capability_fingerprint: capability_fingerprint(connector, capability)?,
-            expires_at_ms,
-        };
-        let mut entries = pending()
-            .lock()
-            .map_err(|_| "connector draft store is unavailable")?;
-        cleanup_pending_locked(&mut entries, now_ms());
-        entries.insert(operation_id.clone(), operation);
         Ok(json!({
             "success": true,
             "state": "draft",
@@ -478,22 +514,27 @@ impl ConnectorToolExecutor {
             .get("preview_sha256")
             .and_then(Value::as_str)
             .ok_or("preview_sha256 is required")?;
-        let mut entries = pending()
-            .lock()
-            .map_err(|_| "connector draft store is unavailable")?;
-        cleanup_pending_locked(&mut entries, now_ms());
-        let operation = entries
-            .get_mut(operation_id)
+        let ledger = ledger(ctx)?;
+        let row = ledger
+            .get(operation_id)?
             .ok_or("connector draft is missing or expired")?;
-        require_same_session(&operation.session_id, &ctx.session_id)?;
-        operation.receipt.confirm(preview_sha256)?;
+        require_same_session(&row.session_id, &ctx.session_id)?;
+        if operation_expired(&row, now_ms()) {
+            return Err("connector draft is missing or expired".to_string());
+        }
+        let preview = parse_stored_preview(&row)?;
+        // 保留 receipt.confirm 的状态/哈希语义校验（精确错误消息）；
+        // 账本的原子 UPDATE 是并发守卫（前驱 + 哈希双重条件）。
+        let mut receipt = receipt_of(&row, &preview);
+        receipt.confirm(preview_sha256)?;
+        ledger.mark_confirmed(operation_id, preview_sha256, &now_rfc3339())?;
         Ok(json!({
             "success": true,
             "state": "confirmed",
             "operation_id": operation_id,
             "preview_sha256": preview_sha256,
-            "expires_at_ms": operation.expires_at_ms,
-            "receipt": operation.receipt,
+            "expires_at_ms": row.expires_at_ms,
+            "receipt": receipt,
         }))
     }
 
@@ -508,68 +549,88 @@ impl ConnectorToolExecutor {
             .and_then(Value::as_str)
             .ok_or("preview_sha256 is required")?
             .to_string();
-        let idempotency_key = args
+        // 向后兼容：模型仍可能携带旧约定的幂等键——忽略并 warn，
+        // 权威键是 draft 时系统生成并持久化的那把。
+        if let Some(model_key) = args
             .get("idempotency_key")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or("idempotency_key is required")?
-            .to_string();
-        let store_key = idempotency_store_key(&ctx.session_id, &idempotency_key);
-
-        if let Some(existing) = committed()
-            .lock()
-            .map_err(|_| "connector idempotency store is unavailable")?
-            .get(&store_key)
-            .cloned()
         {
-            require_same_session(&existing.session_id, &ctx.session_id)?;
-            if existing.operation_id != operation_id || existing.preview_sha256 != preview_sha256 {
-                return Err("idempotency_key is already bound to a different operation".to_string());
+            log::warn!(
+                "[ConnectorToolExecutor] ignoring model-provided idempotency_key '{}' for {}; \
+                 the system-generated key from draft is authoritative",
+                model_key,
+                operation_id
+            );
+        }
+
+        let ledger = ledger(ctx)?;
+        let row = ledger
+            .get(&operation_id)?
+            .ok_or("connector draft is missing or expired")?;
+        require_same_session(&row.session_id, &ctx.session_id)?;
+        if row.preview_sha256.as_deref() != Some(preview_sha256.as_str()) {
+            return Err("preview_sha256 does not match the confirmed operation".to_string());
+        }
+
+        match row.state {
+            ConnectorOperationState::Committed => {
+                // 幂等重放：直接返回既有结果，不重复调 provider
+                let evidence = row
+                    .evidence_json
+                    .as_deref()
+                    .ok_or("committed connector operation is missing its evidence")?;
+                let mut output: Value = serde_json::from_str(evidence).map_err(|error| {
+                    format!("failed to parse committed operation evidence: {}", error)
+                })?;
+                output["idempotent_replay"] = json!(true);
+                return Ok(output);
             }
-            let Some(mut output) = existing.output else {
+            ConnectorOperationState::Submitting => {
                 return Err(
                     "connector operation with this idempotency_key is already in progress"
                         .to_string(),
                 );
-            };
-            output["idempotent_replay"] = json!(true);
-            return Ok(output);
+            }
+            ConnectorOperationState::OutcomeUnknown => {
+                return Err(
+                    "connector operation outcome is unknown after a restart; \
+                     it must be reconciled before any retry"
+                        .to_string(),
+                );
+            }
+            ConnectorOperationState::Failed => {
+                return Err(format!(
+                    "connector operation already failed: {}",
+                    row.error.unwrap_or_else(|| "unknown provider error".to_string())
+                ));
+            }
+            ConnectorOperationState::Draft => {
+                return Err("connector operation must be confirmed before commit".to_string());
+            }
+            ConnectorOperationState::Confirmed => {}
         }
 
-        let operation = {
-            let mut entries = pending()
-                .lock()
-                .map_err(|_| "connector draft store is unavailable")?;
-            cleanup_pending_locked(&mut entries, now_ms());
-            entries
-                .get(&operation_id)
-                .cloned()
-                .ok_or("connector draft is missing or expired")?
-        };
-        if operation.receipt.state != OperationState::Confirmed {
-            return Err("connector operation must be confirmed before commit".to_string());
+        if operation_expired(&row, now_ms()) {
+            return Err("connector draft is missing or expired".to_string());
         }
-        require_same_session(&operation.session_id, &ctx.session_id)?;
-        if operation.receipt.preview_sha256 != preview_sha256 {
-            return Err("preview_sha256 does not match the confirmed operation".to_string());
-        }
+        let preview = parse_stored_preview(&row)?;
 
         let registry =
             read_registry(ctx).map_err(|error| format!("capability_unavailable: {}", error))?;
-        let (connector, capability) = find_capability(
-            &registry,
-            &operation.preview.provider_id,
-            &operation.preview.capability,
-        )?;
-        if capability_fingerprint(connector, capability)? != operation.capability_fingerprint {
+        let (connector, capability) =
+            find_capability(&registry, &preview.provider_id, &preview.capability)?;
+        if row.capability_fingerprint.as_deref()
+            != Some(capability_fingerprint(connector, capability)?.as_str())
+        {
             return Err(
                 "capability snapshot changed; create and confirm a new operation draft".to_string(),
             );
         }
         let mapped_tool = capability
             .mcp_tools
-            .get(&operation.preview.action)
+            .get(&preview.action)
             .ok_or_else(|| "capability_unavailable: MCP action mapping was removed".to_string())?;
         let external_tool = if mapped_tool.starts_with("mcp_") {
             mapped_tool.clone()
@@ -578,33 +639,31 @@ impl ConnectorToolExecutor {
         };
         let provider_args = json!({
             "_serverId": capability.mcp_server_id.clone(),
-            "idempotency_key": idempotency_key.clone(),
-            "recipients": operation.preview.recipients.clone(),
-            "timezone": operation.preview.timezone.clone(),
-            "conflicts": operation.preview.conflicts.clone(),
-            "destination": operation.preview.destination.clone(),
-            "acl": operation.preview.acl.clone(),
-            "attachments": operation.preview.attachments.clone(),
-            "payload": operation.preview.payload.clone(),
+            "idempotency_key": row.idempotency_key.clone(),
+            "recipients": preview.recipients.clone(),
+            "timezone": preview.timezone.clone(),
+            "conflicts": preview.conflicts.clone(),
+            "destination": preview.destination.clone(),
+            "acl": preview.acl.clone(),
+            "attachments": preview.attachments.clone(),
+            "payload": preview.payload.clone(),
             "expected_object_version": capability.snapshot.object_version.clone(),
         });
-        committed()
-            .lock()
-            .map_err(|_| "connector idempotency store is unavailable")?
-            .insert(
-                store_key.clone(),
-                CommittedOperation {
-                    session_id: ctx.session_id.clone(),
-                    operation_id: operation_id.clone(),
-                    preview_sha256: preview_sha256.clone(),
-                    output: None,
-                },
-            );
+        let request_payload_hash = sha256_json(&provider_args)?;
+
+        // 先落库再调用：submitting 持久化成功后才允许触达 provider。
+        // 进程在此之后崩溃 → 重启对账收敛为 outcome_unknown。
+        ledger
+            .mark_submitting(&operation_id, &now_rfc3339(), &request_payload_hash)
+            .map_err(|_| {
+                "connector operation with this idempotency_key is already in progress".to_string()
+            })?;
+
         let tool_ctx = ToolContext {
             db: ctx.main_db.as_ref().map(|db| db.as_ref()),
             mcp_client: None,
             supports_tools: true,
-            window: Some(ctx.window_ref()),
+            window: ctx.tauri_window.as_ref(),
             stream_event: None,
             stage: Some("connector_commit"),
             memory_enabled: None,
@@ -615,38 +674,47 @@ impl ConnectorToolExecutor {
             .call_tool(&external_tool, &provider_args, &tool_ctx)
             .await;
         if !ok {
-            committed()
-                .lock()
-                .map_err(|_| "connector idempotency store is unavailable")?
-                .remove(&store_key);
-            return Err(format!(
+            let message = format!(
                 "connector provider commit failed: {}",
                 error.unwrap_or_else(|| "unknown provider error".to_string())
-            ));
+            );
+            if let Err(ledger_error) = ledger.mark_failed(&operation_id, &now_rfc3339(), &message)
+            {
+                log::warn!(
+                    "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
+                    operation_id,
+                    ledger_error
+                );
+            }
+            return Err(message);
         }
         let provider_result = data.unwrap_or(Value::Null);
         let object_handle = match provider_object_handle(
             connector,
             capability,
-            &operation.preview,
+            &preview,
             &operation_id,
             &provider_result,
         ) {
             Ok(handle) => handle,
             Err(error) => {
-                committed()
-                    .lock()
-                    .map_err(|_| "connector idempotency store is unavailable")?
-                    .remove(&store_key);
+                if let Err(ledger_error) =
+                    ledger.mark_failed(&operation_id, &now_rfc3339(), &error)
+                {
+                    log::warn!(
+                        "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
+                        operation_id,
+                        ledger_error
+                    );
+                }
                 return Err(error);
             }
         };
-        let mut receipt = operation.receipt.clone();
-        receipt.idempotency_key = idempotency_key.clone();
-        receipt
-            .object_handle_ids
-            .push(object_handle.handle_id.clone());
-        receipt.commit(chrono::Utc::now().to_rfc3339())?;
+        let external_operation_id = provider_external_id(&provider_result);
+        let resolved_at = now_rfc3339();
+        let mut receipt = receipt_of(&row, &preview);
+        receipt.object_handle_ids.push(object_handle.handle_id.clone());
+        receipt.commit(resolved_at.clone())?;
         let output = json!({
             "success": true,
             "state": "committed",
@@ -657,34 +725,22 @@ impl ConnectorToolExecutor {
             "provider_result": provider_result,
             "idempotent_replay": false,
         });
-        committed()
-            .lock()
-            .map_err(|_| "connector idempotency store is unavailable")?
-            .insert(
-                store_key,
-                CommittedOperation {
-                    session_id: ctx.session_id.clone(),
-                    operation_id: operation_id.clone(),
-                    preview_sha256,
-                    output: Some(output.clone()),
-                },
-            );
-        pending()
-            .lock()
-            .map_err(|_| "connector draft store is unavailable")?
-            .remove(&operation_id);
+        let evidence = serde_json::to_string(&output)
+            .map_err(|error| format!("failed to persist connector evidence: {}", error))?;
+        ledger.mark_committed(
+            &operation_id,
+            &resolved_at,
+            external_operation_id.as_deref(),
+            &evidence,
+        )?;
         Ok(output)
     }
 }
 
-fn provider_object_handle(
-    connector: &ConnectorConfig,
-    capability: &CapabilityConfig,
-    preview: &DraftPreview,
-    operation_id: &str,
-    provider_result: &Value,
-) -> Result<TaskObjectHandle, String> {
-    let external_id = [
+/// provider 返回值中的外部对象 id（committed 时持久化到账本
+/// `external_operation_id`，供 P2 provider lookup reconcile 使用）。
+fn provider_external_id(provider_result: &Value) -> Option<String> {
+    [
         "id",
         "object_id",
         "objectId",
@@ -695,7 +751,17 @@ fn provider_object_handle(
     ]
     .iter()
     .find_map(|key| provider_result.get(key).and_then(Value::as_str))
-    .map(str::to_string);
+    .map(str::to_string)
+}
+
+fn provider_object_handle(
+    connector: &ConnectorConfig,
+    capability: &CapabilityConfig,
+    preview: &DraftPreview,
+    operation_id: &str,
+    provider_result: &Value,
+) -> Result<TaskObjectHandle, String> {
+    let external_id = provider_external_id(provider_result);
     let display_name = ["name", "title", "subject"]
         .iter()
         .find_map(|key| provider_result.get(key).and_then(Value::as_str))
@@ -854,16 +920,190 @@ impl ToolExecutor for ConnectorToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use crate::chat_v2::connector_ledger::reconcile_on_startup;
+    use crate::chat_v2::database::ChatV2Database;
+    use crate::chat_v2::events::ChatV2EventEmitter;
+    use crate::data_governance::migration::coordinator::MigrationCoordinator;
+    use crate::data_governance::schema_registry::DatabaseId;
+    use crate::tools::{Tool, ToolRegistry};
+
+    const TEST_REGISTRY_JSON: &str = r#"[{
+      "id":"google-work","provider":"google","oauth":{"connected":true,"grantedScopes":["mail.send","drive.write"],"accountId":"acct-1"},
+      "capabilities":[{
+        "name":"mail","requiredScopes":["mail.send"],"mcpServerId":"google-mcp",
+        "mcpTools":{"send":"gmail_send"},
+        "snapshot":{"version":"v1","observedAt":"2026-07-19T00:00:00Z","permissions":["send"],"objectVersion":"etag-1"}
+      }]
+    }]"#;
 
     fn configured_registry() -> Vec<ConnectorConfig> {
-        parse_registry(Some(r#"[{
-          "id":"google-work","provider":"google","oauth":{"connected":true,"grantedScopes":["mail.send","drive.write"]},
-          "capabilities":[{
-            "name":"mail","requiredScopes":["mail.send"],"mcpServerId":"google-mcp",
-            "mcpTools":{"send":"gmail_send"},
-            "snapshot":{"version":"v1","observedAt":"2026-07-19T00:00:00Z","permissions":["send"],"objectVersion":"etag-1"}
-          }]
-        }]"#)).unwrap()
+        parse_registry(Some(TEST_REGISTRY_JSON)).unwrap()
+    }
+
+    /// 主库（registry 经非敏感 settings 存储）+ 已迁移 chat_v2 库。
+    fn setup_dbs() -> (
+        tempfile::TempDir,
+        Arc<crate::database::Database>,
+        Arc<ChatV2Database>,
+    ) {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let main_db = crate::database::Database::new(&dir.path().join("main.db")).expect("main db");
+        main_db
+            .get_conn_safe()
+            .expect("main conn")
+            .execute_batch(
+                "CREATE TABLE settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );",
+            )
+            .expect("settings table");
+        main_db
+            .save_setting(CONNECTOR_REGISTRY_KEY, TEST_REGISTRY_JSON)
+            .expect("seed connector registry");
+
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrations");
+        let chat_db = ChatV2Database::new(dir.path()).expect("chat_v2 db");
+        (dir, Arc::new(main_db), Arc::new(chat_db))
+    }
+
+    fn make_ctx(
+        session_id: &str,
+        main_db: &Arc<crate::database::Database>,
+        chat_v2_db: &Arc<ChatV2Database>,
+        tools: Vec<Arc<dyn Tool>>,
+    ) -> ExecutionContext {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.to_string(),
+        ));
+        ExecutionContext::new(
+            session_id.to_string(),
+            "msg-1".to_string(),
+            "block-1".to_string(),
+            emitter,
+            Arc::new(ToolRegistry::new_with(tools)),
+            None,
+        )
+        .with_main_db(Some(main_db.clone()))
+        .with_chat_v2_db(Some(chat_v2_db.clone()))
+    }
+
+    fn draft_args() -> Value {
+        json!({
+            "provider_id":"google-work","capability":"mail","action":"send",
+            "recipients":["a@example.com"],"timezone":"UTC","conflicts":[],
+            "destination":null,"acl":{"access":"private"},"attachments":[],
+            "payload":{"subject":"Hi"}
+        })
+    }
+
+    fn ledger_row_for_test(expires_at_ms: i64) -> ConnectorOperation {
+        ConnectorOperation {
+            operation_id: "op".to_string(),
+            session_id: "session-a".to_string(),
+            provider_id: "p".to_string(),
+            capability: Some("mail".to_string()),
+            action: "send".to_string(),
+            preview_sha256: Some("a".repeat(64)),
+            request_payload_hash: None,
+            idempotency_key: "k".to_string(),
+            state: ConnectorOperationState::Draft,
+            external_operation_id: None,
+            account_id: None,
+            capability_fingerprint: None,
+            preview_json: None,
+            expires_at_ms: Some(expires_at_ms),
+            created_at: "2026-09-07T00:00:00Z".to_string(),
+            confirmed_at: None,
+            submitted_at: None,
+            resolved_at: None,
+            error: None,
+            evidence_json: None,
+        }
+    }
+
+    /// Mock provider 工具：记录调用到账本状态/幂等键，按配置返回成功或失败。
+    struct MockProviderTool {
+        chat_v2_db: Arc<ChatV2Database>,
+        operation_id: String,
+        observed_states: Arc<Mutex<Vec<String>>>,
+        seen_idempotency_keys: Arc<Mutex<Vec<String>>>,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl Tool for MockProviderTool {
+        fn name(&self) -> &'static str {
+            "mcp_gmail_send"
+        }
+
+        fn schema(&self) -> Value {
+            json!({"type": "object"})
+        }
+
+        async fn invoke(
+            &self,
+            args: &Value,
+            _ctx: &ToolContext<'_>,
+        ) -> (
+            bool,
+            Option<Value>,
+            Option<String>,
+            Option<Value>,
+            Option<Vec<crate::models::RagSourceInfo>>,
+            Option<String>,
+        ) {
+            let state = ConnectorLedger::new(self.chat_v2_db.clone())
+                .get(&self.operation_id)
+                .ok()
+                .flatten()
+                .map(|row| row.state.as_str().to_string())
+                .unwrap_or_else(|| "missing".to_string());
+            self.observed_states.lock().unwrap().push(state);
+            self.seen_idempotency_keys.lock().unwrap().push(
+                args.get("idempotency_key")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            );
+            if self.fail {
+                (false, None, Some("mock provider boom".to_string()), None, None, None)
+            } else {
+                (
+                    true,
+                    Some(json!({"id": "msg-1", "thread_id": "thread-1"})),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+        }
+    }
+
+    fn draft_and_confirm(
+        executor: &ConnectorToolExecutor,
+        ctx: &ExecutionContext,
+    ) -> (String, String) {
+        let draft = executor
+            .execute_draft(&draft_args(), ctx)
+            .expect("draft should succeed");
+        let operation_id = draft["operation_id"].as_str().unwrap().to_string();
+        let preview_sha256 = draft["preview_sha256"].as_str().unwrap().to_string();
+        executor
+            .execute_confirm(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                ctx,
+            )
+            .expect("confirm should succeed");
+        (operation_id, preview_sha256)
     }
 
     #[test]
@@ -945,45 +1185,21 @@ mod tests {
     fn con_06_operations_are_bound_to_the_originating_session() {
         assert!(require_same_session("session-a", "session-a").is_ok());
         assert!(require_same_session("session-a", "session-b").is_err());
+        // 系统幂等键绑定 operation_id + preview_sha256，跨操作不可复用
         assert_ne!(
-            idempotency_store_key("session-a", "idem"),
-            idempotency_store_key("session-b", "idem")
+            system_idempotency_key("op-a", &"a".repeat(64)),
+            system_idempotency_key("op-b", &"a".repeat(64))
         );
     }
 
     #[test]
-    fn con_06_expired_drafts_are_removed_before_confirmation() {
-        let mut entries = HashMap::new();
-        entries.insert(
-            "expired".to_string(),
-            PendingOperation {
-                session_id: "session-a".to_string(),
-                receipt: ConnectorOperationReceipt {
-                    operation_id: "expired".into(),
-                    idempotency_key: String::new(),
-                    provider: "p".into(),
-                    action: "mail:send".into(),
-                    state: OperationState::Draft,
-                    object_handle_ids: vec![],
-                    recipient_ids: vec![],
-                    destination: None,
-                    irreversible: true,
-                    preview_sha256: "a".repeat(64),
-                    committed_at: None,
-                    error: None,
-                },
-                preview: parse_draft(&json!({
-                    "provider_id":"p","capability":"mail","action":"send",
-                    "recipients":[],"timezone":"UTC","conflicts":[],"destination":null,
-                    "acl":{},"attachments":[],"payload":{}
-                }))
-                .unwrap(),
-                capability_fingerprint: "f".repeat(64),
-                expires_at_ms: 10,
-            },
-        );
-        cleanup_pending_locked(&mut entries, 11);
-        assert!(entries.is_empty());
+    fn con_06_expired_drafts_are_rejected() {
+        let mut row = ledger_row_for_test(1_000);
+        assert!(operation_expired(&row, 1_000));
+        assert!(operation_expired(&row, 1_001));
+        assert!(!operation_expired(&row, 999));
+        row.expires_at_ms = None;
+        assert!(!operation_expired(&row, u64::MAX), "no TTL means no expiry");
     }
 
     #[test]
@@ -1047,5 +1263,372 @@ mod tests {
             error: None,
         };
         assert!(receipt.commit("now").is_err());
+    }
+
+    // ========================================================================
+    // G04-P0：持久账本 + 状态机 + 系统幂等键 + outcome_unknown
+    // ========================================================================
+
+    #[test]
+    fn g04_draft_persists_to_ledger_with_system_idempotency_key() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let executor = ConnectorToolExecutor::new();
+
+        let draft = executor.execute_draft(&draft_args(), &ctx).expect("draft");
+        assert_eq!(draft["state"], json!("draft"));
+        let operation_id = draft["operation_id"].as_str().unwrap();
+        let preview_sha256 = draft["preview_sha256"].as_str().unwrap();
+
+        let ledger = ConnectorLedger::new(chat_db.clone());
+        let row = ledger.get(operation_id).unwrap().expect("ledger row");
+        assert_eq!(row.state, ConnectorOperationState::Draft);
+        assert_eq!(row.session_id, "session-a");
+        assert_eq!(row.provider_id, "google-work");
+        assert_eq!(row.account_id.as_deref(), Some("acct-1"));
+        assert_eq!(
+            row.idempotency_key,
+            system_idempotency_key(operation_id, preview_sha256),
+            "draft 时系统生成确定性幂等键"
+        );
+        assert_eq!(
+            draft["receipt"]["idempotencyKey"].as_str().unwrap(),
+            row.idempotency_key,
+            "receipt 携带系统幂等键"
+        );
+        assert!(row.capability_fingerprint.is_some());
+        assert!(row.preview_json.is_some());
+    }
+
+    #[tokio::test]
+    async fn g04_commit_persists_submitting_before_provider_call() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+
+        let observed_states = Arc::new(Mutex::new(Vec::new()));
+        let seen_keys = Arc::new(Mutex::new(Vec::new()));
+        let mock = Arc::new(MockProviderTool {
+            chat_v2_db: chat_db.clone(),
+            operation_id: operation_id.clone(),
+            observed_states: observed_states.clone(),
+            seen_idempotency_keys: seen_keys.clone(),
+            fail: false,
+        });
+        let commit_ctx = make_ctx("session-a", &main_db, &chat_db, vec![mock]);
+        let output = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &commit_ctx,
+            )
+            .await
+            .expect("commit should succeed");
+
+        assert_eq!(output["state"], json!("committed"));
+        assert_eq!(output["idempotent_replay"], json!(false));
+        // 关键不变量：provider 被调用时，账本已处于 submitting
+        assert_eq!(
+            observed_states.lock().unwrap().as_slice(),
+            &["submitting".to_string()],
+            "submitting 必须先于 provider 调用落库"
+        );
+
+        let row = ConnectorLedger::new(chat_db.clone())
+            .get(&operation_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.state, ConnectorOperationState::Committed);
+        assert_eq!(row.external_operation_id.as_deref(), Some("msg-1"));
+        assert!(row.submitted_at.is_some());
+        assert!(row.resolved_at.is_some());
+        assert!(row.request_payload_hash.is_some());
+        assert!(row.evidence_json.is_some());
+    }
+
+    #[tokio::test]
+    async fn g04_duplicate_commit_replays_without_second_provider_call() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+
+        let observed_states = Arc::new(Mutex::new(Vec::new()));
+        let mock = Arc::new(MockProviderTool {
+            chat_v2_db: chat_db.clone(),
+            operation_id: operation_id.clone(),
+            observed_states: observed_states.clone(),
+            seen_idempotency_keys: Arc::new(Mutex::new(Vec::new())),
+            fail: false,
+        });
+        let commit_ctx = make_ctx("session-a", &main_db, &chat_db, vec![mock]);
+        let first = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &commit_ctx,
+            )
+            .await
+            .expect("first commit");
+
+        // 重复 commit（模型甚至带了不同的幂等键）→ 直接返回既有结果
+        let second = executor
+            .execute_commit(
+                &json!({
+                    "operation_id": operation_id,
+                    "preview_sha256": preview_sha256,
+                    "idempotency_key": "model-chosen-other-key"
+                }),
+                &commit_ctx,
+            )
+            .await
+            .expect("replay should succeed");
+
+        assert_eq!(first["idempotent_replay"], json!(false));
+        assert_eq!(second["idempotent_replay"], json!(true));
+        assert_eq!(second["operation_id"], first["operation_id"]);
+        assert_eq!(second["object_handle"], first["object_handle"]);
+        assert_eq!(
+            observed_states.lock().unwrap().len(),
+            1,
+            "重复 commit 不得再次调用 provider"
+        );
+    }
+
+    #[tokio::test]
+    async fn g04_provider_failure_marks_failed_and_retry_blocked() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+
+        let observed_states = Arc::new(Mutex::new(Vec::new()));
+        let mock = Arc::new(MockProviderTool {
+            chat_v2_db: chat_db.clone(),
+            operation_id: operation_id.clone(),
+            observed_states: observed_states.clone(),
+            seen_idempotency_keys: Arc::new(Mutex::new(Vec::new())),
+            fail: true,
+        });
+        let commit_ctx = make_ctx("session-a", &main_db, &chat_db, vec![mock]);
+        let error = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &commit_ctx,
+            )
+            .await
+            .expect_err("provider failure should propagate");
+        assert!(error.contains("connector provider commit failed"));
+
+        let ledger = ConnectorLedger::new(chat_db.clone());
+        let row = ledger.get(&operation_id).unwrap().unwrap();
+        assert_eq!(row.state, ConnectorOperationState::Failed);
+        assert!(row.error.as_deref().unwrap().contains("mock provider boom"));
+        assert!(row.resolved_at.is_some());
+
+        // failed 是终态：重试被拒绝且不再调用 provider
+        let retry = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &commit_ctx,
+            )
+            .await
+            .expect_err("failed operation must not retry");
+        assert!(retry.contains("already failed"));
+        assert_eq!(observed_states.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn g04_submitting_survives_restart_as_outcome_unknown_and_commit_refused() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+
+        // 模拟进程在 provider 调用期间崩溃：submitting 已落库，无后续更新
+        let ledger = ConnectorLedger::new(chat_db.clone());
+        ledger
+            .mark_submitting(&operation_id, &now_rfc3339(), "payload-hash")
+            .unwrap();
+
+        // 重启对账：submitting → outcome_unknown
+        assert_eq!(reconcile_on_startup(&chat_db).unwrap(), 1);
+        assert_eq!(
+            ledger.get(&operation_id).unwrap().unwrap().state,
+            ConnectorOperationState::OutcomeUnknown
+        );
+
+        // outcome_unknown 禁止自动重试（重复执行比标记未知更危险）
+        let error = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &ctx,
+            )
+            .await
+            .expect_err("outcome_unknown must refuse commit");
+        assert!(error.contains("outcome is unknown"));
+    }
+
+    #[tokio::test]
+    async fn g04_model_idempotency_key_is_ignored() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+        let system_key = ConnectorLedger::new(chat_db.clone())
+            .get(&operation_id)
+            .unwrap()
+            .unwrap()
+            .idempotency_key;
+
+        let seen_keys = Arc::new(Mutex::new(Vec::new()));
+        let mock = Arc::new(MockProviderTool {
+            chat_v2_db: chat_db.clone(),
+            operation_id: operation_id.clone(),
+            observed_states: Arc::new(Mutex::new(Vec::new())),
+            seen_idempotency_keys: seen_keys.clone(),
+            fail: false,
+        });
+        let commit_ctx = make_ctx("session-a", &main_db, &chat_db, vec![mock]);
+        executor
+            .execute_commit(
+                &json!({
+                    "operation_id": operation_id,
+                    "preview_sha256": preview_sha256,
+                    "idempotency_key": "model-chosen-key"
+                }),
+                &commit_ctx,
+            )
+            .await
+            .expect("commit should succeed");
+
+        assert_eq!(
+            seen_keys.lock().unwrap().as_slice(),
+            &[system_key],
+            "provider 必须收到系统幂等键，模型提供的键被忽略"
+        );
+    }
+
+    #[tokio::test]
+    async fn g04_capability_fingerprint_recheck_still_blocks_commit() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+        let (operation_id, preview_sha256) = draft_and_confirm(&executor, &ctx);
+
+        // 确认后能力快照变化（换账号/撤权/版本变化）→ commit 必须拒绝
+        let changed_registry = TEST_REGISTRY_JSON.replace(r#""version":"v1""#, r#""version":"v2""#);
+        main_db
+            .save_setting(CONNECTOR_REGISTRY_KEY, &changed_registry)
+            .expect("update registry");
+
+        let error = executor
+            .execute_commit(
+                &json!({"operation_id": operation_id, "preview_sha256": preview_sha256}),
+                &ctx,
+            )
+            .await
+            .expect_err("stale capability fingerprint must block commit");
+        assert!(error.contains("capability snapshot changed"));
+        // 未进入 submitting：操作仍停在 confirmed，可修复后重试
+        assert_eq!(
+            ConnectorLedger::new(chat_db.clone())
+                .get(&operation_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            ConnectorOperationState::Confirmed
+        );
+    }
+
+    #[tokio::test]
+    async fn g04_expired_operation_cannot_confirm_or_commit() {
+        let (_dir, main_db, chat_db) = setup_dbs();
+        let executor = ConnectorToolExecutor::new();
+        let ctx = make_ctx("session-a", &main_db, &chat_db, Vec::new());
+
+        // 直接落库一个已过期的 draft（execute_draft 的 TTL clamp 最小 30s，
+        // 测试经账本构造过期场景）
+        let ledger = ConnectorLedger::new(chat_db.clone());
+        let preview_sha256 = "a".repeat(64);
+        ledger
+            .insert_draft(&NewConnectorOperation {
+                operation_id: "op-expired".to_string(),
+                session_id: "session-a".to_string(),
+                provider_id: "google-work".to_string(),
+                capability: Some("mail".to_string()),
+                action: "send".to_string(),
+                preview_sha256: preview_sha256.clone(),
+                idempotency_key: system_idempotency_key("op-expired", &preview_sha256),
+                account_id: None,
+                capability_fingerprint: None,
+                preview_json: serde_json::to_string(&parse_draft(&draft_args()).unwrap()).unwrap(),
+                expires_at_ms: Some(1),
+                created_at: now_rfc3339(),
+            })
+            .unwrap();
+
+        let error = executor
+            .execute_confirm(
+                &json!({"operation_id": "op-expired", "preview_sha256": preview_sha256}),
+                &ctx,
+            )
+            .expect_err("expired draft must not confirm");
+        assert!(error.contains("missing or expired"));
+
+        // 已过期的 confirmed 操作同样不得 commit
+        let mut row = ledger_row_for_test(1);
+        row.operation_id = "op-expired-confirmed".to_string();
+        row.state = ConnectorOperationState::Confirmed;
+        row.preview_json = Some(
+            serde_json::to_string(&parse_draft(&draft_args()).unwrap()).unwrap(),
+        );
+        ledger
+            .insert_draft(&NewConnectorOperation {
+                operation_id: row.operation_id.clone(),
+                session_id: "session-a".to_string(),
+                provider_id: "google-work".to_string(),
+                capability: Some("mail".to_string()),
+                action: "send".to_string(),
+                preview_sha256: preview_sha256.clone(),
+                idempotency_key: system_idempotency_key(&row.operation_id, &preview_sha256),
+                account_id: None,
+                capability_fingerprint: None,
+                preview_json: row.preview_json.clone().unwrap(),
+                expires_at_ms: Some(1),
+                created_at: now_rfc3339(),
+            })
+            .unwrap();
+        ledger
+            .mark_confirmed(&row.operation_id, &preview_sha256, &now_rfc3339())
+            .unwrap();
+        let error = executor
+            .execute_commit(
+                &json!({"operation_id": row.operation_id, "preview_sha256": preview_sha256}),
+                &ctx,
+            )
+            .await
+            .expect_err("expired confirmed operation must not commit");
+        assert!(error.contains("missing or expired"));
+    }
+
+    #[test]
+    fn g04_draft_requires_ledger() {
+        // 无 chat_v2 库时 fail-close（账本为权威，无库即不可用）
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "session-a".to_string(),
+        ));
+        let ctx = ExecutionContext::new(
+            "session-a".to_string(),
+            "msg-1".to_string(),
+            "block-1".to_string(),
+            emitter,
+            Arc::new(ToolRegistry::new_with(Vec::new())),
+            None,
+        );
+        let executor = ConnectorToolExecutor::new();
+        let error = executor
+            .execute_draft(&draft_args(), &ctx)
+            .expect_err("draft without ledger must fail");
+        assert!(error.contains("ledger is unavailable"));
     }
 }

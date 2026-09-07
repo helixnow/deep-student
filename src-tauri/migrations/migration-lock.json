@@ -226,6 +226,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260907,
+      "name": "connector_operations",
+      "path": "chat_v2/V20260907__connector_operations.sql",
+      "sha256": "f646c835c942d7e71ed87dd77a6aabecbd76f0a876c0dab2c45b485aa96b81cd",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
