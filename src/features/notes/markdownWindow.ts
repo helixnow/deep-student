@@ -73,8 +73,8 @@ export function expandMarkdownWindow(
   const safeLoadedLineCount = Math.min(Math.max(0, loadedLineCount), totalLineCount);
   const requestedBoundary = Math.min(safeLoadedLineCount + appendCount, totalLineCount);
   const nextBoundary = adjustMarkdownBoundary(lines, requestedBoundary);
-  const nextChunk = lines.slice(safeLoadedLineCount, nextBoundary).join('\n');
-  const loadedMarkdown = joinMarkdownChunks(currentLoadedMarkdown, nextChunk);
+  const appendedLines = lines.slice(safeLoadedLineCount, nextBoundary);
+  const loadedMarkdown = joinWindowWithSuffixLines(currentLoadedMarkdown, appendedLines);
 
   return {
     loadedMarkdown,
@@ -101,8 +101,7 @@ export function composeWindowedSave(
     return editorMarkdown;
   }
 
-  const suffix = suffixLines.join('\n');
-  return joinMarkdownChunks(editorMarkdown, suffix);
+  return joinWindowWithSuffixLines(editorMarkdown, suffixLines);
 }
 
 export function shouldRequestLoadMore(
@@ -113,14 +112,24 @@ export function shouldRequestLoadMore(
   return metrics.scrollTop + metrics.clientHeight >= metrics.scrollHeight - safePreloadPx;
 }
 
-function joinMarkdownChunks(left: string, right: string): string {
+/**
+ * 合并窗口内容（可能已被编辑器修改）与同一原始行数组的后续行切片。
+ *
+ * N02（2026-09-07 审阅）：两个相邻行切片之间的分隔符恒为恰好一个 '\n'
+ * （窗口末行与 suffix 首行之间的那个原换行）。不能用 left 是否以 '\n'
+ * 结尾猜测——左片末行为空行时 left 已以 '\n' 结尾，猜测会吞掉边界换行，
+ * 无修改 round-trip 不再保持原文。按行数组传递（而非 join 后的字符串）
+ * 同时消除「right === "" 是没有行还是单个空行」的歧义。
+ */
+function joinWindowWithSuffixLines(left: string, rightLines: string[]): string {
+  if (rightLines.length === 0) {
+    return left;
+  }
+  const right = rightLines.join('\n');
   if (!left) {
     return right;
   }
-  if (!right) {
-    return left.endsWith('\n') ? left : `${left}\n`;
-  }
-  return left.endsWith('\n') ? `${left}${right}` : `${left}\n${right}`;
+  return `${left}\n${right}`;
 }
 
 function adjustMarkdownBoundary(lines: string[], requestedBoundary: number): number {
