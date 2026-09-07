@@ -38,12 +38,13 @@ const CITATION_TYPE_TO_GROUP: Record<Citation['type'], string> = {
   multimodal: 'multimodal',
   image: 'multimodal',
   search: 'web_search',
+  insight: 'insight',
 };
 
 /**
  * 知识检索块类型列表
  */
-const KNOWLEDGE_RETRIEVAL_BLOCK_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search'] as const;
+const KNOWLEDGE_RETRIEVAL_BLOCK_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search', 'insight_recall'] as const;
 
 /**
  * 检查是否为知识检索块类型
@@ -61,6 +62,7 @@ const ORIGIN_TO_CITATION_TYPE: Record<string, SourceCitationType> = {
   memory: 'memory',
   web_search: 'web_search',
   multimodal: 'multimodal',
+  insight: 'insight',
   // 学术搜索在 UI 上独立分组，但引用契约仍走 `[搜索-N]`（后端与 web_search 共用计数）
   academic_search: 'web_search',
 };
@@ -74,6 +76,7 @@ const RETRIEVAL_BLOCK_TYPE_TO_ORIGIN: Record<string, string> = {
   web_search: 'web_search',
   multimodal_rag: 'multimodal',
   academic_search: 'academic_search',
+  insight_recall: 'insight',
 };
 
 /**
@@ -174,6 +177,7 @@ export const PROVIDER_LABEL_I18N_KEYS: Record<string, string> = {
   multimodal_rag: 'common:chat.sources.providers.multimodalRag',
   unified_search: 'common:chat.sources.providers.unifiedSearch',
   academic_search: 'common:chat.sources.providers.academicSearch',
+  insight_recall: 'common:chat.sources.providers.insightRecall',
 };
 
 // ============================================================================
@@ -593,6 +597,9 @@ function getProviderContextType(blockType: string, groupType?: string): string {
   if (groupType === 'rag') {
     return 'rag';
   }
+  if (groupType === 'insight') {
+    return 'insight_recall';
+  }
   return blockType;
 }
 
@@ -610,6 +617,8 @@ function getProviderIdByContextType(contextType: string): string {
       return 'web_search';
     case 'multimodal_rag':
       return 'multimodal_rag';
+    case 'insight_recall':
+      return 'insight_recall';
     default:
       return contextType;
   }
@@ -663,6 +672,7 @@ const DEFAULT_TITLE_I18N_KEYS: Record<string, string> = {
   web_search: 'common:chat.sources.defaultTitles.searchResult',
   multimodal_rag: 'common:chat.sources.defaultTitles.multimodalPage',
   academic_search: 'common:chat.sources.defaultTitles.paper',
+  insight_recall: 'common:chat.sources.defaultTitles.insight',
 };
 
 /**
@@ -678,6 +688,7 @@ function getDefaultTitleKey(blockType: string, index: number): string {
     web_search: 'Search Result',
     multimodal_rag: 'Page',
     academic_search: 'Paper',
+    insight_recall: 'Insight',
   };
   const label = fallbackLabels[blockType] || 'Source';
   return `${label} ${index + 1}`;

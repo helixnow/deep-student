@@ -30,6 +30,7 @@ const SOURCE_RELEVANT_BLOCK_TYPES = new Set([
   'web_search',
   'multimodal_rag',
   'academic_search',
+  'insight_recall',
   'mcp_tool',
 ]);
 

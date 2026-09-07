@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   ArrowSquareOut,
   CaretRight,
+  Lightbulb,
 } from '@phosphor-icons/react';
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
@@ -47,6 +48,7 @@ const sourceTypeIcons: Record<RetrievalSourceType, typeof FileText> = {
   memory: Brain,
   web_search: Globe,
   multimodal: ImageIcon,
+  insight: Lightbulb,
 };
 
 // ============================================================================

@@ -65,6 +65,8 @@ export const CITATION_TYPE_ALIASES: ReadonlyArray<{ alias: string; type: Retriev
   { alias: 'web', type: 'web_search' },
   { alias: '图片', type: 'multimodal' },
   { alias: 'image', type: 'multimodal' },
+  { alias: '灵感', type: 'insight' },
+  { alias: 'insight', type: 'insight' },
 ];
 
 const ALIAS_TYPE_LOOKUP: Record<string, RetrievalSourceType> = Object.fromEntries(
@@ -281,6 +283,7 @@ export function getCitationTypeLabel(
     memory: i18next.t('chatV2:citation.memory'),
     web_search: i18next.t('chatV2:citation.web_search'),
     multimodal: i18next.t('chatV2:citation.multimodal'),
+    insight: i18next.t('chatV2:citation.insight'),
   };
 
   return labels[type] || type;

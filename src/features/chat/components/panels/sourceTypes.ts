@@ -65,7 +65,7 @@ export interface MultimodalSourceInfo {
 /**
  * 引用契约类型（与 citationParser 的 `[类型-N]` 契约一致）
  */
-export type SourceCitationType = 'rag' | 'memory' | 'web_search' | 'multimodal';
+export type SourceCitationType = 'rag' | 'memory' | 'web_search' | 'multimodal' | 'insight';
 
 /**
  * 检索失败信息（由 adapter 从 error 状态的检索块提取）

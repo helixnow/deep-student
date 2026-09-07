@@ -2231,7 +2231,8 @@
         "web_search": "外部搜索",
         "tool": "工具引用",
         "graph": "个人图谱",
-        "multimodal": "多模态知识库"
+        "multimodal": "多模态知识库",
+        "insight": "灵感卡"
       },
       "locateGraph": "在图谱中定位",
       "locateKb": "在知识库中打开",
@@ -2244,7 +2245,8 @@
         "multimodalRag": "多模态知识库",
         "unifiedSearch": "统一检索",
         "academicSearch": "学术搜索",
-        "memory": "记忆"
+        "memory": "记忆",
+        "insightRecall": "灵感召回"
       },
       "defaultTitles": {
         "document": "文档",
@@ -2252,7 +2254,8 @@
         "memory": "记忆",
         "searchResult": "搜索结果",
         "multimodalPage": "页面",
-        "paper": "论文"
+        "paper": "论文",
+        "insight": "灵感"
       },
       "multimodal": {
         "sourceTypes": {

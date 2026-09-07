@@ -506,7 +506,8 @@
         "memory": "User Memory",
         "web_search": "Web Search",
         "multimodal": "Multimodal",
-        "academic": "Academic Paper"
+        "academic": "Academic Paper",
+        "insight": "Insight Cards"
       }
     },
     "paperSave": {
@@ -903,6 +904,17 @@
         "retrySegmentsFailed": "All {{failed}} failed segments could not be resubmitted",
         "exportNewCardsNote": "Cards imported into Anki from this package will appear as new cards (review progress is not carried in the file)."
       }
+    },
+    "insightRecall": {
+      "title": "Insight Recall",
+      "searching": "Recalling…",
+      "loading": "Looking through your insight cards…",
+      "error": "Recall failed",
+      "errorMessage": "Insight recall failed, please retry",
+      "noResults": "No related insight cards found",
+      "statsSimple": "{{count}} insights",
+      "existenceHint": "Only card titles are shown. Ask follow-up questions to reveal more.",
+      "saveCorrection": "Save correction"
     }
   },
   "analysis": {
@@ -1245,8 +1257,18 @@
     "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete."
   },
   "contextRef": {
-    "previewFailedTitle": "Cannot Open Reference Preview",
-    "previewFailedDesc": "The referenced resource does not exist or has been removed."
+    "type": {
+      "note": "Note",
+      "textbook": "Textbook",
+      "exam": "Question Set",
+      "essay": "Essay",
+      "translation": "Translation",
+      "folder": "Folder",
+      "skill": "Skill",
+      "selection": "Selection"
+    },
+    "sticky": "Sticky Reference",
+    "clearAll": "Clear all references"
   },
   "modelMention": {
     "suggestions": "Model Suggestions",
@@ -1521,20 +1543,6 @@
       "folder": "Folder"
     }
   },
-  "contextRef": {
-    "type": {
-      "note": "Note",
-      "textbook": "Textbook",
-      "exam": "Question Set",
-      "essay": "Essay",
-      "translation": "Translation",
-      "folder": "Folder",
-      "skill": "Skill",
-        "selection": "Selection"
-    },
-    "sticky": "Sticky Reference",
-    "clearAll": "Clear all references"
-  },
   "injectMode": {
     "label": "Inject",
     "selectMode": "Select Mode",
@@ -1664,7 +1672,12 @@
     "groupByGroup": "Group by category",
     "groupByWorkspace": "Group by workspace",
     "defaultWorkspace": "Default runtime",
-    "taskStatus": { "running": "Running", "blocked": "Blocked", "completed": "Completed", "unknown": "Status unavailable" },
+    "taskStatus": {
+      "running": "Running",
+      "blocked": "Blocked",
+      "completed": "Completed",
+      "unknown": "Status unavailable"
+    },
     "taskArtifacts": "{{count}} outputs",
     "taskChanges": "{{count}} changes",
     "staleTopic": "Needs repair",
@@ -1794,7 +1807,10 @@
     "collapseArgs": "Collapse arguments",
     "scopeExpand": "Details",
     "scopeCollapse": "Hide details",
-    "scope": { "sandboxOn": "Sandboxed", "sandboxOff": "No sandbox · direct host exec" },
+    "scope": {
+      "sandboxOn": "Sandboxed",
+      "sandboxOff": "No sandbox · direct host exec"
+    },
     "countdownPaused": "Paused",
     "aria": {
       "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",
@@ -1880,7 +1896,8 @@
     "rag": "Knowledge Base",
     "memory": "User Memory",
     "web_search": "Web Search",
-    "multimodal": "Multimodal"
+    "multimodal": "Multimodal",
+    "insight": "Insight"
   },
   "ragPanel": {
     "topkHelper": "Return the {{value}} most relevant snippets; higher is broader but slightly slower",
@@ -1996,7 +2013,7 @@
     "messagesCount": "Messages ({{count}})",
     "viewFull": "View Full",
     "loadError": "Load failed",
-    "refreshFailed": "Workspace sync failed: {{message}}",
+    "refreshFailed": "Refresh failed",
     "online": "Network restored, syncing workspace...",
     "offline": "Network disconnected, some operations unavailable",
     "noMessages": "No messages",
@@ -2088,8 +2105,6 @@
     },
     "adapterSetupFailed": "Adapter setup failed for agent: {{agent}}",
     "unableToResolveSessionId": "Unable to resolve requester session ID for workspace command",
-    "online": "Network restored, syncing workspace...",
-    "offline": "Network disconnected, some operations unavailable",
     "workerStartFailed": "Worker \"{{name}}\" failed to start: {{error}}",
     "coordinatorAwakened": "Coordinator awakened by subagent {{agent}}, continuing...",
     "subagentRetry": "Subagent {{agent}} did not send a result, re-triggering...",
@@ -2112,7 +2127,6 @@
     "cancelFailed": "Stop failed: {{error}}",
     "cancel": "Stop",
     "refreshSuccess": "Refresh successful",
-    "refreshFailed": "Refresh failed",
     "loading": "Loading...",
     "restoreError": "Restore failed",
     "retry": "Retry",

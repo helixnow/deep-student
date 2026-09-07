@@ -506,7 +506,8 @@
         "memory": "用户记忆",
         "web_search": "网络搜索",
         "multimodal": "多模态知识库",
-        "academic": "学术论文"
+        "academic": "学术论文",
+        "insight": "灵感卡"
       }
     },
     "paperSave": {
@@ -903,6 +904,17 @@
         "retrySegmentsFailed": "{{failed}} 个失败分段均未能重新提交",
         "exportNewCardsNote": "导出的卡片导入 Anki 后将作为新卡（复习进度不随包携带）。"
       }
+    },
+    "insightRecall": {
+      "title": "灵感召回",
+      "searching": "回忆中…",
+      "loading": "正在翻找你的灵感卡…",
+      "error": "召回失败",
+      "errorMessage": "灵感召回出错，请重试",
+      "noResults": "没有找到相关的灵感卡",
+      "statsSimple": "{{count}} 条灵感",
+      "existenceHint": "以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。",
+      "saveCorrection": "保存纠正"
     }
   },
   "analysis": {
@@ -1245,8 +1257,18 @@
     "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整"
   },
   "contextRef": {
-    "previewFailedTitle": "无法打开引用预览",
-    "previewFailedDesc": "引用的资源不存在或已被移除"
+    "type": {
+      "note": "笔记",
+      "textbook": "教材",
+      "exam": "题目集",
+      "essay": "作文",
+      "translation": "翻译",
+      "folder": "文件夹",
+      "skill": "技能",
+      "selection": "选区"
+    },
+    "sticky": "持久引用",
+    "clearAll": "清空所有引用"
   },
   "modelMention": {
     "suggestions": "模型建议",
@@ -1521,20 +1543,6 @@
       "folder": "文件夹"
     }
   },
-  "contextRef": {
-    "type": {
-      "note": "笔记",
-      "textbook": "教材",
-      "exam": "题目集",
-      "essay": "作文",
-      "translation": "翻译",
-      "folder": "文件夹",
-      "skill": "技能",
-        "selection": "选区"
-    },
-    "sticky": "持久引用",
-    "clearAll": "清空所有引用"
-  },
   "injectMode": {
     "label": "注入",
     "selectMode": "选择模式",
@@ -1664,7 +1672,12 @@
     "groupByGroup": "按分组浏览",
     "groupByWorkspace": "按工作区浏览",
     "defaultWorkspace": "默认运行目录",
-    "taskStatus": { "running": "进行中", "blocked": "已阻塞", "completed": "已完成", "unknown": "暂无状态" },
+    "taskStatus": {
+      "running": "进行中",
+      "blocked": "已阻塞",
+      "completed": "已完成",
+      "unknown": "暂无状态"
+    },
     "taskArtifacts": "{{count}} 个产物",
     "taskChanges": "{{count}} 项变更",
     "staleTopic": "待修复分组",
@@ -1794,7 +1807,10 @@
     "collapseArgs": "收起参数",
     "scopeExpand": "详情",
     "scopeCollapse": "收起详情",
-    "scope": { "sandboxOn": "沙箱内执行", "sandboxOff": "无沙箱·宿主机直执" },
+    "scope": {
+      "sandboxOn": "沙箱内执行",
+      "sandboxOff": "无沙箱·宿主机直执"
+    },
     "countdownPaused": "已暂停",
     "aria": {
       "requested": "工具 {{tool}} 等待审批，{{seconds}} 秒后将自动拒绝",
@@ -1880,7 +1896,8 @@
     "rag": "知识库",
     "memory": "用户记忆",
     "web_search": "网络搜索",
-    "multimodal": "多模态"
+    "multimodal": "多模态",
+    "insight": "灵感"
   },
   "ragPanel": {
     "topkHelper": "返回最相关的 {{value}} 个片段，越大越全面但速度稍慢",
@@ -1996,7 +2013,7 @@
     "messagesCount": "消息（{{count}}）",
     "viewFull": "查看完整",
     "loadError": "加载失败",
-    "refreshFailed": "工作区同步失败: {{message}}",
+    "refreshFailed": "刷新失败",
     "online": "网络已恢复，正在同步工作区...",
     "offline": "网络已断开，部分操作不可用",
     "noMessages": "暂无消息",
@@ -2088,8 +2105,6 @@
     },
     "adapterSetupFailed": "代理适配器设置失败: {{agent}}",
     "unableToResolveSessionId": "无法解析工作区命令的请求者会话 ID",
-    "online": "网络已恢复，正在同步工作区...",
-    "offline": "网络已断开，部分操作不可用",
     "workerStartFailed": "Worker \"{{name}}\" 启动失败: {{error}}",
     "coordinatorAwakened": "主代理已被子代理 {{agent}} 唤醒，继续执行中...",
     "subagentRetry": "子代理 {{agent}} 未发送结果，正在重新触发...",
@@ -2112,7 +2127,6 @@
     "cancelFailed": "停止失败: {{error}}",
     "cancel": "停止",
     "refreshSuccess": "刷新成功",
-    "refreshFailed": "刷新失败",
     "loading": "加载中...",
     "restoreError": "恢复失败",
     "retry": "重试",

@@ -35,7 +35,7 @@ import type { ChatStore } from '../../core/types';
  * 工具块）；注册检索处理器后，后端若直接发 academic_search 流式事件也能成块，
  * 演示壳的剧本流即依赖于此。
  */
-const RETRIEVAL_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search'] as const;
+const RETRIEVAL_TYPES = ['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search', 'insight_recall'] as const;
 
 type RetrievalType = (typeof RETRIEVAL_TYPES)[number];
 

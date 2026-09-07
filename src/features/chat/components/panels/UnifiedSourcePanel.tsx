@@ -15,6 +15,7 @@ import {
   ArrowsOut,
   ArrowsIn,
   WarningCircle,
+  Lightbulb,
 } from '@phosphor-icons/react';
 import type { UnifiedSourceBundle, UnifiedSourceGroup, UnifiedSourceItem } from './sourceTypes';
 import { cn } from '@/utils/cn';
@@ -76,6 +77,8 @@ function groupIcon(group: CategoryKey, size = 16) {
       return <Hammer size={size} />;
     case 'multimodal':
       return <Image size={size} />;
+    case 'insight':
+      return <Lightbulb size={size} />;
     default:
       return <BookOpen size={size} />;
   }
