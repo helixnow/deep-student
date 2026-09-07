@@ -360,6 +360,11 @@ export interface InputBarUIProps {
   /** 清空所有页码引用 */
   onClearPdfPageRefs?: () => void;
 
+  // ========== 模型能力（附件默认注入模式） ==========
+
+  /** 当前会话生效的对话模型 ID（model2OverrideId || modelId），用于推断多模态能力 */
+  effectiveChatModelId?: string | null;
+
 }
 
 // ============================================================================

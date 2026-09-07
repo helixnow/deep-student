@@ -1287,6 +1287,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 教材侧栏控制
         textbookOpen={textbookOpen}
         onTextbookToggle={onTextbookToggle}
+        // ★ P1（2026-09-07）：当前会话生效模型 ID（附件默认注入模式按其多模态能力取默认）
+        effectiveChatModelId={model2OverrideId || modelId}
         // 模型 @mention 自动完成
         modelMentionState={modelMentionState}
         modelMentionActions={modelMentionActions}
