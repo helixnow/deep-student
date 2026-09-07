@@ -90,16 +90,16 @@ src/features/chat/plugins/blocks/insightRecall.tsx      检索块渲染（含阶
 - 验收：存在级阶段任何通道不泄露方法；无匹配完整走沉默分支；重试/变体/回放披露状态一致
 
 ### 阶段三：受控演化
-- [ ] insight_jobs 队列 + 巩固 worker（闲时，可中断，幂等）
-- [ ] 合并提案（linked-merge 保差异）/ 标签 canonicalize → 待办决策任务（专用 list + attachments 回链）
-- [ ] SRS 投影：物化卡 + source 回链；源卡修订 → 投影重生成
-- [ ] 原则卡：abstract_of 边 + ≥2 案例 + 1 反例 + 条件化表述；源卡更正 → 派生原则复审待办
-- 验收：合并零静默错误；diff-approve 只覆盖语义变更；任务跨重启恢复
+- [x] insight_jobs 队列（V20260910，lease+dedupe 部分唯一索引+退避+启动恢复）+ InsightJobWorker（可中断 run_once，insight_run_jobs 命令）
+- [x] 合并提案（FTS 近重复检测 → linked-merge 决策待办，差异保留）→ "灵感演化"专用 list + attachments 回链（marker 幂等）；tag_canonicalize 任务类型保留（灵感卡 v1 无标签列，幂等空操作）
+- [x] SRS 投影：anki_cards 物化（source_type='inspiration' 回链）；源卡修订 → 原地重生成（保 FSRS 状态）；删除 → 投影墓碑传播
+- [x] 原则卡：same_method 簇 ≥2 案例 + 1 反例（触碰簇即可）→ 条件化原则提案待办；源卡更正 → 派生原则复审待办（修正 abstract_of/example_of 方向语义）
+- 验收：合并零静默错误（只提案不自动合并）；任务跨重启恢复（recover_stale_leases）✅
 
 ### 阶段四：自适应（纯策略层，零 schema 变更）
-- [ ] 效用门控路由器（三本账数据校准，替代确定性阈值）
-- [ ] 跨簇类比挖掘（间接查询找近邻外候选，CABLE 正确姿势，固定预算）
-- [ ] 内化退场降权（保留维护性复习，不永久消失）
+- [x] 效用门控路由器（calibrate_policy_from_ledger：三本账 30 天有用率校准 min_confidence，±有界 [0.15,0.8]，样本不足不动）
+- [x] 跨簇类比挖掘（expand_via_relations：same_method/same_trap 1 跳邻居，固定预算 2，间接置信 ×0.6）
+- [x] 内化退场降权（internalization_discount：recall≥5 且有用率≥0.5 时线性降权至 0.3 下限，不永久消失）
 
 ## 5. 命名纪律
 

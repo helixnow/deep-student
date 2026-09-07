@@ -614,3 +614,102 @@ fn test_principle_review_todo_on_source_correction() {
         .expect("count");
     assert_eq!(n, 1, "源卡更正应生成派生原则复审待办");
 }
+
+// ============================================================================
+// 阶段四：自适应（效用校准 / 跨簇类比 / 内化降权）
+// ============================================================================
+
+#[test]
+fn test_internalization_discount_bounds() {
+    use super::disclosure::internalization_discount as d;
+    assert_eq!(d(0, 0, 0), 1.0);
+    assert_eq!(d(4, 10, 10), 1.0, "回忆次数不足不降权");
+    assert_eq!(d(10, 10, 2), 1.0, "有用率低（内化存疑）不降权");
+    let f5 = d(5, 10, 9);
+    let f15 = d(15, 20, 18);
+    assert!(f5 < 1.0 && f5 > f15, "降权随内化程度加深: {f5} vs {f15}");
+    assert!(f15 >= 0.3, "降权有下限，永不永久消失");
+}
+
+#[test]
+fn test_calibrate_policy_from_ledger() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let conn = db.get_conn_safe().expect("conn");
+    let default = super::disclosure::DisclosurePolicy::default();
+
+    // 样本不足 → 不动
+    let p = super::disclosure::calibrate_policy_from_ledger(&conn, default);
+    assert!((p.min_confidence - default.min_confidence).abs() < 1e-9);
+
+    // 注入高有用率账本（20 次展示 16 次有用）→ 阈值降低
+    let svc = InsightService::new(std::sync::Arc::new(db));
+    let card = svc.create_draft(sample_input()).expect("draft");
+    for i in 0..20 {
+        super::recall::InsightRecallService::record_event_idempotent(
+            &conn,
+            Some("sess_cal"),
+            Some(&format!("msg_{i}")),
+            Some(&card.id),
+            InsightEventType::ShownExistence,
+            DisclosureLevel::Existence,
+            None,
+        )
+        .expect("shown");
+    }
+    for i in 0..16 {
+        super::recall::InsightRecallService::record_event_idempotent(
+            &conn,
+            Some("sess_cal"),
+            Some(&format!("fb_{i}")),
+            Some(&card.id),
+            InsightEventType::FeedbackUseful,
+            DisclosureLevel::Hidden,
+            None,
+        )
+        .expect("useful");
+    }
+    let p2 = super::disclosure::calibrate_policy_from_ledger(&conn, default);
+    assert!(
+        p2.min_confidence < default.min_confidence,
+        "高有用率应降低阈值: {} vs {}",
+        p2.min_confidence,
+        default.min_confidence
+    );
+    assert!(p2.min_confidence >= 0.15, "校准有下界");
+}
+
+#[test]
+fn test_cross_cluster_analogy_expansion() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+
+    let direct = make_card(&svc, "导数结构识别换元", "识别导数结构换元");
+    // 间接卡：内容与查询不直接匹配，但与直接命中卡有 same_method 边
+    let mut indirect_input = sample_input();
+    indirect_input.title = "分部积分选型".to_string();
+    indirect_input.rule = "反对幂指三顺序选型".to_string();
+    indirect_input.turning_point = "降次优先".to_string();
+    indirect_input.situation = "乘积积分".to_string();
+    indirect_input.stuck_point = "不知谁当 u".to_string();
+    let indirect = svc.create_draft(indirect_input).expect("draft2");
+    svc.confirm(&indirect.id, None).expect("confirm2");
+    svc.add_relation(&direct.id, &indirect.id, "same_method", None, None)
+        .expect("rel");
+
+    let recall = super::recall::InsightRecallService::new(db.clone());
+    let conn = db.get_conn_safe().expect("conn");
+    let hits = recall.recall_fts("导数结构识别", 5).expect("fts");
+    assert_eq!(hits.len(), 1, "间接卡不应被 FTS 直接命中");
+
+    let expanded =
+        super::recall::InsightRecallService::expand_via_relations_with_conn(&conn, &hits, 2)
+            .expect("expand");
+    assert_eq!(expanded.len(), 1, "same_method 邻居应作为间接候选");
+    assert_eq!(expanded[0].card.id, indirect.id);
+    assert_eq!(expanded[0].matched_via, "relation");
+    assert!(
+        expanded[0].confidence < hits[0].confidence,
+        "间接候选置信应低于直接命中"
+    );
+}

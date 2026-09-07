@@ -102,11 +102,65 @@ impl InsightRecallService {
         let mut out = Vec::with_capacity(rows.len());
         for (id, rank) in rows {
             if let Some(card) = repo::get_card(conn, &id)? {
+                // 阶段四：内化退场降权（已内化方法降低曝光，不删除）
+                let discount = super::disclosure::internalization_discount(
+                    card.recall_count,
+                    card.shown_count,
+                    card.useful_count,
+                );
                 out.push(RecallCandidate {
                     card,
-                    confidence: Self::bm25_to_confidence(rank),
+                    confidence: Self::bm25_to_confidence(rank) * discount,
                     matched_via: "fts",
                 });
+            }
+        }
+        Ok(out)
+    }
+
+    /// 跨簇类比挖掘（阶段四，CABLE 正确姿势）：
+    /// 直接命中的卡沿 same_method/same_trap 边找 1 跳邻居作为间接候选，
+    /// 固定预算（最多 `budget` 条），置信 = 源卡置信 × 0.6（间接折扣）。
+    pub fn expand_via_relations_with_conn(
+        conn: &Connection,
+        hits: &[RecallCandidate],
+        budget: usize,
+    ) -> Result<Vec<RecallCandidate>, AppError> {
+        let mut out = Vec::new();
+        let mut seen: std::collections::HashSet<String> =
+            hits.iter().map(|c| c.card.id.clone()).collect();
+        'outer: for hit in hits {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT DISTINCT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END AS peer
+                     FROM insight_relations
+                     WHERE status = 'active' AND deleted_at IS NULL
+                       AND relation_type IN ('same_method', 'same_trap')
+                       AND (from_id = ?1 OR to_id = ?1)",
+                )
+                .map_err(|e| AppError::database(e.to_string()))?;
+            let peers: Vec<String> = stmt
+                .query_map(params![hit.card.id], |row| row.get(0))
+                .map_err(|e| AppError::database(e.to_string()))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| AppError::database(e.to_string()))?;
+            for peer in peers {
+                if !seen.insert(peer.clone()) {
+                    continue;
+                }
+                if let Some(card) = repo::get_card(conn, &peer)? {
+                    if card.status != super::types::InsightStatus::Active {
+                        continue;
+                    }
+                    out.push(RecallCandidate {
+                        confidence: hit.confidence * 0.6,
+                        matched_via: "relation",
+                        card,
+                    });
+                    if out.len() >= budget {
+                        break 'outer;
+                    }
+                }
             }
         }
         Ok(out)
@@ -180,6 +234,17 @@ impl InsightRecallService {
         limit: usize,
     ) -> Result<Vec<RecallCandidate>, AppError> {
         let mut candidates = self.recall_fts(query, limit)?;
+
+        // 跨簇类比挖掘（阶段四）：直接命中的关系邻居作间接候选（固定预算 2）
+        if !candidates.is_empty() {
+            let conn = self
+                .vfs_db
+                .get_conn_safe()
+                .map_err(|e| AppError::database(e.to_string()))?;
+            let indirect =
+                Self::expand_via_relations_with_conn(&conn, &candidates, 2)?;
+            candidates.extend(indirect);
+        }
 
         // 级联升级：FTS 空结果且查询够长 → LLM 改写一次重试（只重试一次，防循环）
         if candidates.is_empty() && query.chars().count() >= 10 {

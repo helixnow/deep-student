@@ -153,6 +153,70 @@ pub fn decide_escalation(
     DisclosureOutcome::Disclose(granted)
 }
 
+// ============================================================================
+// 阶段四：自适应（纯策略层，零 schema 变更）
+// ============================================================================
+
+/// 效用门控路由器：用三本账数据校准披露阈值，替代确定性阈值。
+///
+/// 校准逻辑（保守单向）：
+/// - 账本数据太少（shown < MIN_SAMPLE）→ 不动，用静态默认；
+/// - 全局有用率（feedback_useful / shown）高 → 适当降低 min_confidence
+///   （召回质量好，多给曝光）；低 → 提高阈值（少打扰）；
+/// - 调整幅度有界（±0.15），永不越过 [0.15, 0.8] 安全区间。
+///
+/// 数据源：insight_events 三本账（need/benefit 分列），不读内容字段。
+pub fn calibrate_policy_from_ledger(
+    conn: &rusqlite::Connection,
+    mut policy: DisclosurePolicy,
+) -> DisclosurePolicy {
+    const MIN_SAMPLE: i64 = 10;
+    let row: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT
+                 COALESCE(SUM(CASE WHEN event_type = 'shown_existence' THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE WHEN event_type = 'feedback_useful' THEN 1 ELSE 0 END), 0)
+             FROM insight_events
+             WHERE created_at > datetime('now', '-30 days')",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+    let Some((shown, useful)) = row else {
+        return policy;
+    };
+    if shown < MIN_SAMPLE {
+        return policy;
+    }
+    let useful_rate = useful as f64 / shown as f64;
+    // 有用率 0.5 为中性点：每偏离 0.1 调整 0.03 阈值（有界）
+    let delta = (0.5 - useful_rate) * 0.3;
+    policy.min_confidence = (policy.min_confidence + delta).clamp(0.15, 0.8);
+    policy
+}
+
+/// 内化退场降权（阶段四）：已被反复成功召回的卡降低曝光分。
+///
+/// 语义：卡被成功回忆多次（recall_count 高）且近期反馈正面，说明方法已内化，
+/// 召回脚手架应逐步退场——但**不永久消失**（保留维护性复习：降权不删除）。
+/// 返回乘性降权因子 ∈ [0.3, 1.0]。
+pub fn internalization_discount(recall_count: i64, shown_count: i64, useful_count: i64) -> f64 {
+    if recall_count < 5 {
+        return 1.0;
+    }
+    let useful_rate = if shown_count > 0 {
+        useful_count as f64 / shown_count as f64
+    } else {
+        0.0
+    };
+    if useful_rate < 0.5 {
+        return 1.0; // 内化存疑，不降权
+    }
+    // recall_count 5→0.93，10→0.58，14+→0.3（线性到有底下限）
+    let factor = 1.0 - 0.07 * (recall_count.saturating_sub(4)) as f64;
+    factor.clamp(0.3, 1.0)
+}
+
 /// 按披露级别过滤卡片内容——**这是"存在级不泄露方法"的唯一收口**。
 ///
 /// 返回 (title, situation_opt, rule_opt)：
