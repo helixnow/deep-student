@@ -151,6 +151,8 @@ export {
   getSharedDisplacementMap,
   syncLiquidGlassCapability,
   useLiquidGlassLens,
+  useWallpaperReplicaLens,
+  WallpaperReplica,
 } from './core/liquidGlassLens';
 export type { LensOptions } from './core/liquidGlassLens';
 export {

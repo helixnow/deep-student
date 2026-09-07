@@ -5,7 +5,7 @@
  * Tailwind 布局工具类，不得自写 backdrop-filter / 阴影 / 材质。
  *
  * 契约类名：
- *   wb-glass / wb-glass-highlight / wb-glass-lens
+ *   wb-glass / wb-glass-highlight / wb-glass-lens / wb-glass-rim
  *   wb-window / wb-window-focused / wb-window-idle
  *   wb-titlebar
  *   wb-traffic / wb-traffic-close / wb-traffic-min / wb-traffic-zoom
@@ -19,8 +19,8 @@
  *     属一次性状态过渡，非逐帧动画）；
  *   - 三档材质降级发生在 workbench.tokens.css 的 token 层，本文件
  *     只有极少数结构性降级规则（动画兜底）。
- *   - 真折射仅 opt-in：`.wb-glass-lens` + `useLiquidGlassLens` /
- *     `attachLiquidGlassLens`；大面板禁止挂透镜。
+ *   - 真折射：`.wb-glass-lens` + `useLiquidGlassLens` 入场 320ms 后降级；
+ *     整面壁纸复刻 `<WallpaperReplica />` 铺满宿主，与边界同一套折射。
  */
 @import './workbench.tokens.css';
 
@@ -43,6 +43,33 @@
   -webkit-backdrop-filter: var(--wb-glass-blur);
   backdrop-filter: var(--wb-glass-blur);
   border: 1px solid var(--wb-glass-border);
+}
+
+/* 整面壁纸复刻：铺满宿主，圆角跟随，不挖环。 */
+.wb-glass:has(> .wb-glass-replica),
+.wb-desk-menu:has(> .wb-glass-replica),
+.wb-dock:has(> .wb-glass-replica) {
+  isolation: isolate;
+}
+
+.wb-glass-replica {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html[data-wb-material='reduced'] .wb-glass-replica,
+html[data-wb-material='minimal'] .wb-glass-replica {
+  display: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .wb-glass-replica {
+    display: none;
+  }
 }
 
 /* 顶缘 1px specular 高光（伪元素实现，避免与外层 box-shadow 冲突） */
@@ -69,7 +96,55 @@
 }
 
 /*
- * 液态玻璃透镜（opt-in，仅小表面）
+ * 全周 specular 环（opt-in，中央浮层/面板用）
+ * ---------------------------------------------------------------------------
+ * 对标 Liquid Glass 的 rim light：1px 渐变环绕玻璃边缘一周——左上受光最亮，
+ * 两侧收腰，右下回光次之（光源固定在左上）。mask composite 挖空内部只留
+ * 1px 环带；与 wb-glass-highlight（顶缘高光，::after）互补，可同时挂。
+ * 亮度锚定 --wb-glass-highlight token（暗色档自动降）；minimal 档关闭。
+ */
+.wb-glass-rim {
+  position: relative;
+}
+
+.wb-glass-rim::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    var(--wb-glass-highlight) 0%,
+    rgba(255, 255, 255, 0.16) 30%,
+    rgba(255, 255, 255, 0.05) 52%,
+    rgba(255, 255, 255, 0.10) 76%,
+    rgba(255, 255, 255, 0.30) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+:root.dark .wb-glass-rim::before {
+  background: linear-gradient(
+    135deg,
+    var(--wb-glass-highlight) 0%,
+    rgba(255, 255, 255, 0.08) 30%,
+    rgba(255, 255, 255, 0.03) 52%,
+    rgba(255, 255, 255, 0.05) 76%,
+    rgba(255, 255, 255, 0.14) 100%
+  );
+}
+
+html[data-wb-material='minimal'] .wb-glass-rim::before {
+  display: none;
+}
+
+/*
+ * 液态玻璃透镜（opt-in；小表面常驻，大面板仅入场 320ms 后自动降级）
  * ---------------------------------------------------------------------------
  * JS（liquidGlassLens.ts）在 Chromium + full 档写入 inline backdrop-filter
  * （blur + url(#wb-liquid-lens-*)）。无能力 / reduced / minimal 时 html 带

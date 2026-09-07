@@ -44,7 +44,7 @@ import {
   useWorkbenchOverlay,
 } from '../core/shortcuts';
 import { setMaterialTier, type MaterialTierSetting } from '../core/materialTier';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDesktop';
 import { WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
 import { OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
@@ -730,6 +730,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         onKeyDown={onPanelKeyDown}
         onContextMenu={(e) => e.preventDefault()}
       >
+        <WallpaperReplica hostRef={panelRef} enabled={open} />
         <ActionItem
           icon={<ChatCircleDots size={15} weight="duotone" />}
           label={t('workbench:desktopMenu.newChat')}
@@ -857,6 +858,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
               }}
               onKeyDown={onPanelKeyDown}
             >
+              <WallpaperReplica hostRef={subPanelRef} enabled={open && openSub !== null} />
               {openSub === 'wallpaper'
                 ? (
                     <>

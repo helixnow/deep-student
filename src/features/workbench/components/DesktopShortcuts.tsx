@@ -29,7 +29,7 @@ import {
 import type { QuickAccessType } from '@/features/learning-hub/stores/finderStore';
 import { getShortcutIcon } from '@/features/learning-hub/components/finder/shortcutIcons';
 import { workbenchBus } from '../core/workbenchBus';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import {
   launchResourceFromDragData,
   registerDesktopResourceDropHandler,
@@ -294,6 +294,7 @@ const IconMenu: React.FC<IconMenuProps> = ({
       style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 'var(--wb-z-desktop-menu, 9650)' }}
       onContextMenu={(e) => e.preventDefault()}
     >
+      <WallpaperReplica hostRef={menuRef} />
       <ActionItem
         icon={<ArrowSquareOut size={15} weight="duotone" />}
         label={t('desktop.open')}

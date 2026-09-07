@@ -24,6 +24,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useWindowStore } from '../core/windowStore';
 import { appRegistry } from '../core/appRegistry';
 import { getMemoryBudget } from '../core/scheduler';
@@ -628,6 +629,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
 
   // ---- 拖动（直写 DOM transform，rAF 合帧，不进 React state） ----
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragRef = useRef<DragState | null>(null);
   const dragRafRef = useRef(0);
@@ -859,7 +861,8 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
       data-testid="workbench-dev-panel"
       className={`wb-hud ${className ?? ''}`}
     >
-      <div className="wb-glass wb-glass-highlight wb-hud-card">
+      <div ref={cardRef} className="wb-glass wb-glass-highlight wb-hud-card">
+        <WallpaperReplica hostRef={cardRef} />
         <div
           className="wb-hud-header"
           onPointerDown={onHeaderPointerDown}

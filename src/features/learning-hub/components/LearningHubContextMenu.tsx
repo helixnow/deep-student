@@ -41,7 +41,7 @@ import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useLiquidGlassLens } from '@/features/workbench/core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '@/features/workbench/core/liquidGlassLens';
 import '@/features/workbench/styles/workbench.tokens.css';
 import '@/features/workbench/components/DesktopContextMenu.css';
 import type { ResourceListItem } from '../types';
@@ -967,6 +967,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             zIndex: Z_INDEX.contextMenu,
           }}
     >
+      <WallpaperReplica hostRef={menuRef} enabled={renderedOpen} />
       {isTouchPrimary && (
         <div aria-hidden className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/25" />
       )}

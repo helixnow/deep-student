@@ -1,4 +1,5 @@
-import React, { useMemo, useSyncExternalStore } from 'react';
+import React, { useMemo, useRef, useSyncExternalStore } from 'react';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useTranslation } from 'react-i18next';
 import { Sparkle } from '@phosphor-icons/react';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
@@ -18,6 +19,7 @@ import './DesktopAiBriefingWidget.css';
 
 export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
   const { t } = useTranslation(['workbench', 'generativeUi']);
+  const widgetRef = useRef<HTMLElement | null>(null);
   const dueCount = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
 
@@ -70,11 +72,13 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
 
   return (
     <section
+      ref={widgetRef}
       className="wb-ai-briefing-widget wb-glass wb-glass-highlight"
       data-testid="wb-ai-briefing-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
       aria-label={t('generativeUi:workbench.briefing_label')}
     >
+      <WallpaperReplica hostRef={widgetRef} />
       <header className="wb-ai-briefing-header">
         <Sparkle className="h-4 w-4 text-primary" weight="fill" aria-hidden />
         {t('generativeUi:workbench.briefing_label')}

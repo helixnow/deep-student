@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { useLiquidGlassLens } from '@/features/workbench/core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '@/features/workbench/core/liquidGlassLens';
 import '@/features/workbench/styles/workbench.tokens.css';
 import '@/features/workbench/components/DesktopContextMenu.css';
 import { IllustratedGenericFileIcon } from '../../icons';
@@ -229,6 +229,7 @@ function DesktopContextMenu({
             zIndex: Z_INDEX.contextMenu,
           }}
     >
+      <WallpaperReplica hostRef={menuRef} enabled={state.open} />
       {isTouchPrimary && (
         <div aria-hidden className="mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25" />
       )}

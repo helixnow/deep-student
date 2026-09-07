@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, ArrowsOutSimple } from '@phosphor-icons/react';
 import type { DisplayMode } from '../core/types';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import './TileMenuPopover.css';
 
 export type TileMenuAction =
@@ -356,6 +356,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
+      <WallpaperReplica hostRef={menuRef} enabled={phase === 'open' || phase === 'closing'} />
       {flat.map(({ action, r, c }) => {
         const isActive = active.row === r && active.col === c;
         const isCurrent =
