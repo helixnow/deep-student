@@ -806,9 +806,12 @@ impl VfsBlobRepo {
     ///
     /// 返回是否删除了至少一个文件。幂等：重复调用为 no-op。
     ///
-    /// 已知窄竞态：回滚后、删除前，并发 `store_blob_with_conn` 复活同 hash
-    /// 会重新插入行——此处在删除前逐次复查行存在性以尽量收窄窗口；
-    /// 即便误删，内容寻址设计下下次写入会自愈重建。
+    /// N04（2026-09-07 审阅）修复：全程持有 `BLOB_FILE_MUTATION_LOCK`，
+    /// 与 `store_blob_with_conn` 的同 hash 复用+登记串行。此前仅在删除前
+    /// 逐次复查行存在性，复查与 remove_file 之间仍有窗口：并发 store 可
+    /// 复活登记并复用该文件，随后补偿把活引用的物理文件删掉
+    /// （ref_count>0 而文件缺失）。锁顺序与 store 一致（文件锁在外、
+    /// DB 操作在内），本函数不持有任何 DB 写事务，无死锁环。
     pub fn remove_unregistered_blob_file(
         conn: &Connection,
         blobs_dir: &Path,
@@ -817,6 +820,7 @@ impl VfsBlobRepo {
         if hash.len() < 2 {
             return Ok(false);
         }
+        let _file_guard = lock_blob_file_mutation()?;
         if Self::blob_exists_with_conn(conn, hash)? {
             return Ok(false);
         }
@@ -848,7 +852,8 @@ impl VfsBlobRepo {
             if !name.starts_with(hash) || name.ends_with(".tmp") {
                 continue;
             }
-            // 删除前复查：并发 store 可能刚复活该 hash 的登记
+            // 防御性复查：持有文件锁期间并发 store 无法登记（见函数头 N04 说明），
+            // 但保留此检查以防未来锁范围调整引入回归。
             if Self::blob_exists_with_conn(conn, hash)? {
                 debug!(
                     "[VFS::BlobRepo] Blob {} re-registered concurrently; keep physical file",
