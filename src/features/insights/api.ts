@@ -79,6 +79,11 @@ export function insightRecordFeedback(
   });
 }
 
+/** 触发巩固 worker 跑一批任务（SRS 投影/合并提案/原则合成；闲时调用，fire-and-forget） */
+export function insightRunJobs(batchSize = 5): Promise<number> {
+  return tauriInvoke<number>('insight_run_jobs', { batchSize });
+}
+
 export function insightAddRelation(
   fromId: string,
   toId: string,
