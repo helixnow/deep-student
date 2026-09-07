@@ -73,20 +73,20 @@ src/features/chat/plugins/blocks/insightRecall.tsx      检索块渲染（含阶
 ## 4. 分阶段清单与验收
 
 ### 阶段一：可信记录
-- [ ] 迁移 `V20260907__insight_cards.sql`（5 表 + 同步列 + change_log 触发器）+ MigrationDef 注册
-- [ ] VfsResourceType::InsightCard + `ic_` 前缀路由 + indexing 分派
-- [ ] insight repo/service/handlers：create_draft / confirm / correct（新 revision）/ delete（墓碑+派生传播）/ list / get / record_feedback
-- [ ] 前端 api.ts + InsightConfirmDialog + 笔记工作区"灵感"合集区块
-- [ ] cargo test insight；check-migrations 门禁通过
+- [x] 迁移 `V20260907__insight_cards.sql`（5 表 + 同步列 + change_log 触发器）+ MigrationDef 注册
+- [x] VfsResourceType::InsightCard + `ic_` 前缀路由 + indexing 分派
+- [x] insight repo/service/handlers：create_draft / confirm / correct（新 revision）/ delete（墓碑+派生传播）/ list / get / record_feedback
+- [x] 前端 api.ts + InsightConfirmDialog + 笔记工作区"灵感"合集区块
+- [x] cargo test insight；check-migrations 门禁通过
 - 验收：备份恢复后证据链完整；删除不复活；纠正产生新 revision 且旧 revision 可查
 
 ### 阶段二：安全回忆
-- [ ] recall.rs：FTS+向量候选生成 → 级联升级（LLM 改写）→ 批量类比核验（先唱反调）
-- [ ] disclosure.rs：五态状态机；沉默四态（no_match/low_confidence/budget/user_disabled）分开记账
-- [ ] InsightRecallExecutor + 两处工具→块映射 + is_retrieval_source_tool 脱敏 + [灵感-N] 引用前缀
-- [ ] 被动注入：存在级最小披露对象经 turn-volatile 块进 LLM 上下文
-- [ ] mastery_events CHECK 重建加 'insight' 源；record_insight_* 幂等写入
-- [ ] 前端 insightRecall.tsx + RetrievalSourceType 加 'insight' + sourceAdapter 五处 + citationParser + i18n
+- [x] recall.rs：FTS(trigram) 候选 → 级联升级（LLM 改写一次重试）→ 批量类比核验（先唱反调）；向量（Lance text profile）留待叠加
+- [x] disclosure.rs：五态状态机；沉默四态（no_match/low_confidence/budget/user_disabled）分开记账
+- [x] InsightRecallExecutor（范式 A：实时即类型块）+ 两处工具→块映射 + is_retrieval_source_tool 脱敏 + [灵感-N] 引用前缀
+- [x] 被动注入：存在级最小披露对象经 turn-volatile 块进 LLM 上下文（仅 FTS 热路径，LLM 级联只在工具路径）
+- [x] mastery_events CHECK 重建加 'insight' 源（V20260909）；record_recall_verdict_to_mastery 幂等写入
+- [x] 前端 insightRecall.tsx + RetrievalSourceType 加 'insight' + sourceAdapter 触点 + citationParser + i18n
 - 验收：存在级阶段任何通道不泄露方法；无匹配完整走沉默分支；重试/变体/回放披露状态一致
 
 ### 阶段三：受控演化
