@@ -970,6 +970,25 @@ pub const V20260909_MASTERY_EVENTS_INSIGHT_SOURCE: MigrationDef = MigrationDef::
     ("mastery_events", "deleted_at"),
 ])
 .idempotent();
+
+/// V20260910: Insight Recall v2 阶段三——insight_jobs 持久任务队列。
+///
+/// 仿 automation_runs：lease + dedupe_key + next_attempt_at + 启动恢复。
+pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
+    20260910,
+    "insight_jobs",
+    include_str!("../../../migrations/vfs/V20260910__insight_jobs.sql"),
+)
+.with_expected_tables(&[
+    "insight_jobs",
+])
+.with_expected_columns(&[
+    ("insight_jobs", "dedupe_key"),
+    ("insight_jobs", "lease_owner"),
+    ("insight_jobs", "next_attempt_at"),
+    ("insight_jobs", "payload_json"),
+])
+.idempotent();
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1031,6 +1050,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260907_INSIGHT_CARDS,
     V20260908_INSIGHT_FTS,
     V20260909_MASTERY_EVENTS_INSIGHT_SOURCE,
+    V20260910_INSIGHT_JOBS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1182,11 +1202,11 @@ mod tests {
     }
 
     #[test]
-    fn test_insight_phase2_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260909);
+    fn test_insight_phase3_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260910);
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("mastery_events_insight_source")
+            Some("insight_jobs")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

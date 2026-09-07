@@ -9,12 +9,14 @@
 
 pub mod disclosure;
 pub mod handlers;
+pub mod jobs;
 pub mod recall;
 pub mod repo;
 pub mod service;
 pub mod types;
 
 pub use disclosure::{DisclosureOutcome, DisclosurePolicy, SilenceReason};
+pub use jobs::InsightJobWorker;
 pub use recall::{InsightRecallService, RecallCandidate};
 pub use service::InsightService;
 pub use types::{

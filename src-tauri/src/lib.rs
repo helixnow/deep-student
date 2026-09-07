@@ -2654,6 +2654,7 @@ pub fn run() {
             ,crate::insight::handlers::insight_list_events
             ,crate::insight::handlers::insight_record_feedback
             ,crate::insight::handlers::insight_add_relation
+            ,crate::insight::handlers::insight_run_jobs
             // =================================================
             // APKG 本地导入
             // =================================================

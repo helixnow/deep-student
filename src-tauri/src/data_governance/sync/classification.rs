@@ -243,6 +243,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         },
         TableClassification {
             database: "vfs",
+            table_name: "insight_jobs",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "dedupe_key",
+            has_json_blobs: true,
+            merge_notes: "Durable job queue; dedupe_key UNIQUE prevents double-enqueue across devices; lease fields are runtime state (LWW harmless)",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "todo_lists",
             primary_key: "id",
             category: SyncCategory::RowSync,

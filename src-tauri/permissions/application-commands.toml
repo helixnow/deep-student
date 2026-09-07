@@ -440,6 +440,7 @@ commands.allow = [
   "insight_list_relations",
   "insight_list_revisions",
   "insight_record_feedback",
+  "insight_run_jobs",
   "is_feature_enabled",
   "list_anki_library_cards",
   "list_document_sessions",
