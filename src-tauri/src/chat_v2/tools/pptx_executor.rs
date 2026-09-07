@@ -17,6 +17,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::office_fidelity_executor::{
+    build_edit_fidelity_warning, enforce_edit_preflight, EditGateWording, OfficeFidelityExecutor,
+};
 use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
 use super::OFFICE_DOC_PARSE_MAX_BYTES;
@@ -26,6 +29,16 @@ use crate::document_parser::DocumentParser;
 // ============================================================================
 // PPTX 工具执行器
 // ============================================================================
+
+/// ★ G06-P1：pptx 编辑门禁措辞。replace_text 的写路径是 markdown spec 文本级
+/// 全量重建（extract_as_spec → 修改 → ppt-rs 重新生成），媒体/嵌入 OLE 对象
+/// 必然静默丢失（critical 拒绝）；母版/备注/动画/图表/SmartArt 同样丢失但
+/// 词法无法区分默认与自定义母版，保守放行并附 fidelity warning。
+const PPTX_EDIT_GATE_WORDING: EditGateWording = EditGateWording {
+    write_path: "pptx spec 文本重建",
+    office_apps: "PowerPoint/WPS",
+    high_features_dropped: true,
+};
 
 /// PPTX 演示文稿工具执行器
 pub struct PptxToolExecutor;
@@ -206,6 +219,13 @@ impl PptxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
+        // ★ G06-P1：强制 preflight（与 xlsx_edit_cells 同一门禁，复用
+        // office_fidelity_inspect 的只读清点）。replace_text 的写路径是
+        // 文本级全量重建——含 critical 特征（媒体/嵌入 OLE 对象）的源文件在此
+        // 被拒绝，不会产生静默丢失特征的产物。
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes)?;
+        enforce_edit_preflight(&preflight, &PPTX_EDIT_GATE_WORDING)?;
+
         // 通过 spec round-trip 实现替换
         // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
         let mut spec = tokio::task::spawn_blocking(move || {
@@ -341,6 +361,11 @@ impl PptxToolExecutor {
             Some(resource_id),
         )?;
         output["replacements_made"] = json!(total_count);
+        // ★ G06-P1：high 特征（母版/备注/动画/图表/SmartArt 等）放行但必须附 warning
+        if let Some(warning) = build_edit_fidelity_warning(&preflight, &PPTX_EDIT_GATE_WORDING, &[])
+        {
+            output["fidelity_warning"] = warning;
+        }
         output["message"] = json!(format!(
             "已完成 {} 处替换，保存为「{}」",
             total_count, file_name
@@ -616,5 +641,104 @@ mod tests {
             executor.sensitivity_level("builtin-pptx_replace_text"),
             ToolSensitivity::Medium
         );
+    }
+
+    // ========================================================================
+    // G06-P1：replace_text 强制 preflight 门禁 + fidelity warning
+    // ========================================================================
+
+    use std::io::Write;
+
+    /// 手工拼包（门禁只看包结构，critical 拒绝发生在 spec 提取之前）
+    fn zip_package(parts: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut output = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut output);
+            let options = zip::write::FileOptions::default();
+            for (name, bytes) in parts {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(bytes).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        output.into_inner()
+    }
+
+    #[test]
+    fn g06_pptx_replace_blocks_media_and_embedded_ole() {
+        let cases: Vec<(&str, &[u8], &str)> = vec![
+            ("ppt/media/image1.png", &b"img"[..], "media"),
+            ("ppt/media/video1.mp4", &b"vid"[..], "media"),
+            (
+                "ppt/embeddings/oleObject1.bin",
+                &b"ole"[..],
+                "embedded_ole",
+            ),
+        ];
+        for (part_name, part_bytes, expected_feature) in cases {
+            let bytes = zip_package(&[
+                ("[Content_Types].xml", &b"<Types/>"[..]),
+                ("ppt/presentation.xml", &b"<p:presentation/>"[..]),
+                (part_name, part_bytes),
+            ]);
+            let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+            let err = enforce_edit_preflight(&preflight, &PPTX_EDIT_GATE_WORDING).unwrap_err();
+            assert!(err.contains("OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES"));
+            assert!(
+                err.contains(expected_feature),
+                "expected '{expected_feature}' in: {err}"
+            );
+            assert!(err.contains("PowerPoint/WPS"));
+            assert!(err.contains("pptx spec 文本重建"));
+        }
+    }
+
+    #[test]
+    fn g06_pptx_replace_masters_and_notes_pass_with_warning() {
+        let bytes = zip_package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("ppt/presentation.xml", b"<p:presentation/>"),
+            ("ppt/slideMasters/slideMaster1.xml", b"<p:sldMaster/>"),
+            ("ppt/notesSlides/notesSlide1.xml", b"<p:notes/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        // 母版/备注是 high 而非 critical（词法无法区分默认与自定义母版，保守放行）
+        enforce_edit_preflight(&preflight, &PPTX_EDIT_GATE_WORDING).unwrap();
+        // 但交付结果必须附 fidelity warning（文本重建会重新生成默认母版、丢弃备注）
+        let warning = build_edit_fidelity_warning(&preflight, &PPTX_EDIT_GATE_WORDING, &[])
+            .expect("masters/notes deck must carry fidelity warning");
+        let at_risk = warning["preserved_at_risk_features"].as_array().unwrap();
+        assert!(at_risk.iter().any(|f| f == "slide_masters"));
+        assert!(at_risk.iter().any(|f| f == "speaker_notes"));
+        assert_eq!(
+            warning["write_path_semantics"],
+            "text_only_rebuild_drops_listed_features"
+        );
+        assert!(warning["message"]
+            .as_str()
+            .unwrap()
+            .contains("PowerPoint/WPS"));
+    }
+
+    #[test]
+    fn g06_pptx_replace_self_generated_deck_passes_gate_and_edits() {
+        // ppt-rs 自产演示文稿必须可再编辑（无 critical：无 media/ole）
+        let spec = json!({
+            "title": "季度汇报",
+            "slides": [
+                { "type": "content", "title": "要点", "bullets": ["hello world"] }
+            ]
+        });
+        let bytes = DocumentParser::generate_pptx_from_spec(&spec).unwrap();
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert!(
+            !preflight.has_critical(),
+            "self-generated pptx must be editable: {:?}",
+            preflight.critical_features
+        );
+        enforce_edit_preflight(&preflight, &PPTX_EDIT_GATE_WORDING).unwrap();
+        // spec round-trip（replace_text 的读端）可正常提取
+        let extracted = DocumentParser::new().extract_pptx_as_spec(&bytes).unwrap();
+        assert!(extracted["slides"].as_array().is_some_and(|s| !s.is_empty()));
     }
 }
