@@ -1140,7 +1140,16 @@ impl ChatV2Pipeline {
         use serde_json::json;
         use tauri::Manager;
 
-        let window = emitter.window();
+        // G01-a：无窗口 runtime（headless）下 shell 审批绑定无法取得
+        // AppState/AppHandle。fail-fast 阻止执行（调用点将 Err 转为
+        // ToolGateOutcome::Block），与 headless 现状的 fail-fast 语义一致——
+        // 静默跳过会让审批缺少 root binding，削弱文件系统授权语义。
+        let Some(window) = emitter.try_window() else {
+            return Err(
+                "windowless runtime: local shell approval binding requires a Tauri window"
+                    .to_string(),
+            );
+        };
         let state = window.state::<crate::commands::AppState>();
         let authority = ChatV2Repo::get_session_authority_state(&self.db, session_id)
             .map_err(|error| format!("Failed to resolve shell authority: {error}"))?;
