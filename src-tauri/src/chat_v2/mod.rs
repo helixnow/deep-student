@@ -45,6 +45,7 @@ pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTa
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
 pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
+pub mod skill_usage; // 🆕 技能使用后端账目 + 经验候选库（G09-P0：只记录，不回放）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod task_audit; // Deterministic task audit manifests and export redaction

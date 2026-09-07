@@ -1305,6 +1305,10 @@ impl ChatV2Pipeline {
         // 异步 fire-and-forget，不阻塞对话返回
         self.trigger_auto_memory_extraction(ctx);
 
+        // 🆕 G09-P0：技能使用账目 + 经验候选检测（零 LLM 成本，
+        // fire-and-forget，失败仅 log——绝不拖垮主流程）
+        crate::chat_v2::skill_usage::on_turn_committed(&self.db, ctx);
+
         // 注：自动标签提取已合并至 generate_session_metadata（首轮唯一调用），
         // 不再单独触发，避免每轮 2 次 LLM 调用的浪费。
     }
