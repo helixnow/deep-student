@@ -1156,7 +1156,7 @@
       "enabled": "Enable Auto OCR",
       "enabled_desc": "Automatically perform text recognition when uploading images or scanned PDFs",
       "skip_multimodal": "Skip OCR for Multimodal Models",
-      "skip_multimodal_desc": "Skip OCR when the current chat model supports image understanding"
+      "skip_multimodal_desc": "Now decided automatically by the current session model capability — no manual setting required"
     },
     "images": {
       "title": "Image Recognition",
@@ -1166,9 +1166,9 @@
     "pdf": {
       "title": "PDF Recognition",
       "enabled": "Auto OCR for Scanned PDFs",
-      "enabled_desc": "Automatically perform multi-page OCR when extracted text from PDF is below threshold",
+      "enabled_desc": "Automatically perform multi-page OCR when extracted text is below threshold (multimodal chat models can read pages directly without OCR)",
       "threshold": "PDF Text Threshold",
-      "threshold_desc": "Trigger OCR when extracted text character count is below this value",
+      "threshold_desc": "Text below this character count marks the PDF as scanned and triggers OCR",
       "threshold_suffix": " chars"
     },
     "reset_success": "Settings reset to defaults",

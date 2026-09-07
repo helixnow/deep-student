@@ -2466,30 +2466,45 @@ pub struct ResourceInjectModes {
 /// 解析图片注入模式，返回 (include_image, include_ocr, downgraded_non_multimodal)
 ///
 /// 当用户未显式选择模式时，仅注入原图；OCR 只在显式选择时注入。
-/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
+///
+/// ★ P1（2026-09-07）非多模态保险：显式请求 image 且模型非多模态时降级为 ocr，
+/// 与 resolve_pdf_inject_modes 的语义对齐。
 pub fn resolve_image_inject_modes(
     image_modes: Option<&Vec<ImageInjectMode>>,
-    _is_multimodal: bool,
+    is_multimodal: bool,
 ) -> (bool, bool, bool) {
-    let (include_image, include_ocr) = match image_modes {
+    let (mut include_image, mut include_ocr) = match image_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&ImageInjectMode::Image),
             modes.contains(&ImageInjectMode::Ocr),
         ),
         _ => (true, false),
     };
-    (include_image, include_ocr, false)
+    let mut downgraded = false;
+    if include_image && !is_multimodal {
+        include_image = false;
+        include_ocr = true;
+        downgraded = true;
+        log::info!(
+            "[InjectModes] 非多模态会话收到 image 注入请求（图片附件），已降级为 ocr 文本注入"
+        );
+    }
+    (include_image, include_ocr, downgraded)
 }
 
 /// 解析 PDF 注入模式，返回 (include_text, include_ocr, include_image, downgraded_non_multimodal)
 ///
 /// 当用户未显式选择模式时，注入原生文本和页面原图，不重复注入 OCR。
-/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
+///
+/// ★ P1（2026-09-07）非多模态保险：显式请求 image 且模型非多模态时降级为 ocr。
+/// 前端默认模式已按模型能力给出（多模态 → image；非多模态 → text+ocr），
+/// 这里兜底「前端默认没对上/会话切换后仍带 image」的情况——否则非多模态模型
+/// 会收到一堆它读不了的页图，而扫描件又没有文本可用。
 pub fn resolve_pdf_inject_modes(
     pdf_modes: Option<&Vec<PdfInjectMode>>,
-    _is_multimodal: bool,
+    is_multimodal: bool,
 ) -> (bool, bool, bool, bool) {
-    let (include_text, include_ocr, include_image) = match pdf_modes {
+    let (mut include_text, mut include_ocr, mut include_image) = match pdf_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&PdfInjectMode::Text),
             modes.contains(&PdfInjectMode::Ocr),
@@ -2497,7 +2512,16 @@ pub fn resolve_pdf_inject_modes(
         ),
         _ => (true, false, true),
     };
-    (include_text, include_ocr, include_image, false)
+    let mut downgraded = false;
+    if include_image && !is_multimodal {
+        include_image = false;
+        include_ocr = true;
+        downgraded = true;
+        log::info!(
+            "[InjectModes] 非多模态会话收到 image 注入请求，已降级为 ocr 文本注入"
+        );
+    }
+    (include_text, include_ocr, include_image, downgraded)
 }
 
 /// VFS 资源引用（用于引用模式上下文注入）

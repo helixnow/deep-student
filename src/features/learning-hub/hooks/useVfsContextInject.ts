@@ -25,6 +25,7 @@ import {
   getAttachmentMediaType,
   buildDefaultInjectModes,
 } from '@/features/chat/components/input-bar/injectModeUtils';
+import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -216,7 +217,9 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         const mediaType = getAttachmentMediaType(realMimeType, name);
         // ★ P0 契约：PDF/图片引用创建时显式写入 UI 默认注入模式，
         // 后端「缺省 text+image 双开」兜底逻辑不再触发
-        const injectModes = buildDefaultInjectModes(mediaType);
+        // ★ P1（2026-09-07）：默认模式由当前会话模型能力驱动
+        const isMultimodal = await isCurrentChatModelMultimodal();
+        const injectModes = buildDefaultInjectModes(mediaType, { multimodal: isMultimodal });
         const previewUrl = typeof metadata?.previewUrl === 'string' ? metadata.previewUrl : undefined;
 
         const contextRef: ContextRef = {

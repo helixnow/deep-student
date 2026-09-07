@@ -2888,16 +2888,40 @@ mod tests {
     }
 
     #[test]
+    fn test_non_multimodal_image_request_downgrades_to_ocr() {
+        // ★ P1（2026-09-07）：非多模态保险——显式 image 请求降级为 ocr
+        let (include_image, include_ocr, downgraded) =
+            resolve_image_inject_modes(Some(&vec![ImageInjectMode::Image]), false);
+        assert!(!include_image);
+        assert!(include_ocr);
+        assert!(downgraded);
+    }
+
+    #[test]
     fn test_default_pdf_mode_keeps_text_and_images_for_every_model() {
         let (t, o, i, downgraded) = resolve_pdf_inject_modes(None, true);
         assert!(t && i);
         assert!(!o);
         assert!(!downgraded);
 
+        // ★ P1（2026-09-07）：缺省（text+image 双开）在非多模态下 image → ocr
         let (t2, o2, i2, downgraded2) = resolve_pdf_inject_modes(None, false);
-        assert!(t2 && i2);
-        assert!(!o2);
-        assert!(!downgraded2);
+        assert!(t2);
+        assert!(o2);
+        assert!(!i2);
+        assert!(downgraded2);
+    }
+
+    #[test]
+    fn test_non_multimodal_pdf_image_request_downgrades_to_ocr() {
+        // ★ P1（2026-09-07）：非多模态保险——显式 image 请求降级为 ocr
+        //（用户只勾了 image，text 本就未选，降级只补 ocr，不越权打开 text）
+        let (t, o, i, downgraded) =
+            resolve_pdf_inject_modes(Some(&vec![PdfInjectMode::Image]), false);
+        assert!(!t);
+        assert!(o);
+        assert!(!i);
+        assert!(downgraded);
     }
 
     #[test]

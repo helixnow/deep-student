@@ -272,7 +272,9 @@ const DEFAULT_PDF_TEXT_THRESHOLD: usize = 100;
 struct OcrStrategyConfig {
     /// 是否启用自动 OCR
     pub enabled: bool,
-    /// 多模态模型跳过 OCR（当前统一跳过）
+    /// ★ 已废弃（2026-09-07 P3）：多模态跳过 OCR 改为运行时读取当前默认对话模型
+    /// 的 is_multimodal（get_model2_config）。保留字段仅供 load_from_db 消化
+    /// 遗留 DB 键，不再参与任何判定。设置面板开关已移除。
     pub skip_for_multimodal: bool,
     /// PDF 文本阈值（字符数，低于此值触发 OCR）
     pub pdf_text_threshold: usize,
@@ -303,6 +305,8 @@ impl OcrStrategyConfig {
         if let Ok(Some(v)) = db.get_setting("ocr.enabled") {
             config.enabled = v.to_lowercase() == "true";
         }
+        // ★ P3（2026-09-07）：ocr.skip_for_multimodal 键废弃——仅继续消化遗留键
+        // 防止 serde 缺字段告警，任何判定都不再读取该值（见 run_pdf_pipeline_internal）
         if let Ok(Some(v)) = db.get_setting("ocr.skip_for_multimodal") {
             config.skip_for_multimodal = v.to_lowercase() == "true";
         }
@@ -911,18 +915,41 @@ impl PdfProcessingService {
         }
 
         // Stage 3: OCR 处理（如果需要）
+        // ★ P3（2026-09-07）：多模态判定改为运行时读取当前默认对话模型（model2），
+        // 静态 DB 开关 skip_for_multimodal 废弃（该开关把「当前模型能力」错误编码成
+        // 用户偏好：任何时刻为 true 都会静默旁路阈值机制且无 UI 反馈——本次排查的
+        // 根因）。语义：多模态模型可直读页图 → 管线 OCR 可跳过（auto-OCR 在索引
+        // 阶段仍兜底）；非多模态模型必须 OCR 出文本，阈值判定回归本位。
+        let current_model_multimodal = self
+            .llm_manager
+            .get_model2_config()
+            .await
+            .map(|c| c.is_multimodal)
+            .unwrap_or_else(|e| {
+                debug!(
+                    "[PdfProcessingService] Failed to resolve default chat model for OCR decision, assuming non-multimodal: {}",
+                    e
+                );
+                false
+            });
         let should_run_pdf_ocr = ocr_config.enabled
             && ocr_config.ocr_scanned_pdf
-            && !ocr_config.skip_for_multimodal
+            && !current_model_multimodal
             && extracted_text_len < ocr_config.pdf_text_threshold;
 
         if start_stage <= ProcessingStage::OcrProcessing && !has_ocr && has_preview {
             if !should_run_pdf_ocr {
                 info!(
-                    "[PdfProcessingService] OCR skipped for file {}: enabled={}, skip_for_multimodal={}, text_len={}, threshold={}",
+                    "[PdfProcessingService] OCR skipped for file {}: enabled={}, ocr_scanned_pdf={}, current_model_multimodal={}, skip_reason={}, text_len={}, threshold={}",
                     file_id,
                     ocr_config.enabled,
-                    ocr_config.skip_for_multimodal,
+                    ocr_config.ocr_scanned_pdf,
+                    current_model_multimodal,
+                    if current_model_multimodal {
+                        format!("current_model_multimodal")
+                    } else {
+                        format!("text_len>=threshold_or_disabled")
+                    },
                     extracted_text_len,
                     ocr_config.pdf_text_threshold
                 );
@@ -1229,13 +1256,21 @@ impl PdfProcessingService {
         }
 
         let ocr_config = self.load_ocr_config();
+        // ★ P3（2026-09-07）：图片管线 OCR 判定同样改为运行时多模态判定
+        let current_model_multimodal = self
+            .llm_manager
+            .get_model2_config()
+            .await
+            .map(|c| c.is_multimodal)
+            .unwrap_or(false);
         let should_run_image_ocr =
-            ocr_config.enabled && ocr_config.ocr_images && !ocr_config.skip_for_multimodal;
+            ocr_config.enabled && ocr_config.ocr_images && !current_model_multimodal;
 
         info!(
-            "[OCR_DIAG] Image pipeline OCR decision: file_id={}, has_ocr={}, should_run_image_ocr={}, ocr_config=(enabled={}, ocr_images={}, skip_for_multimodal={}), blob_hash={:?}, resource_id={:?}",
+            "[OCR_DIAG] Image pipeline OCR decision: file_id={}, has_ocr={}, should_run_image_ocr={}, ocr_config=(enabled={}, ocr_images={}), current_model_multimodal={}, blob_hash={:?}, resource_id={:?}",
             file_id, has_ocr, should_run_image_ocr,
-            ocr_config.enabled, ocr_config.ocr_images, ocr_config.skip_for_multimodal,
+            ocr_config.enabled, ocr_config.ocr_images,
+            current_model_multimodal,
             blob_hash, resource_id
         );
 
@@ -1512,10 +1547,10 @@ impl PdfProcessingService {
             .await;
         } else if !has_ocr && !should_run_image_ocr {
             info!(
-                "[MediaProcessingService] Image OCR skipped for file {}: enabled={}, skip_for_multimodal={}",
+                "[MediaProcessingService] Image OCR skipped for file {}: enabled={}, current_model_multimodal={}",
                 file_id,
                 ocr_config.enabled,
-                ocr_config.skip_for_multimodal
+                current_model_multimodal
             );
         }
 

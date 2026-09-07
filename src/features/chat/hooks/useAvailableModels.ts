@@ -334,4 +334,21 @@ export async function isModelMultimodalAsync(modelId: string | undefined): Promi
   return result;
 }
 
+/**
+ * ★ P1（2026-09-07）：判断「当前会话生效的对话模型」是否为多模态。
+ *
+ * 解析顺序与 TauriAdapter.getEffectiveRuntimeModelId 一致：
+ * 会话 model2OverrideId > 会话 modelId > 全局 model2_config_id。
+ * 用于附件默认注入模式（多模态 → 图片直注，非多模态 → 文本/OCR）。
+ *
+ * @returns 拿不到任何模型 ID 或能力时返回 false（回落非多模态语义）
+ */
+export async function isCurrentChatModelMultimodal(
+  modelId?: string | null,
+  model2OverrideId?: string | null
+): Promise<boolean> {
+  const effectiveId = model2OverrideId?.trim() || modelId?.trim() || undefined;
+  return isModelMultimodalAsync(effectiveId || undefined);
+}
+
 export default useAvailableModels;
