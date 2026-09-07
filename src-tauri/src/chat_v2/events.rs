@@ -67,6 +67,8 @@ pub mod event_types {
     pub const MEMORY: &str = "memory";
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
+    /// 灵感召回（Insight Recall v2 阶段二，范式 A：实时即类型块）
+    pub const INSIGHT_RECALL: &str = "insight_recall";
     pub const ANKI_CARDS: &str = "anki_cards";
     /// 结构化 UI 意图（Generative UI）
     pub const GENERATIVE_UI: &str = "generative_ui";

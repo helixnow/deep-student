@@ -52,6 +52,36 @@ impl Default for DisclosurePolicy {
     }
 }
 
+/// 从主库 settings 表加载策略（执行器与被动注入共用收口）。
+/// 设置项缺失/读取失败一律回退默认值——召回是增强功能，绝不可因配置读取失败而炸掉主流程。
+pub fn load_policy(main_db: Option<&crate::database::Database>) -> DisclosurePolicy {
+    let default = DisclosurePolicy::default();
+    let Some(db) = main_db else {
+        return default;
+    };
+    let read = |key: &str| -> Option<String> {
+        let conn = db.get_conn_safe().ok()?;
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [key],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+    };
+    DisclosurePolicy {
+        enabled: read("insight.recall.enabled")
+            .map(|v| v != "false" && v != "0")
+            .unwrap_or(default.enabled),
+        max_per_turn: read("insight.recall.max_per_turn")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default.max_per_turn),
+        min_confidence: read("insight.recall.min_confidence")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default.min_confidence),
+        passive_max_level: default.passive_max_level,
+    }
+}
+
 /// 一条带置信度的候选（recall.rs 产出，控制器只读分数）
 #[derive(Debug, Clone, Copy)]
 pub struct ScoredRef {

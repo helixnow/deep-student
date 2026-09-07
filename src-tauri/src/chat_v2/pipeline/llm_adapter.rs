@@ -1023,6 +1023,7 @@ impl ChatV2LLMAdapter {
                     | "unified_search"
                     | "memory_search"
                     | "web_search"
+                    | "insight_recall"
             )
         } else {
             false

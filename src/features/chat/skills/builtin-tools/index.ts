@@ -10,6 +10,7 @@
 export { knowledgeRetrievalSkill } from './knowledge-retrieval';
 export { canvasNoteSkill } from './canvas-note';
 export { vfsMemorySkill } from './vfs-memory';
+export { insightRecallSkill } from './insight-recall';
 export { learningResourceSkill } from './learning-resource';
 export { dstuToolsSkill } from './dstu-tools';
 export { mindmapToolsSkill } from './mindmap-tools';
@@ -56,6 +57,7 @@ export { goalToolsSkill } from './goal-tools';
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
 import { vfsMemorySkill } from './vfs-memory';
+import { insightRecallSkill } from './insight-recall';
 import { learningResourceSkill } from './learning-resource';
 import { dstuToolsSkill } from './dstu-tools';
 import { mindmapToolsSkill } from './mindmap-tools';
@@ -121,6 +123,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   knowledgeRetrievalSkill,
   canvasNoteSkill,
   vfsMemorySkill,
+  insightRecallSkill,
   learningResourceSkill,
   dstuToolsSkill,
   mindmapToolsSkill,

@@ -56,6 +56,7 @@ const CITATION_GUIDE: &str = r#"<citation_rules>
 - [记忆-N]: 引用智能记忆中的内容
 - [搜索-N]: 引用网络搜索结果
 - [图片-N]: 引用多模态检索中的图片内容（仅当引用了图片来源时使用）
+- [灵感-N]: 引用用户自己的灵感卡内容（仅当 insight_recall 工具返回并在高披露级别下使用）
 </source_types>
 <rules>
 1. 每个引用标记必须紧跟在引用内容之后，不要单独成行
@@ -395,6 +396,8 @@ pub struct PromptBuilder {
     active_todos: Option<String>,
     /// 🆕 活跃目标摘要（Goal 模式 P0；纯文本，本构建器负责 XML 包裹与转义）
     active_goal: Option<String>,
+    /// 🆕 灵感存在级提示（Insight Recall v2 阶段二；纯文本，本构建器负责包裹转义）
+    insight_hints: Option<String>,
 }
 
 impl PromptBuilder {
@@ -419,6 +422,7 @@ impl PromptBuilder {
             project_agents_instructions: None,
             active_todos: None,
             active_goal: None,
+            insight_hints: None,
         }
     }
 
@@ -435,6 +439,14 @@ impl PromptBuilder {
     /// `<active_goal>` 标签包裹与 XML 转义。
     pub fn with_active_goal(mut self, goal: Option<String>) -> Self {
         self.active_goal = goal.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    /// 灵感存在级提示（被动注入）。调用方只提供纯文本（每行一条标题），
+    /// 本构建器负责 `<insight_hints>` 包裹与 XML 转义。
+    /// 内容纪律：只含卡片标题（存在级），方法内容零泄露（D2 红线）。
+    pub fn with_insight_hints(mut self, hints: Option<String>) -> Self {
+        self.insight_hints = hints.filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -666,6 +678,16 @@ impl PromptBuilder {
             ));
         }
 
+        // 2.5 🆕 灵感存在级提示（Insight Recall v2：被动通道）
+        // 只含卡片标题——告诉模型"这个人在类似情境卡住过"，方法内容须经
+        // insight_recall 工具按披露阶梯升级获取。标题为用户内容，必须转义。
+        if let Some(hints) = &self.insight_hints {
+            parts.push(format!(
+                "<insight_hints>\n该用户曾在以下相似情境中卡住并总结过方法（只显示标题）。若与当前问题相关，可调用 insight_recall 工具逐步唤起用户自己的方法，而不是直接给答案：\n{}\n</insight_hints>",
+                escape_xml_content(hints)
+            ));
+        }
+
         // 3. 检索上下文块（引用规则已固定在 system；context 跟随当前 user）
         if !self.context_blocks.is_empty() {
             let context_content = self.context_blocks.join("\n\n");
@@ -799,6 +821,7 @@ pub fn build_system_prompt_with_profile(
         user_profile,
         None,
         None,
+        None,
     )
 }
 
@@ -810,6 +833,7 @@ pub fn build_system_prompt_with_profile_and_agents(
     user_profile: Option<String>,
     project_agents_instructions: Option<String>,
     active_goal: Option<String>,
+    insight_hints: Option<String>,
 ) -> SystemPromptParts {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
@@ -819,6 +843,7 @@ pub fn build_system_prompt_with_profile_and_agents(
         .with_learner_profile(load_learner_profile_block(options))
         .with_project_agents_instructions(project_agents_instructions)
         .with_active_goal(active_goal)
+        .with_insight_hints(insight_hints)
         .build_split()
 }
 
