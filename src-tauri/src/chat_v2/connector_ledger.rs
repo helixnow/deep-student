@@ -7,8 +7,9 @@
 //!
 //! 核心不变量：**submitting 先于 provider 调用落库**。进程在调用期间退出时，
 //! 遗留的 submitting 行无法区分"远端已执行但响应丢失"与"远端未执行"，下次
-//! 启动由 [`reconcile_on_startup`] 收敛为 `outcome_unknown`（P2 再接
-//! provider lookup 核销为 committed/failed）。
+//! 启动由 [`reconcile_on_startup`] 收敛为 `outcome_unknown`，随后经
+//! provider lookup（G04-P1，见 `connector_providers` 与 executor 的
+//! `reconcile_connector_operations_with_lookup`）核销为 committed/failed。
 //!
 //! 状态迁移全部走原子 `UPDATE ... WHERE state IN (合法前驱)`（前驱列表由
 //! [`ConnectorOperationState::can_transition`] 单一来源推导），消除
@@ -34,7 +35,8 @@ pub enum ConnectorOperationState {
     Submitting,
     /// provider 调用成功（终态）。
     Committed,
-    /// 进程在 submitting 期间退出，远端结果未知（待 P2 reconcile）。
+    /// 进程在 submitting 期间退出（或 provider 调用结果未知），远端结果未知
+    /// （经 provider lookup 核销为 committed/failed）。
     OutcomeUnknown,
     /// provider 调用明确失败（终态）。
     Failed,
@@ -75,7 +77,7 @@ impl ConnectorOperationState {
     /// - `Draft` → `Confirmed`
     /// - `Confirmed` → `Submitting`
     /// - `Submitting` → `Committed` / `Failed` / `OutcomeUnknown`
-    /// - `OutcomeUnknown` → `Committed` / `Failed`（P2 provider lookup 预留）
+    /// - `OutcomeUnknown` → `Committed` / `Failed`（G04-P1 provider lookup 核销）
     /// - `Committed` / `Failed` 为终态，不允许任何外向转换
     pub fn can_transition(from: Self, to: Self) -> bool {
         matches!(
@@ -341,7 +343,7 @@ impl ConnectorLedger {
         Ok(())
     }
 
-    /// `submitting → committed`（`outcome_unknown → committed` 为 P2 核销预留）。
+    /// `submitting → committed`（`outcome_unknown → committed` 供 P1 lookup 核销）。
     pub fn mark_committed(
         &self,
         operation_id: &str,
@@ -376,7 +378,8 @@ impl ConnectorLedger {
         Ok(())
     }
 
-    /// `submitting → failed`（`outcome_unknown → failed` 为 P2 核销预留）。
+    /// `submitting → failed`（`outcome_unknown → failed` 供 P1 lookup 核销，
+    /// 如 `never_submitted`）。
     pub fn mark_failed(
         &self,
         operation_id: &str,
@@ -404,7 +407,7 @@ impl ConnectorLedger {
     ///
     /// 进程在 provider 调用期间退出时，无法区分"远端已执行但响应丢失"与
     /// "远端未执行"——统一标记为 outcome_unknown，禁止自动重试（重复执行
-    /// 比标记未知更危险），由 P2 的 provider lookup 进一步核销。
+    /// 比标记未知更危险），由 P1+ 的 provider lookup 进一步核销。
     pub fn reconcile_submitting_on_startup(&self) -> Result<usize, String> {
         let to = ConnectorOperationState::OutcomeUnknown;
         let conn = self.db.get_conn().map_err(|e| e.to_string())?;
@@ -417,12 +420,62 @@ impl ConnectorLedger {
             .map_err(|e| format!("failed to reconcile connector operations: {}", e))?;
         Ok(changed)
     }
+
+    /// 按状态列出待对账行（`submitting` / `outcome_unknown`，按创建时间升序）。
+    ///
+    /// G04-P1 provider lookup reconcile 的输入集；`submitting` 正常应先经
+    /// [`Self::reconcile_submitting_on_startup`] 收敛，此处一并列出仅为
+    /// 防御"未经收敛直接对账"的调用顺序。
+    pub fn list_pending_reconcile(&self) -> Result<Vec<ConnectorOperation>, String> {
+        let conn = self.db.get_conn().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT * FROM connector_operations \
+                 WHERE state IN ('submitting', 'outcome_unknown') \
+                 ORDER BY created_at, operation_id",
+            )
+            .map_err(|e| format!("failed to prepare pending reconcile query: {}", e))?;
+        let rows = stmt
+            .query_map([], ConnectorOperation::from_row)
+            .map_err(|e| format!("failed to list pending reconcile operations: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("failed to parse connector operation: {}", e))?);
+        }
+        Ok(out)
+    }
+
+    /// 单行 `submitting → outcome_unknown`（G04-P1）。
+    ///
+    /// provider 调用以"瞬时错误耗尽重试 / 结果未知"收场时使用：操作可能已
+    /// 在远端执行，诚实标记为未知，等待 provider lookup 核销；`note` 写入
+    /// `error` 列作为审计线索（必须已脱敏）。
+    pub fn mark_outcome_unknown(&self, operation_id: &str, note: &str) -> Result<(), String> {
+        let to = ConnectorOperationState::OutcomeUnknown;
+        let conn = self.db.get_conn().map_err(|e| e.to_string())?;
+        let sql = format!(
+            "UPDATE connector_operations SET state = ?2, error = ?3 \
+             WHERE operation_id = ?1 AND state IN ({})",
+            ConnectorOperationState::predecessors_sql(to)
+        );
+        let changed = conn
+            .execute(&sql, params![operation_id, to.as_str(), note])
+            .map_err(|e| format!("failed to mark connector operation outcome_unknown: {}", e))?;
+        if changed == 0 {
+            return Err(
+                "connector operation is not in a submitting state; cannot mark outcome_unknown"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
-/// 启动恢复入口（G04-P0）：供应用启动路径挂载。
+/// 启动恢复入口（G04-P0 收敛步骤）：供应用启动路径挂载。
 ///
-/// 本阶段仅做 submitting → outcome_unknown 收敛；P2 将在此之后接
-/// provider lookup，把 outcome_unknown 核销为 committed/failed。
+/// 本函数只做 submitting → outcome_unknown 收敛；G04-P1 的完整启动对账是
+/// `tools::connector_executor::reconcile_connector_operations_with_lookup`
+/// （内部先调用本收敛，再对 outcome_unknown 行做 provider lookup 核销）。
 pub fn reconcile_on_startup(db: &Arc<ChatV2Database>) -> Result<usize, String> {
     ConnectorLedger::new(db.clone()).reconcile_submitting_on_startup()
 }
@@ -701,7 +754,7 @@ mod tests {
 
         // P0：outcome_unknown 禁止自动重试（不能再次 submitting）
         assert!(ledger.mark_submitting("op-1", "t3", "h").is_err());
-        // P2 预留：can_transition 允许 outcome_unknown → committed/failed
+        // P1：can_transition 允许 outcome_unknown → committed/failed（lookup 核销）
         assert!(ConnectorOperationState::can_transition(
             ConnectorOperationState::OutcomeUnknown,
             ConnectorOperationState::Committed
@@ -710,5 +763,83 @@ mod tests {
             ConnectorOperationState::OutcomeUnknown,
             ConnectorOperationState::Failed
         ));
+    }
+
+    #[test]
+    fn g04_list_pending_reconcile_returns_submitting_and_outcome_unknown() {
+        let (_dir, db) = setup_test_db();
+        let ledger = ConnectorLedger::new(db.clone());
+        assert!(ledger.list_pending_reconcile().unwrap().is_empty());
+
+        // draft / committed 不在待对账集
+        ledger.insert_draft(&draft_op("op-draft", "session-a")).unwrap();
+        ledger
+            .insert_draft(&draft_op("op-committed", "session-a"))
+            .unwrap();
+        ledger
+            .mark_confirmed("op-committed", &"a".repeat(64), "t1")
+            .unwrap();
+        ledger.mark_submitting("op-committed", "t2", "h").unwrap();
+        ledger
+            .mark_committed("op-committed", "t3", None, "{}")
+            .unwrap();
+        assert!(ledger.list_pending_reconcile().unwrap().is_empty());
+
+        // submitting + outcome_unknown 都在待对账集
+        ledger
+            .insert_draft(&draft_op("op-submitting", "session-a"))
+            .unwrap();
+        ledger
+            .mark_confirmed("op-submitting", &"a".repeat(64), "t1")
+            .unwrap();
+        ledger.mark_submitting("op-submitting", "t2", "h").unwrap();
+
+        ledger
+            .insert_draft(&draft_op("op-unknown", "session-a"))
+            .unwrap();
+        ledger
+            .mark_confirmed("op-unknown", &"a".repeat(64), "t1")
+            .unwrap();
+        ledger.mark_submitting("op-unknown", "t2", "h").unwrap();
+        ledger
+            .mark_outcome_unknown("op-unknown", "transient provider error after retries")
+            .unwrap();
+
+        let pending = ledger.list_pending_reconcile().unwrap();
+        let ids: Vec<&str> = pending.iter().map(|row| row.operation_id.as_str()).collect();
+        assert_eq!(ids, ["op-submitting", "op-unknown"]);
+        assert_eq!(
+            pending[1].error.as_deref(),
+            Some("transient provider error after retries"),
+            "note 写入 error 列作为审计线索"
+        );
+    }
+
+    #[test]
+    fn g04_mark_outcome_unknown_only_from_submitting() {
+        let (_dir, db) = setup_test_db();
+        let ledger = ConnectorLedger::new(db.clone());
+        ledger.insert_draft(&draft_op("op-1", "session-a")).unwrap();
+        // draft 不能直接 outcome_unknown
+        assert!(ledger.mark_outcome_unknown("op-1", "note").is_err());
+        ledger.mark_confirmed("op-1", &"a".repeat(64), "t1").unwrap();
+        // confirmed 也不能（只有 submitting 是合法前驱）
+        assert!(ledger.mark_outcome_unknown("op-1", "note").is_err());
+        ledger.mark_submitting("op-1", "t2", "h").unwrap();
+        ledger.mark_outcome_unknown("op-1", "note").unwrap();
+        assert_eq!(
+            ledger.get("op-1").unwrap().unwrap().state,
+            ConnectorOperationState::OutcomeUnknown
+        );
+        // 无自环
+        assert!(ledger.mark_outcome_unknown("op-1", "note2").is_err());
+        // P1 核销路径：outcome_unknown → failed（never_submitted）
+        ledger
+            .mark_failed("op-1", "t3", "never_submitted: provider has no record")
+            .unwrap();
+        let row = ledger.get("op-1").unwrap().unwrap();
+        assert_eq!(row.state, ConnectorOperationState::Failed);
+        assert!(row.error.as_deref().unwrap().contains("never_submitted"));
+        assert_eq!(row.resolved_at.as_deref(), Some("t3"));
     }
 }
