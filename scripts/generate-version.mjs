@@ -11,9 +11,17 @@ const projectRoot = join(__dirname, '..');
 
 // Android 的商店发布号显式固定在 tracked config 中；内部 build number
 // 只计算 nightly 基线之后从 HEAD 可达的提交，避免 --all 因 refs 不同而漂移。
-export const PUBLISHED_ANDROID_VERSION_CODE = 14638;
-export const ANDROID_VERSION_CODE = 14639;
-export const ANDROID_VERSION_BASE_APP_VERSION = '0.9.55'; // x-release-please-version
+//
+// ⚠️ 锚点纪律（2026-09-07 审阅修复）：ANDROID_VERSION_BASE_APP_VERSION 是
+// 固定锚点，**绝不允许**再挂 `x-release-please-version` 标记让 release-please
+// 随应用版本同步推进——否则 appOrdinal - baseOrdinal 恒为 0，versionCode 在
+// 跨发布时停滞/回退（0.9.54 tag 计算值 14640，而 0.9.55 线曾回落到 14639）。
+// PUBLISHED_ANDROID_VERSION_CODE 取「可能已发布」的最坏上界：v0.9.54 tag 的
+// 生成值为 14640、0.9.55 线为 14639，故按 14640 处理，下一可用码从 14641 起。
+// 若核对真实已发布 APK manifest 后确认更大值，必须同步抬高这两个常量。
+export const PUBLISHED_ANDROID_VERSION_CODE = 14640;
+export const ANDROID_VERSION_CODE = 14641;
+export const ANDROID_VERSION_BASE_APP_VERSION = '0.9.55';
 export const BUILD_NUMBER_BASE = 14638;
 export const BUILD_NUMBER_BASE_COMMIT = '64edcb7735e5d4e6ccad6f13514b9ee0a8867c78';
 export const ANDROID_VERSION_CODE_MAX = 2_100_000_000;
