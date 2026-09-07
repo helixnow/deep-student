@@ -514,6 +514,79 @@ pub const V20260905_GOAL_TABLE: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260907: Connector 操作持久账本（G04-P0）
+///
+/// `connector_operations` 外部副作用操作的持久状态机 + 系统幂等键；
+/// submitting 先于 provider 调用落库，重启遗留行收敛为 outcome_unknown。
+pub const V20260907_CONNECTOR_OPERATIONS: MigrationDef = MigrationDef::new(
+    20260907,
+    "connector_operations",
+    include_str!("../../../migrations/chat_v2/V20260907__connector_operations.sql"),
+)
+.with_expected_tables(&["connector_operations"])
+.with_expected_columns(&[
+    ("connector_operations", "operation_id"),
+    ("connector_operations", "session_id"),
+    ("connector_operations", "provider_id"),
+    ("connector_operations", "action"),
+    ("connector_operations", "idempotency_key"),
+    ("connector_operations", "state"),
+])
+.with_expected_indexes(&[
+    "idx_connector_operations_state",
+    "idx_connector_operations_idempotency",
+])
+.idempotent();
+
+/// V20260908: 子代理完成投递持久账本（G03-a）
+///
+/// `completion_outbox` 把"worker 完成 → 父会话投递"固化为持久行，
+/// 由后端 CompletionDispatcher 以租约轮询收敛到 delivered；run_id 唯一
+/// 即幂等键。
+pub const V20260908_COMPLETION_OUTBOX: MigrationDef = MigrationDef::new(
+    20260908,
+    "completion_outbox",
+    include_str!("../../../migrations/chat_v2/V20260908__completion_outbox.sql"),
+)
+.with_expected_tables(&["completion_outbox"])
+.with_expected_columns(&[
+    ("completion_outbox", "delivery_id"),
+    ("completion_outbox", "run_id"),
+    ("completion_outbox", "target_session_id"),
+    ("completion_outbox", "state"),
+])
+.with_expected_indexes(&[
+    "idx_completion_outbox_run",
+    "idx_completion_outbox_state",
+])
+.idempotent();
+
+/// V20260909: 技能使用账目与经验候选库（G09-P0）
+///
+/// `skill_usage`（activation/tool_load 双通路账目）+ `skill_candidates`
+/// （轨迹/纠错候选，只记录不回放）。
+pub const V20260909_SKILL_USAGE_CANDIDATES: MigrationDef = MigrationDef::new(
+    20260909,
+    "skill_usage_candidates",
+    include_str!("../../../migrations/chat_v2/V20260909__skill_usage_candidates.sql"),
+)
+.with_expected_tables(&["skill_usage", "skill_candidates"])
+.with_expected_columns(&[
+    ("skill_usage", "skill_id"),
+    ("skill_usage", "kind"),
+    ("skill_usage", "outcome"),
+    ("skill_candidates", "candidate_id"),
+    ("skill_candidates", "source_kind"),
+    ("skill_candidates", "status"),
+    ("skill_candidates", "trace_hash"),
+])
+.with_expected_indexes(&[
+    "idx_skill_usage_run",
+    "idx_skill_candidates_trace_hash",
+    "idx_skill_candidates_status_created",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -541,6 +614,9 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260721_WORKSPACE_DELETION_INTENT_JOURNAL,
     V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY,
     V20260905_GOAL_TABLE,
+    V20260907_CONNECTOR_OPERATIONS,
+    V20260908_COMPLETION_OUTBOX,
+    V20260909_SKILL_USAGE_CANDIDATES,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -560,7 +636,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 25); // V20260130 ~ V20260905
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 28); // V20260130 ~ V20260909
     }
 
     #[test]
@@ -753,7 +829,7 @@ mod tests {
             20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
             20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
             20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721, 20260806,
-            20260905,
+            20260905, 20260907, 20260908, 20260909,
         ];
         let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
             .pending(0)
@@ -765,7 +841,7 @@ mod tests {
             let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
             assert_eq!(remaining.len(), expected_versions.len() - index - 1);
         }
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260905).count(), 0);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260909).count(), 0);
     }
 
     #[test]
