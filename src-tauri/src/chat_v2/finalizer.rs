@@ -1064,6 +1064,13 @@ mod tests {
         // 模拟 executor 防闪退保存：消息占位行 + 块行（无 finalization）
         {
             let conn = db.get_conn_safe().unwrap();
+            // 外键约束（V20260130 起 foreign_keys=ON）：先落父会话行再插消息占位。
+            conn.execute(
+                "INSERT OR IGNORE INTO chat_v2_sessions (id, mode, created_at, updated_at) \
+                 VALUES ('sess-finalizer', 'general_chat', datetime('now'), datetime('now'))",
+                [],
+            )
+            .unwrap();
             conn.execute(
                 "INSERT OR IGNORE INTO chat_v2_messages (id, session_id, role, block_ids_json, timestamp) \
                  VALUES (?1, ?2, 'assistant', '[]', 0)",
