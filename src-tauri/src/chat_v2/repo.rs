@@ -8124,10 +8124,13 @@ mod goal_tests {
                 .unwrap()
         );
         // goal_id 不匹配（目标已被替换）→ 认领失败，不计数
-        assert!(
-            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_stale", 20)
-                .unwrap()
-        );
+        assert!(!ChatV2Repo::goal_claim_continuation_with_conn(
+            &conn,
+            "sess_cont",
+            "goal_stale",
+            20
+        )
+        .unwrap());
 
         let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_cont")
             .unwrap()
@@ -8141,8 +8144,7 @@ mod goal_tests {
         ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_claim", "goal_p1")).unwrap();
 
         // 暂停后：认领必须失败（读取后被暂停的陈旧执行不得计数/续跑）
-        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "paused")
-            .unwrap();
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "paused").unwrap();
         assert!(
             !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
                 .unwrap()
@@ -8153,8 +8155,7 @@ mod goal_tests {
         assert_eq!(paused.continuation_count, 0);
 
         // 恢复 active 后触及续跑上限 → 认领失败
-        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "active")
-            .unwrap();
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "active").unwrap();
         assert!(
             ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 1)
                 .unwrap()
