@@ -66,6 +66,7 @@ import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOve
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
 import { FavoritesSection } from './FavoritesSection';
+import { InsightsSection } from './InsightsSection';
 import { TagFilter } from './TagFilter';
 import { useNoteFavorites } from './hooks/useNoteFavorites';
 import {
@@ -2484,6 +2485,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
           }}
         />
+        <InsightsSection />
         {resourceDialog?.mode === 'create-folder' && (
           <div className="notes-inline-create ui-rise-in" data-notes-inline-create>
             <div className="notes-inline-create-row">
