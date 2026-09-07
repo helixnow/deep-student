@@ -234,6 +234,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260908,
+      "name": "completion_outbox",
+      "path": "chat_v2/V20260908__completion_outbox.sql",
+      "sha256": "e75a0a16395eb2b4f7943f2a1993396e01db1e9306dbc4ac78ef2cbff0914d54",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",

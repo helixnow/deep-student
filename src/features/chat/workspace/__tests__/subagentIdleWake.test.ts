@@ -172,9 +172,12 @@ describe('SubagentIdleWakeController', () => {
     expect(resolveParentStore).toHaveBeenCalledTimes(120);
     expect(sendWake).not.toHaveBeenCalled();
 
+    // G03-a：放弃内存排队不等于丢弃投递（权威在后端 completion outbox +
+    // dispatcher）。同 key 未被 processed 拦截，可重新入队再走投影唤醒——
+    // 重新入队后重试计数已清零，drain 立即发起新一轮父会话查询。
     controller.enqueue(completion());
     await flush();
-    expect(resolveParentStore).toHaveBeenCalledTimes(120);
+    expect(resolveParentStore).toHaveBeenCalledTimes(121);
     controller.dispose();
     vi.useRealTimers();
   });
