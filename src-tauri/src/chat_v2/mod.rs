@@ -28,6 +28,7 @@ pub mod error;
 pub mod events;
 pub mod finalizer; // 🆕 G07-a：candidate_complete 与任务验收分离（TaskFinalizer 骨架）
 pub mod goal; // 🆕 Goal 模式（P0）：跨轮次会话目标（续跑运行时 + 提示词注入）
+pub mod grants; // 🆕 G02-P1：DelegatedGrant 委派授权（worker 白名单的授权载体 + 撤权 epoch 实时生效）
 pub mod handlers;
 pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
 pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）

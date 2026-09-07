@@ -556,6 +556,70 @@ mod tests {
         );
     }
 
+    /// G02-P1：自定义 profile → grant 映射无损——安全集清洗后的白名单
+    /// （协作工具 ∪ headless 只读 ∪ chatanki 只读）逐项映射为 ToolScope，
+    /// 有效工具集与 `profile.allowed_tools` 逐一相等，写工具仍被拒。
+    #[test]
+    fn custom_profile_maps_losslessly_to_grant_scopes() {
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_file(
+            dir.path(),
+            "qa-reader.md",
+            "---\nname: qa-reader\nbase: explorer\ntools: [builtin-web_search, builtin-resource_read, builtin-chatanki_get_cards, builtin-dstu_delete]\n---\nRead cards.\n",
+        );
+
+        let profile = find_custom_profile(dir.path(), "qa-reader").unwrap();
+        // 越界的 builtin-dstu_delete 已被清洗剔除
+        assert_eq!(
+            profile.allowed_tools,
+            vec![
+                "builtin-workspace_send",
+                "builtin-workspace_query",
+                "builtin-web_search",
+                "builtin-resource_read",
+                "builtin-chatanki_get_cards",
+            ]
+        );
+
+        let scopes = profile.grant_tool_scopes();
+        // 白名单内每个工具均被放行
+        for tool in &profile.allowed_tools {
+            assert!(
+                scopes
+                    .iter()
+                    .any(|s| s.allows(tool, &serde_json::json!({}))),
+                "scope set must allow whitelisted tool {tool}"
+            );
+        }
+        // 有效工具集与现状白名单逐一相等
+        let grant = crate::chat_v2::grants::DelegatedGrant {
+            grant_id: "grant_test".into(),
+            schema_version: crate::chat_v2::grants::DELEGATED_GRANT_SCHEMA_VERSION,
+            parent_task_id: "parent".into(),
+            child_task_id: "child".into(),
+            tool_scopes: scopes.clone(),
+            object_scopes: Vec::new(),
+            network_destinations: Vec::new(),
+            budget: None,
+            expiry: None,
+            revocation_epoch: 0,
+            profile_hash: profile.computed_hash().unwrap(),
+        };
+        assert_eq!(
+            grant.effective_tools(&profile.allowed_tools),
+            profile.allowed_tools
+        );
+        // 写工具 / 被清洗掉的工具一律拒止
+        for foreign in ["builtin-dstu_delete", "builtin-chatanki_run"] {
+            assert!(
+                !scopes
+                    .iter()
+                    .any(|s| s.allows(foreign, &serde_json::json!({}))),
+                "scope set must NOT allow {foreign}"
+            );
+        }
+    }
+
     /// Multi-agent Phase 2 编排契约（Round 4 #4，双向 fail-closed 之「拦截」向）：
     /// chatanki **写**工具与 workspace 文档读写工具不在自定义子代理的安全全集
     /// （headless 只读白名单 ∪ workspace_send/query ∪ chatanki 只读四工具）内，
