@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import * as Diff from 'diff';
 import i18n from '@/i18n';
+import { boundedRegexReplace } from '@/utils/boundedRegexReplace';
 
 /**
  * 护栏文案统一走 notes:aiDiff.errors.*；defaultValue 保留原中文，
@@ -151,21 +152,32 @@ export function computeProposedContent(
       let replaceCount = 0;
       
       if (request.isRegex) {
-        try {
-          const regex = new RegExp(searchPattern, 'g');
-          newContent = originalContent.replace(regex, () => {
-            replaceCount++;
-            return replaceWith;
-          });
-        } catch (regexErr) {
-          const message =
-            regexErr instanceof Error
-              ? regexErr.message
-              : guardText('regex_syntax_error', '语法错误');
-          return {
-            content: originalContent,
-            error: guardText('invalid_regex', `无效的正则表达式: ${message}`, { message }),
-          };
+        // N03（2026-09-07 审阅）：正则分支与普通替换共用同一输出预算——
+        // 逐匹配累加实际 UTF-8 输出字节，超限提前停止，不先构造超大字符串。
+        const outcome = boundedRegexReplace(
+          originalContent,
+          searchPattern,
+          replaceWith,
+          MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES
+        );
+        // tsconfig strict: false 下真值收窄不生效，必须显式判等
+        if (outcome.ok === false) {
+          if (outcome.reason === 'invalid_regex') {
+            const message = outcome.message ?? guardText('regex_syntax_error', '语法错误');
+            return {
+              content: originalContent,
+              error: guardText('invalid_regex', `无效的正则表达式: ${message}`, { message }),
+            };
+          }
+          if (outcome.reason === 'output_too_large') {
+            return { content: originalContent, error: outputTooLargeError() };
+          }
+          // no_match：落入下方统一的 replaceCount === 0 分支
+          newContent = originalContent;
+          replaceCount = 0;
+        } else {
+          newContent = outcome.content;
+          replaceCount = outcome.replaceCount;
         }
       } else {
         let offset = 0;
