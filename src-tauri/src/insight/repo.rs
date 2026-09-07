@@ -397,6 +397,11 @@ pub fn list_relations(conn: &Connection, insight_id: &str) -> Result<Vec<Insight
 
 /// 源卡被更正时：把以其为证据的派生关系（abstract_of/example_of）标记待复审。
 /// 返回受影响的派生卡 id（原则卡复审队列的输入，阶段三消费）。
+///
+/// 方向约定（两种派生边方向相反，必须分开处理）：
+/// - abstract_of：from=原则（抽象方）→ to=案例（证据方）。"P abstract_of C"。
+/// - example_of：from=案例（证据方）→ to=原则。"C example_of P"。
+/// 被更正的卡是证据方，派生原则在另一边。
 pub fn mark_derived_relations_for_review(
     conn: &Connection,
     source_insight_id: &str,
@@ -404,7 +409,11 @@ pub fn mark_derived_relations_for_review(
     let mut stmt = conn
         .prepare(
             "SELECT DISTINCT from_id FROM insight_relations
-             WHERE to_id = ?1 AND relation_type IN ('abstract_of','example_of')
+             WHERE to_id = ?1 AND relation_type = 'abstract_of'
+               AND status = 'active' AND deleted_at IS NULL
+             UNION
+             SELECT DISTINCT to_id FROM insight_relations
+             WHERE from_id = ?1 AND relation_type = 'example_of'
                AND status = 'active' AND deleted_at IS NULL",
         )
         .map_err(db_err)?;

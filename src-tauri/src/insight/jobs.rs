@@ -255,9 +255,337 @@ impl InsightJobWorker {
     ) -> Result<(), AppError> {
         match job_type {
             "srs_projection" => self.execute_srs_projection(conn, payload_json),
-            // 合并提案 / 原则卡合成在后续切片落地
+            "merge_proposal" => self.execute_merge_proposal(conn, payload_json),
+            "principle_synthesis" => self.execute_principle_synthesis(conn, payload_json),
+            "principle_review" => self.execute_principle_review(conn, payload_json),
+            // 灵感卡 v1 schema 无标签列（标签归一化留给记忆/笔记域）；
+            // 任务类型保留以便后续演进，当前为幂等空操作
+            "tag_canonicalize" => Ok(()),
             other => Err(AppError::validation(format!("未知任务类型: {other}"))),
         }
+    }
+
+    // ========================================================================
+    // 决策待办通道（合并提案 / 原则确认 / 原则复审共用）
+    // ========================================================================
+
+    /// 专用列表"灵感演化"：get-or-create（按标题幂等）
+    fn evolution_list_id(conn: &Connection) -> Result<String, AppError> {
+        let existing: Option<String> = conn
+            .query_row(
+                "SELECT id FROM todo_lists WHERE title = '灵感演化' AND deleted_at IS NULL LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+        let list = crate::vfs::repos::todo_repo::VfsTodoRepo::create_todo_list_with_conn(
+            conn,
+            crate::vfs::types::VfsCreateTodoListParams {
+                title: "灵感演化".to_string(),
+                description: Some("灵感卡的合并/原则化决策任务（由巩固 worker 生成）".to_string()),
+                icon: Some("lightbulb".to_string()),
+                color: None,
+                is_default: false,
+            },
+        )
+        .map_err(|e| AppError::database(format!("创建灵感演化列表失败: {e}")))?;
+        Ok(list.id)
+    }
+
+    /// 创建决策待办（幂等：marker 相同的 pending 任务不重复建）。
+    /// marker 形如 `insight-merge:ic_a:ic_b`，写在描述末尾供查重。
+    fn create_decision_todo(
+        conn: &Connection,
+        title: &str,
+        body: &str,
+        marker: &str,
+        attachment_resource_ids: Vec<String>,
+    ) -> Result<(), AppError> {
+        let dup: Option<String> = conn
+            .query_row(
+                "SELECT id FROM todo_items
+                 WHERE status = 'pending' AND deleted_at IS NULL
+                   AND description LIKE '%' || ?1 || '%' LIMIT 1",
+                params![marker],
+                |row| row.get(0),
+            )
+            .ok();
+        if dup.is_some() {
+            return Ok(());
+        }
+        let list_id = Self::evolution_list_id(conn)?;
+        crate::vfs::repos::todo_repo::VfsTodoRepo::create_todo_item_with_conn(
+            conn,
+            crate::vfs::types::VfsCreateTodoItemParams {
+                todo_list_id: list_id,
+                title: title.to_string(),
+                description: Some(format!("{body}\n\n<!-- {marker} -->")),
+                priority: "low".to_string(),
+                due_date: None,
+                due_time: None,
+                reminder: None,
+                tags: Some(vec!["_insight".to_string()]),
+                parent_id: None,
+                attachments: if attachment_resource_ids.is_empty() {
+                    None
+                } else {
+                    Some(attachment_resource_ids)
+                },
+                repeat_json: None,
+            },
+        )
+        .map_err(|e| AppError::database(format!("创建决策待办失败: {e}")))?;
+        Ok(())
+    }
+
+    /// 卡片当前修订的 resources 快照 id（待办附件回链用）
+    fn card_resource_id(card: &super::types::InsightCard) -> Option<String> {
+        card.current_revision.as_ref().and_then(|r| r.resource_id.clone())
+    }
+
+    // ========================================================================
+    // 合并提案（linked-merge 保差异：不自动合并，只生成决策待办）
+    // ========================================================================
+
+    fn execute_merge_proposal(
+        &self,
+        conn: &Connection,
+        payload_json: &str,
+    ) -> Result<(), AppError> {
+        let payload: serde_json::Value = serde_json::from_str(payload_json)
+            .map_err(|e| AppError::validation(format!("任务 payload 非法: {e}")))?;
+        let insight_id = payload
+            .get("insight_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::validation("merge_proposal 缺少 insight_id"))?;
+
+        let Some(card) = repo::get_card(conn, insight_id)? else {
+            return Ok(()); // 源卡已删，无事可做
+        };
+        if card.status != super::types::InsightStatus::Active {
+            return Ok(());
+        }
+
+        // 近重复检测：用标题走 FTS（trigram 子串语义），置信阈值高于召回路径
+        let candidates = super::recall::InsightRecallService::recall_fts_with_conn(
+            conn, &card.title, 5,
+        )?;
+        for cand in candidates {
+            if cand.card.id == card.id || cand.confidence < 0.5 {
+                continue;
+            }
+            // 已有显式关系（supersede/same_method 等）的pair不提案
+            let related: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM insight_relations
+                     WHERE status = 'active' AND deleted_at IS NULL
+                       AND ((from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)))",
+                    params![card.id, cand.card.id],
+                    |row| row.get(0),
+                )
+                .map_err(db_err)?;
+            if related {
+                continue;
+            }
+            let (a, b) = if card.id < cand.card.id {
+                (&card, &cand.card)
+            } else {
+                (&cand.card, &card)
+            };
+            let marker = format!("insight-merge:{}:{}", a.id, b.id);
+            let body = format!(
+                "两张灵感卡高度相似（置信 {:.2}），是否合并？\n\n\
+                 ## A. {}\n- 情境：{}\n- 规则：{}\n\n\
+                 ## B. {}\n- 情境：{}\n- 规则：{}\n\n\
+                 合并不会自动发生；若确认重复，请打开其中一张纠正/删除，\
+                 另一张可用 supersede 关系指向保留方（差异会保留在关系边上）。",
+                cand.confidence,
+                a.title,
+                a.current_revision.as_ref().map(|r| r.situation.as_str()).unwrap_or(""),
+                a.current_revision.as_ref().map(|r| r.rule.as_str()).unwrap_or(""),
+                b.title,
+                b.current_revision.as_ref().map(|r| r.situation.as_str()).unwrap_or(""),
+                b.current_revision.as_ref().map(|r| r.rule.as_str()).unwrap_or(""),
+            );
+            let attachments = [Self::card_resource_id(a), Self::card_resource_id(b)]
+                .into_iter()
+                .flatten()
+                .collect();
+            Self::create_decision_todo(
+                conn,
+                &format!("合并灵感卡？「{}」↔「{}」", a.title, b.title),
+                &body,
+                &marker,
+                attachments,
+            )?;
+        }
+        Ok(())
+    }
+
+    // ========================================================================
+    // 原则卡合成（abstract_of 边 + ≥2 案例 + 1 反例 + 条件化表述）
+    // ========================================================================
+
+    fn execute_principle_synthesis(
+        &self,
+        conn: &Connection,
+        payload_json: &str,
+    ) -> Result<(), AppError> {
+        let payload: serde_json::Value = serde_json::from_str(payload_json)
+            .map_err(|e| AppError::validation(format!("任务 payload 非法: {e}")))?;
+        let insight_id = payload
+            .get("insight_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::validation("principle_synthesis 缺少 insight_id"))?;
+
+        // 1 跳 same_method 簇：与源卡同方法的所有 active 卡
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END AS peer
+                 FROM insight_relations
+                 WHERE status = 'active' AND deleted_at IS NULL
+                   AND relation_type = 'same_method'
+                   AND (from_id = ?1 OR to_id = ?1)",
+            )
+            .map_err(db_err)?;
+        let mut cluster: Vec<String> = stmt
+            .query_map(params![insight_id], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        cluster.push(insight_id.to_string());
+        cluster.sort();
+        cluster.dedup();
+
+        let mut cases = Vec::new();
+        for id in &cluster {
+            if let Some(c) = repo::get_card(conn, id)? {
+                if c.status == super::types::InsightStatus::Active {
+                    cases.push(c);
+                }
+            }
+        }
+        if cases.len() < 2 {
+            return Ok(()); // 案例不足，不合成
+        }
+
+        // 反例要求：簇内至少一条 counterexample 边
+        let has_counterexample: bool = conn
+            .query_row(
+                &format!(
+                    "SELECT EXISTS(SELECT 1 FROM insight_relations
+                     WHERE status = 'active' AND deleted_at IS NULL
+                       AND relation_type = 'counterexample'
+                       AND (from_id IN ({}) OR to_id IN ({})))",
+                    cluster.iter().map(|_| "?").collect::<Vec<_>>().join(","),
+                    cluster.iter().map(|_| "?").collect::<Vec<_>>().join(",")
+                ),
+                rusqlite::params_from_iter(cluster.iter().chain(cluster.iter())),
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        if !has_counterexample {
+            return Ok(());
+        }
+
+        // 幂等：同簇已有原则卡（abstract_of 指向）则不重复合成
+        let cluster_marker = cluster.join("+");
+        let existing: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM todo_items
+                 WHERE status = 'pending' AND deleted_at IS NULL
+                   AND description LIKE '%' || ?1 || '%')",
+                params![format!("insight-principle:{cluster_marker}")],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        if existing {
+            return Ok(());
+        }
+
+        // 条件化表述：取各案例成立条件的交集描述（保守拼接，用户确认时再改）
+        let conditions: Vec<String> = cases
+            .iter()
+            .filter_map(|c| {
+                let v = c.current_revision.as_ref()?.validity_conditions.trim().to_string();
+                if v.is_empty() { None } else { Some(v) }
+            })
+            .collect();
+        let case_titles: Vec<&str> = cases.iter().map(|c| c.title.as_str()).collect();
+        let body = format!(
+            "以下 {} 张灵感卡共享同一方法（same_method 边），且已有反例约束，\
+             可以上升为一张「原则卡」：\n\n{}\n\n\
+             建议的原则表述（条件化）：\n> 当 {} 时，优先考虑该方法簇。\n\n\
+             确认方式：在灵感合集中新建一张原则卡，并用 abstract_of 关系把上述案例挂上去。",
+            cases.len(),
+            case_titles
+                .iter()
+                .map(|t| format!("- {t}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            if conditions.is_empty() {
+                "（各案例未填写成立条件，建议先补齐）".to_string()
+            } else {
+                conditions.join("；且 ")
+            },
+        );
+        let attachments = cases
+            .iter()
+            .filter_map(|c| Self::card_resource_id(c))
+            .collect();
+        Self::create_decision_todo(
+            conn,
+            &format!("原则化提案：{} 张同方法灵感卡", cases.len()),
+            &body,
+            &format!("insight-principle:{cluster_marker}"),
+            attachments,
+        )?;
+        Ok(())
+    }
+
+    // ========================================================================
+    // 原则复审（源卡更正 → 派生原则需人工复审）
+    // ========================================================================
+
+    fn execute_principle_review(
+        &self,
+        conn: &Connection,
+        payload_json: &str,
+    ) -> Result<(), AppError> {
+        let payload: serde_json::Value = serde_json::from_str(payload_json)
+            .map_err(|e| AppError::validation(format!("任务 payload 非法: {e}")))?;
+        let insight_id = payload
+            .get("insight_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::validation("principle_review 缺少 insight_id"))?;
+        let derived: Vec<String> = payload
+            .get("derived_principles")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        let source_title = repo::get_card(conn, insight_id)?
+            .map(|c| c.title)
+            .unwrap_or_else(|| insight_id.to_string());
+        for pid in derived {
+            let ptitle = repo::get_card(conn, &pid)?
+                .map(|c| c.title)
+                .unwrap_or_else(|| pid.clone());
+            let marker = format!("insight-review:{insight_id}:{pid}");
+            Self::create_decision_todo(
+                conn,
+                &format!("复审原则卡「{}」", ptitle),
+                &format!(
+                    "案例卡「{}」刚被纠正，以其为证据派生的原则卡「{}」可能不再成立，请复审。",
+                    source_title, ptitle
+                ),
+                &marker,
+                Vec::new(),
+            )?;
+        }
+        Ok(())
     }
 
     /// SRS 投影（D4：物化 + 回链）：
