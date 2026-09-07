@@ -1,4 +1,4 @@
-//! 子代理完成投递派发器（G03-a）——后端常驻兜底。
+//! 子代理完成投递派发器（G03-a 账本兜底 + G03-d 无窗唤醒轮）——后端常驻。
 //!
 //! 完成投递的权威账本是 chat_v2 主库 `completion_outbox` 表（repo 见
 //! [`crate::chat_v2::workspace::completion_outbox`]）。worker 完成闭包正常
@@ -13,23 +13,38 @@
 //!   永久丢弃（权威在账本）。
 //! - 本派发器：兜底。claim 遗留 pending 行 → workspace 库按 run_id 查重
 //!   （已投递则跳过补写）→ 缺则补投 inbox Result 消息 → 补 task 终态 →
-//!   有窗口时 emit 同一事件（前端 wakeKey 去重，重复 emit 安全）→ delivered。
+//!   按窗口在场与否二选一收敛：
+//!   - **有窗**（G03-a 行为不变）：emit 同一事件（前端 wakeKey 去重，重复
+//!     emit 安全）→ delivered；
+//!   - **无窗**（G03-d）：先收敛 delivered，再排一个**后端 headless 唤醒轮**
+//!     ——完成摘要经 wake 语义（不落用户消息库）注入父会话，走
+//!     [`crate::chat_v2::headless::run_headless_agent_turn`] 的完整管线
+//!     （G01-d headless emitter + G01-b NoopStreamSink，不依赖任何窗口）。
 //!
-//! delivered 语义 = "inbox 消息已持久化（权威投递）+ 已通知前端（加速唤醒）"。
-//! 前端唤醒失败不等于丢失：父会话下次任意 turn 的 drain_inbox 都会消费该
-//! Result 消息。
+//! delivered 语义 = "inbox 消息已持久化（权威投递）+ 唤醒责任已消费"（前端
+//! emit 或后端唤醒轮，二者其一）。
 //!
-//! ## G01-b 前的既定边界
+//! ## 防重入（复用现有状态机，无新迁移）
 //!
-//! LLM wake turn 仍需要窗口（`new_headless` 的 NoopEventSink 不承载 LLM 流式）。
-//! 因此无窗口时本派发器**只持久化不派发**：补写 inbox 后保持 pending，等窗口
-//! 出现（下轮 tick 检测 `webview_windows`）再 emit + delivered。G01-b 完成后
-//! 可在此处接 headless 父会话 turn，实现真正的无窗派发。
+//! delivered 是终态：行一旦收敛就永不再被 claim，同一 outbox 行只唤醒一次；
+//! `mark_delivered` 的 owner 守卫同时挡住"闭包自投递与派发器并发收敛同一行"
+//! 的竞态（失败方 won=false，不再排唤醒轮）。唤醒轮失败/进程在 delivered 后
+//! 崩溃都不回滚：inbox Result 消息仍在，父会话后续 turn 的 drain_inbox 兜底。
+//!
+//! ## 防风暴
+//!
+//! - 并发上限：同时在跑的唤醒轮 ≤ [`MAX_CONCURRENT_WAKES`]，超出在信号量上
+//!   排队（不丢弃）；tick 只排程不等待，毫秒级返回。
+//! - 递归有界：唤醒轮的工具面是 headless 白名单——`workspace_create` /
+//!   `subagent_call` 等拉起子代理的工具不在其中（前端桥缺席，fail-closed），
+//!   唤醒轮自身无法再产生完成行；即便经其他路径产生，每行仍只醒一次，
+//!   代际失效（expired）机制兜底。
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 
@@ -37,6 +52,7 @@ use super::completion_outbox::{
     completion_message_exists, CompletionDelivery, CompletionOutbox,
 };
 use super::database::ChatV2Database;
+use super::headless::{run_headless_agent_turn, HeadlessSessionTurn};
 use super::repo::ChatV2Repo;
 use super::state::ChatV2State;
 use super::types::PersistStatus;
@@ -59,6 +75,170 @@ const CLAIM_BATCH_SIZE: i64 = 20;
 /// 超过后标 expired——此时 inbox 多半已持久化，只是通知链路始终未通。
 const MAX_ATTEMPTS: i64 = 50;
 
+// ============================================================================
+// G03-d：无窗唤醒轮（headless wake turn）
+// ============================================================================
+
+/// 同时在跑的唤醒轮上限，超出在信号量上排队（不丢弃）。
+const MAX_CONCURRENT_WAKES: usize = 3;
+/// 单个唤醒轮的硬超时（秒）：通知消化型任务，取用偏保守的 5 分钟；
+/// 防御性钳制由 headless 侧 `clamp_session_turn_timeout` 完成。
+// TODO(G08)：唤醒轮 budget 接入 `chat_v2::budget` BudgetLedger（派生绑定
+// 父会话树根账本），与 hooks 预算门对齐——G08 落地后在此接线。
+const WAKE_TURN_TIMEOUT_SECS: u64 = 300;
+/// 唤醒消息中结果摘要的最大字符数（与前端快路径 WAKE_SUMMARY_MAX_CHARS 一致）。
+const WAKE_SUMMARY_MAX_CHARS: usize = 2000;
+/// 唤醒轮的 system prompt 追加段（headless 约束说明之外的唤醒语境）。
+const WAKE_TURN_SYSTEM_APPEND: &str = "本回合由后端在无窗口值守模式下触发：一条子代理完成通知已作为当前输入注入。请消化该结果、视需要推进原任务，并给出简洁的进展汇总。不要重复派发已完成的子任务。";
+
+/// 一次父会话无窗唤醒轮的输入。
+#[derive(Debug, Clone)]
+pub struct WakeTurnRequest {
+    /// 父会话 ID
+    pub session_id: String,
+    /// 唤醒内容（wake 语义：作为本轮 user content 输入管线，不落用户消息库）
+    pub prompt: String,
+    /// 触发该唤醒的 outbox 行（日志/审计关联）
+    pub delivery_id: String,
+    pub run_id: String,
+}
+
+/// 唤醒轮执行器：生产为 headless runner（`run_headless_agent_turn`），
+/// 测试注入内存替身。返回 `Err` 不触发重投——inbox Result 消息已权威持久化，
+/// 唤醒轮只是加速器。
+type WakeRunner = Arc<dyn Fn(WakeTurnRequest) -> BoxFuture<'static, Result<(), String>> + Send + Sync>;
+
+/// 窗口存在性探针（可测试接缝；生产 = app 的 webview 窗口非空）。
+type WindowProbe = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// 完成事件出口（有窗路径；生产 = `app_handle.emit`）。
+type CompletionEmitter = Arc<dyn Fn(&serde_json::Value) -> Result<(), String> + Send + Sync>;
+
+/// 无窗唤醒轮调度器：并发上限 + 注入式执行器。
+///
+/// 排队语义：`schedule` 立即返回（tick 不被长任务拖住）；唤醒轮在后台任务中
+/// 先 acquire 信号量——达到上限时在等待队列排队，不丢弃——再经 runner 执行。
+#[derive(Clone)]
+struct HeadlessWakeScheduler {
+    permits: Arc<tokio::sync::Semaphore>,
+    runner: WakeRunner,
+}
+
+impl HeadlessWakeScheduler {
+    fn new(runner: WakeRunner) -> Self {
+        Self {
+            permits: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_WAKES)),
+            runner,
+        }
+    }
+
+    /// 取位并执行一个唤醒轮（schedule 的工作主体；测试直接 await 它以避免
+    /// 后台 spawn 的时序依赖）。
+    async fn run_with_permit(permits: Arc<tokio::sync::Semaphore>, runner: WakeRunner, req: WakeTurnRequest) {
+        // 信号量从不关闭，acquire 只会排队等位
+        let Ok(_permit) = permits.acquire_owned().await else {
+            return;
+        };
+        let started = std::time::Instant::now();
+        let result = runner(req.clone()).await;
+        match result {
+            Ok(()) => log::info!(
+                "[CompletionDispatcher] Headless wake turn completed: delivery={}, run={}, session={}, duration_ms={}",
+                req.delivery_id,
+                req.run_id,
+                req.session_id,
+                started.elapsed().as_millis()
+            ),
+            // 唤醒失败不回滚 delivered：inbox Result 消息已权威持久化，
+            // 父会话后续 turn 的 drain_inbox 兜底消费。
+            Err(error) => log::warn!(
+                "[CompletionDispatcher] Headless wake turn failed: delivery={}, run={}, session={}, error={}（inbox 已持久化，后续 turn 兜底）",
+                req.delivery_id,
+                req.run_id,
+                req.session_id,
+                error
+            ),
+        }
+    }
+
+    /// 排一个唤醒轮到后台。返回 false = 进程关闭中（N10 准入关闭），
+    /// 调用方仅记录——行已 delivered，inbox 兜底语义不变。
+    fn schedule(&self, req: WakeTurnRequest) -> bool {
+        crate::background_tasks::spawn(Self::run_with_permit(
+            Arc::clone(&self.permits),
+            Arc::clone(&self.runner),
+            req,
+        ))
+        .is_some()
+    }
+}
+
+/// 由完成信封组装唤醒轮的 user content（wake 语义，不落用户消息库）。
+///
+/// 口径与前端快路径（workspace/events.ts sendWake）对齐：通知头 + 截断摘要 +
+/// 继续处理指引；差异是后端无窗轮的工具面为 headless 白名单（workspace_query
+/// 等前端桥工具缺席），指引文案相应收窄。payload 损坏时退化为最小通知
+/// （inbox 里的原始信封仍是权威内容，唤醒轮只负责"推一把"）。
+fn wake_prompt_from_delivery(delivery: &CompletionDelivery) -> String {
+    let payload: serde_json::Value = serde_json::from_str(&delivery.payload_json)
+        .unwrap_or_else(|_| serde_json::json!({}));
+    let status = payload
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+    let summary_source = payload
+        .get("final_output")
+        .or_else(|| payload.get("error"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+    let summary = if summary_source.chars().count() > WAKE_SUMMARY_MAX_CHARS {
+        let truncated: String = summary_source.chars().take(WAKE_SUMMARY_MAX_CHARS).collect();
+        format!("{truncated}…（已截断）")
+    } else {
+        summary_source.to_string()
+    };
+
+    [
+        format!(
+            "[子代理完成通知] agent={} status={}",
+            delivery.agent_session_id, status
+        ),
+        if summary.is_empty() {
+            "（子代理未产出文本摘要）".to_string()
+        } else {
+            format!("结果摘要：\n{summary}")
+        },
+        "请基于该结果继续处理原任务。若该子代理结果已在之前的回合处理过，无需重复处理。"
+            .to_string(),
+        "如还有其他后台子代理未完成，其结果会在完成后另行注入，不要重复派发相同任务。"
+            .to_string(),
+    ]
+    .join("\n\n")
+}
+
+/// 生产唤醒轮执行器：经 headless runner 在父会话上跑完整管线
+/// （G01-d headless emitter + G01-b NoopStreamSink；wake 语义由
+/// `run_headless_agent_turn` 内部构建，content 不落用户消息库）。
+fn default_wake_runner(app: tauri::AppHandle) -> WakeRunner {
+    Arc::new(move |req: WakeTurnRequest| {
+        let app = app.clone();
+        Box::pin(async move {
+            run_headless_agent_turn(
+                &app,
+                HeadlessSessionTurn {
+                    session_id: req.session_id,
+                    prompt: req.prompt,
+                    model_id: None,
+                    system_prompt_append: Some(WAKE_TURN_SYSTEM_APPEND.to_string()),
+                    timeout: Duration::from_secs(WAKE_TURN_TIMEOUT_SECS),
+                },
+            )
+            .await
+            .map(|_| ())
+        })
+    })
+}
+
 /// 派发器依赖。全部为主库/协调器级句柄，不持有 workspace 库连接
 /// （workspace 库仅做只读裸查询，写路径统一经 coordinator）。
 pub struct CompletionDispatcherDeps {
@@ -74,10 +254,26 @@ pub struct CompletionDispatcherDeps {
 /// 常驻派发器。通过 [`spawn_completion_dispatcher`] 启动。
 pub struct CompletionDispatcher {
     outbox: CompletionOutbox,
-    deps: CompletionDispatcherDeps,
     /// 本实例认领标识（hostname:pid:boot-ulid 风格；进程内唯一即可——
     /// SQLite 单写者保证不重复认领，owner 仅用于租约守卫）。
     owner: String,
+    /// 单行收敛内核（剥离 AppHandle 后可单测）。
+    worker: DeliveryWorker,
+}
+
+/// 单行收敛的执行内核：持有除 AppHandle 外的全部依赖，窗口探针 / 事件出口 /
+/// 唤醒轮执行器均为可注入接缝（生产由 [`CompletionDispatcher::new`] 装配，
+/// 测试注入内存替身走真实 `process_one` 路径）。
+struct DeliveryWorker {
+    outbox: CompletionOutbox,
+    db: Arc<ChatV2Database>,
+    coordinator: Arc<WorkspaceCoordinator>,
+    chat_v2_state: Arc<ChatV2State>,
+    workspaces_dir: PathBuf,
+    owner: String,
+    has_window: WindowProbe,
+    emit_completion: CompletionEmitter,
+    wake: HeadlessWakeScheduler,
 }
 
 /// 单轮 tick 的处理统计（日志/测试观测用）。
@@ -99,7 +295,33 @@ impl CompletionDispatcher {
             std::process::id(),
             ulid::Ulid::new()
         );
-        Self { outbox, deps, owner }
+
+        // G03-d 生产装配：窗口探针 / 完成事件出口 / 唤醒轮执行器。
+        let app = deps.app_handle.clone();
+        let has_window: WindowProbe = Arc::new(move || !app.webview_windows().is_empty());
+        let app = deps.app_handle.clone();
+        let emit_completion: CompletionEmitter = Arc::new(move |payload| {
+            app.emit(WORKSPACE_AGENT_COMPLETION_EVENT, payload)
+                .map_err(|e| e.to_string())
+        });
+        let wake = HeadlessWakeScheduler::new(default_wake_runner(deps.app_handle.clone()));
+
+        let worker = DeliveryWorker {
+            outbox: outbox.clone(),
+            db: deps.db.clone(),
+            coordinator: deps.coordinator.clone(),
+            chat_v2_state: deps.chat_v2_state.clone(),
+            workspaces_dir: deps.workspaces_dir.clone(),
+            owner: owner.clone(),
+            has_window,
+            emit_completion,
+            wake,
+        };
+        Self {
+            outbox,
+            owner,
+            worker,
+        }
     }
 
     /// 单轮收敛：回收过期租约 → 认领一批 → 逐行处理。
@@ -119,7 +341,7 @@ impl CompletionDispatcher {
         stats.claimed = claimed.len();
 
         for delivery in &claimed {
-            match self.process_one(delivery) {
+            match self.worker.process_one(delivery) {
                 Ok(ProcessOutcome::Delivered) => stats.delivered += 1,
                 Ok(ProcessOutcome::Released) => stats.released += 1,
                 Ok(ProcessOutcome::Expired) => stats.expired += 1,
@@ -141,10 +363,13 @@ impl CompletionDispatcher {
         }
         Ok(stats)
     }
+}
 
-    /// 处理单行：失效判定 → 父忙暂缓 → 查重/补投 → 补终态 → emit + delivered。
+impl DeliveryWorker {
+    /// 处理单行：失效判定 → 父忙暂缓 → 查重/补投 → 补终态 →
+    /// 有窗 emit / 无窗 headless 唤醒轮 → delivered。
     fn process_one(&self, delivery: &CompletionDelivery) -> Result<ProcessOutcome, String> {
-        // 1. 失效判定（expired 不注入）
+        // 1. 失效判定（expired 只落库不唤醒，自然也不会走到唤醒分支）
         if delivery.attempt_count > MAX_ATTEMPTS {
             self.outbox
                 .mark_expired(&delivery.delivery_id, Some(&self.owner))?;
@@ -176,10 +401,9 @@ impl CompletionDispatcher {
             return Ok(ProcessOutcome::Expired);
         }
 
-        // 2. 父会话忙（活跃流注册）→ 暂缓。emit 早了前端也只会排队，等空闲
+        // 2. 父会话忙（活跃流注册）→ 暂缓。唤醒/emit 早了也只会排队，等空闲
         //    再通知可以减少重复唤醒噪音；inbox 持久化不急于这一跳。
         if self
-            .deps
             .chat_v2_state
             .has_active_stream(&delivery.target_session_id)
         {
@@ -204,37 +428,62 @@ impl CompletionDispatcher {
         //    终态本就收敛）。失败仅记录——消息投递优先于 task 簿记。
         self.compensate_task_terminal_state(delivery);
 
-        // 5. 有窗口才 emit + delivered；无窗口只持久化（release 等下轮，
-        //    届时查重命中直接走 emit）。
-        if self.deps.app_handle.webview_windows().is_empty() {
-            log::debug!(
-                "[CompletionDispatcher] No window; persisted only, delivery {} stays pending",
+        // 5. 有窗 → emit 前端快路径 + delivered（G03-a 行为不变）；
+        //    无窗 → delivered + 后端 headless 唤醒轮（G03-d）。
+        if (self.has_window)() {
+            let payload: serde_json::Value = serde_json::from_str(&delivery.payload_json)
+                .map_err(|e| format!("corrupt payload_json for {}: {}", delivery.delivery_id, e))?;
+            if let Err(e) = (self.emit_completion)(&payload) {
+                // emit 失败（窗口刚好全部消失等）：不标 delivered，下轮重试
+                let _ = self
+                    .outbox
+                    .release_claim(&delivery.delivery_id, &self.owner);
+                return Err(format!("emit {} failed: {}", WORKSPACE_AGENT_COMPLETION_EVENT, e));
+            }
+            self.outbox
+                .mark_delivered(&delivery.delivery_id, &self.owner)?;
+            log::info!(
+                "[CompletionDispatcher] Delivered completion {} (run={}, target={})",
+                delivery.delivery_id,
+                delivery.run_id,
+                delivery.target_session_id
+            );
+            return Ok(ProcessOutcome::Delivered);
+        }
+
+        // 无窗分支：先收敛 delivered——delivered 终态即"唤醒责任已消费"标记
+        // （复用现有状态机防重入：终态行永不再被 claim，同一行只唤醒一次），
+        // 再排后端 headless 唤醒轮。mark_delivered 的 owner 守卫失败
+        // （won=false）说明完成闭包自投递并发抢先收敛，唤醒责任随之移交
+        // 闭包 emit 的前端快路径，本行不再排唤醒轮。
+        let won = self
+            .outbox
+            .mark_delivered(&delivery.delivery_id, &self.owner)?;
+        if !won {
+            log::info!(
+                "[CompletionDispatcher] Delivery {} already settled concurrently; skipping duplicate wake",
                 delivery.delivery_id
             );
-            self.outbox
-                .release_claim(&delivery.delivery_id, &self.owner)?;
-            return Ok(ProcessOutcome::Released);
+            return Ok(ProcessOutcome::Delivered);
         }
-        let payload: serde_json::Value = serde_json::from_str(&delivery.payload_json)
-            .map_err(|e| format!("corrupt payload_json for {}: {}", delivery.delivery_id, e))?;
-        if let Err(e) = self
-            .deps
-            .app_handle
-            .emit(WORKSPACE_AGENT_COMPLETION_EVENT, &payload)
-        {
-            // emit 失败（窗口刚好全部消失等）：不标 delivered，下轮重试
-            let _ = self
-                .outbox
-                .release_claim(&delivery.delivery_id, &self.owner);
-            return Err(format!("emit {} failed: {}", WORKSPACE_AGENT_COMPLETION_EVENT, e));
+        let scheduled = self.wake.schedule(WakeTurnRequest {
+            session_id: delivery.target_session_id.clone(),
+            prompt: wake_prompt_from_delivery(delivery),
+            delivery_id: delivery.delivery_id.clone(),
+            run_id: delivery.run_id.clone(),
+        });
+        if !scheduled {
+            log::warn!(
+                "[CompletionDispatcher] Wake turn spawn rejected (shutdown); delivery {} stays delivered with inbox fallback",
+                delivery.delivery_id
+            );
         }
-        self.outbox
-            .mark_delivered(&delivery.delivery_id, &self.owner)?;
         log::info!(
-            "[CompletionDispatcher] Delivered completion {} (run={}, target={})",
+            "[CompletionDispatcher] Delivered completion {} (run={}, target={}) via headless wake turn (scheduled={})",
             delivery.delivery_id,
             delivery.run_id,
-            delivery.target_session_id
+            delivery.target_session_id,
+            scheduled
         );
         Ok(ProcessOutcome::Delivered)
     }
@@ -243,7 +492,7 @@ impl CompletionDispatcher {
     /// content，保持字节一致以维持查重/审计口径统一）。
     fn redeliver_inbox_message(&self, delivery: &CompletionDelivery) -> Result<(), String> {
         use super::workspace::MessageType;
-        let message = self.deps.coordinator.send_message(
+        let message = self.coordinator.send_message(
             &delivery.workspace_id,
             &delivery.agent_session_id,
             Some(&delivery.target_session_id),
@@ -252,7 +501,7 @@ impl CompletionDispatcher {
         )?;
         // metadata 与完成闭包口径一致：envelope 全量（含 run_id/correlation_id）
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&delivery.payload_json) {
-            let _ = self.deps.coordinator.update_message_metadata(
+            let _ = self.coordinator.update_message_metadata(
                 &delivery.workspace_id,
                 &message.id,
                 &value,
@@ -270,7 +519,7 @@ impl CompletionDispatcher {
         let Some(target) = envelope_terminal_status(delivery) else {
             return;
         };
-        let task_manager = match self.deps.coordinator.get_task_manager(&delivery.workspace_id) {
+        let task_manager = match self.coordinator.get_task_manager(&delivery.workspace_id) {
             Ok(tm) => tm,
             Err(e) => {
                 log::warn!(
@@ -303,8 +552,7 @@ impl CompletionDispatcher {
     }
 
     fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        self.deps
-            .workspaces_dir
+        self.workspaces_dir
             .join(format!("ws_{}.db", workspace_id))
     }
 
@@ -315,7 +563,7 @@ impl CompletionDispatcher {
     /// 父会话不存在或已删除（PersistStatus::Deleted）→ true。
     /// 查询失败按"未失效"处理（保守：宁可多试一轮，不误杀投递）。
     fn target_session_gone(&self, target_session_id: &str) -> Result<bool, String> {
-        let conn = self.deps.db.get_conn().map_err(|e| e.to_string())?;
+        let conn = self.db.get_conn().map_err(|e| e.to_string())?;
         match ChatV2Repo::get_session_with_conn(&conn, target_session_id) {
             Ok(Some(session)) => Ok(matches!(session.persist_status, PersistStatus::Deleted)),
             Ok(None) => Ok(true),
