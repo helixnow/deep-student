@@ -342,8 +342,7 @@ async fn run_continuation_loop(app: AppHandle, session_id: String) {
                     session_id
                 );
                 unmark_continuation_in_flight(&session_id);
-                chat_v2_state
-                    .remove_stream_if_generation(&session_id, registration.generation());
+                chat_v2_state.remove_stream_if_generation(&session_id, registration.generation());
                 return;
             }
         }
