@@ -595,6 +595,33 @@ impl SkillCandidateRepo {
             .map_err(|e| format!("failed to update skill candidate status: {}", e))?;
         Ok(changed > 0)
     }
+
+    /// P1 回放器：按可选状态过滤列出候选（None = 全部状态；创建时间升序，
+    /// 与 `list_by_status` 同序）。G09-P1 `skill_replay` 的列表命令使用。
+    pub fn list_filtered(
+        &self,
+        status: Option<CandidateStatus>,
+        limit: usize,
+    ) -> Result<Vec<SkillCandidateRow>, String> {
+        if let Some(status) = status {
+            return self.list_by_status(status, limit);
+        }
+        let conn = self.db.get_conn().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT * FROM skill_candidates \
+                 ORDER BY created_at, candidate_id LIMIT ?1",
+            )
+            .map_err(|e| format!("failed to prepare skill candidate query: {}", e))?;
+        let rows = stmt
+            .query_map(params![limit as i64], SkillCandidateRow::from_row)
+            .map_err(|e| format!("failed to list skill candidates: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("failed to parse skill candidate row: {}", e))?);
+        }
+        Ok(out)
+    }
 }
 
 // ============================================================================

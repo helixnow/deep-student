@@ -45,6 +45,7 @@ pub mod runtime_roots;
 pub mod session_export; // 🆕 WI-12: session JSONL 导出（规范见 docs/dev/optimization0824/WI-12-session-jsonl-spec.md）
 pub mod shell_command_policy;
 pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
+pub mod skill_replay; // 🆕 技能经验回放器（G09-P1：dry-run 对账 + 人工晋升，无自动行为）
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
 pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
