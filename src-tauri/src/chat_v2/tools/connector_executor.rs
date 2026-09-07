@@ -138,7 +138,29 @@ fn capability_fingerprint(
     config: &ConnectorConfig,
     capability: &CapabilityConfig,
 ) -> Result<String, String> {
-    sha256_json(&(config.id.as_str(), &config.oauth, capability))
+    // 只覆盖权限语义字段：`oauth.expires_at` 会随 token 刷新变化、
+    // `snapshot.observed_at` 会随重新观测变化，但权限域未变——纳入它们会
+    // 误杀已确认的 commit（draft→confirm 被迫重来）。scope/permission 列表
+    // 是集合语义，先排序消除提供方返回序差异。
+    let mut granted_scopes = config.oauth.granted_scopes.clone();
+    granted_scopes.sort_unstable();
+    let mut required_scopes = capability.required_scopes.clone();
+    required_scopes.sort_unstable();
+    let mut permissions = capability.snapshot.permissions.clone();
+    permissions.sort_unstable();
+    sha256_json(&(
+        config.id.as_str(),
+        config.oauth.connected,
+        granted_scopes,
+        config.oauth.account_id.as_deref(),
+        capability.name.as_str(),
+        required_scopes,
+        capability.mcp_server_id.as_str(),
+        &capability.mcp_tools,
+        capability.snapshot.version.as_str(),
+        permissions,
+        capability.snapshot.object_version.as_deref(),
+    ))
 }
 
 fn read_registry(ctx: &ExecutionContext) -> Result<Vec<ConnectorConfig>, String> {

@@ -87,16 +87,31 @@ function fnv1a32(input: string, seed: number): number {
  * 选用同步 FNV-1a 而非 crypto.subtle（异步）是因为 resolveEffectiveTrustStatus
  * 在渲染路径同步调用；这只是 UI 侧的快速失效提示，后端整包 SHA-256 才是
  * 执行时信任边界。
+ *
+ * 数组一律先排序再参与哈希：这些列表来自后端注册表构建，返回序不构成
+ * 语义，排序不稳会把"同一技能"误判为"信任后内容已变"（2026-09-07 排查教训）。
  */
 export function computeSkillTrustFingerprint(skill: SkillDefinition): string {
+  const sortedStable = <T>(items: T[]): T[] =>
+    [...items].sort((a, b) => {
+      const ka = typeof a === 'string' ? a : JSON.stringify(a);
+      const kb = typeof b === 'string' ? b : JSON.stringify(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
   const material = JSON.stringify([
     skill.id,
     skill.sourcePath ?? '',
     skill.content ?? '',
-    skill.embeddedTools ?? [],
-    skill.dependencies ?? [],
-    skill.allowedTools ?? skill.tools ?? [],
-    (skill.packageFiles ?? []).map((file) => [file.path, file.kind, file.size ?? -1]),
+    sortedStable(skill.embeddedTools ?? []),
+    sortedStable(skill.dependencies ?? []),
+    sortedStable(skill.allowedTools ?? skill.tools ?? []),
+    sortedStable(
+      (skill.packageFiles ?? []).map((file) => [
+        file.path,
+        file.kind,
+        file.size ?? -1,
+      ]),
+    ),
   ]);
   const h1 = fnv1a32(material, 0x811c9dc5).toString(16).padStart(8, '0');
   const h2 = fnv1a32(material, 0x9dc5811c).toString(16).padStart(8, '0');

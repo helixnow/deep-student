@@ -477,48 +477,6 @@ impl SchemaRegistry {
             .map(|(id, status)| (id.as_str().to_string(), status.schema_version))
             .collect()
     }
-
-    /// 验证所有数据库的 checksum 一致性
-    ///
-    /// 用于检测数据库是否被非法修改
-    pub fn verify_checksums<'a, I>(
-        &self,
-        connections: I,
-    ) -> Result<Vec<ChecksumMismatch>, SchemaRegistryError>
-    where
-        I: Iterator<Item = (DatabaseId, &'a Connection)>,
-    {
-        let mut mismatches = Vec::new();
-
-        for (db_id, conn) in connections {
-            if let Some(cached_status) = self.databases.get(&db_id) {
-                match Self::read_database_status(db_id.clone(), conn) {
-                    Ok(current_status) => {
-                        if cached_status.checksum != current_status.checksum {
-                            mismatches.push(ChecksumMismatch {
-                                database: db_id,
-                                expected: cached_status.checksum.clone(),
-                                actual: current_status.checksum,
-                            });
-                        }
-                    }
-                    Err(e) => {
-                        warn!("验证数据库 {:?} checksum 失败: {}", db_id, e);
-                    }
-                }
-            }
-        }
-
-        Ok(mismatches)
-    }
-}
-
-/// Checksum 不匹配记录
-#[derive(Debug, Clone)]
-pub struct ChecksumMismatch {
-    pub database: DatabaseId,
-    pub expected: String,
-    pub actual: String,
 }
 
 impl Default for SchemaRegistry {
@@ -549,13 +507,6 @@ pub enum SchemaRegistryError {
     DependencyNotSatisfied {
         database: DatabaseId,
         missing_dependency: DatabaseId,
-    },
-
-    #[error("Checksum mismatch for database {database:?}: expected {expected}, got {actual}")]
-    ChecksumMismatch {
-        database: DatabaseId,
-        expected: String,
-        actual: String,
     },
 
     #[error("Version conflict: {database:?} at version {current}, expected {expected}")]
@@ -812,21 +763,6 @@ mod tests {
 
         assert_eq!(status.checksum, expected_checksum);
         assert!(!status.checksum.is_empty());
-    }
-
-    #[test]
-    fn test_verify_checksums_match() {
-        let conn =
-            create_test_db_with_migrations(&[(1, "V1", "2026-01-30T10:00:00Z", "checksum_a")]);
-
-        let connections1 = vec![(DatabaseId::Vfs, &conn)];
-        let registry = SchemaRegistry::aggregate_from_databases(connections1.into_iter()).unwrap();
-
-        // 验证 checksum（数据库未变化）
-        let connections2 = vec![(DatabaseId::Vfs, &conn)];
-        let mismatches = registry.verify_checksums(connections2.into_iter()).unwrap();
-
-        assert!(mismatches.is_empty());
     }
 
     #[test]

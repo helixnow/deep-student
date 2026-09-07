@@ -826,7 +826,7 @@ fn shell_scope_fingerprint(tool_name: &str, args: &Value) -> Option<String> {
     if !is_local_shell_execute_tool(tool_name, args) {
         return Some(format!(
             "uncontrolled={}",
-            raw_hash(&serde_json::to_string(args).ok()?)
+            raw_hash(&serde_json::to_string(&canonical_scope_value(args)).ok()?)
         ));
     }
     let (root_id, cwd) = normalized_shell_runtime_location(args);
@@ -1577,7 +1577,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         // Backup and cloud sync are always-confirm system operations. Bind
         // approval to the complete argument object so direction, conflict
         // strategy and asset selection cannot reuse one another's approval.
-        "backup_create" | "sync_run" => serde_json::to_string(args)
+        "backup_create" | "sync_run" => serde_json::to_string(&canonical_scope_value(args))
             .ok()
             .map(|encoded| format!("args:{}", raw_hash(&encoded))),
 
@@ -1635,7 +1635,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
             })
             .flatten()
             .and_then(|(root_id, change_id, payload)| {
-                let serialized = serde_json::to_string(&payload).ok()?;
+                let serialized = serde_json::to_string(&canonical_scope_value(&payload)).ok()?;
                 Some(format!(
                     "{}:{}:{}",
                     root_id,
@@ -1660,7 +1660,10 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                         .get("receiptId")
                         .or_else(|| receipt.get("receipt_id"))?
                         .as_str()?;
-                    let serialized = serde_json::to_string(receipt).ok()?;
+                    let serialized = serde_json::to_string(&canonical_scope_value(
+                        &Value::Object(receipt.clone()),
+                    ))
+                    .ok()?;
                     Some(format!("{}:{}:{}", root, receipt_id, raw_hash(&serialized)))
                 })
         }
