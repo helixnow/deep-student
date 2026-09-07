@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useId, useState } from 'react';
 import { CaretDown, Lightbulb, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { insightCorrect, insightCreateDraft, insightList } from '@/features/insights/api';
+import { insightCorrect, insightCreateDraft, insightList, insightRunJobs } from '@/features/insights/api';
 import type { InsightCard, InsightDraftInput } from '@/features/insights/types';
 import { InsightConfirmDialog } from '@/features/insights/components/InsightConfirmDialog';
 import './FavoritesSection.css';
@@ -66,6 +66,8 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
       await insightConfirm(created.id);
     }
     await refresh();
+    // 阶段三：确认/纠正后触发巩固 worker（SRS 投影/合并提案/原则合成，闲时幂等）
+    void insightRunJobs(5).catch(() => {});
   };
 
   return (
