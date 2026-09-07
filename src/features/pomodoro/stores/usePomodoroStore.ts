@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { DEFAULT_POMODORO_SETTINGS } from '../types';
 import { createPomodoroRecord } from '../api';
+import type { CreatePomodoroInput } from '../api';
 import { noiseEngine } from '../noiseEngine';
 
 // ★ I2 修复：阶段完成时发送系统通知（应用在后台时用户也能感知）
@@ -86,6 +87,16 @@ const AWAY_JUMP_MS = 5 * 60 * 1000;
 type RecordOutcome = { error?: unknown };
 const pendingRecordRequests = new Set<Promise<RecordOutcome>>();
 
+/**
+ * N11（2026-09-07 审阅）：已失败、尚未重试成功的记录输入。
+ * 此前失败 Promise 在 finally 中无条件移出 pending Set，之后的 flush 只看
+ * 「当前在飞」，会把从未落库的记录漏掉——flush 成功返回但记录丢失。
+ * flush 的契约应是「所有已接受记录均已提交」，而非「没有在飞请求」。
+ * 失败输入在此登记，flush 边界重放；有上限防止持久故障下无界增长。
+ */
+const failedRecordInputs: CreatePomodoroInput[] = [];
+const MAX_FAILED_RECORD_RETRIES_KEPT = 100;
+
 /** Record a pomodoro session. UI calls remain fire-and-forget; ACR can flush the boundary. */
 const recordSession = (
   todoItemId: string | null,
@@ -96,7 +107,7 @@ const recordSession = (
   status: 'completed' | 'interrupted',
 ) => {
   const endTime = new Date().toISOString();
-  const request = createPomodoroRecord({
+  const input: CreatePomodoroInput = {
     todoItemId: todoItemId ?? undefined,
     startTime,
     endTime,
@@ -104,11 +115,18 @@ const recordSession = (
     actualDuration: Math.max(0, actualDuration),
     type,
     status,
-  });
+  };
+  const request = createPomodoroRecord(input);
   const outcome = request
     .then(() => ({}) as RecordOutcome)
     .catch((error) => {
       console.error('[Pomodoro] Failed to record session:', error);
+      // N11：失败不丢——登记到待重试集合，flush 时重放
+      failedRecordInputs.push(input);
+      if (failedRecordInputs.length > MAX_FAILED_RECORD_RETRIES_KEPT) {
+        failedRecordInputs.splice(0, failedRecordInputs.length - MAX_FAILED_RECORD_RETRIES_KEPT);
+        console.warn('[Pomodoro] Failed record retry backlog overflow; oldest entries dropped');
+      }
       return { error };
     });
   pendingRecordRequests.add(outcome);
@@ -127,11 +145,36 @@ const recordSession = (
 };
 
 async function flushPendingRecords(): Promise<void> {
+  // 1. 等待当前在飞请求 settle（在飞期间失败的会经 catch 登记进 failedRecordInputs）
   const requests = [...pendingRecordRequests];
   const outcomes = await Promise.all(requests);
   const errors = outcomes.flatMap((outcome) =>
     outcome.error === undefined ? [] : [outcome.error],
   );
+
+  // 2. N11：重放此前已失败的记录——只有全部已接受记录都提交，flush 才算成功
+  let retriedWorkCompleted = false;
+  if (failedRecordInputs.length > 0) {
+    const retrying = failedRecordInputs.splice(0, failedRecordInputs.length);
+    for (const input of retrying) {
+      try {
+        await createPomodoroRecord(input);
+        if (input.todoItemId && input.type === 'work' && input.status === 'completed') {
+          retriedWorkCompleted = true;
+        }
+      } catch (error) {
+        console.error('[Pomodoro] Retry of failed session record failed:', error);
+        failedRecordInputs.push(input);
+        errors.push(error);
+      }
+    }
+    if (retriedWorkCompleted) {
+      void import('@/features/todo/stores/useTodoStore')
+        .then(({ useTodoStore }) => useTodoStore.getState().reloadCurrentView())
+        .catch(() => {});
+    }
+  }
+
   if (errors.length > 0) {
     const first = errors[0];
     const detail = first instanceof Error ? first.message : String(first);
