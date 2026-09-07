@@ -6088,13 +6088,19 @@ impl LLMManager {
         });
 
         // 尝试按优先级找到第一个有效的配置
+        // ★ OCR 配置脱节修复：启用引擎被跳过时必须留下 warn 证据（此前为 debug! 级，
+        // release 下不可见），且全部失效落到 assignment 兜底时明确报出降级原因，
+        // 避免"设置页启用了 A 引擎，运行时却静默打向无关 B 模型"的三账本脱节。
+        let mut skipped_reasons: Vec<String> = Vec::new();
         for ocr_config in &enabled_models {
             if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
                 if is_discontinued_ocr_model(config) {
-                    warn!(
-                        "[OCR] 引擎 {} 对应的模型 {} 已停服，跳过",
-                        ocr_config.engine_type, config.model
+                    let reason = format!(
+                        "引擎 {}（{}）对应模型 {} 已停服",
+                        ocr_config.engine_type, ocr_config.config_id, config.model
                     );
+                    warn!("[OCR] {reason}，跳过");
+                    skipped_reasons.push(reason);
                     continue;
                 }
                 if config.is_multimodal {
@@ -6104,20 +6110,30 @@ impl LLMManager {
                     );
                     return Ok(config.clone());
                 } else {
-                    warn!(
-                        "[OCR] 引擎 {} 对应的模型 {} 不支持多模态，跳过",
-                        ocr_config.engine_type, config.model
+                    let reason = format!(
+                        "引擎 {}（{}）对应模型 {} 不支持多模态",
+                        ocr_config.engine_type, ocr_config.config_id, config.model
                     );
+                    warn!("[OCR] {reason}，跳过");
+                    skipped_reasons.push(reason);
                 }
             } else {
-                warn!(
-                    "[OCR] 引擎 {} 对应的配置 ID {} 不存在，跳过",
+                let reason = format!(
+                    "引擎 {} 的配置 ID {} 不存在（模型配置可能已被删除）",
                     ocr_config.engine_type, ocr_config.config_id
                 );
+                warn!("[OCR] {reason}，跳过");
+                skipped_reasons.push(reason);
             }
         }
 
         // 回退：使用 exam_sheet_ocr_model_config_id
+        // ★ assignment 一致性修复（2026-09-07）：启用引擎全部失效时，兜底 assignment
+        // 可能指向与 OCR 无关的任意已分配模型（实测 gpt-5.6-luna@中转站），静默降级
+        // 会掩盖"设置页启用的引擎全部不可用"这一事实。降级必须显式：打 warn 后继续，
+        // 但要求兜底配置本身必须具备多模态能力——非多模态的 assignment 一律拒绝，
+        // 让上层落到本地系统 OCR 兜底（call_ocr_page_with_fallback）或直接报错，
+        // 而不是拿一个文本模型反复撞 400。
         let assignments = self.get_model_assignments().await?;
         let model_id = assignments.exam_sheet_ocr_model_config_id.ok_or_else(|| {
             AppError::configuration("OCR 模型未配置，请在模型分配中添加 OCR 引擎")
@@ -6130,6 +6146,21 @@ impl LLMManager {
                 AppError::configuration(format!("找不到 ID 为 {} 的模型配置", model_id))
             })?;
 
+        // 兜底生效 = 启用的引擎没有一个可用，必须把脱节原因讲清楚
+        if !skipped_reasons.is_empty() {
+            warn!(
+                "[OCR] 启用引擎全部失效，降级到模型分配兜底 {}（{}）:{}",
+                config.model,
+                config.id,
+                skipped_reasons.join("; ")
+            );
+        } else {
+            info!(
+                "[OCR] 启用引擎列表为空，使用模型分配兜底: {} ({})",
+                config.model, config.id
+            );
+        }
+
         if is_discontinued_ocr_model(&config) {
             return Err(AppError::configuration(format!(
                 "当前配置的 OCR 模型 {} 已被服务商停服（如硅基流动已下架 zai-org/GLM-4.6V），请在设置中更换 OCR 引擎",
@@ -6138,9 +6169,10 @@ impl LLMManager {
         }
 
         if !config.is_multimodal {
-            return Err(AppError::configuration(
-                "当前配置的 OCR 模型未启用多模态能力，请选择支持图像输入的模型（如 DeepSeek-OCR）",
-            ));
+            return Err(AppError::configuration(format!(
+                "OCR 兜底分配的模型 {} 未启用多模态能力，已拒绝作为 OCR 引擎使用（请在模型分配中选择支持图像输入的模型，或在 OCR 设置中启用可用引擎）",
+                config.model
+            )));
         }
 
         debug!(
