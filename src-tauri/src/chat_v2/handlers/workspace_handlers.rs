@@ -1689,7 +1689,7 @@ pub async fn run_workspace_agent_backend(
     // 额外提供撤权/过期实时门：revoke_all_grants / revoke_grants_for 后，在跑
     // worker 的下一次工具调用即被拦截。注册守卫随管线 drop（含 panic/超时）
     // 即注销。
-    let grant_registration = {
+    let (grant_registration, budget_binding) = {
         let child_task_id = coordinator
             .get_task_manager(workspace_id)
             .ok()
@@ -1702,15 +1702,29 @@ pub async fn run_workspace_agent_backend(
             .ok()
             .and_then(|profile| profile.computed_hash().ok())
             .unwrap_or_default();
-        crate::chat_v2::grants::issue_worker_grant(
+        let parent_task_id = parent_session_id
+            .clone()
+            .unwrap_or_else(|| request.requester_session_id.clone());
+        // 🆕 G08：worker 派生预算接线——把 worker session 挂到父任务树根账本
+        // （父会话已是树成员则复用其根 key 实现任意深度归集；否则以父会话为
+        // 根懒建账本）。子上限 = min(grant 声明, 父账本剩余)（reserve 语义；
+        // 声明待 G08-P2 settings 可配，现恒 None → 子上限 = 父剩余快照），
+        // 快照填入 grant.budget。绑定守卫随管线 drop 解绑；旧账本耗尽且树枯
+        // （无活跃绑定）时 attach 内部轮换新账本。
+        let budget_attachment = crate::chat_v2::budget::attach_child_to_tree(
+            &parent_task_id,
+            agent_session_id,
+            None,
+        );
+        let grant_registration = crate::chat_v2::grants::issue_worker_grant(
             agent_session_id.clone(),
-            parent_session_id
-                .clone()
-                .unwrap_or_else(|| request.requester_session_id.clone()),
+            parent_task_id,
             child_task_id,
             &worker_allowed_tools,
             profile_hash,
-        )
+            Some(budget_attachment.effective_budget.clone()),
+        );
+        (grant_registration, budget_attachment.binding)
     };
 
     let assistant_message_id = ChatMessage::generate_id();
@@ -1770,6 +1784,9 @@ pub async fn run_workspace_agent_backend(
         let card_read_scope_guard = card_read_scope_guard;
         // 🆕 G02-P1：grant 注册与管线同寿命，结束（含 panic/超时）即注销
         let _grant_registration = grant_registration;
+        // 🆕 G08：session → 树根预算绑定与管线同寿命，结束即解绑并归还
+        // 活跃计数（计数归零 + 账本耗尽时，下一次 attach 轮换新账本）
+        let _budget_binding = budget_binding;
 
         // 🆕 整体超时：pipeline 包 wall-clock 上限（对齐 headless），
         // 超时后触发取消并给管线一个收尾窗口保存部分结果。

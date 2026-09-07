@@ -36,7 +36,9 @@
 //! grant（快照新 epoch），与 worker 重跑模型一致。
 //!
 //! TODO(P2)：epoch 与 grant 登记落库（重启后撤权记录不丢）；`object_scopes`
-//! 对接 transformer profile 的对象级写授权；`budget` 对接 G08。
+//! 对接 transformer profile 的对象级写授权。`budget` 已由 G08 对接
+//! （`budget.rs` 树根账本 + reserve 语义填充，settings 可配与快照落库属
+//! G08-P2）。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -137,11 +139,19 @@ pub enum ObjectScope {
     RuntimeRoot { root_id: String, writable: bool },
 }
 
-/// 预算上限（P1 占位结构；G08 对接执行计量）。
+/// 预算上限（G08 定稿：由 `budget::reserve_child_spec` 计算后填入
+/// `DelegatedGrant.budget`——子上限 = min(自身声明, 父账本剩余) 的快照，
+/// 作为 grant 凭证上的预算宣告；执行面 enforcement 在 `budget::BudgetLedger`
+/// 树根账本 + hooks 预算门）。
+///
+/// 语义注意：`max_tool_calls` 计工具**调用**次数（一轮 LLM 可能发起多次
+/// 调用），与 headless 会话级的 `max_tool_rounds`（轮次上限，见
+/// headless.rs `SETTING_HEADLESS_MAX_TOOL_ROUNDS`）是不同维度；G08-P2
+/// settings 可配时注意映射关系。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetSpec {
-    pub max_tool_rounds: Option<u32>,
+    pub max_tool_calls: Option<u32>,
     pub max_tokens: Option<u64>,
     pub max_wall_clock_seconds: Option<u64>,
 }
@@ -162,7 +172,8 @@ pub struct DelegatedGrant {
     pub object_scopes: Vec<ObjectScope>,
     /// P1 恒为空 Vec（字段先立；P2 参照 TrustedAutomationProfile.network_domains）。
     pub network_destinations: Vec<String>,
-    /// P1 恒为 None（占位结构；G08 对接）。
+    /// G08：子的有效预算快照（reserve 语义，由 `budget::attach_child_to_tree`
+    /// 计算并经 `issue_worker_grant` 的 `budget` 参数填入）。
     pub budget: Option<BudgetSpec>,
     /// 过期时间。P1 签发恒为 None（不启用过期，行为不变）。
     pub expiry: Option<chrono::DateTime<chrono::Utc>>,
@@ -329,12 +340,17 @@ pub fn revoke_grants_for(child_task_id: &str) -> u64 {
 ///
 /// `allowed_tools` 必须与本次 `SendOptions.execution_allowed_tools` 同源
 /// （P1：同一 Vec），保证 grant 表达的白名单与执行面逐字节一致。
+///
+/// `budget`（G08）：worker 的有效预算快照，由调用方经
+/// `budget::attach_child_to_tree` 的 reserve 语义算得（子上限 =
+/// min(声明, 父账本剩余)）；仅作凭证宣告，执行面在树根账本。
 pub fn issue_worker_grant(
     session_id: String,
     parent_task_id: String,
     child_task_id: String,
     allowed_tools: &[String],
     profile_hash: String,
+    budget: Option<BudgetSpec>,
 ) -> GrantRegistrationGuard {
     // 快照取 max(全局, 该任务 per-task) 轴上的当前值：per-task 撤权后
     // 同一 child_task 重跑的新 grant 快照仍在新 epoch 之上（存活），
@@ -348,7 +364,7 @@ pub fn issue_worker_grant(
         tool_scopes: ToolScope::scopes_from_allowed_tools(allowed_tools),
         object_scopes: Vec::new(),
         network_destinations: Vec::new(),
-        budget: None,
+        budget,
         // P1：不启用过期（行为不变）；字段先立，过期语义由 check_liveness 承载。
         expiry: None,
         revocation_epoch,
@@ -587,6 +603,7 @@ mod tests {
             child_a.clone(),
             &tools,
             String::new(),
+            None,
         );
         let guard_b = issue_worker_grant(
             session_b.clone(),
@@ -594,6 +611,7 @@ mod tests {
             child_b.clone(),
             &tools,
             String::new(),
+            None,
         );
         assert!(lookup_grant_for_session(&session_a)
             .unwrap()
@@ -624,6 +642,7 @@ mod tests {
             format!("child_a2_{suffix}"),
             &tools,
             String::new(),
+            None,
         );
         assert!(lookup_grant_for_session(&session_a2)
             .unwrap()
@@ -651,6 +670,7 @@ mod tests {
             format!("child_d_{suffix}"),
             &tools,
             String::new(),
+            None,
         );
         assert!(lookup_grant_for_session(&session_d)
             .unwrap()
@@ -665,6 +685,7 @@ mod tests {
             child_a.clone(),
             &tools,
             String::new(),
+            None,
         );
         assert_ne!(guard_a3.grant_id(), grant_id_a);
         drop(guard_a); // 旧一代守卫：不得误删 A3 的注册

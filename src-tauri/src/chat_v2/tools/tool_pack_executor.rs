@@ -15,6 +15,11 @@
 //!   with `status: "partial"`.
 //! - Propagates cancellation with a child `CancellationToken`.
 //! - Wraps each spawned task with `catch_unwind` for panic isolation.
+//! - G08 tree budget: sub-contexts inherit the parent `session_id`, so every
+//!   sub-call re-enters the pipeline admission hook (`dispatch_with_admission`
+//!   → `execute_single_tool` → `before_tool`) and is accounted into the task
+//!   tree ledger keyed by that session. Do NOT add a second counting point
+//!   here — that would double-charge the tree budget.
 
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
@@ -739,5 +744,24 @@ mod tests {
             .expect_err("tool_pack must fail closed without central admission");
 
         assert!(error.contains("central admitted tool dispatcher"));
+    }
+
+    /// G08 预算归集契约：子上下文必须继承父 session_id——子调用经
+    /// `dispatch_with_admission` 回到 hooks 预算门时按 session_id 解析
+    /// 任务树根账本；继承断裂会导致子调用逃出全树预算管控。
+    #[test]
+    fn sub_context_inherits_session_id_for_tree_budget() {
+        let parent = ExecutionContext::new(
+            "tree-member-session".to_string(),
+            "message".to_string(),
+            "block".to_string(),
+            Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+                "tree-member-session".to_string(),
+            )),
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        let sub = create_sub_context(&parent, "sub-block".to_string(), CancellationToken::new());
+        assert_eq!(sub.session_id, "tree-member-session");
     }
 }

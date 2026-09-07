@@ -349,6 +349,28 @@ impl PipelineHook for ApprovalGateHook {
             }
         }
 
+        // 🆕 G08：任务树预算门（紧挨 grant 存活门，位于白名单检查之前——被拒
+        // 的尝试同样消耗额度，防无限重试绕过）。仅 worker 树成员（spawn 时经
+        // budget::attach_child_to_tree 绑定 session → 树根账本）在此记账；
+        // 普通会话无绑定直接跳过（行为不变）。tool_pack / ptc 子调用经
+        // dispatch_with_admission → execute_single_tool 回到本门（子上下文继承
+        // session_id），自动归集同一树根账本，执行器侧不得重复计数。
+        // wall_clock 在 try_consume 内惰性检查（账本创建起算）。
+        if let Some(tree_key) = crate::chat_v2::budget::tree_key_for_session(session_id) {
+            if let Err(exceeded) = crate::chat_v2::budget::try_consume(
+                &tree_key,
+                crate::chat_v2::budget::BudgetDelta::ONE_TOOL_CALL,
+            ) {
+                let message = exceeded.message(&tool_call.name);
+                log::warn!(
+                    "[ChatV2::pipeline] Tree budget gate blocked tool '{}': {}",
+                    tool_call.name,
+                    message
+                );
+                return ToolGateOutcome::Block(build_preflight_blocked_result(message));
+            }
+        }
+
         if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
             &tool_call.name,
             &tool_call.arguments,
