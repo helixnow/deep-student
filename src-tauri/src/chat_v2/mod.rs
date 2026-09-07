@@ -22,6 +22,7 @@ pub mod completion_dispatcher; // 🆕 G03-a：子代理完成投递派发器（
 #[path = "workspace/completion_outbox.rs"]
 pub mod completion_outbox; // 🆕 G03-a：子代理完成投递持久账本（chat_v2 主库，迁移 V20260908）
 pub mod connector_ledger; // 🆕 Connector 操作持久账本（G04-P0：状态机 + 系统幂等键 + outcome_unknown）
+pub mod connector_providers; // 🆕 Connector provider 抽象（G04-P1：ConnectorProvider trait + generic webhook 实现）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;

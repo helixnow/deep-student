@@ -5,9 +5,17 @@
 //! submitting 先于 provider 调用落库，重启后遗留 submitting 由启动对账
 //! 收敛为 outcome_unknown；幂等键由系统在 draft 时生成
 //! （`sha256(operation_id || preview_sha256)`），不再接受模型提供的键。
+//!
+//! G04-P1：第一个真实 provider（generic webhook，
+//! [`crate::chat_v2::connector_providers`]）纵向打通——commit 按 registry
+//! 中 connector 的 `provider` 字段分发：webhook 经 HTTPS + HMAC 签名真实
+//! 投递（瞬时错误限次重试，耗尽收敛 outcome_unknown），其余 provider 维持
+//! MCP 工具桥；启动对账升级为 provider lookup 核销（见
+//! [`reconcile_connector_operations_with_lookup`]）。
 
 use std::collections::BTreeMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -20,16 +28,26 @@ use crate::chat_v2::connector_ledger::{
     system_idempotency_key, ConnectorLedger, ConnectorOperation, ConnectorOperationState,
     NewConnectorOperation,
 };
+use crate::chat_v2::connector_providers::webhook::{WebhookConfig, WebhookProvider};
+use crate::chat_v2::connector_providers::{
+    extract_external_operation_id, ConnectorProvider, ProviderError, ProviderErrorKind,
+    ProviderOperation, WEBHOOK_PROVIDER_KIND,
+};
+use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::task_objects::{
     ConnectorOperationReceipt, DerivedEdge, ObjectCapabilities, ObjectProvenance, OperationState,
     ProviderObjectRef, TaskObjectHandle, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::database::Database;
 use crate::tools::ToolContext;
 
 const CONNECTOR_REGISTRY_KEY: &str = "connectors.registry.v1";
 const DEFAULT_CONFIRM_TTL_SECS: u64 = 600;
 const MAX_CONFIRM_TTL_SECS: u64 = 3600;
+
+/// webhook 提交的最大尝试次数（1 次首发 + 2 次瞬时重试，同一幂等键）。
+const WEBHOOK_SUBMIT_MAX_ATTEMPTS: u32 = 3;
 
 pub mod tool_names {
     pub const REGISTRY: &str = "connector_registry";
@@ -84,6 +102,10 @@ struct ConnectorConfig {
     oauth: OAuthSnapshot,
     #[serde(default)]
     capabilities: Vec<CapabilityConfig>,
+    /// G04-P1：provider = "webhook" 时的通道配置（endpoint + secret 键名；
+    /// secret 本体只存 settings 安全通道，见 connector_providers::webhook）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    webhook: Option<WebhookConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +212,34 @@ fn validate_registry(registry: &[ConnectorConfig]) -> Result<(), String> {
         if !ids.insert(connector.id.as_str()) {
             return Err(format!("duplicate connector id '{}'", connector.id));
         }
+        let is_webhook = connector.provider == WEBHOOK_PROVIDER_KIND;
+        if is_webhook {
+            // webhook 通道配置的形状校验（shape-only：白名单/secret 存在性
+            // 在 commit / reconcile 时经 settings 严格解析，fail-closed）。
+            let webhook = connector.webhook.as_ref().ok_or_else(|| {
+                format!(
+                    "webhook connector '{}' requires a 'webhook' config section",
+                    connector.id
+                )
+            })?;
+            if webhook.endpoint.trim().is_empty() {
+                return Err(format!(
+                    "webhook connector '{}' has an empty endpoint",
+                    connector.id
+                ));
+            }
+            if webhook.secret_setting_key.trim().is_empty() {
+                return Err(format!(
+                    "webhook connector '{}' has an empty secretSettingKey",
+                    connector.id
+                ));
+            }
+        } else if connector.webhook.is_some() {
+            return Err(format!(
+                "connector '{}' carries a webhook section but provider is not 'webhook'",
+                connector.id
+            ));
+        }
         for capability in &connector.capabilities {
             if !SUPPORTED_CAPABILITIES.contains(&capability.name.as_str()) {
                 return Err(format!(
@@ -197,7 +247,9 @@ fn validate_registry(registry: &[ConnectorConfig]) -> Result<(), String> {
                     capability.name
                 ));
             }
-            if capability.mcp_server_id.trim().is_empty() {
+            // webhook provider 不经 MCP 桥，mcpServerId 无意义（允许留空）；
+            // mcpTools 对 webhook 而言是 action 白名单（键 = action 名）。
+            if !is_webhook && capability.mcp_server_id.trim().is_empty() {
                 return Err(format!(
                     "connector capability '{}' lacks mcpServerId",
                     capability.name
@@ -214,6 +266,12 @@ fn validate_registry(registry: &[ConnectorConfig]) -> Result<(), String> {
 }
 
 fn capability_available(config: &ConnectorConfig, capability: &CapabilityConfig) -> bool {
+    let channel_ready = if config.provider == WEBHOOK_PROVIDER_KIND {
+        // webhook 通道：registry 携带配置段即可（settings 解析在 commit 时严格进行）
+        config.webhook.is_some()
+    } else {
+        true
+    };
     config.oauth.connected
         && capability.required_scopes.iter().all(|scope| {
             config
@@ -223,6 +281,7 @@ fn capability_available(config: &ConnectorConfig, capability: &CapabilityConfig)
                 .any(|granted| granted == scope)
         })
         && !capability.mcp_tools.is_empty()
+        && channel_ready
 }
 
 fn find_capability<'a>(
@@ -653,25 +712,65 @@ impl ConnectorToolExecutor {
         let mapped_tool = capability
             .mcp_tools
             .get(&preview.action)
-            .ok_or_else(|| "capability_unavailable: MCP action mapping was removed".to_string())?;
-        let external_tool = if mapped_tool.starts_with("mcp_") {
-            mapped_tool.clone()
+            .ok_or_else(|| "capability_unavailable: action mapping was removed".to_string())?;
+
+        // G04-P1：按 provider 类型构建投递通道。webhook 通道的 settings 解析
+        // （白名单/secret，N06 strict、fail-closed）必须先于 submitting 落库——
+        // 配置类错误属于 Permanent，不应把操作推进 submitting。
+        let channel = if connector.provider == WEBHOOK_PROVIDER_KIND {
+            let webhook_cfg = connector.webhook.as_ref().ok_or_else(|| {
+                "capability_unavailable: webhook connector is missing its webhook config"
+                    .to_string()
+            })?;
+            let main_db = ctx.main_db.as_ref().ok_or("Main database not available")?;
+            let provider = WebhookProvider::from_settings(webhook_cfg, main_db)
+                .map_err(|error| format!("connector provider is not ready: {}", error))?;
+            let body = json!({
+                "operation_id": operation_id.clone(),
+                "idempotency_key": row.idempotency_key.clone(),
+                "action": format!("{}:{}", preview.capability, preview.action),
+                "recipients": preview.recipients.clone(),
+                "timezone": preview.timezone.clone(),
+                "conflicts": preview.conflicts.clone(),
+                "destination": preview.destination.clone(),
+                "acl": preview.acl.clone(),
+                "attachments": preview.attachments.clone(),
+                "payload": preview.payload.clone(),
+                "expected_object_version": capability.snapshot.object_version.clone(),
+            });
+            CommitChannel::Webhook {
+                provider,
+                op: ProviderOperation {
+                    operation_id: operation_id.clone(),
+                    idempotency_key: row.idempotency_key.clone(),
+                    action: format!("{}:{}", preview.capability, preview.action),
+                    body,
+                },
+            }
         } else {
-            format!("mcp_{}", mapped_tool)
+            let external_tool = if mapped_tool.starts_with("mcp_") {
+                mapped_tool.clone()
+            } else {
+                format!("mcp_{}", mapped_tool)
+            };
+            let provider_args = json!({
+                "_serverId": capability.mcp_server_id.clone(),
+                "idempotency_key": row.idempotency_key.clone(),
+                "recipients": preview.recipients.clone(),
+                "timezone": preview.timezone.clone(),
+                "conflicts": preview.conflicts.clone(),
+                "destination": preview.destination.clone(),
+                "acl": preview.acl.clone(),
+                "attachments": preview.attachments.clone(),
+                "payload": preview.payload.clone(),
+                "expected_object_version": capability.snapshot.object_version.clone(),
+            });
+            CommitChannel::McpTool {
+                external_tool,
+                provider_args,
+            }
         };
-        let provider_args = json!({
-            "_serverId": capability.mcp_server_id.clone(),
-            "idempotency_key": row.idempotency_key.clone(),
-            "recipients": preview.recipients.clone(),
-            "timezone": preview.timezone.clone(),
-            "conflicts": preview.conflicts.clone(),
-            "destination": preview.destination.clone(),
-            "acl": preview.acl.clone(),
-            "attachments": preview.attachments.clone(),
-            "payload": preview.payload.clone(),
-            "expected_object_version": capability.snapshot.object_version.clone(),
-        });
-        let request_payload_hash = sha256_json(&provider_args)?;
+        let request_payload_hash = sha256_json(channel.payload_body())?;
 
         // 先落库再调用：submitting 持久化成功后才允许触达 provider。
         // 进程在此之后崩溃 → 重启对账收敛为 outcome_unknown。
@@ -681,36 +780,50 @@ impl ConnectorToolExecutor {
                 "connector operation with this idempotency_key is already in progress".to_string()
             })?;
 
-        let tool_ctx = ToolContext {
-            db: ctx.main_db.as_ref().map(|db| db.as_ref()),
-            mcp_client: None,
-            supports_tools: true,
-            window: ctx.tauri_window.as_ref(),
-            stream_event: None,
-            stage: Some("connector_commit"),
-            memory_enabled: None,
-            llm_manager: ctx.llm_manager.clone(),
-        };
-        let (ok, data, error, _usage, _citations, _inject) = ctx
-            .tool_registry
-            .call_tool(&external_tool, &provider_args, &tool_ctx)
-            .await;
-        if !ok {
-            let message = format!(
-                "connector provider commit failed: {}",
-                error.unwrap_or_else(|| "unknown provider error".to_string())
-            );
-            if let Err(ledger_error) = ledger.mark_failed(&operation_id, &now_rfc3339(), &message)
-            {
-                log::warn!(
-                    "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
-                    operation_id,
-                    ledger_error
-                );
+        let provider_result: Value = match channel {
+            CommitChannel::McpTool {
+                external_tool,
+                provider_args,
+            } => {
+                let tool_ctx = ToolContext {
+                    db: ctx.main_db.as_ref().map(|db| db.as_ref()),
+                    mcp_client: None,
+                    supports_tools: true,
+                    window: ctx.tauri_window.as_ref(),
+                    stream_event: None,
+                    stage: Some("connector_commit"),
+                    memory_enabled: None,
+                    llm_manager: ctx.llm_manager.clone(),
+                };
+                let (ok, data, error, _usage, _citations, _inject) = ctx
+                    .tool_registry
+                    .call_tool(&external_tool, &provider_args, &tool_ctx)
+                    .await;
+                if !ok {
+                    let message = format!(
+                        "connector provider commit failed: {}",
+                        error.unwrap_or_else(|| "unknown provider error".to_string())
+                    );
+                    if let Err(ledger_error) =
+                        ledger.mark_failed(&operation_id, &now_rfc3339(), &message)
+                    {
+                        log::warn!(
+                            "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
+                            operation_id,
+                            ledger_error
+                        );
+                    }
+                    return Err(message);
+                }
+                data.unwrap_or(Value::Null)
             }
-            return Err(message);
-        }
-        let provider_result = data.unwrap_or(Value::Null);
+            CommitChannel::Webhook { provider, op } => {
+                match submit_webhook_with_retry(&provider, &op).await {
+                    Ok(receipt) => receipt.result,
+                    Err(error) => return Err(classify_submit_failure(&ledger, &operation_id, error)),
+                }
+            }
+        };
         let object_handle = match provider_object_handle(
             connector,
             capability,
@@ -760,20 +873,259 @@ impl ConnectorToolExecutor {
 }
 
 /// provider 返回值中的外部对象 id（committed 时持久化到账本
-/// `external_operation_id`，供 P2 provider lookup reconcile 使用）。
+/// `external_operation_id`，供 provider lookup reconcile 使用）。
 fn provider_external_id(provider_result: &Value) -> Option<String> {
-    [
-        "id",
-        "object_id",
-        "objectId",
-        "event_id",
-        "eventId",
-        "message_id",
-        "messageId",
-    ]
-    .iter()
-    .find_map(|key| provider_result.get(key).and_then(Value::as_str))
-    .map(str::to_string)
+    extract_external_operation_id(provider_result)
+}
+
+/// commit 的投递通道（G04-P1）：webhook = 真实 provider（HTTPS + HMAC），
+/// 其余 provider 维持 MCP 工具桥。
+enum CommitChannel {
+    McpTool {
+        external_tool: String,
+        provider_args: Value,
+    },
+    Webhook {
+        provider: WebhookProvider,
+        op: ProviderOperation,
+    },
+}
+
+impl CommitChannel {
+    /// 实际发往 provider 的完整载荷（账本 `request_payload_hash` 的输入）。
+    fn payload_body(&self) -> &Value {
+        match self {
+            Self::McpTool { provider_args, .. } => provider_args,
+            Self::Webhook { op, .. } => &op.body,
+        }
+    }
+}
+
+/// webhook 提交：瞬时错误限次重试（同一幂等键，receiver 契约按键去重，
+/// 重试不会二次执行）；永久/未知错误立即返回。
+async fn submit_webhook_with_retry(
+    provider: &WebhookProvider,
+    op: &ProviderOperation,
+) -> Result<crate::chat_v2::connector_providers::ProviderReceipt, ProviderError> {
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        match provider.submit(op).await {
+            Err(error)
+                if error.kind == ProviderErrorKind::Transient
+                    && attempt < WEBHOOK_SUBMIT_MAX_ATTEMPTS =>
+            {
+                log::info!(
+                    "[ConnectorToolExecutor] webhook submit for {} hit a transient error \
+                     (attempt {}/{}); retrying with the same idempotency key",
+                    op.operation_id,
+                    attempt,
+                    WEBHOOK_SUBMIT_MAX_ATTEMPTS
+                );
+                // 200ms / 400ms 短 backoff（提交路径是交互式工具调用）
+                tokio::time::sleep(Duration::from_millis(200 * (1 << (attempt - 1)))).await;
+            }
+            other => break other,
+        }
+    }
+}
+
+/// submit 失败 → 账本收敛（G04-P1 分类语义）：
+/// - Permanent：明确失败 → `failed`（终态，重试被拒绝）；
+/// - Transient（重试耗尽）/ Unknown：请求可能已落地 → `outcome_unknown`，
+///   禁止自动重试，由启动对账的 provider lookup 核销。
+/// 返回给模型的错误消息已脱敏（provider 错误契约保证不含 secret）。
+fn classify_submit_failure(
+    ledger: &ConnectorLedger,
+    operation_id: &str,
+    error: ProviderError,
+) -> String {
+    match error.kind {
+        ProviderErrorKind::Permanent => {
+            let message = format!("connector provider commit failed: {}", error);
+            if let Err(ledger_error) = ledger.mark_failed(operation_id, &now_rfc3339(), &message) {
+                log::warn!(
+                    "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
+                    operation_id,
+                    ledger_error
+                );
+            }
+            message
+        }
+        ProviderErrorKind::Transient | ProviderErrorKind::Unknown => {
+            let note = format!(
+                "submit outcome unknown ({}): {}",
+                error.kind.as_str(),
+                error.message
+            );
+            if let Err(ledger_error) = ledger.mark_outcome_unknown(operation_id, &note) {
+                log::warn!(
+                    "[ConnectorToolExecutor] failed to persist outcome_unknown for {}: {}",
+                    operation_id,
+                    ledger_error
+                );
+            }
+            format!(
+                "connector operation outcome is unknown ({}); \
+                 it must be reconciled via provider lookup before any retry",
+                error.message
+            )
+        }
+    }
+}
+
+/// G04-P1 启动对账报告（全部计数来自账本原子迁移的实际影响行数）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReconcileReport {
+    /// submitting → outcome_unknown 的崩溃收敛行数。
+    pub converged_submitting: usize,
+    /// lookup 命中远端记录 → committed 的行数。
+    pub lookup_committed: usize,
+    /// lookup 确认远端无记录 → failed(never_submitted) 的行数。
+    pub lookup_never_submitted: usize,
+    /// lookup 失败/不确定 → 保持 outcome_unknown 的行数（不误判）。
+    pub still_unknown: usize,
+    /// provider 无 lookup 能力（未配置/非真实 provider 类型）而跳过的行数。
+    pub skipped_no_lookup: usize,
+}
+
+/// 启动对账（G04-P1 完整版）：先把遗留 submitting 收敛为 outcome_unknown，
+/// 再逐行经 `provider.lookup(idempotency_key)` 查证真实结果：
+///
+/// | lookup 结果 | 账本迁移 | 语义 |
+/// |---|---|---|
+/// | `Ok(Some(outcome))` | → committed（补外部 id + lookup 证据） | 远端已执行 |
+/// | `Ok(None)` | → failed("never_submitted: ...") | 远端确认无此记录 |
+/// | `Err(Transient/Permanent/Unknown)` | 保持 outcome_unknown | 查询失败/不确定，绝不误判 |
+///
+/// 非 webhook provider（MCP 桥尚无 lookup 能力）与未配置 webhook 段的行
+/// 跳过并保持原状。所有决策写 tracing/log 审计 + 账本行（状态/证据/错误）。
+/// settings 读取为 N06 strict 语义：registry/白名单/secret 读失败即
+/// fail-closed，不把"读失败"当"未配置"。
+pub async fn reconcile_connector_operations_with_lookup(
+    main_db: &Database,
+    chat_v2_db: &Arc<ChatV2Database>,
+) -> Result<ReconcileReport, String> {
+    let ledger = ConnectorLedger::new(chat_v2_db.clone());
+    let mut report = ReconcileReport {
+        converged_submitting: ledger.reconcile_submitting_on_startup()?,
+        ..Default::default()
+    };
+    let pending = ledger.list_pending_reconcile()?;
+    if pending.is_empty() {
+        return Ok(report);
+    }
+    let raw = main_db
+        .get_secret(CONNECTOR_REGISTRY_KEY)
+        .map_err(|error| format!("failed to read connector registry for reconcile: {}", error))?;
+    let registry = parse_registry(raw.as_deref())?;
+
+    for row in pending {
+        let connector = registry
+            .iter()
+            .find(|entry| entry.id == row.provider_id && entry.provider == WEBHOOK_PROVIDER_KIND);
+        let webhook_cfg = match connector.and_then(|entry| entry.webhook.as_ref()) {
+            Some(cfg) => cfg,
+            None => {
+                // 无 lookup 能力的 provider（含 MCP 桥）：保持 outcome_unknown。
+                report.skipped_no_lookup += 1;
+                log::info!(
+                    "[connector-reconcile] operation {} (provider '{}') skipped: \
+                     no provider lookup capability",
+                    row.operation_id,
+                    row.provider_id
+                );
+                continue;
+            }
+        };
+        let provider = match WebhookProvider::from_settings(webhook_cfg, main_db) {
+            Ok(provider) => provider,
+            Err(error) => {
+                // 配置/secret 读取失败属于"不确定"：保持 outcome_unknown。
+                report.still_unknown += 1;
+                log::warn!(
+                    "[connector-reconcile] operation {} (provider '{}') cannot build \
+                     webhook provider ({}); left as outcome_unknown",
+                    row.operation_id,
+                    row.provider_id,
+                    error
+                );
+                continue;
+            }
+        };
+        match provider.lookup(&row.idempotency_key).await {
+            Ok(Some(outcome)) => {
+                let evidence = json!({
+                    "reconciled_via": "provider_lookup",
+                    "provider": provider.name(),
+                    "operation_id": row.operation_id,
+                    "external_operation_id": outcome.external_operation_id,
+                    "receipt": outcome.receipt,
+                });
+                match ledger.mark_committed(
+                    &row.operation_id,
+                    &now_rfc3339(),
+                    outcome.external_operation_id.as_deref(),
+                    &evidence.to_string(),
+                ) {
+                    Ok(()) => {
+                        report.lookup_committed += 1;
+                        log::info!(
+                            "[connector-reconcile] operation {} reconciled to committed \
+                             via provider lookup (external id present: {})",
+                            row.operation_id,
+                            outcome.external_operation_id.is_some()
+                        );
+                    }
+                    Err(ledger_error) => {
+                        report.still_unknown += 1;
+                        log::warn!(
+                            "[connector-reconcile] operation {} lookup hit but commit failed: {}",
+                            row.operation_id,
+                            ledger_error
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                let note = format!(
+                    "never_submitted: provider '{}' has no record of this idempotency key",
+                    provider.name()
+                );
+                match ledger.mark_failed(&row.operation_id, &now_rfc3339(), &note) {
+                    Ok(()) => {
+                        report.lookup_never_submitted += 1;
+                        log::info!(
+                            "[connector-reconcile] operation {} reconciled to failed: {}",
+                            row.operation_id,
+                            note
+                        );
+                    }
+                    Err(ledger_error) => {
+                        report.still_unknown += 1;
+                        log::warn!(
+                            "[connector-reconcile] operation {} lookup miss but fail-mark \
+                             failed: {}",
+                            row.operation_id,
+                            ledger_error
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                // 查询失败/不确定：保持 outcome_unknown，绝不误判。
+                report.still_unknown += 1;
+                log::warn!(
+                    "[connector-reconcile] operation {} lookup failed ({}: {}); \
+                     left as outcome_unknown",
+                    row.operation_id,
+                    error.kind.as_str(),
+                    error.message
+                );
+            }
+        }
+    }
+    Ok(report)
 }
 
 fn provider_object_handle(
