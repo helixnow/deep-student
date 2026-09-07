@@ -50,6 +50,7 @@ import {
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import type { ConnectionTestOutcome } from '@/utils/settingsApi';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
@@ -888,7 +889,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     const startedAt = performance.now();
     try {
       const vendorId = (formData as any).vendorId;
-      const result = await invoke('test_api_connection', {
+      const outcome = await invoke<ConnectionTestOutcome>('test_api_connection', {
         api_key: formData.apiKey,
         apiKey: formData.apiKey,
         api_base: formData.baseUrl,
@@ -899,6 +900,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         supportsOpenAIResponses: (formData as any).supportsOpenAIResponses,
         provider_type: formData.providerType,
         providerType: formData.providerType,
+        provider_scope: formData.providerScope,
+        providerScope: formData.providerScope,
         auth_mode: formData.authMode,
         authMode: formData.authMode,
         model_adapter: formData.modelAdapter,
@@ -907,17 +910,47 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         vendor_id: vendorId,
         vendorId,
         headers: formData.headers,
+        // 能力字段透传：后端据此构造与生产一致的探测请求（推理方言/思考开关/模型类型）
+        is_embedding: formData.isEmbedding,
+        isEmbedding: formData.isEmbedding,
+        is_reranker: formData.isReranker,
+        isReranker: formData.isReranker,
+        is_image_generation: formData.isImageGeneration,
+        isImageGeneration: formData.isImageGeneration,
+        is_reasoning: formData.isReasoning,
+        isReasoning: formData.isReasoning,
+        supports_reasoning: formData.supportsReasoning,
+        supportsReasoning: formData.supportsReasoning,
+        enable_thinking: formData.enableThinking,
+        enableThinking: formData.enableThinking,
+        thinking_budget: formData.thinkingBudget,
+        thinkingBudget: formData.thinkingBudget,
+        include_thoughts: formData.includeThoughts,
+        includeThoughts: formData.includeThoughts,
+        reasoning_effort: formData.reasoningEffort,
+        reasoningEffort: formData.reasoningEffort,
+        max_output_tokens: formData.maxOutputTokens,
+        maxOutputTokens: formData.maxOutputTokens,
+        max_tokens_limit: formData.maxTokensLimit,
+        maxTokensLimit: formData.maxTokensLimit,
+        gemini_api_version: formData.geminiApiVersion,
+        geminiApiVersion: formData.geminiApiVersion,
       });
-      const latencyMs = Math.round(performance.now() - startedAt);
-      if (result) {
+      const latencyMs = outcome?.latencyMs ?? Math.round(performance.now() - startedAt);
+      if (outcome?.ok) {
         setConnectionTest({ state: 'success', latencyMs });
         showGlobalNotification(
           'success',
-          t('settings:api.modal.test_connection_success', { latency: latencyMs})
+          t('settings:api.modal.test_connection_success', { latency: latencyMs}),
+          outcome.warning
         );
       } else {
         setConnectionTest({ state: 'failed' });
-        showGlobalNotification('error', t('settings:api.modal.test_connection_failed'));
+        showGlobalNotification(
+          'error',
+          t('settings:api.modal.test_connection_failed'),
+          outcome?.message
+        );
       }
     } catch (error: unknown) {
       setConnectionTest({ state: 'failed' });

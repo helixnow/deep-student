@@ -5,8 +5,8 @@ use log::{debug, error, info, warn};
 use crate::database::{Database, DatabaseManager};
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
-    build_provider_adapter, should_use_openai_responses_for_config, ApiConfig, ModelProfile,
-    VendorConfig, AUTH_MODE_NONE, AUTH_MODE_OPENAI_CODEX_OAUTH,
+    build_provider_adapter, ApiConfig, ModelProfile, VendorConfig, AUTH_MODE_NONE,
+    AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
@@ -33,6 +33,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::Manager;
 use tauri::{AppHandle, Emitter, State, Window};
 use tokio::fs;
@@ -1847,87 +1848,477 @@ pub async fn save_model_profiles(
 /// - api_base: API 基础 URL
 /// - model: 模型名称（可选）
 /// - vendor_id: 供应商 ID（可选，用于从安全存储获取真实密钥）
-fn resolve_test_api_protocol(
-    api_base: &str,
-    explicit_protocol: Option<&str>,
-    model: Option<&str>,
-    supports_openai_responses: Option<bool>,
-    provider_type: Option<&str>,
-    model_adapter: Option<&str>,
-) -> &'static str {
-    let mut inferred_config = ApiConfig {
-        base_url: api_base.to_string(),
-        model: model.unwrap_or_default().to_string(),
-        model_adapter: model_adapter.unwrap_or("general").to_string(),
-        api_protocol: explicit_protocol.map(|protocol| protocol.to_string()),
-        provider_type: provider_type.map(str::to_string),
+// ============================================================================
+// 设置页「测试连接」基础设施（2026-09 重写）
+//
+// 设计（对齐 OpenClaw / Hermes 的探测哲学）：
+// - 探测请求复用生产聊天的构造管线（协议解析 / quirks / 适配器），杜绝
+//   「测试请求方言 ≠ 真实请求方言」的假阴性——推理模型的 max_completion_tokens
+//   迁移、思考开关、采样参数移除等都与生产一致；
+// - 聊天探测走流式且只等第一个有效事件：思考型模型的首个 reasoning delta 通常
+//   几秒内到达，不会像非流式那样被完整思考时长拖超时；
+// - 失败按类别归因（认证/计费/限流/模型不存在/超时/格式…），业务失败一律
+//   返回 Ok(ok=false)，Err 仅保留给配置校验与内部错误。
+// ============================================================================
+
+/// 设置页「测试连接」的结构化结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionTestOutcome {
+    pub ok: bool,
+    pub latency_ms: u64,
+    /// 失败分类：config / auth / billing / model_not_found / bad_request /
+    /// rate_limit / timeout / server / network / format / provider_error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// 软接受警告：端点可达但存在不确定性（如模型目录未列出该模型）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+impl ConnectionTestOutcome {
+    fn success(latency_ms: u64, warning: Option<String>) -> Self {
+        Self {
+            ok: true,
+            latency_ms,
+            category: None,
+            message: None,
+            warning,
+        }
+    }
+
+    fn failure(category: &str, message: impl Into<String>, latency_ms: u64) -> Self {
+        Self {
+            ok: false,
+            latency_ms,
+            category: Some(category.to_string()),
+            message: Some(message.into()),
+            warning: None,
+        }
+    }
+}
+
+/// 被测模型的类型分支。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TestModelKind {
+    Chat,
+    Embedding,
+    Reranker,
+    ImageGeneration,
+}
+
+/// 类型判定：配置能力标志优先，模型名启发式兜底（草稿配置可能尚未设置标志）。
+fn resolve_test_model_kind(config: &ApiConfig) -> TestModelKind {
+    if config.is_embedding {
+        return TestModelKind::Embedding;
+    }
+    if config.is_reranker {
+        return TestModelKind::Reranker;
+    }
+    if config.is_image_generation {
+        return TestModelKind::ImageGeneration;
+    }
+    let lower = config.model.to_lowercase();
+    if lower.contains("rerank") {
+        return TestModelKind::Reranker;
+    }
+    if lower.contains("embedding") || lower.contains("bge-") || lower.contains("embed") {
+        return TestModelKind::Embedding;
+    }
+    if crate::llm_manager::looks_like_image_generation_model_id(&config.model) {
+        return TestModelKind::ImageGeneration;
+    }
+    TestModelKind::Chat
+}
+
+/// 构造聊天探测请求体：与生产流式路径相同的构造顺序
+/// （stream:true → apply_reasoning_config → apply_generation_params）。
+/// 差异仅两处有界化：max_output_tokens 压到 32（≥16 兼容 OpenAI 推理模型的
+/// max_output_tokens 下限；Anthropic max_tokens 下限为 1），并显式关闭思考
+/// （强制思考模型由各适配器自行兜底，与生产运行时覆盖语义一致）。
+fn build_chat_probe_body(config: &ApiConfig) -> serde_json::Value {
+    let mut probe = config.clone();
+    probe.max_output_tokens = 32;
+    let quirks = crate::llm_manager::provider_quirks::resolve_quirks(&probe);
+    let mut body = serde_json::json!({
+        "model": probe.model,
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": true,
+    });
+    crate::llm_manager::LLMManager::apply_reasoning_config(&mut body, &probe, Some(false));
+    crate::llm_manager::apply_generation_params(&mut body, &probe, &quirks);
+    body
+}
+
+/// 把 HTTP 失败状态码归类为失败类别 + 用户可读摘要（响应体已截断脱敏）。
+fn classify_probe_http_failure(status: reqwest::StatusCode, body: &str) -> (&'static str, String) {
+    let detail = truncate_provider_error_detail(body.to_string());
+    let (category, summary) = match status.as_u16() {
+        401 | 403 => ("auth", "认证失败：API 密钥无效、已过期或权限不足"),
+        402 => ("billing", "账户余额不足或需要订阅"),
+        404 => ("model_not_found", "未找到该模型（模型名错误或端点路径不正确）"),
+        408 | 504 => ("timeout", "供应商网关超时"),
+        429 => ("rate_limit", "触发供应商速率限制，请稍后重试"),
+        400 => ("bad_request", "请求被拒绝（模型名或参数与该供应商不兼容）"),
+        500..=599 => ("server", "供应商服务异常，请稍后重试"),
+        _ => ("other", "请求失败"),
+    };
+    if detail.is_empty() {
+        (category, format!("{summary}（HTTP {status}）"))
+    } else {
+        (category, format!("{summary}（HTTP {status}）：{detail}"))
+    }
+}
+
+/// 传输层错误归类。错误文本经 without_url 脱敏（URL 可能含 query 密钥）。
+fn classify_probe_transport_error(error: reqwest::Error) -> (&'static str, String) {
+    let is_timeout = error.is_timeout();
+    let is_connect = error.is_connect();
+    let sanitized = error.without_url();
+    if is_timeout {
+        ("timeout", format!("请求超时：{sanitized}"))
+    } else if is_connect {
+        (
+            "network",
+            format!("无法连接到供应商端点（检查地址/网络/证书）：{sanitized}"),
+        )
+    } else {
+        ("network", format!("网络请求失败：{sanitized}"))
+    }
+}
+
+/// 流式探测的判定结果。
+enum ProbeVerdict {
+    /// 证据不足，继续读流。
+    Pending,
+    Success,
+    Failure(&'static str, String),
+}
+
+/// 判定单个 SSE data 载荷；None 表示该载荷无判定价值（继续看后续事件）。
+fn judge_sse_payload(payload: &str) -> Option<ProbeVerdict> {
+    let payload = payload.trim();
+    if payload.is_empty() {
+        return None;
+    }
+    // 传输与模型链路正常即算成功——连接测试不评估内容质量，空完成也接受。
+    if payload == "[DONE]" {
+        return Some(ProbeVerdict::Success);
+    }
+    // 非 JSON 载荷（极少见的 keep-alive 文本）无判定价值。
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+        let message = error
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| error.to_string());
+        return Some(ProbeVerdict::Failure(
+            "provider_error",
+            format!("供应商返回错误：{}", truncate_provider_error_detail(message)),
+        ));
+    }
+    // 任何形态的有效事件（choices delta / response.created / message_start /
+    // candidates…）都证明「端点 + 密钥 + 模型」链路可用。
+    Some(ProbeVerdict::Success)
+}
+
+/// 扫描累积的响应缓冲，寻找第一个可判定的证据。
+/// 覆盖三种响应形态：SSE 流（标准）、整体 JSON（网关忽略 stream 参数）、
+/// HTML（代理错误页）。
+fn inspect_probe_buffer(buffer: &[u8], eof: bool) -> ProbeVerdict {
+    let text = String::from_utf8_lossy(buffer);
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return if eof {
+            ProbeVerdict::Failure("format", "供应商返回了空响应".to_string())
+        } else {
+            ProbeVerdict::Pending
+        };
+    }
+    if trimmed.starts_with('{') {
+        return match serde_json::from_str::<serde_json::Value>(trimmed) {
+            Ok(value) => {
+                if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+                    let message = error
+                        .get("message")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| error.to_string());
+                    ProbeVerdict::Failure(
+                        "provider_error",
+                        format!("供应商返回错误：{}", truncate_provider_error_detail(message)),
+                    )
+                } else {
+                    ProbeVerdict::Success
+                }
+            },
+            // JSON 未收全时继续等；EOF 还解析不了就是格式错误。
+            Err(_) if !eof => ProbeVerdict::Pending,
+            Err(_) => ProbeVerdict::Failure(
+                "format",
+                "响应不是有效的 JSON/SSE（网关可能不支持该协议）".to_string(),
+            ),
+        };
+    }
+    if trimmed.starts_with('<') {
+        return ProbeVerdict::Failure(
+            "format",
+            "端点返回了 HTML 页面（通常是网关/代理错误页或地址填错）".to_string(),
+        );
+    }
+    // SSE：按空行分隔事件块，提取第一个带 data 的完整块。
+    let mut rest: &str = &text;
+    loop {
+        let Some(end) = rest.find("\n\n") else {
+            // 没有完整块：EOF 时兜底判定残余 data 行，否则继续等。
+            if eof {
+                for line in rest.lines() {
+                    if let Some(payload) = line.strip_prefix("data:") {
+                        if let Some(verdict) = judge_sse_payload(payload) {
+                            return verdict;
+                        }
+                    }
+                }
+                return ProbeVerdict::Failure(
+                    "format",
+                    "流式响应结束但未收到任何数据事件".to_string(),
+                );
+            }
+            return ProbeVerdict::Pending;
+        };
+        let block = &rest[..end];
+        rest = &rest[end + 2..];
+        // 一个事件块可能有多行 data:（SSE 规范允许），拼接后判定。
+        let mut payload = String::new();
+        for line in block.lines() {
+            if let Some(data) = line.strip_prefix("data:") {
+                if !payload.is_empty() {
+                    payload.push('\n');
+                }
+                payload.push_str(data.trim_start_matches(' '));
+            }
+        }
+        // event:/注释/keep-alive 块无 data，跳过看下一个块。
+        if let Some(verdict) = judge_sse_payload(&payload) {
+            return verdict;
+        }
+    }
+}
+
+/// 聊天生成式探测：发送流式请求，等到第一个有效事件即判定成功并中断
+/// （不为探测消耗多余 token）。
+async fn run_chat_probe(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+    body: &serde_json::Value,
+    timeout: Duration,
+) -> std::result::Result<(), (&'static str, String)> {
+    use futures_util::StreamExt;
+
+    let probe = async {
+        let mut builder = client.post(url);
+        for (name, value) in headers {
+            builder = builder.header(name, value);
+        }
+        let response = builder
+            .json(body)
+            .send()
+            .await
+            .map_err(|error| classify_probe_transport_error(error))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(classify_probe_http_failure(status, &text));
+        }
+        let mut stream = response.bytes_stream();
+        let mut buffer: Vec<u8> = Vec::with_capacity(4096);
+        loop {
+            match stream.next().await {
+                Some(Ok(chunk)) => {
+                    buffer.extend_from_slice(&chunk);
+                    match inspect_probe_buffer(&buffer, false) {
+                        ProbeVerdict::Pending => {
+                            if buffer.len() > 64 * 1024 {
+                                return Err((
+                                    "format",
+                                    "响应过长且无可解析的数据事件".to_string(),
+                                ));
+                            }
+                        }
+                        ProbeVerdict::Success => return Ok(()),
+                        ProbeVerdict::Failure(category, message) => {
+                            return Err((category, message))
+                        }
+                    }
+                }
+                Some(Err(error)) => return Err(classify_probe_transport_error(error)),
+                None => {
+                    return match inspect_probe_buffer(&buffer, true) {
+                        ProbeVerdict::Success => Ok(()),
+                        ProbeVerdict::Failure(category, message) => Err((category, message)),
+                        ProbeVerdict::Pending => Err((
+                            "format",
+                            "流式响应结束但未收到有效事件".to_string(),
+                        )),
+                    };
+                }
+            }
+        }
+    };
+    match tokio::time::timeout(timeout, probe).await {
+        Ok(result) => result,
+        Err(_) => Err((
+            "timeout",
+            format!("等待供应商响应超过 {} 秒", timeout.as_secs()),
+        )),
+    }
+}
+
+/// 非流式 JSON 探测（嵌入/重排序）：2xx + 有效 JSON + 无 error 字段即成功。
+async fn run_json_probe(
+    client: &reqwest::Client,
+    url: &str,
+    api_key: &str,
+    extra_headers: Option<&HashMap<String, String>>,
+    body: serde_json::Value,
+    timeout: Duration,
+) -> std::result::Result<(), (&'static str, String)> {
+    let probe = async {
+        let mut builder = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json");
+        if !api_key.trim().is_empty() {
+            builder = builder.header("Authorization", format!("Bearer {}", api_key.trim()));
+        }
+        if let Some(extra) = extra_headers {
+            for (name, value) in extra {
+                builder = builder.header(name, value);
+            }
+        }
+        let response = builder
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| classify_probe_transport_error(error))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(classify_probe_http_failure(status, &text));
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return Err((
+                "format",
+                format!("响应不是有效 JSON：{}", truncate_provider_error_detail(text)),
+            ));
+        };
+        if value.get("error").filter(|error| !error.is_null()).is_some() {
+            return Err((
+                "provider_error",
+                format!("供应商返回错误：{}", truncate_provider_error_detail(text)),
+            ));
+        }
+        Ok(())
+    };
+    match tokio::time::timeout(timeout, probe).await {
+        Ok(result) => result,
+        Err(_) => Err((
+            "timeout",
+            format!("等待供应商响应超过 {} 秒", timeout.as_secs()),
+        )),
+    }
+}
+
+/// 图像生成模型的目录探测（不真生成，避免探测产生计费）：GET /models 验证
+/// 端点与密钥，模型未在清单中仅软接受并警告（很多端点的清单不完整）。
+async fn run_catalog_probe(
+    client: &reqwest::Client,
+    config: &ApiConfig,
+    timeout: Duration,
+) -> std::result::Result<Option<String>, (&'static str, String)> {
+    let vendor_shim = VendorConfig {
+        id: "connection-test".to_string(),
+        name: "connection test".to_string(),
+        provider_type: config.provider_type.clone().unwrap_or_default(),
+        auth_mode: config.auth_mode.clone(),
+        api_protocol: config.api_protocol.clone(),
+        supports_openai_responses: config.supports_openai_responses,
+        base_url: config.base_url.clone(),
+        api_key: config.api_key.clone(),
+        headers: config.headers.clone().unwrap_or_default(),
         ..Default::default()
     };
-    inferred_config.supports_openai_responses = supports_openai_responses;
-    if inferred_config.provider_type.is_none() && api_base.to_lowercase().contains("api.openai.com")
-    {
-        inferred_config.provider_type = Some("openai".to_string());
-    }
+    let (endpoint, kind) = vendor_models_endpoint(
+        &config.base_url,
+        &vendor_shim.provider_type,
+        config.api_protocol.as_deref(),
+    )
+    .map_err(|error| ("config", error.to_string()))?;
+    let headers = vendor_model_headers(&vendor_shim, kind)
+        .map_err(|error| ("config", error.to_string()))?;
 
-    if should_use_openai_responses_for_config(&inferred_config) {
-        "openai_responses"
-    } else {
-        "openai_chat_completions"
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TestProviderAdapter {
-    OpenAi,
-    Anthropic,
-    Gemini,
-}
-
-fn resolve_test_provider_adapter(
-    provider_type: Option<&str>,
-    model_adapter: Option<&str>,
-) -> TestProviderAdapter {
-    let normalized_adapter = model_adapter.unwrap_or_default().trim().to_lowercase();
-    match normalized_adapter.as_str() {
-        "anthropic" | "claude" => return TestProviderAdapter::Anthropic,
-        "google" | "gemini" => return TestProviderAdapter::Gemini,
-        _ => {}
-    }
-
-    match provider_type
-        .unwrap_or_default()
-        .trim()
-        .to_lowercase()
-        .as_str()
-    {
-        "anthropic" | "claude" => TestProviderAdapter::Anthropic,
-        "google" | "gemini" => TestProviderAdapter::Gemini,
-        _ => TestProviderAdapter::OpenAi,
-    }
-}
-
-fn build_test_provider_request(
-    api_base: &str,
-    api_key: &str,
-    model: &str,
-    request_body: &serde_json::Value,
-    protocol: &str,
-    provider_type: Option<&str>,
-    model_adapter: Option<&str>,
-) -> std::result::Result<crate::providers::ProviderRequest, crate::providers::ProviderError> {
-    use crate::providers::ProviderAdapter;
-
-    let adapter: Box<dyn ProviderAdapter> =
-        match resolve_test_provider_adapter(provider_type, model_adapter) {
-            TestProviderAdapter::Anthropic => Box::new(crate::providers::AnthropicAdapter::new()),
-            TestProviderAdapter::Gemini => Box::new(crate::providers::GeminiAdapter::new()),
-            TestProviderAdapter::OpenAi if protocol == "openai_responses" => {
-                Box::new(crate::providers::OpenAIResponsesAdapter::new())
-            }
-            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter::new()),
+    let probe = async {
+        let response = client
+            .get(endpoint)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| classify_probe_transport_error(error))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(classify_probe_http_failure(status, &text));
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return Err((
+                "format",
+                "模型清单响应不是有效 JSON（端点可能不支持 /models）".to_string(),
+            ));
         };
-
-    adapter.build_request(api_base, api_key, model, request_body)
+        let mut ids: HashSet<String> = HashSet::new();
+        if kind == "gemini" {
+            if let Some(models) = value.get("models").and_then(serde_json::Value::as_array) {
+                for item in models {
+                    if let Some(name) = item.get("name").and_then(serde_json::Value::as_str) {
+                        ids.insert(name.strip_prefix("models/").unwrap_or(name).to_string());
+                    }
+                }
+            }
+        } else if let Some(data) = value.get("data").and_then(serde_json::Value::as_array) {
+            for item in data {
+                if let Some(id) = item.get("id").and_then(serde_json::Value::as_str) {
+                    ids.insert(id.to_string());
+                }
+            }
+        }
+        if ids.is_empty() {
+            // 清单为空/缺字段：端点可达但无法核对模型，软接受。
+            return Ok(Some(
+                "端点可达，但模型清单为空或该端点不实现 /models，模型将在实际使用时验证"
+                    .to_string(),
+            ));
+        }
+        let lower = config.model.to_lowercase();
+        if ids.iter().any(|id| id.to_lowercase() == lower) {
+            Ok(None)
+        } else {
+            Ok(Some(format!(
+                "端点可达且密钥有效，但模型清单中未找到「{}」（可能是隐藏/未列出模型）",
+                config.model
+            )))
+        }
+    };
+    match tokio::time::timeout(timeout, probe).await {
+        Ok(result) => result,
+        Err(_) => Err((
+            "timeout",
+            format!("获取模型清单超过 {} 秒", timeout.as_secs()),
+        )),
+    }
 }
 
 fn is_openai_codex_oauth_test(
@@ -2292,21 +2683,40 @@ pub async fn fetch_vendor_models(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn test_api_connection(
     api_key: String,
     api_base: String,
     api_protocol: Option<String>,
     supports_openai_responses: Option<bool>,
     provider_type: Option<String>,
+    provider_scope: Option<String>,
     auth_mode: Option<String>,
     model_adapter: Option<String>,
     model: Option<String>,
     vendor_id: Option<String>,
     headers: Option<HashMap<String, String>>,
+    // 模型能力字段（2026-09）：前端表单/已保存配置透传，用于构造与生产一致
+    // 的探测请求。全部为 None 时回落到已保存 profile 或默认值。
+    is_embedding: Option<bool>,
+    is_reranker: Option<bool>,
+    is_image_generation: Option<bool>,
+    is_reasoning: Option<bool>,
+    supports_reasoning: Option<bool>,
+    enable_thinking: Option<bool>,
+    thinking_budget: Option<i32>,
+    include_thoughts: Option<bool>,
+    reasoning_effort: Option<String>,
+    reasoning_mode: Option<String>,
+    max_output_tokens: Option<u32>,
+    max_tokens_limit: Option<u32>,
+    gemini_api_version: Option<String>,
     state: State<'_, AppState>,
-) -> Result<bool> {
+) -> Result<ConnectionTestOutcome> {
     use reqwest::Client;
     use std::time::Duration;
+
+    let started = std::time::Instant::now();
 
     info!(
         "[API测试] 开始测试连接: base={}, model={:?}, vendor_id={:?}",
@@ -2435,60 +2845,110 @@ pub async fn test_api_connection(
         }
     };
 
-    let protocol = resolve_test_api_protocol(
-        &api_base,
-        api_protocol.as_deref(),
-        model.as_deref(),
-        supports_openai_responses,
-        effective_provider_type.as_deref(),
-        model_adapter.as_deref(),
-    );
-
     let model_id = model.unwrap_or_else(|| "gpt-4o-mini".to_string());
-    let request_body = serde_json::json!({
-        "model": model_id.clone(),
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 1,
-        "stream": false
-    });
 
+    // 构造与生产一致的运行期配置：已保存的模型条目走 vendor+profile 合并
+    // （能力字段/协议/思考配置全部继承生产语义）；表单显式传入的字段覆盖
+    // 已保存值（编辑器内未保存的修改优先）。
+    let saved_runtime = if let Some(vid) = vendor_id.as_deref() {
+        state
+            .llm_manager
+            .runtime_config_for_vendor_model(vid, &model_id)
+            .await
+    } else {
+        None
+    };
+    let mut config = saved_runtime.unwrap_or_else(|| ApiConfig {
+        id: "connection-test".to_string(),
+        name: "API connection test".to_string(),
+        ..Default::default()
+    });
+    config.vendor_id = vendor_id.clone();
+    config.provider_type = effective_provider_type.or(config.provider_type);
+    config.auth_mode = effective_auth_mode.or(config.auth_mode);
+    if provider_scope.is_some() {
+        config.provider_scope = provider_scope;
+    }
+    if api_protocol.is_some() {
+        config.api_protocol = api_protocol;
+    }
+    if supports_openai_responses.is_some() {
+        config.supports_openai_responses = supports_openai_responses;
+    }
+    config.api_key = effective_api_key;
+    config.base_url = api_base.clone();
+    config.model = model_id.clone();
+    if let Some(adapter) = model_adapter {
+        config.model_adapter = adapter;
+    }
+    let configured_headers = persisted_vendor
+        .as_ref()
+        .map(|vendor| vendor.headers.clone())
+        .filter(|configured| !configured.is_empty());
+    if configured_headers.is_some() || headers.is_some() {
+        config.headers = configured_headers.or(headers);
+    }
+    // 能力字段覆盖
+    if let Some(value) = is_embedding {
+        config.is_embedding = value;
+    }
+    if let Some(value) = is_reranker {
+        config.is_reranker = value;
+    }
+    if let Some(value) = is_image_generation {
+        config.is_image_generation = value;
+    }
+    if let Some(value) = is_reasoning {
+        config.is_reasoning = value;
+    }
+    if let Some(value) = supports_reasoning {
+        config.supports_reasoning = value;
+    }
+    if enable_thinking.is_some() {
+        config.enable_thinking = enable_thinking;
+    }
+    if let Some(value) = thinking_budget {
+        config.thinking_budget = Some(value);
+    }
+    if let Some(value) = include_thoughts {
+        config.include_thoughts = value;
+    }
+    if reasoning_effort.is_some() {
+        config.reasoning_effort = reasoning_effort;
+    }
+    if reasoning_mode.is_some() {
+        config.reasoning_mode = reasoning_mode;
+    }
+    if let Some(value) = max_output_tokens {
+        config.max_output_tokens = value;
+    }
+    if let Some(value) = max_tokens_limit {
+        config.max_tokens_limit = Some(value);
+    }
+    if let Some(value) = gemini_api_version {
+        config.gemini_api_version = value;
+    }
+
+    let latency_ms = || started.elapsed().as_millis() as u64;
+
+    // Codex OAuth：保留专用的凭据刷新发送路径，但请求体改为统一探测构造
+    // （原 max_tokens:1 会被 Responses 推理模型拒绝），超时 10s → 60s
+    // （桥接非流式需要等完整响应，推理模型经常超过 10s）。
     if is_codex_oauth {
-        let config = ApiConfig {
-            id: "connection-test".to_string(),
-            name: "OpenAI Codex connection test".to_string(),
-            vendor_id: vendor_id.clone(),
-            provider_type: effective_provider_type,
-            auth_mode: effective_auth_mode,
-            api_protocol: Some(protocol.to_string()),
-            supports_openai_responses: Some(true),
-            api_key: String::new(),
-            base_url: persisted_vendor
-                .as_ref()
-                .map(|vendor| vendor.base_url.clone())
-                .filter(|base_url| !base_url.trim().is_empty())
-                .unwrap_or_else(|| api_base.clone()),
-            model: model_id.clone(),
-            model_adapter: model_adapter.unwrap_or_else(|| "openai".to_string()),
-            headers: persisted_vendor
-                .as_ref()
-                .map(|vendor| vendor.headers.clone())
-                .filter(|headers| !headers.is_empty())
-                .or(headers),
-            ..Default::default()
-        };
-        let mut adapted_request_body = request_body.clone();
-        crate::llm_manager::LLMManager::apply_reasoning_config(
-            &mut adapted_request_body,
-            &config,
-            None,
-        );
+        config.api_protocol = Some("openai_responses".to_string());
+        config.supports_openai_responses = Some(true);
+        config.api_key = String::new();
+        if config.model_adapter.is_empty() || config.model_adapter == "general" {
+            config.model_adapter = "openai".to_string();
+        }
+        let probe_body = build_chat_probe_body(&config);
         let adapter = build_provider_adapter(&config);
         let mut request = state
             .llm_manager
             .prepare_provider_request(
                 adapter.as_ref(),
                 &config,
-                &adapted_request_body,
+                &probe_body,
                 None,
                 None,
                 "Codex 连接测试请求构建失败",
@@ -2496,96 +2956,104 @@ pub async fn test_api_connection(
             .await?;
         let response = state
             .llm_manager
-            .send_codex_request_with_single_refresh(&mut request, Some(Duration::from_secs(10)))
+            .send_codex_request_with_single_refresh(&mut request, Some(Duration::from_secs(60)))
             .await?;
         let status = response.status();
         if status.is_success() {
             info!("[API测试] Codex OAuth 连接成功");
-            return Ok(true);
+            return Ok(ConnectionTestOutcome::success(latency_ms(), None));
         }
-        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
-        error!(
-            "[API测试] Codex OAuth 连接失败: {} - {}",
-            status, error_text
-        );
-        return Err(AppError::network(format!(
-            "Codex 连接测试失败: {} - {}",
-            status, error_text
-        )));
+        let error_text = response.text().await.unwrap_or_default();
+        error!("[API测试] Codex OAuth 连接失败: {} - {}", status, error_text);
+        let (category, message) = classify_probe_http_failure(status, &error_text);
+        return Ok(ConnectionTestOutcome::failure(
+            category,
+            format!("Codex 连接测试失败 - {message}"),
+            latency_ms(),
+        ));
     }
 
-    let config = ApiConfig {
-        id: "connection-test".to_string(),
-        name: "API connection test".to_string(),
-        vendor_id: vendor_id.clone(),
-        provider_type: effective_provider_type,
-        auth_mode: effective_auth_mode,
-        api_protocol: Some(protocol.to_string()),
-        supports_openai_responses,
-        api_key: effective_api_key,
-        base_url: api_base,
-        model: model_id,
-        model_adapter: model_adapter.unwrap_or_else(|| "general".to_string()),
-        headers: persisted_vendor
-            .as_ref()
-            .map(|vendor| vendor.headers.clone())
-            .filter(|configured| !configured.is_empty())
-            .or(headers),
-        ..Default::default()
-    };
-    let mut adapted_request_body = request_body;
-    crate::llm_manager::LLMManager::apply_reasoning_config(
-        &mut adapted_request_body,
-        &config,
-        None,
-    );
-    let adapter = build_provider_adapter(&config);
-    let provider_request = state
-        .llm_manager
-        .prepare_provider_request(
-            adapter.as_ref(),
-            &config,
-            &adapted_request_body,
-            None,
-            None,
-            "API连接测试请求构建失败",
-        )
-        .await?;
-
-    let timeout_ms = persisted_vendor
-        .as_ref()
-        .and_then(|vendor| vendor.default_timeout_ms)
-        .unwrap_or(10_000)
-        .clamp(1_000, 120_000);
-    // 连接测试遵循供应商超时设置，同时禁止跨源重定向。
+    // 探测客户端：跟随重定向（reqwest 跨源重定向会剥离敏感头，同源重定向
+    // 保留——与生产客户端语义一致），总时长由外层 tokio timeout 控制。
     let client = Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| AppError::network(format!("创建HTTP客户端失败: {}", e)))?;
 
-    let mut request_builder = client.post(&provider_request.url);
-    for (name, value) in &provider_request.headers {
-        request_builder = request_builder.header(name, value);
-    }
-    // 发送请求
-    let response = request_builder
-        .json(&provider_request.body)
-        .send()
-        .await
-        .map_err(|e| AppError::network(format!("API连接测试失败: {}", e.without_url())))?;
+    let vendor_timeout = persisted_vendor
+        .as_ref()
+        .and_then(|vendor| vendor.default_timeout_ms);
 
-    let status = response.status();
-    if status.is_success() {
-        info!("[API测试] 连接成功");
-        Ok(true)
-    } else {
-        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
-        error!("[API测试] 连接失败: {} - {}", status, error_text);
-        Err(AppError::network(format!(
-            "API连接测试失败: {} - {}",
-            status, error_text
-        )))
+    let kind = resolve_test_model_kind(&config);
+    info!("[API测试] 模型类型分支: {:?} (model={})", kind, config.model);
+
+    let probe_result: std::result::Result<Option<String>, (&'static str, String)> = match kind {
+        TestModelKind::Chat => {
+            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(45_000).clamp(5_000, 120_000));
+            let probe_body = build_chat_probe_body(&config);
+            let adapter = build_provider_adapter(&config);
+            let prepared = state
+                .llm_manager
+                .prepare_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &probe_body,
+                    None,
+                    None,
+                    "API连接测试请求构建失败",
+                )
+                .await?;
+            run_chat_probe(
+                &client,
+                &prepared.url,
+                &prepared.headers,
+                &prepared.body,
+                timeout,
+            )
+            .await
+            .map(|_| None)
+        }
+        TestModelKind::Embedding => {
+            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
+            let url = format!("{}/embeddings", config.base_url.trim_end_matches('/'));
+            let body = serde_json::json!({
+                "model": config.model,
+                "input": ["连接测试"],
+                "encoding_format": "float"
+            });
+            run_json_probe(&client, &url, &config.api_key, None, body, timeout)
+                .await
+                .map(|_| None)
+        }
+        TestModelKind::Reranker => {
+            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
+            let url = format!("{}/rerank", config.base_url.trim_end_matches('/'));
+            let body = serde_json::json!({
+                "model": config.model,
+                "query": "连接测试",
+                "documents": ["测试文档1", "测试文档2"],
+                "top_k": 2,
+                "return_documents": true
+            });
+            run_json_probe(&client, &url, &config.api_key, None, body, timeout)
+                .await
+                .map(|_| None)
+        }
+        TestModelKind::ImageGeneration => {
+            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(10_000).clamp(5_000, 60_000));
+            run_catalog_probe(&client, &config, timeout).await
+        }
+    };
+
+    match probe_result {
+        Ok(warning) => {
+            info!("[API测试] 连接成功（警告: {:?}）", warning);
+            Ok(ConnectionTestOutcome::success(latency_ms(), warning))
+        }
+        Err((category, message)) => {
+            error!("[API测试] 连接失败 [{}]: {}", category, message);
+            Ok(ConnectionTestOutcome::failure(category, message, latency_ms()))
+        }
     }
 }
 
@@ -4249,12 +4717,13 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_test_provider_request, compare_template_version, decide_builtin_import_action,
-        extract_template_field_refs, is_openai_codex_oauth_test, resolve_test_api_protocol,
-        resolve_test_provider_adapter, should_update_builtin_template, validate_template_request,
-        BuiltinImportAction, TestProviderAdapter,
+        build_chat_probe_body, build_provider_adapter, classify_probe_http_failure,
+        compare_template_version, decide_builtin_import_action, extract_template_field_refs,
+        inspect_probe_buffer, is_openai_codex_oauth_test, resolve_test_model_kind,
+        should_update_builtin_template, validate_template_request, BuiltinImportAction,
+        ProbeVerdict, TestModelKind,
     };
-    use crate::llm_manager::{VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
+    use crate::llm_manager::{ApiConfig, VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
     use serde_json::json;
     use std::cmp::Ordering;
 
@@ -4474,213 +4943,241 @@ mod tests {
     }
 
     #[test]
-    fn resolve_test_api_protocol_prefers_explicit_protocol() {
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://proxy.example.com/v1",
-                Some("openai_responses"),
-                Some("gpt-4o-mini"),
-                None,
-                None,
-                None,
-            ),
-            "openai_chat_completions"
-        );
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://api.openai.com/v1",
-                Some("openai_chat_completions"),
-                Some("gpt-5"),
-                None,
-                None,
-                None,
-            ),
-            "openai_chat_completions"
-        );
+    fn chat_probe_body_uses_completion_tokens_for_reasoning_models() {
+        // 推理模型走 max_completion_tokens（quirks 方言），不再发送 max_tokens:1
+        let config = ApiConfig {
+            model: "o3".to_string(),
+            provider_type: Some("custom".to_string()),
+            provider_scope: Some("custom".to_string()),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..ApiConfig::default()
+        };
+        let body = build_chat_probe_body(&config);
+        assert_eq!(body["max_completion_tokens"], json!(32));
+        assert!(body.get("max_tokens").is_none(), "body={body}");
+        assert_eq!(body["stream"], json!(true));
+        // 推理模式不写采样参数
+        assert!(body.get("temperature").is_none(), "body={body}");
     }
 
     #[test]
-    fn resolve_test_api_protocol_defaults_official_openai_to_responses() {
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://api.openai.com/v1",
-                None,
-                Some("gpt-4o-mini"),
-                None,
-                None,
-                None,
-            ),
-            "openai_responses"
-        );
+    fn chat_probe_body_keeps_max_tokens_for_plain_models() {
+        let config = ApiConfig {
+            model: "gpt-4o-mini".to_string(),
+            provider_type: Some("custom".to_string()),
+            provider_scope: Some("custom".to_string()),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            ..ApiConfig::default()
+        };
+        let body = build_chat_probe_body(&config);
+        assert_eq!(body["max_tokens"], json!(32));
+        assert!(body.get("max_completion_tokens").is_none(), "body={body}");
+        assert_eq!(body["stream"], json!(true));
     }
 
     #[test]
-    fn resolve_test_api_protocol_defaults_third_party_gpt5_to_responses() {
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://proxy.example.com/v1",
-                None,
-                Some("gpt-4o-mini"),
-                Some(true),
-                Some("custom"),
-                Some("qwen"),
-            ),
-            "openai_responses"
-        );
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://proxy.example.com/v1",
-                None,
-                Some("o4-mini"),
-                Some(true),
-                Some("custom"),
-                Some("deepseek"),
-            ),
-            "openai_responses"
-        );
+    fn chat_probe_body_disables_thinking_for_qwen_reasoning() {
+        // Qwen 推理模型：探测显式关思考（避免思考时长拖超时），token 字段迁移
+        let config = ApiConfig {
+            model: "qwen3-max".to_string(),
+            provider_type: Some("qwen".to_string()),
+            provider_scope: Some("qwen".to_string()),
+            model_adapter: "qwen".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            is_reasoning: true,
+            supports_reasoning: true,
+            enable_thinking: Some(true),
+            ..ApiConfig::default()
+        };
+        let body = build_chat_probe_body(&config);
+        assert_eq!(body["enable_thinking"], json!(false));
+        assert_eq!(body["max_completion_tokens"], json!(32));
+        assert!(body.get("max_tokens").is_none(), "body={body}");
     }
 
     #[test]
-    fn resolve_test_api_protocol_only_honors_explicit_responses_for_supported_endpoints() {
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://api.openai.com/v1",
-                Some("openai_responses"),
-                Some("gpt-5"),
-                None,
-                None,
-                None,
-            ),
-            "openai_responses"
-        );
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://api.qsl.fan/v1",
-                Some("openai_responses"),
-                Some("deepseek-v4-pro"),
-                None,
-                Some("openai"),
-                Some("deepseek"),
-            ),
-            "openai_chat_completions"
-        );
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                Some("openai_responses"),
-                Some("qwen-plus"),
-                None,
-                Some("qwen"),
-                Some("qwen"),
-            ),
-            "openai_responses"
-        );
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://proxy.example.com/v1",
-                Some("openai_responses"),
-                Some("claude-sonnet-4-5"),
-                Some(true),
-                Some("custom"),
-                Some("anthropic"),
-            ),
-            "openai_responses"
-        );
+    fn chat_probe_body_respects_mimo_dialect() {
+        // MiMo 只认 max_completion_tokens，且 thinking 需显式 disabled
+        let config = ApiConfig {
+            model: "mimo-v2.5-pro".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            model_adapter: "mimo".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..ApiConfig::default()
+        };
+        let body = build_chat_probe_body(&config);
+        assert_eq!(body["max_completion_tokens"], json!(32));
+        assert!(body.get("max_tokens").is_none(), "body={body}");
+        assert_eq!(body["thinking"], json!({ "type": "disabled" }));
     }
 
     #[test]
-    fn resolve_test_api_protocol_keeps_generic_third_party_models_on_chat_completions() {
-        assert_eq!(
-            resolve_test_api_protocol(
-                "https://proxy.example.com/v1",
-                None,
-                Some("gpt-4o-mini"),
-                None,
-                Some("custom"),
-                Some("general"),
-            ),
-            "openai_chat_completions"
-        );
+    fn chat_probe_body_routes_gpt5_official_to_responses_dialect() {
+        // 官方 OpenAI + gpt-5：协议解析为 Responses，token 上限映射为
+        // max_output_tokens（≥16 满足推理模型下限）
+        let config = ApiConfig {
+            model: "gpt-5.5".to_string(),
+            provider_type: Some("openai".to_string()),
+            api_protocol: Some("openai_responses".to_string()),
+            supports_openai_responses: Some(true),
+            base_url: "https://api.openai.com/v1".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..ApiConfig::default()
+        };
+        let body = build_chat_probe_body(&config);
+        let adapter = build_provider_adapter(&config);
+        let request = adapter
+            .build_request(&config.base_url, "test-key", &config.model, &body)
+            .expect("Responses probe request should build");
+        assert!(request.url.ends_with("/responses"), "url={}", request.url);
+        assert_eq!(request.body["max_output_tokens"], json!(32));
+        assert!(request.body.get("max_tokens").is_none(), "body={:?}", request.body);
+        assert_eq!(request.body["stream"], json!(true));
     }
 
     #[test]
-    fn resolve_test_provider_adapter_prefers_native_model_adapters() {
-        assert_eq!(
-            resolve_test_provider_adapter(Some("custom"), Some("anthropic")),
-            TestProviderAdapter::Anthropic
+    fn classify_probe_http_failure_maps_status_codes() {
+        let (category, message) = classify_probe_http_failure(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "{\"error\":\"invalid key\"}",
         );
-        assert_eq!(
-            resolve_test_provider_adapter(Some("custom"), Some("gemini")),
-            TestProviderAdapter::Gemini
-        );
-        assert_eq!(
-            resolve_test_provider_adapter(Some("anthropic"), Some("general")),
-            TestProviderAdapter::Anthropic
-        );
-        assert_eq!(
-            resolve_test_provider_adapter(Some("openai"), Some("general")),
-            TestProviderAdapter::OpenAi
-        );
+        assert_eq!(category, "auth");
+        assert!(message.contains("401"), "message={message}");
+
+        let (category, _) =
+            classify_probe_http_failure(reqwest::StatusCode::TOO_MANY_REQUESTS, "");
+        assert_eq!(category, "rate_limit");
+        let (category, _) = classify_probe_http_failure(reqwest::StatusCode::NOT_FOUND, "");
+        assert_eq!(category, "model_not_found");
+        let (category, _) =
+            classify_probe_http_failure(reqwest::StatusCode::PAYMENT_REQUIRED, "");
+        assert_eq!(category, "billing");
+        let (category, _) = classify_probe_http_failure(reqwest::StatusCode::BAD_REQUEST, "");
+        assert_eq!(category, "bad_request");
+        let (category, _) =
+            classify_probe_http_failure(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "");
+        assert_eq!(category, "server");
     }
 
     #[test]
-    fn build_test_provider_request_uses_native_endpoints_and_authentication() {
-        let body = json!({
-            "model": "placeholder",
-            "messages": [{"role": "user", "content": "Hi"}],
-            "max_tokens": 1,
-            "stream": false
-        });
+    fn inspect_probe_buffer_judges_sse_events() {
+        // OpenAI chat completions 首个 delta
+        let sse = b"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n";
+        assert!(matches!(
+            inspect_probe_buffer(sse, false),
+            ProbeVerdict::Success
+        ));
+        // 带 event: 行的 Responses 事件
+        let sse = b"event: response.created\ndata: {\"type\":\"response.created\"}\n\n";
+        assert!(matches!(
+            inspect_probe_buffer(sse, false),
+            ProbeVerdict::Success
+        ));
+        // [DONE] 也算链路正常
+        let sse = b"data: [DONE]\n\n";
+        assert!(matches!(
+            inspect_probe_buffer(sse, false),
+            ProbeVerdict::Success
+        ));
+        // SSE 错误事件 → 失败并提取 message
+        let sse = b"data: {\"error\":{\"message\":\"model not found\"}}\n\n";
+        match inspect_probe_buffer(sse, false) {
+            ProbeVerdict::Failure(category, message) => {
+                assert_eq!(category, "provider_error");
+                assert!(message.contains("model not found"), "message={message}");
+            }
+            _ => panic!("expected failure"),
+        }
+        // keep-alive 注释块无判定价值
+        let sse = b": keep-alive\n\n";
+        assert!(matches!(
+            inspect_probe_buffer(sse, false),
+            ProbeVerdict::Pending
+        ));
+        // 未收完整事件块时等待
+        let partial = b"data: {\"cho";
+        assert!(matches!(
+            inspect_probe_buffer(partial, false),
+            ProbeVerdict::Pending
+        ));
+        // EOF 时的残余 data 行兜底判定
+        assert!(matches!(
+            inspect_probe_buffer(partial_success(), true),
+            ProbeVerdict::Success
+        ));
+        // 空流 EOF → format 失败
+        assert!(matches!(
+            inspect_probe_buffer(b"", true),
+            ProbeVerdict::Failure("format", _)
+        ));
+    }
 
-        let anthropic = build_test_provider_request(
-            "https://api.anthropic.com",
-            "anthropic-key",
-            "claude-sonnet-4-5",
-            &body,
-            "anthropic_messages",
-            Some("anthropic"),
-            Some("anthropic"),
-        )
-        .expect("Anthropic test request should build");
-        assert_eq!(anthropic.url, "https://api.anthropic.com/v1/messages");
-        assert!(anthropic
-            .headers
-            .iter()
-            .any(|(name, value)| name == "x-api-key" && value == "anthropic-key"));
+    fn partial_success() -> &'static [u8] {
+        b"data: {\"choices\":[]}"
+    }
 
-        let gemini = build_test_provider_request(
-            "https://generativelanguage.googleapis.com",
-            "gemini-key",
-            "gemini-2.5-flash",
-            &body,
-            "google_generate_content",
-            Some("google"),
-            Some("google"),
-        )
-        .expect("Gemini test request should build");
-        assert!(gemini
-            .url
-            .contains("/v1/models/gemini-2.5-flash:generateContent"));
-        assert!(gemini
-            .headers
-            .iter()
-            .any(|(name, value)| name == "x-goog-api-key" && value == "gemini-key"));
+    #[test]
+    fn inspect_probe_buffer_judges_non_sse_responses() {
+        // 网关忽略 stream 参数直接返回 JSON
+        let json_body = b"{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}";
+        assert!(matches!(
+            inspect_probe_buffer(json_body, false),
+            ProbeVerdict::Success
+        ));
+        // 200 + JSON 错误体
+        let json_error = b"{\"error\":{\"message\":\"bad api key\"}}";
+        match inspect_probe_buffer(json_error, false) {
+            ProbeVerdict::Failure(category, _) => assert_eq!(category, "provider_error"),
+            _ => panic!("expected failure"),
+        }
+        // HTML 错误页
+        match inspect_probe_buffer(b"<html>502 Bad Gateway</html>", false) {
+            ProbeVerdict::Failure(category, _) => assert_eq!(category, "format"),
+            _ => panic!("expected failure"),
+        }
+    }
 
-        let responses = build_test_provider_request(
-            "https://proxy.example.com/v1",
-            "openai-key",
-            "gpt-5",
-            &body,
-            "openai_responses",
-            Some("custom"),
-            Some("general"),
-        )
-        .expect("OpenAI Responses test request should build");
-        assert_eq!(responses.url, "https://proxy.example.com/v1/responses");
-        assert!(responses
-            .headers
-            .iter()
-            .any(|(name, value)| name == "Authorization" && value == "Bearer openai-key"));
+    #[test]
+    fn test_model_kind_prefers_flags_then_heuristics() {
+        let mut config = ApiConfig {
+            model: "gpt-4o-mini".to_string(),
+            is_embedding: true,
+            ..ApiConfig::default()
+        };
+        assert_eq!(resolve_test_model_kind(&config), TestModelKind::Embedding);
+
+        config = ApiConfig {
+            model: "bge-m3".to_string(),
+            ..ApiConfig::default()
+        };
+        assert_eq!(resolve_test_model_kind(&config), TestModelKind::Embedding);
+
+        config = ApiConfig {
+            model: "bge-reranker-v2-m3".to_string(),
+            ..ApiConfig::default()
+        };
+        assert_eq!(resolve_test_model_kind(&config), TestModelKind::Reranker);
+
+        config = ApiConfig {
+            model: "gpt-image-1.5".to_string(),
+            ..ApiConfig::default()
+        };
+        assert_eq!(
+            resolve_test_model_kind(&config),
+            TestModelKind::ImageGeneration
+        );
+
+        config = ApiConfig {
+            model: "gpt-5.5".to_string(),
+            ..ApiConfig::default()
+        };
+        assert_eq!(resolve_test_model_kind(&config), TestModelKind::Chat);
     }
 
     #[test]

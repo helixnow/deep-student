@@ -18,6 +18,7 @@ import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector'
 import type { UseSettingsVendorStateDeps } from './hookDepsTypes';
 import { buildVendorOrderMap, sortApiConfigsByVendorOrder, sortVendorsBySettingsOrder } from '@/utils/modelSorting';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import type { ConnectionTestOutcome } from '@/utils/settingsApi';
 import {
   getVisibleVoiceInputApis,
   type VoiceInputSelectableApi,
@@ -139,7 +140,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         // 使用用户指定的模型名称进行测试
         // 传递 vendor_id 以便后端从安全存储获取真实密钥
         const vendorId = api.vendorId;
-        const result = await invoke('test_api_connection', {
+        const outcome = await invoke<ConnectionTestOutcome>('test_api_connection', {
           // 双写兼容：后端参数为 snake_case（api_key, api_base），某些桥接层可能校验 camelCase
           api_key: api.apiKey,
           apiKey: api.apiKey,
@@ -151,6 +152,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           supportsOpenAIResponses: api.supportsOpenAIResponses,
           provider_type: api.providerType,
           providerType: api.providerType,
+          provider_scope: api.providerScope,
+          providerScope: api.providerScope,
           auth_mode: api.authMode,
           authMode: api.authMode,
           model_adapter: api.modelAdapter,
@@ -159,17 +162,46 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           vendor_id: vendorId, // 传递供应商 ID 以便后端获取真实密钥
           vendorId: vendorId,
           headers: api.headers,
+          // 能力字段透传：后端据此构造与生产一致的探测请求（推理方言/思考开关/模型类型）
+          is_embedding: api.isEmbedding,
+          isEmbedding: api.isEmbedding,
+          is_reranker: api.isReranker,
+          isReranker: api.isReranker,
+          is_image_generation: api.isImageGeneration,
+          isImageGeneration: api.isImageGeneration,
+          is_reasoning: api.isReasoning,
+          isReasoning: api.isReasoning,
+          supports_reasoning: api.supportsReasoning,
+          supportsReasoning: api.supportsReasoning,
+          enable_thinking: api.enableThinking,
+          enableThinking: api.enableThinking,
+          thinking_budget: api.thinkingBudget,
+          thinkingBudget: api.thinkingBudget,
+          include_thoughts: api.includeThoughts,
+          includeThoughts: api.includeThoughts,
+          reasoning_effort: api.reasoningEffort,
+          reasoningEffort: api.reasoningEffort,
+          max_output_tokens: api.maxOutputTokens,
+          maxOutputTokens: api.maxOutputTokens,
+          max_tokens_limit: api.maxTokensLimit,
+          maxTokensLimit: api.maxTokensLimit,
+          gemini_api_version: api.geminiApiVersion,
+          geminiApiVersion: api.geminiApiVersion,
         });
-        
-        if (result) {
-          const latencyMs = Math.round(performance.now() - testStartedAt);
+
+        if (outcome?.ok) {
+          const latencyMs = outcome.latencyMs ?? Math.round(performance.now() - testStartedAt);
           showGlobalNotification(
             'success',
             t('settings:notifications.api_test_success', { name: api.name, model: api.model }),
-            t('settings:notifications.api_test_latency', { latency: latencyMs})
+            outcome.warning ?? t('settings:notifications.api_test_latency', { latency: latencyMs})
           );
         } else {
-          showGlobalNotification('error', t('settings:notifications.api_test_failed', { name: api.name, model: api.model }));
+          showGlobalNotification(
+            'error',
+            t('settings:notifications.api_test_failed', { name: api.name, model: api.model }),
+            outcome?.message
+          );
         }
       } else {
         // 浏览器环境模拟
