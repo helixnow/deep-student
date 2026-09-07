@@ -265,9 +265,15 @@ impl VfsIndexService {
     /// `unit.mm_state = pending` 取样，但同步抬升 `mm_index_state` 可让
     /// 资源级 claim/退避账本保持一致（否则双模态行为不对称）。
     pub fn reset_unit_index(&self, unit_id: &str, mode: &str) -> Result<(), VfsError> {
-        let conn = self.db.get_conn()?;
+        // N07（2026-09-07 审阅）：Unit 状态与资源调度状态必须原子转换——
+        // 此前先写 Unit pending 再写 resource.index_state，第二次写入失败会
+        // 留下调度层看不见的 pending unit（文本 worker 只按资源状态 claim）。
+        // 用 IMMEDIATE 事务包裹读取与全部写入，任一步失败整体回滚。
+        let mut conn = self.db.get_conn()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let conn = &*tx;
         let unit =
-            index_unit_repo::get_by_id(&conn, unit_id)?.ok_or_else(|| VfsError::NotFound {
+            index_unit_repo::get_by_id(conn, unit_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "Unit".to_string(),
                 id: unit_id.to_string(),
             })?;
@@ -301,11 +307,11 @@ impl VfsIndexService {
 
         if reset_text {
             let state = text_reset_state(&unit);
-            index_unit_repo::set_text_state(&conn, unit_id, state.clone(), None)?;
+            index_unit_repo::set_text_state(conn, unit_id, state.clone(), None)?;
             if state == IndexState::Pending {
                 // mark_pending 同时清零 retry/backoff 计数，保证手动重试立即入队
                 VfsIndexStateRepo::set_index_state_with_conn(
-                    &conn,
+                    conn,
                     &unit.resource_id,
                     embedding_repo::INDEX_STATE_PENDING,
                     None,
@@ -315,10 +321,10 @@ impl VfsIndexService {
         }
         if reset_mm {
             let state = mm_reset_state(&unit);
-            index_unit_repo::set_mm_state(&conn, unit_id, state.clone(), None)?;
+            index_unit_repo::set_mm_state(conn, unit_id, state.clone(), None)?;
             if state == IndexState::Pending {
                 VfsIndexStateRepo::set_mm_index_state_with_conn(
-                    &conn,
+                    conn,
                     &unit.resource_id,
                     embedding_repo::INDEX_STATE_PENDING,
                     None,
@@ -326,6 +332,7 @@ impl VfsIndexService {
             }
         }
 
+        tx.commit()?;
         Ok(())
     }
 
@@ -454,5 +461,122 @@ impl VfsIndexService {
     pub fn get_unit_by_id(&self, unit_id: &str) -> Result<Option<VfsIndexUnit>, VfsError> {
         let conn = self.db.get_conn()?;
         index_unit_repo::get_by_id(&conn, unit_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (tempfile::TempDir, VfsIndexService) {
+        let (tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        (tmp, VfsIndexService::new(Arc::new(db)))
+    }
+
+    /// 播种一个双模态资源 + Unit，并把两侧状态都置为 indexed（模拟已索引完成）。
+    fn seed_indexed_unit(service: &VfsIndexService, resource_id: &str) -> String {
+        let conn = service.db.get_conn().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, storage_mode, data, ref_count, created_at, updated_at, index_state, mm_index_state)
+             VALUES (?1, ?2, 'note', 'inline', 'content', 0, ?3, ?3, 'indexed', 'indexed')",
+            rusqlite::params![resource_id, format!("hash_{}", resource_id), now],
+        )
+        .unwrap();
+        let unit_id = format!("unit_{}", resource_id);
+        conn.execute(
+            "INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, mm_required, image_blob_hash, text_state, mm_state, created_at, updated_at)
+             VALUES (?1, ?2, 0, 'text', 1, 1, 'blob1', 'indexed', 'indexed', ?3, ?3)",
+            rusqlite::params![unit_id, resource_id, now],
+        )
+        .unwrap();
+        unit_id
+    }
+
+    fn states(service: &VfsIndexService, resource_id: &str, unit_id: &str) -> (String, String, String, String) {
+        let conn = service.db.get_conn().unwrap();
+        let (text_state, mm_state): (String, String) = conn
+            .query_row(
+                "SELECT text_state, mm_state FROM vfs_index_units WHERE id = ?1",
+                [unit_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        let (index_state, mm_index_state): (String, String) = conn
+            .query_row(
+                "SELECT index_state, mm_index_state FROM resources WHERE id = ?1",
+                [resource_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        (text_state, mm_state, index_state, mm_index_state)
+    }
+
+    /// N07 回归：reset 后 Unit 状态与资源调度状态必须同事务可见。
+    #[test]
+    fn reset_unit_index_text_mode_updates_unit_and_resource_atomically() {
+        let (_tmp, service) = setup();
+        let unit_id = seed_indexed_unit(&service, "res_n07_text");
+
+        service.reset_unit_index(&unit_id, "text").unwrap();
+
+        let (text_state, mm_state, index_state, mm_index_state) =
+            states(&service, "res_n07_text", &unit_id);
+        assert_eq!(text_state, "pending");
+        assert_eq!(index_state, "pending", "资源调度状态必须与 Unit 同时抬升");
+        assert_eq!(mm_state, "indexed", "text 模式不应触碰 mm 侧");
+        assert_eq!(mm_index_state, "indexed");
+    }
+
+    #[test]
+    fn reset_unit_index_mm_mode_updates_unit_and_resource_atomically() {
+        let (_tmp, service) = setup();
+        let unit_id = seed_indexed_unit(&service, "res_n07_mm");
+
+        service.reset_unit_index(&unit_id, "mm").unwrap();
+
+        let (text_state, mm_state, index_state, mm_index_state) =
+            states(&service, "res_n07_mm", &unit_id);
+        assert_eq!(mm_state, "pending");
+        assert_eq!(mm_index_state, "pending");
+        assert_eq!(text_state, "indexed", "mm 模式不应触碰 text 侧");
+        assert_eq!(index_state, "indexed");
+    }
+
+    #[test]
+    fn reset_unit_index_both_mode_updates_all_four_states() {
+        let (_tmp, service) = setup();
+        let unit_id = seed_indexed_unit(&service, "res_n07_both");
+
+        service.reset_unit_index(&unit_id, "both").unwrap();
+
+        assert_eq!(
+            states(&service, "res_n07_both", &unit_id),
+            (
+                "pending".to_string(),
+                "pending".to_string(),
+                "pending".to_string(),
+                "pending".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn reset_unit_index_unknown_mode_writes_nothing() {
+        let (_tmp, service) = setup();
+        let unit_id = seed_indexed_unit(&service, "res_n07_bad");
+
+        assert!(service.reset_unit_index(&unit_id, "bogus").is_err());
+
+        assert_eq!(
+            states(&service, "res_n07_bad", &unit_id),
+            (
+                "indexed".to_string(),
+                "indexed".to_string(),
+                "indexed".to_string(),
+                "indexed".to_string()
+            ),
+            "非法模式不得留下任何部分写入"
+        );
     }
 }
