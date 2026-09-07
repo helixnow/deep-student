@@ -190,18 +190,30 @@ pub async fn fsrs_get_due(
                     Ok(Some(_))
                 )
             } else {
-                let tags = service
-                    .get_card_tags(&pending.anki_card_id)
-                    .unwrap_or_default();
-                tags.is_empty()
-                    || mastery
-                        .record_fsrs_rating_for_log(
-                            &pending.log_id,
-                            &pending.anki_card_id,
-                            &tags,
-                            pending.rating,
-                        )
-                        .is_ok()
+                // N05（2026-09-07 审阅）：标签读取失败 ≠ 无标签。Err 时保留
+                // pending 等待下次补偿，不得确认掉这条 outbox 事件。
+                match service.get_card_tags(&pending.anki_card_id) {
+                    Ok(tags) => {
+                        tags.is_empty()
+                            || mastery
+                                .record_fsrs_rating_for_log(
+                                    &pending.log_id,
+                                    &pending.anki_card_id,
+                                    &tags,
+                                    pending.rating,
+                                )
+                                .is_ok()
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[fsrs_get_due] tag lookup failed for card {}; mastery review {} stays pending: {}",
+                            pending.anki_card_id,
+                            pending.log_id,
+                            error
+                        );
+                        false
+                    }
+                }
             };
             if reconciled {
                 service.mark_mastery_review_synced(&pending.log_id)?;
@@ -343,9 +355,20 @@ pub async fn fsrs_rate(
             let tags = if pending.log_id == result.log_id && !pre_tags.is_empty() {
                 pre_tags.clone()
             } else {
-                service
-                    .get_card_tags(&pending.anki_card_id)
-                    .unwrap_or_default()
+                // N05（2026-09-07 审阅）：标签读取失败 ≠ 无标签。Err 时保留
+                // pending 等待下次补偿，不得确认掉这条 outbox 事件。
+                match service.get_card_tags(&pending.anki_card_id) {
+                    Ok(tags) => tags,
+                    Err(error) => {
+                        log::warn!(
+                            "[fsrs_rate] tag lookup failed for card {}; mastery review {} stays pending: {}",
+                            pending.anki_card_id,
+                            pending.log_id,
+                            error
+                        );
+                        continue;
+                    }
+                }
             };
             if tags.is_empty() {
                 service.mark_mastery_review_synced(&pending.log_id)?;
