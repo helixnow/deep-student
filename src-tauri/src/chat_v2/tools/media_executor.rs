@@ -16,7 +16,8 @@ use crate::chat_v2::runtime_roots::{
     artifact_root, normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id,
 };
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities,
+    TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -346,32 +347,47 @@ impl MediaToolExecutor {
             Err(error) => return Err(format!("MEDIA_ARTIFACT_WRITE_FAILED: {error}")),
         }
         let relative_path = format!("media-transcripts/{display_name}");
-        let mut handle = TaskObjectHandle::new(
+        let transcribe_params_hash = hash_transform_params(&json!({
+            "provider": &transcript.provider_id,
+            "model": &transcript.model,
+            "source_sha256": &source_hash,
+        }));
+        // 源对象 handleId / VFS resourceId 已知时以其为血缘来源；
+        // 否则（裸 runtime locator 寻址）以源定位 URI 兜底，保证血缘非空。
+        let lineage_sources = if derived_from_ids.is_empty() {
+            vec![source_uri.clone()]
+        } else {
+            derived_from_ids
+        };
+        let lineage_edges = lineage_sources
+            .iter()
+            .map(|source| {
+                DerivedEdge::new(source, "media.transcribe")
+                    .with_params_hash(transcribe_params_hash.clone())
+            })
+            .collect();
+        let handle = TaskObjectHandleBuilder::new(
             format!("media-transcript:{body_hash}"),
             TaskObjectKind::Artifact,
             display_name,
-            ObjectProvenance {
-                source: "managed_asr".into(),
-                source_uri: Some(source_uri),
-                server: None,
-                tool: Some("media_transcribe".into()),
-                derived_from: derived_from_ids,
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        handle.media_type = Some("text/markdown".into());
-        handle.size_bytes = Some(body.len() as u64);
-        handle.sha256 = Some(body_hash);
-        handle.locator = Some(ManagedLocator::new("artifacts", &relative_path)?);
-        handle.capabilities = ObjectCapabilities {
+            "managed_asr",
+        )
+        .source_uri(Some(source_uri))
+        .tool(Some("media_transcribe"))
+        .derived_edges(lineage_edges)
+        .media_type(Some("text/markdown"))
+        .size_bytes(Some(body.len() as u64))
+        .sha256(Some(&body_hash))
+        .locator(Some(ManagedLocator::new("artifacts", &relative_path)?))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: true,
             deletable: true,
-        };
-        handle.validate()?;
+        })
+        .build()?;
         Ok(json!({
             "ok": true,
             "transcript": transcript.text,

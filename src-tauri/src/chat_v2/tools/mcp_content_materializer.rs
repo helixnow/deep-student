@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 
 use crate::chat_v2::runtime_roots::normalize_runtime_relative_path;
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
-    TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, ProviderObjectRef,
+    TaskObjectHandleBuilder, TaskObjectKind,
 };
 
 const MCP_SUBDIR: &str = "mcp";
@@ -530,43 +530,51 @@ fn artifact_metadata(
     file: &MaterializedFile,
     provenance: &McpOutputProvenance,
 ) -> Result<Value, String> {
-    let mut handle = TaskObjectHandle::new(
+    let handle = TaskObjectHandleBuilder::new(
         format!("mcp-artifact:{}", file.sha256),
         TaskObjectKind::Artifact,
         file.display_name.clone(),
-        ObjectProvenance {
-            source: provenance.provider.clone(),
-            source_uri: Some(file.source_uri.clone()),
-            server: Some(provenance.server.clone()),
-            tool: Some(provenance.tool.clone()),
-            derived_from: Vec::new(),
-            observed_at: chrono::Utc::now().to_rfc3339(),
-        },
-    );
-    handle.media_type = Some(file.mime_type.clone());
-    handle.size_bytes = Some(file.size_bytes);
-    handle.sha256 = Some(file.sha256.clone());
-    handle.locator = Some(ManagedLocator::new(
+        provenance.provider.clone(),
+    )
+    .source_uri(Some(file.source_uri.clone()))
+    .server(Some(provenance.server.clone()))
+    .tool(Some(provenance.tool.clone()))
+    .derived_edge(
+        DerivedEdge::new(
+            file.source_uri.clone(),
+            format!("mcp.materialize:{}/{}", provenance.server, provenance.tool),
+        )
+        .with_params_hash(hash_transform_params(&json!({
+            "server": &provenance.server,
+            "tool": &provenance.tool,
+            "source_uri": &file.source_uri,
+            "content_sha256": &file.sha256,
+        }))),
+    )
+    .media_type(Some(file.mime_type.clone()))
+    .size_bytes(Some(file.size_bytes))
+    .sha256(Some(&file.sha256))
+    .locator(Some(ManagedLocator::new(
         "artifacts",
         file.relative_path.clone(),
-    )?);
-    handle.provider_ref = Some(ProviderObjectRef {
+    )?))
+    .provider_ref(Some(ProviderObjectRef {
         provider: provenance.provider.clone(),
         external_id: file.source_uri.clone(),
         container_id: Some(provenance.server.clone()),
         thread_id: None,
         version: None,
         etag: None,
-    });
-    handle.capabilities = ObjectCapabilities {
+    }))
+    .capabilities(ObjectCapabilities {
         readable: true,
         materializable: true,
         writable: false,
         shareable: false,
         sendable: false,
         deletable: true,
-    };
-    handle.validate()?;
+    })
+    .build()?;
     Ok(json!({
         "kind": "artifact",
         "root_id": "artifacts",

@@ -9,8 +9,8 @@ use crate::chat_v2::runtime_roots::{
     revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
-    TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, ProviderObjectRef,
+    TaskObjectHandle, TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind};
 use crate::commands::AppState;
@@ -324,26 +324,33 @@ fn common_handle(
     format: &str,
     operation: OfficeOperation,
     source_resource_id: Option<&str>,
-) -> TaskObjectHandle {
-    let mut handle = TaskObjectHandle::new(
+) -> Result<TaskObjectHandle, String> {
+    let transform_id = format!("{}.{}", format, operation.as_str());
+    let builder = TaskObjectHandleBuilder::new(
         handle_id,
         TaskObjectKind::File,
         display_name,
-        ObjectProvenance {
-            source: "deep-student-office".to_string(),
-            source_uri: source_resource_id.map(|id| format!("vfs://{}", id)),
-            server: None,
-            tool: Some(format!("{}_{}", format, operation.as_str())),
-            derived_from: source_resource_id
-                .map(|id| vec![format!("vfs:{}", id)])
-                .unwrap_or_default(),
-            observed_at: chrono::Utc::now().to_rfc3339(),
-        },
-    );
-    handle.media_type = Some(mime_type.to_string());
-    handle.size_bytes = Some(bytes.len() as u64);
-    handle.sha256 = Some(hex::encode(Sha256::digest(bytes)));
-    handle
+        "deep-student-office",
+    )
+    .source_uri(source_resource_id.map(|id| format!("vfs://{}", id)))
+    .tool(Some(format!("{}_{}", format, operation.as_str())))
+    .media_type(Some(mime_type))
+    .size_bytes(Some(bytes.len() as u64))
+    .sha256(Some(hex::encode(Sha256::digest(bytes))));
+    let builder = match source_resource_id {
+        Some(id) => builder.derived_edge(
+            DerivedEdge::new(format!("vfs:{id}"), transform_id).with_params_hash(
+                hash_transform_params(&json!({
+                    "format": format,
+                    "operation": operation.as_str(),
+                    "source_resource_id": id,
+                })),
+            ),
+        ),
+        // 纯新建（无源资源）没有任何可填的来源对象，显式走逃生门。
+        None => builder.origin_unknown("office_create_without_source_resource"),
+    };
+    builder.build()
 }
 
 fn vfs_task_object(
@@ -363,7 +370,7 @@ fn vfs_task_object(
         format,
         operation,
         source_resource_id,
-    );
+    )?;
     handle.provider_ref = Some(ProviderObjectRef {
         provider: "deep-student-vfs".to_string(),
         external_id: file_id.to_string(),
@@ -403,7 +410,7 @@ fn workspace_task_object(
         format,
         operation,
         source_resource_id,
-    );
+    )?;
     handle.locator = Some(ManagedLocator::new(root_id, relative_path)?);
     handle.capabilities = ObjectCapabilities {
         readable: true,
