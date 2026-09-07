@@ -1000,6 +1000,14 @@
       "path": "vfs/V20260910__insight_jobs.sql",
       "sha256": "a81900b90f952257af14196c5d46719f983fd55840d3017581ef5a0688a483ab",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260911,
+      "name": "insight_fts_update_trigger_narrowing",
+      "path": "vfs/V20260911__insight_fts_update_trigger_narrowing.sql",
+      "sha256": "c7b0574f0fec193596d847fc9db2146d632a7328a96c6c950d4abb6112abbc21",
+      "dangers": []
     }
   ]
 }

@@ -375,6 +375,11 @@ impl InsightRecallService {
     }
 
     /// 幂等写事件：重复调用（重试/变体重建/回放）不产生重复账本行。
+    ///
+    /// 返回 `true` 表示本次真正插入；`false` 表示幂等命中（事件已存在）。
+    /// **计数器联动纪律**：调用方只在返回 true 时才 bump 统计列
+    /// （shown_count/recall_count），否则重试路径会重复计数，
+    /// 违反"重试/变体/回放披露状态一致"的验收标准。
     pub fn record_event_idempotent(
         conn: &Connection,
         session_id: Option<&str>,
@@ -383,13 +388,13 @@ impl InsightRecallService {
         event_type: InsightEventType,
         help_level: DisclosureLevel,
         payload_json: Option<&str>,
-    ) -> Result<(), AppError> {
+    ) -> Result<bool, AppError> {
         let id = Self::deterministic_event_id(session_id, message_id, insight_id, event_type);
         let help_level_str = match help_level {
             DisclosureLevel::Hidden => "none",
             other => other.as_str(),
         };
-        conn.execute(
+        let inserted = conn.execute(
             "INSERT OR IGNORE INTO insight_events
              (id, insight_id, session_id, message_id, event_type, help_level,
               quality_signal, need_signal, benefit_signal, payload_json, created_at, updated_at)
@@ -406,7 +411,7 @@ impl InsightRecallService {
             ],
         )
         .map_err(|e| AppError::database(format!("写入灵感事件失败: {e}")))?;
-        Ok(())
+        Ok(inserted > 0)
     }
 
     /// 召回判定结果写入 mastery_events（source='insight'，幂等）。
