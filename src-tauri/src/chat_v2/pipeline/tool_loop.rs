@@ -1196,7 +1196,15 @@ impl ChatV2Pipeline {
             let system_prompt_override = Some(system_prompt.to_string());
 
             // 获取 window 用于流式事件发射
-            let window = emitter.window();
+            // G01-a：无窗口 runtime 暂不支持 LLM 流式调用
+            //（call_unified_model_2_stream 仍要求 Window，G01-b 去除），
+            // 以结构化错误 fail-fast 替代原 panic。
+            let Some(window) = emitter.try_window() else {
+                return Err(ChatV2Error::Llm(
+                    "windowless runtime: LLM streaming requires a Tauri window (G01-b pending)"
+                        .to_string(),
+                ));
+            };
 
             log::info!(
             "[ChatV2::pipeline] Calling LLMManager, stream_event={}, model_override={:?}, top_p={:?}, max_tokens={:?}, max_input_tokens={:?}",
@@ -1356,6 +1364,15 @@ impl ChatV2Pipeline {
                         .register_stream_hooks(&stream_event, registered_hooks.clone())
                         .await;
 
+                    // G01-a：emitter 在首次调用前已做窗口检查，此处仅为
+                    // 防御性处理——无窗口时以结构化错误终止重试而非 panic。
+                    let Some(retry_window) = emitter.try_window() else {
+                        call_result = Err(crate::models::AppError::llm(
+                            "windowless runtime: LLM streaming requires a Tauri window (G01-b pending)"
+                                .to_string(),
+                        ));
+                        break;
+                    };
                     let retry_future = self.llm_manager.call_unified_model_2_stream(
                         &llm_context,
                         &messages,
@@ -1363,7 +1380,7 @@ impl ChatV2Pipeline {
                         true,
                         enable_thinking,
                         Some("chat_v2"),
-                        emitter.window(),
+                        retry_window,
                         &stream_event,
                         Some(ctx.assistant_message_id.as_str()),
                         None,
