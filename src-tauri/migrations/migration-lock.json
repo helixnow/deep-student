@@ -242,6 +242,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260909,
+      "name": "skill_usage_candidates",
+      "path": "chat_v2/V20260909__skill_usage_candidates.sql",
+      "sha256": "fc7c888863b6f8f295ff7348c020b4973d13f07c5256fde735264fdbae205df1",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",

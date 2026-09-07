@@ -111,6 +111,7 @@ commands.allow = [
   "chat_v2_perform_ocr",
   "chat_v2_plan_gate_respond",
   "chat_v2_read_runtime_file",
+  "chat_v2_record_skill_activation",
   "chat_v2_remove_tag",
   "chat_v2_reorder_groups",
   "chat_v2_reset_workspace_root",
