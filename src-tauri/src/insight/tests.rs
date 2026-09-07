@@ -373,7 +373,7 @@ fn test_srs_projection_materialize_and_regenerate() {
 
     let worker = super::jobs::InsightJobWorker::new(db.clone(), Some(mistakes.clone()));
     let processed = worker.run_once(10, &|| true).expect("run");
-    assert_eq!(processed, 1);
+    assert_eq!(processed, 2, "confirm 入队 srs_projection + merge_proposal 两个任务");
 
     // 物化卡存在且带回链（注意：mconn 是用例级互斥锁守卫，用完立即 drop——
     // 持锁跨 run_once 会与 worker 内部的 get_conn_safe 死锁）
@@ -441,4 +441,176 @@ fn test_srs_projection_materialize_and_regenerate() {
             .expect("tombstone")
     };
     assert!(deleted.is_some(), "源卡删除后投影卡应打墓碑");
+}
+
+// ============================================================================
+// 阶段三：合并提案 / 原则卡合成 / 原则复审
+// ============================================================================
+
+fn make_card(svc: &InsightService, title: &str, rule: &str) -> super::types::InsightCard {
+    let card = svc
+        .create_draft(InsightDraftInput {
+            title: title.to_string(),
+            situation: "某题情境".to_string(),
+            stuck_point: "某卡点".to_string(),
+            turning_point: "某转折".to_string(),
+            rule: rule.to_string(),
+            validity_conditions: "某条件".to_string(),
+            ownership: InsightOwnership::SelfReported,
+            evidence: vec![InsightEvidenceInput {
+                kind: EvidenceKind::Manual,
+                session_id: None,
+                message_id: None,
+                variant_id: None,
+                block_id: None,
+                text_start: None,
+                text_end: None,
+                speaker: Some("user".to_string()),
+                resource_id: None,
+                quote_snapshot: "手动记录".to_string(),
+            }],
+        })
+        .expect("draft");
+    svc.confirm(&card.id, None).expect("confirm")
+}
+
+#[test]
+fn test_merge_proposal_creates_deduped_todo() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+
+    // 两张标题高度相似的卡（trigram 子串命中）
+    let a = make_card(&svc, "导数结构识别换元法", "规则A：识别导数结构");
+    let b = make_card(&svc, "导数结构识别换元法进阶", "规则B：识别导数结构");
+
+    let worker = super::jobs::InsightJobWorker::new(db.clone(), None);
+    let processed = worker.run_once(20, &|| true).expect("run");
+    assert!(processed >= 2, "confirm 入队的 srs+merge 任务应被处理");
+
+    // 合并提案待办存在且幂等（重跑不重复建）
+    let conn = db.get_conn_safe().expect("conn");
+    let count_todos = |c: &rusqlite::Connection| -> i64 {
+        c.query_row(
+            "SELECT COUNT(*) FROM todo_items
+             WHERE status='pending' AND deleted_at IS NULL
+               AND description LIKE '%insight-merge:%'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count")
+    };
+    let n1 = count_todos(&conn);
+    assert!(n1 >= 1, "应生成合并提案待办（a={} b={}）", a.id, b.id);
+    worker.run_once(20, &|| true).expect("run2");
+    // 重跑后不得新增同 marker 待办（任务已 done 不再执行，但即使重放也幂等）
+    assert_eq!(count_todos(&conn), n1);
+
+    // 待办挂在"灵感演化"列表且带附件回链
+    let list: String = conn
+        .query_row(
+            "SELECT t.title FROM todo_lists t
+             JOIN todo_items i ON i.todo_list_id = t.id
+             WHERE i.description LIKE '%insight-merge:%' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .expect("list");
+    assert_eq!(list, "灵感演化");
+    let att: String = conn
+        .query_row(
+            "SELECT attachments_json FROM todo_items
+             WHERE description LIKE '%insight-merge:%' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .expect("attachments");
+    assert!(att.contains("res_") || att.contains("\"r"), "附件应回链资源: {att}");
+}
+
+#[test]
+fn test_principle_synthesis_requires_cases_and_counterexample() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+
+    let a = make_card(&svc, "换元法案例一", "规则一");
+    let b = make_card(&svc, "换元法案例二", "规则二");
+    let c = make_card(&svc, "换元法反例卡", "规则三");
+
+    // 只有 same_method、无反例 → 不合成
+    svc.add_relation(&a.id, &b.id, "same_method", None, None).expect("rel ab");
+    let worker = super::jobs::InsightJobWorker::new(db.clone(), None);
+    worker.run_once(20, &|| true).expect("run1");
+    let conn = db.get_conn_safe().expect("conn");
+    let principle_todos = |c_: &rusqlite::Connection| -> i64 {
+        c_.query_row(
+            "SELECT COUNT(*) FROM todo_items
+             WHERE status='pending' AND deleted_at IS NULL
+               AND description LIKE '%insight-principle:%'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count")
+    };
+    assert_eq!(principle_todos(&conn), 0, "缺反例不得合成原则提案");
+
+    // 补上反例边 → 合成
+    svc.add_relation(&a.id, &c.id, "counterexample", None, None).expect("rel ac");
+    worker.run_once(20, &|| true).expect("run2");
+    assert_eq!(principle_todos(&conn), 1, "≥2 案例 + 1 反例 → 一条原则化提案");
+
+    // 幂等：重跑不重复
+    super::jobs::enqueue(
+        &db,
+        "principle_synthesis",
+        &format!("principle:{}", a.id),
+        &serde_json::json!({ "insight_id": a.id }).to_string(),
+    )
+    .expect("re-enqueue");
+    worker.run_once(20, &|| true).expect("run3");
+    assert_eq!(principle_todos(&conn), 1);
+}
+
+#[test]
+fn test_principle_review_todo_on_source_correction() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+
+    let case = make_card(&svc, "案例卡", "案例规则");
+    let principle = make_card(&svc, "原则卡", "原则规则");
+    // 原则卡以案例卡为证据（abstract_of：from=原则 → to=案例/证据方）
+    svc.add_relation(&principle.id, &case.id, "abstract_of", None, None)
+        .expect("abstract_of");
+
+    // 源卡更正 → correct() 标记派生关系复审 + 入队 principle_review
+    svc.correct(
+        &case.id,
+        InsightCorrectInput {
+            title: None,
+            situation: None,
+            stuck_point: None,
+            turning_point: None,
+            rule: Some("更正后的案例规则".to_string()),
+            validity_conditions: None,
+            edit_note: None,
+        },
+    )
+    .expect("correct");
+
+    let worker = super::jobs::InsightJobWorker::new(db.clone(), None);
+    worker.run_once(20, &|| true).expect("run");
+
+    let conn = db.get_conn_safe().expect("conn");
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM todo_items
+             WHERE status='pending' AND deleted_at IS NULL
+               AND description LIKE '%insight-review:%'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count");
+    assert_eq!(n, 1, "源卡更正应生成派生原则复审待办");
 }

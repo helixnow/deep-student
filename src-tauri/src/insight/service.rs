@@ -190,6 +190,13 @@ impl InsightService {
             &format!("srs:{insight_id}"),
             &serde_json::json!({ "insight_id": insight_id }).to_string(),
         )?;
+        // 阶段三：确认后评估近重复合并提案（linked-merge，不自动合并）
+        super::jobs::enqueue_with_conn(
+            &tx,
+            "merge_proposal",
+            &format!("merge:{insight_id}"),
+            &serde_json::json!({ "insight_id": insight_id }).to_string(),
+        )?;
 
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
         self.get_insight(insight_id)?
@@ -215,6 +222,17 @@ impl InsightService {
         // 原则卡需要复审。阶段一先记录事件，阶段三由巩固 worker 生成复审待办。
         let derived = repo::mark_derived_relations_for_review(&tx, insight_id)?;
         if !derived.is_empty() {
+            // 阶段三：派生原则复审待办（worker 生成 todo 决策任务）
+            super::jobs::enqueue_with_conn(
+                &tx,
+                "principle_review",
+                &format!("preview:{insight_id}"),
+                &serde_json::json!({
+                    "insight_id": insight_id,
+                    "derived_principles": derived,
+                })
+                .to_string(),
+            )?;
             let payload = serde_json::json!({ "derived_principles": derived }).to_string();
             repo::insert_event(
                 &tx,
@@ -463,6 +481,18 @@ impl InsightService {
         {
             return Err(AppError::not_found("关系端点不存在"));
         }
-        repo::upsert_relation(&conn, from_id, to_id, rel, scope, evidence, "user")
+        let id = repo::upsert_relation(&conn, from_id, to_id, rel, scope, evidence, "user")?;
+        // 同方法/反例边到位 → 触发原则卡合成评估（幂等，条件不满足则静默退出）
+        if matches!(rel, RelationType::SameMethod | RelationType::Counterexample) {
+            for endpoint in [from_id, to_id] {
+                super::jobs::enqueue_with_conn(
+                    &conn,
+                    "principle_synthesis",
+                    &format!("principle:{endpoint}"),
+                    &serde_json::json!({ "insight_id": endpoint }).to_string(),
+                )?;
+            }
+        }
+        Ok(id)
     }
 }
