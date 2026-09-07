@@ -102,6 +102,8 @@ pub enum VfsResourceType {
     Retrieval,
     /// 知识导图
     MindMap,
+    /// 灵感卡（Insight Recall v2，见 docs/dev/insight-recall/README.md）
+    InsightCard,
 }
 
 impl std::fmt::Display for VfsResourceType {
@@ -116,6 +118,7 @@ impl std::fmt::Display for VfsResourceType {
             VfsResourceType::File => write!(f, "file"),
             VfsResourceType::Retrieval => write!(f, "retrieval"),
             VfsResourceType::MindMap => write!(f, "mindmap"),
+            VfsResourceType::InsightCard => write!(f, "insight_card"),
         }
     }
 }
@@ -133,6 +136,7 @@ impl VfsResourceType {
             "file" => Some(VfsResourceType::File),
             "retrieval" => Some(VfsResourceType::Retrieval),
             "mindmap" => Some(VfsResourceType::MindMap),
+            "insight_card" | "insightcard" => Some(VfsResourceType::InsightCard),
             _ => None,
         }
     }
@@ -149,6 +153,7 @@ impl VfsResourceType {
             VfsResourceType::File,
             VfsResourceType::Retrieval,
             VfsResourceType::MindMap,
+            VfsResourceType::InsightCard,
         ]
     }
 }

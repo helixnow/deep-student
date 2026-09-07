@@ -960,6 +960,14 @@
       "path": "vfs/V20260824__note_props.sql",
       "sha256": "6607400be7282ab39ad24edfd8d49caba3d6eee212e38926ff6f968d8fd49cb9",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260907,
+      "name": "insight_cards",
+      "path": "vfs/V20260907__insight_cards.sql",
+      "sha256": "952e7fb2a098d3638d4cc94f5f277955c3e52237c325f05b0c69c4522d2f744d",
+      "dangers": []
     }
   ]
 }

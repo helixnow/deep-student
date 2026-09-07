@@ -408,6 +408,8 @@ impl VfsContentExtractor {
             VfsResourceType::Essay => Some(data.to_string()),
             VfsResourceType::File => Self::extract_file_text(data),
             VfsResourceType::MindMap => Self::extract_mindmap_text(data),
+            // InsightCard：正文快照是渲染后的 markdown 文本，直接索引
+            VfsResourceType::InsightCard => Some(Self::extract_markdown_text(data)),
             // Image/Retrieval：Image 内容为二进制（走 OCR），Retrieval 为临时搜索结果（不索引）
             VfsResourceType::Image | VfsResourceType::Retrieval => None,
         }
@@ -1106,11 +1108,12 @@ fn resolve_indexable_content(
             }
         }
 
-        // Note/Translation/Essay/MindMap/Retrieval/Todo：内容已在步骤 2 从 resources.data 提取
+        // Note/Translation/Essay/MindMap/Retrieval/InsightCard：内容已在步骤 2 从 resources.data 提取
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
+        | VfsResourceType::InsightCard
         | VfsResourceType::Retrieval => {}
     }
 
@@ -1506,11 +1509,12 @@ fn resolve_indexable_pages(
             }
         }
 
-        // Note/Translation/Essay/MindMap/Retrieval/Todo：无按页结构，跳过
+        // Note/Translation/Essay/MindMap/Retrieval/InsightCard：无按页结构，跳过
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
         | VfsResourceType::MindMap
+        | VfsResourceType::InsightCard
         | VfsResourceType::Retrieval => {}
     }
 
@@ -2274,6 +2278,7 @@ impl VfsFullIndexingService {
                 VfsResourceType::Translation => "翻译内容为空",
                 VfsResourceType::Essay => "作文内容为空",
                 VfsResourceType::Retrieval => "检索结果内容为空",
+                VfsResourceType::InsightCard => "灵感卡内容为空",
             };
 
             // 标记为 indexed，但 index_error 记录空内容信息
@@ -3040,12 +3045,13 @@ impl VfsFullIndexingService {
                 self.try_auto_ocr_pdf_pages(resource).await
             }
 
-            // Note/Translation/Essay/Exam/MindMap/Retrieval/Todo：无需 OCR
+            // Note/Translation/Essay/Exam/MindMap/Retrieval/InsightCard：无需 OCR
             VfsResourceType::Note
             | VfsResourceType::Translation
             | VfsResourceType::Essay
             | VfsResourceType::Exam
             | VfsResourceType::MindMap
+            | VfsResourceType::InsightCard
             | VfsResourceType::Retrieval => Ok(None),
         }
     }
