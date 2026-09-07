@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useId, useState } from 'react';
 import { CaretDown, Lightbulb, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { insightCorrect, insightCreateDraft, insightList, insightRunJobs } from '@/features/insights/api';
+import { insightConfirm, insightCorrect, insightCreateDraft, insightList, insightRunJobs } from '@/features/insights/api';
 import type { InsightCard, InsightDraftInput } from '@/features/insights/types';
 import { InsightConfirmDialog } from '@/features/insights/components/InsightConfirmDialog';
 import './FavoritesSection.css';
@@ -62,7 +62,6 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
     } else {
       const created = await insightCreateDraft(draft);
       // 手建草稿立即确认入库（用户亲手写的，确认两问已在对话框中完成）
-      const { insightConfirm } = await import('@/features/insights/api');
       await insightConfirm(created.id);
     }
     await refresh();

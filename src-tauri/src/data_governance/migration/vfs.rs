@@ -989,6 +989,15 @@ pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
     ("insight_jobs", "payload_json"),
 ])
 .idempotent();
+
+/// V20260911: insight_fts UPDATE 触发器收窄为 UPDATE OF（计数器累加不重建索引）。
+pub const V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING: MigrationDef = MigrationDef::new(
+    20260911,
+    "insight_fts_update_trigger_narrowing",
+    include_str!("../../../migrations/vfs/V20260911__insight_fts_update_trigger_narrowing.sql"),
+)
+.with_expected_tables(&["insight_fts"])
+.idempotent();
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1051,6 +1060,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260908_INSIGHT_FTS,
     V20260909_MASTERY_EVENTS_INSIGHT_SOURCE,
     V20260910_INSIGHT_JOBS,
+    V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1202,11 +1212,11 @@ mod tests {
     }
 
     #[test]
-    fn test_insight_phase3_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260910);
+    fn test_insight_fts_trigger_narrowing_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260911);
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("insight_jobs")
+            Some("insight_fts_update_trigger_narrowing")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

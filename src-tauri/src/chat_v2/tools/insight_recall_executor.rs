@@ -117,7 +117,7 @@ impl InsightRecallExecutor {
                         rev.map(|r| r.situation.as_str()).unwrap_or(""),
                         rev.map(|r| r.rule.as_str()).unwrap_or(""),
                     );
-                    InsightRecallService::record_event_idempotent(
+                    let inserted = InsightRecallService::record_event_idempotent(
                         &conn,
                         Some(&ctx.session_id),
                         Some(&ctx.message_id),
@@ -127,7 +127,10 @@ impl InsightRecallExecutor {
                         None,
                     )
                     .map_err(|e| e.to_string())?;
-                    let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                    // 计数器只在事件真正插入时累加（重试/变体幂等一致）
+                    if inserted {
+                        let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                    }
                     sources.push(SourceInfo {
                         title: Some(format!("[灵感] {title}")),
                         url: None,
@@ -220,7 +223,7 @@ impl InsightRecallExecutor {
                     DisclosureLevel::DirectAnswer => InsightEventType::DirectAnswer,
                     DisclosureLevel::Hidden => InsightEventType::ShownExistence,
                 };
-                InsightRecallService::record_event_idempotent(
+                let inserted = InsightRecallService::record_event_idempotent(
                     &conn,
                     Some(&ctx.session_id),
                     Some(&ctx.message_id),
@@ -230,7 +233,7 @@ impl InsightRecallExecutor {
                     None,
                 )
                 .map_err(|e| e.to_string())?;
-                if level >= DisclosureLevel::Hint {
+                if inserted && level >= DisclosureLevel::Hint {
                     let _ = crate::insight::repo::bump_stat(&conn, insight_id, "recall_count");
                     let _ = crate::insight::repo::touch_last_recalled(&conn, insight_id);
                 }

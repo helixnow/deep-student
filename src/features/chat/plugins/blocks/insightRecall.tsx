@@ -89,12 +89,15 @@ const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, i
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
 
-  // 当前块中最高披露级别（用于头部徽章）
+  // 当前块中最高披露级别（用于头部徽章；按阶梯序取真最大值，非末条覆盖）
   const maxLevel = useMemo(() => {
+    const ORDER = ['existence', 'recall_prompt', 'hint', 'full', 'direct_answer'];
     let best: string | null = null;
     for (const s of sources) {
       const lv = (s.metadata as Record<string, unknown> | undefined)?.disclosureLevel;
-      if (typeof lv === 'string') best = lv;
+      if (typeof lv === 'string' && ORDER.indexOf(lv) > ORDER.indexOf(best ?? '')) {
+        best = lv;
+      }
     }
     return best;
   }, [sources]);

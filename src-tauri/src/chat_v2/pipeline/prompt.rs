@@ -166,7 +166,7 @@ impl ChatV2Pipeline {
                         "",
                         "",
                     );
-                    let _ = InsightRecallService::record_event_idempotent(
+                    let inserted = InsightRecallService::record_event_idempotent(
                         &conn,
                         Some(&ctx.session_id),
                         Some(&ctx.user_message_id),
@@ -175,7 +175,10 @@ impl ChatV2Pipeline {
                         *level,
                         None,
                     );
-                    let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                    // 计数器只在事件真正插入时累加（重试/变体幂等一致）
+                    if inserted.unwrap_or(false) {
+                        let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                    }
                     lines.push(format!("- [灵感] {title}"));
                 }
                 DisclosureOutcome::Silence(reason) => {
