@@ -98,8 +98,10 @@ export const OcrSettingsSection: React.FC = () => {
     loadConfig();
   }, [loadConfig]);
 
-  // 保存单个设置（抛出异常以便调用方回滚）
-  const saveSetting = useCallback(async (key: string, value: string) => {
+  // 保存单个设置并提示结果（抛出异常以便调用方回滚）。
+  // 注意：必须与模块级导入的 saveSetting(@/utils/settingsApi) 区分命名，
+  // 否则同名局部函数会遮蔽导入，内部调用自己形成死递归，写入永不落库。
+  const persistSetting = useCallback(async (key: string, value: string) => {
     try {
       setSaving(true);
       await saveSetting(key, value);
@@ -116,14 +118,14 @@ export const OcrSettingsSection: React.FC = () => {
     const oldValue = config[key];
     setConfig(prev => ({ ...prev, [key]: value }));
     try {
-      await saveSetting(settingKey, String(value));
+      await persistSetting(settingKey, String(value));
     } catch (err: unknown) {
       // Rollback on failure
       setConfig(prev => ({ ...prev, [key]: oldValue }));
       debugLog.error('[OcrSettings] Failed to save setting:', err);
       showGlobalNotification('error', t('settings:ocr.saveFailed', 'Failed to save setting'));
     }
-  }, [saveSetting, config, t]);
+  }, [persistSetting, config, t]);
 
   // 处理阈值变更（乐观更新 + 失败回滚）
   const handleThresholdChange = useCallback(async (value: number) => {
@@ -133,14 +135,14 @@ export const OcrSettingsSection: React.FC = () => {
     const oldValue = config.pdfTextThreshold;
     setConfig(prev => ({ ...prev, pdfTextThreshold: clamped }));
     try {
-      await saveSetting('ocr.pdf_text_threshold', String(clamped));
+      await persistSetting('ocr.pdf_text_threshold', String(clamped));
     } catch (err: unknown) {
       // Rollback on failure
       setConfig(prev => ({ ...prev, pdfTextThreshold: oldValue }));
       debugLog.error('[OcrSettings] Failed to save threshold:', err);
       showGlobalNotification('error', t('settings:ocr.saveFailed', 'Failed to save setting'));
     }
-  }, [saveSetting, config.enabled, config.pdfTextThreshold, t]);
+  }, [persistSetting, config.enabled, config.pdfTextThreshold, t]);
 
   // 重置为默认值（并行写入所有 key）
   const handleReset = useCallback(async () => {
