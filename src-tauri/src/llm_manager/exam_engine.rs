@@ -222,6 +222,36 @@ async fn run_single_system_ocr_request(
     }
 }
 
+/// ★ C（2026-09-07）：PDF fallback 链的本地系统 OCR 兜底。
+/// 读取页面图片文件并调用平台原生 OCR（Windows.Media.Ocr / macOS Vision），
+/// 返回整页纯文本。与 free-text 对冲路径的 run_single_system_ocr_request 共用底层。
+/// file_manager 由调用方传入（LLMManager 字段），避免引入静态路径解析。
+async fn system_ocr_full_page(
+    file_manager: &crate::file_manager::FileManager,
+    page_path: &str,
+) -> std::result::Result<String, String> {
+    let abs_path = file_manager.resolve_image_path(page_path);
+
+    let image_bytes = tokio::fs::read(&abs_path)
+        .await
+        .map_err(|e| format!("read page image failed: {}", e))?;
+
+    const SYSTEM_OCR_TIMEOUT_SECS: u64 = 60;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(SYSTEM_OCR_TIMEOUT_SECS),
+        crate::ocr_adapters::system_ocr::perform_system_ocr(&image_bytes),
+    )
+    .await
+    {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(error)) => Err(format!("system_ocr failed: {}", error)),
+        Err(_) => Err(format!(
+            "system_ocr timed out after {}s",
+            SYSTEM_OCR_TIMEOUT_SECS
+        )),
+    }
+}
+
 /// Codex 请求必须保留 PreparedProviderRequest 中的 OAuth generation/session，才能在 401 后
 /// 刷新并只重发一次。该 future 借用 LLMManager，在调用方的 FuturesUnordered 中与后台引擎并发。
 async fn run_single_codex_ocr_request(
@@ -780,7 +810,72 @@ impl LLMManager {
                         page_index,
                         e
                     );
+                    // ★ D（2026-09-07）：4xx 类错误是确定性拒绝（403 限流/权限、
+                    // 400 请求格式、401 认证），继续重试只会撞墙。今天实测
+                    // cdn.sta1n.cn 403 期间单分钟 300+ 次重试风暴、单页 42 轮
+                    // fallback 空转——4xx 必须立即中断本页 fallback 链，
+                    // 不再轮到后续引擎重放同一确定性失败。
+                    // HTTP 状态由 request_deepseek_ocr_content 写入 details.status。
+                    let is_client_error = e
+                        .details
+                        .as_ref()
+                        .and_then(|d| d.get("status"))
+                        .and_then(|v| v.as_u64())
+                        .map(|s| (400..500).contains(&s))
+                        .unwrap_or(false);
+                    if is_client_error {
+                        OCR_CIRCUIT_BREAKER.record_failure();
+                        return Err(e);
+                    }
                     last_err = Some(e);
+                }
+            }
+        }
+
+        // ★ C（2026-09-07）：远程链全失败后追加本地系统 OCR 兜底。
+        // 此前 PDF/索引路径的引擎链刻意不含 SystemOcr（get_ocr_configs_by_priority
+        // 过滤），用户在设置中启用的"系统 OCR (Windows OCR)"在本路径形同虚设，
+        // 且全链 4xx 后没有任何免费兜底可用。这里以全页文本卡兜底：本地、免费、离线。
+        if crate::ocr_adapters::system_ocr::is_platform_supported() {
+            info!(
+                "[OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page {}）",
+                page_index
+            );
+            match system_ocr_full_page(&self.file_manager, page_path).await {
+                Ok(text) if !text.trim().is_empty() => {
+                    OCR_CIRCUIT_BREAKER.record_success();
+                    info!(
+                        "[OCR] 系统 OCR 兜底成功（page {}, {} chars）",
+                        page_index,
+                        text.trim().len()
+                    );
+                    return Ok(vec![ExamSegmentationCard {
+                        question_label: "全页内容".to_string(),
+                        bbox: ExamCardBBox {
+                            x: 0.0,
+                            y: 0.0,
+                            width: 1.0,
+                            height: 1.0,
+                        },
+                        ocr_text: Some(text.trim().to_string()),
+                        tags: vec![],
+                        extra_metadata: Some(serde_json::json!({
+                            "fallback_mode": "system_ocr_full_page",
+                        })),
+                        card_id: format!("fp_p{}_r0", page_index),
+                    }]);
+                }
+                Ok(_) => {
+                    warn!(
+                        "[OCR] 系统 OCR 兜底返回空文本（page {}）",
+                        page_index
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        "[OCR] 系统 OCR 兜底失败（page {}）: {}",
+                        page_index, error
+                    );
                 }
             }
         }
