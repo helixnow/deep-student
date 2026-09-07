@@ -755,7 +755,7 @@ fn apply_legacy_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks
     apply_token_limit(body, quirks.legacy_max_tokens_field, max_tokens);
 }
 
-fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
+pub(crate) fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
     let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
     apply_generation_token_limit(body, quirks, max_tokens);
 

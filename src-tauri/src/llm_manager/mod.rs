@@ -8,6 +8,10 @@ mod rag_extension;
 pub mod routing;
 pub mod utf8_stream;
 
+// 连接测试（commands::test_api_connection）复用生产请求构造的 token 上限逻辑，
+// 保证探测请求与真实聊天请求的 max_tokens/max_completion_tokens 方言一致。
+pub(crate) use model2_pipeline::apply_generation_params;
+
 // 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
 pub(crate) use model2_pipeline::sanitize_url_for_log;
 
@@ -2952,7 +2956,7 @@ fn default_profile_enabled() -> bool {
     true
 }
 
-fn looks_like_image_generation_model_id(model: &str) -> bool {
+pub(crate) fn looks_like_image_generation_model_id(model: &str) -> bool {
     let model = model.to_lowercase();
     ["gpt-image", "dall-e", "imagen", "flux"]
         .iter()
@@ -5064,6 +5068,25 @@ impl LLMManager {
             .into_iter()
             .find(|vendor| vendor.id == vendor_id)
             .ok_or_else(|| AppError::configuration("供应商不存在或已被删除"))
+    }
+
+    /// 按 vendor_id + 模型名解析已保存模型条目的运行期配置（与生产聊天完全一致的
+    /// vendor+profile 合并结果）。连接测试用它构造探测请求，避免测试路径与生产
+    /// 路径的能力字段/协议/思考配置漂移。无匹配条目时返回 None（草稿配置场景）。
+    pub(crate) async fn runtime_config_for_vendor_model(
+        &self,
+        vendor_id: &str,
+        model: &str,
+    ) -> Option<ApiConfig> {
+        let vendor = self.vendor_config_for_runtime(vendor_id).await.ok()?;
+        let profiles = self.model_profiles_for_runtime().await.ok()?;
+        let profile = profiles
+            .into_iter()
+            .find(|profile| profile.vendor_id == vendor_id && profile.model == model)?;
+        let codex_authenticated = self.openai_codex_auth.status().await.has_usable_session;
+        self.merge_vendor_profile(&vendor, &profile, codex_authenticated)
+            .ok()
+            .map(|resolved| resolved.runtime)
     }
 
     pub async fn save_vendor_configs(&self, configs: &[VendorConfig]) -> Result<()> {
