@@ -113,5 +113,8 @@ export interface GenerativeUIRendererProps {
   truncatedCount?: number;
   /** 流式字符上限；测试可注入，生产默认 256_000 */
   maxStreamChars?: number;
+  /** 容器级强制 compact（单列 stack + 4/8/12 间距）：嵌在窄面板（如产物面板，
+      宽 320-720px 但视口 ≥ sm）时由调用方传入，绕开仅看视口的 useGenerativeUICompact */
+  forceCompact?: boolean;
   className?: string;
 }

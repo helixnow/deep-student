@@ -17,6 +17,8 @@ export interface GenerativeUIPanelProps {
   /** 透传到 Renderer，用于截断提示 */
   warnings?: string[];
   truncatedCount?: number;
+  /** 窄容器（如右侧产物面板）强制单列紧凑布局，透传到 Renderer */
+  forceCompact?: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export function GenerativeUIPanel({
   emptyLabel,
   warnings,
   truncatedCount,
+  forceCompact,
 }: GenerativeUIPanelProps) {
   const { t } = useTranslation('generativeUi');
   const resolvedEmpty = emptyLabel ?? t('panel.empty');
@@ -70,6 +73,7 @@ export function GenerativeUIPanel({
         actionHandlers={instrumentedHandlers}
         warnings={warnings}
         truncatedCount={truncatedCount}
+        forceCompact={forceCompact}
       />
     </div>
   );

@@ -237,10 +237,12 @@ export function GenerativeUIRenderer({
   warnings: incomingWarnings,
   truncatedCount: incomingTruncatedCount,
   maxStreamChars = MAX_GENERATIVE_UI_STREAM_CHARS,
+  forceCompact = false,
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
-  const compact = useGenerativeUICompact();
+  const viewportCompact = useGenerativeUICompact();
+  const compact = viewportCompact || forceCompact;
   const reducedMotion = usePrefersReducedMotion();
   const contrast = usePrefersContrast();
   const rendererId = useId();
