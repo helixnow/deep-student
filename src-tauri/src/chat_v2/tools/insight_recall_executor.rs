@@ -39,9 +39,16 @@ impl InsightRecallExecutor {
         Self
     }
 
-    /// 从设置读取披露策略（与被动注入共用 `disclosure::load_policy` 收口）。
+    /// 从设置读取披露策略（与被动注入共用 `disclosure::load_policy` 收口），
+    /// 再经三本账校准（阶段四：效用门控路由器替代静态阈值）。
     fn load_policy(ctx: &ExecutionContext) -> DisclosurePolicy {
-        disclosure::load_policy(ctx.main_db.as_deref())
+        let policy = disclosure::load_policy(ctx.main_db.as_deref());
+        if let Some(vfs) = ctx.vfs_db.as_ref() {
+            if let Ok(conn) = vfs.get_conn_safe() {
+                return disclosure::calibrate_policy_from_ledger(&conn, policy);
+            }
+        }
+        policy
     }
 
     fn silence_event_type(reason: SilenceReason) -> InsightEventType {

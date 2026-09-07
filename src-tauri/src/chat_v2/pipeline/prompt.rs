@@ -96,6 +96,11 @@ impl ChatV2Pipeline {
 
         let vfs_db = self.vfs_db.as_ref()?;
         let policy = disclosure::load_policy(self.main_db.as_deref());
+        // 阶段四：三本账校准（效用门控路由器）
+        let policy = match vfs_db.get_conn_safe() {
+            Ok(conn) => disclosure::calibrate_policy_from_ledger(&conn, policy),
+            Err(_) => policy,
+        };
 
         // 用户禁用：每轮至多一条沉默账本（幂等键），然后静默退出
         if !policy.enabled {
