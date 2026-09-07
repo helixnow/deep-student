@@ -252,9 +252,14 @@ describe('findActiveArtifactSkill', () => {
   };
   const getSkill = (id: string) => skills[id];
 
-  it('skeletonRef 精确匹配', () => {
-    const match = findActiveArtifactSkill([], getSkill, 'weekly-report');
+  it('skeletonRef 精确匹配（须为本会话已激活 skill）', () => {
+    const match = findActiveArtifactSkill(['weekly-report'], getSkill, 'weekly-report');
     expect(match?.skillId).toBe('weekly-report');
+  });
+
+  it('skeletonRef 指向未激活 skill → null（骨架只随激活正文注入，校验未激活骨架是误报）', () => {
+    expect(findActiveArtifactSkill([], getSkill, 'weekly-report')).toBeNull();
+    expect(findActiveArtifactSkill(['other-skill'], getSkill, 'weekly-report')).toBeNull();
   });
 
   it('skeletonRef 指向无骨架 skill → null', () => {

@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight } from '@phosphor-icons/react';
+import { normalizeToolName } from '../agent-task/extractors';
 
 /** 审批参数里 patch 的形状（对齐 Rust ChatAnkiCardPatch，camelCase） */
 interface AnkiCardPatch {
@@ -60,7 +61,9 @@ export function extractAnkiUpdateArgs(
   toolName: string,
   args: Record<string, unknown>,
 ): { cardId: string; patch: AnkiCardPatch } | null {
-  if (!toolName.replace(/^builtin-/, '').startsWith('chatanki_update_library_card')) {
+  // 与 extractors 同一套前缀归一化（builtin- / mcp_ / mcp.tools.）——
+  // executor can_handle 接受 mcp_ 变体，审批栏不能只在 builtin- 下显示 diff
+  if (!normalizeToolName(toolName).startsWith('chatanki_update_library_card')) {
     return null;
   }
   const cardId = typeof args.cardId === 'string' ? args.cardId : undefined;

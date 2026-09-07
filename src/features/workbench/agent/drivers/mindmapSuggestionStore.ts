@@ -25,6 +25,13 @@ export interface MindmapAgentSuggestion {
 
 const suggestions = new Map<string, MindmapAgentSuggestion>();
 
+/**
+ * 暂存 TTL：确认条是画布内的临时 UI——用户关窗/搁置后暂存不可达，
+ * 永存会泄漏且在重开时弹出无人记得的过期建议（接受过期 ops 会对
+ * 已变化的文档误操作）。读取时惰性过期，无需生命周期接线。
+ */
+const SUGGESTION_TTL_MS = 30 * 60 * 1000;
+
 type Listener = (mindmapId: string) => void;
 const listeners = new Set<Listener>();
 
@@ -51,7 +58,14 @@ export function stashMindmapSuggestion(
 }
 
 export function getMindmapSuggestion(mindmapId: string): MindmapAgentSuggestion | null {
-  return suggestions.get(mindmapId) ?? null;
+  const entry = suggestions.get(mindmapId);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > SUGGESTION_TTL_MS) {
+    suggestions.delete(mindmapId);
+    notify(mindmapId);
+    return null;
+  }
+  return entry;
 }
 
 export function clearMindmapSuggestion(mindmapId: string): void {
