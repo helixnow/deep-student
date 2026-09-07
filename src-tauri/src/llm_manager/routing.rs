@@ -19,9 +19,8 @@ use std::time::{Duration, Instant};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tauri::Emitter;
 
-use super::{ApiConfig, LLMManager, Result};
+use super::{ApiConfig, LLMManager, Result, StreamEventSink};
 use crate::models::AppError;
 
 /// Failover 策略在 settings 表中的存储键
@@ -430,14 +429,15 @@ impl ParamOverrides {
 // ============================================================
 
 /// 一次带 failover 的调用运行参数
-pub(crate) struct FailoverRun {
+pub(crate) struct FailoverRun<'a> {
     /// 用途/任务类型（用于 fallback 链求值与事件 payload）
     pub task: String,
     pub scenario: FailoverScenario,
     /// 用户是否显式指定了模型（仅用于事件 payload / 日志观测）
     pub user_pinned: bool,
-    /// 有 window 时发生 failover 会 emit `llm-failover` 事件
-    pub window: Option<tauri::Window>,
+    /// 有 sink 时发生 failover 会 emit `llm-failover` 事件（G01-b：原为 Window，
+    /// 无窗口 runtime 传 None，事件随 sink 缺席而跳过）
+    pub stream_sink: Option<&'a dyn StreamEventSink>,
     /// 尝试函数内部是否已自带 429 短退避重试（流式建立循环自带；raw 非流式不带）
     pub attempts_handle_429_internally: bool,
     /// 已编译请求要求的输入能力。`Some(true)` 表示请求含多模态输入，候选必须支持；
@@ -515,7 +515,7 @@ impl LLMManager {
     /// 4. 发生切换时打日志并向前端 emit `llm-failover` 事件。
     pub(crate) async fn run_with_failover<T, F, Fut>(
         &self,
-        run: FailoverRun,
+        run: FailoverRun<'_>,
         primary: ApiConfig,
         mut attempt: F,
     ) -> Result<T>
@@ -640,10 +640,10 @@ impl LLMManager {
                     "[Failover] {}（task={}）: {} -> {}，原因: {}",
                     kind, run.task, models[prev_model_idx].model, cfg.model, reason
                 );
-                if let Some(window) = &run.window {
-                    let _ = window.emit(
+                if let Some(sink) = run.stream_sink {
+                    let _ = sink.emit(
                         FAILOVER_EVENT_NAME,
-                        json!({
+                        &json!({
                             "task": run.task,
                             "kind": kind,
                             "from_config_id": models[prev_model_idx].id,
@@ -912,7 +912,7 @@ mod tests {
                     task: "utility".into(),
                     scenario: FailoverScenario::BackgroundTask,
                     user_pinned: false,
-                    window: None,
+                    stream_sink: None,
                     attempts_handle_429_internally: false,
                     required_is_multimodal: None,
                     param_overrides: ParamOverrides::default(),
@@ -953,7 +953,7 @@ mod tests {
                     task: "default".into(),
                     scenario: FailoverScenario::ChatMain,
                     user_pinned: true,
-                    window: None,
+                    stream_sink: None,
                     attempts_handle_429_internally: true,
                     required_is_multimodal: Some(true),
                     param_overrides: ParamOverrides::default(),
@@ -1014,7 +1014,7 @@ mod tests {
                     task: "default".into(),
                     scenario: FailoverScenario::ChatMain,
                     user_pinned: true,
-                    window: None,
+                    stream_sink: None,
                     attempts_handle_429_internally: true,
                     required_is_multimodal: None,
                     param_overrides: ParamOverrides::default(),
