@@ -22,7 +22,9 @@ export const connectorToolsSkill: SkillDefinition = {
 所有外部副作用严格三阶段：
 1. connector_operation_draft：完整列出 recipients、timezone、conflicts、destination、ACL、attachments 与 payload。
 2. connector_operation_confirm：把用户确认绑定到原 draft 的 preview_sha256，并受 expires_at_ms 限制。
-3. connector_operation_commit：必须携带同一 preview_sha256 和新的 idempotency_key；commit 会重新核对 OAuth scopes、权限、对象版本和 MCP mapping。
+3. connector_operation_commit：必须携带同一 preview_sha256；commit 会重新核对 OAuth scopes、权限、对象版本和 MCP mapping。
+
+幂等键由系统在 draft 时生成（sha256(operation_id || preview_sha256)），随 receipt 返回；commit 不需要、也不接受模型自拟的 idempotency_key（传了会被忽略）。重复 commit 同一 operation 直接返回既有结果，不会重复执行。
 
 attachments 必须传完整 TaskObjectHandle，不接受裸主机路径。commit 成功返回统一 TaskObjectHandle 与 ConnectorOperationReceipt。`,
   embeddedTools: [
@@ -99,7 +101,8 @@ attachments 必须传完整 TaskObjectHandle，不接受裸主机路径。commit
           preview_sha256: { type: 'string' },
           idempotency_key: {
             type: 'string',
-            description: '本次逻辑操作的稳定唯一键；重试必须复用同一键。',
+            description:
+              '（已废弃）幂等键由系统在 draft 时生成并随 receipt 返回；模型提供的值会被忽略，重试同一 operation 直接复用同一 operation_id 即可。',
           },
         },
         required: ['operation_id', 'preview_sha256', 'idempotency_key'],
