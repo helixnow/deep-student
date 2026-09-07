@@ -968,6 +968,22 @@
       "path": "vfs/V20260907__insight_cards.sql",
       "sha256": "952e7fb2a098d3638d4cc94f5f277955c3e52237c325f05b0c69c4522d2f744d",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260908,
+      "name": "insight_fts",
+      "path": "vfs/V20260908__insight_fts.sql",
+      "sha256": "7628246be9daf637c98c7eb78c0006fb5d17fef9b641b33119ad79aa8c7d090e",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260909,
+      "name": "mastery_events_insight_source",
+      "path": "vfs/V20260909__mastery_events_insight_source.sql",
+      "sha256": "0f84b27599b9863c56e11976480aa9dda7a2c383ab81fe2fb4a0739cda2e29e1",
+      "dangers": []
     }
   ]
 }

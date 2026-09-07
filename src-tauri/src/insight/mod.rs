@@ -7,11 +7,15 @@
 //! - 已认领灵感不被任何自动演化路径改写；
 //! - 删除走墓碑 + 派生传播，永不自动物理删除。
 
+pub mod disclosure;
 pub mod handlers;
+pub mod recall;
 pub mod repo;
 pub mod service;
 pub mod types;
 
+pub use disclosure::{DisclosureOutcome, DisclosurePolicy, SilenceReason};
+pub use recall::{InsightRecallService, RecallCandidate};
 pub use service::InsightService;
 pub use types::{
     DisclosureLevel, EvidenceKind, InsightCard, InsightCorrectInput, InsightDraftInput,

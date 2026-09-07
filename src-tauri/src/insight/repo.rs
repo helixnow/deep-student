@@ -49,6 +49,31 @@ pub fn get_insight_row(
     .map_err(db_err)
 }
 
+/// 主表行 + 当前修订 组装为 InsightCard（service.get_insight 与 recall 共用）
+pub fn get_card(conn: &Connection, id: &str) -> Result<Option<InsightCard>, AppError> {
+    let Some((title, ownership, verification, status, recall_count, shown_count, useful_count, last_recalled_at, created_at, updated_at, current_rev_id)) =
+        get_insight_row(conn, id)?
+    else {
+        return Ok(None);
+    };
+    let current_revision = current_rev_id
+        .and_then(|rid| get_revision(conn, &rid).ok().flatten());
+    Ok(Some(InsightCard {
+        id: id.to_string(),
+        title,
+        ownership: InsightOwnership::parse(&ownership),
+        verification_state: VerificationState::parse(&verification),
+        status: InsightStatus::parse(&status),
+        recall_count,
+        shown_count,
+        useful_count,
+        last_recalled_at,
+        created_at,
+        updated_at,
+        current_revision,
+    }))
+}
+
 pub fn set_current_revision(conn: &Connection, insight_id: &str, revision_id: &str) -> Result<(), AppError> {
     conn.execute(
         "UPDATE insights SET current_revision_id = ?2, updated_at = ?3,
