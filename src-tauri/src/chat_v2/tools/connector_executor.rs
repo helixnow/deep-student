@@ -21,7 +21,7 @@ use crate::chat_v2::connector_ledger::{
     NewConnectorOperation,
 };
 use crate::chat_v2::task_objects::{
-    ConnectorOperationReceipt, ObjectCapabilities, ObjectProvenance, OperationState,
+    ConnectorOperationReceipt, DerivedEdge, ObjectCapabilities, ObjectProvenance, OperationState,
     ProviderObjectRef, TaskObjectHandle, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -814,7 +814,9 @@ fn provider_object_handle(
             derived_from: preview
                 .attachments
                 .iter()
-                .map(|attachment| attachment.handle_id.clone())
+                .map(|attachment| {
+                    DerivedEdge::new(attachment.handle_id.clone(), "connector.deliver")
+                })
                 .collect(),
             observed_at: chrono::Utc::now().to_rfc3339(),
         },

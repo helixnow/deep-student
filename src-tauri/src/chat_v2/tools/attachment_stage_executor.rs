@@ -43,7 +43,8 @@ use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{normalize_runtime_relative_path, temp_root};
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, TaskObjectHandle,
+    TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::repos::attachment_repo::VfsAttachmentContentSource;
@@ -1226,32 +1227,39 @@ impl AttachmentStageExecutor {
         )?;
 
         let locator = ManagedLocator::new(temp.id.clone(), staged.relative_path.clone())?;
-        let mut object_handle = TaskObjectHandle::new(
+        let stage_params_hash = hash_transform_params(&json!({
+            "resource_id": &input.resource_id,
+            "source_id": &input.source_id,
+            "display_name": &input.display_name,
+        }));
+        let object_handle = TaskObjectHandleBuilder::new(
             format!("attachment:{}:{}", input.source_id, staged.sha256),
             TaskObjectKind::File,
-            resolved.name,
-            ObjectProvenance {
-                source: "chat_context_ref".to_string(),
-                source_uri: None,
-                server: None,
-                tool: Some("send_time_attachment_stage".to_string()),
-                derived_from: vec![input.resource_id.clone(), input.source_id.clone()],
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        object_handle.media_type = resolved.mime_type.clone();
-        object_handle.size_bytes = Some(staged.size_bytes);
-        object_handle.sha256 = Some(staged.sha256.clone());
-        object_handle.locator = Some(locator);
-        object_handle.capabilities = ObjectCapabilities {
+            resolved.name.clone(),
+            "chat_context_ref",
+        )
+        .tool(Some("send_time_attachment_stage"))
+        .derived_edge(
+            DerivedEdge::new(&input.resource_id, "attachment.stage_context")
+                .with_params_hash(stage_params_hash.clone()),
+        )
+        .derived_edge(
+            DerivedEdge::new(&input.source_id, "attachment.stage_context")
+                .with_params_hash(stage_params_hash),
+        )
+        .media_type(resolved.mime_type.clone())
+        .size_bytes(Some(staged.size_bytes))
+        .sha256(Some(&staged.sha256))
+        .locator(Some(locator))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: false,
             deletable: false,
-        };
-        object_handle.validate()?;
+        })
+        .build()?;
 
         Ok(AutoStagedContextAttachment {
             resource_id: input.resource_id.clone(),
@@ -1446,32 +1454,34 @@ impl AttachmentStageExecutor {
         );
 
         let locator = ManagedLocator::new(temp_id.clone(), staged.relative_path.clone())?;
-        let mut object_handle = TaskObjectHandle::new(
+        let object_handle = TaskObjectHandleBuilder::new(
             format!("attachment:{}:{}", attachment_id, staged.sha256),
             TaskObjectKind::File,
             original_name.clone(),
-            ObjectProvenance {
-                source: "chat_attachment".to_string(),
-                source_uri: None,
-                server: None,
-                tool: Some("attachment_stage".to_string()),
-                derived_from: vec![attachment_id.clone()],
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        object_handle.media_type = mime_type.clone();
-        object_handle.size_bytes = Some(staged.size_bytes);
-        object_handle.sha256 = Some(staged.sha256.clone());
-        object_handle.locator = Some(locator);
-        object_handle.capabilities = ObjectCapabilities {
+            "chat_attachment",
+        )
+        .tool(Some("attachment_stage"))
+        .derived_edge(
+            DerivedEdge::new(&attachment_id, "attachment.stage").with_params_hash(
+                hash_transform_params(&json!({
+                    "attachment_id": &attachment_id,
+                    "message_id": &message_id,
+                })),
+            ),
+        )
+        .media_type(mime_type.clone())
+        .size_bytes(Some(staged.size_bytes))
+        .sha256(Some(&staged.sha256))
+        .locator(Some(locator))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: false,
             deletable: false,
-        };
-        object_handle.validate()?;
+        })
+        .build()?;
 
         let mut output = json!({
             "success": true,

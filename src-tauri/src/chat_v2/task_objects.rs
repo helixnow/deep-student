@@ -4,9 +4,26 @@
 //! to operate on it. `TaskObjectHandle` keeps those concerns explicit across
 //! chat attachments, browser downloads, MCP resources, and future connectors.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use sha2::{Digest, Sha256};
 
-const TASK_OBJECT_SCHEMA_VERSION: u16 = 1;
+/// schema v2：`ObjectProvenance.derived_from` 由 `Vec<String>` 升级为
+/// `Vec<DerivedEdge>`（带 transform_id / 参数指纹 / 观测时间）。
+const TASK_OBJECT_SCHEMA_VERSION: u16 = 2;
+/// 持久化的 v1 数据（derived_from 为字符串数组）仍可反序列化并通过校验。
+const MIN_SUPPORTED_TASK_OBJECT_SCHEMA_VERSION: u16 = 1;
+
+/// 旧格式 `derived_from` 字符串升级后的占位 transform 标识。
+pub const LEGACY_DERIVED_TRANSFORM_ID: &str = "legacy_unknown";
+
+/// 计算 transform 参数的确定性 sha256 指纹。
+///
+/// `params` 必须由调用方以 `serde_json::json!` 字面量显式构造（字段固定、
+/// 顺序固定）。**严禁**把含 `HashMap` 的结构序列化后传入——HashMap 迭代序
+/// 随机，同一内容哈希逐次不同（见项目 AGENTS.md 红线）。
+pub fn hash_transform_params(params: &serde_json::Value) -> String {
+    hex::encode(Sha256::digest(params.to_string().as_bytes()))
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -104,6 +121,84 @@ pub struct ObjectAcl {
     pub observed_at: Option<String>,
 }
 
+/// 一条血缘边：本对象由哪个来源对象经哪次变换而来。
+///
+/// 序列化恒为 v2 对象格式；反序列化兼容 v1 纯字符串格式（自动升级为
+/// `transform_id = legacy_unknown`、无参数指纹、空观测时间）。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DerivedEdge {
+    /// 来源标识：上游 handle_id / URL / VFS resource id / 运行时路径等。
+    pub source_handle_id: String,
+    /// 产生本对象的变换标识，如 `fetch.binary`、`xlsx.edit_cells`。
+    pub transform_id: String,
+    /// 变换参数的确定性 sha256（见 `hash_transform_params`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform_params_hash: Option<String>,
+    pub observed_at: String,
+}
+
+impl DerivedEdge {
+    pub fn new(source_handle_id: impl Into<String>, transform_id: impl Into<String>) -> Self {
+        Self {
+            source_handle_id: source_handle_id.into(),
+            transform_id: transform_id.into(),
+            transform_params_hash: None,
+            observed_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn with_params_hash(mut self, hash: impl Into<String>) -> Self {
+        self.transform_params_hash = Some(hash.into());
+        self
+    }
+
+    pub fn observed_at(mut self, observed_at: impl Into<String>) -> Self {
+        self.observed_at = observed_at.into();
+        self
+    }
+}
+
+impl<'de> Deserialize<'de> for DerivedEdge {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DerivedEdgeV2 {
+            source_handle_id: String,
+            transform_id: String,
+            #[serde(default)]
+            transform_params_hash: Option<String>,
+            #[serde(default)]
+            observed_at: String,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            V2(DerivedEdgeV2),
+            Legacy(String),
+        }
+
+        match Wire::deserialize(deserializer)? {
+            Wire::V2(edge) => Ok(Self {
+                source_handle_id: edge.source_handle_id,
+                transform_id: edge.transform_id,
+                transform_params_hash: edge.transform_params_hash,
+                observed_at: edge.observed_at,
+            }),
+            Wire::Legacy(source) => Ok(Self {
+                source_handle_id: source,
+                transform_id: LEGACY_DERIVED_TRANSFORM_ID.to_string(),
+                transform_params_hash: None,
+                observed_at: String::new(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectProvenance {
@@ -115,7 +210,7 @@ pub struct ObjectProvenance {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub derived_from: Vec<String>,
+    pub derived_from: Vec<DerivedEdge>,
     pub observed_at: String,
 }
 
@@ -169,7 +264,11 @@ impl TaskObjectHandle {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_version != TASK_OBJECT_SCHEMA_VERSION {
+        // v1（字符串 derived_from）与 v2（DerivedEdge）均可通过校验；
+        // 拒绝未知的新版本与非法的 0。
+        if self.schema_version < MIN_SUPPORTED_TASK_OBJECT_SCHEMA_VERSION
+            || self.schema_version > TASK_OBJECT_SCHEMA_VERSION
+        {
             return Err(format!(
                 "unsupported task object schema version: {}",
                 self.schema_version
@@ -190,6 +289,186 @@ impl TaskObjectHandle {
             return Err("materializable objects require a managed locator".to_string());
         }
         Ok(())
+    }
+}
+
+/// `TaskObjectHandle` 的统一构造入口（G11-P1）。
+///
+/// - `handle_id` / `kind` / `display_name` / `provenance.source` 为必填；
+/// - 血缘必须显式：调用 `derived_edge(s)` 填来源，或 `origin_unknown(reason)`
+///   声明无来源（落 debug log），否则 `build()` 报错；
+/// - `build()` 内部调用 `TaskObjectHandle::validate()`。
+#[derive(Debug, Clone)]
+pub struct TaskObjectHandleBuilder {
+    handle_id: String,
+    kind: TaskObjectKind,
+    display_name: String,
+    source: String,
+    source_uri: Option<String>,
+    server: Option<String>,
+    tool: Option<String>,
+    derived_from: Option<Vec<DerivedEdge>>,
+    origin_unknown_reason: Option<String>,
+    media_type: Option<String>,
+    size_bytes: Option<u64>,
+    sha256: Option<String>,
+    locator: Option<ManagedLocator>,
+    provider_ref: Option<ProviderObjectRef>,
+    acl: Option<ObjectAcl>,
+    capabilities: ObjectCapabilities,
+    expires_at: Option<String>,
+    observed_at: Option<String>,
+}
+
+impl TaskObjectHandleBuilder {
+    pub fn new(
+        handle_id: impl Into<String>,
+        kind: TaskObjectKind,
+        display_name: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            handle_id: handle_id.into(),
+            kind,
+            display_name: display_name.into(),
+            source: source.into(),
+            source_uri: None,
+            server: None,
+            tool: None,
+            derived_from: None,
+            origin_unknown_reason: None,
+            media_type: None,
+            size_bytes: None,
+            sha256: None,
+            locator: None,
+            provider_ref: None,
+            acl: None,
+            capabilities: ObjectCapabilities::default(),
+            expires_at: None,
+            observed_at: None,
+        }
+    }
+
+    pub fn source_uri(mut self, value: Option<impl Into<String>>) -> Self {
+        self.source_uri = value.map(Into::into);
+        self
+    }
+
+    pub fn server(mut self, value: Option<impl Into<String>>) -> Self {
+        self.server = value.map(Into::into);
+        self
+    }
+
+    pub fn tool(mut self, value: Option<impl Into<String>>) -> Self {
+        self.tool = value.map(Into::into);
+        self
+    }
+
+    /// 追加一条血缘边（可多次调用）。
+    pub fn derived_edge(mut self, edge: DerivedEdge) -> Self {
+        self.derived_from.get_or_insert_with(Vec::new).push(edge);
+        self
+    }
+
+    /// 一次性设置全部血缘边。
+    pub fn derived_edges(mut self, edges: Vec<DerivedEdge>) -> Self {
+        self.derived_from = Some(edges);
+        self
+    }
+
+    /// 显式声明"无可靠来源"的逃生门：血缘留空并落 debug log。
+    pub fn origin_unknown(mut self, reason: impl Into<String>) -> Self {
+        self.origin_unknown_reason = Some(reason.into());
+        self.derived_from = Some(Vec::new());
+        self
+    }
+
+    pub fn media_type(mut self, value: Option<impl Into<String>>) -> Self {
+        self.media_type = value.map(Into::into);
+        self
+    }
+
+    pub fn size_bytes(mut self, value: Option<u64>) -> Self {
+        self.size_bytes = value;
+        self
+    }
+
+    pub fn sha256(mut self, value: Option<impl Into<String>>) -> Self {
+        self.sha256 = value.map(Into::into);
+        self
+    }
+
+    pub fn locator(mut self, value: Option<ManagedLocator>) -> Self {
+        self.locator = value;
+        self
+    }
+
+    pub fn provider_ref(mut self, value: Option<ProviderObjectRef>) -> Self {
+        self.provider_ref = value;
+        self
+    }
+
+    pub fn acl(mut self, value: Option<ObjectAcl>) -> Self {
+        self.acl = value;
+        self
+    }
+
+    pub fn capabilities(mut self, value: ObjectCapabilities) -> Self {
+        self.capabilities = value;
+        self
+    }
+
+    pub fn expires_at(mut self, value: Option<impl Into<String>>) -> Self {
+        self.expires_at = value.map(Into::into);
+        self
+    }
+
+    /// 缺省为 `build()` 时刻的 UTC now（与历史产出点行为一致）。
+    pub fn observed_at(mut self, value: impl Into<String>) -> Self {
+        self.observed_at = Some(value.into());
+        self
+    }
+
+    pub fn build(self) -> Result<TaskObjectHandle, String> {
+        let derived_from = match self.derived_from {
+            Some(edges) => edges,
+            None => {
+                return Err(format!(
+                    "derived_from lineage must be explicit for handle {} \
+                     (use derived_edge(s) or origin_unknown)",
+                    self.handle_id
+                ))
+            }
+        };
+        if let Some(reason) = &self.origin_unknown_reason {
+            log::debug!(
+                "[task_objects] handle {} built with origin_unknown lineage: {}",
+                self.handle_id,
+                reason
+            );
+        }
+        let provenance = ObjectProvenance {
+            source: self.source,
+            source_uri: self.source_uri,
+            server: self.server,
+            tool: self.tool,
+            derived_from,
+            observed_at: self
+                .observed_at
+                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        };
+        let mut handle =
+            TaskObjectHandle::new(self.handle_id, self.kind, self.display_name, provenance);
+        handle.media_type = self.media_type;
+        handle.size_bytes = self.size_bytes;
+        handle.sha256 = self.sha256;
+        handle.locator = self.locator;
+        handle.provider_ref = self.provider_ref;
+        handle.acl = self.acl;
+        handle.capabilities = self.capabilities;
+        handle.expires_at = self.expires_at;
+        handle.validate()?;
+        Ok(handle)
     }
 }
 
@@ -368,5 +647,109 @@ mod tests {
         receipt.confirm(&"a".repeat(64)).unwrap();
         receipt.commit("2026-07-19T00:00:00Z").unwrap();
         assert_eq!(receipt.state, OperationState::Committed);
+    }
+
+    #[test]
+    fn derived_edge_serializes_v2_and_reads_legacy_string() {
+        let edge = DerivedEdge::new("obj_src", "fetch.binary")
+            .with_params_hash("ab".repeat(32))
+            .observed_at("2026-09-07T00:00:00Z");
+        let value = serde_json::to_value(&edge).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "sourceHandleId": "obj_src",
+                "transformId": "fetch.binary",
+                "transformParamsHash": "ab".repeat(32),
+                "observedAt": "2026-09-07T00:00:00Z",
+            })
+        );
+        // v2 对象 roundtrip
+        let parsed: DerivedEdge = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, edge);
+        // v1 纯字符串自动升级为 legacy_unknown
+        let legacy: DerivedEdge = serde_json::from_value(serde_json::json!("obj_src")).unwrap();
+        assert_eq!(legacy.source_handle_id, "obj_src");
+        assert_eq!(legacy.transform_id, LEGACY_DERIVED_TRANSFORM_ID);
+        assert_eq!(legacy.transform_params_hash, None);
+        assert!(legacy.observed_at.is_empty());
+    }
+
+    #[test]
+    fn schema_v1_handle_with_string_lineage_still_validates() {
+        let legacy_json = serde_json::json!({
+            "schemaVersion": 1,
+            "handleId": "obj_old",
+            "kind": "file",
+            "displayName": "old.png",
+            "capabilities": {
+                "readable": true,
+                "materializable": false,
+                "writable": false,
+                "shareable": false,
+                "sendable": false,
+                "deletable": false,
+            },
+            "provenance": {
+                "source": "url_download",
+                "derivedFrom": ["https://example.com/a.png"],
+                "observedAt": "2026-07-19T00:00:00Z",
+            },
+        });
+        let handle: TaskObjectHandle = serde_json::from_value(legacy_json).unwrap();
+        assert_eq!(handle.schema_version, 1);
+        assert_eq!(handle.provenance.derived_from.len(), 1);
+        assert_eq!(
+            handle.provenance.derived_from[0].transform_id,
+            LEGACY_DERIVED_TRANSFORM_ID
+        );
+        assert!(handle.validate().is_ok());
+        // 未来版本仍被拒绝
+        let mut future = handle.clone();
+        future.schema_version = TASK_OBJECT_SCHEMA_VERSION + 1;
+        assert!(future.validate().is_err());
+    }
+
+    #[test]
+    fn builder_requires_explicit_lineage() {
+        let result = TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test")
+            .build();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("derived_from"));
+    }
+
+    #[test]
+    fn builder_origin_unknown_builds_with_empty_lineage() {
+        let handle = TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test")
+            .origin_unknown("test_no_referrer")
+            .build()
+            .unwrap();
+        assert!(handle.provenance.derived_from.is_empty());
+        assert_eq!(handle.schema_version, TASK_OBJECT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn builder_build_runs_validation() {
+        // 非法 sha256 必须被 validate 拦截
+        let result = TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test")
+            .derived_edge(DerivedEdge::new("src", "test.op"))
+            .sha256(Some("not-a-hash"))
+            .build();
+        assert!(result.is_err());
+        // 合法构造
+        let handle = TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test")
+            .derived_edge(
+                DerivedEdge::new("src", "test.op")
+                    .with_params_hash(hash_transform_params(&serde_json::json!({"k": "v"}))),
+            )
+            .sha256(Some("a".repeat(64)))
+            .build()
+            .unwrap();
+        assert_eq!(handle.provenance.derived_from.len(), 1);
+        assert_eq!(
+            handle.provenance.derived_from[0].transform_id,
+            "test.op"
+        );
+        assert!(handle.provenance.derived_from[0].transform_params_hash.is_some());
     }
 }

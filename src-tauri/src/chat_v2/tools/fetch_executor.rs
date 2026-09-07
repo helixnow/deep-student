@@ -37,8 +37,8 @@ use super::strip_tool_namespace;
 use crate::browser::policy::{is_blocked_internal_ip, is_internal_ip};
 use crate::chat_v2::runtime_roots::artifact_root;
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
-    TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, ProviderObjectRef,
+    TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
@@ -719,40 +719,45 @@ impl FetchExecutor {
         size_bytes: u64,
         kind: BinaryKind,
     ) -> Result<Value, String> {
-        let mut handle = TaskObjectHandle::new(
+        let handle = TaskObjectHandleBuilder::new(
             format!("web-fetch:{sha256}"),
             TaskObjectKind::File,
             display_name.clone(),
-            ObjectProvenance {
-                source: "url_download".into(),
-                source_uri: Some(final_url.to_string()),
-                server: final_url.host_str().map(str::to_string),
-                tool: Some("web_fetch".into()),
-                derived_from: vec![original_url.to_string()],
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        handle.media_type = Some(kind.mime.into());
-        handle.size_bytes = Some(size_bytes);
-        handle.sha256 = Some(sha256.clone());
-        handle.locator = Some(ManagedLocator::new("artifacts", &relative_path)?);
-        handle.provider_ref = Some(ProviderObjectRef {
+            "url_download",
+        )
+        .source_uri(Some(final_url.to_string()))
+        .server(final_url.host_str().map(str::to_string))
+        .tool(Some("web_fetch"))
+        .derived_edge(
+            DerivedEdge::new(original_url, "fetch.binary").with_params_hash(
+                hash_transform_params(&json!({
+                    "url": &original_url,
+                    "final_url": final_url.as_str(),
+                    "requested_name": &original_name,
+                })),
+            ),
+        )
+        .media_type(Some(kind.mime))
+        .size_bytes(Some(size_bytes))
+        .sha256(Some(&sha256))
+        .locator(Some(ManagedLocator::new("artifacts", &relative_path)?))
+        .provider_ref(Some(ProviderObjectRef {
             provider: "web".into(),
             external_id: final_url.to_string(),
             container_id: final_url.host_str().map(str::to_string),
             thread_id: None,
             version: None,
             etag: None,
-        });
-        handle.capabilities = ObjectCapabilities {
+        }))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: true,
             deletable: true,
-        };
-        handle.validate()?;
+        })
+        .build()?;
         Ok(json!({
             "success": true,
             "kind": "external_file",
