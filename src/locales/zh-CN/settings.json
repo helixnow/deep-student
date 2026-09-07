@@ -1158,7 +1158,7 @@
       "enabled": "启用自动 OCR",
       "enabled_desc": "上传图片或扫描版 PDF 时自动进行文字识别",
       "skip_multimodal": "多模态模型跳过 OCR",
-      "skip_multimodal_desc": "当前聊天模型支持图片理解时，跳过 OCR"
+      "skip_multimodal_desc": "已由当前会话模型能力自动决定，无需手动设置"
     },
     "images": {
       "title": "图片识别",
@@ -1168,9 +1168,9 @@
     "pdf": {
       "title": "PDF 识别",
       "enabled": "扫描版 PDF 自动 OCR",
-      "enabled_desc": "当 PDF 提取的文本少于阈值时，自动进行多页 OCR",
+      "enabled_desc": "当 PDF 提取的文本少于阈值时，自动进行多页 OCR（当前对话模型支持看图时可直读页面，无需 OCR）",
       "threshold": "PDF 文本阈值",
-      "threshold_desc": "提取的文本字符数少于此值时，触发 OCR",
+      "threshold_desc": "提取的文本字符数少于此值时，判定为扫描件并触发 OCR",
       "threshold_suffix": " 字符"
     },
     "reset_success": "设置已重置为默认值",

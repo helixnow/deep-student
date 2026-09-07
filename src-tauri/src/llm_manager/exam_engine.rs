@@ -779,7 +779,19 @@ impl LLMManager {
         }
 
         let mut last_err = None;
+        // ★ E（2026-09-07）5xx 页级快速失败：同一页在同一引擎连续 2 次 5xx/524
+        // 即跳到下一引擎，全部引擎 5xx 则走系统 OCR 兜底。此前 524（Cloudflare
+        // 网关超时）每页重试 2-3 次、每次吃满上游 2 分钟，7 页 PDF 单 OCR 阶段
+        // 就要 15 分钟。4xx 的短路逻辑保持不变（见下方 D 注释）。
+        const MAX_5XX_PER_ENGINE: usize = 2;
+        let mut consecutive_5xx_per_engine: usize = 0;
+        let mut last_engine_index: Option<usize> = None;
         for (idx, (config, engine_type)) in engines.iter().enumerate() {
+            // 引擎切换时重置 5xx 计数
+            if last_engine_index != Some(idx) {
+                consecutive_5xx_per_engine = 0;
+                last_engine_index = Some(idx);
+            }
             debug!(
                 "[OCR] Trying engine #{} ({}, model={})",
                 idx,
@@ -816,16 +828,34 @@ impl LLMManager {
                     // fallback 空转——4xx 必须立即中断本页 fallback 链，
                     // 不再轮到后续引擎重放同一确定性失败。
                     // HTTP 状态由 request_deepseek_ocr_content 写入 details.status。
-                    let is_client_error = e
+                    let status = e
                         .details
                         .as_ref()
                         .and_then(|d| d.get("status"))
-                        .and_then(|v| v.as_u64())
+                        .and_then(|v| v.as_u64());
+                    let is_client_error = status
                         .map(|s| (400..500).contains(&s))
                         .unwrap_or(false);
                     if is_client_error {
                         OCR_CIRCUIT_BREAKER.record_failure();
                         return Err(e);
+                    }
+                    // ★ E：5xx（含 524/502/503/504 网关超时）快速失败——
+                    // 同引擎连续 2 次 5xx 说明该引擎当前不可用，跳到下一引擎
+                    let is_server_error = status
+                        .map(|s| s >= 500)
+                        .unwrap_or(false);
+                    if is_server_error {
+                        consecutive_5xx_per_engine += 1;
+                        if consecutive_5xx_per_engine >= MAX_5XX_PER_ENGINE {
+                            warn!(
+                                "[OCR] Engine #{} ({}) hit {} consecutive 5xx errors for page {}, skipping to next engine",
+                                idx, engine_type.as_str(), consecutive_5xx_per_engine, page_index
+                            );
+                            continue;
+                        }
+                    } else {
+                        consecutive_5xx_per_engine = 0;
                     }
                     last_err = Some(e);
                 }
