@@ -72,7 +72,7 @@ pub(crate) fn cancel_in_flight_continuation(state: &ChatV2State, session_id: &st
 /// `crate::chat_v2::goal::runtime::spawn_goal_continuation_if_idle` 调用。
 /// 会话忙（已有活跃流）或 kill switch 生效时静默放弃，不改目标状态。
 pub fn spawn_goal_continuation_if_idle(app: AppHandle, session_id: String) {
-    crate::background_tasks::spawn(async move {
+    let _ = crate::background_tasks::spawn(async move {
         run_continuation_loop(app, session_id).await;
     });
 }
