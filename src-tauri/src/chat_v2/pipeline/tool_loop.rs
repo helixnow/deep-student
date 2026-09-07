@@ -55,6 +55,7 @@
 //!   generation 声明），绝不伪造工具面分叉逼 converge +1。
 
 use super::*;
+use crate::llm_manager::{NoopStreamSink, StreamEventSink, WindowStreamSink};
 
 pub(crate) fn is_retryable_llm_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
@@ -1195,15 +1196,15 @@ impl ChatV2Pipeline {
             // 不再让前端的值直接覆盖，避免丢失 LaTeX 规则等 XML 格式内容
             let system_prompt_override = Some(system_prompt.to_string());
 
-            // 获取 window 用于流式事件发射
-            // G01-a：无窗口 runtime 暂不支持 LLM 流式调用
-            //（call_unified_model_2_stream 仍要求 Window，G01-b 去除），
-            // 以结构化错误 fail-fast 替代原 panic。
-            let Some(window) = emitter.try_window() else {
-                return Err(ChatV2Error::Llm(
-                    "windowless runtime: LLM streaming requires a Tauri window (G01-b pending)"
-                        .to_string(),
-                ));
+            // G01-b：流式事件出口按 runtime 选择——窗口 runtime 经
+            // WindowStreamSink 透传全部事件（行为不变）；无窗口 runtime
+            //（headless/测试）用 NoopStreamSink 丢弃事件，MCP 前端桥工具
+            // 随之缺席（build_tools_with_mcp 的 None 语义）。
+            let window_sink = emitter.try_window().map(WindowStreamSink::new);
+            let noop_sink = NoopStreamSink;
+            let stream_sink: &dyn StreamEventSink = match &window_sink {
+                Some(sink) => sink,
+                None => &noop_sink,
             };
 
             log::info!(
@@ -1224,7 +1225,7 @@ impl ChatV2Pipeline {
                 true, // enable_chain_of_thought
                 enable_thinking,
                 Some("chat_v2"),
-                window,
+                stream_sink,
                 &stream_event,
                 Some(ctx.assistant_message_id.as_str()),
                 None, // trace_id
@@ -1364,15 +1365,8 @@ impl ChatV2Pipeline {
                         .register_stream_hooks(&stream_event, registered_hooks.clone())
                         .await;
 
-                    // G01-a：emitter 在首次调用前已做窗口检查，此处仅为
-                    // 防御性处理——无窗口时以结构化错误终止重试而非 panic。
-                    let Some(retry_window) = emitter.try_window() else {
-                        call_result = Err(crate::models::AppError::llm(
-                            "windowless runtime: LLM streaming requires a Tauri window (G01-b pending)"
-                                .to_string(),
-                        ));
-                        break;
-                    };
+                    // G01-b：重试复用首次调用前选定的同一 sink（窗口/无窗
+                    // runtime 语义在一次执行内不变）。
                     let retry_future = self.llm_manager.call_unified_model_2_stream(
                         &llm_context,
                         &messages,
@@ -1380,7 +1374,7 @@ impl ChatV2Pipeline {
                         true,
                         enable_thinking,
                         Some("chat_v2"),
-                        retry_window,
+                        stream_sink,
                         &stream_event,
                         Some(ctx.assistant_message_id.as_str()),
                         None,

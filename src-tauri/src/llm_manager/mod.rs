@@ -44,6 +44,79 @@ use uuid::Uuid;
 /// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
 pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
 
+// ============================================================
+// 流式事件出口（G01-b：LLM 流式层去 Window 依赖）
+// ============================================================
+
+/// LLM 流式管线（`call_unified_model_2_stream`）的事件出口抽象。
+///
+/// 语义对齐 chat_v2 的 `ExecutionEventSink`（G01-a），但面向本层的非类型化
+/// JSON 事件（流式 chunk / 用量 / 错误 / 审计 / failover 通知）：
+/// - 桌面窗口运行时由 [`WindowStreamSink`] 经 Tauri `Window` 发到前端事件通道；
+/// - 无窗口运行时（headless / 测试）由 [`NoopStreamSink`] 丢弃事件（仅 trace 日志）。
+///
+/// 少数仍需要真实窗口的路径（MCP 前端桥工具发现、`ToolContext.window`）经
+/// [`StreamEventSink::window`] 取回；无窗口 runtime 返回 `None`，由调用方
+/// 降级（MCP 工具集为空，见 `build_tools_with_mcp`）。
+pub trait StreamEventSink: Send + Sync {
+    /// 发射 JSON 事件到指定通道。返回底层 emit 结果，由调用方按现状记录日志
+    /// （各调用点的 warn!/error! 语义保持不变）。
+    fn emit(
+        &self,
+        channel: &str,
+        payload: &Value,
+    ) -> std::result::Result<(), tauri::Error>;
+
+    /// 取回底层 Tauri 窗口；无窗口 runtime 返回 `None`。
+    fn window(&self) -> Option<Window>;
+}
+
+/// 桌面窗口事件出口：逐调用包装 `Window::emit`，行为与 G01-b 改造前完全一致
+/// （payload 原样透传，不加重试/计数——本层历史上就是 best-effort emit）。
+pub struct WindowStreamSink {
+    window: Window,
+}
+
+impl WindowStreamSink {
+    pub fn new(window: Window) -> Self {
+        Self { window }
+    }
+}
+
+impl StreamEventSink for WindowStreamSink {
+    fn emit(
+        &self,
+        channel: &str,
+        payload: &Value,
+    ) -> std::result::Result<(), tauri::Error> {
+        self.window.emit(channel, payload)
+    }
+
+    fn window(&self) -> Option<Window> {
+        Some(self.window.clone())
+    }
+}
+
+/// 无窗口事件出口（headless / 测试）：事件全部丢弃（仅 trace 日志），
+/// `window()` 返回 `None`。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopStreamSink;
+
+impl StreamEventSink for NoopStreamSink {
+    fn emit(
+        &self,
+        channel: &str,
+        _payload: &Value,
+    ) -> std::result::Result<(), tauri::Error> {
+        log::trace!("[LLM::stream_sink] NoopSink drop event: {}", channel);
+        Ok(())
+    }
+
+    fn window(&self) -> Option<Window> {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryCapabilityFlags {
     vision: bool,
@@ -6926,7 +6999,11 @@ impl LLMManager {
     }
 
     /// 构建工具列表，包含本地工具和 MCP 工具
-    async fn build_tools_with_mcp(&self, window: &Window) -> Value {
+    ///
+    /// G01-b：`window` 为 `None`（无窗口 runtime：headless / 测试）时 MCP 工具
+    /// 集为空——MCP 工具发现走前端桥，无窗 runtime 本就不该暴露前端桥工具；
+    /// 本地工具（web_search 等）广告逻辑不变。
+    async fn build_tools_with_mcp(&self, window: Option<&Window>) -> Value {
         // 本地工具定义（按开关动态广告）
         let mut tools_array = Vec::new();
 
@@ -7054,7 +7131,14 @@ impl LLMManager {
             })
             .unwrap_or_default();
 
-        let mcp_tools = self.get_frontend_mcp_tools_cached(window, cache_ttl).await;
+        // G01-b：无窗口 runtime 没有前端桥，MCP 工具发现整体缺席（空集合）
+        let mcp_tools = match window {
+            Some(window) => self.get_frontend_mcp_tools_cached(window, cache_ttl).await,
+            None => {
+                debug!("[MCP] 无窗口 runtime：跳过前端 MCP 工具发现，工具集为空");
+                Vec::new()
+            }
+        };
         let mut included_count = 0usize;
         let namespace_prefix = namespace_prefix.trim();
         let api_name_prefix = (!namespace_prefix.is_empty()).then_some(namespace_prefix);
