@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{State, Window};
+use tauri::{Manager, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::pipeline::ChatV2Pipeline;
@@ -20,6 +20,8 @@ use crate::chat_v2::workspace::{
     AgentProfileResolver, AgentRole, AgentStatus, MessageType, SubagentTaskData,
     SubagentTaskStatus, WorkspaceCoordinator,
 };
+// G03-a：完成投递持久账本（chat_v2 主库 completion_outbox 表）
+use crate::chat_v2::completion_outbox::{CompletionOutbox, NewCompletionDelivery};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -1783,6 +1785,61 @@ pub async fn run_workspace_agent_backend(
         // 与本次流注册冲突（run_agent 的 try_register_stream 会拒绝并回滚 drain）。
         drop(stream_guard);
 
+        // 🆕 G03-a：完成投递持久账本助手。
+        //
+        // 事务边界（跨库对账口径）：inbox Result 消息与 task 终态在 workspace
+        // 独立库（ws_{id}.db），outbox 在 chat_v2 主库，无法同事务。约定顺序：
+        //   1. outbox INSERT(pending)——先落账本，"完成事实"有源可循；
+        //   2. workspace 库：send_message → task 终态；
+        //   3. outbox UPDATE delivered（闭包自投递收敛）；
+        //   4. emit（前端快路径）。
+        // 崩溃遗留的 pending 行由 CompletionDispatcher 按 run_id 查重后对账
+        // 重投；反向顺序（先写终态后写账本）会留下"已投递但无账本痕迹"的
+        // 永久盲区，禁止。账本写入失败仅降级为旧链路语义（前端 wake 兜底），
+        // 不阻断完成投递本身。
+        let record_completion_outbox = |completion: &AgentCompletionEnvelope,
+                                        payload: &str|
+         -> Option<String> {
+            // 无父会话（广播型完成）没有唤醒目标，不入帐
+            let parent = completion.parent_session_id.as_deref()?;
+            let outbox = CompletionOutbox::new(db_clone.clone());
+            let delivery_id = format!("deliv_{}", ulid::Ulid::new());
+            match outbox.enqueue(&NewCompletionDelivery {
+                delivery_id: delivery_id.clone(),
+                task_id: completion.task_id.clone(),
+                run_id: completion.run_id.clone(),
+                workspace_id: completion.workspace_id.clone(),
+                agent_session_id: completion.agent_session_id.clone(),
+                target_session_id: parent.to_string(),
+                // 父会话运行代际标识：触发该子代理的父会话消息 id（审计/对账）
+                target_generation: completion.correlation_id.clone(),
+                payload_json: payload.to_string(),
+                created_at: NewCompletionDelivery::now_timestamp(),
+            }) {
+                Ok(_) => Some(delivery_id),
+                Err(error) => {
+                    log::warn!(
+                        "[Workspace::handlers] Failed to record completion outbox (run={}): {}",
+                        completion.run_id,
+                        error
+                    );
+                    None
+                }
+            }
+        };
+        let settle_completion_outbox = |delivery_id: Option<&str>| {
+            if let Some(id) = delivery_id {
+                let outbox = CompletionOutbox::new(db_clone.clone());
+                if let Err(error) = outbox.mark_delivered_by_delivery_id(id) {
+                    log::warn!(
+                        "[Workspace::handlers] Failed to settle completion outbox {}: {}",
+                        id,
+                        error
+                    );
+                }
+            }
+        };
+
         let task_manager = coordinator_clone.get_task_manager(&workspace_id_clone).ok();
         // 当前 pending/running 任务（终态更新前查询一次，后续复用）
         let current_task = task_manager
@@ -1829,6 +1886,11 @@ pub async fn run_workspace_agent_backend(
                         ),
                     };
                     let completion_metadata = completion.metadata();
+                    // G03-a ①：完成事实先入持久账本（pending）
+                    let completion_payload =
+                        serde_json::to_string(&completion).unwrap_or_default();
+                    let delivery_id =
+                        record_completion_outbox(&completion, &completion_payload);
 
                     // The runtime owns completion delivery. The model may still use
                     // workspace_send for progress, but correctness never depends on it.
@@ -1837,7 +1899,7 @@ pub async fn run_workspace_agent_backend(
                         &session_id_for_cleanup,
                         parent_session_id_for_task.as_deref(),
                         MessageType::Result,
-                        serde_json::to_string(&completion).unwrap_or_default(),
+                        completion_payload,
                     ) {
                         Ok(message) => {
                             if let Err(error) = coordinator_clone.update_message_metadata(
@@ -1869,6 +1931,10 @@ pub async fn run_workspace_agent_backend(
                             );
                         }
                     }
+                    // G03-a ③：inbox + task 终态已落库，闭包自投递收敛 delivered
+                    // （emit 紧随其后——前端快路径）。delivered 置位后 dispatcher
+                    // 不会再认领本行。
+                    settle_completion_outbox(delivery_id.as_deref());
                     let _ = window_clone.emit("workspace_agent_completion", &completion);
                 } else {
                     // 非 worker（当前不可达：coordinator 不允许 auto-run）：保持旧语义置 Idle，
@@ -1937,12 +2003,15 @@ pub async fn run_workspace_agent_backend(
                     token_usage: worker_message_usage(&db_clone, &assistant_message_id_for_task),
                 };
                 let completion_metadata = completion.metadata();
+                // G03-a ①：取消也是终态事实，同样先入账本
+                let completion_payload = serde_json::to_string(&completion).unwrap_or_default();
+                let delivery_id = record_completion_outbox(&completion, &completion_payload);
                 if let Ok(message) = coordinator_clone.send_message(
                     &workspace_id_clone,
                     &session_id_for_cleanup,
                     parent_session_id_for_task.as_deref(),
                     MessageType::Result,
-                    serde_json::to_string(&completion).unwrap_or_default(),
+                    completion_payload,
                 ) {
                     let _ = coordinator_clone.update_message_metadata(
                         &workspace_id_clone,
@@ -1950,6 +2019,8 @@ pub async fn run_workspace_agent_backend(
                         &completion_metadata,
                     );
                 }
+                // G03-a ③：自投递收敛
+                settle_completion_outbox(delivery_id.as_deref());
                 let _ = window_clone.emit("workspace_agent_completion", &completion);
             }
             Err(e) => {
@@ -1990,12 +2061,15 @@ pub async fn run_workspace_agent_backend(
                     token_usage: worker_message_usage(&db_clone, &assistant_message_id_for_task),
                 };
                 let completion_metadata = completion.metadata();
+                // G03-a ①：失败同样是终态事实，先入账本
+                let completion_payload = serde_json::to_string(&completion).unwrap_or_default();
+                let delivery_id = record_completion_outbox(&completion, &completion_payload);
                 if let Ok(message) = coordinator_clone.send_message(
                     &workspace_id_clone,
                     &session_id_for_cleanup,
                     parent_session_id_for_task.as_deref(),
                     MessageType::Result,
-                    serde_json::to_string(&completion).unwrap_or_default(),
+                    completion_payload,
                 ) {
                     let _ = coordinator_clone.update_message_metadata(
                         &workspace_id_clone,
@@ -2003,6 +2077,8 @@ pub async fn run_workspace_agent_backend(
                         &completion_metadata,
                     );
                 }
+                // G03-a ③：自投递收敛
+                settle_completion_outbox(delivery_id.as_deref());
                 let _ = window_clone.emit("workspace_agent_completion", &completion);
             }
         }
@@ -2223,6 +2299,63 @@ pub struct RestoreExecutionsResponse {
     pub has_active_sleeps: bool,
     /// 活跃睡眠块 IDs
     pub active_sleep_ids: Vec<String>,
+    /// 🆕 G03-a：运行代际失效（owner 进程已死）的 Unknown 任务，待用户决策。
+    /// 这些任务**不会被盲重跑**（副作用可能重复）；前端可据此提示用户选择
+    /// 重跑或放弃。新增字段保持 IPC 兼容（旧前端忽略之）。
+    pub unknown_tasks: Vec<UnknownSubagentTaskInfo>,
+}
+
+/// 待用户决策的 Unknown 子代理任务摘要（G03-a 恢复 UX）。
+#[derive(Debug, Serialize)]
+pub struct UnknownSubagentTaskInfo {
+    pub task_id: String,
+    pub agent_session_id: String,
+    pub skill_id: Option<String>,
+    pub initial_task: Option<String>,
+    pub started_at: Option<String>,
+    pub created_at: String,
+}
+
+// ============================================================
+// G03-a：完成投递派发器（CompletionDispatcher）一次性启动
+// ============================================================
+
+static COMPLETION_DISPATCHER_ONCE: std::sync::Once = std::sync::Once::new();
+
+/// 首次 restore 时启动常驻 CompletionDispatcher（outbox 账本的后端兜底）。
+///
+/// 挂载点说明：restore 是前端加载 workspace 后的既有恢复入口，此刻
+/// State/Coordinator/AppHandle 全部就绪，且 completion 只产生于 workspace
+/// 活跃之后——不在应用 setup 里无条件启动，避免非 workspace 用户白付一个
+/// 常驻轮询任务。N10 关闭期 spawn 返回 None：应用正在退出，遗留 pending 行
+/// 等下次启动收敛，无需重试。
+fn ensure_completion_dispatcher_started(
+    db: Arc<ChatV2Database>,
+    coordinator: Arc<WorkspaceCoordinator>,
+    chat_v2_state: Arc<ChatV2State>,
+    app_handle: tauri::AppHandle,
+) {
+    COMPLETION_DISPATCHER_ONCE.call_once(|| {
+        let Some(app_data_dir) = db.db_path().parent().map(|p| p.to_path_buf()) else {
+            log::warn!("[Workspace::handlers] chat_v2 db has no parent dir; completion dispatcher not started");
+            return;
+        };
+        let deps = crate::chat_v2::completion_dispatcher::CompletionDispatcherDeps {
+            db,
+            coordinator,
+            chat_v2_state,
+            app_handle,
+            workspaces_dir: app_data_dir.join("workspaces"),
+        };
+        if crate::chat_v2::completion_dispatcher::spawn_completion_dispatcher(deps).is_none() {
+            log::warn!(
+                "[Workspace::handlers] Completion dispatcher rejected (shutdown in progress); \
+                 pending deliveries will converge on next launch"
+            );
+        } else {
+            log::info!("[Workspace::handlers] Completion dispatcher started (G03-a)");
+        }
+    });
 }
 
 /// 🆕 重启后恢复被中断的执行
@@ -2252,8 +2385,60 @@ pub async fn workspace_restore_executions(
 
     let mut restored_agent_ids = Vec::new();
 
+    // 🆕 G03-a：首次 restore 启动完成投递派发器（幂等，进程级 Once）
+    ensure_completion_dispatcher_started(
+        db.inner().clone(),
+        coordinator.inner().clone(),
+        chat_v2_state.inner().clone(),
+        window.app_handle().clone(),
+    );
+
     // 1. 获取需要恢复的子代理任务
     let task_manager = coordinator.get_task_manager(&workspace_id)?;
+
+    // 🆕 G03-a：先把 owner 进程已死的 running 任务收敛为 Unknown（不盲重跑）。
+    // 判定 = 本进程无该 agent 会话的活跃流注册：重启后首次 restore 时必然全部
+    // 收敛；运行期其他窗口正在执行的任务因有流注册而被跳过。Unknown 任务进入
+    // 待用户决策列表，不参与下面的自动重跑。
+    match task_manager
+        .sweep_orphaned_running(|agent_sid| chat_v2_state.has_active_stream(agent_sid))
+    {
+        Ok(swept) if !swept.is_empty() => {
+            log::warn!(
+                "[Workspace::handlers] Swept {} orphaned running task(s) to unknown: workspace={}, agents={:?}",
+                swept.len(),
+                workspace_id,
+                swept.iter().map(|t| t.agent_session_id.as_str()).collect::<Vec<_>>()
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            // sweep 失败不阻断恢复：遗留 running 仍走旧盲重跑路径（旧语义兜底），
+            // 但记录错误便于排查
+            log::error!(
+                "[Workspace::handlers] Failed to sweep orphaned running tasks: {:?}",
+                e
+            );
+        }
+    }
+
+    let unknown_tasks: Vec<UnknownSubagentTaskInfo> = task_manager
+        .get_unknown_tasks()
+        .unwrap_or_else(|e| {
+            log::warn!("[Workspace::handlers] Failed to list unknown tasks: {:?}", e);
+            Vec::new()
+        })
+        .into_iter()
+        .map(|t| UnknownSubagentTaskInfo {
+            task_id: t.id,
+            agent_session_id: t.agent_session_id,
+            skill_id: t.skill_id,
+            initial_task: t.initial_task,
+            started_at: t.started_at.map(|dt| dt.to_rfc3339()),
+            created_at: t.created_at.to_rfc3339(),
+        })
+        .collect();
+
     let tasks_to_restore = task_manager
         .get_tasks_to_restore()
         .map_err(|e| format!("Failed to get tasks to restore: {:?}", e))?;
@@ -2351,6 +2536,7 @@ pub async fn workspace_restore_executions(
         restored_agent_ids,
         has_active_sleeps,
         active_sleep_ids,
+        unknown_tasks,
     })
 }
 

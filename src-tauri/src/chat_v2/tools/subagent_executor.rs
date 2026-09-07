@@ -898,6 +898,10 @@ impl SubagentExecutor {
             SubagentTaskStatus::Completed => "completed",
             SubagentTaskStatus::Failed => "failed",
             SubagentTaskStatus::Cancelled => "cancelled",
+            // G03-a：阻塞等待期间 running 任务可能被启动 sweep 收敛为 Unknown
+            // （owner 进程死亡判定）。非终态，透传为 "unknown"——前端
+            // SYNC_DELIVERED_TERMINAL_STATUSES 不含它，不会误判为已同步交付。
+            SubagentTaskStatus::Unknown => "unknown",
             // 循环仅在终态 break，此分支不可达；防御性兜底
             SubagentTaskStatus::Pending | SubagentTaskStatus::Running => "running",
         };

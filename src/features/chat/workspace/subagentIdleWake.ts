@@ -89,6 +89,14 @@ function wakeKey(payload: SubagentCompletionWakePayload): string {
 /**
  * Serializes completion wakes per parent. Busy or not-yet-loaded parents retain
  * their queue entries until they can be sent; only a successful send is final.
+ *
+ * G03-a 角色降级：本控制器从"唯一唤醒责任方"降级为**后端账本的投影/快路径**。
+ * 权威投递在 chat_v2 主库 `completion_outbox` 表 + 后端 CompletionDispatcher
+ * （常驻兜底：claim → 查重/补投 inbox → emit）。本控制器的职责收敛为：
+ * 窗口在场时收到 `workspace_agent_completion` 即尽快唤醒父会话。
+ * 放弃（父会话长时间不可得）不等于丢弃——不写入 processedWakeKeys，后端
+ * dispatcher 重投同一 completion 时本控制器可再次入队尝试；且 inbox Result
+ * 消息始终持久，父会话下次任意 turn 的 drain_inbox 也会消费它。
  */
 export class SubagentIdleWakeController {
   private readonly pendingWakesByParent = new Map<string, SubagentCompletionWakePayload[]>();
@@ -156,6 +164,18 @@ export class SubagentIdleWakeController {
     }
   }
 
+  /**
+   * 放弃本次内存排队（父会话在本窗口生命周期内不可得）。
+   *
+   * 与 markProcessed 的关键区别：**不写入 processedWakeKeys**。G03-a 后权威
+   * 投递在后端 completion outbox + CompletionDispatcher——账本行保持
+   * pending，dispatcher 会在条件具备时重投同一 completion 事件；届时同 key
+   * 可重新入队再走一遍投影唤醒。前端不再永久"记住"放弃状态。
+   */
+  private releaseForBackendFallback(payload: SubagentCompletionWakePayload): void {
+    this.queuedWakeKeys.delete(wakeKey(payload));
+  }
+
   private clearParentRuntime(parentSessionId: string): void {
     this.idleUnsubscribers.get(parentSessionId)?.();
     this.idleUnsubscribers.delete(parentSessionId);
@@ -213,11 +233,13 @@ export class SubagentIdleWakeController {
           this.parentLookupRetryCounts.set(parentSessionId, retryCount);
           if (retryCount >= PARENT_LOOKUP_MAX_RETRIES) {
             const abandoned = this.pendingWakesByParent.get(parentSessionId) ?? [];
-            for (const payload of abandoned) this.markProcessed(payload);
+            // G03-a：放弃内存排队 ≠ 丢弃投递。权威账本在后端 outbox，
+            // dispatcher 会兜底重投；此处仅结束本窗口的排队与订阅。
+            for (const payload of abandoned) this.releaseForBackendFallback(payload);
             this.pendingWakesByParent.delete(parentSessionId);
             this.clearParentRuntime(parentSessionId);
             console.warn(
-              `[SubagentIdleWake] Abandoned ${abandoned.length} completion wake(s): parent ${parentSessionId} was unavailable after ${retryCount} retries`,
+              `[SubagentIdleWake] Released ${abandoned.length} completion wake(s) to backend dispatcher: parent ${parentSessionId} was unavailable after ${retryCount} retries (delivery remains durable in completion_outbox)`,
             );
             return;
           }

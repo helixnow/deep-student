@@ -18,6 +18,9 @@ pub mod agents_md; // AGENTS.md 常驻指令发现与注入
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
 pub mod automations; // 🆕 周期自动化定义存储与调度器
+pub mod completion_dispatcher; // 🆕 G03-a：子代理完成投递派发器（completion_outbox 账本的后端兜底）
+#[path = "workspace/completion_outbox.rs"]
+pub mod completion_outbox; // 🆕 G03-a：子代理完成投递持久账本（chat_v2 主库，迁移 V20260908）
 pub mod connector_ledger; // 🆕 Connector 操作持久账本（G04-P0：状态机 + 系统幂等键 + outcome_unknown）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
