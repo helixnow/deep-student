@@ -205,4 +205,19 @@ describe('P2 导图 suggestion 屏障：暂存 + 裁决', () => {
     seedStore();
     expect(() => clearMindmapSuggestion(MM_ID)).not.toThrow();
   });
+
+  it('暂存超过 TTL 后读取即过期（防关窗泄漏/过期建议误接受）', () => {
+    stashMindmapSuggestion({ runId: 'r1', mindmapId: MM_ID, windowId: null, ops: [opDelete('node_a')] });
+    expect(getMindmapSuggestion(MM_ID)).not.toBeNull();
+
+    // 29 分钟后仍可读
+    vi.setSystemTime(Date.now() + 29 * 60 * 1000);
+    expect(getMindmapSuggestion(MM_ID)).not.toBeNull();
+
+    // 超过 30 分钟 TTL：读取返回 null 并清除
+    vi.setSystemTime(Date.now() + 2 * 60 * 1000);
+    expect(getMindmapSuggestion(MM_ID)).toBeNull();
+    // 清除是真实的（非每次新建空态）
+    expect(getMindmapSuggestion(MM_ID)).toBeNull();
+  });
 });

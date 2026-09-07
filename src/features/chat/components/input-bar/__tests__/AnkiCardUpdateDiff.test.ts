@@ -20,6 +20,14 @@ describe('extractAnkiUpdateArgs', () => {
     expect(extractAnkiUpdateArgs('builtin-chatanki_delete_library_card', { cardId: 'x', patch: {} })).toBeNull();
   });
 
+  it('mcp_ / mcp.tools. 前缀变体同样提取（executor can_handle 接受 mcp_ 变体）', () => {
+    const args = { cardId: 'card_2', patch: { back: '新背面' } };
+    expect(extractAnkiUpdateArgs('mcp_chatanki_update_library_card', args))
+      .toEqual({ cardId: 'card_2', patch: { back: '新背面' } });
+    expect(extractAnkiUpdateArgs('mcp.tools.chatanki_update_library_card', args))
+      .toEqual({ cardId: 'card_2', patch: { back: '新背面' } });
+  });
+
   it('缺 cardId / patch → null', () => {
     expect(extractAnkiUpdateArgs('builtin-chatanki_update_library_card', { patch: {} })).toBeNull();
     expect(extractAnkiUpdateArgs('builtin-chatanki_update_library_card', { cardId: 'x' })).toBeNull();

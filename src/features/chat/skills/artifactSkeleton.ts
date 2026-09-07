@@ -150,6 +150,9 @@ export function validateIntentAgainstSkeleton(
 /**
  * 在已激活 skill 集合中查找声明了骨架的模板（按 skeletonRef 精确匹配，
  * 或回退到唯一一个带骨架的激活 skill）。
+ *
+ * skeletonRef 必须指向**本会话已激活**的 skill——骨架只随激活正文注入
+ * prompt，对未激活 skill 的骨架做校验属于误报（模型从未见过该骨架）。
  */
 export function findActiveArtifactSkill(
   activeSkillIds: string[],
@@ -157,6 +160,7 @@ export function findActiveArtifactSkill(
   skeletonRef?: string,
 ): { skillId: string; artifact: SkillArtifactDeclaration } | null {
   if (skeletonRef) {
+    if (!activeSkillIds.includes(skeletonRef)) return null;
     const skill = getSkill(skeletonRef);
     if (skill?.artifact?.intentSkeleton) {
       return { skillId: skill.id, artifact: skill.artifact };
