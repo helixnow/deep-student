@@ -21,8 +21,14 @@
    *
    * 所有消费方应使用 Tailwind utility `max-w-thread` 或直接读取
    * `var(--chat-thread-max-w)`，不要硬编码具体值。
+   *
+   * 取值 = max(44rem, 占比)：先锁 44rem 阅读宽，父级可用宽超过
+   * 44rem÷占比 后按占比继续延展（切换点连续无跳变）。
+   * 占比由数字变量 --chat-thread-ratio（默认 80，即 80%）经 calc 乘法
+   * 得出；设置-外观的滑块通过 config/threadWidthConfig.ts 内联覆写该变量。
    * ────────────────────────────────────────────────────────────────────── */
-  --chat-thread-max-w: 44rem;
+  --chat-thread-ratio: 80;
+  --chat-thread-max-w: max(44rem, calc(1% * var(--chat-thread-ratio)));
 
   /* Chat content surface tokens */
   --chat-block-radius: 12px;

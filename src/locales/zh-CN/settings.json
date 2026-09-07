@@ -666,7 +666,9 @@
       "accent": "强调色：{{accent}}"
     },
     "sidebar_translucent_title": "侧边栏半透明",
-    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。"
+    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。",
+    "thread_width_ratio_title": "会话宽度占比",
+    "thread_width_ratio_description": "会话内容列超过默认阅读宽度后，按可用宽度的该占比继续延展。"
   },
   "appearance": {
     "theme": {

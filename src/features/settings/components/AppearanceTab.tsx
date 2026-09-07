@@ -19,7 +19,15 @@ import {
   UI_FONT_PRESET_GROUPS,
   UI_FONT_SIZE_PRESETS,
 } from '@/config/fontConfig';
-import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
+import {
+  CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY,
+  DEFAULT_CHAT_THREAD_WIDTH_RATIO,
+  MIN_CHAT_THREAD_WIDTH_RATIO,
+  MAX_CHAT_THREAD_WIDTH_RATIO,
+  applyThreadWidthRatioToDocument,
+  normalizeThreadWidthRatio,
+} from '@/config/threadWidthConfig';
+import { SettingRow, SettingsGroup, SettingsSlider, SwitchRow } from './settingsTabPrimitives';
 import { APP_EVENTS, addAppEventListener, dispatchAppEvent } from '@/events';
 
 const DEFAULT_UI_ZOOM = 1.0;
@@ -100,6 +108,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const [sidebarTranslucent, setSidebarTranslucent] = useState<boolean | null>(null);
   const [pointerCursorEnabled, setPointerCursorEnabled] = useState<boolean | null>(null);
   const [thinkingAutoCollapse, setThinkingAutoCollapse] = useState<boolean | null>(null);
+  const [threadWidthRatio, setThreadWidthRatio] = useState<number | null>(null);
 
   useEffect(() => {
     if (isMobilePlatform()) return;
@@ -148,6 +157,28 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         if (cancelled) return;
         setPointerCursorEnabled(true);
         document.documentElement.setAttribute('data-pointer-cursor', 'true');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMobilePlatform()) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await tauriInvoke<string | null>('get_setting', {
+          key: CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY,
+        }).catch(() => null);
+        if (cancelled) return;
+        setThreadWidthRatio(normalizeThreadWidthRatio(raw));
+      } catch {
+        if (cancelled) return;
+        setThreadWidthRatio(DEFAULT_CHAT_THREAD_WIDTH_RATIO);
       }
     })();
 
@@ -322,6 +353,27 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, pointerCursorEnabled]);
+
+  const handleThreadWidthRatioChange = React.useCallback(async (value: number) => {
+    if (threadWidthRatio === null) return;
+    const previousValue = threadWidthRatio;
+    const normalized = normalizeThreadWidthRatio(String(value));
+    setThreadWidthRatio(normalized);
+    applyThreadWidthRatioToDocument(normalized);
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', {
+        key: CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY,
+        value: String(normalized),
+      });
+    } catch (error: unknown) {
+      setThreadWidthRatio(previousValue);
+      applyThreadWidthRatioToDocument(previousValue);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, threadWidthRatio]);
 
   // 同步 DB 副本 theme_palette（localStorage 是主源，DB 副本供 Agent 工具/导出读取，
   // 之前只在设置页 autoSave 链路里偶发写入，长期漂移）
@@ -546,6 +598,24 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 </DsButton>
               </div>
             </SettingRow>
+
+            {!isMobilePlatform() && (
+              <SettingRow
+                title={t('settings:theme.thread_width_ratio_title')}
+                description={t('settings:theme.thread_width_ratio_description')}
+                controlClassName="md:w-[200px]"
+              >
+                <SettingsSlider
+                  value={threadWidthRatio ?? DEFAULT_CHAT_THREAD_WIDTH_RATIO}
+                  min={MIN_CHAT_THREAD_WIDTH_RATIO}
+                  max={MAX_CHAT_THREAD_WIDTH_RATIO}
+                  step={5}
+                  onChange={(v) => { void handleThreadWidthRatioChange(v); }}
+                  disabled={threadWidthRatio === null}
+                  suffix="%"
+                />
+              </SettingRow>
+            )}
 
             <div className="group rounded-[var(--button-radius)] px-1 py-2.5">
               <div className="mb-3">

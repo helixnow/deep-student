@@ -666,7 +666,9 @@
       "accent": "Accent: {{accent}}"
     },
     "sidebar_translucent_title": "Translucent Sidebar",
-    "sidebar_translucent_description": "Makes the sidebar background a translucent frosted-glass effect so desktop content can show through."
+    "sidebar_translucent_description": "Makes the sidebar background a translucent frosted-glass effect so desktop content can show through.",
+    "thread_width_ratio_title": "Chat Width Ratio",
+    "thread_width_ratio_description": "Once the chat column passes the default reading width, it keeps expanding to this percentage of the available width."
   },
   "appearance": {
     "theme": {

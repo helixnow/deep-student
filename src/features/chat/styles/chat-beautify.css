@@ -199,6 +199,23 @@
   max-width: none;
 }
 
+/* 空态布局内层 thread 表面（ThreadEmptyStateShell 等）已被 __stack 统一限宽，
+   内层再按 --chat-thread-max-w 的百分比分支限宽会逐层收窄（80%×80%），
+   与 fixed 时代一致地平铺 stack 即可（44rem 固定值下本就不生效）。 */
+.chat-v2 .chat-empty-composer-layout__message-list [data-slot="thread-content-shell"] {
+  max-width: none;
+}
+
+/* --chat-thread-max-w 含占比分支（max(44rem, ratio%)，见 shadcn-variables.css）：
+   空态 stack 与加载骨架的 padding 挂在 thread shell 自身（px-4 md:px-8），其
+   max-width 百分比基数是未减 padding 的父宽，需按 (父宽−4rem)×占比 计算才能与
+   消息列/输入栏（padding 在父级）对齐；44rem 兜底保证窄屏行为一致（占比分支
+   算出的更小值被 max 丢弃）。 */
+.chat-v2 .chat-empty-composer-layout__stack,
+.chat-v2 [data-slot='chat-loading-shell'] {
+  max-width: max(44rem, calc((100% - 4rem) * var(--chat-thread-ratio, 80) / 100));
+}
+
 .chat-v2 [data-slot="chat-loading-shell"] {
   justify-content: flex-end;
 }
