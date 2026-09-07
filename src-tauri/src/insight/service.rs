@@ -183,6 +183,14 @@ impl InsightService {
             None,
         )?;
 
+        // D4：确认即入队 SRS 投影（同事务；dedupe 键幂等，worker 运行时读当前修订自愈）
+        super::jobs::enqueue_with_conn(
+            &tx,
+            "srs_projection",
+            &format!("srs:{insight_id}"),
+            &serde_json::json!({ "insight_id": insight_id }).to_string(),
+        )?;
+
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
         self.get_insight(insight_id)?
             .ok_or_else(|| AppError::not_found("灵感卡不存在"))
@@ -234,6 +242,14 @@ impl InsightService {
                 None,
             )?;
         }
+
+        // D4：修订后重排 SRS 投影（dedupe 幂等；worker 读当前修订自愈）
+        super::jobs::enqueue_with_conn(
+            &tx,
+            "srs_projection",
+            &format!("srs:{insight_id}"),
+            &serde_json::json!({ "insight_id": insight_id }).to_string(),
+        )?;
 
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
         self.get_insight(insight_id)?

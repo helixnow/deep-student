@@ -984,6 +984,14 @@
       "path": "vfs/V20260909__mastery_events_insight_source.sql",
       "sha256": "0f84b27599b9863c56e11976480aa9dda7a2c383ab81fe2fb4a0739cda2e29e1",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260910,
+      "name": "insight_jobs",
+      "path": "vfs/V20260910__insight_jobs.sql",
+      "sha256": "a81900b90f952257af14196c5d46719f983fd55840d3017581ef5a0688a483ab",
+      "dangers": []
     }
   ]
 }

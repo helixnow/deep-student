@@ -278,3 +278,167 @@ fn test_idempotent_event_and_mastery_write() {
         .expect("count");
     assert_eq!(count, 1, "mastery 幂等键去重");
 }
+
+// ============================================================================
+// 阶段三：任务队列 + SRS 投影
+// ============================================================================
+
+fn setup_mistakes_db() -> (tempfile::TempDir, std::sync::Arc<crate::database::Database>) {
+    use crate::data_governance::migration::{MigrationCoordinator, MISTAKES_MIGRATIONS};
+    use crate::data_governance::schema_registry::DatabaseId;
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let root = temp_dir.path().to_path_buf();
+    let mut coordinator = MigrationCoordinator::new(root.clone()).with_audit_db(None);
+    let report = coordinator
+        .migrate_single(DatabaseId::Mistakes)
+        .expect("migrate mistakes");
+    assert_eq!(report.to_version, MISTAKES_MIGRATIONS.latest_version() as u32);
+    let db = std::sync::Arc::new(
+        crate::database::Database::new(&root.join("mistakes.db")).expect("open mistakes db"),
+    );
+    (temp_dir, db)
+}
+
+#[test]
+fn test_job_queue_enqueue_dedupe_and_lease_recovery() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let conn = db.get_conn_safe().expect("conn");
+
+    // 幂等入队：同 dedupe_key 只排一次
+    let first = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
+        .expect("enqueue");
+    assert!(first.is_some());
+    let dup = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
+        .expect("dup enqueue");
+    assert!(dup.is_none(), "同键任务不得重复入队");
+
+    // claim 后同键可再排（旧任务 running 不算"待处理"……不，running 也算；完成后再排）
+    let claimed = super::jobs::claim_due_with_conn(&conn, "w1", 10).expect("claim");
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].1, "srs_projection");
+    let still_dup = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
+        .expect("dup while running");
+    assert!(still_dup.is_none(), "running 任务仍占住 dedupe 键");
+
+    // 租约过期回收：把 leased_at 拨回过去模拟 worker 崩溃
+    conn.execute(
+        "UPDATE insight_jobs SET leased_at = datetime('now', '-1 hour') WHERE id = ?1",
+        [&claimed[0].0],
+    )
+    .expect("age lease");
+    let recovered = super::jobs::recover_stale_leases_with_conn(&conn).expect("recover");
+    assert_eq!(recovered, 1);
+    let reclaimed = super::jobs::claim_due_with_conn(&conn, "w2", 10).expect("reclaim");
+    assert_eq!(reclaimed.len(), 1, "崩溃任务应被其他 worker 回收");
+
+    // 完成 → 同键可再排新任务
+    super::jobs::complete_with_conn(&conn, &reclaimed[0].0).expect("complete");
+    let again = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
+        .expect("re-enqueue after done");
+    assert!(again.is_some());
+
+    // 失败退避：attempt 达到上限后转 error
+    let job = again.unwrap();
+    let c2 = super::jobs::claim_due_with_conn(&conn, "w1", 10).expect("claim2");
+    assert_eq!(c2.len(), 1);
+    for _ in 0..3 {
+        super::jobs::fail_with_conn(&conn, &job, "boom").expect("fail");
+        // 拉到到期时间使其可立即再 claim
+        conn.execute(
+            "UPDATE insight_jobs SET next_attempt_at = NULL WHERE id = ?1",
+            [&job],
+        )
+        .expect("force due");
+        let _ = super::jobs::claim_due_with_conn(&conn, "w1", 10).expect("re-claim");
+    }
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM insight_jobs WHERE id = ?1",
+            [&job],
+            |r| r.get(0),
+        )
+        .expect("status");
+    assert_eq!(status, "error", "超过 max_attempts 应转 error 不再重试");
+}
+
+#[test]
+fn test_srs_projection_materialize_and_regenerate() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let (_mtmp, mistakes) = setup_mistakes_db();
+    let svc = InsightService::new(db.clone());
+
+    let card = svc.create_draft(sample_input()).expect("draft");
+    svc.confirm(&card.id, None).expect("confirm"); // confirm 钩子已入队 srs_projection
+
+    let worker = super::jobs::InsightJobWorker::new(db.clone(), Some(mistakes.clone()));
+    let processed = worker.run_once(10, &|| true).expect("run");
+    assert_eq!(processed, 1);
+
+    // 物化卡存在且带回链（注意：mconn 是用例级互斥锁守卫，用完立即 drop——
+    // 持锁跨 run_once 会与 worker 内部的 get_conn_safe 死锁）
+    {
+        let mconn = mistakes.get_conn_safe().expect("mconn");
+        let (front, back, st, sid): (String, String, String, String) = mconn
+            .query_row(
+                "SELECT front, back, source_type, source_id FROM anki_cards WHERE id = ?1",
+                [format!("ac_insight_{}", card.id)],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .expect("projected card");
+        assert!(front.contains("导数结构识别"));
+        assert!(back.contains("导数"), "back={back}");
+        assert_eq!(st, "inspiration");
+        assert_eq!(sid, card.id);
+    }
+
+    // 源卡修订 → 重跑投影 → 内容原地更新（卡 id 不变，FSRS 状态保留）
+    svc.correct(
+        &card.id,
+        InsightCorrectInput {
+            title: None,
+            situation: None,
+            stuck_point: None,
+            turning_point: None,
+            rule: Some("修订后的规则：先看导数结构再换元".to_string()),
+            validity_conditions: None,
+            edit_note: Some("test".to_string()),
+        },
+    )
+    .expect("correct");
+    let processed2 = worker.run_once(10, &|| true).expect("run2");
+    assert_eq!(processed2, 1, "correct 应重排投影任务");
+    let back2: String = {
+        let mconn = mistakes.get_conn_safe().expect("mconn");
+        mconn
+            .query_row(
+                "SELECT back FROM anki_cards WHERE id = ?1",
+                [format!("ac_insight_{}", card.id)],
+                |r| r.get(0),
+            )
+            .expect("regenerated")
+    };
+    assert!(back2.contains("修订后的规则"), "投影应随修订重生成");
+
+    // 源卡删除 → 投影墓碑传播
+    svc.delete(&card.id).expect("delete");
+    super::jobs::enqueue(
+        &db,
+        "srs_projection",
+        &format!("srs:{}", card.id),
+        &serde_json::json!({ "insight_id": card.id }).to_string(),
+    )
+    .expect("enqueue tombstone propagation");
+    worker.run_once(10, &|| true).expect("run3");
+    let deleted: Option<String> = {
+        let mconn = mistakes.get_conn_safe().expect("mconn");
+        mconn
+            .query_row(
+                "SELECT deleted_at FROM anki_cards WHERE id = ?1",
+                [format!("ac_insight_{}", card.id)],
+                |r| r.get(0),
+            )
+            .expect("tombstone")
+    };
+    assert!(deleted.is_some(), "源卡删除后投影卡应打墓碑");
+}
