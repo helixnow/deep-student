@@ -134,6 +134,11 @@ const UNRESTRICTED_DEFAULT_TIMEOUT_MS: u64 = 100 * 365 * 24 * 3600 * 1000;
 /// 无限制档缺省输出捕获高水位（崩溃保护，不是访问限制）：
 /// BoundedPipeOutput 需要有限缓冲防 OOM，32MiB 远超常规命令输出。
 const UNRESTRICTED_DEFAULT_MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+/// 应用级输出捕获硬上限（2026-09-07 审阅 F7）：访问权限可以放开，
+/// 应用生命线的内存保护不随权限档取消。模型/用户显式参数最多把捕获
+/// 抬到此上限；超出部分截断。256MiB 约为受限档上限（1MiB）的 256 倍，
+/// 足以覆盖构建日志级输出，又远低于 32 位 usize 与常规设备内存水位。
+const UNRESTRICTED_MAX_OUTPUT_BYTES_HARD_CAP: u64 = 256 * 1024 * 1024;
 
 impl Default for LocalShellExecuteExecutor {
     fn default() -> Self {
@@ -1822,8 +1827,9 @@ impl LocalShellExecuteExecutor {
         } else {
             cwd_relative.to_string_lossy().to_string()
         };
-        // 无限制档不套 timeout/输出 clamp：缺省 timeout 用 100 年等效值表达
-        // 无超时，显式传参则原样尊重；输出缺省保留 32MiB 崩溃保护高水位。
+        // 无限制档不套 timeout clamp：缺省 timeout 用 100 年等效值表达
+        // 无超时，显式传参则原样尊重；输出缺省保留 32MiB 崩溃保护高水位，
+        // 但显式参数不能越过应用级硬上限（访问权限 ≠ 内存保护）。
         let timeout_ms = if unrestricted {
             args.get("timeout_ms")
                 .or_else(|| args.get("timeoutMs"))
@@ -1840,11 +1846,13 @@ impl LocalShellExecuteExecutor {
                 .clamp(1_000, 600_000)
         };
         let max_output_bytes = if unrestricted {
-            args.get("max_output_bytes")
+            let requested = args
+                .get("max_output_bytes")
                 .or_else(|| args.get("maxOutputBytes"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(UNRESTRICTED_DEFAULT_MAX_OUTPUT_BYTES)
-                .max(1_024) as usize
+                .clamp(1_024, UNRESTRICTED_MAX_OUTPUT_BYTES_HARD_CAP);
+            usize::try_from(requested).unwrap_or(UNRESTRICTED_MAX_OUTPUT_BYTES_HARD_CAP as usize)
         } else {
             args.get("max_output_bytes")
                 .or_else(|| args.get("maxOutputBytes"))

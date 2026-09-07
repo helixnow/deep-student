@@ -111,6 +111,12 @@ const TIKTOKEN_SAMPLE_THRESHOLD_CHARS: usize = 8_000;
 /// 首/中/尾各采样的字符数（2K 重复字符的 BPE 耗时约 0.1s，可接受）
 #[cfg(feature = "tokenizer_tiktoken")]
 const TIKTOKEN_SAMPLE_PART_CHARS: usize = 2_000;
+/// 采样外推的安全余量（2026-09-07 审阅 F8）：未采样区段密度可能高于
+/// 所有采样段（混排代码/编码数据/长标识符），均值外推与 max(sampled)
+/// 都不构成上界。取最高段密度再乘余量，使结果偏向高估——预算/压缩
+/// 场景的安全方向。
+#[cfg(feature = "tokenizer_tiktoken")]
+const TIKTOKEN_SAMPLE_SAFETY_MARGIN: f64 = 1.10;
 
 #[cfg(feature = "tokenizer_tiktoken")]
 fn encode_capped(enc: &tiktoken_rs::CoreBPE, text: &str) -> usize {
@@ -118,7 +124,8 @@ fn encode_capped(enc: &tiktoken_rs::CoreBPE, text: &str) -> usize {
     if total_chars <= TIKTOKEN_SAMPLE_THRESHOLD_CHARS {
         return enc.encode_with_special_tokens(text).len();
     }
-    // 首/中/尾采样 + 按密度线性外推（超长文本的精度损失可接受——它们通常远超预算）
+    // 首/中/尾采样 + 按最高段密度外推。注意：这仍是估计而非数学上界——
+    // 硬准入判断（贴近上下文上限）必须另留 reserve，不能只依赖本函数。
     let head: String = text.chars().take(TIKTOKEN_SAMPLE_PART_CHARS).collect();
     let mid_start = (total_chars - TIKTOKEN_SAMPLE_PART_CHARS) / 2;
     let mid: String = text
@@ -130,13 +137,16 @@ fn encode_capped(enc: &tiktoken_rs::CoreBPE, text: &str) -> usize {
         .chars()
         .skip(total_chars - TIKTOKEN_SAMPLE_PART_CHARS)
         .collect();
-    let sampled_tokens = enc.encode_with_special_tokens(&head).len()
-        + enc.encode_with_special_tokens(&mid).len()
-        + enc.encode_with_special_tokens(&tail).len();
-    let sampled_chars = TIKTOKEN_SAMPLE_PART_CHARS * 3;
-    // 按采样密度外推，并保证不低于采样值（防低估导致预算失控）
+    let head_tokens = enc.encode_with_special_tokens(&head).len();
+    let mid_tokens = enc.encode_with_special_tokens(&mid).len();
+    let tail_tokens = enc.encode_with_special_tokens(&tail).len();
+    let sampled_tokens = head_tokens + mid_tokens + tail_tokens;
+    let max_density = [head_tokens, mid_tokens, tail_tokens]
+        .into_iter()
+        .map(|tokens| tokens as f64 / TIKTOKEN_SAMPLE_PART_CHARS as f64)
+        .fold(0.0_f64, f64::max);
     let extrapolated =
-        (sampled_tokens as f64 * (total_chars as f64 / sampled_chars as f64)).round() as usize;
+        (max_density * total_chars as f64 * TIKTOKEN_SAMPLE_SAFETY_MARGIN).round() as usize;
     extrapolated.max(sampled_tokens)
 }
 
@@ -263,6 +273,34 @@ mod tests {
             (100_000..=400_000).contains(&estimate),
             "外推估算量级异常: {}",
             estimate
+        );
+    }
+
+    #[test]
+    fn estimate_tokens_with_model_heterogeneous_text_does_not_average_away_dense_segments() {
+        // F8：头/尾为低密度英文散文、中段为高密度 CJK 的混排输入。均值外推
+        // 会把中段密度摊薄导致低估；最高段密度外推不得低估精确值。
+        let prose: String = "The quick brown fox jumps over the lazy dog. "
+            .chars()
+            .cycle()
+            .take(20_000)
+            .collect();
+        let dense: String = "深度学习工作台需要把检索增强生成与间隔重复记忆卡片结合起来"
+            .chars()
+            .cycle()
+            .take(20_000)
+            .collect();
+        let text = format!("{}{}{}", prose, dense, prose);
+        let exact = tiktoken_rs::cl100k_base()
+            .unwrap()
+            .encode_with_special_tokens(&text)
+            .len();
+        let estimate = estimate_tokens_with_model(&text, None);
+        assert!(
+            estimate >= exact,
+            "异质文本估算不得低于精确值: estimate={} exact={}",
+            estimate,
+            exact
         );
     }
 
