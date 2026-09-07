@@ -15,7 +15,7 @@
  * 设计文档：docs/plans/2026-09-06-canvas-patterns-absorption.md P1
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import {
@@ -43,13 +43,12 @@ import { GenerativeUIPanel } from '@/features/generative-ui/components/Generativ
 import { AnkiCardsBlock } from '../../plugins/blocks/ankiCardsBlock';
 import {
   getSessionArtifacts,
-  hydrateSessionArtifacts,
-  subscribeArtifactRegistry,
   getArtifactUserMeta,
   buildArtifactMetaPatch,
   type ArtifactEntry,
   type ArtifactKind,
 } from '../../core/store/artifactRegistry';
+import { useArtifactRegistrySync } from './useArtifactRegistrySync';
 import { extractChanges } from '../agent-task/extractors';
 import type { ChangeItem } from '../agent-task/types';
 
@@ -62,13 +61,6 @@ const KIND_ICON: Record<ArtifactKind, React.ElementType> = {
   'anki-cards': CardsThree,
   note: FileText,
   file: File,
-};
-
-const KIND_COLOR: Record<ArtifactKind, string> = {
-  'generative-ui': 'text-violet-600 dark:text-violet-400',
-  'anki-cards': 'text-amber-600 dark:text-amber-400',
-  note: 'text-blue-600 dark:text-blue-400',
-  file: 'text-emerald-600 dark:text-emerald-400',
 };
 
 const KIND_LABEL_KEY: Record<ArtifactKind, string> = {
@@ -110,45 +102,11 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
   const relativeTime = useRelativeTime();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // registry 通知只作触发器，列表在 render 时重取（getSessionArtifacts 每次新数组，
-  // 不能直接喂 useSyncExternalStore）
-  const [registryVersion, setRegistryVersion] = useState(0);
   // sessionMetadata 版本（pin 后触发重渲染）
   const [metaVersion, setMetaVersion] = useState(0);
-  // blocks 规模版本（变更分段派生触发器；restore 分页 prepend 也会 bump）
-  const [blocksVersion, setBlocksVersion] = useState(0);
-
-  useEffect(() => {
-    return subscribeArtifactRegistry((changedSessionId) => {
-      if (changedSessionId === sessionId) setRegistryVersion((v) => v + 1);
-    });
-  }, [sessionId]);
-
-  // 懒扫水合 + blocks 规模变化增量补齐（restore 分页 prepend 后新到旧块）
-  useEffect(() => {
-    if (!store) return;
-    hydrateSessionArtifacts(sessionId, store.getState());
-    // 变更分段派生触发器：工具块终态计数（size 不变的原地 toolOutput 落库也要覆盖；
-    // 用计数而非 Map 引用比较，避免流式 chunk 更新触发全量重派生）
-    const countTerminalToolBlocks = (blocks: Map<string, { toolName?: string; status: string }>) => {
-      let n = 0;
-      for (const b of blocks.values()) {
-        if (b.toolName && (b.status === 'success' || b.status === 'error')) n += 1;
-      }
-      return n;
-    };
-    let lastTerminalCount = countTerminalToolBlocks(store.getState().blocks);
-    const unsub = store.subscribe((state, prev) => {
-      if (state.blocks === prev.blocks) return;
-      const terminalCount = countTerminalToolBlocks(state.blocks);
-      if (state.blocks.size !== prev.blocks.size || terminalCount !== lastTerminalCount) {
-        lastTerminalCount = terminalCount;
-        hydrateSessionArtifacts(sessionId, state);
-        setBlocksVersion((v) => v + 1);
-      }
-    });
-    return unsub;
-  }, [sessionId, store]);
+  // 产物索引/水合/增量补齐统一由共享 hook 承担（registryVersion 仅作重取触发器——
+  // getSessionArtifacts 每次新数组，不能直接喂 useSyncExternalStore）
+  const { registryVersion, blocksVersion } = useArtifactRegistrySync(sessionId, store);
 
   const sessionMetadata = store?.getState().sessionMetadata ?? null;
 
@@ -268,7 +226,9 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
       }
       return (
         <div className="flex-1 min-h-0 overflow-auto p-3">
-          <GenerativeUIPanel intent={intent} title={entry.title} />
+          {/* 标题由面板头部承担（不再传 title 避免三层标题重复）；
+              forceCompact：面板宽 320-720px 远小于 sm 视口断点，强制单列紧凑布局 */}
+          <GenerativeUIPanel intent={intent} forceCompact />
         </div>
       );
     }
@@ -311,8 +271,10 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
             className="!h-7 !w-7">
             <ArrowLeft size={15} />
           </DsButton>
-        ) : null}
-        <span className="flex-1 truncate text-sm font-medium">
+        ) : (
+          <SquaresFour size={14} className="ml-1 shrink-0 text-muted-foreground" aria-hidden />
+        )}
+        <span className={cn('flex-1 truncate text-sm font-medium', !selected && 'ml-1.5')}>
           {selected ? selected.title : t('artifacts.title')}
         </span>
         {selected?.refreshPrompt ? (
@@ -360,7 +322,7 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
                         'hover:bg-foreground/[0.04] transition-colors',
                       )}
                     >
-                      <Icon size={16} className={cn('shrink-0', KIND_COLOR[entry.kind])} />
+                      <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden />
                       <span className="flex-1 min-w-0">
                         <span className="block truncate text-sm">{meta.alias || entry.title}</span>
                         <span className="block text-xs text-muted-foreground/70">
@@ -405,11 +367,11 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
                       >
                         <span className={cn(
                           'shrink-0 rounded px-1 py-px text-[10px] font-medium',
+                          // 对齐 ChangesSection 语义：仅 delete 用 destructive 标红，
+                          // create/update 中性浅底（颜色走 token，不手写 Tailwind 彩色）
                           change.action === 'delete'
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-                            : change.action === 'create'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                            ? 'bg-[color:hsl(var(--destructive)/0.1)] text-[color:hsl(var(--destructive))]'
+                            : 'bg-foreground/[0.05] text-muted-foreground',
                         )}>
                           {t(`artifacts.changes.action.${change.action}`, { defaultValue: change.action })}
                         </span>

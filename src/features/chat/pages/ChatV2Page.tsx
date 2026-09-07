@@ -45,6 +45,8 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
 import { ArtifactsPanel } from '../components/artifacts/ArtifactsPanel';
+import { useArtifactRegistrySync } from '../components/artifacts/useArtifactRegistrySync';
+import { getSessionArtifacts } from '../core/store/artifactRegistry';
 import {
   createSandboxOwnerKey,
   selectSandboxWorkbenchOwnerState,
@@ -269,6 +271,14 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   const toggleArtifactsPanel = useCallback(() => {
     setArtifactsPanelOpen(prev => !prev);
   }, []);
+  // 入口可见性：会话有产物才显示（与 sandbox 钮同逻辑，空会话不出现空态入口）；
+  // 水合/增量补齐与 ArtifactsPanel 共用同一 hook，registry 通知即 bump 版本触发重取
+  const currentChatStore = currentSessionId ? sessionManager.get(currentSessionId) ?? null : null;
+  const { registryVersion: artifactRegistryVersion } = useArtifactRegistrySync(currentSessionId, currentChatStore);
+  const hasSessionArtifacts = useMemo(() => {
+    void artifactRegistryVersion;
+    return currentSessionId ? getSessionArtifacts(currentSessionId).length > 0 : false;
+  }, [currentSessionId, artifactRegistryVersion]);
   const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
   // 会话切换加载态统一：由 ChatContainer 负责「保留上一帧 + 轻蒙层」，
@@ -1470,8 +1480,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </div>
       )}
 
-      {/* P1 产物面板入口（桌面端浮动钮，与 sandbox 钮同族；互斥由推导链处理） */}
-      {!isSmallScreen && currentSessionId && (
+      {/* P1 产物面板入口（桌面端顶栏钮，与 sandbox 钮同位同族；有产物才显示，互斥由推导链处理） */}
+      {!isSmallScreen && currentSessionId && hasSessionArtifacts && (
         <div
           className="absolute z-20"
           style={{
@@ -1489,10 +1499,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               iconOnly
               onClick={toggleArtifactsPanel}
               className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
-                artifactsPanelOpen
-                  ? '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
-                  : '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
+                // 对齐 desktop-shell-toolbar-button 家族：透明底、无边框阴影，
+                // hover/active 走 shell control token（ghost 基底自带 hover）
+                '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] text-muted-foreground transition-colors duration-150 hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+                artifactsPanelOpen && 'bg-[var(--shell-control-active)] text-foreground'
               )}
               aria-label={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
               title={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
