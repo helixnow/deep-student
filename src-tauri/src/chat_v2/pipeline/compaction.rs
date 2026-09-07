@@ -74,7 +74,6 @@ use crate::models::ChatMessage as LegacyChatMessage;
 use chrono::Utc;
 use log::{debug, info, warn};
 use rusqlite::params;
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::future::Future;
 
@@ -178,8 +177,6 @@ struct PreparedCompaction {
     summary_message: ChatMessage,
     summary_block: MessageBlock,
     record: CompactionRecord,
-    source_fingerprint_start_message_id: String,
-    source_fingerprint: String,
     summary_tokens: u32,
     memory_flushes: Vec<PendingMemoryFlush>,
 }
@@ -198,65 +195,6 @@ fn cooldown_duration_for_outcome(
         }
         _ => None,
     }
-}
-
-fn compaction_range_fingerprint(
-    messages: &[ChatMessage],
-    blocks_by_msg: &std::collections::HashMap<String, Vec<MessageBlock>>,
-    start: usize,
-    end: usize,
-) -> String {
-    let mut hasher = Sha256::new();
-    for message in messages.iter().take(end).skip(start) {
-        let encoded = serde_json::to_vec(message).unwrap_or_default();
-        hasher.update((encoded.len() as u64).to_le_bytes());
-        hasher.update(encoded);
-        if let Some(blocks) = blocks_by_msg.get(&message.id) {
-            for block in blocks {
-                let encoded = serde_json::to_vec(block).unwrap_or_default();
-                hasher.update((encoded.len() as u64).to_le_bytes());
-                hasher.update(encoded);
-            }
-        }
-    }
-    format!("{:x}", hasher.finalize())
-}
-
-fn load_compaction_range_fingerprint_with_conn(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-    start_id: &str,
-    end_id: &str,
-) -> ChatV2Result<Option<String>> {
-    let all_messages = ChatV2Repo::get_session_messages_with_conn(conn, session_id)?;
-    let mut messages = Vec::with_capacity(all_messages.len());
-    let mut blocks_by_msg = std::collections::HashMap::new();
-    for message in all_messages {
-        let blocks = ChatV2Repo::get_message_blocks_with_conn(conn, &message.id)?;
-        if blocks
-            .iter()
-            .any(|block| block.block_type == block_types::COMPACTION_SUMMARY)
-        {
-            continue;
-        }
-        blocks_by_msg.insert(message.id.clone(), blocks);
-        messages.push(message);
-    }
-    let Some(start) = messages.iter().position(|message| message.id == start_id) else {
-        return Ok(None);
-    };
-    let Some(end) = messages.iter().position(|message| message.id == end_id) else {
-        return Ok(None);
-    };
-    if start >= end {
-        return Ok(None);
-    }
-    Ok(Some(compaction_range_fingerprint(
-        &messages,
-        &blocks_by_msg,
-        start,
-        end,
-    )))
 }
 
 fn validated_compaction_model_id(model_id: Option<&str>) -> Option<&str> {
@@ -810,9 +748,6 @@ impl ChatV2Pipeline {
             .fold(previous_summary_tokens, usize::saturating_add)
             .min(u32::MAX as usize) as u32;
         let compacted_message_count = middle_end.saturating_sub(middle_start) as u32;
-        let source_fingerprint_start_message_id = messages[0].id.clone();
-        let source_fingerprint =
-            compaction_range_fingerprint(&messages, &blocks_by_msg, 0, middle_end);
 
         // 6. 释放连接，执行 LLM 调用
         drop(conn);
@@ -1124,8 +1059,6 @@ impl ChatV2Pipeline {
                     summary_message,
                     summary_block,
                     record,
-                    source_fingerprint_start_message_id,
-                    source_fingerprint,
                     summary_tokens,
                     memory_flushes,
                 }))
@@ -1168,6 +1101,14 @@ impl ChatV2Pipeline {
     fn persist_prepared_compaction(&self, prepared: &PreparedCompaction) -> ChatV2Result<bool> {
         let mut conn = self.db.get_conn_safe()?;
         let tx = conn.transaction()?;
+        // 血缘检查：摘要生成期间（分钟级 LLM 调用）若另一条压缩已提交，
+        // previous_compaction_id 即过期，必须丢弃避免锚链断裂。
+        // 注：历史上这里还有一道"源区间内容指纹"校验（全量重载+SHA-256），
+        // 因 ChatMessage/MessageBlock 内含 HashMap 字段（skill_dependencies /
+        // skill_embedded_tools 等），迭代序随随机种子变化，同一份数据两次
+        // 加载哈希必然不同，导致压缩 100% 被误丢。区间内容在摘要期间被编辑
+        // 的后果仅是摘要略微过时（原文仍在 DB，读路径对缺失锚点有兜底），
+        // 与误报代价完全不成比例，故移除——只保留这道一次主键查询的血缘检查。
         let current: Option<String> = tx.query_row(
             "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
             params![prepared.record.session_id],
@@ -1176,23 +1117,6 @@ impl ChatV2Pipeline {
         if current != prepared.record.previous_compaction_id {
             warn!(
                 "[compaction] active lineage changed before commit for session={}; discarding stale summary",
-                prepared.record.session_id
-            );
-            return Ok(false);
-        }
-        let current_fingerprint = load_compaction_range_fingerprint_with_conn(
-            &tx,
-            &prepared.record.session_id,
-            &prepared.source_fingerprint_start_message_id,
-            prepared
-                .record
-                .range_end_message_id
-                .as_deref()
-                .unwrap_or_default(),
-        )?;
-        if current_fingerprint.as_deref() != Some(prepared.source_fingerprint.as_str()) {
-            warn!(
-                "[compaction] source range changed before commit for session={}; discarding stale summary",
                 prepared.record.session_id
             );
             return Ok(false);
@@ -1932,6 +1856,86 @@ mod tests {
                 CompactionOutcome::Skipped(CompactionSkipReason::Cooldown)
             ),
             "手动压缩不得被冷却拦截"
+        );
+    }
+
+    /// 回归（2026-09-07 真实事故）：真实技能会话的消息 meta 携带
+    /// `skill_runtime_before/after` 快照与 `response_reasoning_items`，其中
+    /// `skill_dependencies` / `skill_embedded_tools` / `response_reasoning_items`
+    /// 均为 HashMap——迭代序随随机种子变化，同一份落库数据两次独立加载的
+    /// 序列化字节几乎必然不同。历史上提交前用"全量重载 + SHA-256 指纹"复核
+    /// 源区间，导致此类会话的压缩 100% 被误判 staleLineage 丢弃（手动压缩
+    /// 连点 4 次全部被静默丢弃）。指纹校验移除后，此形状下必须能正常提交。
+    #[tokio::test]
+    async fn e2e_compaction_commits_with_hashmap_laden_skill_meta() {
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some("http://127.0.0.1:9"), "sk-dead", "dead-model").await;
+        seed_compactible_session(&pipeline, &session_id);
+
+        // 给全部消息挂上含多键 HashMap 的 meta，模拟真实技能会话落库形状。
+        // 用 Rust 结构体序列化以保证字段名与线上定义编译期一致。
+        let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["knowledge-retrieval".to_string()],
+            skill_dependencies: (0..10)
+                .map(|i| (format!("skill-{i}"), vec![format!("dep-{i}")]))
+                .collect(),
+            ..Default::default()
+        };
+        let meta = crate::chat_v2::types::MessageMeta {
+            skill_runtime_before: Some(snapshot.clone()),
+            skill_runtime_after: Some(snapshot),
+            response_reasoning_items: Some(
+                (0..6)
+                    .map(|i| {
+                        (
+                            format!("call_{i}"),
+                            serde_json::json!({"type": "reasoning", "id": i}),
+                        )
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        let meta_json = serde_json::to_string(&meta).expect("serialize meta");
+        {
+            let conn = pipeline.db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE chat_v2_messages SET meta_json = ?1 WHERE session_id = ?2",
+                params![meta_json, session_id],
+            )
+            .expect("attach skill runtime meta");
+        }
+
+        let outcome = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "manual",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .expect("compaction run");
+        assert_eq!(
+            outcome,
+            CompactionOutcome::Compacted,
+            "含 HashMap meta 的真实消息形状下压缩必须能提交（曾因指纹误丢 100% 失败）"
+        );
+
+        // 压缩视图必须生效：激活记录存在且摘要消息可读
+        let conn = pipeline.db.get_conn_safe().expect("conn");
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+            .expect("query active compaction")
+            .expect("active compaction must exist after commit");
+        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &record.summary_message_id)
+            .expect("summary blocks");
+        assert!(
+            blocks
+                .iter()
+                .any(|b| b.block_type == block_types::COMPACTION_SUMMARY),
+            "摘要块必须随提交落盘"
         );
     }
 }
