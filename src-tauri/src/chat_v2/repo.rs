@@ -7927,23 +7927,32 @@ impl ChatV2Repo {
         Ok(())
     }
 
-    /// 续跑计数 +1（goal_id 不匹配时静默跳过，语义同 add_usage）。
-    pub fn goal_increment_continuation_with_conn(
+    /// 续跑认领（CAS，2026-09-07 审阅 F4）：仅当目标仍 `active`、未达续跑
+    /// 上限且 token 预算未耗尽时，原子地将 continuation_count +1。
+    ///
+    /// 返回 `Ok(true)` 表示认领成功（恰好更新一行）；`Ok(false)` 表示目标
+    /// 在调用方读取之后已被并发暂停/清除/替换或触及上限——调用方必须放弃
+    /// 本次续跑。DB 错误经 `Err` 传播，调用方应失败关闭而非继续执行。
+    pub fn goal_claim_continuation_with_conn(
         conn: &Connection,
         session_id: &str,
         goal_id: &str,
-    ) -> ChatV2Result<()> {
+        max_continuations: i64,
+    ) -> ChatV2Result<bool> {
         let now_ms = Utc::now().timestamp_millis();
-        conn.execute(
+        let affected = conn.execute(
             r#"
             UPDATE chat_v2_goals
             SET continuation_count = continuation_count + 1,
                 updated_at_ms = ?3
             WHERE session_id = ?1 AND goal_id = ?2
+              AND status = 'active'
+              AND continuation_count < ?4
+              AND (token_budget IS NULL OR tokens_used < token_budget)
             "#,
-            params![session_id, goal_id, now_ms],
+            params![session_id, goal_id, now_ms, max_continuations],
         )?;
-        Ok(())
+        Ok(affected == 1)
     }
 
     /// 删除会话目标（不存在时静默成功）
@@ -8101,20 +8110,73 @@ mod goal_tests {
     }
 
     #[test]
-    fn goal_increment_continuation_counts() {
+    fn goal_claim_continuation_counts() {
         let conn = setup_goal_db();
         ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_cont", "goal_c1")).unwrap();
 
-        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_c1").unwrap();
-        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_c1").unwrap();
-        // goal_id 不匹配 → 不计数
-        ChatV2Repo::goal_increment_continuation_with_conn(&conn, "sess_cont", "goal_stale")
-            .unwrap();
+        // active 目标：认领成功并计数
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_c1", 20)
+                .unwrap()
+        );
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_c1", 20)
+                .unwrap()
+        );
+        // goal_id 不匹配（目标已被替换）→ 认领失败，不计数
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_cont", "goal_stale", 20)
+                .unwrap()
+        );
 
         let loaded = ChatV2Repo::goal_get_with_conn(&conn, "sess_cont")
             .unwrap()
             .unwrap();
         assert_eq!(loaded.continuation_count, 2);
+    }
+
+    #[test]
+    fn goal_claim_continuation_rejects_stale_or_exhausted_goal() {
+        let conn = setup_goal_db();
+        ChatV2Repo::goal_insert_with_conn(&conn, &sample_goal("sess_claim", "goal_p1")).unwrap();
+
+        // 暂停后：认领必须失败（读取后被暂停的陈旧执行不得计数/续跑）
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "paused")
+            .unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
+        let paused = ChatV2Repo::goal_get_with_conn(&conn, "sess_claim")
+            .unwrap()
+            .unwrap();
+        assert_eq!(paused.continuation_count, 0);
+
+        // 恢复 active 后触及续跑上限 → 认领失败
+        ChatV2Repo::goal_update_status_with_conn(&conn, "sess_claim", "goal_p1", "active")
+            .unwrap();
+        assert!(
+            ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 1)
+                .unwrap()
+        );
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 1)
+                .unwrap()
+        );
+
+        // token 预算耗尽 → 认领失败
+        ChatV2Repo::goal_add_usage_with_conn(&conn, "sess_claim", "goal_p1", 100_000, 0).unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
+
+        // 清除后：认领失败且零行更新不是错误之外的"成功"
+        ChatV2Repo::goal_delete_with_conn(&conn, "sess_claim").unwrap();
+        assert!(
+            !ChatV2Repo::goal_claim_continuation_with_conn(&conn, "sess_claim", "goal_p1", 20)
+                .unwrap()
+        );
     }
 
     #[test]
