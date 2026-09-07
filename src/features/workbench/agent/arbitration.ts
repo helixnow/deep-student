@@ -47,6 +47,13 @@ export function createArbitrator(opts: {
   /** 显式 pause：不启动 2s 自动续放，仍受 15s abort 约束 */
   let explicitHold = false;
   let disposed = false;
+  /**
+   * N14（2026-09-07 审阅）：abort 是吸收态。暂停超时/ stop 触发时若 driver
+   * 正在 await 长 op、尚未调用 checkPaused（pending 为空），abort 决定不能
+   * 丢失——此后所有 checkPaused 都必须返回 abort；恢复只能新建
+   * operation/generation（新 Arbitrator），不得复活本实例。
+   */
+  let aborted = false;
   let resumeTimer: ReturnType<typeof setTimeout> | null = null;
   let abortTimer: ReturnType<typeof setTimeout> | null = null;
   /** ACR 4.0：本轮暂停的自动中止时刻；abort 计时器存续期间有效 */
@@ -87,7 +94,7 @@ export function createArbitrator(opts: {
   };
 
   const enterPaused = (explicit: boolean) => {
-    if (disposed) return;
+    if (disposed || aborted) return;
     explicitHold = explicit;
     const wasPaused = paused;
     // 首次进入 paused 时启动 15s abort；后续输入不重置。
@@ -100,6 +107,7 @@ export function createArbitrator(opts: {
         abortDeadlineAt = null;
         clearResumeTimer();
         explicitHold = false;
+        aborted = true;
         notifyPause(false);
         resolvePending('abort');
       }, abortAfterMs);
@@ -128,7 +136,7 @@ export function createArbitrator(opts: {
     },
 
     async checkPaused() {
-      if (disposed) return 'abort';
+      if (disposed || aborted) return 'abort';
       if (!paused) return 'resume';
       if (pendingPromise) return pendingPromise;
       pendingPromise = new Promise<ArbitrationDecision>((resolve) => {
@@ -150,7 +158,7 @@ export function createArbitrator(opts: {
     },
 
     resume() {
-      if (disposed) return;
+      if (disposed || aborted) return;
       if (!paused) return;
       clearResumeTimer();
       clearAbortTimer();
@@ -161,6 +169,7 @@ export function createArbitrator(opts: {
 
     stop() {
       if (disposed) return;
+      aborted = true;
       clearResumeTimer();
       clearAbortTimer();
       notifyPause(false);
@@ -171,6 +180,7 @@ export function createArbitrator(opts: {
     dispose() {
       if (disposed) return;
       disposed = true;
+      aborted = true;
       clearResumeTimer();
       clearAbortTimer();
       notifyPause(false);
