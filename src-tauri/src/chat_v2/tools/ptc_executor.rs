@@ -10,6 +10,9 @@
 //! - `max_calls`：默认 [`DEFAULT_MAX_CALLS`]，上限 [`MAX_CALLS_LIMIT`]（超顶中断脚本）；
 //! - `timeout_secs`：默认 [`DEFAULT_TIMEOUT_SECS`]，上限 [`MAX_TIMEOUT_SECS`]
 //!   （wall-clock，超时即 cancel + abort；解释器 tick/栈/堆限制见 ptc_runtime）；
+//! - G08 树预算：每个 `call()` 的子上下文继承父 `session_id`，经中央准入
+//!   回到 hooks 预算门时按 session 归集进任务树根账本——本执行器只负责
+//!   脚本级 `max_calls`，**不得**再加树预算计数点（避免双计费）；
 //! - return 值 > [`INLINE_RESULT_MAX_CHARS`] 字符自动物化到会话 artifacts 根
 //!   （`ptc/<name>.json`，tmp+rename 原子写），模型只收 `object_handle` +
 //!   前 [`RESULT_PREVIEW_CHARS`] 字符预览；无窗口（headless/测试）时退化为
@@ -854,6 +857,17 @@ mod tests {
         assert_eq!(executor.sensitivity_level("builtin-ptc_run"), ToolSensitivity::Medium);
         assert_eq!(executor.name(), "PtcExecutor");
         assert_eq!(executor.result_char_budget("builtin-ptc_run"), None);
+    }
+
+    /// G08 预算归集契约：`call()` 子上下文必须继承父 session_id——子调用
+    /// 经 `dispatch_with_admission` 回到 hooks 预算门时按 session_id 解析
+    /// 任务树根账本；继承断裂会导致脚本子调用逃出全树预算管控。
+    #[test]
+    fn sub_context_inherits_session_id_for_tree_budget() {
+        let ctx = test_context(None);
+        let template = PtcSubContextTemplate::from_ctx(&ctx);
+        let sub = template.build(0, CancellationToken::new());
+        assert_eq!(sub.session_id, ctx.session_id);
     }
 
     // —— 执行通路（stub 准入替身）——
