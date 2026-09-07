@@ -112,6 +112,9 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         // 外层看门狗必须豁免，否则所有长睡眠都会被误判超时（P0）。
         "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
         "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
+        // PTC 脚本内部已有 wall-clock 超时（默认 120s、上限 600s），外层看门狗对齐上限，
+        // 避免 timeout_secs>120 时被外层先截断（见 ptc_executor.rs）。
+        "ptc_run" => 600,
         // The executor has its own bounded command deadline, but cleanup may need to unwind a
         // Windows AppContainer helper and temporary ACLs. Never drop that cleanup future here.
         "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
