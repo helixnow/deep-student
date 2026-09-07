@@ -431,6 +431,13 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
             "tracked_changes",
             "embedded_ole",
             "full_style_round_trip",
+            // ★ G06-P1：与 office_fidelity_executor 的 docx 检测表对齐
+            // （replace_text 为 docx-rs 文本级全量重建，以下特征必然丢失）
+            "content_controls",
+            "toc_crossref_fields",
+            "images",
+            "headers_footers",
+            "footnotes_endnotes",
         ],
         "xlsx" => vec![
             "macros",
@@ -445,6 +452,12 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
             "transitions",
             "speaker_notes",
             "slide_master_round_trip",
+            // ★ G06-P1：与 office_fidelity_executor 的 pptx 检测表对齐
+            // （replace_text 为 spec 文本级全量重建，以下特征必然丢失）
+            "media",
+            "embedded_ole",
+            "charts",
+            "diagrams",
         ],
         _ => vec!["macros", "unknown_ooxml_extensions"],
     };
@@ -468,7 +481,7 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
         "source_preflight": {
             "tool": "builtin-office_fidelity_inspect",
             "required_for_source_edits": true,
-            // ★ G06-P0：xlsx_edit_cells 已通过
+            // ★ G06-P0/P1：xlsx_edit_cells 与 docx/pptx replace_text 均已通过
             // `OfficeFidelityExecutor::preflight_for_edit` 强制消费 inspect gate
             "inspection_result_consumed_by_current_resource_id_editors": true,
             "preservation_claim_allowed": false,
@@ -529,5 +542,49 @@ mod tests {
             json!(["supported_text_content", "supported_structural_content"])
         );
         assert_eq!(manifest["operation"], "edit_cells");
+    }
+
+    // ========================================================================
+    // G06-P1：docx / pptx 编辑交付的血缘 handle（与 xlsx 共用 vfs_task_object）
+    // ========================================================================
+
+    #[test]
+    fn docx_pptx_delivery_handles_carry_lineage_and_capabilities() {
+        for (format, mime, transform) in [
+            (
+                "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx.replace_text",
+            ),
+            (
+                "pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx.replace_text",
+            ),
+        ] {
+            let handle = vfs_task_object(
+                "file-1",
+                "edited.out",
+                mime,
+                b"payload",
+                format,
+                OfficeOperation::ReplaceText,
+                Some("src-res-1"),
+            )
+            .unwrap();
+            assert_eq!(handle.handle_id, "vfs-file:file-1");
+            // 血缘：derived_from 指回源资源，transform_id 与操作对应
+            let edges = &handle.provenance.derived_from;
+            assert_eq!(edges.len(), 1, "{format} lineage edge missing");
+            assert_eq!(edges[0].source_handle_id, "vfs:src-res-1");
+            assert_eq!(edges[0].transform_id, transform);
+            assert!(edges[0].transform_params_hash.is_some());
+            // VFS 交付：provider_ref + 能力位
+            let provider = handle.provider_ref.as_ref().unwrap();
+            assert_eq!(provider.provider, "deep-student-vfs");
+            assert_eq!(provider.external_id, "file-1");
+            assert!(handle.capabilities.readable && handle.capabilities.writable);
+            handle.validate().unwrap();
+        }
     }
 }

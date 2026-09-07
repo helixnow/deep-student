@@ -18,9 +18,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
-use super::office_fidelity_executor::{
-    EditPreflight, OfficeFidelityExecutor, OFFICE_FIDELITY_CONTRACT,
-};
+use super::office_fidelity_executor::{EditPreflight, OfficeFidelityExecutor};
 use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
 use super::OFFICE_DOC_PARSE_MAX_BYTES;
@@ -454,23 +452,22 @@ impl Default for XlsxToolExecutor {
 // G06-P0：edit_cells 强制 preflight 辅助函数
 // ============================================================================
 
+/// xlsx 的门禁措辞（G06-P1 骨架化后保持不变——umya round-trip 下 high 特征
+/// 多数保留但有降级风险，故 high_features_dropped=false）。
+const XLSX_EDIT_GATE_WORDING: super::office_fidelity_executor::EditGateWording =
+    super::office_fidelity_executor::EditGateWording {
+        write_path: "umya-spreadsheet round-trip 编辑",
+        office_apps: "Excel/WPS",
+        high_features_dropped: false,
+    };
+
 /// critical 特征门禁：源文件含 macros / digital_signatures / external_links /
 /// 加密容器等 critical 特征时拒绝 round-trip 编辑（umya-spreadsheet 会静默
 /// 丢失这些特征）。错误为结构化 JSON（含特征清单与副本模式提示）。
+/// ★ G06-P1：逻辑提取为格式无关骨架（office_fidelity_executor::enforce_edit_preflight），
+/// 本包装保持签名与输出不变。
 fn enforce_edit_preflight(preflight: &EditPreflight) -> Result<(), String> {
-    if !preflight.has_critical() {
-        return Ok(());
-    }
-    Err(format!(
-        "OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES: {}",
-        json!({
-            "error_code": "OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES",
-            "critical_features": preflight.critical_features,
-            "source_sha256": preflight.source_sha256,
-            "reason": "源文件包含 critical 保真特征，umya-spreadsheet round-trip 编辑会静默丢失这些特征，已拒绝编辑",
-            "hint": "可改用副本模式：在 Excel/WPS 中打开原文件手动编辑，或先另存为去除上述特征的副本后再对本工具编辑副本；完整特征清单可用 builtin-office_fidelity_inspect 查看",
-        })
-    ))
+    super::office_fidelity_executor::enforce_edit_preflight(preflight, &XLSX_EDIT_GATE_WORDING)
 }
 
 /// 收集编辑目标中原为公式的单元格地址（`Sheet!Cell` 格式）。
@@ -505,23 +502,18 @@ fn collect_overwritten_formula_cells(
 /// 触发条件：源文件含 high 风险特征（charts/pivot_tables/defined_names/
 /// data_validation/formulas 等），或本次编辑覆盖了公式单元格。
 /// 普通文件（无 high 特征、未覆盖公式）返回 None，结果 JSON 不出现该字段。
+/// ★ G06-P1：逻辑提取为格式无关骨架
+/// （office_fidelity_executor::build_edit_fidelity_warning），
+/// xlsx 专属明细 overwritten_formula_cells 经 extra_fields 透传。
 fn build_fidelity_warning(
     preflight: &EditPreflight,
     overwritten_formulas: &[String],
 ) -> Option<Value> {
-    if preflight.high_features.is_empty() && overwritten_formulas.is_empty() {
-        return None;
-    }
-    Some(json!({
-        "contract": OFFICE_FIDELITY_CONTRACT,
-        "risk": preflight.risk,
-        "source_sha256": preflight.source_sha256,
-        "feature_set_hash": preflight.feature_set_hash,
-        "preserved_at_risk_features": preflight.high_features,
-        "overwritten_formula_cells": overwritten_formulas,
-        "post_edit_comparison": "not_performed",
-        "message": "源文件包含高保真风险特征，本次编辑未做编辑后结构对比，建议在 Excel/WPS 中打开产物核对",
-    }))
+    super::office_fidelity_executor::build_edit_fidelity_warning(
+        preflight,
+        &XLSX_EDIT_GATE_WORDING,
+        &[("overwritten_formula_cells", overwritten_formulas.to_vec())],
+    )
 }
 
 #[async_trait]
