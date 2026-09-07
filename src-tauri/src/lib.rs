@@ -79,6 +79,7 @@ pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 #[cfg(feature = "mcp")]
 pub mod mcp;
 #[allow(dead_code)]
@@ -2638,6 +2639,21 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_get_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_reset_card_progress
+            // =================================================
+            // Insight Recall v2 灵感库（阶段一：可信记录）
+            // =================================================
+            ,crate::insight::handlers::insight_create_draft
+            ,crate::insight::handlers::insight_confirm
+            ,crate::insight::handlers::insight_correct
+            ,crate::insight::handlers::insight_delete
+            ,crate::insight::handlers::insight_get
+            ,crate::insight::handlers::insight_list
+            ,crate::insight::handlers::insight_list_revisions
+            ,crate::insight::handlers::insight_list_evidence
+            ,crate::insight::handlers::insight_list_relations
+            ,crate::insight::handlers::insight_list_events
+            ,crate::insight::handlers::insight_record_feedback
+            ,crate::insight::handlers::insight_add_relation
             // =================================================
             // APKG 本地导入
             // =================================================

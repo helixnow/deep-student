@@ -137,6 +137,38 @@ pub fn resolve_vfs_ref_to_blocks(
             }]
         }
         VfsResourceType::MindMap => resolve_mindmap(conn, vfs_ref),
+        VfsResourceType::InsightCard => resolve_insight_card(conn, vfs_ref),
+    }
+}
+
+/// 解析灵感卡（Insight Recall v2）：当前修订的正文快照经 resources 注入
+fn resolve_insight_card(conn: &Connection, vfs_ref: &VfsResourceRef) -> Vec<ContentBlock> {
+    let sql = r#"
+        SELECT r.data, i.title
+        FROM insights i
+        JOIN insight_revisions rev ON i.current_revision_id = rev.id
+        JOIN resources r ON rev.resource_id = r.id
+        WHERE i.id = ?1 AND i.deleted_at IS NULL
+    "#;
+    match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
+        let content: Option<String> = row.get(0)?;
+        let title: Option<String> = row.get(1)?;
+        Ok((content, title))
+    }) {
+        Ok((Some(content), title)) => {
+            let title_str = title.unwrap_or_else(|| vfs_ref.name.clone());
+            vec![ContentBlock::Text {
+                text: format!(
+                    "<insight_card title=\"{}\">{}</insight_card>",
+                    escape_xml_attr(&title_str),
+                    escape_xml_content(&content)
+                ),
+            }]
+        }
+        _ => {
+            log::debug!("[VfsResolver] Insight card not found: {}", vfs_ref.source_id);
+            vec![]
+        }
     }
 }
 

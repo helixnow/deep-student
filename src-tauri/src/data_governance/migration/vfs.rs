@@ -911,6 +911,36 @@ pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
 )
 .with_expected_columns(&[("notes", "props")]);
 
+/// V20260907: Insight Recall v2 阶段一——灵感卡核心表系。
+///
+/// insights / insight_revisions / insight_evidence / insight_relations /
+/// insight_events 五表，含同步四列与 __change_log 触发器。
+/// 设计规格：docs/dev/insight-recall/README.md
+pub const V20260907_INSIGHT_CARDS: MigrationDef = MigrationDef::new(
+    20260907,
+    "insight_cards",
+    include_str!("../../../migrations/vfs/V20260907__insight_cards.sql"),
+)
+.with_expected_tables(&[
+    "insights",
+    "insight_revisions",
+    "insight_evidence",
+    "insight_relations",
+    "insight_events",
+])
+.with_expected_columns(&[
+    ("insights", "ownership"),
+    ("insights", "verification_state"),
+    ("insight_revisions", "stuck_point"),
+    ("insight_revisions", "turning_point"),
+    ("insight_revisions", "validity_conditions"),
+    ("insight_evidence", "quote_snapshot"),
+    ("insight_relations", "relation_type"),
+    ("insight_events", "event_type"),
+    ("insight_events", "help_level"),
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -970,6 +1000,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260807_QUESTION_STRUCTURED_DATA,
     V20260808_FILE_DELETION_INTENT_JOURNAL,
     V20260824_NOTE_PROPS,
+    V20260907_INSIGHT_CARDS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1121,13 +1152,15 @@ mod tests {
     }
 
     #[test]
-    fn test_note_props_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260824);
-        assert_eq!(V20260824_NOTE_PROPS.expected_columns, &[("notes", "props")]);
+    fn test_insight_cards_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260907);
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("note_props")
+            Some("insight_cards")
         );
+        assert!(V20260907_INSIGHT_CARDS
+            .expected_tables
+            .contains(&"insights"));
     }
 
     #[test]

@@ -10479,6 +10479,13 @@ fn resolve_context_ref_from_any_id(
                 trimmed, resource.resource_type
             ));
         }
+        // 灵感卡的 SRS 投影走 Insight 模块的专用通道（物化 + 回链），不经 chatanki
+        VfsResourceType::InsightCard => {
+            return Err(format!(
+                "Resource '{}' is an insight card; use the insight SRS projection channel instead of chatanki_run.",
+                trimmed
+            ));
+        }
         VfsResourceType::Retrieval => None,
     };
 
