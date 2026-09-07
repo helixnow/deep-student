@@ -56,7 +56,7 @@ const CITATION_GUIDE: &str = r#"<citation_rules>
 - [记忆-N]: 引用智能记忆中的内容
 - [搜索-N]: 引用网络搜索结果
 - [图片-N]: 引用多模态检索中的图片内容（仅当引用了图片来源时使用）
-- [灵感-N]: 引用用户自己的灵感卡内容（仅当 insight_recall 工具返回并在高披露级别下使用）
+- [灵感-N]: 引用灵感卡内容（insight_recall 工具返回）
 </source_types>
 <rules>
 1. 每个引用标记必须紧跟在引用内容之后，不要单独成行
@@ -1210,6 +1210,8 @@ mod tests {
     /// 字符预算取精简后实测（905 / 727）加少量余量，且低于精简前体积
     /// （984 / 760），保证重复句不会悄悄回归；如需合理扩充请有意识上调
     /// 并更新 docs/dev/optimization0824/progress/R4-WI-10-full.md。
+    /// 2026-09-07：CITATION_GUIDE 750 → 780，新增 [灵感-N] 来源类型行
+    /// （Insight Recall v2 阶段二，引用契约必须进固定 system 块）。
     #[test]
     fn test_static_prompt_blocks_stay_within_budget() {
         let latex_chars = LATEX_RULES.chars().count();
@@ -1220,8 +1222,8 @@ mod tests {
             latex_chars
         );
         assert!(
-            citation_chars <= 750,
-            "CITATION_GUIDE 超出静态预算：{} > 750 chars",
+            citation_chars <= 780,
+            "CITATION_GUIDE 超出静态预算：{} > 780 chars",
             citation_chars
         );
 
