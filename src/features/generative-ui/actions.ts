@@ -57,18 +57,27 @@ function composeInstrumentationSink(
   };
 }
 
-function applyActionGuards(
+/** 导出供 N09 回归测试直接验证 guard 组合顺序语义 */
+export function applyActionGuards(
   def: GenerativeActionDefinition,
   options?: GenerativeActionInstrumentationOptions,
 ): GenerativeActionDefinition {
   const timeoutMs = options?.timeoutMs ?? GENERATIVE_ACTION_TIMEOUT_MS;
   const cooldownMs = options?.cooldownMs ?? GENERATIVE_ACTION_COOLDOWN_MS;
   let next = def;
-  if (cooldownMs > 0) {
-    next = wrapActionWithRateLimit(next, { cooldownMs });
-  }
+  // N09（2026-09-07 审阅）：timeout 必须包在 rate-limit 内层。
+  // 旧顺序（rate-limit 在内、timeout 在外）下，外层 race 超时后底层 handler
+  // 并未取消，内层 finally 永不执行 → inFlight 永久占用，该 action 在实例
+  // 存活期内再无重试路径。换序后超时拒绝会穿过限流器的 finally，占用随
+  // 超时释放，重试在 cooldown 后恢复。
+  // 注意：超时只停止等待，不 abort 底层 handler——迟到完成仍可能产生一次
+  // 副作用，因此 action handler 必须幂等；用户显式重试产生的第二次调用
+  // 属于知情重试，与崩溃重启后的重试同级。
   if (timeoutMs > 0) {
     next = wrapActionWithTimeout(next, { timeoutMs });
+  }
+  if (cooldownMs > 0) {
+    next = wrapActionWithRateLimit(next, { cooldownMs });
   }
   return next;
 }
