@@ -941,7 +941,35 @@ pub const V20260907_INSIGHT_CARDS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
-/// VFS 数据库所有迁移定义
+/// V20260908: Insight Recall v2 阶段二——insight_fts 全文检索。
+///
+/// contentless trigram FTS5（对齐 notes_fts / V20260724 结论），
+/// 索引 insights.title + 当前修订五字段；触发器维护 + 回填。
+pub const V20260908_INSIGHT_FTS: MigrationDef = MigrationDef::new(
+    20260908,
+    "insight_fts",
+    include_str!("../../../migrations/vfs/V20260908__insight_fts.sql"),
+)
+.with_expected_tables(&["insight_fts"])
+.idempotent();
+
+/// V20260909: mastery_events.source CHECK 扩展加入 'insight' 源。
+///
+/// rename+recreate 重建（SQLite 不支持 ALTER CHECK），完整保留
+/// V20260719 signal 列与 V20260720 同步四列 + change_log 触发器。
+pub const V20260909_MASTERY_EVENTS_INSIGHT_SOURCE: MigrationDef = MigrationDef::new(
+    20260909,
+    "mastery_events_insight_source",
+    include_str!("../../../migrations/vfs/V20260909__mastery_events_insight_source.sql"),
+)
+.with_expected_tables(&["mastery_events"])
+.with_expected_columns(&[
+    ("mastery_events", "signal"),
+    ("mastery_events", "device_id"),
+    ("mastery_events", "local_version"),
+    ("mastery_events", "deleted_at"),
+])
+.idempotent();
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1001,6 +1029,8 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260808_FILE_DELETION_INTENT_JOURNAL,
     V20260824_NOTE_PROPS,
     V20260907_INSIGHT_CARDS,
+    V20260908_INSIGHT_FTS,
+    V20260909_MASTERY_EVENTS_INSIGHT_SOURCE,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1152,15 +1182,18 @@ mod tests {
     }
 
     #[test]
-    fn test_insight_cards_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260907);
+    fn test_insight_phase2_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260909);
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("insight_cards")
+            Some("mastery_events_insight_source")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables
             .contains(&"insights"));
+        assert!(V20260908_INSIGHT_FTS
+            .expected_tables
+            .contains(&"insight_fts"));
     }
 
     #[test]

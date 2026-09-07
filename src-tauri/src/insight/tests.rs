@@ -175,3 +175,106 @@ fn test_relation_scope_required_for_contradict() {
     assert_eq!(rels.len(), 1);
     assert_eq!(rels[0].relation_type, RelationType::Contradict);
 }
+
+// ============================================================================
+// 阶段二：召回 + 披露 + 幂等记账
+// ============================================================================
+
+#[test]
+fn test_recall_fts_and_like_fallback() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+    let card = svc.create_draft(sample_input()).expect("draft");
+    svc.confirm(&card.id, None).expect("confirm");
+
+    let recall = super::recall::InsightRecallService::new(db.clone());
+
+    // FTS：>=3 字符中文短语命中（trigram 子串语义）
+    let hits = recall.recall_fts("被积函数次数太高", 10).expect("fts");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].card.id, card.id);
+    assert!(hits[0].confidence > 0.0);
+    assert_eq!(hits[0].matched_via, "fts");
+
+    // 无匹配 → 空（沉默分支由披露控制器记账）
+    let none = recall.recall_fts("完全无关的量子引力", 10).expect("fts none");
+    assert!(none.is_empty());
+
+    // LIKE 回退：<3 字符查询
+    let short = recall.recall_fts("换元", 10).expect("like fallback");
+    assert_eq!(short.len(), 1, "短查询应走 LIKE 命中标题");
+    assert_eq!(short[0].matched_via, "like");
+}
+
+#[test]
+fn test_recall_skips_cold_and_deleted() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+    let card = svc.create_draft(sample_input()).expect("draft");
+
+    let recall = super::recall::InsightRecallService::new(db.clone());
+    assert_eq!(recall.recall_fts("被积函数次数太高", 10).unwrap().len(), 1);
+
+    // 删除（墓碑）后不再召回
+    svc.delete(&card.id).expect("delete");
+    assert!(recall.recall_fts("被积函数次数太高", 10).unwrap().is_empty());
+}
+
+#[test]
+fn test_idempotent_event_and_mastery_write() {
+    let (_tmp, db) = setup_migrated_test_db();
+    let db = std::sync::Arc::new(db);
+    let svc = InsightService::new(db.clone());
+    let card = svc.create_draft(sample_input()).expect("draft");
+    let conn = db.get_conn_safe().expect("conn");
+
+    // 同一 (session, message, insight, type) 重复写入 → 只有一行
+    for _ in 0..3 {
+        super::recall::InsightRecallService::record_event_idempotent(
+            &conn,
+            Some("sess_1"),
+            Some("msg_1"),
+            Some(&card.id),
+            InsightEventType::ShownExistence,
+            DisclosureLevel::Existence,
+            None,
+        )
+        .expect("idempotent event");
+    }
+    let events = svc.list_events(&card.id, 100).expect("events");
+    let shown: Vec<_> = events
+        .iter()
+        .filter(|e| e.event_type == InsightEventType::ShownExistence)
+        .collect();
+    assert_eq!(shown.len(), 1, "重试/回放不得产生重复账本");
+
+    // 沉默事件：insight_id 为 NULL 也可记账
+    super::recall::InsightRecallService::record_event_idempotent(
+        &conn,
+        Some("sess_1"),
+        Some("msg_2"),
+        None,
+        InsightEventType::SilenceNoMatch,
+        DisclosureLevel::Hidden,
+        None,
+    )
+    .expect("silence event");
+
+    // mastery 证据：source='insight' 写入成功且幂等
+    for _ in 0..2 {
+        super::recall::InsightRecallService::record_recall_verdict_to_mastery(
+            &conn, &card.id, "sess_1", true,
+        )
+        .expect("mastery write");
+    }
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM mastery_events WHERE source = 'insight'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count");
+    assert_eq!(count, 1, "mastery 幂等键去重");
+}

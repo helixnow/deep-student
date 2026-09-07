@@ -361,27 +361,7 @@ impl InsightService {
             .vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(e.to_string()))?;
-        let Some((title, ownership, verification, status, recall_count, shown_count, useful_count, last_recalled_at, created_at, updated_at, current_rev_id)) =
-            repo::get_insight_row(&conn, insight_id)?
-        else {
-            return Ok(None);
-        };
-        let current_revision = current_rev_id
-            .and_then(|id| repo::get_revision(&conn, &id).ok().flatten());
-        Ok(Some(InsightCard {
-            id: insight_id.to_string(),
-            title,
-            ownership: InsightOwnership::parse(&ownership),
-            verification_state: VerificationState::parse(&verification),
-            status: InsightStatus::parse(&status),
-            recall_count,
-            shown_count,
-            useful_count,
-            last_recalled_at,
-            created_at,
-            updated_at,
-            current_revision,
-        }))
+        repo::get_card(&conn, insight_id)
     }
 
     /// 列表（不含修订/证据，浏览用）
