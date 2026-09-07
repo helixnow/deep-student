@@ -110,6 +110,27 @@ pub struct AgentProfile {
     pub skills: Vec<String>,
 }
 
+impl AgentProfile {
+    /// G02-P1：内容锁定哈希（与 `TrustedAutomationProfile::computed_hash`
+    /// 同模式：canonical JSON → SHA-256 hex）。
+    ///
+    /// 安全性：`AgentProfile` 只含 `String`/`Vec`/枚举等确定性序列化字段
+    /// （**无 HashMap**），serde 输出字节流稳定，可安全哈希；`Option` 字段
+    /// 带 `skip_serializing_if`，None 恒序列化为字段缺失，无随机性。
+    pub fn computed_hash(&self) -> Result<String, String> {
+        let bytes = serde_json::to_vec(self)
+            .map_err(|error| format!("Failed to hash agent profile: {error}"))?;
+        Ok(hex::encode(<sha2::Sha256 as sha2::Digest>::digest(bytes)))
+    }
+
+    /// G02-P1：profile → grant 工具范围映射（无损：`allowed_tools` 每个条目
+    /// 恰好映射一个 [`crate::chat_v2::grants::ToolScope`]，匹配语义复用
+    /// `tool_policy::tool_allow_entry_matches`）。
+    pub fn grant_tool_scopes(&self) -> Vec<crate::chat_v2::grants::ToolScope> {
+        crate::chat_v2::grants::ToolScope::scopes_from_allowed_tools(&self.allowed_tools)
+    }
+}
+
 /// Exact configuration consumed by the child runtime after profile resolution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -660,5 +681,24 @@ mod tests {
         assert!(validate_persona_model_config("embedding", &configs)
             .unwrap_err()
             .contains("PERSONA_MODEL_UNSUPPORTED"));
+    }
+
+    #[test]
+    fn computed_hash_is_stable_and_content_locked() {
+        let profile = AgentProfileResolver::built_in(EXPLORER_PROFILE_ID).unwrap();
+        let hash_a = profile.computed_hash().unwrap();
+        let hash_b = profile.computed_hash().unwrap();
+        assert_eq!(hash_a, hash_b, "hash must be deterministic");
+        assert_eq!(hash_a.len(), 64);
+        assert!(hash_a.bytes().all(|b| b.is_ascii_hexdigit()));
+
+        // 内容任何变化（含白名单顺序）必须改变哈希
+        let mut mutated = profile.clone();
+        mutated.allowed_tools.push("builtin-memory_read".into());
+        assert_ne!(mutated.computed_hash().unwrap(), hash_a);
+
+        // 不同 profile 哈希不同
+        let worker = AgentProfileResolver::built_in(WORKER_PROFILE_ID).unwrap();
+        assert_ne!(worker.computed_hash().unwrap(), hash_a);
     }
 }

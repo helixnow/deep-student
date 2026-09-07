@@ -1683,6 +1683,36 @@ pub async fn run_workspace_agent_backend(
         agent_session_id,
     );
 
+    // 🆕 G02-P1：签发 DelegatedGrant——与 execution_allowed_tools 同源的授权
+    // 载体（同一 Vec 映射而来，P1 两者内容一致）。P1 阶段执行面仍由
+    // execution_allowed_tools 白名单决定（ApprovalGateHook 原路径不变），grant
+    // 额外提供撤权/过期实时门：revoke_all_grants / revoke_grants_for 后，在跑
+    // worker 的下一次工具调用即被拦截。注册守卫随管线 drop（含 panic/超时）
+    // 即注销。
+    let grant_registration = {
+        let child_task_id = coordinator
+            .get_task_manager(workspace_id)
+            .ok()
+            .and_then(|task_manager| {
+                task_manager.get_agent_task(agent_session_id).ok().flatten()
+            })
+            .map(|task| task.id)
+            .unwrap_or_else(|| agent_session_id.clone());
+        let profile_hash = AgentProfileResolver::resolve_for_agent(agent)
+            .ok()
+            .and_then(|profile| profile.computed_hash().ok())
+            .unwrap_or_default();
+        crate::chat_v2::grants::issue_worker_grant(
+            agent_session_id.clone(),
+            parent_session_id
+                .clone()
+                .unwrap_or_else(|| request.requester_session_id.clone()),
+            child_task_id,
+            &worker_allowed_tools,
+            profile_hash,
+        )
+    };
+
     let assistant_message_id = ChatMessage::generate_id();
     let send_request = ChatSendMessageRequest {
         session_id: agent_session_id.clone(),
@@ -1738,6 +1768,8 @@ pub async fn run_workspace_agent_backend(
         let stream_guard = stream_guard;
         // Phase 2 只读作用域与管线同寿命：任务结束（含 panic）即撤销
         let card_read_scope_guard = card_read_scope_guard;
+        // 🆕 G02-P1：grant 注册与管线同寿命，结束（含 panic/超时）即注销
+        let _grant_registration = grant_registration;
 
         // 🆕 整体超时：pipeline 包 wall-clock 上限（对齐 headless），
         // 超时后触发取消并给管线一个收尾窗口保存部分结果。

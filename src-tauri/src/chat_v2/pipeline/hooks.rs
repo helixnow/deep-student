@@ -331,6 +331,24 @@ impl PipelineHook for ApprovalGateHook {
         // Feature flag checks (memory, RAG, web search)
         let short_name = ChatV2Pipeline::canonical_tool_short_name(&tool_call.name);
 
+        // 🆕 G02-P1：DelegatedGrant 存活门（仅比对 revocation_epoch / expiry，
+        // 不改写有效工具集——执行面仍由下方 execution_allowed_tools 白名单决定）。
+        // 仅 worker run 路径会在注册表登记 grant，普通会话无登记直接跳过（行为
+        // 与现状一致）。revoke_all_grants / revoke_grants_for 后，在跑 worker 的
+        // 下一次工具调用即在此被拦截（错误信息明确"授权已撤销"），无需等待
+        // worker 600s 超时窗口。
+        if let Some(grant) = crate::chat_v2::grants::lookup_grant_for_session(session_id) {
+            if let Err(denial) = grant.ensure_live() {
+                let message = denial.message(&grant.grant_id, &tool_call.name);
+                log::warn!(
+                    "[ChatV2::pipeline] DelegatedGrant gate blocked tool '{}': {}",
+                    tool_call.name,
+                    message
+                );
+                return ToolGateOutcome::Block(build_preflight_blocked_result(message));
+            }
+        }
+
         if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
             &tool_call.name,
             &tool_call.arguments,
