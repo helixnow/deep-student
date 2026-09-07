@@ -666,9 +666,12 @@ pub struct DefaultNotificationHandler;
 #[async_trait]
 impl NotificationHandler for DefaultNotificationHandler {
     async fn handle_notification(&self, method: &str, params: Option<Value>) {
+        // 只记录元数据：params 可能携带工具结果/资源内容，原文进日志有内容暴露
+        // 风险（2026-09-07 审阅 F5）。log 宏在等级关闭时不会求值参数。
         debug!(
-            "Received notification: {} with params: {:?}",
-            method, params
+            "Received notification: method={}, params_bytes={:?}",
+            method,
+            params.as_ref().map(|p| p.to_string().len())
         );
     }
 }
@@ -987,7 +990,11 @@ impl McpClient {
                     match result {
                         Ok(message) => {
                             attempt = 0; // reset
-                            log::debug!("[McpClient] message_loop recv: {}", &message.chars().take(200).collect::<String>());
+                            // 只记录元数据：MCP 消息可能携带文件内容/个人资料/密钥片段，
+                            // 原文（哪怕截断 200 字符）一旦随日志等级提级进入生产日志即
+                            // 构成内容暴露（2026-09-07 审阅 F5）。结构化字段在
+                            // handle_message 内按需记录。
+                            log::debug!("[McpClient] message_loop recv: bytes={}", message.len());
                             if let Err(e) = Self::handle_message(
                                 &message,
                                 request_manager.clone(),
