@@ -1,13 +1,16 @@
 /**
  * AppsPanel（L4）— 全部应用发现面板
  * ---------------------------------------------------------------------------
- * 玻璃复用契约类 wb-glass / wb-glass-highlight；动画仅 transform / opacity。
+ * 玻璃复用契约类 wb-glass / wb-glass-highlight / wb-glass-lens（入场透镜）/
+ * wb-glass-rim（全周 specular 环）；动画仅 transform / opacity。
  * z 对齐模态层（--wb-z-modal / cheatsheet）；reduced-motion / minimal 时长归零。
  */
 
 :where(:root) {
   --wb-apps-duration: var(--wb-motion-spotlight, 200ms);
-  --wb-apps-ease: var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)));
+  /* 入场用 spring-soft（motion.css 的 linear() 采样真 spring，bounce 0.08）：
+   * 轻微过冲带出凝胶感；无 linear() 环境回退 bezier */
+  --wb-apps-ease: var(--wb-ease-spring-soft, var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1))));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -57,8 +60,11 @@
   max-height: min(560px, 100%);
   min-height: 0;
   border-radius: var(--wb-radius-xl, 18px);
-  /* 中央玻璃件走 overlay 阴影档（--wb-dock-shadow 是 Dock 条专用，层级语义不同） */
-  box-shadow: var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30));
+  /* 内缘四边高光（--wb-glass-edge）+ 中央玻璃件 overlay 阴影档
+   *（--wb-dock-shadow 是 Dock 条专用，层级语义不同） */
+  box-shadow:
+    var(--wb-glass-edge),
+    var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30));
   color: var(--wb-titlebar-fg, inherit);
   opacity: 0;
   transform: translateY(10px) scale(0.97);
@@ -72,6 +78,13 @@
 .wb-apps-root[data-wb-apps-open='true'] .wb-apps-panel {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+/* 大面板材质升厚一档（Liquid Glass：更大元素 = 更厚材质）：tint 提到 strong 档。
+ * blur 保持 regular——lens 320ms 降级输出与 --wb-glass-blur 对齐，避免中途跳变。
+ * 双类选择器提权，保证压过 .wb-glass 的 background-color。 */
+.wb-apps-panel.wb-glass {
+  background-color: var(--wb-glass-bg-strong);
 }
 
 /* ==== 头部 / 搜索 ======================================================= */
@@ -381,6 +394,25 @@
 .wb-apps-list .wb-apps-item-name {
   font-size: 13px;
   -webkit-line-clamp: 1;
+}
+
+/* ==== Scroll edge effect（内容溶解进玻璃边缘） ==========================
+ * 视口上/下还有隐藏内容时由 JS 置 data-wb-edge-top/bottom（AppsPanel.tsx），
+ * 对应边缘 mask 淡出。只作用于绘制，不影响滚动几何；两边缘可独立/同时。 */
+
+.wb-apps-body-viewport[data-wb-edge-top='true'][data-wb-edge-bottom='true'] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 22px), transparent 100%);
+}
+
+.wb-apps-body-viewport[data-wb-edge-top='true']:not([data-wb-edge-bottom='true']) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+}
+
+.wb-apps-body-viewport[data-wb-edge-bottom='true']:not([data-wb-edge-top='true']) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
 }
 
 /* ==== 加载 / 空搜索结果 ================================================== */

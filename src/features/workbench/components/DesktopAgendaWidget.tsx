@@ -19,6 +19,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { TodoItem, TodoList } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWindowStore } from '../core/windowStore';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useWorkbenchGestures } from '../hooks/useWorkbenchGestures';
 import {
   completeTodoAgendaItem,
@@ -332,6 +333,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
         if (event.target === event.currentTarget) void openTodoView();
       }}
     >
+      <WallpaperReplica hostRef={widgetRef} />
       <header className="wb-agenda-header">
         <button
           type="button"

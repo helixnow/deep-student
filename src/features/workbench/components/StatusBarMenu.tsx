@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import './DesktopContextMenu.css';
 
 const EDGE_PAD = 8;
@@ -188,6 +188,7 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
         onKeyDown={onPanelKeyDown}
         onContextMenu={(e) => e.preventDefault()}
       >
+        <WallpaperReplica hostRef={panelRef} enabled={mounted} />
         {children}
       </div>
     </>,

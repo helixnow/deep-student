@@ -21,7 +21,7 @@ import type { TodoItem } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import {
   getTodoAgendaSnapshot,
   subscribeTodoAgenda,
@@ -307,6 +307,7 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
             aria-labelledby={titleId}
             tabIndex={-1}
           >
+            <WallpaperReplica hostRef={panelRef} enabled={open} />
             <h2 id={titleId} className="wb-menubar-flyout-title">
               {t('menubar.agendaTitle')}
             </h2>

@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { workbenchBus } from '../core/workbenchBus';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 
 import './AgentControlCenter.css';
 
@@ -488,6 +488,7 @@ export function AgentControlDockEntry({
               aria-label={t('agentControlCenter.title')}
               className="wb-agent-control-popover wb-glass wb-glass-highlight wb-glass-lens"
             >
+              <WallpaperReplica hostRef={popoverRef} enabled={open} />
               <CustomScrollArea
                 className="wb-agent-control-scroll"
                 onWheel={(event) => event.stopPropagation()}
