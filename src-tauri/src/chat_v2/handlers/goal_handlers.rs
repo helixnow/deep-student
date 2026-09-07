@@ -19,13 +19,14 @@
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, State, Window};
+use tauri::{AppHandle, Emitter, Manager, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::build_goal_updated_payload;
 use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::repo::{ChatV2Repo, GoalRecord};
+use crate::chat_v2::state::ChatV2State;
 
 // ============================================================================
 // 事件发射
@@ -39,6 +40,26 @@ fn emit_goal_updated(window: &Window, session_id: &str, goal: Option<&GoalRecord
         log::warn!(
             "[ChatV2::GoalHandler] Failed to emit goal_updated event: {}",
             e
+        );
+    }
+}
+
+/// 暂停/清除后取消在飞续跑（2026-09-07 审阅 F4）：认领 CAS 只能拦住
+/// 「读取后状态已变」的续跑；状态变化发生在认领之后时，必须取消对应
+/// 会话流使 pipeline 的 cancel_token 生效。只取消登记在册的续跑流，
+/// 用户正常消息流不受影响。
+fn cancel_goal_continuation_if_in_flight(window: &Window, session_id: &str) {
+    let Some(state) = window
+        .app_handle()
+        .try_state::<Arc<ChatV2State>>()
+        .map(|state| state.inner().clone())
+    else {
+        return;
+    };
+    if crate::chat_v2::goal::runtime::cancel_in_flight_continuation(&state, session_id) {
+        log::info!(
+            "[ChatV2::GoalHandler] Cancelled in-flight goal continuation: session={}",
+            session_id
         );
     }
 }
@@ -96,6 +117,7 @@ pub async fn chat_v2_goal_pause(
         updated.goal_id
     );
     emit_goal_updated(&window, &session_id, Some(&updated));
+    cancel_goal_continuation_if_in_flight(&window, &session_id);
     Ok(updated)
 }
 
@@ -218,5 +240,6 @@ pub async fn chat_v2_goal_clear(
 
     log::info!("[ChatV2::GoalHandler] Goal cleared: session={}", session_id);
     emit_goal_updated(&window, &session_id, None);
+    cancel_goal_continuation_if_in_flight(&window, &session_id);
     Ok(())
 }
