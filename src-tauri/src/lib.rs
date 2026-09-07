@@ -2158,6 +2158,10 @@ pub fn run() {
             ,crate::chat_v2::runtime_roots::chat_v2_set_skill_trust
             // 🆕 G09-P0 技能使用账目：前端激活计数双写（fire-and-forget）
             ,crate::chat_v2::skill_usage::chat_v2_record_skill_activation
+            // 🆕 G09-P1 技能经验回放器：候选列表 / dry-run 对账 / 人工晋升（无自动行为）
+            ,crate::chat_v2::skill_replay::chat_v2_list_skill_candidates
+            ,crate::chat_v2::skill_replay::chat_v2_replay_skill_candidate
+            ,crate::chat_v2::skill_replay::chat_v2_promote_skill_candidate
             ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
             ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
             ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write
