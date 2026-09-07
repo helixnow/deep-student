@@ -3239,86 +3239,138 @@ impl VfsFullIndexingService {
             );
         }
 
-        // 6. 逐页 OCR（与 PdfProcessingService::stage_ocr_processing 一致）
-        let mut ocr_results: Vec<OcrPageResult> = Vec::with_capacity(total_pages);
-        let mut failed_count = 0usize;
+        // 6. 并发 OCR（★ P2 2026-09-07：原逐页串行 7 页要 15 分钟，改为并发窗口。
+        // 与 PdfProcessingService::stage_ocr_processing 的并发口径一致；页级 5xx
+        // 快速失败在 call_ocr_page_with_fallback 内部（exam_engine）已处理）
+        const AUTO_OCR_CONCURRENCY: usize = 3;
+        let blobs_dir_for_tasks = blobs_dir.clone();
+        let db_for_tasks = self.db.clone();
+        let app_handle_for_tasks = self.app_handle.clone();
 
-        for (idx, page) in preview.pages.iter().enumerate() {
-            // 获取 blob 文件路径
-            let blob_path =
-                match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &page.blob_hash)? {
-                    Some(path) => path,
-                    None => {
-                        warn!(
-                        "[try_auto_ocr_pdf_pages] Blob not found for page {} (hash={}), skipping",
-                        idx, page.blob_hash
-                    );
-                        failed_count += 1;
-                        continue;
+        // ★ 先收集页数据（ owned），避免 map 闭包捕获 &preview.pages 的借用
+        // 导致 higher-ranked lifetime 推断失败（FnOnce not general enough）
+        let page_inputs: Vec<(usize, String)> = preview
+            .pages
+            .iter()
+            .map(|page| (page.page_index, page.blob_hash.clone()))
+            .collect();
+        let tasks = page_inputs.into_iter().map(|(page_index, blob_hash)| {
+            let blobs_dir = blobs_dir_for_tasks.clone();
+            let app_handle = app_handle_for_tasks.clone();
+            let resource_id = resource.id.clone();
+            let file_id = file_id.clone();
+            let total_pages = total_pages;
+            let llm_manager = self.llm_manager.clone();
+            let db = db_for_tasks.clone();
+
+            async move {
+                // 获取 blob 文件路径（每任务独立连接，避免跨 await 共享 conn）
+                let blob_path = {
+                    let conn = match db.get_conn_safe() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            return (page_index, None, e.to_string());
+                        }
+                    };
+                    match VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash) {
+                        Ok(Some(path)) => path,
+                        Ok(None) => {
+                            warn!(
+                                "[try_auto_ocr_pdf_pages] Blob not found for page {} (hash={}), skipping",
+                                page_index, blob_hash
+                            );
+                            return (page_index, None, format!("Blob not found: {}", blob_hash));
+                        }
+                        Err(e) => {
+                            return (page_index, None, e.to_string());
+                        }
                     }
                 };
 
-            let path_str = blob_path.to_string_lossy().to_string();
-            match self
-                .llm_manager
-                .call_ocr_page_with_fallback(
-                    &path_str,
-                    page.page_index,
-                    crate::ocr_adapters::OcrTaskType::FreeText,
-                )
-                .await
-            {
-                Ok(cards) => {
-                    let blocks: Vec<PdfOcrTextBlock> = cards
-                        .iter()
-                        .map(|c| PdfOcrTextBlock {
-                            text: c.ocr_text.clone().unwrap_or_default(),
-                            bbox: c.bbox.clone(),
-                        })
-                        .collect();
-
-                    ocr_results.push(OcrPageResult {
-                        page_index: page.page_index,
-                        blocks,
-                    });
-
-                    info!(
-                        "[try_auto_ocr_pdf_pages] OCR page {}/{} completed for resource {}",
-                        idx + 1,
-                        total_pages,
-                        resource.id
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        "[try_auto_ocr_pdf_pages] OCR failed for page {} of resource {}: {}",
-                        idx, resource.id, e
-                    );
-                    failed_count += 1;
+                let path_str = blob_path.to_string_lossy().to_string();
+                match llm_manager
+                    .call_ocr_page_with_fallback(
+                        &path_str,
+                        page_index,
+                        crate::ocr_adapters::OcrTaskType::FreeText,
+                    )
+                    .await
+                {
+                    Ok(cards) => {
+                        let blocks: Vec<PdfOcrTextBlock> = cards
+                            .iter()
+                            .map(|c| PdfOcrTextBlock {
+                                text: c.ocr_text.clone().unwrap_or_default(),
+                                bbox: c.bbox.clone(),
+                            })
+                            .collect();
+                        (page_index, Some(blocks), String::new())
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[try_auto_ocr_pdf_pages] OCR failed for page {} of resource {}: {}",
+                            page_index, resource_id, e
+                        );
+                        (page_index, None, e.to_string())
+                    }
                 }
             }
+        });
 
-            // 发送逐页进度事件
-            if let Some(ref ah) = self.app_handle {
-                let completed = ocr_results.len() + failed_count;
-                let percent = if total_pages > 0 {
-                    (completed as f64 / total_pages as f64 * 100.0) as u32
-                } else {
-                    0
-                };
-                let _ = ah.emit(
-                    "vfs-index-progress",
-                    serde_json::json!({
-                        "type": "auto_ocr_page",
-                        "resourceId": resource.id,
-                        "fileId": file_id,
-                        "currentPage": idx + 1,
-                        "totalPages": total_pages,
-                        "successCount": ocr_results.len(),
-                        "failCount": failed_count,
-                        "percent": percent,
-                        "message": format!("自动 OCR 进度: {}/{} 页", idx + 1, total_pages)
-                    }),
+        // 并发执行，逐页发送进度事件（页完成顺序不确定，进度按 completed/total 计算）
+        let completed_counter = Arc::new(AtomicUsize::new(0));
+        let completed_for_emit = completed_counter.clone();
+        let total_for_emit = total_pages;
+        let app_handle_for_emit = app_handle_for_tasks.clone();
+        let resource_id_for_emit = resource.id.clone();
+        let file_id_for_emit = file_id.clone();
+        let page_results: Vec<(usize, Option<Vec<PdfOcrTextBlock>>, String)> = stream::iter(tasks)
+            .buffer_unordered(AUTO_OCR_CONCURRENCY)
+            .then(move |result| {
+                let completed = completed_for_emit.clone();
+                let app_handle = app_handle_for_emit.clone();
+                let resource_id = resource_id_for_emit.clone();
+                let file_id = file_id_for_emit.clone();
+                let total_pages = total_for_emit;
+                async move {
+                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                    // 发送逐页进度事件
+                    if let Some(ref ah) = app_handle {
+                        let percent = if total_pages > 0 {
+                            (done as f64 / total_pages as f64 * 100.0) as u32
+                        } else {
+                            0
+                        };
+                        let _ = ah.emit(
+                            "vfs-index-progress",
+                            serde_json::json!({
+                                "type": "auto_ocr_page",
+                                "resourceId": resource_id,
+                                "fileId": file_id,
+                                "currentPage": done,
+                                "totalPages": total_pages,
+                                "successCount": done,
+                                "percent": percent,
+                                "message": format!("自动 OCR 进度: {}/{} 页", done, total_pages)
+                            }),
+                        );
+                    }
+                    result
+                }
+            })
+            .collect::<Vec<_>>()
+            .await;
+
+        let mut ocr_results: Vec<OcrPageResult> = Vec::with_capacity(total_pages);
+        let mut failed_count = 0usize;
+        for (page_index, blocks, err) in page_results {
+            if let Some(blocks) = blocks {
+                ocr_results.push(OcrPageResult { page_index, blocks });
+            } else {
+                failed_count += 1;
+                debug!(
+                    "[try_auto_ocr_pdf_pages] page {} failed: {}",
+                    page_index, err
                 );
             }
         }
@@ -3418,6 +3470,24 @@ impl VfsFullIndexingService {
                             log::warn!("[VfsIndexing] Failed to update processing_progress for file {}: {}", file_id, e);
                         }
                     }
+                }
+                // ★ P2（2026-09-07）：auto-OCR 完成后立即向前端同步 readyModes。
+                // 此前只写 DB 不发事件，前端 pdfProcessingStore 不知道 ocr 已就绪，
+                // 发送门控一直卡「部分模式未就绪」，要等整条管线 completed 才解除。
+                // 复用 media-processing-progress 通道（stage 保持 vector_indexing，
+                // readyModes 带上 ocr），usePdfProcessingProgress 收到后门控立即解除。
+                if let Some(ref ah) = self.app_handle {
+                    let event = crate::vfs::pdf_processing_service::MediaProcessingProgressEvent {
+                        file_id: file_id.clone(),
+                        status: progress.clone(),
+                        media_type: "pdf".to_string(),
+                    };
+                    let _ = ah.emit("media-processing-progress", &event);
+                    let _ = ah.emit("pdf-processing-progress", &event);
+                    info!(
+                        "[try_auto_ocr_pdf_pages] Emitted media-processing-progress after auto-OCR: file={}, ready_modes={:?}",
+                        file_id, progress.ready_modes
+                    );
                 }
             }
         }

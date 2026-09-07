@@ -59,14 +59,27 @@ export function getMediaTypeForAttachment(
  * ★ P0 SSOT：UI 默认注入模式（创建 ContextRef / 附件时必须显式写入）。
  *
  * 契约：ContextRef.injectModes 永远显式携带，后端「缺省按 text+image 双开」
- * 的兜底逻辑不应再被触发。默认值与 common.ts 的 DEFAULT_* 保持一致：
- * - PDF: ['text']
- * - 图片: ['image']
+ * 的兜底逻辑不应再被触发。
+ *
+ * ★ P1（2026-09-07）：默认值由当前会话模型能力驱动：
+ * - PDF + 多模态模型 → ['image']（页图就绪即秒过门控，不 OCR）
+ * - PDF + 非多模态模型 → ['text', 'ocr']（扫描件也能注入文本）
+ * - 未提供 context 或拿不到模型能力时回落旧默认（PDF=['text']），行为不变。
+ * - 图片不受模型能力影响：始终 ['image']（非多模态场景由发送链路降级）。
  */
+export interface DefaultInjectModesContext {
+  /** 当前会话默认对话模型（model2）是否支持图片输入 */
+  multimodal?: boolean;
+}
+
 export function buildDefaultInjectModes(
-  mediaType: AttachmentMediaType | null
+  mediaType: AttachmentMediaType | null,
+  context?: DefaultInjectModesContext
 ): AttachmentInjectModes | undefined {
   if (mediaType === 'pdf') {
+    if (context?.multimodal === true) {
+      return { pdf: ['image'] };
+    }
     return { pdf: [...DEFAULT_PDF_INJECT_MODES] };
   }
   if (mediaType === 'image') {

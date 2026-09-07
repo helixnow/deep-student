@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
+import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
@@ -288,6 +289,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   pdfPageRefs,
   onRemovePdfPageRef,
   onClearPdfPageRefs,
+  // ★ 模型能力（附件默认注入模式）
+  effectiveChatModelId,
 }) => {
   const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
@@ -427,6 +430,18 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
 
+  // ★ P1（2026-09-07）：当前会话模型多模态能力 ref。
+  // 上传回调是同步创建附件的，默认注入模式需要同步可读；
+  // 异步刷新（模型切换/会话切换）由下方 effect 维护。
+  const multimodalRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void isCurrentChatModelMultimodal(effectiveChatModelId).then((mm) => {
+      if (!cancelled) multimodalRef.current = mm;
+    });
+    return () => { cancelled = true; };
+  }, [effectiveChatModelId]);
+
   // 处理文件转换为附件元数据并上传
   const processFilesToAttachments = useCallback((files: File[]) => {
     if (!files.length) return;
@@ -522,6 +537,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       // 先添加 pending 状态的附件
       // ★ P0 契约：PDF/图片附件从创建起就显式携带 UI 默认注入模式，
       // 后续 ContextRef 同步与发送快照均以此为准，后端缺省逻辑永不触发
+      // ★ P1（2026-09-07）：默认模式由当前会话模型能力驱动
+      //（多模态 → 图片直注；非多模态 → 文本+OCR）
       const pendingAttachment: AttachmentMeta = {
         id: attachmentId,
         name: file.name,
@@ -532,7 +549,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         status: 'uploading', // 标记为上传中
         uploadProgress: 0,
         uploadStage: 'reading',
-        injectModes: buildDefaultInjectModes(mediaType),
+        injectModes: buildDefaultInjectModes(mediaType, { multimodal: multimodalRef.current }),
       };
       onAddAttachment(pendingAttachment);
       liveAttachmentCountRef.current += 1;
@@ -644,7 +661,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           // 否则回落到 UI 默认（PDF=['text'] / 图片=['image']），
           // 确保后端「缺省 text+image 双开」的兜底永不触发。
           const liveInjectModes = attachmentsRef.current.find(a => a.id === attachmentId)?.injectModes;
-          const explicitInjectModes = liveInjectModes ?? buildDefaultInjectModes(mediaType);
+          const explicitInjectModes = liveInjectModes
+            ?? buildDefaultInjectModes(mediaType, { multimodal: multimodalRef.current });
           const contextRef: ContextRef = {
             resourceId: result.resourceId,
             hash: result.hash,
@@ -771,7 +789,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             });
           }
 
-
+          // ★ P0（2026-09-07 附件体验方案）：上传成功后自动弹出附件面板。
+          // 直接上传路径此前从不派发该事件（只有资源库注入路径派发），
+          // 用户上传后看不到处理进度与注入模式选择器。事件已有监听器（:1643）。
+          window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         } catch (error) {
           const errorDetail = getErrorMessage(error);

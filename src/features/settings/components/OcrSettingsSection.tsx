@@ -36,20 +36,19 @@ const GroupCard = ({ children }: { children: React.ReactNode }) => (
 /** OCR 策略配置接口 */
 interface OcrStrategyConfig {
   enabled: boolean;
-  skipForMultimodal: boolean;
   pdfTextThreshold: number;
   ocrImages: boolean;
   ocrScannedPdf: boolean;
 }
 
-/** 
- * 默认配置 
- * ★ 2026-01 修复：skipForMultimodal 默认改为 false
- * 确保总是执行 OCR，保证文本索引有内容（用于 RAG 检索和文本模型注入）
+/**
+ * 默认配置
+ * ★ 2026-09-07 P3：移除 skipForMultimodal 开关——是否跳过 OCR 改由后端在
+ * 处理时读取「当前默认对话模型」的多模态能力自动决定（运行时判定），
+ * 不再是用户可配置的静态偏好。旧键 ocr.skip_for_multimodal 不再读取。
  */
 const DEFAULT_CONFIG: OcrStrategyConfig = {
   enabled: true,
-  skipForMultimodal: false,
   pdfTextThreshold: 100,
   ocrImages: true,
   ocrScannedPdf: true,
@@ -67,9 +66,8 @@ export const OcrSettingsSection: React.FC = () => {
       setLoading(true);
       const getSetting = (key: string) => invoke<string | null>('get_setting', { key }).catch(() => null);
 
-      const [enabled, skipForMultimodal, threshold, ocrImages, ocrScannedPdf] = await Promise.all([
+      const [enabled, threshold, ocrImages, ocrScannedPdf] = await Promise.all([
         getSetting('ocr.enabled'),
-        getSetting('ocr.skip_for_multimodal'),
         getSetting('ocr.pdf_text_threshold'),
         getSetting('ocr.images'),
         getSetting('ocr.scanned_pdf'),
@@ -82,7 +80,6 @@ export const OcrSettingsSection: React.FC = () => {
 
       setConfig({
         enabled: parseBool(enabled, DEFAULT_CONFIG.enabled),
-        skipForMultimodal: parseBool(skipForMultimodal, DEFAULT_CONFIG.skipForMultimodal),
         pdfTextThreshold: !isNaN(parsedThreshold) && parsedThreshold > 0 ? parsedThreshold : DEFAULT_CONFIG.pdfTextThreshold,
         ocrImages: parseBool(ocrImages, DEFAULT_CONFIG.ocrImages),
         ocrScannedPdf: parseBool(ocrScannedPdf, DEFAULT_CONFIG.ocrScannedPdf),
@@ -151,7 +148,6 @@ export const OcrSettingsSection: React.FC = () => {
       const save = (key: string, value: string) => saveSetting(key, value);
       await Promise.all([
         save('ocr.enabled', 'true'),
-        save('ocr.skip_for_multimodal', 'false'),
         save('ocr.pdf_text_threshold', '100'),
         save('ocr.images', 'true'),
         save('ocr.scanned_pdf', 'true'),
@@ -206,13 +202,9 @@ export const OcrSettingsSection: React.FC = () => {
           disabled={saving}
         />
 
-        <SwitchRow
-          title={t('settings:ocr.general.skip_multimodal')}
-          description={t('settings:ocr.general.skip_multimodal_desc')}
-          checked={config.skipForMultimodal}
-          onCheckedChange={(v) => handleToggle('skipForMultimodal', 'ocr.skip_for_multimodal', v)}
-          disabled={saving || !config.enabled}
-        />
+        {/* ★ 2026-09-07 P3：移除「多模态模型跳过 OCR」开关。
+            是否跳过 OCR 由后端按当前默认对话模型的多模态能力运行时决定，
+            不再是用户偏好；原 ocr.skip_for_multimodal 键已废弃。 */}
       </GroupCard>
 
       {/* 图片识别 */}
