@@ -5,10 +5,14 @@
 //!
 //! ## 核心设计（参考成熟代理运行时的 cron/heartbeat 与"工具策略预过滤"）
 //!
-//! 1. **复用现有管线**：构建 `SendMessageRequest` → 经 `handlers::send_message::
-//!    run_send_message_pipeline`（StreamGuard + `ChatV2Pipeline::execute`）执行，
-//!    事件照常经 Window emit（无前端监听也无害），全部块照常落库，用户之后打开
-//!    会话能看到完整过程。
+//! 1. **复用现有管线**：构建 `SendMessageRequest` → 经
+//!    `ChatV2Pipeline::execute_with_emitter`（G01-d 无窗总入口，StreamGuard
+//!    照常保护流注册）执行。事件出口统一为
+//!    `ChatV2EventEmitter::new_headless`（G01-a NoopEventSink，全部块/会话
+//!    事件丢弃）；LLM 流式调用经 G01-b `NoopStreamSink`（tool_loop /
+//!    multi_variant 在 `try_window()=None` 分支自动选用）。不依赖任何应用
+//!    窗口——纯后台驻留（窗口全部关闭）场景照常跑完，全部块照常落库，
+//!    用户之后打开会话能看到完整过程。
 //! 2. **工具集 fail-closed（双层防线）**：
 //!    - Schema 层：只注入 `headless_tool_schemas()` 白名单工具的 schema，
 //!      依赖前端 WebView 往返的工具（MCP 桥 / ask_user / 前端 CardAgent 桥 /
@@ -48,7 +52,7 @@ use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Window};
+use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 use super::automations::{
@@ -56,9 +60,10 @@ use super::automations::{
 };
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
+use super::events::ChatV2EventEmitter;
 use super::pipeline::ChatV2Pipeline;
 use super::repo::ChatV2Repo;
-use super::state::ChatV2State;
+use super::state::{ChatV2State, StreamGuard};
 use super::tools::attempt_completion::is_attempt_completion;
 use super::types::{
     block_status, ChatMessage, ChatSession, McpToolSchema, MessageBlock, PersistStatus,
@@ -1226,7 +1231,7 @@ pub struct HeadlessTurnOutcome {
 
 /// 后端自主发起一个完整 agent turn（无前端参与）。
 ///
-/// 基础设施级失败（管线未初始化 / 无可用窗口 / 会话创建失败 / 会话流冲突）
+/// 基础设施级失败（管线未初始化 / 会话创建失败 / 会话流冲突）
 /// 返回 `Err`；管线执行期的失败（LLM 错误、超时等）返回 `Ok` 且
 /// `status = cancelled|timeout|error`，因为此时消息/块已按管线取消/错误路径落库，
 /// 调用方可据此发失败通知。
@@ -1550,26 +1555,14 @@ async fn execute_headless_pipeline(
         return Err(HeadlessPipelineTermination::Failed(error));
     }
 
-    // —— 事件发射所需的 Window（AppHandle 全局 emit 语义：无前端监听也无害）。
-    //    Tauri 窗口在应用存续期间通常存活（最小化/隐藏不影响 emit）。
-    //
-    //    无窗口容错评估（2026-07）：`run_send_message_pipeline` →
-    //    `ChatV2Pipeline::execute(window: Window, ...)` 的签名强依赖具体
-    //    `tauri::Window`（emitter 构造 + 工具 ExecutionContext 的 window 桥），
-    //    `ChatV2EventEmitter` 的 windowless 形态仅 `#[cfg(test)]` 暴露，且这些
-    //    文件属于其他并行改造，headless 侧无法在不改管线签名的前提下安全降级为
-    //    "无 UI 事件模式"。此处保守保留 fail-fast，但补充 run 上下文日志便于排查
-    //    纯后台驻留场景（所有窗口已销毁）下的任务失败原因。
-    let window = resolve_emit_window(app).ok_or_else(|| {
-        log::error!(
-            "[ChatV2::headless] 没有可用的应用窗口，headless turn 无法启动: session={}, assistant_message={}（纯后台驻留/窗口全部关闭场景；管线事件通道强依赖 Window，暂不支持无窗口降级）",
-            session_id,
-            assistant_message_id
-        );
-        HeadlessPipelineTermination::Failed(format!(
-            "没有可用的应用窗口，无法创建事件发射通道（session={session_id}）"
-        ))
-    })?;
+    // —— G01-d 事件出口收口：headless emitter 单一形态 ——
+    //    `ChatV2EventEmitter::new_headless`（NoopEventSink，全部事件丢弃），
+    //    不再解析/依赖任何应用窗口；LLM 流式由 G01-b NoopStreamSink 承载
+    //    （tool_loop / multi_variant 的 try_window()=None 分支）。纯后台驻留
+    //    （窗口全部关闭）场景 headless turn 照常执行。
+    //    hooks 的 shell 审批绑定在 try_window()=None 下保持 fail-fast（结构化
+    //    错误而非 panic），且 headless 白名单本就不含 shell 工具——双层
+    //    fail-closed 语义不变。
 
     // 轮次预算：run_headless_turn 已经通过 resolve_budget（profile > 请求 >
     // 设置 > 默认 + 硬顶）解析并经 override 传入，这里直接采信不再重算；
@@ -1627,7 +1620,7 @@ async fn execute_headless_pipeline(
         ..Default::default()
     };
 
-    let request = SendMessageRequest {
+    let mut request = SendMessageRequest {
         session_id: session_id.to_string(),
         content: prompt.to_string(),
         options: Some(options),
@@ -1681,19 +1674,36 @@ async fn execute_headless_pipeline(
         stream_generation
     );
 
-    // —— 执行：复用 send_message 的内部管线路径（StreamGuard + Pipeline::execute），
+    // —— 执行：G01-d 无窗管线路径（StreamGuard + Pipeline::execute_with_emitter
+    //    + headless emitter）。StreamGuard 语义与原 run_send_message_pipeline
+    //    一致：存活期间持有流注册，drop 时按 generation 精确清理；
+    //    from_registered_token 在 token 已取消的竞态下返回 None，由
+    //    finalize_overrun_pipeline 的 compare-and-remove 兜底。
     //    硬超时命中后先 cancel 让管线走"取消保存部分结果"路径，再限时收尾。
-    //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop 触发
-    //    StreamGuard 的清理，再做流注册泄漏兜底检查。
+    //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop；
     //    catch_unwind 隔离 panic：单次 run 的 panic 转化为 error 结果回传，
-    //    unwind 过程中 StreamGuard 照常 drop 清理，调度器不受影响。
+    //    调度器不受影响。
+    let stream_guard = StreamGuard::from_registered_token(
+        chat_v2_state.clone(),
+        session_id.to_string(),
+        &cancel_token,
+    );
+    if stream_guard.is_some() {
+        request
+            .options
+            .get_or_insert_with(SendOptions::default)
+            .stream_generation = Some(stream_generation);
+    }
+    let emitter = Arc::new(
+        ChatV2EventEmitter::new_headless(session_id.to_string())
+            .with_stream_generation(request.options.as_ref().and_then(|o| o.stream_generation)),
+    );
     let mut pipeline_fut = Box::pin(
-        AssertUnwindSafe(super::handlers::send_message::run_send_message_pipeline(
-            pipeline,
-            chat_v2_state.clone(),
-            window,
+        AssertUnwindSafe(pipeline.execute_with_emitter(
+            emitter,
             request,
             cancel_token.clone(),
+            Some(chat_v2_state.clone()),
         ))
         .catch_unwind(),
     );
@@ -1789,6 +1799,11 @@ async fn execute_headless_pipeline(
         }
         Err(_) => false,
     };
+    // StreamGuard 必须先于 finalize 显式 drop：finalize 内的
+    // remove_stream_if_generation 兜底检查要求注册已被 guard 清理，
+    // 否则会对正常清理误报"StreamGuard 未生效"。（正常完成路径在上方
+    // loop 内 return，guard 随函数返回 drop。）
+    drop(stream_guard);
     finalize_overrun_pipeline(
         pipeline_fut,
         graceful,
@@ -1900,15 +1915,6 @@ fn finalize_overrun_pipeline<F>(
 // ============================================================================
 // 内部辅助
 // ============================================================================
-
-/// 获取用于事件发射的 Window：优先 main，其次任意存活窗口。
-fn resolve_emit_window(app: &AppHandle) -> Option<Window> {
-    let webviews = app.webview_windows();
-    if let Some(main) = webviews.get("main") {
-        return Some(main.as_ref().window());
-    }
-    webviews.values().next().map(|w| w.as_ref().window())
-}
 
 /// 解析高层请求的超时/轮次预算：请求值 > 全局设置 > 默认值，并施加硬顶。
 fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, Option<u32>) {
