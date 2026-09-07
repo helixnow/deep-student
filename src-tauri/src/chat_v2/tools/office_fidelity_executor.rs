@@ -42,6 +42,30 @@ struct PackagePart {
     bytes: Vec<u8>,
 }
 
+/// ★ G06-P0：Office 编辑路径强制 preflight 的判定结果。
+///
+/// 由只读清点（`inspect_bytes`）派生，供编辑执行器（`xlsx_edit_cells` 等）
+/// 在写入前消费 `completionGate`：
+/// - critical 特征（macros / digital_signatures / external_links / 加密容器）
+///   → 必须拒绝 round-trip 编辑（umya-spreadsheet 会静默丢失这些特征）；
+/// - high 特征（charts / pivot_tables / defined_names / data_validation /
+///   formulas …）→ 允许编辑，但交付结果必须附 fidelity warning。
+#[derive(Debug, Clone)]
+pub struct EditPreflight {
+    pub format: String,
+    pub risk: String,
+    pub source_sha256: String,
+    pub feature_set_hash: String,
+    pub critical_features: Vec<String>,
+    pub high_features: Vec<String>,
+}
+
+impl EditPreflight {
+    pub fn has_critical(&self) -> bool {
+        !self.critical_features.is_empty()
+    }
+}
+
 pub struct OfficeFidelityExecutor;
 
 impl OfficeFidelityExecutor {
@@ -542,6 +566,46 @@ impl OfficeFidelityExecutor {
         }
     }
 
+    /// ★ G06-P0：供 Office 编辑执行器复用的 preflight 入口。
+    ///
+    /// 与 `builtin-office_fidelity_inspect` 共享同一份只读清点逻辑
+    /// （`inspect_bytes`），保证编辑路径消费的 gate 与工具暴露的报告一致。
+    /// 输入为源文件原始字节（调用方已完成加载与大小检查）。
+    pub fn preflight_for_edit(bytes: &[u8]) -> Result<EditPreflight, String> {
+        let report = Self::inspect_bytes(bytes)?;
+        let mut critical_features = Vec::new();
+        let mut high_features = Vec::new();
+        if let Some(features) = report["features"].as_array() {
+            for feature in features {
+                if feature["present"].as_bool() != Some(true) {
+                    continue;
+                }
+                let Some(name) = feature["feature"].as_str() else {
+                    continue;
+                };
+                match feature["risk"].as_str() {
+                    Some("critical") => critical_features.push(name.to_string()),
+                    Some("high") => high_features.push(name.to_string()),
+                    _ => {}
+                }
+            }
+        }
+        Ok(EditPreflight {
+            format: report["format"].as_str().unwrap_or_default().to_string(),
+            risk: report["risk"].as_str().unwrap_or_default().to_string(),
+            source_sha256: report["sourceSha256"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            feature_set_hash: report["featureSetHash"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            critical_features,
+            high_features,
+        })
+    }
+
     async fn execute_inspect(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let (handle, bytes) = Self::load_source(args, ctx)?;
         let mut output = Self::inspect_bytes(&bytes)?;
@@ -727,5 +791,52 @@ mod tests {
             result["secretPrompt"]["reasonCode"],
             "DECRYPTOR_INTEGRATION_UNAVAILABLE"
         );
+    }
+
+    #[test]
+    fn preflight_for_edit_separates_critical_from_high_features() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("xl/workbook.xml", b"<workbook/>"),
+            (
+                "xl/worksheets/sheet1.xml",
+                b"<worksheet><f>A1+1</f></worksheet>",
+            ),
+            ("xl/charts/chart1.xml", b"<chart/>"),
+            ("xl/vbaProject.bin", b"macro payload"),
+            ("xl/externalLinks/externalLink1.xml", b"<externalLink/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "xlsx");
+        assert_eq!(preflight.risk, "critical");
+        assert!(preflight.has_critical());
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "macros"));
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "external_links"));
+        // high 特征与 critical 分桶，不互相污染
+        assert!(preflight.high_features.iter().any(|f| f == "charts"));
+        assert!(preflight.high_features.iter().any(|f| f == "formulas"));
+        assert!(!preflight.high_features.iter().any(|f| f == "macros"));
+        assert_eq!(preflight.source_sha256.len(), 64);
+        assert_eq!(preflight.feature_set_hash.len(), 64);
+    }
+
+    #[test]
+    fn preflight_for_edit_plain_xlsx_has_no_gate_features() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("xl/workbook.xml", b"<workbook/>"),
+            ("xl/worksheets/sheet1.xml", b"<worksheet/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "xlsx");
+        assert!(!preflight.has_critical());
+        assert!(preflight.critical_features.is_empty());
+        assert!(preflight.high_features.is_empty());
     }
 }

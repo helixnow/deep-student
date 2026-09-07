@@ -20,6 +20,8 @@ use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
 pub enum OfficeOperation {
     Create,
     ReplaceText,
+    /// ★ G06-P0：xlsx_edit_cells 回归统一交付通道后的操作标识
+    EditCells,
 }
 
 impl OfficeOperation {
@@ -27,6 +29,7 @@ impl OfficeOperation {
         match self {
             Self::Create => "create",
             Self::ReplaceText => "replace_text",
+            Self::EditCells => "edit_cells",
         }
     }
 }
@@ -458,7 +461,9 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
         "source_preflight": {
             "tool": "builtin-office_fidelity_inspect",
             "required_for_source_edits": true,
-            "inspection_result_consumed_by_current_resource_id_editors": false,
+            // ★ G06-P0：xlsx_edit_cells 已通过
+            // `OfficeFidelityExecutor::preflight_for_edit` 强制消费 inspect gate
+            "inspection_result_consumed_by_current_resource_id_editors": true,
             "preservation_claim_allowed": false,
         }
     })
@@ -503,7 +508,19 @@ mod tests {
         assert_eq!(
             manifest["source_preflight"]
                 ["inspection_result_consumed_by_current_resource_id_editors"],
-            false
+            true
         );
+    }
+
+    #[test]
+    fn edit_cells_operation_uses_edit_semantics_not_create() {
+        assert_eq!(OfficeOperation::EditCells.as_str(), "edit_cells");
+        let manifest = fidelity_manifest("xlsx", OfficeOperation::EditCells);
+        // 非 Create：preserved 走"受支持内容"语义，不承诺完整 round-trip
+        assert_eq!(
+            manifest["preserved"],
+            json!(["supported_text_content", "supported_structural_content"])
+        );
+        assert_eq!(manifest["operation"], "edit_cells");
     }
 }
