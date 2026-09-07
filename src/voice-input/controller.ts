@@ -102,6 +102,10 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
   // 仅靠 phase 守卫无法阻止两次近同时触发（命令面板事件 + 热键 / 快速双击），
   // 否则第二次会覆盖 recorderSession，导致第一个 MediaStream/AudioContext 永不释放（麦克风泄漏）。
   let startingRecording = false;
+  // 启动操作代际（2026-09-07 审阅 N08）：权限等待期间（await createRecorderSession）
+  // 的取消/松键/失焦使代际失效；迟到的授权成功必须立即释放刚取得的 recorder
+  // 资源并放弃，而不是在用户已停止意图之后进入 recording。
+  let startGeneration = 0;
   const listeners = new Set<() => void>();
 
   const emit = () => {
@@ -230,10 +234,22 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
     }
 
     startingRecording = true;
+    const generation = ++startGeneration;
     try {
-      recorderSession = await (deps.createRecorderSession ?? startBrowserVoiceRecording)({
+      const session = await (deps.createRecorderSession ?? startBrowserVoiceRecording)({
         onLevel: (level) => setState({ level }),
       });
+      if (generation !== startGeneration) {
+        // 等待期间用户已取消/松键/失焦：立即释放迟到资源（麦克风/AudioContext），
+        // 不进入 recording。
+        try {
+          await session.cancel();
+        } catch {
+          // best effort：资源释放失败不应掩盖用户意图
+        }
+        return;
+      }
+      recorderSession = session;
       recordingStartedAt = Date.now();
       setState({ phase: 'recording', elapsedMs: 0, level: 0, errorCode: null });
 
@@ -314,9 +330,14 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
     async stopHoldRecording() {
       if (state.phase === 'recording') {
         await stopRecording();
+      } else if (startingRecording) {
+        // 权限等待期间松键 = 取消本次启动（hold 语义：键已松开就不再开录）
+        startGeneration += 1;
       }
     },
     async cancelRecording() {
+      // 权限等待期间取消：使在途启动代际失效，迟到的授权成功会自取消并释放资源
+      startGeneration += 1;
       if (!recorderSession) {
         return;
       }
@@ -400,6 +421,9 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
       holdHotkeyActive = false;
       if (state.phase === 'recording') {
         void this.cancelRecording();
+      } else if (startingRecording) {
+        // 失焦时权限等待中的启动一并取消
+        startGeneration += 1;
       }
     },
   };
