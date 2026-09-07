@@ -47,6 +47,7 @@ pub mod automation_executor; // 🆕 周期自动化提案/列表/启停执行�
 pub mod browser_executor; // 🆕 内置浏览器 Agent 工具（BrowserService + 注入桥；非 Playwright）
 pub mod builtin_resource_executor; // 🆕 内置学习资源工具执行器
 pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP 工具化）
+pub mod insight_recall_executor; // 🆕 灵感召回工具执行器（Insight Recall v2 阶段二）
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
@@ -153,6 +154,7 @@ pub use automation_executor::AutomationExecutor; // 🆕 周期自动化执行�
 pub use browser_executor::BrowserToolExecutor; // 🆕 内置浏览器 Agent 工具执行器
 pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习资源工具执行器
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
+pub use insight_recall_executor::InsightRecallExecutor; // 🆕 灵感召回工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
 pub use code_navigation_executor::CodeNavigationExecutor;

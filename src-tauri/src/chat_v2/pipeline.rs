@@ -335,6 +335,7 @@ impl ChatV2Pipeline {
         // AnkiToolExecutor 已移除 — 旧 CardForge 2.0 管线由 ChatAnki 完全接管
         executors.push(Arc::new(ChatAnkiToolExecutor::new()));
         executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
+        executors.push(Arc::new(super::tools::InsightRecallExecutor::new()));
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
         executors.push(Arc::new(super::tools::ConnectorToolExecutor::new()));
         executors.push(Arc::new(super::tools::TaskAuditExecutor::new()));
@@ -552,6 +553,7 @@ impl ChatV2Pipeline {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
+            "insight_recall" => block_types::INSIGHT_RECALL.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
             "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),

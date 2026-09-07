@@ -1228,6 +1228,7 @@ pub(super) fn is_tool_call_block(block: &MessageBlock) -> bool {
             | block_types::WEB_SEARCH
             | block_types::GRAPH
             | block_types::RAG
+            | block_types::INSIGHT_RECALL
             | block_types::ACADEMIC_SEARCH
             | block_types::SLEEP
             | block_types::SUBAGENT_EMBED
