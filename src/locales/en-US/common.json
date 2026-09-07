@@ -2164,7 +2164,8 @@
         "web_search": "Web Search",
         "tool": "Tool",
         "graph": "Personal Graph",
-        "multimodal": "Multimodal Knowledge Base"
+        "multimodal": "Multimodal Knowledge Base",
+        "insight": "Insight Cards"
       },
       "locateGraph": "Locate in graph",
       "locateKb": "Open in Knowledge Base",
@@ -2177,7 +2178,8 @@
         "multimodalRag": "Multimodal Knowledge Base",
         "unifiedSearch": "Unified Search",
         "academicSearch": "Academic Search",
-        "memory": "Memory"
+        "memory": "Memory",
+        "insightRecall": "Insight Recall"
       },
       "defaultTitles": {
         "document": "Document",
@@ -2185,7 +2187,8 @@
         "memory": "Memory",
         "searchResult": "Search Result",
         "multimodalPage": "Page",
-        "paper": "Paper"
+        "paper": "Paper",
+        "insight": "Insight"
       },
       "multimodal": {
         "sourceTypes": {

@@ -88,7 +88,7 @@ export interface Block {
  */
 export interface Citation {
   /** 来源类型 */
-  type: 'rag' | 'memory' | 'web' | 'multimodal' | 'image' | 'search';
+  type: 'rag' | 'memory' | 'web' | 'multimodal' | 'image' | 'search' | 'insight';
 
   /** 来源标题 */
   title?: string;

@@ -28,7 +28,7 @@ export interface BackendSourceInfo {
  * 检索来源类型
  * ★ 2026-01 清理：移除 'graph' 类型（错题系统废弃）
  */
-export type RetrievalSourceType = 'rag' | 'memory' | 'web_search' | 'multimodal';
+export type RetrievalSourceType = 'rag' | 'memory' | 'web_search' | 'multimodal' | 'insight';
 
 /**
  * 检索来源（前端使用）
