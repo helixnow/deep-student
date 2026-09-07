@@ -1,0 +1,16 @@
+/**
+ * CompletionCard 组件私有样式
+ *
+ * G07-a 验收徽章 partial 终态的橙色：设计系统无全局 orange 语义 token
+ * （shadcn-variables.css 仅 success/warning/danger/info/neutral），
+ * 这里定义私有 HSL 变量并随暗色主题翻转，徽章经
+ * `text-[hsl(var(--completion-partial))]` 等任意值类引用。
+ */
+
+:root {
+  --completion-partial: 24 80% 40%;
+}
+
+:root.dark {
+  --completion-partial: 27 87% 63%;
+}
