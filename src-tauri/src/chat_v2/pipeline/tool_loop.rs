@@ -2274,6 +2274,16 @@ impl ChatV2Pipeline {
                     recursion_depth
                 );
 
+                    // 🆕 G07-a：candidate_complete 与任务验收分离——终止工具循环前
+                    // 对 attempt_completion 申报产物做骨架验收，终态写入完成块
+                    // toolOutput.finalization；验收器自身失败只降级为 warn log，
+                    // 绝不影响主循环终止路径。
+                    crate::chat_v2::finalizer::finalize_task_completion(
+                        ctx,
+                        &self.db,
+                        self.main_db.as_ref(),
+                    );
+
                     // 收集当前轮次的块（无需再次调用 LLM）
                     ctx.collect_streamed_text_segments(
                         adapter.get_text_segments(),

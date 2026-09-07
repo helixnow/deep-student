@@ -13,6 +13,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::chat_v2::finalizer::DeclaredArtifact;
+
 // ============================================================================
 // 工具常量
 // ============================================================================
@@ -24,7 +26,9 @@ pub const TOOL_NAME: &str = "attempt_completion";
 pub const TOOL_DESCRIPTION: &str = r#"当任务完成时，使用此工具向用户展示最终结果。
 这将终止当前的 Agent 循环，不再执行后续工具调用。
 只有在确认任务已完成时才应该调用此工具。
-如果任务产生了文件产物，result 中应包含产物清单（相对路径 + 一句话用途）。"#;
+如果任务产生了文件产物，result 中应包含产物清单（相对路径 + 一句话用途），
+并同时在 artifacts 参数中显式申报产物（相对路径 + 可选 sha256）；
+后端验收器（TaskFinalizer）会核对申报产物真实存在，验收结论写入完成块。"#;
 
 // ============================================================================
 // 参数和结果类型
@@ -38,6 +42,12 @@ pub struct AttemptCompletionParams {
     /// 建议用户执行的命令（可选）
     #[serde(default)]
     pub command: Option<String>,
+    /// 显式申报的任务产物（可选，G07-a）
+    ///
+    /// 申报后后端 TaskFinalizer 会核对产物在对应 runtime root 下真实存在、
+    /// sha256（若申报）匹配；不申报则按纯解释性回答的兼容语义处理。
+    #[serde(default)]
+    pub artifacts: Option<Vec<DeclaredArtifact>>,
 }
 
 /// attempt_completion 工具结果
@@ -72,6 +82,28 @@ pub fn get_schema() -> Value {
                     "command": {
                         "type": "string",
                         "description": "建议用户执行的命令（可选），如编译、运行等"
+                    },
+                    "artifacts": {
+                        "type": "array",
+                        "description": "任务产生的文件产物清单（可选）。申报后后端验收器会核对产物真实存在与内容哈希。",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "产物相对路径（相对 runtime root，默认 artifacts root；拒绝绝对路径与 ..）"
+                                },
+                                "sha256": {
+                                    "type": "string",
+                                    "description": "产物内容的 SHA-256 hex（可选；申报即校验）"
+                                },
+                                "root_id": {
+                                    "type": "string",
+                                    "description": "产物所在 runtime root（可选，默认 artifacts；可选 workspace/temp/authorized_*/skill:*）"
+                                }
+                            },
+                            "required": ["path"]
+                        }
                     }
                 },
                 "required": ["result"]
@@ -97,7 +129,22 @@ pub fn parse_params(arguments: &Value) -> Result<AttemptCompletionParams, String
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    Ok(AttemptCompletionParams { result, command })
+    // G07-a：可选产物申报。格式错误时拒绝本次调用（模型可修正后重试），
+    // 不静默吞掉——申报了却无法核查比不申报更糟糕。
+    let artifacts = arguments
+        .get("artifacts")
+        .filter(|v| !v.is_null())
+        .map(|v| {
+            serde_json::from_value::<Vec<DeclaredArtifact>>(v.clone())
+                .map_err(|e| format!("artifacts 参数格式错误: {}", e))
+        })
+        .transpose()?;
+
+    Ok(AttemptCompletionParams {
+        result,
+        command,
+        artifacts,
+    })
 }
 
 /// 执行工具
@@ -310,6 +357,45 @@ mod tests {
         let params = parse_params(&args).unwrap();
         assert_eq!(params.result, "任务完成");
         assert!(params.command.is_none());
+        assert!(params.artifacts.is_none());
+    }
+
+    /// 🆕 G07-a：可选产物申报解析
+    #[test]
+    fn test_parse_params_with_artifacts() {
+        let args = json!({
+            "result": "已生成报告",
+            "artifacts": [
+                {"path": "report.md", "sha256": "abc123"},
+                {"path": "data/out.xlsx", "root_id": "workspace"}
+            ]
+        });
+
+        let params = parse_params(&args).unwrap();
+        let artifacts = params.artifacts.unwrap();
+        assert_eq!(artifacts.len(), 2);
+        assert_eq!(artifacts[0].path, "report.md");
+        assert_eq!(artifacts[0].sha256, Some("abc123".to_string()));
+        assert!(artifacts[0].root_id.is_none());
+        assert_eq!(artifacts[1].path, "data/out.xlsx");
+        assert_eq!(artifacts[1].root_id, Some("workspace".to_string()));
+        assert!(artifacts[1].sha256.is_none());
+    }
+
+    /// 🆕 G07-a：artifacts 格式错误时拒绝调用（不静默吞掉申报）
+    #[test]
+    fn test_parse_params_rejects_malformed_artifacts() {
+        let args = json!({
+            "result": "任务完成",
+            "artifacts": [{"sha256": "abc123"}] // 缺少必需 path
+        });
+        assert!(parse_params(&args).is_err());
+
+        let args = json!({
+            "result": "任务完成",
+            "artifacts": "not-an-array"
+        });
+        assert!(parse_params(&args).is_err());
     }
 
     #[test]
@@ -317,6 +403,7 @@ mod tests {
         let params = AttemptCompletionParams {
             result: "测试完成".to_string(),
             command: None,
+            artifacts: None,
         };
 
         let result = execute(params);
@@ -328,6 +415,10 @@ mod tests {
     fn test_schema() {
         let schema = get_schema();
         assert_eq!(schema["function"]["name"], TOOL_NAME);
+        // 🆕 G07-a：artifacts 为可选参数（不进 required）
+        let params = &schema["function"]["parameters"];
+        assert!(params["properties"]["artifacts"].is_object());
+        assert_eq!(params["required"], json!(["result"]));
     }
 
     /// 🔒 外部 MCP 命名空间不得冒名顶替 builtin 控制工具
