@@ -184,14 +184,16 @@ export function useTextSelection(
   // 检测选中文本（桌面鼠标路径）
   const pendingRafRef = useRef<number | null>(null);
   const handleMouseUp = useCallback((e: MouseEvent) => {
-    // 仅处理左键（右键/中键不应触发浮动工具栏）
-    if (e.button !== 0) {
+    // 工具栏交互标记必须先于按键判断消费：handleMouseDown 不区分按键，
+    // 右键/中键点工具栏同样会武装它——若只在左键分支消费，标记残留会
+    // 吞掉下一次正常划词的 mouseup，导致工具栏整次不弹出
+    if (isToolbarInteraction.current) {
+      isToolbarInteraction.current = false;
       return;
     }
 
-    // 如果是工具栏上的交互，不处理
-    if (isToolbarInteraction.current) {
-      isToolbarInteraction.current = false;
+    // 仅处理左键（右键/中键不应触发浮动工具栏）
+    if (e.button !== 0) {
       return;
     }
 
