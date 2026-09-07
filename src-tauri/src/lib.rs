@@ -1492,7 +1492,7 @@ pub fn run() {
                 let database_for_automation = database.clone();
                 let vfs_db_for_automation = app_state.inner().vfs_db.clone();
                 let app_handle_for_automation = app_handle.clone();
-                crate::background_tasks::spawn(async move {
+                let _ = crate::background_tasks::spawn(async move {
                     crate::chat_v2::automations::start_automation_scheduler(
                         database_for_automation,
                         vfs_db_for_automation,
@@ -2654,6 +2654,7 @@ pub fn run() {
             ,crate::insight::handlers::insight_list_events
             ,crate::insight::handlers::insight_record_feedback
             ,crate::insight::handlers::insight_add_relation
+            ,crate::insight::handlers::insight_run_jobs
             // =================================================
             // APKG 本地导入
             // =================================================
@@ -2903,7 +2904,7 @@ fn start_vfs_index_worker(
     llm_manager: Arc<crate::llm_manager::LLMManager>,
     lance_store: Arc<crate::vfs::VfsLanceStore>,
 ) {
-    crate::background_tasks::spawn(async move {
+    let _ = crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
         loop {
