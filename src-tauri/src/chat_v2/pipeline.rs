@@ -435,6 +435,8 @@ impl ChatV2Pipeline {
         let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
             // ToolPackExecutor must be registered before GeneralToolExecutor
             executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
+            // PTC (Starlark 程序化工具组合)：只读白名单 + 每次 call 独立过中央准入
+            executors.push(Arc::new(super::tools::PtcExecutor::new()));
             // GeneralToolExecutor must be last (catch-all)
             executors.push(Arc::new(GeneralToolExecutor::new()));
             ToolExecutorRegistry::from_vec(executors)

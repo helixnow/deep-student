@@ -35,6 +35,7 @@ export { userTodoToolsSkill } from './user-todo-tools';
 export { imageGenerationSkill } from './image-generation';
 export { generativeUiSkill } from './generative-ui';
 export { toolPackSkill } from './tool-pack';
+export { ptcRunSkill } from './ptc-run';
 export { selfServiceToolsSkill } from './self-service-tools';
 export { automationToolsSkill } from './automation-tools';
 export { rootRequestToolsSkill } from './root-request-tools';
@@ -82,6 +83,7 @@ import { userTodoToolsSkill } from './user-todo-tools';
 import { imageGenerationSkill } from './image-generation';
 import { generativeUiSkill } from './generative-ui';
 import { toolPackSkill } from './tool-pack';
+import { ptcRunSkill } from './ptc-run';
 import { selfServiceToolsSkill } from './self-service-tools';
 import { automationToolsSkill } from './automation-tools';
 import { rootRequestToolsSkill } from './root-request-tools';
@@ -148,6 +150,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   imageGenerationSkill,
   generativeUiSkill,
   toolPackSkill,
+  ptcRunSkill,
   selfServiceToolsSkill,
   automationToolsSkill,
   rootRequestToolsSkill,

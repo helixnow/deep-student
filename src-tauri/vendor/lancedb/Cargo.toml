@@ -163,7 +163,11 @@ version = "1.27.0"
 optional = true
 
 [dependencies.bytemuck_derive]
-version = ">=1.8.1, <1.9.0"
+# G05-P1（2026-09）：上限 <1.9.0 放宽到 <1.13.0。starlark 0.14.2 的 pagable
+# 依赖要求 bytemuck[derive] → bytemuck_derive ^1.10.2；cargo 的"同一 semver
+# 大版本系列必须统一"规则使两条不相交区间无法并存。本 crate 源码完全不使用
+# bytemuck_derive（上游声明残留，rg 全仓零命中），放宽上限零编译影响。
+version = ">=1.8.1, <1.13.0"
 
 [dependencies.bytes]
 version = "1"

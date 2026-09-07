@@ -89,6 +89,8 @@ pub mod office_fidelity_executor; // Read-only OOXML/PDF fidelity inventory and 
 pub mod office_output; // Shared VFS/workspace delivery for generated OOXML files
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
+pub mod ptc_executor; // 🆕 PTC 程序化工具组合执行器（builtin-ptc_run，G05-P1）
+pub mod ptc_runtime; // 🆕 PTC Starlark 脚本运行时（白名单 + 预算 + trace）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
 pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
@@ -188,6 +190,8 @@ pub use memory_executor::MemoryToolExecutor;
 pub use office_fidelity_executor::OfficeFidelityExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
+pub use ptc_executor::PtcExecutor; // 🆕 PTC 程序化工具组合执行器（G05-P1）
+pub use ptc_runtime::{is_ptc_allowed_tool, PTC_ALLOWED_TOOLS}; // PTC 只读工具面白名单
 pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
 pub use session_executor::SessionToolExecutor; // 🆕 会话管理工具执行器
 pub use settings_models_executor::SettingsModelsToolExecutor;

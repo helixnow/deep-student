@@ -73,6 +73,11 @@ config = { version = "0.14", features = ["toml"] }
 dotenvy = "0.15"
 sha1 = "0.10"
 html2text = "0.16.7"
+# PTC（程序化工具组合，G05-P1）脚本宿主：Starlark 解释器（Meta starlark-rust）。
+# 确定性、无 FFI、无 IO；资源限制（栈/堆/tick/取消）由解释器层强制。
+# 下限 0.14.2：0.14.0/0.14.1 的 pagable 0.3.x 会额外拉入 rusqlite 0.37 bundled
+# 与 sled（重且重复编译 SQLite）；0.14.2 起 pagable 0.4.1 已移除它们。
+starlark = "0.14.2"
 
 # 所有平台统一依赖配置
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "unstable"] }
