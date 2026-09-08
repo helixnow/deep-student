@@ -24,9 +24,10 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use super::builtin_retrieval_executor::build_numbered_sources;
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 
 // ============================================================================
 // 常量
@@ -829,7 +830,7 @@ impl Default for AcademicSearchExecutor {
 
 /// 将论文结果数组转换为 SourceInfo 兼容的 sources 数组
 /// 供前端 sourceAdapter 提取并显示在统一来源面板中
-fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
+fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<SourceInfo> {
     papers
         .iter()
         .map(|paper| {
@@ -854,11 +855,12 @@ fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
                 snippet.to_string()
             };
 
-            json!({
-                "title": title,
-                "url": url,
-                "snippet": snippet_truncated,
-                "metadata": {
+            SourceInfo {
+                title: Some(title.to_string()),
+                url: Some(url.to_string()),
+                snippet: Some(snippet_truncated),
+                score: None,
+                metadata: Some(json!({
                     "sourceType": "academic_search",
                     "searchSource": search_source,
                     "authors": paper.get("authors"),
@@ -876,8 +878,8 @@ fn papers_to_sources(papers: &[Value], search_source: &str) -> Vec<Value> {
                     "venue": paper.get("venue"),
                     "arxivId": paper.get("id"),
                     "categories": paper.get("categories"),
-                }
-            })
+                })),
+            }
         })
         .collect()
 }
@@ -924,8 +926,23 @@ impl ToolExecutor for AcademicSearchExecutor {
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown");
                     let sources = papers_to_sources(&papers, search_source);
+                    let ledger = crate::chat_v2::context::citation_ledger_for_reply(
+                        &ctx.session_id,
+                        &ctx.message_id,
+                        ctx.variant_id.as_deref(),
+                    );
+                    let sources = {
+                        let mut ledger = ledger
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        build_numbered_sources(&sources, &mut ledger)
+                    };
                     if let Some(obj) = output.as_object_mut() {
                         obj.insert("sources".to_string(), json!(sources));
+                        obj.insert(
+                            "citationGuide".to_string(),
+                            json!("在被支撑句子后紧跟 sources 中给出的 [搜索-N]；编号在本次回复内跨搜索全局一致。 / Cite supported claims with the exact [搜索-N] tag supplied in sources; numbering is global across searches in this reply."),
+                        );
                     }
                 }
 
@@ -1021,6 +1038,36 @@ mod tests {
             executor.sensitivity_level("builtin-scholar_search"),
             ToolSensitivity::Low
         );
+    }
+
+    #[test]
+    fn academic_sources_share_reply_citation_ledger() {
+        let first = json!([{
+            "id": "2401.00001",
+            "title": "First paper",
+            "abstract": "First abstract",
+            "arxivUrl": "https://arxiv.org/abs/2401.00001"
+        }]);
+        let second = json!([{
+            "id": "https://openalex.org/W2",
+            "title": "Second paper",
+            "abstract": "Second abstract",
+            "doi": "https://doi.org/10.1000/example"
+        }]);
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+
+        let first = build_numbered_sources(
+            &papers_to_sources(first.as_array().unwrap(), "arxiv"),
+            &mut ledger,
+        );
+        let second = build_numbered_sources(
+            &papers_to_sources(second.as_array().unwrap(), "openalex"),
+            &mut ledger,
+        );
+
+        assert_eq!(first[0]["citationTag"], "[搜索-1]");
+        assert_eq!(second[0]["citationTag"], "[搜索-2]");
+        assert_eq!(second[0]["typeIndex"], 2);
     }
 
     #[test]

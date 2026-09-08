@@ -1285,6 +1285,8 @@ pub(crate) fn citation_prefix_for_source_type(source_type: &str) -> &'static str
         "记忆"
     } else if source_type == "insight" {
         "灵感"
+    } else if source_type == "academic_search" || source_type == "web_search" {
+        "搜索"
     } else {
         "知识库"
     }
@@ -1297,6 +1299,8 @@ pub(crate) fn citation_group_for_source_type(source_type: &str) -> &'static str 
         "memory"
     } else if source_type == "insight" {
         "insight"
+    } else if source_type == "academic_search" || source_type == "web_search" {
+        "web"
     } else {
         "rag"
     }
