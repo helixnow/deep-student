@@ -13,7 +13,7 @@
         "notes": "No macOS WKWebView WebDriver support upstream; driver must orchestrate app launch + data-dir assertions directly (tauri-driver does not support macOS)."
       },
       "waiver": {
-        "until": "2026-08-31",
+        "until": "2026-09-30",
         "reason": "No macOS upgrade-E2E driver exists in the repository yet. This waiver is temporary and visible in every release's compatibility report; when it expires, releases fail until a driver lands or the waiver is consciously renewed in review.",
         "approved_by": "release-engineering"
       }
@@ -29,7 +29,7 @@
         "notes": "Reuse the tauri-driver + msedgedriver path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-08-31",
+        "until": "2026-09-30",
         "reason": "webdriver.yml is disabled because e2e-tests/ does not exist; no Windows upgrade-E2E driver yet.",
         "approved_by": "release-engineering"
       }
@@ -45,7 +45,7 @@
         "notes": "Reuse the tauri-driver + webkit2gtk-driver + xvfb path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-08-31",
+        "until": "2026-09-30",
         "reason": "webdriver.yml is disabled because e2e-tests/ does not exist; no Linux upgrade-E2E driver yet.",
         "approved_by": "release-engineering"
       }
@@ -61,7 +61,7 @@
         "notes": "Requires reactivecircus/android-emulator-runner (or equivalent) plus adb-driven data seeding/assertions."
       },
       "waiver": {
-        "until": "2026-08-31",
+        "until": "2026-09-30",
         "reason": "No Android emulator upgrade-E2E driver exists in the repository yet.",
         "approved_by": "release-engineering"
       }
