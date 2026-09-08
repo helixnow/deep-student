@@ -2062,6 +2062,10 @@ pub struct VfsUploadAttachmentResult {
     /// 已就绪的模式列表
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ready_modes: Option<Vec<String>>,
+
+    /// PDF 内容分类；用于前端选择 text / OCR / image 的自动默认模式。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_kind: Option<String>,
 }
 
 // ============================================================================
@@ -2497,34 +2501,25 @@ pub fn resolve_image_inject_modes(
     (include_image, include_ocr, downgraded)
 }
 
-/// 解析 PDF 注入模式，返回 (include_text, include_ocr, include_image, downgraded_non_multimodal)
-///
-/// 当用户未显式选择模式时，注入原生文本和页面原图，不重复注入 OCR。
-///
-/// ★ P1（2026-09-07）非多模态保险：显式请求 image 且模型非多模态时降级为 ocr。
-/// 前端默认模式已按模型能力给出（多模态 → image；非多模态 → text+ocr），
-/// 这里兜底「前端默认没对上/会话切换后仍带 image」的情况——否则非多模态模型
-/// 会收到一堆它读不了的页图，而扫描件又没有文本可用。
+/// 当用户未显式选择模式时按文本模式处理；显式空列表不注入任何模式。
 pub fn resolve_pdf_inject_modes(
     pdf_modes: Option<&Vec<PdfInjectMode>>,
     is_multimodal: bool,
 ) -> (bool, bool, bool, bool) {
     let (mut include_text, mut include_ocr, mut include_image) = match pdf_modes {
-        Some(modes) if !modes.is_empty() => (
+        Some(modes) => (
             modes.contains(&PdfInjectMode::Text),
             modes.contains(&PdfInjectMode::Ocr),
             modes.contains(&PdfInjectMode::Image),
         ),
-        _ => (true, false, true),
+        None => (true, false, false),
     };
     let mut downgraded = false;
     if include_image && !is_multimodal {
         include_image = false;
         include_ocr = true;
         downgraded = true;
-        log::info!(
-            "[InjectModes] 非多模态会话收到 image 注入请求，已降级为 ocr 文本注入"
-        );
+        log::info!("[InjectModes] 非多模态会话收到 image 注入请求，已降级为 ocr 文本注入");
     }
     (include_text, include_ocr, include_image, downgraded)
 }

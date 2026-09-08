@@ -831,6 +831,7 @@ impl VfsAttachmentRepo {
                     processing_status,
                     processing_percent: processing_progress.map(|p| p as f32),
                     ready_modes,
+                    content_kind: None,
                 });
             } else {
                 // 已删除的附件，自动恢复并更新名称
@@ -856,6 +857,7 @@ impl VfsAttachmentRepo {
                     processing_status: None,
                     processing_percent: None,
                     ready_modes: None,
+                    content_kind: None,
                 });
             }
         }
@@ -1271,6 +1273,7 @@ impl VfsAttachmentRepo {
                 processing_status: None,
                 processing_percent: None,
                 ready_modes: None,
+                content_kind: None,
             })
         } else {
             // 插入被忽略，说明 content_hash 已存在（可能由其他线程创建）
@@ -1337,6 +1340,7 @@ impl VfsAttachmentRepo {
                 processing_status: None,
                 processing_percent: None,
                 ready_modes: None,
+                content_kind: None,
             })
         }
     }

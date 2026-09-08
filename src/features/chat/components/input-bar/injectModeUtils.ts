@@ -67,9 +67,15 @@ export function getMediaTypeForAttachment(
  * - 未提供 context 或拿不到模型能力时回落旧默认（PDF=['text']），行为不变。
  * - 图片不受模型能力影响：始终 ['image']（非多模态场景由发送链路降级）。
  */
+export type PdfContentKind = 'text' | 'scanned';
+
 export interface DefaultInjectModesContext {
   /** 当前会话默认对话模型（model2）是否支持图片输入 */
   multimodal?: boolean;
+  /** PDF 内容分类；文本 PDF 默认 text，扫描 PDF 按模型选择 */
+  contentKind?: PdfContentKind;
+  /** 后端报告的真实就绪模式 */
+  readyModes?: MediaInjectMode[];
 }
 
 export function buildDefaultInjectModes(
@@ -77,10 +83,13 @@ export function buildDefaultInjectModes(
   context?: DefaultInjectModesContext
 ): AttachmentInjectModes | undefined {
   if (mediaType === 'pdf') {
+    if (context?.contentKind === 'text') {
+      return { pdf: ['text'] };
+    }
     if (context?.multimodal === true) {
       return { pdf: ['image'] };
     }
-    return { pdf: [...DEFAULT_PDF_INJECT_MODES] };
+    return { pdf: ['text', 'ocr'] };
   }
   if (mediaType === 'image') {
     return { image: [...DEFAULT_IMAGE_INJECT_MODES] };
@@ -138,13 +147,7 @@ export function getEffectiveReadyModes(
     }
   }
 
-  if (effectiveStatus?.stage === 'completed' || effectiveStatus?.stage === 'completed_with_issues') {
-    return mediaType === 'pdf' ? ['text'] : ['image'];
-  }
-
-  if (attachment.status === 'ready' && !effectiveStatus) {
-    return mediaType === 'pdf' ? ['text'] : ['image'];
-  }
+  // 完成状态也必须以真实 readyModes 为准；空列表不可伪装为 text/image。
 
   // ★ P1 收紧：处理中的图片不再乐观补 'image'。
   // 后端初始 ready_modes=[]，就绪与否一律以后端报告的 readyModes 为准，

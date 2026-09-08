@@ -833,18 +833,14 @@ impl LLMManager {
                         .as_ref()
                         .and_then(|d| d.get("status"))
                         .and_then(|v| v.as_u64());
-                    let is_client_error = status
-                        .map(|s| (400..500).contains(&s))
-                        .unwrap_or(false);
+                    let is_client_error = status.map(|s| (400..500).contains(&s)).unwrap_or(false);
                     if is_client_error {
                         OCR_CIRCUIT_BREAKER.record_failure();
                         return Err(e);
                     }
                     // ★ E：5xx（含 524/502/503/504 网关超时）快速失败——
                     // 同引擎连续 2 次 5xx 说明该引擎当前不可用，跳到下一引擎
-                    let is_server_error = status
-                        .map(|s| s >= 500)
-                        .unwrap_or(false);
+                    let is_server_error = status.map(|s| s >= 500).unwrap_or(false);
                     if is_server_error {
                         consecutive_5xx_per_engine += 1;
                         if consecutive_5xx_per_engine >= MAX_5XX_PER_ENGINE {
@@ -896,16 +892,10 @@ impl LLMManager {
                     }]);
                 }
                 Ok(_) => {
-                    warn!(
-                        "[OCR] 系统 OCR 兜底返回空文本（page {}）",
-                        page_index
-                    );
+                    warn!("[OCR] 系统 OCR 兜底返回空文本（page {}）", page_index);
                 }
                 Err(error) => {
-                    warn!(
-                        "[OCR] 系统 OCR 兜底失败（page {}）: {}",
-                        page_index, error
-                    );
+                    warn!("[OCR] 系统 OCR 兜底失败（page {}）: {}", page_index, error);
                 }
             }
         }

@@ -15,7 +15,10 @@ use crate::vfs::embedding_service::{
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::lance_store::VfsLanceStore;
-use crate::vfs::ocr_utils::{join_ocr_pages_text, parse_ocr_pages_json, OCR_FAILED_MARKER};
+use crate::vfs::ocr_utils::{
+    classify_pdf_content, has_valid_ocr_pages, has_valid_text, join_ocr_pages_text,
+    parse_ocr_pages_json, OCR_FAILED_MARKER,
+};
 use crate::vfs::pdf_processing_service::{OcrPageResult, OcrPagesJson};
 use crate::vfs::repos::{
     embedding_dim_repo, index_segment_repo, index_unit_repo, VfsBlobRepo, VfsIndexStateRepo,
@@ -2218,17 +2221,32 @@ impl VfsFullIndexingService {
         // external 资源的 data 字段为空是正常的，内容存储在关联表中
         // 由 resolve_indexable_content 统一处理所有资源类型的内容获取
         let mut content = resolve_indexable_content(&conn, &resource);
-
-        // ★ 2026-01 修复：教材/图片/文件无内容时自动触发 OCR
-        // ★ 2026-02-10 修复：File 类型（可能是 PDF）也需要 auto-OCR 兜底
-        if (content.is_none() || content.as_ref().map(|c| c.is_empty()).unwrap_or(true))
+        const PDF_TEXT_THRESHOLD: usize = 100;
+        let needs_content_recovery = match resource.resource_type {
+            VfsResourceType::Textbook | VfsResourceType::File => {
+                let file_text = conn
+                    .query_row(
+                        "SELECT extracted_text FROM files WHERE id = ?1 OR resource_id = ?1 LIMIT 1",
+                        rusqlite::params![resource.source_id.as_deref().unwrap_or(&resource.id)],
+                        |row| row.get::<_, Option<String>>(0),
+                    )
+                    .ok()
+                    .flatten();
+                matches!(
+                    classify_pdf_content(file_text.as_deref(), PDF_TEXT_THRESHOLD),
+                    crate::vfs::ocr_utils::PdfContentKind::Scanned
+                ) || !has_valid_text(content.as_deref(), 1)
+            }
+            _ => !has_valid_text(content.as_deref(), 1),
+        };
+        if needs_content_recovery
             && matches!(
                 resource.resource_type,
                 VfsResourceType::Textbook | VfsResourceType::Image | VfsResourceType::File
             )
         {
             info!(
-                "[VfsFullIndexingService] Resource {} ({:?}) has no OCR text, attempting auto-OCR...",
+                "[VfsFullIndexingService] Resource {} ({:?}) needs OCR recovery, attempting auto-OCR...",
                 resource_id, resource.resource_type
             );
 
@@ -2259,7 +2277,7 @@ impl VfsFullIndexingService {
 
         // ★ 2026-01 修复：空内容资源标记为 indexed（0 chunks），而非 disabled
         // 这样未来内容更新后可以重新索引
-        if content.is_none() || content.as_ref().map(|c| c.is_empty()).unwrap_or(true) {
+        if !has_valid_text(content.as_deref(), 1) {
             info!(
                 "[VfsFullIndexingService] Resource {} has no indexable content, marking as indexed (empty)",
                 resource_id
@@ -3142,13 +3160,13 @@ impl VfsFullIndexingService {
         // ★ 2026-02-19 防竞态：如果 ocr_pages_json 已存在（并发预处理管线已完成），
         // 直接合并现有文本返回，避免重复调用 OCR API
         if let Some(ref ocr_json) = existing_ocr_json {
-            if !ocr_json.trim().is_empty() {
+            let pages = parse_ocr_pages_json(ocr_json);
+            if has_valid_ocr_pages(&pages, 1) {
                 info!(
-                    "[try_auto_ocr_pdf_pages] ocr_pages_json already exists for file {} (len={}), using existing OCR result",
-                    file_id, ocr_json.len()
+                    "[try_auto_ocr_pdf_pages] Using valid existing OCR for file {} (len={})",
+                    file_id,
+                    ocr_json.len()
                 );
-                // 尝试从 ocr_pages_json 合并文本
-                let pages = parse_ocr_pages_json(ocr_json);
                 if let Some(text) = join_ocr_pages_text(&pages, "第", "页") {
                     if !text.is_empty() {
                         // 缓存到 resources.ocr_text（如果还没有）

@@ -10,6 +10,36 @@ use tracing::warn;
 
 pub const OCR_FAILED_MARKER: &str = "__OCR_FAILED__";
 
+/// Return whether text contains meaningful content. A threshold prevents short
+/// extraction artefacts from being treated as a real PDF text layer.
+pub fn has_valid_text(text: Option<&str>, threshold: usize) -> bool {
+    text.map(|value| value.trim().chars().count() >= threshold)
+        .unwrap_or(false)
+}
+
+/// Return whether parsed OCR contains meaningful text.
+pub fn has_valid_ocr_pages(pages: &[Option<String>], threshold: usize) -> bool {
+    pages
+        .iter()
+        .filter_map(|page| page.as_deref())
+        .any(|text| text.trim().chars().count() >= threshold)
+}
+
+/// Content kind used by PDF processing and indexing decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PdfContentKind {
+    Text,
+    Scanned,
+}
+
+pub fn classify_pdf_content(extracted_text: Option<&str>, threshold: usize) -> PdfContentKind {
+    if has_valid_text(extracted_text, threshold) {
+        PdfContentKind::Text
+    } else {
+        PdfContentKind::Scanned
+    }
+}
+
 /// Parse `ocr_pages_json` into a per-page text array.
 pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
     let trimmed = json_str.trim();
@@ -131,6 +161,29 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
         .into_iter()
         .map(|opt| opt.filter(|s| s != OCR_FAILED_MARKER && !s.trim().is_empty()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_short_text_as_scanned() {
+        assert_eq!(
+            classify_pdf_content(Some("short"), 100),
+            PdfContentKind::Scanned
+        );
+        assert_eq!(
+            classify_pdf_content(Some(&"x".repeat(100)), 100),
+            PdfContentKind::Text
+        );
+    }
+
+    #[test]
+    fn rejects_failed_or_empty_ocr() {
+        let pages = parse_ocr_pages_json(r#"["__OCR_FAILED__", "  "]"#);
+        assert!(!has_valid_ocr_pages(&pages, 1));
+    }
 }
 
 /// Join OCR pages into a single text block with page headers.

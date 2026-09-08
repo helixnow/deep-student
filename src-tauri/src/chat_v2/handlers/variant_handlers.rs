@@ -404,6 +404,7 @@ pub async fn chat_v2_retry_variant(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     window: Window,
     session_id: String,
     message_id: String,
@@ -422,6 +423,7 @@ pub async fn chat_v2_retry_variant(
         &vfs_db,
         &chat_v2_state,
         &pipeline,
+        &llm_manager,
         window,
         &session_id,
         &message_id,
@@ -447,6 +449,7 @@ pub async fn chat_v2_retry_variants(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     window: Window,
     session_id: String,
     message_id: String,
@@ -466,6 +469,7 @@ pub async fn chat_v2_retry_variants(
         &vfs_db,
         &chat_v2_state,
         &pipeline,
+        &llm_manager,
         window,
         &session_id,
         &message_id,
@@ -481,6 +485,7 @@ async fn retry_variant_impl(
     vfs_db: &VfsDatabase,
     chat_v2_state: &Arc<ChatV2State>,
     pipeline: &ChatV2Pipeline,
+    llm_manager: &crate::llm_manager::LLMManager,
     window: Window,
     requester_session_id: &str,
     message_id: &str,
@@ -591,6 +596,12 @@ async fn retry_variant_impl(
         ));
     }
 
+    let is_multimodal = crate::chat_v2::handlers::send_message::is_model_multimodal_for_review(
+        llm_manager,
+        Some(&model_id),
+    )
+    .await;
+
     // 13. 转换用户附件为 AttachmentInput
     let base_user_attachments: Vec<AttachmentInput> = user_message
         .attachments
@@ -639,8 +650,12 @@ async fn retry_variant_impl(
         })
         .unwrap_or_default();
 
-    let (resolved_content, context_attachments) =
-        resolve_context_snapshot_for_variant_retry(vfs_db, user_message, &user_content);
+    let (resolved_content, context_attachments) = resolve_context_snapshot_for_variant_retry(
+        vfs_db,
+        user_message,
+        &user_content,
+        is_multimodal,
+    );
     let user_content = resolved_content;
     let user_attachments = if context_attachments.is_empty() {
         base_user_attachments
@@ -753,6 +768,7 @@ async fn retry_variants_impl(
     vfs_db: &VfsDatabase,
     chat_v2_state: &Arc<ChatV2State>,
     pipeline: &ChatV2Pipeline,
+    llm_manager: &crate::llm_manager::LLMManager,
     window: Window,
     requester_session_id: &str,
     message_id: &str,
@@ -841,6 +857,11 @@ async fn retry_variants_impl(
             variant_id: variant_id.clone(),
             model_id: display_model_id.clone(),
             config_id: config_id.clone(),
+            is_multimodal: crate::chat_v2::handlers::send_message::is_model_multimodal_for_review(
+                llm_manager,
+                Some(&config_id),
+            )
+            .await,
             meta: variant.meta.clone(),
         });
 
@@ -908,6 +929,11 @@ async fn retry_variants_impl(
         ));
     }
 
+    // Batch retry keeps a shared attachment snapshot. Use the conservative text-model
+    // resolution here; each variant's is_multimodal is retained in VariantRetrySpec for
+    // pipeline-level routing after its model is frozen.
+    let is_multimodal = retry_specs.iter().all(|spec| spec.is_multimodal);
+
     // 11. 转换用户附件为 AttachmentInput
     let base_user_attachments: Vec<AttachmentInput> = user_message
         .attachments
@@ -955,8 +981,12 @@ async fn retry_variants_impl(
         })
         .unwrap_or_default();
 
-    let (resolved_content, context_attachments) =
-        resolve_context_snapshot_for_variant_retry(vfs_db, user_message, &user_content);
+    let (resolved_content, context_attachments) = resolve_context_snapshot_for_variant_retry(
+        vfs_db,
+        user_message,
+        &user_content,
+        is_multimodal,
+    );
     let user_content = resolved_content;
     let user_attachments = if context_attachments.is_empty() {
         base_user_attachments
@@ -1146,6 +1176,7 @@ fn resolve_context_snapshot_for_variant_retry(
     vfs_db: &VfsDatabase,
     message: &ChatMessage,
     original_content: &str,
+    is_multimodal: bool,
 ) -> (String, Vec<AttachmentInput>) {
     let context_snapshot = message
         .meta
@@ -1206,7 +1237,8 @@ fn resolve_context_snapshot_for_variant_retry(
                     vfs_ref.inject_modes = Some(saved_inject_modes.clone());
                 }
             }
-            let content = resolve_context_ref_data_to_content(&conn, blobs_dir, &ref_data, false);
+            let content =
+                resolve_context_ref_data_to_content(&conn, blobs_dir, &ref_data, is_multimodal);
             total_result.merge(content);
         } else {
             match context_ref.type_id.as_str() {
