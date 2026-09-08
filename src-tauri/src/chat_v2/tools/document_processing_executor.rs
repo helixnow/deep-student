@@ -27,6 +27,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
@@ -61,13 +62,17 @@ impl DocumentProcessingExecutor {
 
     /// 解析资源 ID 为 VFS 文件记录
     ///
-    /// 支持两种 ID 形态：
-    /// - `file_*`: files 表主键，直接查询；
-    /// - `res_*`: resources 表 ID，经 files.resource_id 反查。
+    /// 支持三种 ID 形态（★ 2026-09 修复：附件在系统中有三重 ID，
+    /// AI 从 context_snapshot 拿到的常是"引用资源"，此前无法解析）：
+    /// - `file_*` / `att_*`: files 表主键，直接查询；
+    /// - `res_*`: resources 表 ID，三级反查：
+    ///   ① files.resource_id = res（上传资源）
+    ///   ② resources.source_id（引用资源 inline data=refs，source_id 指向 att_*/file_*）
+    ///   ③ resources.source_id 指向的 resources 行再经 files.resource_id 反查
     fn resolve_file(vfs_db: &Arc<VfsDatabase>, raw_id: &str) -> Result<VfsFile, String> {
         let id = Self::sanitize_id(raw_id)?;
 
-        if id.starts_with("file_") {
+        if id.starts_with("file_") || id.starts_with("att_") {
             return VfsFileRepo::get_file(vfs_db, &id)
                 .map_err(|e| format!("查询文件失败: {}", e))?
                 .ok_or_else(|| {
@@ -82,28 +87,60 @@ impl DocumentProcessingExecutor {
             let conn = vfs_db
                 .get_conn_safe()
                 .map_err(|e| format!("获取数据库连接失败: {}", e))?;
-            let file_id: Option<String> = conn
+
+            // ① 上传资源：files.resource_id 直接映射
+            if let Ok(Some(file_id)) = conn
                 .query_row(
-                    "SELECT id FROM files WHERE resource_id = ?1",
+                    "SELECT id FROM files WHERE resource_id = ?1 LIMIT 1",
                     rusqlite::params![id],
-                    |row| row.get(0),
+                    |row| row.get::<_, String>(0),
                 )
-                .ok();
+                .optional()
+            {
+                drop(conn);
+                return VfsFileRepo::get_file(vfs_db, &file_id)
+                    .map_err(|e| format!("查询文件失败: {}", e))?
+                    .ok_or_else(|| format!("文件不存在: {}", file_id));
+            }
+
+            // ②③ 引用资源：resources.source_id 指向 att_*/file_*（files 主键），
+            // 或指向另一 resources 行（再经 files.resource_id 反查）。
+            let source_id: Option<String> = conn
+                .query_row(
+                    "SELECT COALESCE(source_id, '') FROM resources WHERE id = ?1",
+                    rusqlite::params![id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .ok()
+                .flatten()
+                .filter(|s: &String| !s.is_empty());
+
+            let file_id: Option<String> = match source_id {
+                Some(sid) if sid.starts_with("att_") || sid.starts_with("file_") => Some(sid),
+                Some(sid) => conn
+                    .query_row(
+                        "SELECT id FROM files WHERE resource_id = ?1 LIMIT 1",
+                        rusqlite::params![sid],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .ok()
+                    .flatten(),
+                None => None,
+            };
             drop(conn);
-            let file_id = file_id.ok_or_else(|| {
-                format!(
-                    "资源 {} 未关联到文件（仅文件类资源支持解析/OCR；笔记/思维导图等无需解析）",
-                    id
-                )
-            })?;
-            return VfsFileRepo::get_file(vfs_db, &file_id)
-                .map_err(|e| format!("查询文件失败: {}", e))?
-                .ok_or_else(|| format!("文件不存在: {}", file_id));
+
+            if let Some(file_id) = file_id {
+                return VfsFileRepo::get_file(vfs_db, &file_id)
+                    .map_err(|e| format!("查询文件失败: {}", e))?
+                    .ok_or_else(|| format!("文件不存在: {}", file_id));
+            }
         }
 
         Err(format!(
-            "不支持的资源 ID 前缀: {}（仅支持 file_* 或 res_* 开头的文件类资源）",
-            id
+            "资源 {} 未关联到可解析的文件（仅文件类资源支持解析/OCR；笔记/思维导图等无需解析）。请用 resource_list 确认资源类型，或用 attachment_list 拿到附件 ID 后改用 attachment_stage/attachment_read。",
+            raw_id
         ))
     }
 
@@ -486,5 +523,80 @@ mod tests {
             "document",
         );
         assert!(DocumentProcessingExecutor::check_media_supported(&docx).is_err());
+    }
+
+    // ★ 2026-09 修复（PDF 二次读取）：resolve_file 三级反查回归测试。
+    // 场景：聊天上传的 PDF 有三个 ID（att_* 文件主键 / res 上传资源 / res 引用资源），
+    // AI 从 context_snapshot 拿到的常是引用资源，resolve_file 必须都能解析。
+
+    fn seed_three_id_fixture(db: &VfsDatabase) {
+        let conn = db.get_conn().expect("conn");
+        let now = chrono::Utc::now().timestamp_millis();
+        // 上传资源 res_upload + files 行
+        conn.execute(
+            r#"INSERT INTO resources (id, hash, type, storage_mode, data, source_id, source_table, ref_count, created_at, updated_at)
+               VALUES ('res_upload', 'hash-upload', 'file', 'external', '', 'att_file1', 'files', 1, ?1, ?1)"#,
+            rusqlite::params![now],
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO files (id, resource_id, sha256, file_name, mime_type, size, created_at, updated_at)
+               VALUES ('att_file1', 'res_upload', 'hash-upload', 'doc.pdf', 'application/pdf', 10, ?1, ?1)"#,
+            rusqlite::params![now],
+        )
+        .unwrap();
+        // 引用资源 res_ref：inline data=refs，source_id 指向 att_file1
+        conn.execute(
+            r#"INSERT INTO resources (id, hash, type, storage_mode, data, source_id, ref_count, created_at, updated_at)
+               VALUES ('res_ref', 'hash-ref', 'file', 'inline', '{"refs":[]}', 'att_file1', 1, ?1, ?1)"#,
+            rusqlite::params![now],
+        )
+        .unwrap();
+        // 引用资源 res_ref_indirect：source_id 指向另一 resources 行（res_upload）
+        conn.execute(
+            r#"INSERT INTO resources (id, hash, type, storage_mode, data, source_id, ref_count, created_at, updated_at)
+               VALUES ('res_ref_indirect', 'hash-ref2', 'file', 'inline', '{"refs":[]}', 'res_upload', 1, ?1, ?1)"#,
+            rusqlite::params![now],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn resolve_file_supports_att_prefix_and_upload_resource() {
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = std::sync::Arc::new(db);
+        seed_three_id_fixture(&db);
+
+        // att_* 主键直接查
+        let file = DocumentProcessingExecutor::resolve_file(&db, "att_file1").unwrap();
+        assert_eq!(file.id, "att_file1");
+        // 上传资源经 files.resource_id 反查
+        let file = DocumentProcessingExecutor::resolve_file(&db, "res_upload").unwrap();
+        assert_eq!(file.id, "att_file1");
+    }
+
+    #[test]
+    fn resolve_file_resolves_reference_resource_via_source_id() {
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = std::sync::Arc::new(db);
+        seed_three_id_fixture(&db);
+
+        // 引用资源：source_id 直接指向 att_file1（files 主键）
+        let file = DocumentProcessingExecutor::resolve_file(&db, "res_ref").unwrap();
+        assert_eq!(file.id, "att_file1");
+
+        // 间接引用：source_id 指向 res_upload，再经 files.resource_id 反查
+        let file = DocumentProcessingExecutor::resolve_file(&db, "res_ref_indirect").unwrap();
+        assert_eq!(file.id, "att_file1");
+    }
+
+    #[test]
+    fn resolve_file_rejects_unresolvable_resource() {
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = std::sync::Arc::new(db);
+
+        // 不存在的 res_*：给出可理解的错误（含指引），而非 panic
+        let err = DocumentProcessingExecutor::resolve_file(&db, "res_missing").unwrap_err();
+        assert!(err.contains("未关联到可解析的文件"), "实际错误: {}", err);
     }
 }
