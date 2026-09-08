@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.58](https://github.com/helixnow/deep-student/compare/v0.9.57...v0.9.58) (2026-09-08)
+
+
+### Bug Fixes
+
+* **release:** refresh dependency license metadata ([4d41851](https://github.com/helixnow/deep-student/commit/4d41851d03467a8e5a753081f09548833388fff9))
+
 ## [0.9.57](https://github.com/helixnow/deep-student/compare/v0.9.56...v0.9.57) (2026-09-08)
 
 
