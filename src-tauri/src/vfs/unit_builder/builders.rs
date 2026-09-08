@@ -80,14 +80,19 @@ impl UnitBuilder for TextbookBuilder {
         }
 
         // 解析预览 JSON 获取页面图片 hash
-        let preview_pages: Vec<Option<String>> =
-            parse_preview_hashes(&input.preview_json, page_count);
+        let preview_pages: Vec<Option<(String, String)>> =
+            parse_preview_pages(&input.preview_json, page_count);
 
         let mut units = Vec::with_capacity(page_count);
 
         for i in 0..page_count {
             let text_content = ocr_pages.get(i).cloned().flatten();
-            let image_blob_hash = preview_pages.get(i).cloned().flatten();
+            let (image_blob_hash, image_mime_type) = preview_pages
+                .get(i)
+                .cloned()
+                .flatten()
+                .map(|(hash, mime)| (Some(hash), Some(mime)))
+                .unwrap_or((None, None));
 
             let text_source = if text_content.is_some() {
                 Some("ocr".to_string())
@@ -99,7 +104,7 @@ impl UnitBuilder for TextbookBuilder {
                 resource_id: input.resource_id.clone(),
                 unit_index: i as i32,
                 image_blob_hash,
-                image_mime_type: Some("image/png".to_string()),
+                image_mime_type,
                 text_content,
                 text_source,
             });
@@ -165,14 +170,19 @@ impl UnitBuilder for ExamBuilder {
         };
 
         // 解析预览 JSON 获取页面图片 hash
-        let preview_pages: Vec<Option<String>> =
-            parse_preview_hashes(&input.preview_json, page_count);
+        let preview_pages: Vec<Option<(String, String)>> =
+            parse_preview_pages(&input.preview_json, page_count);
 
         let mut units = Vec::with_capacity(page_count);
 
         for i in 0..page_count {
             let text_content = ocr_pages.get(i).cloned().flatten();
-            let image_blob_hash = preview_pages.get(i).cloned().flatten();
+            let (image_blob_hash, image_mime_type) = preview_pages
+                .get(i)
+                .cloned()
+                .flatten()
+                .map(|(hash, mime)| (Some(hash), Some(mime)))
+                .unwrap_or((None, None));
 
             let text_source = if text_content.is_some() {
                 Some("ocr".to_string())
@@ -184,7 +194,7 @@ impl UnitBuilder for ExamBuilder {
                 resource_id: input.resource_id.clone(),
                 unit_index: i as i32,
                 image_blob_hash,
-                image_mime_type: Some("image/png".to_string()),
+                image_mime_type,
                 text_content,
                 text_source,
             });
@@ -311,12 +321,18 @@ impl UnitBuilder for FileBuilder {
 
         let mut units = Vec::new();
 
+        // ★ 2026-09 修复（PDF bytes as image）：`input.blob_hash` 是文件本体 hash（PDF 即
+        // `%PDF` 字节），而 `image_blob_hash` 的语义是"页图片 blob"。把文件本体写进
+        // image 字段会让下游 canonical 图片解析把 PDF 字节当 PNG 发给多模态模型
+        // （count_token_failed HTTP 500）。file 资源没有页图，保持 None。
+        let image_blob_hash: Option<String> = None;
+
         if has_extracted && has_ocr {
             // 双来源：分别创建 unit
             units.push(CreateUnitInput {
                 resource_id: input.resource_id.clone(),
                 unit_index: 0,
-                image_blob_hash: input.blob_hash.clone(),
+                image_blob_hash: image_blob_hash.clone(),
                 image_mime_type: None,
                 text_content: input.extracted_text.clone(),
                 text_source: Some("native".to_string()),
@@ -333,7 +349,7 @@ impl UnitBuilder for FileBuilder {
             units.push(CreateUnitInput {
                 resource_id: input.resource_id.clone(),
                 unit_index: 0,
-                image_blob_hash: input.blob_hash.clone(),
+                image_blob_hash,
                 image_mime_type: None,
                 text_content: input.extracted_text.clone(),
                 text_source: Some("native".to_string()),
@@ -342,7 +358,7 @@ impl UnitBuilder for FileBuilder {
             units.push(CreateUnitInput {
                 resource_id: input.resource_id.clone(),
                 unit_index: 0,
-                image_blob_hash: input.blob_hash.clone(),
+                image_blob_hash,
                 image_mime_type: None,
                 text_content: input.ocr_text.clone(),
                 text_source: Some("ocr".to_string()),
@@ -352,7 +368,7 @@ impl UnitBuilder for FileBuilder {
             units.push(CreateUnitInput {
                 resource_id: input.resource_id.clone(),
                 unit_index: 0,
-                image_blob_hash: input.blob_hash.clone(),
+                image_blob_hash,
                 image_mime_type: None,
                 text_content: None,
                 text_source: None,
@@ -391,11 +407,15 @@ impl UnitBuilder for AttachmentBuilder {
 
             let mut units = Vec::new();
 
+            // ★ 2026-09 修复（PDF bytes as image）：与 FileBuilder 相同——单页附件的
+            // `input.blob_hash` 是文件本体 hash，不是页图片 blob，绝不写入 image 字段。
+            let image_blob_hash: Option<String> = None;
+
             if has_extracted && has_ocr {
                 units.push(CreateUnitInput {
                     resource_id: input.resource_id.clone(),
                     unit_index: 0,
-                    image_blob_hash: input.blob_hash.clone(),
+                    image_blob_hash: image_blob_hash.clone(),
                     image_mime_type: None,
                     text_content: input.extracted_text.clone(),
                     text_source: Some("native".to_string()),
@@ -412,7 +432,7 @@ impl UnitBuilder for AttachmentBuilder {
                 units.push(CreateUnitInput {
                     resource_id: input.resource_id.clone(),
                     unit_index: 0,
-                    image_blob_hash: input.blob_hash.clone(),
+                    image_blob_hash,
                     image_mime_type: None,
                     text_content: input.extracted_text.clone(),
                     text_source: Some("native".to_string()),
@@ -421,7 +441,7 @@ impl UnitBuilder for AttachmentBuilder {
                 units.push(CreateUnitInput {
                     resource_id: input.resource_id.clone(),
                     unit_index: 0,
-                    image_blob_hash: input.blob_hash.clone(),
+                    image_blob_hash,
                     image_mime_type: None,
                     text_content: input.ocr_text.clone(),
                     text_source: Some("ocr".to_string()),
@@ -430,7 +450,7 @@ impl UnitBuilder for AttachmentBuilder {
                 units.push(CreateUnitInput {
                     resource_id: input.resource_id.clone(),
                     unit_index: 0,
-                    image_blob_hash: input.blob_hash.clone(),
+                    image_blob_hash,
                     image_mime_type: None,
                     text_content: None,
                     text_source: None,
@@ -450,14 +470,19 @@ impl UnitBuilder for AttachmentBuilder {
             ocr_pages.resize(page_count, None);
         }
 
-        let preview_pages: Vec<Option<String>> =
-            parse_preview_hashes(&input.preview_json, page_count);
+        let preview_pages: Vec<Option<(String, String)>> =
+            parse_preview_pages(&input.preview_json, page_count);
 
         let mut units = Vec::with_capacity(page_count);
 
         for i in 0..page_count {
             let text_content = ocr_pages.get(i).cloned().flatten();
-            let image_blob_hash = preview_pages.get(i).cloned().flatten();
+            let (image_blob_hash, image_mime_type) = preview_pages
+                .get(i)
+                .cloned()
+                .flatten()
+                .map(|(hash, mime)| (Some(hash), Some(mime)))
+                .unwrap_or((None, None));
 
             let text_source = if text_content.is_some() {
                 Some("ocr".to_string())
@@ -469,7 +494,7 @@ impl UnitBuilder for AttachmentBuilder {
                 resource_id: input.resource_id.clone(),
                 unit_index: i as i32,
                 image_blob_hash,
-                image_mime_type: Some("image/png".to_string()),
+                image_mime_type,
                 text_content,
                 text_source,
             });
@@ -484,27 +509,54 @@ impl UnitBuilder for AttachmentBuilder {
 // ============================================================================
 
 /// 从 preview_json 解析页面图片 hash
-fn parse_preview_hashes(preview_json: &Option<String>, page_count: usize) -> Vec<Option<String>> {
-    preview_json
+///
+/// ★ 2026-09 修复（PDF bytes as image）：
+/// - `PdfPagePreview` 序列化为 camelCase（`blobHash`/`compressedBlobHash`），旧实现只认
+///   蛇形 `hash`/`blob_hash`/`image_hash`，导致真页图 hash 从未被提取，上游只能回退
+///   到文件本体 hash；
+/// - 压缩页图（`compressedBlobHash`）优先，与发送侧"优先低质量压缩版"的预算策略一致；
+/// - 同时返回每页真实 mime，供 `image_mime_type` 落库，消费方不再猜 `image/png`。
+fn parse_preview_pages(
+    preview_json: &Option<String>,
+    page_count: usize,
+) -> Vec<Option<(String, String)>> {
+    let mut pages: Vec<Option<(String, String)>> = preview_json
         .as_ref()
         .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
         .and_then(|v| {
-            // 尝试解析 { "pages": [{"hash": "xxx"}, ...] } 格式
             v.get("pages")
-                .and_then(|pages| pages.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .map(|page| {
-                            page.get("hash")
-                                .or_else(|| page.get("blob_hash"))
-                                .or_else(|| page.get("image_hash"))
-                                .and_then(|h| h.as_str())
-                                .map(|s| s.to_string())
-                        })
-                        .collect()
-                })
+                .and_then(serde_json::Value::as_array)
+                .cloned()
         })
-        .unwrap_or_else(|| vec![None; page_count])
+        .map(|arr| {
+            arr.iter()
+                .map(|page| {
+                    let hash = page
+                        .get("compressedBlobHash")
+                        .or_else(|| page.get("compressed_blob_hash"))
+                        .or_else(|| page.get("blobHash"))
+                        .or_else(|| page.get("blob_hash"))
+                        .or_else(|| page.get("hash"))
+                        .or_else(|| page.get("image_hash"))
+                        .and_then(|h| h.as_str())
+                        .filter(|h| !h.is_empty())
+                        .map(|h| h.to_string());
+                    let mime = page
+                        .get("mimeType")
+                        .or_else(|| page.get("mime_type"))
+                        .and_then(|m| m.as_str())
+                        .filter(|m| m.starts_with("image/"))
+                        .unwrap_or("image/png")
+                        .to_string();
+                    hash.map(|h| (h, mime))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if pages.len() < page_count {
+        pages.resize(page_count, None);
+    }
+    pages
 }
 
 /// 思维导图文本提取最大深度（与 normalize 的 100 层上限一致，防栈溢出）
@@ -656,6 +708,111 @@ mod tests {
         assert_eq!(
             output.units[2].text_content,
             Some("Page 3 text".to_string())
+        );
+    }
+
+    // ★ 2026-09 修复（PDF bytes as image）回归测试
+
+    #[test]
+    fn file_builder_never_writes_file_blob_into_image_field() {
+        let builder = FileBuilder;
+        let input = UnitBuildInput {
+            resource_id: "res_file".to_string(),
+            resource_type: "file".to_string(),
+            data: None,
+            ocr_text: None,
+            ocr_pages_json: None,
+            blob_hash: Some("8445c67bpdf-file-blob".to_string()),
+            page_count: None,
+            extracted_text: Some("native text".to_string()),
+            preview_json: None,
+        };
+
+        let output = builder.build(&input);
+        assert_eq!(output.units.len(), 1);
+        assert_eq!(
+            output.units[0].image_blob_hash, None,
+            "file 本体 hash 绝不能写入 image_blob_hash"
+        );
+    }
+
+    #[test]
+    fn single_page_attachment_never_writes_file_blob_into_image_field() {
+        let builder = AttachmentBuilder;
+        let input = UnitBuildInput {
+            resource_id: "res_att".to_string(),
+            resource_type: "attachment".to_string(),
+            data: None,
+            ocr_text: None,
+            ocr_pages_json: None,
+            blob_hash: Some("8445c67bpdf-file-blob".to_string()),
+            page_count: Some(1),
+            extracted_text: Some("native text".to_string()),
+            preview_json: None,
+        };
+
+        let output = builder.build(&input);
+        assert_eq!(output.units.len(), 1);
+        assert_eq!(output.units[0].image_blob_hash, None);
+    }
+
+    #[test]
+    fn parse_preview_pages_reads_camel_case_hashes_and_mime() {
+        let preview_json = r#"{"pages":[
+            {"pageIndex":0,"blobHash":"5e26aaaa","compressedBlobHash":"d47abbbb","mimeType":"image/jpeg"},
+            {"pageIndex":1,"blobHash":"aa11","mimeType":"image/png"}
+        ]}"#;
+        let pages = parse_preview_pages(&Some(preview_json.to_string()), 2);
+
+        assert_eq!(pages.len(), 2);
+        // 压缩页图优先
+        assert_eq!(
+            pages[0]
+                .as_ref()
+                .map(|(hash, mime)| (hash.as_str(), mime.as_str())),
+            Some(("d47abbbb", "image/jpeg"))
+        );
+        assert_eq!(
+            pages[1]
+                .as_ref()
+                .map(|(hash, mime)| (hash.as_str(), mime.as_str())),
+            Some(("aa11", "image/png"))
+        );
+    }
+
+    #[test]
+    fn attachment_builder_uses_preview_page_hashes_not_file_blob() {
+        let builder = AttachmentBuilder;
+        let preview_json = r#"{"pages":[
+            {"pageIndex":0,"blobHash":"5e26page0","mimeType":"image/jpeg"},
+            {"pageIndex":1,"blobHash":"5e26page1","mimeType":"image/jpeg"}
+        ]}"#;
+        let input = UnitBuildInput {
+            resource_id: "res_pdf".to_string(),
+            resource_type: "attachment".to_string(),
+            data: None,
+            ocr_text: None,
+            ocr_pages_json: None,
+            blob_hash: Some("8445c67bpdf-file-blob".to_string()),
+            page_count: Some(2),
+            extracted_text: None,
+            preview_json: Some(preview_json.to_string()),
+        };
+
+        let output = builder.build(&input);
+        assert_eq!(output.units.len(), 2);
+        assert_eq!(
+            output.units[0].image_blob_hash.as_deref(),
+            Some("5e26page0"),
+            "unit 必须使用 preview 页图 hash，而非文件本体 hash"
+        );
+        assert_eq!(
+            output.units[0].image_mime_type.as_deref(),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            output.units[1].image_blob_hash.as_deref(),
+            Some("5e26page1")
         );
     }
 }

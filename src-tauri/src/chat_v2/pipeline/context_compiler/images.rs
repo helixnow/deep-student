@@ -86,6 +86,24 @@ pub(super) struct CanonicalVfsImage {
     pub(super) mime_type: String,
 }
 
+/// 从字节头嗅探真实图片格式（magic bytes）。
+/// 返回 `None` 表示不是任何已知图片格式——调用方必须丢弃该字节，绝不当作图片发送。
+pub(super) fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(b"BM") {
+        Some("image/bmp")
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, Default)]
 pub(super) struct ReusedArtifactCoverage {
     pub(super) covered_images: HashSet<(usize, usize)>,
@@ -801,5 +819,31 @@ mod tests {
         let images = collect_runtime_images(&[message], 0, &[]);
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].base64, "legacy-base64");
+    }
+
+    // ★ 2026-09 修复（PDF bytes as image）回归测试
+
+    #[test]
+    fn sniff_image_mime_rejects_pdf_bytes() {
+        assert_eq!(sniff_image_mime(b"%PDF-1.4\n..."), None);
+        assert_eq!(sniff_image_mime(b""), None);
+        assert_eq!(sniff_image_mime(b"<html></html>"), None);
+    }
+
+    #[test]
+    fn sniff_image_mime_detects_real_image_headers() {
+        assert_eq!(
+            sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0, b'J', b'F', b'I', b'F']),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            sniff_image_mime(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00]),
+            Some("image/png")
+        );
+        assert_eq!(sniff_image_mime(b"GIF89a......"), Some("image/gif"));
+        assert_eq!(
+            sniff_image_mime(b"RIFF\x24\x00\x00\x00WEBPVP8 "),
+            Some("image/webp")
+        );
     }
 }

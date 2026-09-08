@@ -50,6 +50,16 @@ function convertMultimodalBlock(block: MultimodalContentBlock): ContentBlock {
   if (block.type === 'image') {
     // MultimodalContentBlock (vfsRefTypes) uses a flat shape: { mediaType, base64 }.
     if (block.mediaType && block.base64) {
+      // ★ 2026-09 哨兵（PDF bytes as image）：image 块的字节若以 %PDF 开头，说明后端
+      // canonical 链路把文件本体当页图返回。降级为文本块，避免整条请求 500。
+      const sample = block.base64.slice(0, 32).replace(/\s+/g, '');
+      if (block.mediaType.startsWith('image/') && sample.startsWith('JVBERi')) {
+        console.error(
+          '[FileDef] image block carries PDF bytes (base64 %PDF header) — degrading to text block:',
+          { mediaType: block.mediaType, base64Prefix: block.base64.slice(0, 20) },
+        );
+        return createTextBlock(block.text || '');
+      }
       return createImageBlock(block.mediaType, block.base64);
     }
     // Fallback: avoid crashing the prompt builder on malformed blocks.

@@ -37,8 +37,8 @@ use images::{
     append_observation, append_preview_images, apply_existing_derived_artifacts,
     canonical_content_from_message_metadata, collect_runtime_images,
     override_message_images_with_canonical, retain_selected_images_for_multimodal,
-    strip_all_images, CanonicalVfsImage, ResolvedCanonicalImage, ReusedArtifactCoverage,
-    RuntimeImage,
+    sniff_image_mime, strip_all_images, CanonicalVfsImage, ResolvedCanonicalImage,
+    ReusedArtifactCoverage, RuntimeImage,
 };
 use model_selection::{
     apply_send_overrides, auxiliary_mm_eligible, canonical_content_for_freeze,
@@ -358,18 +358,34 @@ impl ChatV2Pipeline {
                 .ok()
                 .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
                 .unwrap_or_default();
+            let mut unit_page_images: Vec<CanonicalVfsImage> = Vec::new();
             for (_unit_resource_id, unit_index, blob_hash, mime_type) in unit_images {
+                // ★ 2026-09 修复（PDF bytes as image）：unit 表的 image_blob_hash 历史上被
+                // FileBuilder/AttachmentBuilder 写入过整个文件本体 hash（PDF 即 `%PDF` 字节）。
+                // 这里只信任 image/* 的 mime，非 image/* 的行一律跳过，绝不把文件本体当页图。
+                let mime = mime_type.unwrap_or_default();
+                if !mime.starts_with("image/") {
+                    log::warn!(
+                        "[ChatV2::ContextCompiler] skipping non-image unit blob for resource {} source {}: blob_hash={} mime_type={:?}",
+                        resource_id,
+                        item.source_id,
+                        &blob_hash[..blob_hash.len().min(12)],
+                        mime
+                    );
+                    continue;
+                }
                 if seen.insert(blob_hash.clone()) {
-                    images.push(CanonicalVfsImage {
+                    unit_page_images.push(CanonicalVfsImage {
                         image_id: format!("{}:{}:page:{}", resource_id, item.source_id, unit_index),
                         name: Some(format!("{} (page {})", item.name, unit_index + 1)),
                         source_id: item.source_id.clone(),
                         content_hash: blob_hash.clone(),
                         blob_hash: Some(blob_hash),
-                        mime_type: mime_type.unwrap_or_else(|| "image/png".to_string()),
+                        mime_type: mime,
                     });
                 }
             }
+            images.append(&mut unit_page_images);
             if images.iter().any(|image| image.source_id == item.source_id) {
                 continue;
             }
@@ -603,8 +619,27 @@ impl ChatV2Pipeline {
                     .ok()
                     .flatten()?;
                 let bytes = std::fs::read(path).ok()?;
+                // ★ 2026-09 修复（PDF bytes as image）：水合是发送前最后一道闸。
+                // 按字节头校验真实格式：非图片字节（如 `%PDF`）直接丢弃，不生成 image part；
+                // mime 标注与字节头不符时以字节头为准。
+                let Some(actual_mime) = sniff_image_mime(&bytes) else {
+                    log::warn!(
+                        "[ChatV2::ContextCompiler] dropping canonical image payload with non-image bytes (declared mime {:?}, blob hash prefix {})",
+                        mime_type,
+                        &hash[..hash.len().min(12)]
+                    );
+                    return None;
+                };
+                if actual_mime != mime_type.as_str() {
+                    log::warn!(
+                        "[ChatV2::ContextCompiler] canonical image mime mismatch: declared {:?}, actual {} (blob hash prefix {})",
+                        mime_type,
+                        actual_mime,
+                        &hash[..hash.len().min(12)]
+                    );
+                }
                 Some(ResolvedCanonicalImage {
-                    mime_type: mime_type.clone(),
+                    mime_type: actual_mime.to_string(),
                     base64: base64::engine::general_purpose::STANDARD.encode(bytes),
                 })
             })
