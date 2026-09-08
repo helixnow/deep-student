@@ -102,7 +102,7 @@ impl PageRasterizer {
         for page_idx in 0..total_pages {
             let page = document
                 .pages()
-                .get(safe_page_index(page_idx)?)
+                .get(safe_page_index(page_idx)? as i32)
                 .map_err(|e| {
                     AppError::internal(format!("获取页面 {} 失败: {:?}", page_idx + 1, e))
                 })?;
@@ -123,8 +123,12 @@ impl PageRasterizer {
                 AppError::internal(format!("渲染页面 {} 失败: {:?}", page_idx + 1, e))
             })?;
 
-            let dynamic_image = bitmap.as_image();
-            let rgb_image = dynamic_image.to_rgb8();
+            let rgb_image = bitmap
+                .as_image()
+                .map_err(|e| {
+                    AppError::internal(format!("转换页面 {} 位图失败: {:?}", page_idx + 1, e))
+                })?
+                .to_rgb8();
             let (width, height) = (rgb_image.width(), rgb_image.height());
 
             let mut jpeg_buffer = std::io::Cursor::new(Vec::new());
