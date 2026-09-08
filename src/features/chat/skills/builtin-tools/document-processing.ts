@@ -65,6 +65,10 @@ OCR 是后台管线（可能耗时数分钟），调用顺序：
 - 仅支持 PDF 与图片；DOCX/PPTX/XLSX 请直接用 docx_read_structured 等 Office 工具读取
 - 同一文件已有运行中的管线时会返回 already_running，不会重复触发
 - OCR 消耗算力（可能调用视觉模型），不要对无关文件批量盲目发起
+- 资源 ID 形态：聊天上传的附件在系统中有多重 ID——\`att_*\`（附件主键）、
+  \`res_*\`（上传资源或引用资源）。document_parse 系工具会自动把三者都解析到
+  实际文件（含经 \`resources.source_id\` 的间接映射），遇到 \`att_*\` 或
+  context_snapshot 里的 \`res_*\` 直接传入即可，无需换用其他工具
 `,
   allowedTools: [
     'builtin-document_parse',
