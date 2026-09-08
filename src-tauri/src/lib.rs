@@ -99,6 +99,7 @@ pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub mod providers;
+pub mod qbank_generation;
 pub mod qbank_grading;
 #[allow(dead_code)]
 pub mod question_bank_service;
@@ -1888,6 +1889,9 @@ pub fn run() {
             // Qbank AI Grading Commands
             crate::qbank_grading::qbank_ai_grade,
             crate::qbank_grading::qbank_cancel_grading,
+            // Qbank AI Generation Commands（AI 出题 MVP）
+            crate::qbank_generation::qbank_ai_generate_questions,
+            crate::qbank_generation::qbank_cancel_generation,
             // TTS Commands (optional fallback for Web Speech API)
             crate::tts::tts_check_available,
             crate::tts::tts_speak,

@@ -616,6 +616,27 @@
     "proof": "证明",
     "other": "其他"
   },
+  "aiGeneration": {
+    "title": "AI 出题",
+    "specsLabel": "题型与数量",
+    "addSpec": "添加题型",
+    "countLabel": "数量",
+    "difficultyLabel": "难度偏好",
+    "difficultyAuto": "自动分布",
+    "topicHintLabel": "知识点范围（可选）",
+    "topicHintPlaceholder": "例如：二次函数的图像与性质、顶点式与一般式的互化…",
+    "basedOnExisting": "参考题目集现有题目出变式题",
+    "tooManyQuestions": "总题量不能超过 50 题",
+    "start": "开始生成",
+    "generating": "AI 正在出题…",
+    "rejectedSummary": "{{count}} 道题未通过校验已自动剔除：",
+    "answerLabel": "答案：",
+    "selectedCount": "已选 {{selected}}/{{total}} 题",
+    "regenerate": "调整要求重新生成",
+    "confirmImport": "加入所选 {{count}} 题",
+    "importSuccess": "已成功加入 {{count}} 道题目",
+    "importFailed": "加入题目失败，请重试"
+  },
   "editor": {
     "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",
     "discardDraftTitle": "放弃未提交的内容？"

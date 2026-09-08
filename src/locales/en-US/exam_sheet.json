@@ -616,6 +616,27 @@
     "proof": "Proof",
     "other": "Other"
   },
+  "aiGeneration": {
+    "title": "AI Question Generation",
+    "specsLabel": "Question types & counts",
+    "addSpec": "Add type",
+    "countLabel": "Count",
+    "difficultyLabel": "Difficulty preference",
+    "difficultyAuto": "Auto distribution",
+    "topicHintLabel": "Topic scope (optional)",
+    "topicHintPlaceholder": "e.g. Quadratic functions: graphs & properties, vertex form conversion…",
+    "basedOnExisting": "Generate variants based on existing questions",
+    "tooManyQuestions": "Total questions cannot exceed 50",
+    "start": "Generate",
+    "generating": "AI is generating questions…",
+    "rejectedSummary": "{{count}} question(s) failed validation and were dropped:",
+    "answerLabel": "Answer: ",
+    "selectedCount": "{{selected}}/{{total}} selected",
+    "regenerate": "Adjust & regenerate",
+    "confirmImport": "Add {{count}} question(s)",
+    "importSuccess": "Added {{count}} question(s)",
+    "importFailed": "Failed to add questions, please retry"
+  },
   "editor": {
     "discardDraftDescription": "Discard Draft Description",
     "discardDraftTitle": "Discard Draft Title"
