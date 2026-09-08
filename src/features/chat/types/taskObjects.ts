@@ -53,7 +53,12 @@ export interface TaskObjectHandle {
     sourceUri?: string;
     server?: string;
     tool?: string;
-    derivedFrom?: string[];
+    /**
+     * 血缘边（schema v2）：来源标识 + 变换标识 + 可选参数指纹 + 观测时间。
+     * 与后端 `chat_v2::task_objects::DerivedEdge` 对齐（serde camelCase）；
+     * 后端反序列化兼容 v1 纯字符串格式，前端序列化恒为对象格式。
+     */
+    derivedFrom?: DerivedEdge[];
     observedAt: string;
   };
 }
