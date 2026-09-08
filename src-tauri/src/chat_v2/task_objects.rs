@@ -916,8 +916,8 @@ pub fn read_task_object_page(
         })
     } else {
         use base64::Engine as _;
-        let content = base64::engine::general_purpose::STANDARD
-            .encode(&bytes[offset as usize..end as usize]);
+        let content =
+            base64::engine::general_purpose::STANDARD.encode(&bytes[offset as usize..end as usize]);
         Ok(TaskObjectPage {
             content,
             encoding,
@@ -928,6 +928,180 @@ pub fn read_task_object_page(
             sha256,
         })
     }
+}
+
+// ============================================================================
+// 受管对象写入（G05-P3：object_write 的四层路径安全原语）
+// ============================================================================
+//
+// 与 `read_task_object_page` 同一安全姿势：
+// - root_id 白名单 [`OBJECT_WRITABLE_ROOT_IDS`]：仅 artifacts 类会话受管根可写；
+// - locator 段级校验 + 双侧 canonicalize 前缀检查（父目录与已存在目标分别
+//   校验，符号链接逃逸 fail-closed）；
+// - `expected_sha256` 乐观锁：目标已存在且指纹不匹配时拒绝（防并发覆盖）；
+// - 单次写入内容 ≤ [`OBJECT_WRITE_MAX_BYTES`]；只哈希文件字节，不涉及任何
+//   HashMap 序列化（见 AGENTS.md 红线）。
+
+/// object_write 可写的受管 root 白名单（仅 artifacts 类会话受管根）。
+pub const OBJECT_WRITABLE_ROOT_IDS: &[&str] = &["artifacts"];
+
+/// 单次 object_write 内容字节上限（256 KiB）。
+pub const OBJECT_WRITE_MAX_BYTES: u64 = 256 * 1024;
+
+/// 一次受管写入的结果（序列化键与 PTC `object_write` 脚本侧契约一致）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskObjectWriteOutcome {
+    /// 写入后整文件字节的 sha256（hex）。
+    pub sha256: String,
+    /// 写入后整文件字节数。
+    pub total_size: u64,
+    /// 本次写入的内容字节数。
+    pub written_bytes: u64,
+    /// 目标是否由本次写入新建。
+    pub created: bool,
+}
+
+/// 受管写入一个对象（pwrite 语义）。
+///
+/// `root_dir` 是 `locator.root_id` 对应的运行时根（调用方负责解析；本函数
+/// 内部在写入前重新 canonicalize 并校验目标解析在 root 内——root 尚不存在
+/// 时先创建，因为写入面本来就允许产生副作用）。`offset=None` 整体覆盖/新建；
+/// `offset=Some(n)` 从第 n 字节起原地覆盖（n 不得超过现有长度；内容越过
+/// 文件尾则文件增长）。`expected_sha256` 乐观锁仅对已存在的目标生效——
+/// 传入时目标必须存在且指纹匹配，否则拒绝（防并发覆盖/内容漂移）。
+pub fn write_task_object_page(
+    root_dir: &Path,
+    locator: &ManagedLocator,
+    content: &[u8],
+    offset: Option<u64>,
+    expected_sha256: Option<&str>,
+) -> Result<TaskObjectWriteOutcome, String> {
+    if !OBJECT_WRITABLE_ROOT_IDS.contains(&locator.root_id.as_str()) {
+        return Err(format!(
+            "root_id '{}' is not object-writable (allowed: {})",
+            locator.root_id,
+            OBJECT_WRITABLE_ROOT_IDS.join(", ")
+        ));
+    }
+    // 防御纵深：反序列化/手工构造的 locator 未必走过 ManagedLocator::new。
+    locator.validate()?;
+    if content.len() as u64 > OBJECT_WRITE_MAX_BYTES {
+        return Err(format!(
+            "content is {} bytes, exceeding the {} byte write cap",
+            content.len(),
+            OBJECT_WRITE_MAX_BYTES
+        ));
+    }
+
+    // 段级归一（与读侧相同：拒绝 `..` / 绝对路径 / 反斜杠 / 纯 `.`）。
+    let mut relative = PathBuf::new();
+    for component in Path::new(&locator.relative_path).components() {
+        match component {
+            std::path::Component::Normal(part) => relative.push(part),
+            std::path::Component::CurDir => {}
+            _ => return Err("relative_path escapes the managed root".to_string()),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        return Err("relative_path does not identify a file".to_string());
+    }
+
+    // root 可不存在（写入面允许创建），先建再 canonicalize。
+    std::fs::create_dir_all(root_dir)
+        .map_err(|e| format!("managed root '{}' is unavailable: {e}", locator.root_id))?;
+    let root_canon = root_dir
+        .canonicalize()
+        .map_err(|e| format!("managed root '{}' is unavailable: {e}", locator.root_id))?;
+
+    // 父目录：创建后经 canonicalize + 前缀校验（符号链接逃逸 fail-closed）。
+    let target_rel = root_canon.join(&relative);
+    let parent = target_rel
+        .parent()
+        .ok_or_else(|| "relative_path does not identify a file".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("failed to create parent directory: {e}"))?;
+    let parent_canon = parent
+        .canonicalize()
+        .map_err(|e| format!("parent directory is unavailable: {e}"))?;
+    if !parent_canon.starts_with(&root_canon) {
+        return Err("object path escapes the managed root".to_string());
+    }
+    let file_name = target_rel
+        .file_name()
+        .ok_or_else(|| "relative_path does not identify a file".to_string())?;
+    let target = parent_canon.join(file_name);
+
+    // 目标已存在：再 canonicalize 一层（挡父目录内符号链接），乐观锁校验。
+    let existed = target.exists();
+    let mut current: Vec<u8> = Vec::new();
+    if existed {
+        let target_canon = target
+            .canonicalize()
+            .map_err(|e| format!("object '{}' is unavailable: {e}", locator.relative_path))?;
+        if !target_canon.starts_with(&root_canon) {
+            return Err("object path escapes the managed root".to_string());
+        }
+        if !target_canon.is_file() {
+            return Err(format!("object '{}' is not a file", locator.relative_path));
+        }
+        current = std::fs::read(&target_canon)
+            .map_err(|e| format!("failed to read object '{}': {e}", locator.relative_path))?;
+        if let Some(expected) = expected_sha256 {
+            let actual = hex::encode(Sha256::digest(&current));
+            if actual != expected {
+                return Err(format!(
+                    "expected_sha256 mismatch for '{}': content changed since it was read \
+                     (expected {expected}, actual {actual}); re-read and retry",
+                    locator.relative_path
+                ));
+            }
+        }
+    } else if expected_sha256.is_some() {
+        return Err(format!(
+            "expected_sha256 given but object '{}' does not exist",
+            locator.relative_path
+        ));
+    }
+
+    // pwrite 语义组装新内容。
+    let next: Vec<u8> = match offset {
+        None => content.to_vec(),
+        Some(at) => {
+            if at > current.len() as u64 {
+                return Err(format!(
+                    "offset {at} exceeds current size {}; append with offset=size \
+                     or overwrite with offset=None",
+                    current.len()
+                ));
+            }
+            let at = at as usize;
+            let mut buf = Vec::with_capacity(at + content.len().max(current.len() - at));
+            buf.extend_from_slice(&current[..at]);
+            buf.extend_from_slice(content);
+            let tail_start = (at + content.len()).min(current.len());
+            buf.extend_from_slice(&current[tail_start..]);
+            buf
+        }
+    };
+
+    // 原子落盘：tmp + rename（与物化结果同一姿势）。
+    let tmp = parent_canon.join(format!(
+        ".{}.ptc-write-{}.tmp",
+        file_name.to_string_lossy(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::write(&tmp, &next).map_err(|e| format!("failed to write object: {e}"))?;
+    if let Err(e) = std::fs::rename(&tmp, &target) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("failed to finalize object write: {e}"));
+    }
+
+    Ok(TaskObjectWriteOutcome {
+        sha256: hex::encode(Sha256::digest(&next)),
+        total_size: next.len() as u64,
+        written_bytes: content.len() as u64,
+        created: !existed,
+    })
 }
 
 #[cfg(test)]
@@ -1068,8 +1242,8 @@ mod tests {
 
     #[test]
     fn builder_requires_explicit_lineage() {
-        let result = TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test")
-            .build();
+        let result =
+            TaskObjectHandleBuilder::new("obj_1", TaskObjectKind::File, "a.png", "test").build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("derived_from"));
     }
@@ -1102,11 +1276,10 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(handle.provenance.derived_from.len(), 1);
-        assert_eq!(
-            handle.provenance.derived_from[0].transform_id,
-            "test.op"
-        );
-        assert!(handle.provenance.derived_from[0].transform_params_hash.is_some());
+        assert_eq!(handle.provenance.derived_from[0].transform_id, "test.op");
+        assert!(handle.provenance.derived_from[0]
+            .transform_params_hash
+            .is_some());
     }
 
     // —— G05-P2 分页回读（read_task_object_page）——
@@ -1151,13 +1324,8 @@ mod tests {
         std::fs::write(dir.path().join("f.txt"), "safe").expect("write");
         // root 白名单
         for root_id in ["temp", "workspace", "skill:x"] {
-            let err = read_task_object_page(
-                dir.path(),
-                &paged_locator(root_id, "f.txt"),
-                0,
-                100,
-            )
-            .unwrap_err();
+            let err = read_task_object_page(dir.path(), &paged_locator(root_id, "f.txt"), 0, 100)
+                .unwrap_err();
             assert!(err.contains("not object-readable"), "unexpected: {err}");
         }
         // 段级逃逸（绕过 new 的校验直接构造，验证内部防御纵深）
@@ -1178,8 +1346,10 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("not a file"), "unexpected: {err}");
         // 不存在
-        assert!(read_task_object_page(dir.path(), &paged_locator("artifacts", "nope.txt"), 0, 100)
-            .is_err());
+        assert!(
+            read_task_object_page(dir.path(), &paged_locator("artifacts", "nope.txt"), 0, 100)
+                .is_err()
+        );
     }
 
     #[cfg(unix)]
@@ -1188,9 +1358,13 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("temp dir");
         let outside = tempfile::NamedTempFile::new().expect("outside file");
         std::os::unix::fs::symlink(outside.path(), dir.path().join("link.txt")).expect("symlink");
-        let err = read_task_object_page(dir.path(), &paged_locator("artifacts", "link.txt"), 0, 100)
-            .unwrap_err();
-        assert!(err.contains("escapes the managed root"), "unexpected: {err}");
+        let err =
+            read_task_object_page(dir.path(), &paged_locator("artifacts", "link.txt"), 0, 100)
+                .unwrap_err();
+        assert!(
+            err.contains("escapes the managed root"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]
@@ -1207,7 +1381,10 @@ mod tests {
         assert!(!page.eof);
         // offset 切半字符 → 结构化错误
         let err = read_task_object_page(dir.path(), &locator, 1, 7).unwrap_err();
-        assert!(err.contains("splits a UTF-8 character"), "unexpected: {err}");
+        assert!(
+            err.contains("splits a UTF-8 character"),
+            "unexpected: {err}"
+        );
         // limit=1 小于单字宽度：放行完整字符保证前进
         let page = read_task_object_page(dir.path(), &locator, 0, 1).expect("page");
         assert_eq!(page.content, "汉");
@@ -1493,5 +1670,124 @@ mod tests {
             ..partial_first
         };
         assert!(empty_page.validate().is_err());
+    }
+
+    // —— write_task_object_page（G05-P3）——
+
+    #[test]
+    fn write_page_create_overwrite_and_pwrite() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let locator = paged_locator("artifacts", "notes/out.txt");
+        // 新建（父目录自动创建，root 由 TempDir 已存在）
+        let out = write_task_object_page(dir.path(), &locator, b"hello world", None, None)
+            .expect("create");
+        assert!(out.created);
+        assert_eq!(out.total_size, 11);
+        assert_eq!(out.sha256, hex::encode(Sha256::digest(b"hello world")));
+        // 整体覆盖
+        let out =
+            write_task_object_page(dir.path(), &locator, b"ABCDEF", None, None).expect("overwrite");
+        assert!(!out.created);
+        assert_eq!(
+            std::fs::read(dir.path().join("notes/out.txt")).unwrap(),
+            b"ABCDEF"
+        );
+        // pwrite：offset=2 覆盖 "CD" → "xy"，尾部 "EF" 保留
+        let out =
+            write_task_object_page(dir.path(), &locator, b"xy", Some(2), None).expect("pwrite");
+        assert_eq!(out.written_bytes, 2);
+        assert_eq!(
+            std::fs::read(dir.path().join("notes/out.txt")).unwrap(),
+            b"ABxyEF"
+        );
+        // pwrite 越过文件尾：文件增长
+        let out =
+            write_task_object_page(dir.path(), &locator, b"ZZZZ", Some(4), None).expect("extend");
+        assert_eq!(out.total_size, 8);
+        assert_eq!(
+            std::fs::read(dir.path().join("notes/out.txt")).unwrap(),
+            b"ABxyZZZZ"
+        );
+    }
+
+    #[test]
+    fn write_page_optimistic_lock_and_offset_bounds() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let locator = paged_locator("artifacts", "lock.txt");
+        write_task_object_page(dir.path(), &locator, b"v1", None, None).unwrap();
+        let sha_v1 = hex::encode(Sha256::digest(b"v1"));
+        // 指纹匹配 → 放行
+        write_task_object_page(dir.path(), &locator, b"v2", None, Some(&sha_v1)).unwrap();
+        // 指纹过期 → 拒绝
+        let err = write_task_object_page(dir.path(), &locator, b"v3", None, Some(&sha_v1))
+            .expect_err("stale sha must be rejected");
+        assert!(
+            err.contains("expected_sha256 mismatch"),
+            "unexpected: {err}"
+        );
+        // 目标不存在却给了乐观锁 → 拒绝
+        let err = write_task_object_page(
+            dir.path(),
+            &paged_locator("artifacts", "ghost.txt"),
+            b"x",
+            None,
+            Some(&sha_v1),
+        )
+        .expect_err("lock on missing file must be rejected");
+        assert!(err.contains("does not exist"), "unexpected: {err}");
+        // offset 越过当前长度 → 拒绝
+        let err = write_task_object_page(dir.path(), &locator, b"x", Some(99), None)
+            .expect_err("out-of-range offset must be rejected");
+        assert!(err.contains("exceeds current size"), "unexpected: {err}");
+        // 内容超上限 → 拒绝
+        let big = vec![b'x'; (OBJECT_WRITE_MAX_BYTES + 1) as usize];
+        assert!(write_task_object_page(dir.path(), &locator, &big, None, None).is_err());
+    }
+
+    #[test]
+    fn write_page_rejects_foreign_roots_and_escapes() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        // 白名单外 root
+        assert!(write_task_object_page(
+            dir.path(),
+            &paged_locator("temp", "a.txt"),
+            b"x",
+            None,
+            None
+        )
+        .is_err());
+        // ManagedLocator::new 段级校验已拒 `..`；手工构造绕过构造器的 locator
+        // 也必须被防御纵深拦下
+        let evil = ManagedLocator {
+            root_id: "artifacts".to_string(),
+            relative_path: "../evil.txt".to_string(),
+        };
+        let err = write_task_object_page(dir.path(), &evil, b"x", None, None)
+            .expect_err("escape must be rejected");
+        assert!(
+            err.contains("unsafe path segment") || err.contains("escapes"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn write_page_rejects_symlink_escape() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let outside = tempfile::TempDir::new().expect("outside dir");
+        std::fs::write(outside.path().join("victim.txt"), b"keep").unwrap();
+        let link = dir.path().join("linked");
+        std::os::unix::fs::symlink(outside.path(), &link).expect("symlink");
+        let locator = paged_locator("artifacts", "linked/victim.txt");
+        let err = write_task_object_page(dir.path(), &locator, b"pwned", None, None)
+            .expect_err("symlink escape must be rejected");
+        assert!(
+            err.contains("escapes the managed root"),
+            "unexpected: {err}"
+        );
+        // 目标原样未动
+        assert_eq!(
+            std::fs::read(outside.path().join("victim.txt")).unwrap(),
+            b"keep"
+        );
     }
 }

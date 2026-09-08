@@ -30,8 +30,9 @@
 //!   from_allow_entry` 的 Builtin/Shell 分类改由 [`grants_scope_hint`] 驱动，
 //!   字符串规则先行不变、shell 族收紧为 fail-closed 语义位，等价性由
 //!   grants 侧四层断言对照测试锁定）。
-//! - 待迁移（G01-e 后续小步）：`ptc_runtime.rs::PTC_ALLOWED_TOOLS`。
-//!   查询函数 [`is_ptc_allowed`] 与等价性测试已就绪，切换时删除旧常量即可。
+//! - 已迁移（G01-e）：`headless.rs` 只读白名单、`grants.rs` ToolScope 归类、
+//!   `ptc_runtime.rs::PTC_ALLOWED_TOOLS` 只读面全部切换为本表派生查询；
+//!   手写清单仅保留为 #[cfg(test)] oracle（等价性双重锁定）。
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -202,7 +203,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     // —— AttemptCompletionExecutor（1）——
     // 控制面工具：标记任务完成，不改用户数据。
     d("attempt_completion", Low, true, Read).headless(),
-
     // —— CanvasToolExecutor（9）——
     d("note_read", Low, true, Read),
     d("note_list", Low, true, Read),
@@ -213,7 +213,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("note_update_tags", Medium, false, WriteLocal),
     d("note_set", High, false, WriteLocal),
     d("note_replace", High, false, WriteLocal),
-
     // —— ChatAnkiToolExecutor（29）——
     // 旧超时表前缀规则：`chatanki_*` 一律 600s，`chatanki_wait` 61 分钟。
     d("chatanki_run", Low, false, WriteLocal).with_timeout(600),
@@ -249,18 +248,21 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("chatanki_list_templates", Low, true, Read).with_timeout(600),
     d("chatanki_analyze", Low, true, Read).with_timeout(600),
     d("chatanki_check_anki_connect", Low, true, Read).with_timeout(600),
-
     // —— BuiltinRetrievalExecutor（4）——
     // multimodal_search 已在暴露层收敛进 unified_search，执行器仍受理（历史回放）。
-    d("unified_search", Low, true, Read).with_timeout(180).headless_ptc(),
-    d("rag_search", Low, true, Read).with_timeout(180).headless_ptc(),
+    d("unified_search", Low, true, Read)
+        .with_timeout(180)
+        .headless_ptc(),
+    d("rag_search", Low, true, Read)
+        .with_timeout(180)
+        .headless_ptc(),
     d("multimodal_search", Low, true, Read).with_timeout(180),
-    d("web_search", Low, true, Read).with_timeout(180).headless_ptc(),
-
+    d("web_search", Low, true, Read)
+        .with_timeout(180)
+        .headless_ptc(),
     // —— InsightRecallExecutor（1）——
     // 召回可能伴随记忆侧活动记录，按 fail-closed 标非只读。
     d("insight_recall", Low, false, WriteLocal),
-
     // —— BuiltinResourceExecutor（11）——
     d("resource_list", Low, true, Read).headless_ptc(),
     d("resource_read", Low, true, Read).headless_ptc(),
@@ -274,18 +276,15 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("mindmap_versions", Low, true, Read),
     d("mindmap_diff_versions", Low, true, Read),
     d("mindmap_import", Low, false, WriteLocal),
-
     // —— ConnectorToolExecutor（4）——
     d("connector_registry", Low, true, Read),
     d("connector_operation_draft", Medium, false, WriteLocal),
     d("connector_operation_confirm", High, false, WriteLocal),
     // commit 落到外部服务（gmail_send 等），远端副作用。
     d("connector_operation_commit", High, false, WriteRemote),
-
     // —— TaskAuditExecutor（2）——
     d("task_audit_export", Medium, false, WriteLocal),
     d("lineage_forget", High, false, Irreversible),
-
     // —— DstuToolExecutor（10）——
     d("dstu_folder_create", Medium, false, WriteLocal),
     d("dstu_folder_rename", Medium, false, WriteLocal),
@@ -298,14 +297,13 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("dstu_set_favorite", Low, false, WriteLocal),
     d("dstu_purge", High, false, Irreversible),
     d("dstu_upload_file", Medium, false, WriteLocal),
-
     // —— AttachmentToolExecutor（2）——
     d("attachment_list", Low, true, Read),
     d("attachment_read", Low, true, Read),
-
     // —— FetchExecutor（1）——
-    d("web_fetch", Low, true, Read).with_timeout(180).headless_ptc(),
-
+    d("web_fetch", Low, true, Read)
+        .with_timeout(180)
+        .headless_ptc(),
     // —— BrowserToolExecutor（11）——
     d("browser_open", High, false, WriteLocal),
     // navigate/click/type 可触发远端页面副作用（表单提交等），按远端写归类。
@@ -320,23 +318,18 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("browser_scroll", Low, true, Read),
     d("browser_back", Low, false, WriteLocal),
     d("browser_close", Medium, false, WriteLocal),
-
     // —— MediaToolExecutor（2）——
     d("media_capabilities", Low, true, Read),
     d("media_transcribe", Medium, false, WriteLocal),
-
     // —— OfficeFidelityExecutor（1）——
     d("office_fidelity_inspect", Low, true, Read),
-
     // —— McpProposeExecutor（1）——
     // 裸名带 mcp_ 前缀，旧超时表经外部-MCP 前缀兜底得 180s；注册表化后显式保留。
     d("mcp_server_propose", High, false, WriteLocal).with_timeout(180),
-
     // —— McpManageExecutor（3）——
     d("mcp_server_update", High, false, WriteLocal).with_timeout(180),
     d("mcp_server_set_enabled", Medium, false, WriteLocal).with_timeout(180),
     d("mcp_server_remove", High, false, WriteLocal).with_timeout(180),
-
     // —— AutomationExecutor（9）——
     d("automation_propose", High, false, WriteLocal),
     d("automation_list", Low, true, Read),
@@ -347,30 +340,24 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("automation_runs", Low, true, Read),
     d("automation_retry_run", Medium, false, WriteLocal),
     d("automation_cancel_run", Medium, false, WriteLocal),
-
     // —— AcademicSearchExecutor（2）——
     d("arxiv_search", Low, true, Read).with_timeout(180).ptc(),
     d("scholar_search", Low, true, Read).with_timeout(180).ptc(),
-
     // —— PaperSaveExecutor（2）——
     d("paper_save", Medium, false, WriteLocal).with_timeout(600),
     d("cite_format", Low, true, Read).with_timeout(30),
-
     // —— KnowledgeExecutor（1）——
     // 内化提取会写长期记忆候选，按写归类。
     d("knowledge_extract", Low, false, WriteLocal),
-
     // —— TodoListExecutor（4，代理侧 todo 面板状态）——
     d("todo_init", Low, false, WriteLocal).headless(),
     d("todo_update", Low, false, WriteLocal).headless(),
     d("todo_add", Low, false, WriteLocal).headless(),
     d("todo_get", Low, true, Read).headless(),
-
     // —— GoalExecutor（3，会话级持久目标）——
     d("goal_create", Low, false, WriteLocal),
     d("goal_update", Low, false, WriteLocal),
     d("goal_get", Low, true, Read),
-
     // —— QBankExecutor（32）——
     d("qbank_list", Low, true, Read).headless_ptc(),
     d("qbank_list_questions", Low, true, Read).headless_ptc(),
@@ -404,35 +391,29 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("qbank_generate_variant", Low, false, WriteLocal),
     d("qbank_reset_progress", Medium, false, Irreversible),
     d("qbank_delete_questions", High, false, Irreversible),
-
     // —— TranslationToolExecutor（3）——
     // translate_text 消耗 LLM 预算并填充内存结果缓存，不按纯只读标注。
     d("translate_text", Low, false, WriteLocal).with_timeout(600),
     d("translation_result_read", Low, true, Read),
     d("translation_save", Medium, false, WriteLocal),
-
     // —— SettingsModelsToolExecutor（5）——
     d("settings_get", Low, true, Read).headless_ptc(),
     d("settings_set", Medium, false, WriteLocal),
     d("model_assignments_get", Low, true, Read).headless_ptc(),
     d("model_assignments_set", Medium, false, WriteLocal),
     d("model_profile_add", High, false, WriteLocal),
-
     // —— LlmUsageToolExecutor（1）——
     d("llm_usage_query", Low, true, Read).headless_ptc(),
-
     // —— LearningOverviewExecutor（3）——
     d("learning_overview", Low, true, Read).headless_ptc(),
     d("pomodoro_today_stats", Low, true, Read).headless_ptc(),
     d("pomodoro_daily_stats", Low, true, Read).headless_ptc(),
-
     // —— DataGovernanceToolExecutor（5）——
     d("backup_status", Low, true, Read).headless_ptc(),
     d("backup_job_status", Low, true, Read).headless_ptc(),
     d("sync_status", Low, true, Read).headless_ptc(),
     d("backup_create", High, false, WriteLocal),
     d("sync_run", High, false, WriteRemote),
-
     // —— MemoryToolExecutor（16）——
     d("memory_search", Low, true, Read),
     d("memory_read", Low, true, Read).headless_ptc(),
@@ -452,7 +433,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     // 学习者画像读取（Medium 基线以 executor 为准；本身是纯 getter）。
     d("learner_profile_get", Medium, true, Read),
     d("learner_profile_update", Medium, false, WriteLocal),
-
     // —— UserTodoExecutor（14）——
     d("user_todo_list_lists", Low, true, Read).headless_ptc(),
     d("user_todo_list_items", Low, true, Read).headless_ptc(),
@@ -469,10 +449,8 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("user_todo_delete_list", High, false, WriteLocal),
     d("user_todo_restore", Medium, false, WriteLocal),
     d("user_todo_reorder", Medium, false, WriteLocal),
-
     // —— SkillsExecutor（1）——
     d("load_skills", Low, true, Read),
-
     // —— TemplateDesignerExecutor（9）——
     d("template_list", Low, true, Read),
     d("template_get", Low, true, Read),
@@ -484,22 +462,18 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("template_set_default", Medium, false, WriteLocal),
     // 自定义模板是物理删除（executor 注释），按不可恢复归类。
     d("template_delete", High, false, Irreversible),
-
     // —— TextbookPdfToolExecutor（3）——
     // bookmarks/highlights 名字级 Medium；action=get 动态降 Low（executor 为准）。
     d("textbook_bookmarks", Medium, false, WriteLocal),
     d("textbook_highlights", Medium, false, WriteLocal),
     d("pdf_page_image", Low, true, Read),
-
     // —— IndexWebpageToolExecutor（3）——
     d("index_status", Low, true, Read).headless_ptc(),
     d("index_rebuild", High, false, WriteLocal).with_timeout(600),
     d("webpage_save", Medium, false, WriteLocal).with_timeout(300),
-
     // —— AskUserExecutor（1）——
     // 显式等待用户交互，豁免通用看门狗（旧表 NO_TOOL_TIMEOUT_SECS）。
     d("ask_user", Low, true, Read).with_timeout(NO_TIMEOUT_SECS),
-
     // —— SessionToolExecutor（20）——
     d("session_list", Low, true, Read),
     d("session_search", Low, true, Read),
@@ -523,7 +497,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("session_batch_move", Medium, false, WriteLocal),
     d("session_batch_ops", Medium, false, WriteLocal),
     d("session_archive", High, false, WriteLocal),
-
     // —— DocxToolExecutor（6）——
     d("docx_read_structured", Low, true, Read),
     d("docx_extract_tables", Low, true, Read),
@@ -531,7 +504,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("docx_to_spec", Low, true, Read).with_timeout(300),
     d("docx_create", Medium, false, WriteLocal).with_timeout(300),
     d("docx_replace_text", Medium, false, WriteLocal).with_timeout(300),
-
     // —— PptxToolExecutor（6）——
     d("pptx_read_structured", Low, true, Read),
     d("pptx_get_metadata", Low, true, Read),
@@ -539,7 +511,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("pptx_to_spec", Low, true, Read).with_timeout(300),
     d("pptx_create", Medium, false, WriteLocal).with_timeout(300),
     d("pptx_replace_text", Medium, false, WriteLocal).with_timeout(300),
-
     // —— XlsxToolExecutor（7）——
     // 旧超时表 300s 组不含 xlsx_edit_cells（保持默认 120s），迁移后维持原值。
     d("xlsx_read_structured", Low, true, Read),
@@ -549,13 +520,10 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("xlsx_create", Medium, false, WriteLocal).with_timeout(300),
     d("xlsx_edit_cells", Medium, false, WriteLocal),
     d("xlsx_replace_text", Medium, false, WriteLocal).with_timeout(300),
-
     // —— ImageGenerationExecutor（1）——
     d("image_generate", Low, false, WriteLocal).with_timeout(300),
-
     // —— GenerativeUiExecutor（1）——
     d("render_generative_ui", Low, false, WriteLocal),
-
     // —— WorkspaceFsExecutor（8）——
     d("workspace_file_list", Low, true, Read),
     d("workspace_file_read", Low, true, Read),
@@ -565,58 +533,46 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("workspace_file_move", High, false, WriteLocal),
     d("workspace_file_delete", High, false, WriteLocal),
     d("workspace_change_revert", High, false, WriteLocal),
-
     // —— LspNavigationExecutor（4）——
     // 查询本身只读，但会拉起外部语言服务器进程，不按纯只读标注（executor 注释）。
     d("workspace_lsp_definition", Medium, false, Read),
     d("workspace_lsp_references", Medium, false, Read),
     d("workspace_lsp_hover", Medium, false, Read),
     d("workspace_lsp_document_symbols", Medium, false, Read),
-
     // —— CodeNavigationExecutor（2）——
     d("workspace_text_search", Low, true, Read),
     d("workspace_symbol_outline", Low, true, Read),
-
     // —— FileManagerExecutor（3）——
     d("file_manager_plan", Low, true, Read),
     d("file_manager_commit", Medium, false, WriteLocal),
     d("file_manager_restore", Medium, false, WriteLocal),
-
     // —— AttachmentStageExecutor（2）——
     d("attachment_stage", Medium, false, WriteLocal),
     d("attachment_extract", Medium, false, WriteLocal),
-
     // —— NotesImportExecutor（1）——
     d("notes_import", Medium, false, WriteLocal),
-
     // —— SkillInstallExecutor（2）——
     d("skill_scan", Low, true, Read),
     d("skill_install", High, false, WriteLocal),
-
     // —— SkillMarketReadToolExecutor（2，chat_v2/skill_market_client.rs）——
     d("skill_market_search", Low, true, Read),
     d("skill_market_skill_detail", Low, true, Read),
-
     // —— SkillMarketInstallToolExecutor（2，chat_v2/skill_market_client.rs）——
     // verify 会下载包到受管目录做校验，按写归类（fail-closed）。
     d("skill_market_verify", Low, false, WriteLocal),
     d("skill_market_download_and_scan", High, false, WriteLocal),
-
     // —— SkillWorkshopExecutor（2）——
     d("skill_workshop_propose", Medium, false, WriteLocal),
     d("skill_workshop_apply", High, false, WriteLocal),
-
     // —— SkillLifecycleExecutor（3）——
     d("skill_set_enabled", Medium, false, WriteLocal),
     // 删除技能包，破坏性（approval_scope 注释）。
     d("skill_remove", High, false, Irreversible),
     // 名字级 High；action=inspect 动态降 Low（executor 为准）。
     d("skill_trust_request", High, false, WriteLocal),
-
     // —— LocalShellPreflightExecutor（1）——
     // 纯策略预检，不执行命令。
     d("local_shell_preflight", Low, true, Read).shell_scoped(),
-
     // —— GitToolExecutor（5）——
     d("git_status", Medium, true, Read),
     d("git_diff", Medium, true, Read),
@@ -624,24 +580,19 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     // 名字级 High；action=list 动态降 Medium（executor 为准）。
     d("git_branch", High, false, WriteLocal),
     d("git_commit", High, false, WriteLocal),
-
     // —— SelfInspectExecutor（1）——
     d("self_inspect", Low, true, Read),
-
     // —— RolePackExecutor（3）——
     d("role_pack_list", Low, true, Read),
     d("role_pack_get", Low, true, Read),
     d("role_pack_validate", Low, true, Read),
-
     // —— RuntimeRootRequestExecutor（1）——
     d("runtime_root_request", High, false, WriteLocal),
-
     // —— LocalShellExecuteExecutor（1）——
     // 任意命令执行，executor 自带命令级 deadline + 沙箱清理，看门狗豁免。
     d("local_shell_execute", High, false, Irreversible)
         .with_timeout(NO_TIMEOUT_SECS)
         .shell_scoped(),
-
     // —— EssayGradingExecutor（7）——
     d("essay_grade", Medium, false, WriteLocal),
     d("essay_grade_status", Low, true, Read),
@@ -650,7 +601,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("essay_list_sessions", Low, true, Read),
     d("essay_list_results", Low, true, Read),
     d("essay_get_result", Low, true, Read),
-
     // —— ReviewToolExecutor（8）——
     d("review_get_due", Low, true, Read).headless_ptc(),
     d("review_stats", Low, true, Read).headless_ptc(),
@@ -660,11 +610,9 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("review_suspend", Medium, false, WriteLocal),
     d("review_resume", Medium, false, WriteLocal),
     d("review_delete", High, false, Irreversible),
-
     // —— DocumentProcessingExecutor（2）——
     d("document_parse", Medium, false, WriteLocal),
     d("document_parse_status", Low, true, Read),
-
     // —— WorkbenchToolExecutor（11）——
     // 旧超时表前缀规则：`workbench_*` 一律 180s（ACR 桥 + 前端 pacing 演出）。
     d("workbench_get_capabilities", Low, true, Read).with_timeout(180),
@@ -678,7 +626,6 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("workbench_act_high", High, false, WriteLocal).with_timeout(180),
     d("workbench_undo", High, false, WriteLocal).with_timeout(180),
     d("workbench_close_window", High, false, WriteLocal).with_timeout(180),
-
     // —— WorkspaceToolExecutor（8，coordinator 注册）——
     d("workspace_create", Low, false, WriteLocal),
     d("workspace_create_agent", Low, false, WriteLocal),
@@ -688,11 +635,9 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("workspace_get_context", Low, true, Read),
     d("workspace_update_document", Low, false, WriteLocal),
     d("workspace_read_document", Low, true, Read),
-
     // —— SubagentExecutor（1，coordinator 注册）——
     // 阻塞等待子代理终态，内部自带 750s 等待预算与取消，看门狗豁免。
     d("subagent_call", Medium, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
-
     // —— CustomAgentExecutor（5，coordinator 注册）——
     d("custom_agent_list", Low, true, Read),
     d("custom_agent_get", Low, true, Read),
@@ -700,15 +645,12 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("custom_agent_apply", High, false, WriteLocal),
     // 删除 persona 文件，破坏性（approval_scope 注释）。
     d("custom_agent_remove", High, false, Irreversible),
-
     // —— CoordinatorSleepExecutor（1，coordinator 注册）——
     // 内部 60 分钟硬上限 + 取消令牌，看门狗豁免。
     d("coordinator_sleep", Low, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
-
     // —— ToolPackExecutor（1，Arc::new_cyclic 尾部队列）——
     // 聚合器：子调用各自重过中央准入；pack 本身按可携带写副作用归类。
     d("tool_pack", Low, false, WriteLocal).with_timeout(600),
-
     // —— PtcExecutor（1）——
     // 子调用被白名单限死在只读面，但脚本本体是可编程执行 + trace 落库。
     d("ptc_run", Medium, false, WriteLocal).with_timeout(600),
@@ -743,9 +685,10 @@ pub fn is_headless_readonly(tool_name: &str) -> bool {
 
 /// 该工具是否允许在 PTC 脚本内调用（接受 `builtin-` 前缀或裸名）。
 ///
-/// 与 `ptc_runtime::PTC_ALLOWED_TOOLS` 的集合等价性由本模块测试锁定。
-// TODO(G01-e): 消费方切换——ptc_runtime.rs 的 PTC_ALLOWED_TOOLS /
-// is_ptc_allowed_tool / PTC_ALLOWED_TOOL_SET 改由本标志位驱动，删除手写清单。
+/// G01-e 起为 PTC 只读面准入的权威实现（`ptc_runtime::is_ptc_allowed_tool`
+/// 委托本函数）；与历史手写清单的集合等价性由本模块
+/// `ptc_flag_matches_ptc_whitelist` 与 ptc_runtime 侧对照测试双重锁定。
+/// 受控写面（`PTC_WRITE_TOOLS`）是 ptc_runtime 的策略常量，不在本表。
 pub fn is_ptc_allowed(tool_name: &str) -> bool {
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
     lookup(stripped).is_some_and(|d| d.ptc_allowed)
@@ -789,17 +732,18 @@ mod tests {
     use crate::chat_v2::tools::skill_workshop_executor::SkillWorkshopExecutor;
     use crate::chat_v2::tools::{
         AcademicSearchExecutor, AskUserExecutor, AttachmentStageExecutor, AttachmentToolExecutor,
-        AttemptCompletionExecutor, AutomationExecutor, BrowserToolExecutor, BuiltinResourceExecutor,
-        BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, CodeNavigationExecutor,
-        ConnectorToolExecutor, CoordinatorSleepExecutor, CustomAgentExecutor,
-        DataGovernanceToolExecutor, DocumentProcessingExecutor, DocxToolExecutor, DstuToolExecutor,
-        EssayGradingExecutor, FetchExecutor, FileManagerExecutor, GeneralToolExecutor,
-        GenerativeUiExecutor, GitToolExecutor, GoalExecutor, ImageGenerationExecutor,
-        IndexWebpageToolExecutor, InsightRecallExecutor, KnowledgeExecutor, LearningOverviewExecutor,
-        LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
-        LspNavigationExecutor, McpManageExecutor, McpProposeExecutor, MediaToolExecutor,
-        MemoryToolExecutor, OfficeFidelityExecutor, PaperSaveExecutor, PptxToolExecutor,
-        PtcExecutor, ReviewToolExecutor, SessionToolExecutor, SettingsModelsToolExecutor,
+        AttemptCompletionExecutor, AutomationExecutor, BrowserToolExecutor,
+        BuiltinResourceExecutor, BuiltinRetrievalExecutor, CanvasToolExecutor,
+        ChatAnkiToolExecutor, CodeNavigationExecutor, ConnectorToolExecutor,
+        CoordinatorSleepExecutor, CustomAgentExecutor, DataGovernanceToolExecutor,
+        DocumentProcessingExecutor, DocxToolExecutor, DstuToolExecutor, EssayGradingExecutor,
+        FetchExecutor, FileManagerExecutor, GeneralToolExecutor, GenerativeUiExecutor,
+        GitToolExecutor, GoalExecutor, ImageGenerationExecutor, IndexWebpageToolExecutor,
+        InsightRecallExecutor, KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor,
+        LocalShellExecuteExecutor, LocalShellPreflightExecutor, LspNavigationExecutor,
+        McpManageExecutor, McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor,
+        OfficeFidelityExecutor, PaperSaveExecutor, PptxToolExecutor, PtcExecutor,
+        ReviewToolExecutor, SessionToolExecutor, SettingsModelsToolExecutor,
         SkillLifecycleExecutor, SkillsExecutor, SubagentExecutor, TaskAuditExecutor,
         TemplateDesignerExecutor, TextbookPdfToolExecutor, TodoListExecutor, ToolExecutor,
         ToolPackExecutor, TranslationToolExecutor, UserTodoExecutor, WorkbenchToolExecutor,
@@ -1118,8 +1062,7 @@ mod tests {
         for descriptor in BUILTIN_DESCRIPTORS {
             if descriptor.headless_allowed {
                 assert_eq!(
-                    descriptor.sensitivity,
-                    Low,
+                    descriptor.sensitivity, Low,
                     "headless-allowed tool {} must be Low sensitivity",
                     descriptor.name
                 );
@@ -1153,8 +1096,7 @@ mod tests {
         for descriptor in BUILTIN_DESCRIPTORS {
             if descriptor.ptc_allowed {
                 assert_eq!(
-                    descriptor.sensitivity,
-                    Low,
+                    descriptor.sensitivity, Low,
                     "ptc-allowed tool {} must be Low sensitivity",
                     descriptor.name
                 );

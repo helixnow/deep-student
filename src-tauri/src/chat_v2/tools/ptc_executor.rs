@@ -153,20 +153,17 @@ struct PtcSubContextTemplate {
     vfs_lance_store: Option<Arc<crate::vfs::lance_store::VfsLanceStore>>,
     llm_manager: Option<Arc<crate::llm_manager::LLMManager>>,
     chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
-    question_bank_service:
-        Option<Arc<crate::question_bank_service::QuestionBankService>>,
+    question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     skill_contents: Option<std::collections::HashMap<String, String>>,
     skill_embedded_tools:
         Option<std::collections::HashMap<String, Vec<crate::chat_v2::types::McpToolSchema>>>,
     skill_admission_errors: Option<std::collections::HashMap<String, String>>,
     skill_package_roots: Option<std::collections::HashMap<String, String>>,
     execution_allowed_tools: Option<Vec<String>>,
-    admitted_tool_dispatcher:
-        Option<Arc<dyn super::executor::AdmittedToolDispatcher>>,
+    admitted_tool_dispatcher: Option<Arc<dyn super::executor::AdmittedToolDispatcher>>,
     rag_top_k: Option<u32>,
     rag_enable_reranking: Option<bool>,
-    pdf_processing_service:
-        Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
+    pdf_processing_service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
     memory_enabled: bool,
     rag_enabled: bool,
     web_search_enabled: bool,
@@ -322,7 +319,10 @@ fn ptc_result_handle(materialized: &MaterializedResult) -> Result<TaskObjectHand
     handle.media_type = Some("application/json".to_string());
     handle.size_bytes = Some(materialized.size_bytes);
     handle.sha256 = Some(materialized.sha256.clone());
-    handle.locator = Some(ManagedLocator::new("artifacts", &materialized.relative_path)?);
+    handle.locator = Some(ManagedLocator::new(
+        "artifacts",
+        &materialized.relative_path,
+    )?);
     handle.capabilities = ObjectCapabilities {
         readable: true,
         materializable: true,
@@ -341,12 +341,9 @@ fn ptc_result_handle(materialized: &MaterializedResult) -> Result<TaskObjectHand
 /// （headless/测试）返回 None。
 fn ptc_artifact_root(ctx: &ExecutionContext, create: bool) -> Option<PathBuf> {
     let window = ctx.tauri_window.as_ref()?;
-    let root = crate::chat_v2::runtime_roots::artifact_root(
-        window.app_handle(),
-        &ctx.session_id,
-        create,
-    )
-    .ok()?;
+    let root =
+        crate::chat_v2::runtime_roots::artifact_root(window.app_handle(), &ctx.session_id, create)
+            .ok()?;
     Some(root.path)
 }
 
@@ -362,6 +359,35 @@ fn preview_of(serialized: &str) -> String {
         .collect::<String>()
 }
 
+/// 从 trace 汇总本次脚本的副作用写（G05-P3）：写工具子调用 + object_write。
+/// 供 G07 验收（SideEffectsSettled）与人工排障消费；无写时字段缺席。
+fn writes_summary_of(trace: &[PtcTraceEntry]) -> Option<Value> {
+    let writes: Vec<Value> = trace
+        .iter()
+        .filter(|entry| entry.side_effect)
+        .map(|entry| {
+            let mut item = json!({
+                "seq": entry.seq,
+                "tool": entry.tool,
+                "ok": entry.ok,
+                "args_hash": entry.args_hash,
+            });
+            if let Some(locator) = &entry.locator {
+                item["locator"] = locator.clone();
+            }
+            if let Some(sha) = &entry.written_sha256 {
+                item["written_sha256"] = json!(sha);
+            }
+            item
+        })
+        .collect();
+    if writes.is_empty() {
+        None
+    } else {
+        Some(json!(writes))
+    }
+}
+
 /// 组装成功输出：小结果内联，大结果物化（失败则退化截断预览）。
 fn build_success_output(
     ctx: &ExecutionContext,
@@ -373,12 +399,16 @@ fn build_success_output(
 ) -> Value {
     let serialized = serde_json::to_string_pretty(&value).unwrap_or_default();
     let result_chars = serialized.chars().count();
+    let writes_summary = writes_summary_of(&trace);
     let mut output = json!({
         "status": "ok",
         "calls_used": calls_used,
         "duration_ms": duration_ms,
         "trace": trace,
     });
+    if let Some(writes) = writes_summary {
+        output["writes_summary"] = writes;
+    }
     if result_chars <= INLINE_RESULT_MAX_CHARS {
         output["result"] = value;
         output["result_materialized"] = json!(false);
@@ -423,13 +453,18 @@ fn build_failure_output(
     calls_used: usize,
     duration_ms: u64,
 ) -> Value {
-    json!({
+    let writes_summary = writes_summary_of(&trace);
+    let mut output = json!({
         "status": status,
         "error": error,
         "calls_used": calls_used,
         "duration_ms": duration_ms,
         "trace": trace,
-    })
+    });
+    if let Some(writes) = writes_summary {
+        output["writes_summary"] = writes;
+    }
+    output
 }
 
 // ============================================================================
@@ -652,14 +687,8 @@ impl ToolExecutor for PtcExecutor {
         }
         match script_result {
             Some(Ok(value)) => {
-                let output = build_success_output(
-                    ctx,
-                    &call.id,
-                    value,
-                    trace,
-                    calls_used,
-                    duration_ms,
-                );
+                let output =
+                    build_success_output(ctx, &call.id, value, trace, calls_used, duration_ms);
                 ctx.emit_tool_call_end(Some(json!({
                     "result": output,
                     "durationMs": duration_ms,
@@ -800,7 +829,11 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
-        ToolCall::new("ptc-1".to_string(), "builtin-ptc_run".to_string(), arguments)
+        ToolCall::new(
+            "ptc-1".to_string(),
+            "builtin-ptc_run".to_string(),
+            arguments,
+        )
     }
 
     // —— 纯函数 ——
@@ -820,9 +853,45 @@ mod tests {
         assert_eq!(parsed.max_calls, MAX_CALLS_LIMIT);
         assert_eq!(parsed.timeout_secs, MAX_TIMEOUT_SECS);
 
-        let parsed = parse_ptc_args(&json!({"script": "1", "max_calls": 7, "timeout_secs": 5})).unwrap();
+        let parsed =
+            parse_ptc_args(&json!({"script": "1", "max_calls": 7, "timeout_secs": 5})).unwrap();
         assert_eq!(parsed.max_calls, 7);
         assert_eq!(parsed.timeout_secs, 5);
+    }
+
+    #[test]
+    fn writes_summary_includes_only_side_effects() {
+        let trace = vec![
+            PtcTraceEntry {
+                seq: 0,
+                tool: "builtin-rag_search".to_string(),
+                args_hash: "sha256:read".to_string(),
+                duration_ms: 1,
+                result_bytes: 10,
+                ok: true,
+                side_effect: false,
+                locator: None,
+                written_sha256: None,
+                error: None,
+            },
+            PtcTraceEntry {
+                seq: 1,
+                tool: "object_write".to_string(),
+                args_hash: "sha256:write".to_string(),
+                duration_ms: 2,
+                result_bytes: 4,
+                ok: true,
+                side_effect: true,
+                locator: Some(json!({"root_id": "artifacts", "relative_path": "out.txt"})),
+                written_sha256: Some("abc".to_string()),
+                error: None,
+            },
+        ];
+        let summary = writes_summary_of(&trace).expect("one side effect");
+        assert_eq!(summary.as_array().unwrap().len(), 1);
+        assert_eq!(summary[0]["tool"], json!("object_write"));
+        assert_eq!(summary[0]["written_sha256"], json!("abc"));
+        assert!(writes_summary_of(&trace[..1]).is_none());
     }
 
     #[test]
@@ -869,7 +938,10 @@ mod tests {
         assert!(executor.can_handle("builtin-ptc_run"));
         assert!(executor.can_handle("ptc_run"));
         assert!(!executor.can_handle("builtin-tool_pack"));
-        assert_eq!(executor.sensitivity_level("builtin-ptc_run"), ToolSensitivity::Medium);
+        assert_eq!(
+            executor.sensitivity_level("builtin-ptc_run"),
+            ToolSensitivity::Medium
+        );
         assert_eq!(executor.name(), "PtcExecutor");
         assert_eq!(executor.result_char_budget("builtin-ptc_run"), None);
     }
@@ -933,7 +1005,10 @@ res = call("builtin-rag_search", {"query": "q"})
         assert_eq!(trace.len(), 1);
         assert_eq!(trace[0]["tool"], json!("builtin-rag_search"));
         assert_eq!(trace[0]["ok"], json!(true));
-        assert!(trace[0]["args_hash"].as_str().unwrap().starts_with("sha256:"));
+        assert!(trace[0]["args_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:"));
     }
 
     #[tokio::test]
@@ -942,7 +1017,10 @@ res = call("builtin-rag_search", {"query": "q"})
         let ctx = test_context(Some(StubMode::Echo));
         let result = executor
             .execute(
-                &ptc_call(r#"call("builtin-local_shell_execute", {"command": "ls"})"#, json!({})),
+                &ptc_call(
+                    r#"call("builtin-local_shell_execute", {"command": "ls"})"#,
+                    json!({}),
+                ),
                 &ctx,
             )
             .await
@@ -986,10 +1064,17 @@ res = call("builtin-rag_search", {})
             .execute(&ptc_call(script, json!({})), &ctx)
             .await
             .expect("execute");
-        assert!(result.success, "script itself completed: {:?}", result.error);
+        assert!(
+            result.success,
+            "script itself completed: {:?}",
+            result.error
+        );
         let value = &result.output["result"];
         assert_eq!(value["ok"], json!(false));
-        assert!(value["error"].as_str().unwrap().contains("AUTHORITY_BLOCKED"));
+        assert!(value["error"]
+            .as_str()
+            .unwrap()
+            .contains("AUTHORITY_BLOCKED"));
         let trace = result.output["trace"].as_array().unwrap();
         assert_eq!(trace.len(), 1);
         assert_eq!(trace[0]["ok"], json!(false));
@@ -1002,7 +1087,10 @@ res = call("builtin-rag_search", {})
         let started = Instant::now();
         let result = executor
             .execute(
-                &ptc_call(r#"call("builtin-rag_search", {})"#, json!({"timeout_secs": 1})),
+                &ptc_call(
+                    r#"call("builtin-rag_search", {})"#,
+                    json!({"timeout_secs": 1}),
+                ),
                 &ctx,
             )
             .await
