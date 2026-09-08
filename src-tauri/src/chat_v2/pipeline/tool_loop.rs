@@ -2278,6 +2278,16 @@ impl ChatV2Pipeline {
                         self.main_db.as_ref(),
                     );
 
+                    // 🆕 G09-P2：G07 终态 outcome 回流技能账目——verdict 映射后
+                    // 收敛该 run 已存在的 unknown 账目行（VerifiedComplete/
+                    // CompleteWithExceptions→success，Partial/Blocked→failed，
+                    // OutcomeUnknown 不标记）。本轮新账目行要到阶段 6
+                    // save_results 才落账，由轮末 skill_usage 按同一映射补标
+                    // （verdict 随完成块 toolOutput.finalization 流动）；
+                    // retry 复用 run_id 的旧行由轮末纠错先行收敛，不会在此
+                    // 误标。fire-and-forget，绝不阻塞主循环终止路径。
+                    crate::chat_v2::skill_usage::on_task_finalized(&self.db, ctx);
+
                     // 收集当前轮次的块（无需再次调用 LLM）
                     ctx.collect_streamed_text_segments(
                         adapter.get_text_segments(),
