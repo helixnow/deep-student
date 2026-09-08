@@ -587,6 +587,34 @@ pub const V20260909_SKILL_USAGE_CANDIDATES: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260910: 撤权 epoch 落库（G02-P2）+ 预算快照落库（G08-P2）
+///
+/// `revocation_epochs`：撤权 epoch 持久轴，(kind, task_id) 复合主键——
+/// ('global','') 一行 + ('task', child_task_id) 每任务一行。
+/// `budget_snapshots`：任务树根账本的 limits/usage 快照（root_id 主键），
+/// 启动恢复防"重启/重试重置累计预算"。
+pub const V20260910_REVOCATION_EPOCHS_AND_BUDGET: MigrationDef = MigrationDef::new(
+    20260910,
+    "revocation_epochs_and_budget",
+    include_str!("../../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"),
+)
+.with_expected_tables(&["revocation_epochs", "budget_snapshots"])
+.with_expected_columns(&[
+    ("revocation_epochs", "kind"),
+    ("revocation_epochs", "task_id"),
+    ("revocation_epochs", "epoch"),
+    ("revocation_epochs", "updated_at"),
+    ("budget_snapshots", "root_id"),
+    ("budget_snapshots", "limits_json"),
+    ("budget_snapshots", "usage_json"),
+    ("budget_snapshots", "updated_at"),
+])
+.with_expected_queries(&[
+    "SELECT kind, task_id, epoch, updated_at FROM revocation_epochs LIMIT 0",
+    "SELECT root_id, limits_json, usage_json, updated_at FROM budget_snapshots LIMIT 0",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -617,6 +645,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260907_CONNECTOR_OPERATIONS,
     V20260908_COMPLETION_OUTBOX,
     V20260909_SKILL_USAGE_CANDIDATES,
+    V20260910_REVOCATION_EPOCHS_AND_BUDGET,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -636,7 +665,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 28); // V20260130 ~ V20260909
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 29); // V20260130 ~ V20260910
     }
 
     #[test]
@@ -829,7 +858,7 @@ mod tests {
             20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
             20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
             20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721, 20260806,
-            20260905, 20260907, 20260908, 20260909,
+            20260905, 20260907, 20260908, 20260909, 20260910,
         ];
         let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
             .pending(0)
@@ -841,7 +870,8 @@ mod tests {
             let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
             assert_eq!(remaining.len(), expected_versions.len() - index - 1);
         }
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260909).count(), 0);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260909).count(), 1);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260910).count(), 0);
     }
 
     #[test]
@@ -850,5 +880,75 @@ mod tests {
             .get(20260510)
             .expect("V20260510 should exist");
         assert_eq!(migration.name, "add_compaction");
+    }
+
+    /// V20260910（G02-P2/G08-P2）：两张新表幂等可重放，基本读写与
+    /// (kind, task_id) 复合主键语义（global 单行 + task 每任务一行）成立。
+    #[test]
+    fn test_v20260910_revocation_epochs_and_budget_idempotent() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(V20260910_REVOCATION_EPOCHS_AND_BUDGET.sql)
+            .unwrap();
+        conn.execute_batch(V20260910_REVOCATION_EPOCHS_AND_BUDGET.sql)
+            .expect("migration is marked idempotent and must be replayable");
+
+        // global 恰好一行（task_id='' 占位）；task 行按 task_id 区分共存
+        conn.execute(
+            "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+             VALUES ('global', '', 1, 't0')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+             VALUES ('task', 'child-a', 2, 't0'), ('task', 'child-b', 5, 't0')",
+            [],
+        )
+        .unwrap();
+        // 复合主键：同 (kind, task_id) 冲突
+        assert!(conn
+            .execute(
+                "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+                 VALUES ('global', '', 9, 't1')",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+                 VALUES ('task', 'child-a', 9, 't1')",
+                [],
+            )
+            .is_err());
+        // kind CHECK 约束
+        assert!(conn
+            .execute(
+                "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+                 VALUES ('bogus', '', 1, 't1')",
+                [],
+            )
+            .is_err());
+        let task_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM revocation_epochs WHERE kind = 'task'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_rows, 2);
+
+        conn.execute(
+            "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES ('root-1', '{}', '{}', 't0')",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+                 VALUES ('root-1', '{}', '{}', 't1')",
+                [],
+            )
+            .is_err());
     }
 }

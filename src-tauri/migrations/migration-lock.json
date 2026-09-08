@@ -250,6 +250,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260910,
+      "name": "revocation_epochs_and_budget",
+      "path": "chat_v2/V20260910__revocation_epochs_and_budget.sql",
+      "sha256": "304b7236d69ba82de2009317c3a227742cf0ddbdfdb803c79a5de22ec34d36b3",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
