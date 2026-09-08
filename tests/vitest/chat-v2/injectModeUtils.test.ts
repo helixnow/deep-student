@@ -52,13 +52,17 @@ describe('downgradeInjectModesForNonMultimodal', () => {
 });
 
 describe('areAttachmentInjectModesReady', () => {
-  it('treats ready image attachment without status as image-ready by default', () => {
+  it('requires backend readyModes even for a ready attachment without status', () => {
+    // e8247874「readiness 驱动注入模式」：前端不再乐观补 image，
+    // attachment.status 不参与判定，一律以后端报告的 readyModes 为准
+    // （空列表不可伪装为 image/text，避免「UI 放行但后端压缩未完成」竞态）。
     const attachment = createAttachment({
       injectModes: { image: ['image'] },
       processingStatus: undefined,
     });
 
-    expect(areAttachmentInjectModesReady(attachment)).toBe(true);
+    expect(areAttachmentInjectModesReady(attachment)).toBe(false);
+    expect(getMissingInjectModesForAttachment(attachment)).toEqual(['image']);
   });
 
   it('detects OCR mode as missing when ready image attachment has no OCR status', () => {

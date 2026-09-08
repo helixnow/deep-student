@@ -136,7 +136,9 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 请有意识地上调并在 docs/dev/optimization0824/progress/R4-WI-10-full.md 记录原因。
 // ============================================================================
 
-const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 6_800;
+// 2026-09-09：qbank-tools 新增 2 个 AI 出题工具后实测 6900，有意识上调至 7000
+// （先精简一轮 7025→6900，剩余属合理功能增长）；记录见 R4-WI-10-full.md 末节。
+const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_000;
 const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
 const MAX_TOTAL_TOKENS = 75_500;
 

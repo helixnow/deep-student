@@ -222,3 +222,24 @@ cd src-tauri && cargo test --lib chat_v2::prompt_builder
   `rolePacksContract`、`taskGovernanceToolsContract`、
   `toolPackSkillContract`、`workspaceToolsContract`
 - 本报告
+
+---
+
+## 后续上调记录
+
+### 2026-09-09：单组 schema 上限 6800 → 7000（AI 出题工具）
+
+**触发**：`qbank-tools` 组新增 2 个工具（`qbank_generate_questions`、`qbank_get_generation_task`），
+schema tokens 6900（chars/4 估算），超出 6800 上限。
+
+**处理**：
+1. 先按本报告建议精简——新增工具的 description 与字段描述各砍一轮（7025 → 6900）；
+2. 剩余 100 tokens 属于**合理功能增长**（用户明确需求的「对话内 AI 出题 + 后台任务查询」能力），
+   继续精简会损害工具可用性（题型/难度枚举、参考资料参数是模型正确调用的关键），
+   故有意识上调单组上限至 **7000**（+2.9%，仍低于 R1 文档记录的 9500 初始上限）。
+
+**影响面**：`tests/vitest/chat-v2/token-budget.test.ts` 的 `MAX_SINGLE_GROUP_SCHEMA_TOKENS`；
+`MAX_TOTAL_SCHEMA_TOKENS`（51500）与 `MAX_TOTAL_TOKENS`（75500）未变，实测仍在余量内。
+
+**后续建议**：若 qbank-tools 继续增长，优先按 R1-WI-10 §观察-1 的拆分方案
+（核心组 + 扩展组）而不是继续上调阈值。
