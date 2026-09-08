@@ -22,11 +22,13 @@
 //!   逐字节一致，见 executor_registry 等价性测试的 `builtin-builtin-` 用例）。
 //!
 //! ## 消费方迁移状态
-//! - 已迁移：`executor_registry::get_tool_timeout_secs`（本轮，行为等价）。
-//! - 待迁移（G01-e）：`headless.rs::headless_allowed_tools` /
-//!   `ptc_runtime.rs::PTC_ALLOWED_TOOLS` / `grants.rs` 的 ToolScope 校验。
-//!   本轮已提供 [`is_headless_readonly`] / [`is_ptc_allowed`] 查询函数与
-//!   等价性测试，切换时删除旧常量即可。
+//! - 已迁移：`executor_registry::get_tool_timeout_secs`（G01-c，行为等价）；
+//!   `headless.rs` 只读白名单（G01-e：`headless_allowed_tools` /
+//!   `is_headless_allowed_tool` 改由 `headless_allowed` 标志位驱动，历史手写
+//!   清单保留为 headless 侧 `#[cfg(test)]` 对照 oracle）。
+//! - 待迁移（G01-e 后续小步）：`ptc_runtime.rs::PTC_ALLOWED_TOOLS` /
+//!   `grants.rs` 的 ToolScope 校验。查询函数 [`is_ptc_allowed`] /
+//!   [`grants_scope_hint`] 与等价性测试已就绪，切换时删除旧常量即可。
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -80,8 +82,9 @@ pub struct ToolDescriptor {
     pub timeout_secs: Option<u64>,
     /// grants ToolScope 映射提示。
     pub grants_scope_hint: GrantsScopeHint,
-    /// 是否属于 headless 白名单（与 `headless::headless_allowed_tools()` 对齐，
-    /// 等价性由同步测试锁定）。
+    /// 是否属于 headless 白名单。G01-e 起为权威来源：
+    /// `headless::headless_allowed_tools()` 由本标志派生，与历史手写清单的
+    /// 等价性由 headless 侧对照测试与本模块同步测试双重锁定。
     pub headless_allowed: bool,
     /// 是否属于 PTC 脚本可调用白名单（与 `ptc_runtime::PTC_ALLOWED_TOOLS` 对齐，
     /// 等价性由同步测试锁定）。
@@ -727,10 +730,9 @@ pub fn lookup(name: &str) -> Option<&'static ToolDescriptor> {
 
 /// 该工具是否属于 headless 只读白名单（接受 `builtin-` 前缀或裸名）。
 ///
-/// 与 `headless::headless_allowed_tools()` 的集合等价性由本模块测试锁定。
-// TODO(G01-e): 消费方切换——headless.rs 的 headless_allowed_tools() /
-// is_headless_allowed_tool / HEADLESS_ALLOWED_TOOL_SET 改由本标志位驱动，
-// 删除手写清单。
+/// G01-e 起为 headless 准入判定的权威实现（`headless::is_headless_allowed_tool`
+/// 委托本函数）；与历史手写清单的集合等价性由本模块
+/// `headless_flag_matches_headless_whitelist` 与 headless 侧对照测试双重锁定。
 pub fn is_headless_readonly(tool_name: &str) -> bool {
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
     lookup(stripped).is_some_and(|d| d.headless_allowed)
@@ -767,7 +769,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::chat_v2::automations::trusted_profile_supported_extra_tools;
-    use crate::chat_v2::headless::{headless_allowed_tools, HEADLESS_BLOCKED_TOOLS};
+    use crate::chat_v2::headless::{HEADLESS_BLOCKED_TOOLS, LEGACY_HEADLESS_ALLOWED_TOOLS};
     use crate::chat_v2::skill_market_client::{
         SkillMarketInstallToolExecutor, SkillMarketReadToolExecutor,
     };
@@ -963,10 +965,13 @@ mod tests {
     ];
 
     /// 独立维护的安全清单并集（注册表外的第二信源，缺 descriptor 立即红灯）。
+    ///
+    /// headless 口径使用 headless.rs 保留的 `#[cfg(test)]` 手写清单 oracle
+    /// （G01-e 后生产 `headless_allowed_tools()` 由注册表派生，不再独立）。
     fn independently_known_tool_names() -> HashSet<String> {
         let mut set = HashSet::new();
-        for name in headless_allowed_tools() {
-            set.insert(name);
+        for name in LEGACY_HEADLESS_ALLOWED_TOOLS {
+            set.insert((*name).to_string());
         }
         for (name, _reason) in HEADLESS_BLOCKED_TOOLS {
             // `mcp_*` 是通配文档口径，不是具体工具名
@@ -1077,7 +1082,12 @@ mod tests {
         }
     }
 
-    /// headless 标志位集合 == headless 白名单（裸名集合比较）。
+    /// headless 标志位集合 == headless 手写白名单 oracle（裸名集合比较）。
+    ///
+    /// 对照口径：G01-e 后 `headless::headless_allowed_tools()` 本身由本标志位
+    /// 派生（用它对照即成同义反复），因此这里对照 headless.rs 保留的
+    /// `#[cfg(test)] LEGACY_HEADLESS_ALLOWED_TOOLS`——第二信源，任一侧漂移
+    /// 都会红灯。
     #[test]
     fn headless_flag_matches_headless_whitelist() {
         let flagged: HashSet<&str> = BUILTIN_DESCRIPTORS
@@ -1085,12 +1095,12 @@ mod tests {
             .filter(|d| d.headless_allowed)
             .map(|d| d.name)
             .collect();
-        let whitelisted: HashSet<String> = headless_allowed_tools()
-            .into_iter()
+        let whitelisted: HashSet<String> = LEGACY_HEADLESS_ALLOWED_TOOLS
+            .iter()
             .map(|name| {
                 name.strip_prefix("builtin-")
                     .map(str::to_string)
-                    .unwrap_or(name)
+                    .unwrap_or_else(|| (*name).to_string())
             })
             .collect();
         let flagged_strings: HashSet<String> = flagged.iter().map(|s| s.to_string()).collect();
