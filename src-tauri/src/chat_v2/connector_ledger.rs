@@ -480,6 +480,57 @@ pub fn reconcile_on_startup(db: &Arc<ChatV2Database>) -> Result<usize, String> {
     ConnectorLedger::new(db.clone()).reconcile_submitting_on_startup()
 }
 
+/// 会话级副作用未决摘要（G07-b TaskFinalizer 的只读证据源）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSideEffectSummary {
+    /// 会话关联的 connector 操作总数（任意状态；0 = 会话无侧效痕迹）
+    pub total_operations: usize,
+    /// 未决操作（state ∈ submitting / outcome_unknown，按创建时间升序）。
+    ///
+    /// 口径：`draft` / `confirmed` 尚未向 provider 发送（预览未确认），不构成
+    /// "已发出但结果未知"，不计入未决；`committed` / `failed` 为终态。
+    pub pending: Vec<ConnectorOperation>,
+}
+
+/// 按会话查询副作用未决摘要（G07-b，只追加的查询函数）。
+///
+/// 单条 SELECT 取会话全量行后内存分拣，避免"总数 + 未决"两条查询之间的
+/// 写竞态导致二者不自洽。只读语义，供 TaskFinalizer 验收取证。
+pub fn session_side_effect_summary(
+    db: &ChatV2Database,
+    session_id: &str,
+) -> Result<SessionSideEffectSummary, String> {
+    let conn = db.get_conn().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT * FROM connector_operations \
+             WHERE session_id = ?1 ORDER BY created_at, operation_id",
+        )
+        .map_err(|e| format!("failed to prepare session side effect query: {}", e))?;
+    let rows = stmt
+        .query_map(params![session_id], ConnectorOperation::from_row)
+        .map_err(|e| format!("failed to list session connector operations: {}", e))?;
+    let mut operations = Vec::new();
+    for row in rows {
+        operations
+            .push(row.map_err(|e| format!("failed to parse connector operation: {}", e))?);
+    }
+    let pending = operations
+        .iter()
+        .filter(|op| {
+            matches!(
+                op.state,
+                ConnectorOperationState::Submitting | ConnectorOperationState::OutcomeUnknown
+            )
+        })
+        .cloned()
+        .collect();
+    Ok(SessionSideEffectSummary {
+        total_operations: operations.len(),
+        pending,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -841,5 +892,62 @@ mod tests {
         assert_eq!(row.state, ConnectorOperationState::Failed);
         assert!(row.error.as_deref().unwrap().contains("never_submitted"));
         assert_eq!(row.resolved_at.as_deref(), Some("t3"));
+    }
+
+    #[test]
+    fn g07b_session_side_effect_summary_scopes_pending_by_session() {
+        let (_dir, db) = setup_test_db();
+        let ledger = ConnectorLedger::new(db.clone());
+
+        // session-a：draft（未发送，不算未决）+ committed（终态）+ outcome_unknown（未决）
+        ledger.insert_draft(&draft_op("op-draft", "session-a")).unwrap();
+
+        ledger
+            .insert_draft(&draft_op("op-committed", "session-a"))
+            .unwrap();
+        ledger
+            .mark_confirmed("op-committed", &"a".repeat(64), "t1")
+            .unwrap();
+        ledger.mark_submitting("op-committed", "t2", "h").unwrap();
+        ledger
+            .mark_committed("op-committed", "t3", None, "{}")
+            .unwrap();
+
+        ledger
+            .insert_draft(&draft_op("op-unknown", "session-a"))
+            .unwrap();
+        ledger
+            .mark_confirmed("op-unknown", &"a".repeat(64), "t1")
+            .unwrap();
+        ledger.mark_submitting("op-unknown", "t2", "h").unwrap();
+        ledger
+            .mark_outcome_unknown("op-unknown", "transient")
+            .unwrap();
+
+        // session-b：submitting（只属于 b 的未决）
+        ledger.insert_draft(&draft_op("op-b", "session-b")).unwrap();
+        ledger.mark_confirmed("op-b", &"a".repeat(64), "t1").unwrap();
+        ledger.mark_submitting("op-b", "t2", "h").unwrap();
+
+        let summary = session_side_effect_summary(&db, "session-a").unwrap();
+        assert_eq!(summary.total_operations, 3);
+        let pending_ids: Vec<&str> = summary
+            .pending
+            .iter()
+            .map(|op| op.operation_id.as_str())
+            .collect();
+        assert_eq!(pending_ids, ["op-unknown"]);
+
+        let summary_b = session_side_effect_summary(&db, "session-b").unwrap();
+        assert_eq!(summary_b.total_operations, 1);
+        assert_eq!(summary_b.pending.len(), 1);
+        assert_eq!(
+            summary_b.pending[0].state,
+            ConnectorOperationState::Submitting
+        );
+
+        let empty = session_side_effect_summary(&db, "session-c").unwrap();
+        assert_eq!(empty.total_operations, 0);
+        assert!(empty.pending.is_empty());
     }
 }
