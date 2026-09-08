@@ -19,6 +19,7 @@ use crate::vfs::attachment_config::AttachmentConfig;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
+use crate::vfs::ocr_utils::{classify_pdf_content, PdfContentKind};
 use crate::vfs::pdf_processing_service::{PdfProcessingService, ProcessingStage};
 use crate::vfs::repos::{
     VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsIndexStateRepo, VfsMindMapRepo,
@@ -1914,7 +1915,19 @@ pub async fn vfs_upload_attachment(
         });
     }
 
-    // 返回包含处理状态的结果
+    // 返回包含处理状态与 PDF 内容分类的结果。
+    let content_kind = if is_pdf {
+        Some(
+            match classify_pdf_content(result.attachment.extracted_text.as_deref(), 100) {
+                PdfContentKind::Text => "text",
+                PdfContentKind::Scanned => "scanned",
+            }
+            .to_string(),
+        )
+    } else {
+        None
+    };
+
     Ok(VfsUploadAttachmentResult {
         source_id: result.source_id,
         resource_hash: result.resource_hash,
@@ -1923,6 +1936,7 @@ pub async fn vfs_upload_attachment(
         processing_status,
         processing_percent,
         ready_modes,
+        content_kind,
     })
 }
 

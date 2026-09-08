@@ -60,6 +60,9 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::indexing::VfsFullIndexingService;
 use crate::vfs::lance_store::VfsLanceStore;
+use crate::vfs::ocr_utils::{
+    classify_pdf_content, has_valid_ocr_pages, has_valid_text, parse_ocr_pages_json, PdfContentKind,
+};
 use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPreviewConfig};
 use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
 use crate::vfs::types::PdfPreviewJson;
@@ -705,24 +708,40 @@ impl PdfProcessingService {
         Ok(())
     }
 
-    /// 检测媒体类型
+    /// 检测媒体类型（MIME 或文件扩展名）
     fn detect_media_type(&self, file_id: &str) -> VfsResult<MediaType> {
         let conn = self.db.get_conn_safe()?;
-        let mime_type: String = conn
+        let (mime_type, file_name): (String, Option<String>) = conn
             .query_row(
-                "SELECT mime_type FROM files WHERE id = ?1",
+                "SELECT mime_type, file_name FROM files WHERE id = ?1",
                 params![file_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .map_err(|e| VfsError::Database(format!("Failed to get mime_type: {}", e)))?;
+            .map_err(|e| VfsError::Database(format!("Failed to get media metadata: {}", e)))?;
 
-        MediaType::from_mime(&mime_type).ok_or_else(|| VfsError::InvalidArgument {
-            param: "mime_type".to_string(),
-            reason: format!(
-                "Unsupported media type: {} for file: {}",
-                mime_type, file_id
-            ),
-        })
+        MediaType::from_mime(&mime_type)
+            .or_else(|| {
+                let lower_name = file_name.as_deref()?.to_lowercase();
+                if lower_name.ends_with(".pdf") {
+                    Some(MediaType::Pdf)
+                } else if [
+                    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff",
+                ]
+                .iter()
+                .any(|suffix| lower_name.ends_with(suffix))
+                {
+                    Some(MediaType::Image)
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| VfsError::InvalidArgument {
+                param: "mime_type".to_string(),
+                reason: format!(
+                    "Unsupported media type: {} for file: {}",
+                    mime_type, file_id
+                ),
+            })
     }
 
     /// PDF 流水线内部执行
@@ -735,49 +754,55 @@ impl PdfProcessingService {
     ) -> VfsResult<()> {
         // 获取文件信息
         let conn = self.db.get_conn_safe()?;
-        let (page_count, has_extracted_text, extracted_text_len, has_preview, has_ocr): (
+        let (page_count, extracted_text, has_preview, ocr_pages_json): (
             Option<i32>,
+            Option<String>,
             bool,
-            i64,
-            bool,
-            bool,
+            Option<String>,
         ) = conn
             .query_row(
                 r#"
                 SELECT page_count,
-                       extracted_text IS NOT NULL,
-                       COALESCE(LENGTH(extracted_text), 0),
+                       extracted_text,
                        preview_json IS NOT NULL,
-                       ocr_pages_json IS NOT NULL
+                       ocr_pages_json
                 FROM files WHERE id = ?1
                 "#,
                 params![file_id],
                 |row| {
                     Ok((
                         row.get(0)?,
-                        row.get::<_, i32>(1)? != 0,
-                        row.get(2)?,
-                        row.get::<_, i32>(3)? != 0,
-                        row.get::<_, i32>(4)? != 0,
+                        row.get(1)?,
+                        row.get::<_, i32>(2)? != 0,
+                        row.get(3)?,
                     ))
                 },
             )
             .map_err(|e| VfsError::Database(format!("Failed to get file info: {}", e)))?;
 
         let total_pages = page_count.unwrap_or(0) as usize;
-        let extracted_text_len = extracted_text_len.max(0) as usize;
         let ocr_config = self.load_ocr_config();
+        let extracted_text_len = extracted_text
+            .as_deref()
+            .map(|text| text.trim().chars().count())
+            .unwrap_or(0);
+        let content_kind =
+            classify_pdf_content(extracted_text.as_deref(), ocr_config.pdf_text_threshold);
+        let has_valid_ocr = ocr_pages_json
+            .as_deref()
+            .map(|json| has_valid_ocr_pages(&parse_ocr_pages_json(json), 1))
+            .unwrap_or(false);
 
         // 确定初始就绪模式
         // ★ P0 架构改造：image 模式必须等到页面压缩完成后才就绪
         let mut ready_modes: Vec<String> = vec![];
         let _issues: Vec<ProcessingIssue> = Vec::new();
         let mut issues: Vec<ProcessingIssue> = Vec::new();
-        if has_extracted_text {
+        if has_valid_text(extracted_text.as_deref(), 1) {
             ready_modes.push("text".to_string());
         }
         // 注意：不再根据 has_preview 直接添加 image，需要检查压缩状态
-        if has_ocr {
+        if has_valid_ocr {
             ready_modes.push("ocr".to_string());
         }
 
@@ -934,10 +959,9 @@ impl PdfProcessingService {
             });
         let should_run_pdf_ocr = ocr_config.enabled
             && ocr_config.ocr_scanned_pdf
-            && !current_model_multimodal
-            && extracted_text_len < ocr_config.pdf_text_threshold;
+            && matches!(content_kind, PdfContentKind::Scanned);
 
-        if start_stage <= ProcessingStage::OcrProcessing && !has_ocr && has_preview {
+        if start_stage <= ProcessingStage::OcrProcessing && !has_valid_ocr && has_preview {
             if !should_run_pdf_ocr {
                 info!(
                     "[PdfProcessingService] OCR skipped for file {}: enabled={}, ocr_scanned_pdf={}, current_model_multimodal={}, skip_reason={}, text_len={}, threshold={}",
@@ -1055,7 +1079,7 @@ impl PdfProcessingService {
                     );
                 }
             }
-        } else if !has_ocr && !has_preview {
+        } else if !has_valid_ocr && !has_preview {
             info!(
                 "[PdfProcessingService] OCR skipped: no preview available for file: {}",
                 file_id
@@ -1072,7 +1096,7 @@ impl PdfProcessingService {
         }
 
         // 如果已有 OCR，添加到就绪模式
-        if has_ocr && !ready_modes.contains(&"ocr".to_string()) {
+        if has_valid_ocr && !ready_modes.contains(&"ocr".to_string()) {
             ready_modes.push("ocr".to_string());
         }
 
@@ -3352,7 +3376,22 @@ impl PdfProcessingService {
         } else {
             0.0
         };
-        let ocr_usable = success_rate >= 0.5; // 50% 以上成功即可用
+        let ocr_usable = has_valid_ocr_pages(
+            &results
+                .iter()
+                .map(|page| {
+                    let text = page
+                        .blocks
+                        .iter()
+                        .map(|block| block.text.trim())
+                        .filter(|text| !text.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    (!text.is_empty()).then_some(text)
+                })
+                .collect::<Vec<_>>(),
+            1,
+        ) && success_rate >= 0.5;
         self.update_file_ocr(file_id, &ocr_json_str, ocr_usable)
             .await?;
 

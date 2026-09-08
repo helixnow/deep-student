@@ -176,5 +176,6 @@ pub(crate) struct VariantRetrySpec {
     pub variant_id: String,
     pub model_id: String,
     pub config_id: String,
+    pub is_multimodal: bool,
     pub meta: Option<crate::chat_v2::types::VariantMeta>,
 }

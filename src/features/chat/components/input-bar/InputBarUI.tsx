@@ -661,8 +661,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           // 否则回落到 UI 默认（PDF=['text'] / 图片=['image']），
           // 确保后端「缺省 text+image 双开」的兜底永不触发。
           const liveInjectModes = attachmentsRef.current.find(a => a.id === attachmentId)?.injectModes;
-          const explicitInjectModes = liveInjectModes
-            ?? buildDefaultInjectModes(mediaType, { multimodal: multimodalRef.current });
+          const pendingAutoModes = buildDefaultInjectModes(mediaType, { multimodal: multimodalRef.current });
+          const contentKind = uploadResult.contentKind;
+          const classifiedAutoModes = buildDefaultInjectModes(mediaType, {
+            multimodal: multimodalRef.current,
+            contentKind,
+          });
+          const pendingModesAreStillAutomatic = JSON.stringify(liveInjectModes) === JSON.stringify(pendingAutoModes);
+          const explicitInjectModes = pendingModesAreStillAutomatic
+            ? classifiedAutoModes
+            : (liveInjectModes ?? pendingAutoModes);
           const contextRef: ContextRef = {
             resourceId: result.resourceId,
             hash: result.hash,
@@ -697,12 +705,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             const stage = uploadResult.processingStatus || 'page_compression';
             const percent = uploadResult.processingPercent ?? 25;
             const VALID_MODES = new Set(['text', 'ocr', 'image']);
-            const rawModes = (uploadResult.readyModes || []).filter(m => VALID_MODES.has(m));
-            const readyModes = (rawModes.length > 0 ? rawModes : ['text']) as ('text' | 'image' | 'ocr')[];
+            const rawModes = (uploadResult.readyModes || []).filter(m => VALID_MODES.has(m)) as ('text' | 'image' | 'ocr')[];
+            const readyModes = rawModes;
             const isCompleted = stage === 'completed' || stage === 'completed_with_issues';
+            const hasUsableMode = readyModes.length > 0;
 
             onUpdateAttachment(attachmentId, {
-              status: isCompleted ? 'ready' : 'processing',
+              status: isCompleted && hasUsableMode ? 'ready' : 'processing',
               previewUrl: blobPreviewUrl,
               resourceId: result.resourceId,
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
@@ -743,9 +752,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             const VALID_IMG_MODES = new Set(['text', 'ocr', 'image']);
             const readyModes = (uploadResult.readyModes || []).filter(m => VALID_IMG_MODES.has(m)) as ('text' | 'image' | 'ocr')[];
             const isCompleted = stage === 'completed' || stage === 'completed_with_issues';
+            const hasUsableMode = readyModes.length > 0;
 
             onUpdateAttachment(attachmentId, {
-              status: isCompleted ? 'ready' : 'processing',
+              status: isCompleted && hasUsableMode ? 'ready' : 'processing',
               previewUrl: blobPreviewUrl,
               resourceId: result.resourceId,
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
@@ -1983,8 +1993,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           mediaType: isPdf ? 'pdf' : 'image',
           readyModes: status.readyModes,
         });
+        const completedAndUsable = (status.stage === 'completed' || status.stage === 'completed_with_issues')
+          && (status.readyModes?.length ?? 0) > 0;
         onUpdateAttachment(att.id, {
-          status: 'ready',
+          status: completedAndUsable ? 'ready' : 'processing',
           processingStatus: {
             stage: status.stage,
             percent: 100,

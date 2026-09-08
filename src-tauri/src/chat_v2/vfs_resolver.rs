@@ -817,18 +817,13 @@ fn resolve_pdf(
                 });
             }
 
-            // 如果没有任何内容块，回退到默认文本提取
+            // Explicit selections are authoritative. Do not silently inject a
+            // different mode when the selected content is not ready/available.
             if !content_added {
                 log::warn!(
-                    "[VfsResolver] PDF {} produced no content blocks, falling back to text extraction",
+                    "[VfsResolver] PDF {} selected modes produced no ready content",
                     vfs_ref.source_id
                 );
-                let fallback_blocks =
-                    get_pdf_text_blocks(&extracted_text, conn, blobs_dir, vfs_ref);
-                if !fallback_blocks.is_empty() {
-                    blocks.extend(fallback_blocks);
-                    let _ = content_added; // consumed in condition above
-                }
             }
 
             blocks
@@ -1655,13 +1650,14 @@ fn resolve_textbook(
     conn: &Connection,
     blobs_dir: &Path,
     vfs_ref: &VfsResourceRef,
-    _is_multimodal: bool,
+    is_multimodal: bool,
 ) -> Vec<ContentBlock> {
     let pdf_modes = vfs_ref
         .inject_modes
         .as_ref()
         .and_then(|modes| modes.pdf.as_ref());
-    let (include_text, include_ocr, include_image, _) = resolve_pdf_inject_modes(pdf_modes, true);
+    let (include_text, include_ocr, include_image, _) =
+        resolve_pdf_inject_modes(pdf_modes, is_multimodal);
     let sql = "SELECT file_name, ocr_pages_json, extracted_text, preview_json FROM files WHERE id = ?1 OR resource_id = ?1 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END LIMIT 1";
     match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
         Ok((
@@ -2898,18 +2894,14 @@ mod tests {
     }
 
     #[test]
-    fn test_default_pdf_mode_keeps_text_and_images_for_every_model() {
+    fn test_default_pdf_mode_is_text_only() {
         let (t, o, i, downgraded) = resolve_pdf_inject_modes(None, true);
-        assert!(t && i);
-        assert!(!o);
-        assert!(!downgraded);
+        assert!(t);
+        assert!(!o && !i && !downgraded);
 
-        // ★ P1（2026-09-07）：缺省（text+image 双开）在非多模态下 image → ocr
         let (t2, o2, i2, downgraded2) = resolve_pdf_inject_modes(None, false);
         assert!(t2);
-        assert!(o2);
-        assert!(!i2);
-        assert!(downgraded2);
+        assert!(!o2 && !i2 && !downgraded2);
     }
 
     #[test]
