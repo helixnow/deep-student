@@ -30,15 +30,32 @@ permissions:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    # 钉 22.04：ubuntu-latest(24.04) 长编译会把 runner agent 一起 OOM 杀掉
+    # （exit 143 + "runner has received a shutdown signal"）；与 ci.yml /
+    # migration-nightly.yml 的迁移门禁保持同一稳定镜像和缓存名空间。
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: 0
+      # 降低巨型测试二进制并行链接峰值，避免 OOM killer 终止 runner agent。
+      CARGO_BUILD_JOBS: '3'
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
+      # 与 ci.yml rust-test-build 的 R07 缓解一致：链接高峰先落 swap，
+      # 避免 16GB runner 在 release 长编译中被整体回收。
+      - name: Expand swap to survive linker memory peaks
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h /mnt
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -85,7 +102,10 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
-          key: migration-release-gate
+          # key 前缀随钉版镜像走；shared-key 与 ci.yml / migration-nightly.yml
+          # 的迁移门禁共享 tests 缓存，避免 release 每次从零编译完整依赖图。
+          key: ubuntu-22.04
+          shared-key: tests
 
       # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）。
       # fail-closed 语义不受影响：缓存未命中/恢复失败时 action 内部
