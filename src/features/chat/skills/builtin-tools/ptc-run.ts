@@ -1,5 +1,5 @@
 /**
- * PTC 程序化工具组合技能（G05-P1）
+ * PTC 程序化工具组合技能（G05-P1/P2）
  *
  * 允许 AI agent 提交一段 Starlark 脚本，在脚本内通过 `call(tool, args)`
  * 串行组合多个只读内置工具调用（循环 / 分支 / 聚合中间结果），只把最终
@@ -8,6 +8,10 @@
  * 每个 `call` 都重新经过中央准入（kill-switch / 白名单 / 审批），工具面
  * 为只读白名单（检索 / 记忆读取 / 资源读取 / 题库 / 复习统计等），
  * 写工具、shell、connector、子代理一律 fail-closed 拒绝。
+ *
+ * G05-P2 新增宿主函数 `object_read(handle_or_locator, offset, limit)`：
+ * 分页读回已物化到会话 artifacts 根的 TaskObject 内容（大 return 值不再
+ * 只有 2KB 预览），与 `call()` 共享 max_calls 预算与 trace。
  *
  * @see src-tauri/src/chat_v2/tools/ptc_executor.rs
  * @see src-tauri/src/chat_v2/tools/ptc_runtime.rs
@@ -44,6 +48,35 @@ export const ptcRunSkill: SkillDefinition = {
 - 可用标准库：\`json.encode\` / \`json.decode\`、\`struct()\`，以及 Starlark 内建函数（len/range/enumerate/sorted/str 方法等）。**没有** print / load / 文件与网络 IO。
 - 策略违规（调用白名单外工具、超过 max_calls、参数非法）会直接中断脚本报错——请在脚本内只使用白名单工具。
 
+## object_read：分页读回物化结果
+
+\`call()\` 输出或本工具返回值里的物化对象（\`object_handle\`，含 \`locator\` 与 \`capabilities\`）可分页读回完整内容：
+
+\`object_read(handle_or_locator, offset=0, limit=8192)\` → \`{content, encoding, offset, limit, next_offset, total_size, eof, sha256}\`
+
+- 第一个参数：\`object_handle\` dict（要求 \`capabilities.readable\` 为 True，否则结构化报错），或显式 \`{"root_id": "artifacts", "relative_path": "ptc/xxx.json"}\`（camelCase 键同受支持）。
+- \`offset\`/\`limit\` 是**字节**语义；\`limit\` 上限 32KB/页（超出自动收敛）。
+- 文本页 \`encoding == "utf-8"\`：按 UTF-8 字符边界截断，绝不切半字符；翻页一律用上一页的 \`next_offset\`，逐页拼接即为原文。
+- 二进制页 \`encoding == "base64"\`：每页独立 base64，需逐页解码后再拼接字节。
+- \`sha256\` 是整文件字节指纹：拼完用 \`sha256\` 校验完整性；\`eof == True\` 或 \`offset >= total_size\` 时终止循环。
+- \`object_read\` 是宿主函数不是工具（不占工具白名单），但**与 call() 共享 max_calls 预算**——分页读取记得把预算算进去。
+
+\`\`\`python
+# 读回上一段 ptc_run 物化的大结果（模型从返回值拿到 object_handle）
+locator = {"root_id": "artifacts", "relative_path": "ptc/ptc-b123-1725750000000.json"}
+chunks = []
+offset = 0
+sha = ""
+for _i in range(50):
+    page = object_read(locator, offset=offset, limit=8192)
+    chunks.append(page["content"])
+    offset = page["next_offset"]
+    sha = page["sha256"]
+    if page["eof"]:
+        break
+{"full_text": "".join(chunks), "sha256": sha}
+\`\`\`
+
 ## 示例：多源检索后合并去重
 
 \`\`\`python
@@ -66,10 +99,10 @@ for kw in ["RAG 评估指标", "retrieval augmented generation evaluation"]:
 
 ## 限制
 
-- max_calls：默认 50，上限 200（超顶中断脚本）。
+- max_calls：默认 50，上限 200（超顶中断脚本；call() 与 object_read() 同账本计数）。
 - timeout_secs：默认 120 秒，上限 600 秒（wall-clock）。
 - 脚本大小上限 64KB。
-- 返回值 > 4KB 自动物化为会话 artifacts 文件，只返回 object_handle + 前 2KB 预览（分页回读能力在后续版本提供）。
+- 返回值 > 4KB 自动物化为会话 artifacts 文件，返回 object_handle + 前 2KB 预览；在后续 ptc_run 脚本里用 object_read 分页读回全文（见上文）。
 
 ## 结果
 
@@ -98,7 +131,7 @@ for kw in ["RAG 评估指标", "retrieval augmented generation evaluation"]:
           script: {
             type: 'string',
             description:
-              'Starlark script source. The value of the last expression is returned. Use call(tool, args) to invoke allowlisted read-only tools.',
+              'Starlark script source. The value of the last expression is returned. Use call(tool, args) to invoke allowlisted read-only tools, and object_read(handle_or_locator, offset, limit) to page back materialized task objects.',
             maxLength: 65536,
           },
           max_calls: {

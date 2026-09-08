@@ -16,7 +16,8 @@
 //! - return 值 > [`INLINE_RESULT_MAX_CHARS`] 字符自动物化到会话 artifacts 根
 //!   （`ptc/<name>.json`，tmp+rename 原子写），模型只收 `object_handle` +
 //!   前 [`RESULT_PREVIEW_CHARS`] 字符预览；无窗口（headless/测试）时退化为
-//!   截断预览内联。
+//!   截断预览内联。脚本内经 `object_read(handle_or_locator, offset, limit)`
+//!   分页回读物化内容（G05-P2，宿主函数非工具，与 `call()` 同预算账本）。
 //!
 //! ## 结果 JSON
 //! `status` ∈ `ok` / `error` / `timeout` / `cancelled`；`trace` 数组逐次记录
@@ -335,13 +336,23 @@ fn ptc_result_handle(materialized: &MaterializedResult) -> Result<TaskObjectHand
     Ok(handle)
 }
 
-/// 会话 artifacts 根下的 ptc 目录；无窗口（headless/测试）时返回 None。
-fn ptc_artifact_dir(ctx: &ExecutionContext) -> Option<PathBuf> {
+/// 会话 artifacts 根；`create=false` 时不在文件系统建目录（object_read 读取面
+/// 的惰性解析——根尚不存在时读取自然报"不可用"，不产生副作用）。无窗口
+/// （headless/测试）返回 None。
+fn ptc_artifact_root(ctx: &ExecutionContext, create: bool) -> Option<PathBuf> {
     let window = ctx.tauri_window.as_ref()?;
-    let root =
-        crate::chat_v2::runtime_roots::artifact_root(window.app_handle(), &ctx.session_id, true)
-            .ok()?;
-    Some(root.path.join("ptc"))
+    let root = crate::chat_v2::runtime_roots::artifact_root(
+        window.app_handle(),
+        &ctx.session_id,
+        create,
+    )
+    .ok()?;
+    Some(root.path)
+}
+
+/// 会话 artifacts 根下的 ptc 目录（物化写入用，create=true）；无窗口返回 None。
+fn ptc_artifact_dir(ctx: &ExecutionContext) -> Option<PathBuf> {
+    Some(ptc_artifact_root(ctx, true)?.join("ptc"))
 }
 
 fn preview_of(serialized: &str) -> String {
@@ -388,7 +399,9 @@ fn build_success_output(
             output["preview"] = json!(preview_of(&serialized));
             output["materialized_note"] = json!(
                 "Full result materialized to the session artifacts root; \
-                 fetch it via the object handle (paged object_read arrives in P2)."
+                 page it back with object_read(object_handle or \
+                 {root_id, relative_path}, offset=..., limit=...) inside a \
+                 follow-up ptc_run script."
             );
         }
         Err(e) => {
@@ -549,6 +562,8 @@ impl ToolExecutor for PtcExecutor {
             args.max_calls,
             script_token.clone(),
             deadline,
+            // object_read 读取面：惰性解析（create=false），无窗口为 None。
+            ptc_artifact_root(ctx, false),
         );
         let script = args.script.clone();
         let (done_tx, mut done_rx) = tokio::sync::oneshot::channel();
@@ -1021,5 +1036,33 @@ res = call("builtin-rag_search", {})
         assert!(result.output.get("object_handle").is_none());
         let preview = result.output["preview"].as_str().unwrap();
         assert_eq!(preview.chars().count(), RESULT_PREVIEW_CHARS);
+    }
+
+    /// G05-P2：无窗口上下文没有 artifacts 根，object_read 必须结构化报错，
+    /// 且与 call() 同一预算账本 / 同一 trace（tool="object_read"）。
+    #[tokio::test]
+    async fn execute_object_read_without_window_fails_structured() {
+        let executor = PtcExecutor::new();
+        let ctx = test_context(Some(StubMode::Echo));
+        let result = executor
+            .execute(
+                &ptc_call(
+                    r#"object_read({"root_id": "artifacts", "relative_path": "ptc/x.json"})"#,
+                    json!({}),
+                ),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+        assert!(!result.success);
+        assert_eq!(result.output["status"], json!("error"));
+        let error = result.error.as_deref().unwrap_or("");
+        assert!(error.contains("no artifacts root"), "unexpected: {error}");
+        // 计入预算并留 trace
+        assert_eq!(result.output["calls_used"], json!(1));
+        let trace = result.output["trace"].as_array().unwrap();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0]["tool"], json!("object_read"));
+        assert_eq!(trace[0]["ok"], json!(false));
     }
 }

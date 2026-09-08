@@ -22,8 +22,21 @@
 //!   （Starlark 无异常语义，envelope 让脚本自行决定容错策略）；
 //! - **策略违规**（不在白名单 / 超 max_calls / 参数非法 / 自我递归）直接抛
 //!   Starlark 错误中断脚本——这是模型需要修复的编程错误，fail-closed。
+//!
+//! ## `object_read(handle_or_locator, offset=0, limit=8192)` 语义（G05-P2）
+//! - 分页读回**已物化到会话 artifacts 根**的 TaskObject：入参为 call() 返回
+//!   的物化 handle dict（含 `locator`，校验 `capabilities.readable`）或显式
+//!   `{root_id, relative_path}` locator dict；
+//! - 返回 `{content, encoding, offset, limit, next_offset, total_size, eof,
+//!   sha256}`：文本页 UTF-8（按字符边界收敛，绝不切半字符），二进制页 base64；
+//!   `sha256` 为整文件字节指纹，脚本可校验分页拼接完整性；
+//! - 路径安全由 `task_objects::read_task_object_page` 强制：root_id 白名单 +
+//!   段级校验 + 双侧 canonicalize 前缀检查（`..`/绝对路径/符号链接逃逸均拒）；
+//! - 是**宿主函数不是工具**（不占工具白名单），但与 `call()` 同一 max_calls
+//!   预算账本、同一 trace 数组（`tool` 记 `"object_read"`）。
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -39,6 +52,10 @@ use starlark::syntax::{AstModule, Dialect};
 use starlark::values::Value as StarlarkValue;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
+
+use crate::chat_v2::task_objects::{
+    read_task_object_page, ManagedLocator, OBJECT_READ_PAGE_MAX_BYTES,
+};
 
 // ============================================================================
 // 预算与解释器限制常量
@@ -68,6 +85,9 @@ pub const RESULT_PREVIEW_CHARS: usize = 2048;
 const CALL_RECV_POLL: Duration = Duration::from_millis(100);
 /// trace 单条错误信息截断长度。
 const TRACE_ERROR_MAX_CHARS: usize = 300;
+/// `object_read()` 单页默认字节数（上限见
+/// [`OBJECT_READ_PAGE_MAX_BYTES`]，32 KiB/页）。
+pub const OBJECT_READ_DEFAULT_LIMIT: i64 = 8 * 1024;
 
 // ============================================================================
 // 工具面白名单（fail-closed，独立维护）
@@ -225,6 +245,8 @@ pub struct PtcCallRequest {
 ///
 /// `trace` / `calls_used` 用 Arc 共享给执行器侧：wall-clock 超时后脚本线程
 /// 可能仍在 unwind，执行器仍能把"已发生的调用轨迹"带回给模型。
+/// `artifact_root` 是本次会话的 artifacts 根（object_read 的读取面），
+/// 无窗口（headless/测试）时为 None，object_read 一律结构化报错。
 #[derive(ProvidesStaticType)]
 pub struct PtcBrokerState {
     req_tx: UnboundedSender<PtcCallRequest>,
@@ -233,6 +255,7 @@ pub struct PtcBrokerState {
     trace: Arc<Mutex<Vec<PtcTraceEntry>>>,
     cancel: CancellationToken,
     deadline: Instant,
+    artifact_root: Option<PathBuf>,
 }
 
 impl PtcBrokerState {
@@ -241,6 +264,7 @@ impl PtcBrokerState {
         max_calls: usize,
         cancel: CancellationToken,
         deadline: Instant,
+        artifact_root: Option<PathBuf>,
     ) -> (Self, Arc<AtomicUsize>, Arc<Mutex<Vec<PtcTraceEntry>>>) {
         let calls_used = Arc::new(AtomicUsize::new(0));
         let trace = Arc::new(Mutex::new(Vec::new()));
@@ -252,6 +276,7 @@ impl PtcBrokerState {
                 trace: trace.clone(),
                 cancel,
                 deadline,
+                artifact_root,
             },
             calls_used,
             trace,
@@ -402,6 +427,165 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
         };
         Ok(eval.heap().alloc(envelope))
     }
+
+    /// object_read(handle_or_locator, offset=0, limit=8192) — 分页读回已物化对象。
+    ///
+    /// 入参为 call() 输出里的物化 handle dict（含 locator，校验
+    /// capabilities.readable）或显式 {"root_id": ..., "relative_path": ...}
+    /// （camelCase 键同受支持）。返回
+    /// {content, encoding, offset, limit, next_offset, total_size, eof, sha256}。
+    /// 与 call() 同一 max_calls 预算账本；一切拒绝（白名单外 root / 路径逃逸 /
+    /// 不可读 handle / 非法 offset）都是结构化硬错误并留 trace。
+    fn object_read<'v>(
+        #[starlark(require = pos)] object: StarlarkValue<'v>,
+        #[starlark(require = named, default = 0)] offset: i64,
+        #[starlark(require = named, default = 8192)] limit: i64,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> anyhow::Result<StarlarkValue<'v>> {
+        let broker = eval
+            .extra
+            .and_then(|extra| extra.downcast_ref::<PtcBrokerState>())
+            .ok_or_else(|| anyhow::anyhow!("ptc_run: internal broker state unavailable"))?;
+
+        if broker.cancel.is_cancelled() || Instant::now() >= broker.deadline {
+            anyhow::bail!("ptc_run: object_read cancelled or timed out");
+        }
+
+        // —— 预算：object_read 与 call() 同一账本，含被拒绝的调用 ——
+        let seq = broker.calls_used.load(Ordering::SeqCst);
+        if seq >= broker.max_calls {
+            anyhow::bail!(
+                "ptc_run: call budget exhausted (max_calls={}); object_read shares the \
+                 call budget, restructure the script to page with fewer reads",
+                broker.max_calls
+            );
+        }
+        broker.calls_used.store(seq + 1, Ordering::SeqCst);
+
+        let started = Instant::now();
+        let mut trace_locator = json!({"root_id": "", "relative_path": ""});
+        let outcome = object_read_impl(broker, object, offset, limit, &mut trace_locator);
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let args_hash = args_fingerprint(&json!({
+            "locator": trace_locator,
+            "offset": offset,
+            "limit": limit,
+        }));
+        match outcome {
+            Ok(page) => {
+                let result_bytes = page
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .map(|s| s.len())
+                    .unwrap_or(0);
+                broker.record(PtcTraceEntry {
+                    seq,
+                    tool: "object_read".to_string(),
+                    args_hash,
+                    duration_ms,
+                    result_bytes,
+                    ok: true,
+                    error: None,
+                });
+                Ok(eval.heap().alloc(page))
+            }
+            Err(error) => {
+                broker.record(PtcTraceEntry {
+                    seq,
+                    tool: "object_read".to_string(),
+                    args_hash,
+                    duration_ms,
+                    result_bytes: 0,
+                    ok: false,
+                    error: Some(truncate_chars(&error, TRACE_ERROR_MAX_CHARS)),
+                });
+                Err(anyhow::anyhow!("ptc_run: object_read failed: {error}"))
+            }
+        }
+    }
+}
+
+/// object_read 的参数解析 + 受管读取（纯逻辑，便于在 host fn 内统一 trace）。
+///
+/// `trace_locator` 由调用方提供并在解析成功时回填，保证失败路径的 args_hash
+/// 也能带上已识别出的 locator 片段。
+fn object_read_impl(
+    broker: &PtcBrokerState,
+    object: StarlarkValue<'_>,
+    offset: i64,
+    limit: i64,
+    trace_locator: &mut Value,
+) -> Result<Value, String> {
+    let object_json = object
+        .to_json_value()
+        .map_err(|e| format!("argument must be JSON-representable: {e}"))?;
+    let dict = object_json.as_object().ok_or_else(|| {
+        "expected a task object handle dict (with locator) or an explicit \
+         {root_id, relative_path} locator dict"
+            .to_string()
+    })?;
+
+    // handle 形态（带 locator 键）：fail-closed 校验 capabilities.readable；
+    // 显式 locator 形态：无能力位可校，读取面由 root 白名单收口。
+    let locator_value = match dict.get("locator") {
+        Some(locator) => {
+            let readable = dict
+                .get("capabilities")
+                .and_then(|capabilities| capabilities.get("readable"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !readable {
+                return Err(
+                    "handle capabilities.readable is not true; object is not readable"
+                        .to_string(),
+                );
+            }
+            locator
+        }
+        None => &object_json,
+    };
+    let locator_dict = locator_value
+        .as_object()
+        .ok_or_else(|| "locator must be a dict".to_string())?;
+    let lookup = |snake: &str, camel: &str| {
+        locator_dict
+            .get(snake)
+            .or_else(|| locator_dict.get(camel))
+            .and_then(Value::as_str)
+    };
+    let root_id = lookup("root_id", "rootId")
+        .ok_or_else(|| "locator requires root_id".to_string())?;
+    let relative_path = lookup("relative_path", "relativePath")
+        .ok_or_else(|| "locator requires relative_path".to_string())?;
+    // ManagedLocator::new 做段级校验（拒绝 `..` / 绝对路径 / 反斜杠）。
+    let locator = ManagedLocator::new(root_id, relative_path)?;
+    *trace_locator = json!({
+        "root_id": locator.root_id,
+        "relative_path": locator.relative_path,
+    });
+
+    if offset < 0 {
+        return Err(format!("offset must be >= 0, got {offset}"));
+    }
+    if limit <= 0 {
+        return Err(format!("limit must be > 0, got {limit}"));
+    }
+    let limit = (limit as u64).min(OBJECT_READ_PAGE_MAX_BYTES);
+
+    let root = broker.artifact_root.as_ref().ok_or_else(|| {
+        "no artifacts root in this context; materialized objects are unavailable".to_string()
+    })?;
+    let page = read_task_object_page(root, &locator, offset as u64, limit)?;
+    Ok(json!({
+        "content": page.content,
+        "encoding": page.encoding,
+        "offset": page.offset,
+        "limit": limit,
+        "next_offset": page.next_offset,
+        "total_size": page.total_size,
+        "eof": page.eof,
+        "sha256": page.sha256,
+    }))
 }
 
 // ============================================================================
@@ -440,7 +624,7 @@ pub struct PtcScriptOutcome {
 ///
 /// 方言：Standard + 顶层语句（便于编写脚本），**禁用 `load()`**（无文件加载器，
 /// 即使用户写了也会解析期拒绝）。Globals = standard + Json + StructType +
-/// `call`（无 Print/Debug/Breakpoint 等 IO 面）。
+/// `call` + `object_read`（无 Print/Debug/Breakpoint 等 IO 面）。
 pub fn run_ptc_script(script: &str, broker: &PtcBrokerState) -> PtcScriptOutcome {
     run_ptc_script_with_limits(script, broker, &PtcInterpreterLimits::default())
 }
@@ -513,12 +697,23 @@ mod tests {
         PtcBrokerState,
         tokio::sync::mpsc::UnboundedReceiver<PtcCallRequest>,
     ) {
+        broker_for_test_with_root(max_calls, None)
+    }
+
+    fn broker_for_test_with_root(
+        max_calls: usize,
+        artifact_root: Option<PathBuf>,
+    ) -> (
+        PtcBrokerState,
+        tokio::sync::mpsc::UnboundedReceiver<PtcCallRequest>,
+    ) {
         let (req_tx, req_rx) = tokio::sync::mpsc::unbounded_channel();
         let (broker, _calls, _trace) = PtcBrokerState::new(
             req_tx,
             max_calls,
             CancellationToken::new(),
             Instant::now() + Duration::from_secs(30),
+            artifact_root,
         );
         (broker, req_rx)
     }
@@ -781,6 +976,7 @@ res["error"]
             10,
             cancel.clone(),
             Instant::now() + Duration::from_secs(60),
+            None,
         );
         // 泵故意不应答
         let _pump = spawn_stub_pump(req_rx, |_req| loop {
@@ -794,5 +990,274 @@ res["error"]
         let outcome = run_ptc_script(r#"call("builtin-rag_search", {})"#, &broker);
         let err = outcome.result.unwrap_err();
         assert!(err.contains("cancelled") || err.contains("timed out"), "unexpected: {err}");
+    }
+
+    // —— object_read（G05-P2）——
+
+    /// 落一份文本夹具到临时 artifacts 根，返回 (TempDir 守卫, broker)。
+    fn broker_with_text_fixture(
+        max_calls: usize,
+        name: &str,
+        text: &str,
+    ) -> (tempfile::TempDir, PtcBrokerState) {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join(name), text).expect("write fixture");
+        let (broker, _rx) = broker_for_test_with_root(max_calls, Some(dir.path().to_path_buf()));
+        (dir, broker)
+    }
+
+    #[test]
+    fn object_read_paged_concat_matches_original_and_sha256() {
+        let mut text = String::new();
+        for i in 0..500 {
+            text.push_str(&format!("第{i}行：深度学习与程序合成 αβγ🦀\n"));
+        }
+        let (_dir, broker) = broker_with_text_fixture(50, "big.txt", &text);
+        let expected_sha = hex::encode(Sha256::digest(text.as_bytes()));
+        let script = r#"
+handle = {"root_id": "artifacts", "relative_path": "big.txt"}
+chunks = []
+offset = 0
+sha = ""
+pages = 0
+for _i in range(200):
+    page = object_read(handle, offset=offset, limit=4096)
+    chunks.append(page["content"])
+    offset = page["next_offset"]
+    sha = page["sha256"]
+    pages += 1
+    if page["eof"]:
+        break
+{"joined": "".join(chunks), "sha256": sha, "pages": pages, "total": page["total_size"]}
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let value = outcome.result.expect("script must succeed");
+        assert_eq!(value["joined"].as_str().unwrap(), text);
+        assert_eq!(value["sha256"].as_str().unwrap(), expected_sha);
+        assert_eq!(value["total"].as_u64().unwrap(), text.len() as u64);
+        let pages = value["pages"].as_u64().unwrap();
+        assert!(pages >= 3, "expected multiple pages, got {pages}");
+        // trace：每次 object_read 一条，tool 记 "object_read"，args_hash 含 locator+offset
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), pages as usize);
+        assert!(trace.iter().all(|e| e.tool == "object_read" && e.ok));
+        assert!(trace.iter().all(|e| e.args_hash.starts_with("sha256:")));
+        // 不同页 offset 不同 → args_hash 不同
+        assert_ne!(trace[0].args_hash, trace[1].args_hash);
+    }
+
+    #[test]
+    fn object_read_accepts_materialized_handle_dict_camel_case() {
+        let (_dir, broker) = broker_with_text_fixture(10, "r.json", "{\"v\": 1}");
+        // 模拟 call() 输出里的物化 handle（serde camelCase 键）
+        let script = r#"
+handle = {
+    "schemaVersion": 2,
+    "handleId": "ptc-result:abc",
+    "kind": "artifact",
+    "displayName": "r.json",
+    "capabilities": {"readable": True, "materializable": True, "writable": False},
+    "locator": {"rootId": "artifacts", "relativePath": "r.json"},
+}
+page = object_read(handle)
+{"content": page["content"], "eof": page["eof"], "encoding": page["encoding"]}
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let value = outcome.result.expect("script must succeed");
+        assert_eq!(value["content"].as_str().unwrap(), "{\"v\": 1}");
+        assert_eq!(value["eof"].as_bool().unwrap(), true);
+        assert_eq!(value["encoding"].as_str().unwrap(), "utf-8");
+    }
+
+    #[test]
+    fn object_read_rejects_unreadable_handle() {
+        let (_dir, broker) = broker_with_text_fixture(10, "r.json", "{}");
+        let script = r#"
+handle = {
+    "capabilities": {"readable": False, "materializable": True},
+    "locator": {"rootId": "artifacts", "relativePath": "r.json"},
+}
+object_read(handle)
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let err = outcome.result.unwrap_err();
+        assert!(err.contains("object_read failed"), "unexpected: {err}");
+        assert!(err.contains("readable"), "unexpected: {err}");
+        // 失败也消耗预算并留 trace
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 1);
+        assert!(!trace[0].ok);
+        assert_eq!(trace[0].tool, "object_read");
+    }
+
+    #[test]
+    fn object_read_rejects_path_escape_and_foreign_roots() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("inside.txt"), "safe").expect("write");
+        let cases = [
+            (r#"{"root_id": "artifacts", "relative_path": "../escape.txt"}"#, "unsafe path segment"),
+            (r#"{"root_id": "artifacts", "relative_path": "/etc/passwd"}"#, "relative path"),
+            (r#"{"root_id": "temp", "relative_path": "x.txt"}"#, "not object-readable"),
+            (r#"{"root_id": "workspace", "relative_path": "x.txt"}"#, "not object-readable"),
+        ];
+        for (locator, needle) in cases {
+            let (broker, _rx) =
+                broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+            let script = format!("object_read({locator})");
+            let err = run_ptc_script(&script, &broker).result.unwrap_err();
+            assert!(err.contains("object_read failed"), "unexpected: {err}");
+            assert!(err.contains(needle), "unexpected: {err}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn object_read_rejects_symlink_escape() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let outside = tempfile::NamedTempFile::new().expect("outside file");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link.txt"))
+            .expect("symlink");
+        let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+        let err = run_ptc_script(
+            r#"object_read({"root_id": "artifacts", "relative_path": "link.txt"})"#,
+            &broker,
+        )
+        .result
+        .unwrap_err();
+        assert!(err.contains("escapes the managed root"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn object_read_offset_edges_and_negative_rejected() {
+        let (_dir, broker) = broker_with_text_fixture(10, "a.txt", "hello");
+        let script = r#"
+at_end = object_read({"root_id": "artifacts", "relative_path": "a.txt"}, offset=5)
+past = object_read({"root_id": "artifacts", "relative_path": "a.txt"}, offset=99)
+{
+    "at_end": [at_end["content"], at_end["eof"], at_end["next_offset"], at_end["total_size"]],
+    "past": [past["content"], past["eof"], past["next_offset"]],
+}
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let value = outcome.result.expect("script must succeed");
+        assert_eq!(value["at_end"], json!(["", true, 5, 5]));
+        assert_eq!(value["past"], json!(["", true, 5]));
+
+        let (_dir, broker) = broker_with_text_fixture(10, "a.txt", "hello");
+        let err = run_ptc_script(
+            r#"object_read({"root_id": "artifacts", "relative_path": "a.txt"}, offset=-1)"#,
+            &broker,
+        )
+        .result
+        .unwrap_err();
+        assert!(err.contains("offset must be >= 0"), "unexpected: {err}");
+
+        let (_dir, broker) = broker_with_text_fixture(10, "a.txt", "hello");
+        let err = run_ptc_script(
+            r#"object_read({"root_id": "artifacts", "relative_path": "a.txt"}, limit=0)"#,
+            &broker,
+        )
+        .result
+        .unwrap_err();
+        assert!(err.contains("limit must be > 0"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn object_read_utf8_boundary_never_splits_chars() {
+        let text = "汉".repeat(10); // 30 字节，每字 3 字节
+        let (_dir, broker) = broker_with_text_fixture(10, "han.txt", &text);
+        // limit=7 落在第 3 字中间 → 收敛为 2 字；limit=1 放行完整字符保证前进
+        let script = r#"
+h = {"root_id": "artifacts", "relative_path": "han.txt"}
+p1 = object_read(h, offset=0, limit=7)
+p2 = object_read(h, offset=p1["next_offset"], limit=1)
+{
+    "c1": p1["content"], "n1": p1["next_offset"],
+    "c2": p2["content"], "n2": p2["next_offset"],
+}
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let value = outcome.result.expect("script must succeed");
+        assert_eq!(value["c1"].as_str().unwrap(), "汉汉");
+        assert_eq!(value["n1"].as_u64().unwrap(), 6);
+        assert_eq!(value["c2"].as_str().unwrap(), "汉");
+        assert_eq!(value["n2"].as_u64().unwrap(), 9);
+
+        // offset 切半字符 → 结构化错误
+        let (_dir, broker) = broker_with_text_fixture(10, "han.txt", &text);
+        let err = run_ptc_script(
+            r#"object_read({"root_id": "artifacts", "relative_path": "han.txt"}, offset=1)"#,
+            &broker,
+        )
+        .result
+        .unwrap_err();
+        assert!(err.contains("splits a UTF-8 character"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn object_read_binary_page_is_base64_and_limit_clamped() {
+        use base64::Engine as _;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        // 0xFF 起始：整体非法 UTF-8 → 二进制路径；40KB 验证 32KB 钳制
+        let mut bytes = vec![0xFF, 0xFE, 0x00, 0x01];
+        bytes.extend(std::iter::repeat(7u8).take(40 * 1024));
+        std::fs::write(dir.path().join("bin.dat"), &bytes).expect("write");
+        let expected_sha = hex::encode(Sha256::digest(&bytes));
+        let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+        let script = r#"
+h = {"root_id": "artifacts", "relative_path": "bin.dat"}
+page = object_read(h, limit=999999)
+{"enc": page["encoding"], "limit": page["limit"], "next": page["next_offset"],
+ "total": page["total_size"], "eof": page["eof"], "sha": page["sha256"],
+ "clen": len(page["content"])}
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let value = outcome.result.expect("script must succeed");
+        assert_eq!(value["enc"].as_str().unwrap(), "base64");
+        assert_eq!(value["limit"].as_u64().unwrap(), OBJECT_READ_PAGE_MAX_BYTES);
+        assert_eq!(value["next"].as_u64().unwrap(), OBJECT_READ_PAGE_MAX_BYTES);
+        assert_eq!(value["total"].as_u64().unwrap(), bytes.len() as u64);
+        assert_eq!(value["eof"].as_bool().unwrap(), false);
+        assert_eq!(value["sha"].as_str().unwrap(), expected_sha);
+        let expected_b64_len = base64::engine::general_purpose::STANDARD
+            .encode(&bytes[..OBJECT_READ_PAGE_MAX_BYTES as usize])
+            .len();
+        assert_eq!(value["clen"].as_u64().unwrap(), expected_b64_len as u64);
+    }
+
+    #[test]
+    fn object_read_shares_budget_with_call() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("f.txt"), "data").expect("write");
+        // max_calls=2：call + 第一次 object_read 用满，第二次 object_read 超顶
+        let (broker, req_rx) = broker_for_test_with_root(2, Some(dir.path().to_path_buf()));
+        let _pump = spawn_stub_pump(req_rx, |_req| Ok(json!(null)));
+        let script = r#"
+call("builtin-rag_search", {})
+object_read({"root_id": "artifacts", "relative_path": "f.txt"})
+object_read({"root_id": "artifacts", "relative_path": "f.txt"})
+"#;
+        let outcome = run_ptc_script(script, &broker);
+        let err = outcome.result.unwrap_err();
+        assert!(err.contains("budget"), "unexpected: {err}");
+        // 前两次各留一条 trace（call + object_read），超顶的一次不留
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 2);
+        assert_eq!(trace[1].tool, "object_read");
+    }
+
+    #[test]
+    fn object_read_without_artifacts_root_fails_structured() {
+        let (broker, _rx) = broker_for_test(10); // None root
+        let outcome = run_ptc_script(
+            r#"object_read({"root_id": "artifacts", "relative_path": "x.json"})"#,
+            &broker,
+        );
+        let err = outcome.result.unwrap_err();
+        assert!(err.contains("no artifacts root"), "unexpected: {err}");
+        // 无根也计入预算与 trace
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 1);
+        assert!(!trace[0].ok);
     }
 }

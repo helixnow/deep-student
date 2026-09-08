@@ -4,6 +4,8 @@
 //! to operate on it. `TaskObjectHandle` keeps those concerns explicit across
 //! chat attachments, browser downloads, MCP resources, and future connectors.
 
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -574,6 +576,166 @@ impl ConnectorOperationReceipt {
     }
 }
 
+// ============================================================================
+// 物化对象分页回读（G05-P2 追加；只新增读取 API，不改既有逻辑）
+// ============================================================================
+//
+// PTC `object_read` 宿主函数的读取原语：把 "locator → 受管 root 内文件的一页
+// 字节" 做成纯函数（不依赖 AppHandle / 数据库，便于单测与其他宿主复用）。
+// 安全边界（fail-closed）：
+// - root_id 白名单 [`OBJECT_READABLE_ROOT_IDS`]：仅 artifacts 类会话受管根可读；
+// - locator 段级校验（无 `..` / 绝对路径 / 反斜杠）之外，落盘前对 root 与目标
+//   双侧 canonicalize 并做前缀检查，符号链接逃逸同样拒绝；
+// - 单页 ≤ [`OBJECT_READ_PAGE_MAX_BYTES`]；整文件 sha256 供调用方校验分页拼接
+//   完整性——只哈希文件字节，不涉及任何 HashMap 序列化（见 AGENTS.md 红线）。
+
+/// object_read 可读的受管 root 白名单（仅 artifacts 类会话受管根）。
+pub const OBJECT_READABLE_ROOT_IDS: &[&str] = &["artifacts"];
+
+/// object_read 单页字节上限（32 KiB）。
+pub const OBJECT_READ_PAGE_MAX_BYTES: u64 = 32 * 1024;
+
+/// 物化对象的一页内容（序列化键与 PTC `object_read` 脚本侧契约一致）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskObjectPage {
+    /// 文本页为 UTF-8 字符串；二进制页为 base64（`encoding` 标记区分）。
+    pub content: String,
+    /// `"utf-8"` | `"base64"`。
+    pub encoding: String,
+    /// 本页起始字节偏移（越界请求收敛为 `total_size`）。
+    pub offset: u64,
+    /// 下一页起始字节偏移。文本页按 UTF-8 字符边界收敛，可能小于
+    /// `offset + limit`；逐页拼接即得原文。
+    pub next_offset: u64,
+    pub total_size: u64,
+    pub eof: bool,
+    /// 整文件字节的 sha256（hex）。
+    pub sha256: String,
+}
+
+/// 读取受管对象的一页字节。
+///
+/// `root_dir` 是 `locator.root_id` 对应的运行时根（调用方负责解析；本函数
+/// 内部会重新 canonicalize 并校验目标解析在 root 内）。`offset`/`limit`
+/// 为字节语义；`limit` 超 [`OBJECT_READ_PAGE_MAX_BYTES`] 自动收敛。
+/// `offset >= total_size` 返回空页 + `eof=true`（便于循环终止），其余非法
+/// 输入（白名单外 root / 路径逃逸 / 非文件 / UTF-8 切半字符的 offset）报错。
+pub fn read_task_object_page(
+    root_dir: &Path,
+    locator: &ManagedLocator,
+    offset: u64,
+    limit: u64,
+) -> Result<TaskObjectPage, String> {
+    if !OBJECT_READABLE_ROOT_IDS.contains(&locator.root_id.as_str()) {
+        return Err(format!(
+            "root_id '{}' is not object-readable (allowed: {})",
+            locator.root_id,
+            OBJECT_READABLE_ROOT_IDS.join(", ")
+        ));
+    }
+    // 防御纵深：反序列化/手工构造的 locator 未必走过 ManagedLocator::new。
+    locator.validate()?;
+    if limit == 0 {
+        return Err("limit must be positive".to_string());
+    }
+    let limit = limit.min(OBJECT_READ_PAGE_MAX_BYTES);
+
+    // 段级归一（validate 已拒绝 `..` / 绝对路径 / 反斜杠；此处再挡一层）。
+    let mut relative = PathBuf::new();
+    for component in Path::new(&locator.relative_path).components() {
+        match component {
+            std::path::Component::Normal(part) => relative.push(part),
+            std::path::Component::CurDir => {}
+            _ => return Err("relative_path escapes the managed root".to_string()),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        return Err("relative_path does not identify a file".to_string());
+    }
+
+    // 双侧 canonicalize：root 不存在/目标不存在/符号链接逃逸全部 fail-closed。
+    let root_canon = root_dir
+        .canonicalize()
+        .map_err(|e| format!("managed root '{}' is unavailable: {e}", locator.root_id))?;
+    let file_canon = root_canon
+        .join(&relative)
+        .canonicalize()
+        .map_err(|e| format!("object '{}' is not readable: {e}", locator.relative_path))?;
+    if !file_canon.starts_with(&root_canon) {
+        return Err("object path escapes the managed root".to_string());
+    }
+    if !file_canon.is_file() {
+        return Err(format!("object '{}' is not a file", locator.relative_path));
+    }
+
+    let bytes = std::fs::read(&file_canon)
+        .map_err(|e| format!("failed to read object '{}': {e}", locator.relative_path))?;
+    let total_size = bytes.len() as u64;
+    let sha256 = hex::encode(Sha256::digest(&bytes));
+    let is_text = std::str::from_utf8(&bytes).is_ok();
+    let encoding = if is_text { "utf-8" } else { "base64" }.to_string();
+
+    if offset >= total_size {
+        return Ok(TaskObjectPage {
+            content: String::new(),
+            encoding,
+            offset: total_size,
+            next_offset: total_size,
+            total_size,
+            eof: true,
+            sha256,
+        });
+    }
+
+    let mut end = (offset + limit).min(total_size);
+    if is_text {
+        // 文本不切半字符。offset 必须落在字符边界（脚本应沿用上一页的
+        // next_offset）；end 回退到边界（UTF-8 续字节形如 0b10xx_xxxx；
+        // end == total_size 即文件尾，天然是边界，不得索引 bytes[end]）。
+        if (bytes[offset as usize] & 0b1100_0000) == 0b1000_0000 {
+            return Err(
+                "offset splits a UTF-8 character; use next_offset from the previous page"
+                    .to_string(),
+            );
+        }
+        while end > offset && end < total_size && (bytes[end as usize] & 0b1100_0000) == 0b1000_0000
+        {
+            end -= 1;
+        }
+        if end == offset {
+            // 单个字符比 limit 还宽：放行完整字符（最多超 3 字节），保证翻页必前进。
+            end = offset + 1;
+            while end < total_size && (bytes[end as usize] & 0b1100_0000) == 0b1000_0000 {
+                end += 1;
+            }
+        }
+        let content = String::from_utf8(bytes[offset as usize..end as usize].to_vec())
+            .map_err(|_| "internal error: page slice is not valid UTF-8".to_string())?;
+        Ok(TaskObjectPage {
+            content,
+            encoding,
+            offset,
+            next_offset: end,
+            total_size,
+            eof: end >= total_size,
+            sha256,
+        })
+    } else {
+        use base64::Engine as _;
+        let content = base64::engine::general_purpose::STANDARD
+            .encode(&bytes[offset as usize..end as usize]);
+        Ok(TaskObjectPage {
+            content,
+            encoding,
+            offset,
+            next_offset: end,
+            total_size,
+            eof: end >= total_size,
+            sha256,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,5 +913,158 @@ mod tests {
             "test.op"
         );
         assert!(handle.provenance.derived_from[0].transform_params_hash.is_some());
+    }
+
+    // —— G05-P2 分页回读（read_task_object_page）——
+
+    fn paged_locator(root_id: &str, relative_path: &str) -> ManagedLocator {
+        ManagedLocator::new(root_id, relative_path).expect("locator")
+    }
+
+    #[test]
+    fn read_page_multi_page_concat_matches_original_and_sha256() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let mut text = String::new();
+        for i in 0..200 {
+            text.push_str(&format!("第{i}行：深度学习与程序合成 αβγ🦀\n"));
+        }
+        std::fs::write(dir.path().join("big.txt"), &text).expect("write");
+        let locator = paged_locator("artifacts", "big.txt");
+
+        let mut joined = String::new();
+        let mut offset = 0;
+        let mut pages = 0;
+        let sha = loop {
+            let page = read_task_object_page(dir.path(), &locator, offset, 4096).expect("page");
+            assert_eq!(page.offset, offset);
+            joined.push_str(&page.content);
+            offset = page.next_offset;
+            pages += 1;
+            if page.eof {
+                break page.sha256;
+            }
+        };
+        assert_eq!(joined, text);
+        assert_eq!(sha, hex::encode(Sha256::digest(text.as_bytes())));
+        assert!(pages >= 3, "expected multiple pages, got {pages}");
+        // 文本页全部 UTF-8（天然成立：String），且每页 ≤ limit 字节
+        // （末页除外语义无限制，仅校验单调前进）。
+    }
+
+    #[test]
+    fn read_page_rejects_foreign_roots_and_escapes() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("f.txt"), "safe").expect("write");
+        // root 白名单
+        for root_id in ["temp", "workspace", "skill:x"] {
+            let err = read_task_object_page(
+                dir.path(),
+                &paged_locator(root_id, "f.txt"),
+                0,
+                100,
+            )
+            .unwrap_err();
+            assert!(err.contains("not object-readable"), "unexpected: {err}");
+        }
+        // 段级逃逸（绕过 new 的校验直接构造，验证内部防御纵深）
+        let escape = ManagedLocator {
+            root_id: "artifacts".to_string(),
+            relative_path: "../outside.txt".to_string(),
+        };
+        let err = read_task_object_page(dir.path(), &escape, 0, 100).unwrap_err();
+        assert!(err.contains("unsafe path segment"), "unexpected: {err}");
+        let absolute = ManagedLocator {
+            root_id: "artifacts".to_string(),
+            relative_path: "/etc/passwd".to_string(),
+        };
+        assert!(read_task_object_page(dir.path(), &absolute, 0, 100).is_err());
+        // 目录而非文件
+        std::fs::create_dir(dir.path().join("subdir")).expect("mkdir");
+        let err = read_task_object_page(dir.path(), &paged_locator("artifacts", "subdir"), 0, 100)
+            .unwrap_err();
+        assert!(err.contains("not a file"), "unexpected: {err}");
+        // 不存在
+        assert!(read_task_object_page(dir.path(), &paged_locator("artifacts", "nope.txt"), 0, 100)
+            .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_page_rejects_symlink_escape() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let outside = tempfile::NamedTempFile::new().expect("outside file");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link.txt")).expect("symlink");
+        let err = read_task_object_page(dir.path(), &paged_locator("artifacts", "link.txt"), 0, 100)
+            .unwrap_err();
+        assert!(err.contains("escapes the managed root"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn read_page_utf8_boundary_and_progress_guarantee() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let text = "汉".repeat(10); // 30 字节，每字 3 字节
+        std::fs::write(dir.path().join("han.txt"), &text).expect("write");
+        let locator = paged_locator("artifacts", "han.txt");
+
+        // limit=7 落在第 3 字中间：页收敛为 2 字（6 字节），next_offset=6
+        let page = read_task_object_page(dir.path(), &locator, 0, 7).expect("page");
+        assert_eq!(page.content, "汉汉");
+        assert_eq!(page.next_offset, 6);
+        assert!(!page.eof);
+        // offset 切半字符 → 结构化错误
+        let err = read_task_object_page(dir.path(), &locator, 1, 7).unwrap_err();
+        assert!(err.contains("splits a UTF-8 character"), "unexpected: {err}");
+        // limit=1 小于单字宽度：放行完整字符保证前进
+        let page = read_task_object_page(dir.path(), &locator, 0, 1).expect("page");
+        assert_eq!(page.content, "汉");
+        assert_eq!(page.next_offset, 3);
+    }
+
+    #[test]
+    fn read_page_binary_returns_base64() {
+        use base64::Engine as _;
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let mut bytes = vec![0xFF, 0xFE, 0x00, 0x01];
+        bytes.extend_from_slice(&[7u8; 200]);
+        std::fs::write(dir.path().join("bin.dat"), &bytes).expect("write");
+        let locator = paged_locator("artifacts", "bin.dat");
+
+        let page = read_task_object_page(dir.path(), &locator, 0, 100).expect("page");
+        assert_eq!(page.encoding, "base64");
+        assert_eq!(page.next_offset, 100);
+        assert!(!page.eof);
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&page.content)
+            .expect("base64");
+        assert_eq!(decoded, bytes[..100]);
+        assert_eq!(page.sha256, hex::encode(Sha256::digest(&bytes)));
+        // limit 超 32KB 收敛
+        let page = read_task_object_page(dir.path(), &locator, 0, 999_999).expect("page");
+        assert!(page.eof);
+        assert_eq!(page.next_offset, bytes.len() as u64);
+    }
+
+    #[test]
+    fn read_page_offset_edges_and_empty_file() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("a.txt"), "hello").expect("write");
+        std::fs::write(dir.path().join("empty.txt"), "").expect("write");
+
+        let locator = paged_locator("artifacts", "a.txt");
+        for offset in [5, 99] {
+            let page = read_task_object_page(dir.path(), &locator, offset, 10).expect("page");
+            assert!(page.eof);
+            assert_eq!(page.content, "");
+            assert_eq!(page.offset, 5);
+            assert_eq!(page.next_offset, 5);
+            assert_eq!(page.total_size, 5);
+        }
+        let empty = paged_locator("artifacts", "empty.txt");
+        let page = read_task_object_page(dir.path(), &empty, 0, 10).expect("page");
+        assert!(page.eof);
+        assert_eq!(page.total_size, 0);
+        assert_eq!(page.encoding, "utf-8");
+        // limit=0 拒绝
+        assert!(read_task_object_page(dir.path(), &locator, 0, 0).is_err());
     }
 }
