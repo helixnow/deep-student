@@ -2988,6 +2988,27 @@
     "temperature": "Temperature",
     "top_p": "Top P"
   },
+  "renderer_capabilities": {
+    "title": "Chat renderers",
+    "description": "Enable only the specialized formats you use. Disabled formats are neither rendered nor described to the model.",
+    "saved": "Chat renderer settings saved",
+    "chemicalStructures": "Organic structures",
+    "chemicalStructures_description": "Inline SMILES structures, including benzene rings and organic skeletons.",
+    "charts": "Data charts",
+    "charts_description": "Vega-Lite charts for functions, experiments, and statistics.",
+    "graphviz": "Relationship diagrams",
+    "graphviz_description": "Graphviz DOT dependency graphs, state machines, and networks.",
+    "music": "Sheet music",
+    "music_description": "ABC notation rendered as standard staff notation.",
+    "timing": "Digital timing diagrams",
+    "timing_description": "WaveDrom waveforms and bus timing.",
+    "chemicalFiles": "Chemical structure files",
+    "chemicalFiles_description": "2D Molfile/SDF structures.",
+    "molecular3d": "3D molecules",
+    "molecular3d_description": "Rotatable 3D models from local PDB, SDF, and related structures.",
+    "geojson": "Geographic data",
+    "geojson_description": "Local GeoJSON vector maps; no online basemap requests."
+  },
   "plugins": {
     "title": "Plugins & Integrations",
     "description": "Manage desktop channel plugins (WeChat iLink Bot). Not available on mobile.",

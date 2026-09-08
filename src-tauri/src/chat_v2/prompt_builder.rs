@@ -34,6 +34,7 @@
 
 use super::types::{MessageSources, SendOptions, SharedContext, SourceInfo};
 use super::vfs_resolver::escape_xml_content;
+use serde::Deserialize;
 
 // ============================================================================
 // 常量定义
@@ -123,6 +124,103 @@ const CHEMISTRY_RENDERING_RULES: &str = r#"<chemistry_rendering_rules priority="
 - 乙醇可写作 $\ce{C2H5OH}$，其骨架为 \smiles{CCO}。
 </examples>
 </chemistry_rendering_rules>"#;
+
+/// 前端设置的持久化键。只有已启用的能力才会进入 system prompt，避免让模型
+/// 背负用户从未需要的输出语法。
+pub const RENDERER_CAPABILITIES_SETTING_KEY: &str = "chat.renderer_capabilities";
+
+/// 对应前端 `RendererCapabilities` 的稳定序列化结构。
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RendererCapabilities {
+    pub chemical_structures: bool,
+    pub charts: bool,
+    pub graphviz: bool,
+    pub music: bool,
+    pub timing: bool,
+    pub chemical_files: bool,
+    pub molecular3d: bool,
+    pub geojson: bool,
+}
+
+impl Default for RendererCapabilities {
+    fn default() -> Self {
+        Self {
+            // 已经在前端落地的正文内联能力，延续此前版本的默认可用行为。
+            chemical_structures: true,
+            charts: false,
+            graphviz: false,
+            music: false,
+            timing: false,
+            chemical_files: false,
+            molecular3d: false,
+            geojson: false,
+        }
+    }
+}
+
+/// 读取失败或旧版本没有该设置时安全回退。设置只影响“如何表达”，不应阻断对话。
+pub fn parse_renderer_capabilities(raw: Option<&str>) -> RendererCapabilities {
+    raw.and_then(|json| serde_json::from_str(json).ok())
+        .unwrap_or_default()
+}
+
+const CHART_RENDERING_RULES: &str = r#"<chart_rendering_rules priority="high">
+<rules>需要数据图表时，使用 ```vega-lite 代码块输出自包含 Vega-Lite JSON。数据直接写在 data.values；不要使用 data.url、远程图片或外部脚本。只在图表能更清楚表达比较、趋势或分布时使用。</rules>
+</chart_rendering_rules>"#;
+
+const GRAPHVIZ_RENDERING_RULES: &str = r#"<graphviz_rendering_rules priority="high">
+<rules>需要流程图、关系图或有向图时，使用 ```dot 代码块输出 Graphviz DOT。图内文字直接写入，不要引用 image、href 或任何外部资源。</rules>
+</graphviz_rendering_rules>"#;
+
+const MUSIC_RENDERING_RULES: &str = r#"<music_rendering_rules priority="high">
+<rules>需要五线谱或简短旋律时，使用 ```abc 代码块输出标准 ABC notation；包含 X:、T:、M:、L:、K: 等必要头字段。不要为普通文本说明强行生成乐谱。</rules>
+</music_rendering_rules>"#;
+
+const TIMING_RENDERING_RULES: &str = r#"<timing_rendering_rules priority="high">
+<rules>需要时序图、数字波形或协议时序时，使用 ```wavedrom 代码块输出 WaveJSON 对象。内容必须自包含，不要使用外链或脚本。</rules>
+</timing_rendering_rules>"#;
+
+const CHEMICAL_FILE_RENDERING_RULES: &str = r#"<chemical_file_rendering_rules priority="high">
+<rules>用户提供或要求展示 Molfile/SDF 分子文件时，使用 ```mol 或 ```sdf 代码块原样输出有效文件内容。它们用于二维分子结构，不要把它们塞进 LaTeX。</rules>
+</chemical_file_rendering_rules>"#;
+
+const MOLECULAR_3D_RENDERING_RULES: &str = r#"<molecular_3d_rendering_rules priority="high">
+<rules>需要可旋转的三维蛋白质或分子结构时，使用 ```pdb 代码块输出自包含 PDB 文本。不要使用下载链接、远程结构 ID 或外部脚本。</rules>
+</molecular_3d_rendering_rules>"#;
+
+const GEOJSON_RENDERING_RULES: &str = r#"<geojson_rendering_rules priority="high">
+<rules>需要展示地理边界、路线或点位且数据已知时，使用 ```geojson 代码块输出自包含 GeoJSON Feature 或 FeatureCollection。不要使用地图瓦片、URL 或外部资源。</rules>
+</geojson_rendering_rules>"#;
+
+fn enabled_renderer_rules(capabilities: &RendererCapabilities) -> Vec<&'static str> {
+    let mut rules = Vec::new();
+    if capabilities.chemical_structures {
+        rules.push(CHEMISTRY_RENDERING_RULES);
+    }
+    if capabilities.charts {
+        rules.push(CHART_RENDERING_RULES);
+    }
+    if capabilities.graphviz {
+        rules.push(GRAPHVIZ_RENDERING_RULES);
+    }
+    if capabilities.music {
+        rules.push(MUSIC_RENDERING_RULES);
+    }
+    if capabilities.timing {
+        rules.push(TIMING_RENDERING_RULES);
+    }
+    if capabilities.chemical_files {
+        rules.push(CHEMICAL_FILE_RENDERING_RULES);
+    }
+    if capabilities.molecular3d {
+        rules.push(MOLECULAR_3D_RENDERING_RULES);
+    }
+    if capabilities.geojson {
+        rules.push(GEOJSON_RENDERING_RULES);
+    }
+    rules
+}
 
 /// 各来源类型的最大条目数
 const MAX_RAG_ITEMS: usize = 5;
@@ -416,6 +514,8 @@ pub struct PromptBuilder {
     active_goal: Option<String>,
     /// 🆕 灵感存在级提示（Insight Recall v2 阶段二；纯文本，本构建器负责包裹转义）
     insight_hints: Option<String>,
+    /// 已启用的富渲染能力；仅其输出语法会注入 system。
+    renderer_capabilities: RendererCapabilities,
 }
 
 impl PromptBuilder {
@@ -441,6 +541,7 @@ impl PromptBuilder {
             active_todos: None,
             active_goal: None,
             insight_hints: None,
+            renderer_capabilities: RendererCapabilities::default(),
         }
     }
 
@@ -465,6 +566,12 @@ impl PromptBuilder {
     /// 内容纪律：只含卡片标题（存在级），方法内容零泄露（D2 红线）。
     pub fn with_insight_hints(mut self, hints: Option<String>) -> Self {
         self.insight_hints = hints.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    /// 设置已启用的富渲染能力。
+    pub fn with_renderer_capabilities(mut self, capabilities: RendererCapabilities) -> Self {
+        self.renderer_capabilities = capabilities;
         self
     }
 
@@ -600,8 +707,12 @@ impl PromptBuilder {
         // 0. LaTeX 规则（最高优先级，稳定前缀第一块）
         parts.push(LATEX_RULES.to_string());
 
-        // 0.5 化学结构渲染约定（固定静态块，紧随 LaTeX 规则）
-        parts.push(CHEMISTRY_RENDERING_RULES.to_string());
+        // 0.5 仅注入用户已启用的富渲染输出约定，紧随 LaTeX 规则。
+        parts.extend(
+            enabled_renderer_rules(&self.renderer_capabilities)
+                .into_iter()
+                .map(str::to_string),
+        );
 
         // 1. 系统指令块
         let instructions = self.base_prompt.clone();
@@ -856,6 +967,29 @@ pub fn build_system_prompt_with_profile_and_agents(
     active_goal: Option<String>,
     insight_hints: Option<String>,
 ) -> SystemPromptParts {
+    build_system_prompt_with_profile_agents_and_renderers(
+        options,
+        sources,
+        canvas_note,
+        user_profile,
+        project_agents_instructions,
+        active_goal,
+        insight_hints,
+        RendererCapabilities::default(),
+    )
+}
+
+/// 同上，但允许 pipeline 将用户已启用的富渲染能力带入稳定 system。
+pub fn build_system_prompt_with_profile_agents_and_renderers(
+    options: &SendOptions,
+    sources: &MessageSources,
+    canvas_note: Option<CanvasNoteInfo>,
+    user_profile: Option<String>,
+    project_agents_instructions: Option<String>,
+    active_goal: Option<String>,
+    insight_hints: Option<String>,
+    renderer_capabilities: RendererCapabilities,
+) -> SystemPromptParts {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
         .with_options(options)
@@ -865,6 +999,7 @@ pub fn build_system_prompt_with_profile_and_agents(
         .with_project_agents_instructions(project_agents_instructions)
         .with_active_goal(active_goal)
         .with_insight_hints(insight_hints)
+        .with_renderer_capabilities(renderer_capabilities)
         .build_split()
 }
 
@@ -965,6 +1100,30 @@ mod tests {
         assert!(!prompt.contains("<system_time>"));
         // P1-10：引用指引固定注入 system，不再按 has_sources 开关
         assert!(prompt.contains("<citation_rules>"));
+    }
+
+    #[test]
+    fn test_renderer_rules_follow_enabled_capabilities() {
+        let disabled = PromptBuilder::new(None)
+            .with_renderer_capabilities(RendererCapabilities {
+                chemical_structures: false,
+                ..RendererCapabilities::default()
+            })
+            .build();
+        assert!(!disabled.contains("<chemistry_rendering_rules"));
+        assert!(!disabled.contains("<chart_rendering_rules"));
+
+        let enabled = PromptBuilder::new(None)
+            .with_renderer_capabilities(RendererCapabilities {
+                charts: true,
+                graphviz: true,
+                ..RendererCapabilities::default()
+            })
+            .build();
+        assert!(enabled.contains("<chemistry_rendering_rules"));
+        assert!(enabled.contains("<chart_rendering_rules"));
+        assert!(enabled.contains("<graphviz_rendering_rules"));
+        assert!(!enabled.contains("<music_rendering_rules"));
     }
 
     #[test]
