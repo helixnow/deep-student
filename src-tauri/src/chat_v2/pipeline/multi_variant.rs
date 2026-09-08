@@ -2002,6 +2002,7 @@ impl ChatV2Pipeline {
             .with_user_profile(user_profile)
             .with_active_todos(active_todos)
             .with_active_goal(active_goal)
+            .with_renderer_capabilities(self.load_renderer_capabilities())
             .build_split()
     }
 

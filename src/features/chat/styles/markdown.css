@@ -1230,3 +1230,49 @@
   color: hsl(var(--destructive));
   white-space: nowrap;
 }
+
+/* 启用的专用代码块在原消息流中就地预览；源码仍可一键切回。 */
+.chat-v2 .markdown-content .rich-code-renderer {
+  min-height: 7rem;
+  max-width: 100%;
+  overflow: auto;
+  padding: 0.75rem;
+  background: hsl(var(--muted) / 18%);
+}
+
+.chat-v2 .markdown-content .rich-code-renderer-host {
+  min-width: min-content;
+}
+
+.chat-v2 .markdown-content .rich-code-renderer svg,
+.chat-v2 .markdown-content .rich-code-renderer canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.chat-v2 .markdown-content .rich-code-renderer--molecule-3d .rich-code-renderer-host {
+  width: min(100%, 34rem);
+  height: 22rem;
+}
+
+.chat-v2 .markdown-content .rich-code-renderer-error {
+  color: hsl(var(--destructive));
+  font-size: 0.875rem;
+}
+
+.chat-v2 .markdown-content .geojson-svg rect {
+  fill: hsl(var(--background));
+  stroke: hsl(var(--border));
+}
+
+.chat-v2 .markdown-content .geojson-svg path,
+.chat-v2 .markdown-content .geojson-svg circle {
+  fill: hsl(var(--primary) / 24%);
+  stroke: hsl(var(--primary));
+  stroke-width: 1.6;
+}
+
+.chat-v2 .markdown-content .geojson-svg path:not(.geojson-area) {
+  fill: none;
+}

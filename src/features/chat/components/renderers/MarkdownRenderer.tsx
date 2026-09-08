@@ -28,6 +28,7 @@ import { useMessageSearchContext } from '../messageSearchContext';
 import { rehypeSearchHighlights } from './rehypeSearchHighlights';
 import { inlineSmilesRemarkPlugin } from './inlineSmilesRemarkPlugin';
 import { InlineSmiles } from './InlineSmiles';
+import { useRendererCapabilities } from './rendererCapabilities';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -635,6 +636,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   onCitationClick,
   resolveCitationImage,
 }) => {
+  const rendererCapabilities = useRendererCapabilities();
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
   const { query: searchQuery } = useMessageSearchContext();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -796,7 +798,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             }
 
             return (
-              <CodeBlock className={className} isStreaming={isStreaming}>
+              <CodeBlock className={className} isStreaming={isStreaming} rendererCapabilities={rendererCapabilities}>
                 {(codeElement as any)?.props?.children}
               </CodeBlock>
             );
@@ -857,7 +859,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             const encodedSmiles = props['data-smiles'] ?? props.dataSmiles;
             if (typeof encodedSmiles === 'string') {
               try {
-                return <InlineSmiles smiles={decodeURIComponent(encodedSmiles)} />;
+                const smiles = decodeURIComponent(encodedSmiles);
+                return rendererCapabilities.chemicalStructures
+                  ? <InlineSmiles smiles={smiles} />
+                  : <code className="inline-code">{`\\smiles{${smiles}}`}</code>;
               } catch {
                 // 损坏的 URL 编码不应让整条聊天消息渲染失败。
                 return <span {...props}>{children}</span>;

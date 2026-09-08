@@ -32,7 +32,10 @@ impl ChatV2Pipeline {
         // 🆕 Insight Recall v2 阶段二：被动注入（存在级最小披露）
         let insight_hints = self.load_insight_existence_hints(ctx);
 
-        let parts = prompt_builder::build_system_prompt_with_profile_and_agents(
+        // 只向模型声明用户在设置中启用的渲染语法。
+        let renderer_capabilities = self.load_renderer_capabilities();
+
+        let parts = prompt_builder::build_system_prompt_with_profile_agents_and_renderers(
             &ctx.options,
             &ctx.retrieved_sources,
             canvas_note,
@@ -40,9 +43,19 @@ impl ChatV2Pipeline {
             agents_instructions,
             active_goal,
             insight_hints,
+            renderer_capabilities,
         );
         ctx.turn_volatile_context = parts.turn_volatile;
         parts.stable_system
+    }
+
+    pub(crate) fn load_renderer_capabilities(&self) -> prompt_builder::RendererCapabilities {
+        let raw = self
+            .main_db
+            .as_ref()
+            .and_then(|db| db.get_setting(prompt_builder::RENDERER_CAPABILITIES_SETTING_KEY).ok())
+            .flatten();
+        prompt_builder::parse_renderer_capabilities(raw.as_deref())
     }
 
     /// 🆕 Goal 模式（P0）：从 chat_v2 db 读取活跃目标并格式化为注入纯文本。
