@@ -26,26 +26,35 @@
 //! worker 管线结束（含 panic/超时）→ GrantRegistrationGuard::drop 注销
 //! ```
 //!
-//! # 进程内语义（P1）
+//! # 进程内语义 + 持久化（P2）
 //!
-//! epoch 与注册表均为进程内 static（DB 持久化留 TODO，见下）。撤权入口：
+//! grant 注册表为进程内 static（worker 随进程存亡，无需落库）；撤权 epoch
+//! 已落库（G02-P2，迁移 V20260910 `revocation_epochs` 表）——撤权是终态，
+//! 记录必须跨重启存活。写读序：
+//! - bump（[`revoke_all_grants`] / [`revoke_grants_for`]）：**先写库再更新
+//!   内存**（fail-closed：写库失败则内存不动、整体返回错误，绝不留下
+//!   "内存已撤、库里没撤"的半态导致重启后静默回滚撤权）；
+//! - 启动（`ChatV2Database::new` 调用 [`restore_revocation_epochs_from_db`]）：
+//!   从表加载并以 max 语义安装进进程内轴（无行 → 0，表缺失 → 跳过）。
+//!
+//! 撤权入口：
 //! - [`revoke_all_grants`]：bump 全局 epoch，此前签发的所有 grant 立即失效；
 //! - [`revoke_grants_for`]：仅 bump 指定 `child_task_id` 的 epoch，其余 grant 不受影响。
 //!
 //! epoch 单调递增、永不复用：撤权是终态，「恢复」的语义 = 重新 run 签发新
 //! grant（快照新 epoch），与 worker 重跑模型一致。
 //!
-//! TODO(P2)：epoch 与 grant 登记落库（重启后撤权记录不丢）；`object_scopes`
-//! 对接 transformer profile 的对象级写授权。`budget` 已由 G08 对接
-//! （`budget.rs` 树根账本 + reserve 语义填充，settings 可配与快照落库属
-//! G08-P2）。
+//! TODO(P2 后续)：grant 登记审计落库；`object_scopes` 对接 transformer
+//! profile 的对象级写授权。`budget` 已由 G08 对接（`budget.rs` 树根账本 +
+//! reserve 语义填充；G08-P2 已落地 settings 可配与快照落库）。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use super::database::ChatV2Database;
 use super::tool_policy;
 
 /// DelegatedGrant 结构版本。P1 = 1；schema 演进时递增并在此注释变更点。
@@ -253,7 +262,7 @@ impl DelegatedGrant {
 }
 
 // ============================================================================
-// 撤权 epoch（进程内，单调递增；DB 持久化 TODO(P2)）
+// 撤权 epoch（进程内轴 + V20260910 落库）
 // ============================================================================
 
 /// 全局撤权 epoch。签发 grant 时取快照；`revoke_all_grants` bump 后，
@@ -263,12 +272,32 @@ static GLOBAL_REVOCATION_EPOCH: AtomicU64 = AtomicU64::new(0);
 static TASK_REVOCATION_EPOCHS: OnceLock<RwLock<HashMap<String, u64>>> = OnceLock::new();
 static GRANT_REGISTRY: OnceLock<RwLock<HashMap<String, DelegatedGrant>>> = OnceLock::new();
 
+/// bump 序列化锁：「读当前值 → +1 → 写库 → 写内存」必须整体原子，
+/// 否则并发 revoke 会算出相同的 next 或出现库/内存倒挂。
+static REVOCATION_BUMP_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// `revocation_epochs` 表行键（迁移 V20260910）：全局行 (kind='global',
+/// task_id='')；per-task 行 (kind='task', task_id=<child_task_id>)。
+const EPOCH_KIND_GLOBAL: &str = "global";
+const EPOCH_KIND_TASK: &str = "task";
+
 fn task_revocation_epochs() -> &'static RwLock<HashMap<String, u64>> {
     TASK_REVOCATION_EPOCHS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 fn grant_registry() -> &'static RwLock<HashMap<String, DelegatedGrant>> {
     GRANT_REGISTRY.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn revocation_bump_lock() -> &'static Mutex<()> {
+    REVOCATION_BUMP_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn bump_guard() -> MutexGuard<'static, ()> {
+    revocation_bump_lock().lock().unwrap_or_else(|poisoned| {
+        log::error!("[Grants] bump Mutex poisoned; recovering");
+        poisoned.into_inner()
+    })
 }
 
 fn read_lock<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
@@ -301,13 +330,22 @@ pub fn current_epoch_for(child_task_id: &str) -> u64 {
 
 /// 撤销**全部**已签发 grant：bump 全局 epoch，旧快照的 grant 在下一次工具
 /// 调用即被准入门拦截。返回新 epoch。
-pub fn revoke_all_grants() -> u64 {
-    let next = GLOBAL_REVOCATION_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+///
+/// G02-P2 fail-closed 写读序：先在 bump 锁内向 `revocation_epochs` 写入
+/// ('global','') 行，**写库成功后才更新内存**；写库失败则内存保持原值、
+/// 整体返回 Err（调用方可上报告警）——绝不留下"内存已撤、库里没撤"的
+/// 半态（那等于重启后静默回滚撤权）。单行 UPSERT 自身即原子，无需显式
+/// 事务包裹。
+pub fn revoke_all_grants(db: &ChatV2Database) -> Result<u64, String> {
+    let _guard = bump_guard();
+    let next = current_global_epoch().saturating_add(1);
+    persist_revocation_epoch(db, EPOCH_KIND_GLOBAL, "", next)?;
+    GLOBAL_REVOCATION_EPOCH.store(next, Ordering::SeqCst);
     log::warn!(
-        "[Grants] revoke_all_grants: global revocation epoch bumped to {}",
+        "[Grants] revoke_all_grants: global revocation epoch bumped to {} (persisted)",
         next
     );
-    next
+    Ok(next)
 }
 
 /// 仅撤销指定子任务的 grant：该任务的 epoch 提升一级，**不动全局 epoch**，
@@ -318,17 +356,177 @@ pub fn revoke_all_grants() -> u64 {
 /// revoke_all」任意交错下快照比较都成立；签发快照取
 /// [`current_epoch_for`]（= 同一 max 轴），因此撤权后同一 child_task 重跑
 /// 新签发的 grant 仍存活（撤权是「撤销在跑的一代」，不是永久拉黑）。
-pub fn revoke_grants_for(child_task_id: &str) -> u64 {
-    let mut epochs = write_lock(task_revocation_epochs());
-    let current = epochs.get(child_task_id).copied().unwrap_or(0);
-    let next = current.max(current_global_epoch()) + 1;
-    epochs.insert(child_task_id.to_string(), next);
+///
+/// 写读序同 [`revoke_all_grants`]：先落库 ('task', child_task_id) 行，
+/// 成功后更新内存；失败不更新内存（fail-closed）。
+pub fn revoke_grants_for(db: &ChatV2Database, child_task_id: &str) -> Result<u64, String> {
+    let _guard = bump_guard();
+    let next = {
+        let epochs = read_lock(task_revocation_epochs());
+        let current = epochs.get(child_task_id).copied().unwrap_or(0);
+        current.max(current_global_epoch()).saturating_add(1)
+    };
+    persist_revocation_epoch(db, EPOCH_KIND_TASK, child_task_id, next)?;
+    write_lock(task_revocation_epochs()).insert(child_task_id.to_string(), next);
     log::warn!(
-        "[Grants] revoke_grants_for: child_task_id={} revoked at epoch {}",
+        "[Grants] revoke_grants_for: child_task_id={} revoked at epoch {} (persisted)",
         child_task_id,
         next
     );
-    next
+    Ok(next)
+}
+
+// ============================================================================
+// epoch 持久化（V20260910 revocation_epochs 表）
+// ============================================================================
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+/// 低层写入：upsert 一行 epoch（bump 路径在锁内调用；测试可直接调用做
+/// roundtrip，不触碰进程内轴）。
+pub fn persist_revocation_epoch(
+    db: &ChatV2Database,
+    kind: &str,
+    task_id: &str,
+    epoch: u64,
+) -> Result<(), String> {
+    let epoch_i64 = i64::try_from(epoch)
+        .map_err(|_| format!("epoch {epoch} exceeds SQLite INTEGER range"))?;
+    let conn = db
+        .get_conn()
+        .map_err(|e| format!("revocation_epochs: get conn failed: {e}"))?;
+    conn.execute(
+        "INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(kind, task_id) DO UPDATE SET
+           epoch = excluded.epoch,
+           updated_at = excluded.updated_at",
+        rusqlite::params![kind, task_id, epoch_i64, now_rfc3339()],
+    )
+    .map_err(|e| format!("revocation_epochs upsert failed (kind={kind}, task={task_id}): {e}"))?;
+    Ok(())
+}
+
+/// 从库中加载的撤权 epoch 快照（"新进程内存"的可测试形态）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LoadedRevocationEpochs {
+    pub global: u64,
+    pub tasks: Vec<(String, u64)>,
+}
+
+impl LoadedRevocationEpochs {
+    /// 与进程内轴同语义：max(global, 该任务 per-task epoch)。
+    pub fn current_epoch_for(&self, child_task_id: &str) -> u64 {
+        let task_epoch = self
+            .tasks
+            .iter()
+            .find(|(task_id, _)| task_id == child_task_id)
+            .map(|(_, epoch)| *epoch)
+            .unwrap_or(0);
+        self.global.max(task_epoch)
+    }
+}
+
+/// `revocation_epochs` 表是否已迁移存在（未迁移的测试库/旧库 → 跳过加载）。
+fn revocation_epochs_table_exists(conn: &rusqlite::Connection) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='revocation_epochs')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+        == 1
+}
+
+/// 纯读取：从 revocation_epochs 表加载全部行。表不存在 → 返回空快照
+/// （等同于"无行 → 0"）；单条坏行（负 epoch / 未知 kind）跳过并 warn，
+/// 不让一条脏数据拖垮整个恢复。
+pub fn load_revocation_epochs(db: &ChatV2Database) -> Result<LoadedRevocationEpochs, String> {
+    let conn = db
+        .get_conn()
+        .map_err(|e| format!("revocation_epochs: get conn failed: {e}"))?;
+    if !revocation_epochs_table_exists(&conn) {
+        log::debug!("[Grants] revocation_epochs table absent; starting from epoch 0");
+        return Ok(LoadedRevocationEpochs::default());
+    }
+    let mut stmt = conn
+        .prepare("SELECT kind, task_id, epoch FROM revocation_epochs")
+        .map_err(|e| format!("revocation_epochs prepare failed: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(|e| format!("revocation_epochs query failed: {e}"))?;
+    let mut loaded = LoadedRevocationEpochs::default();
+    for row in rows {
+        let (kind, task_id, epoch) =
+            row.map_err(|e| format!("revocation_epochs row decode failed: {e}"))?;
+        let Ok(epoch) = u64::try_from(epoch) else {
+            log::warn!(
+                "[Grants] skipping corrupt revocation_epochs row (negative epoch): kind={}, task={}",
+                kind,
+                task_id
+            );
+            continue;
+        };
+        match kind.as_str() {
+            EPOCH_KIND_GLOBAL => loaded.global = loaded.global.max(epoch),
+            EPOCH_KIND_TASK => {
+                // 复合主键保证每任务至多一行；防御性 max 合并
+                match loaded.tasks.iter().position(|(id, _)| *id == task_id) {
+                    Some(pos) => loaded.tasks[pos].1 = loaded.tasks[pos].1.max(epoch),
+                    None => loaded.tasks.push((task_id, epoch)),
+                }
+            }
+            other => {
+                log::warn!("[Grants] skipping revocation_epochs row with unknown kind: {other}");
+            }
+        }
+    }
+    Ok(loaded)
+}
+
+/// 启动恢复入口（`ChatV2Database::new` 调用）：加载并以 **max 语义**安装
+/// 进进程内轴——只升不降，重复调用/并发调用安全。失败仅记 error 不阻塞
+/// 启动（epoch 丢失的最坏后果是旧撤权记录失效，而 grant 注册表本身不随
+/// 进程存活，重启后本就没有在跑的旧 grant 可拦；新签发 grant 从 0 轴重新
+/// 快照，语义自洽）。
+pub fn restore_revocation_epochs_from_db(db: &ChatV2Database) {
+    match load_revocation_epochs(db) {
+        Ok(loaded) => {
+            if loaded.global == 0 && loaded.tasks.is_empty() {
+                return;
+            }
+            GLOBAL_REVOCATION_EPOCH.fetch_max(loaded.global, Ordering::SeqCst);
+            let task_count = loaded.tasks.len();
+            {
+                let mut epochs = write_lock(task_revocation_epochs());
+                for (task_id, epoch) in &loaded.tasks {
+                    epochs
+                        .entry(task_id.clone())
+                        .and_modify(|existing| *existing = (*existing).max(*epoch))
+                        .or_insert(*epoch);
+                }
+            }
+            log::info!(
+                "[Grants] Restored revocation epochs from db: global={}, tasks={}",
+                loaded.global,
+                task_count
+            );
+        }
+        Err(e) => {
+            log::error!(
+                "[Grants] Failed to restore revocation epochs (starting from in-memory 0): {}",
+                e
+            );
+        }
+    }
 }
 
 // ============================================================================
@@ -439,6 +637,27 @@ mod tests {
     };
     use chrono::{Duration, Utc};
     use serde_json::json;
+
+    /// 操纵/断言进程内 epoch 轴的测试必须串行（cargo test 默认并线程）：
+    /// 凡调用 revoke_* / restore_* 或断言全局 epoch 绝对关系的用例都要持有
+    /// 本锁；纯库读写 roundtrip（persist + load 返回 struct）不触碰进程内轴，
+    /// 无需持锁。
+    static TEST_EPOCH_LOCK: Mutex<()> = Mutex::new(());
+
+    /// 带 V20260910 表的临时 chat_v2 库（真实迁移 SQL，不用替身 schema）。
+    /// 注意构造时表尚不存在，`ChatV2Database::new` 的启动恢复为空操作；
+    /// 行写入发生在建库之后，不会再触发自动恢复，不污染进程内轴。
+    fn grants_test_db() -> (tempfile::TempDir, ChatV2Database) {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db = ChatV2Database::new(dir.path()).expect("chat_v2 db");
+        db.get_conn()
+            .expect("conn")
+            .execute_batch(include_str!(
+                "../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"
+            ))
+            .expect("apply V20260910");
+        (dir, db)
+    }
 
     fn bare_grant(tool_scopes: Vec<ToolScope>) -> DelegatedGrant {
         DelegatedGrant {
@@ -579,13 +798,16 @@ mod tests {
         );
     }
 
-    /// 全局机制集成测试（串行语义：本测试是唯一操纵全局 epoch 的用例，
-    /// 全部 id 用 ULID 唯一化，与其他并行测试互不干扰）：
+    /// 全局机制集成测试（持有 TEST_EPOCH_LOCK 串行化全部进程内轴操纵；
+    /// 业务 id 用 ULID 唯一化）：
     /// - per-task 撤权只影响目标任务；
     /// - 全局撤权使全部旧 grant 失效，新签发 grant 不受影响；
+    /// - 撤权同时落库（revocation_epochs 行与内存同值）；
     /// - 守卫 drop 注销且不误删新一代注册。
     #[test]
     fn global_revocation_epoch_gates_registered_grants() {
+        let _serial = TEST_EPOCH_LOCK.lock().unwrap();
+        let (_dir, db) = grants_test_db();
         let suffix = ulid::Ulid::new().to_string();
         let (session_a, child_a) = (
             format!("sess_a_{suffix}"),
@@ -623,7 +845,7 @@ mod tests {
             .is_ok());
 
         // per-task 撤权：A 失效，B 与新签发的 A2 不受影响
-        revoke_grants_for(&child_a);
+        let revoked_epoch_a = revoke_grants_for(&db, &child_a).expect("persisted revoke");
         assert_eq!(
             lookup_grant_for_session(&session_a)
                 .unwrap()
@@ -649,8 +871,16 @@ mod tests {
             .ensure_live()
             .is_ok());
 
+        // 撤权行已落库，且与内存同值（先库后内存）
+        let persisted = load_revocation_epochs(&db).expect("load");
+        assert_eq!(
+            persisted.current_epoch_for(&child_a),
+            revoked_epoch_a,
+            "per-task 撤权后库内 epoch 必须与返回值一致"
+        );
+
         // 全局撤权：B、A2 全部失效；之后签发的 D 存活
-        revoke_all_grants();
+        let global_epoch = revoke_all_grants(&db).expect("persisted revoke all");
         assert_eq!(
             lookup_grant_for_session(&session_b)
                 .unwrap()
@@ -676,6 +906,10 @@ mod tests {
             .unwrap()
             .ensure_live()
             .is_ok());
+
+        // 全局 epoch 行同样落库且与内存同值
+        let persisted = load_revocation_epochs(&db).expect("load");
+        assert_eq!(persisted.global, global_epoch);
 
         // 守卫 drop：注销自己这一代；同 session 已被新 grant 覆盖时不得误删
         let grant_id_a = guard_a.grant_id().to_string();
@@ -707,5 +941,144 @@ mod tests {
         assert!(GrantDenial::Expired
             .message("grant_x", "builtin-web_search")
             .contains("授权已过期"));
+    }
+
+    /// G02-P2 落库 roundtrip（纯库读写，不触碰进程内轴，无需串行锁）：
+    /// persist → load 逐值相等；重复 upsert 覆盖同键行。
+    #[test]
+    fn epoch_persistence_roundtrip() {
+        let (_dir, db) = grants_test_db();
+
+        persist_revocation_epoch(&db, EPOCH_KIND_GLOBAL, "", 7).unwrap();
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, "child-x", 9).unwrap();
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, "child-y", 3).unwrap();
+        // 同键 upsert 覆盖
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, "child-y", 4).unwrap();
+
+        let loaded = load_revocation_epochs(&db).expect("load");
+        assert_eq!(loaded.global, 7);
+        // 每任务恰好一行，upsert 覆盖旧值
+        assert_eq!(
+            loaded
+                .tasks
+                .iter()
+                .filter(|(id, _)| id == "child-y")
+                .map(|(_, epoch)| *epoch)
+                .collect::<Vec<_>>(),
+            vec![4],
+            "upsert 必须覆盖旧值且不留重复行"
+        );
+        // per-task 轴语义 = max(global, task)
+        assert_eq!(loaded.current_epoch_for("child-x"), 9);
+        assert_eq!(loaded.current_epoch_for("child-y"), 7, "max(global=7, task=4)");
+        // 未撤权的任务回落到全局轴
+        assert_eq!(loaded.current_epoch_for("child-unknown"), 7);
+    }
+
+    /// G02-P2 重启保持语义（不触碰进程内轴）：写库 → 模拟新进程重新加载 →
+    /// 旧快照 grant 仍被撤权拦截；未撤权任务的新快照 grant 存活。
+    #[test]
+    fn epoch_reload_keeps_revocation_effective() {
+        let (_dir, db) = grants_test_db();
+        let child_revoked = format!("child_revoked_{}", ulid::Ulid::new());
+        let child_other = format!("child_other_{}", ulid::Ulid::new());
+
+        persist_revocation_epoch(&db, EPOCH_KIND_GLOBAL, "", 5).unwrap();
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, &child_revoked, 8).unwrap();
+
+        // "新实例"：从库重新加载的内存视图
+        let loaded = load_revocation_epochs(&db).expect("reload");
+
+        let now = Utc::now();
+        // 被 per-task 撤权的一代（快照 6 < 8）：重启后仍拒
+        let mut grant = bare_grant(Vec::new());
+        grant.child_task_id = child_revoked.clone();
+        grant.revocation_epoch = 6;
+        assert_eq!(
+            grant.check_liveness(loaded.current_epoch_for(&child_revoked), now),
+            Err(GrantDenial::Revoked),
+            "重启加载后被撤任务旧快照必须仍被拒"
+        );
+        // 撤权后重跑的新一代（快照 = 8）：存活
+        grant.revocation_epoch = 8;
+        assert_eq!(
+            grant.check_liveness(loaded.current_epoch_for(&child_revoked), now),
+            Ok(())
+        );
+        // 全局撤权波及其他任务的旧快照（快照 4 < global 5）
+        grant.child_task_id = child_other.clone();
+        grant.revocation_epoch = 4;
+        assert_eq!(
+            grant.check_liveness(loaded.current_epoch_for(&child_other), now),
+            Err(GrantDenial::Revoked)
+        );
+        // 其他任务的新快照（5 >= 5）：存活
+        grant.revocation_epoch = 5;
+        assert_eq!(
+            grant.check_liveness(loaded.current_epoch_for(&child_other), now),
+            Ok(())
+        );
+    }
+
+    /// G02-P2 fail-closed：写库失败（表缺失）时内存轴纹丝不动，且返回 Err。
+    /// 持有串行锁（断言进程内轴不变）。
+    #[test]
+    fn revoke_fails_closed_when_db_write_fails() {
+        let _serial = TEST_EPOCH_LOCK.lock().unwrap();
+        // 故意不应用 V20260910 迁移的库
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db_no_table = ChatV2Database::new(dir.path()).expect("db without table");
+
+        let global_before = current_global_epoch();
+        let child = format!("child_fc_{}", ulid::Ulid::new());
+        let task_before = current_epoch_for(&child);
+
+        assert!(revoke_all_grants(&db_no_table).is_err());
+        assert!(revoke_grants_for(&db_no_table, &child).is_err());
+        assert_eq!(
+            current_global_epoch(),
+            global_before,
+            "写库失败不得更新全局内存 epoch"
+        );
+        assert_eq!(
+            current_epoch_for(&child),
+            task_before,
+            "写库失败不得更新 per-task 内存 epoch"
+        );
+    }
+
+    /// G02-P2 启动恢复：max 语义安装（只升不降），重复恢复幂等。
+    /// 持有串行锁（操纵进程内轴）。
+    #[test]
+    fn restore_installs_loaded_epochs_with_max_semantics() {
+        let _serial = TEST_EPOCH_LOCK.lock().unwrap();
+        let (_dir, db) = grants_test_db();
+        let child = format!("child_restore_{}", ulid::Ulid::new());
+
+        let global_base = current_global_epoch();
+        persist_revocation_epoch(&db, EPOCH_KIND_GLOBAL, "", global_base + 10).unwrap();
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, &child, global_base + 12).unwrap();
+
+        restore_revocation_epochs_from_db(&db);
+        assert_eq!(current_global_epoch(), global_base + 10);
+        assert_eq!(current_epoch_for(&child), global_base + 12);
+
+        // 重复恢复幂等；库中更小的旧值不得回退内存
+        persist_revocation_epoch(&db, EPOCH_KIND_TASK, &child, 1).unwrap();
+        restore_revocation_epochs_from_db(&db);
+        assert_eq!(current_global_epoch(), global_base + 10);
+        assert_eq!(current_epoch_for(&child), global_base + 12);
+    }
+
+    /// 表缺失（未迁移库）时启动恢复为空操作而非报错。
+    #[test]
+    fn restore_tolerates_missing_table() {
+        let _serial = TEST_EPOCH_LOCK.lock().unwrap();
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db = ChatV2Database::new(dir.path()).expect("db without table");
+        let global_before = current_global_epoch();
+        restore_revocation_epochs_from_db(&db); // 不得 panic
+        assert_eq!(current_global_epoch(), global_before);
+        assert!(load_revocation_epochs(&db).expect("load").global == 0);
     }
 }

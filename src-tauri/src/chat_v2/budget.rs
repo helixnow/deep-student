@@ -44,25 +44,42 @@
 //! 下一次 `attach_child_to_tree` 轮换为全新账本——耗尽是"这一代任务树"
 //! 的终态，不是会话的永久封禁。
 //!
-//! # 进程内语义（P1）
+//! # 进程内语义 + 持久化（G08-P2）
 //!
-//! 账本与绑定均为进程内 static。TODO(G08-P2)：
-//! - 默认预算值接入 settings 可配（对齐 headless `max_tool_rounds` 词汇）；
-//! - 预算快照落库（重启可审计；`BudgetLedger::usage` / `remaining` 即快照源）；
+//! 账本与绑定均为进程内 static；G08-P2 已落地：
+//! - **默认预算值 settings 可配**（主库 settings 表三 key，见
+//!   [`SETTING_BUDGET_MAX_TOOL_CALLS`] 等；缺失/非法值回退内置默认 + warn）；
+//! - **预算快照落库**（迁移 V20260910 `budget_snapshots` 表）：账本创建 /
+//!   超额 / worker 绑定解绑三个写入点（指纹去重），启动时恢复仍未完成的
+//!   任务树根账本——防"重启/模型切换/重试重置任务累计预算"；超时的树按
+//!   created_at_unix 推算已耗时，恢复即 exhausted（耗尽 + 树枯的轮换语义
+//!   不变，下一代任务仍从零起算）。
+//!
+//! 持久化通道：attach/consume 的调用方（hooks/workspace_handlers）不携带
+//! db 句柄，故由 `ChatV2Database::new` 启动时经 [`configure_persistence`]
+//! 注册 chat_v2 连接池克隆与主库 settings 路径；全部热路径写入 fail-soft
+//! （warn + 跳过），快照只是审计/恢复依据，绝不影响账本判定语义。
+//!
+//! TODO(G08-P2 后续)：
 //! - token 记账接线：tool_loop 流式轮末的既有汇总点调 [`record_usage`]
 //!   （tool_loop.rs 不在 G08 所有权内，P1 仅备好 API；wall_clock 与
 //!   tool_calls 已在 hooks 门生效）；
 //! - 注册表生命周期（LRU/TTL 清理；当前随会话规模缓慢增长）。
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
+use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
+
+use super::database::{ChatV2Database, ChatV2Pool};
 use super::grants::BudgetSpec;
 
 // ============================================================================
-// 默认预算（TODO(G08-P2)：settings 可配）
+// 默认预算与 settings 可配（G08-P2）
 // ============================================================================
 
 /// 单树默认工具调用上限（整棵树所有成员共享）。
@@ -71,6 +88,16 @@ pub const DEFAULT_MAX_TOOL_CALLS: u64 = 200;
 pub const DEFAULT_MAX_TOKENS: u64 = 2_000_000;
 /// 单树默认 wall-clock 上限（账本创建起算）。
 pub const DEFAULT_MAX_WALL_CLOCK_SECS: u64 = 30 * 60;
+
+/// settings key（主库 settings 表）：单树工具调用上限。
+/// 缺失/非法（非正整数）→ 回退 [`DEFAULT_MAX_TOOL_CALLS`] + warn。
+pub const SETTING_BUDGET_MAX_TOOL_CALLS: &str = "headless_budget_max_tool_calls";
+/// settings key（主库 settings 表）：单树 token 上限（in + out 合并计）。
+/// 缺失/非法 → 回退 [`DEFAULT_MAX_TOKENS`] + warn。
+pub const SETTING_BUDGET_MAX_TOKENS: &str = "headless_budget_max_tokens";
+/// settings key（主库 settings 表）：单树 wall-clock 上限秒数。
+/// 缺失/非法 → 回退 [`DEFAULT_MAX_WALL_CLOCK_SECS`] + warn。
+pub const SETTING_BUDGET_MAX_WALL_CLOCK_SECS: &str = "headless_budget_wall_clock_secs";
 
 /// 任务树根 id（第一代 worker 的根 = 父会话 id）。
 pub type BudgetKey = String;
@@ -90,6 +117,51 @@ impl Default for BudgetLimits {
             max_tokens: DEFAULT_MAX_TOKENS,
             max_wall_clock: Duration::from_secs(DEFAULT_MAX_WALL_CLOCK_SECS),
         }
+    }
+}
+
+/// 解析单个 settings 值：缺失 → 默认（正常态，不告警）；非法（非正整数）
+/// → 默认 + warn。0 视为非法（上限 0 = 树创建即耗尽，无合理用途）。
+fn parse_limit(raw: Option<String>, default: u64, key: &str) -> u64 {
+    let Some(raw) = raw else { return default };
+    let trimmed = raw.trim();
+    match trimmed.parse::<u64>() {
+        Ok(value) if value > 0 => value,
+        _ => {
+            log::warn!(
+                "[Budget] settings key '{}' 的值 {:?} 非法（需为正整数），回退默认 {}",
+                key,
+                trimmed,
+                default
+            );
+            default
+        }
+    }
+}
+
+/// 由 settings 读取闭包解析三维默认树上限（纯函数，测试友好）。
+///
+/// N06 语义适配：settings 读取侧的失败已降级为 None + warn（budget 是
+/// 资源护栏而非机密/权限面，读取失败不得拖垮 worker 派生）；此处对
+/// 缺失/非法值回退默认并 warn，与 headless `resolve_budget` 的
+/// "setting 缺失回退默认" 模式一致。
+pub fn resolve_limits(read: &dyn Fn(&str) -> Option<String>) -> BudgetLimits {
+    BudgetLimits {
+        max_tool_calls: parse_limit(
+            read(SETTING_BUDGET_MAX_TOOL_CALLS),
+            DEFAULT_MAX_TOOL_CALLS,
+            SETTING_BUDGET_MAX_TOOL_CALLS,
+        ),
+        max_tokens: parse_limit(
+            read(SETTING_BUDGET_MAX_TOKENS),
+            DEFAULT_MAX_TOKENS,
+            SETTING_BUDGET_MAX_TOKENS,
+        ),
+        max_wall_clock: Duration::from_secs(parse_limit(
+            read(SETTING_BUDGET_MAX_WALL_CLOCK_SECS),
+            DEFAULT_MAX_WALL_CLOCK_SECS,
+            SETTING_BUDGET_MAX_WALL_CLOCK_SECS,
+        )),
     }
 }
 
@@ -211,6 +283,10 @@ pub struct BudgetLedger {
     created_at_unix: i64,
     /// 当前绑定到本树的 worker session 数（轮换判定：>0 时树未枯）。
     active_bindings: AtomicU64,
+    /// G08-P2 快照去重指纹（tool_calls, tokens_in, tokens_out）：与上次
+    /// 成功落库的快照一致则跳过——超额拦截后的模型重试不再重复写库。
+    /// 写库失败不更新指纹（下一次写入点重试）。
+    last_snapshot_fingerprint: Mutex<Option<(u64, u64, u64)>>,
 }
 
 impl BudgetLedger {
@@ -226,6 +302,36 @@ impl BudgetLedger {
             created_at: Instant::now(),
             created_at_unix: chrono::Utc::now().timestamp(),
             active_bindings: AtomicU64::new(0),
+            last_snapshot_fingerprint: Mutex::new(None),
+        }
+    }
+
+    /// 从持久快照重建账本（G08-P2 启动恢复）。
+    ///
+    /// wall_clock 以 `created_at_unix` 为权威锚点推算累计耗时——进程停机
+    /// 期间墙钟继续流逝（wall-clock 是真实时间语义），超时的树恢复即
+    /// exhausted（随后按既有"耗尽 + 树枯 → 轮换"语义处理，不会被重置成
+    /// 有额度的账本继续跑）。时钟回拨时 elapsed 钳 0。
+    fn restored(
+        root_id: BudgetKey,
+        limits: BudgetLimits,
+        usage: UsageCore,
+        created_at_unix: i64,
+    ) -> Self {
+        let elapsed_secs = u64::try_from(
+            chrono::Utc::now().timestamp().saturating_sub(created_at_unix),
+        )
+        .unwrap_or(0);
+        Self {
+            root_id,
+            limits,
+            usage: Mutex::new(usage),
+            created_at: Instant::now()
+                .checked_sub(Duration::from_secs(elapsed_secs))
+                .unwrap_or_else(Instant::now),
+            created_at_unix,
+            active_bindings: AtomicU64::new(0),
+            last_snapshot_fingerprint: Mutex::new(None),
         }
     }
 
@@ -342,6 +448,53 @@ impl BudgetLedger {
         drop(usage);
         self.remaining()
     }
+
+    // ── G08-P2 快照辅助 ──────────────────────────────────────────────
+
+    fn lock_snapshot_fingerprint(&self) -> MutexGuard<'_, Option<(u64, u64, u64)>> {
+        self.last_snapshot_fingerprint.lock().unwrap_or_else(|poisoned| {
+            log::error!("[Budget] snapshot fingerprint Mutex poisoned; recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// 快照去重指纹（三维计数；wall_clock 由 created_at_unix 锚点推算，
+    /// 不参与指纹）。
+    fn snapshot_fingerprint(&self) -> (u64, u64, u64) {
+        let usage = self.lock_usage();
+        (usage.tool_calls, usage.tokens_in, usage.tokens_out)
+    }
+
+    /// 与上次成功落库的快照一致（无需再写）。
+    fn snapshot_already_persisted(&self, fingerprint: (u64, u64, u64)) -> bool {
+        *self.lock_snapshot_fingerprint() == Some(fingerprint)
+    }
+
+    /// 快照成功落库后记录指纹。
+    fn mark_snapshot_persisted(&self, fingerprint: (u64, u64, u64)) {
+        *self.lock_snapshot_fingerprint() = Some(fingerprint);
+    }
+
+    /// 上限的可序列化快照（生成代有效值）。
+    fn limits_snapshot(&self) -> BudgetLimitsSnapshot {
+        BudgetLimitsSnapshot {
+            max_tool_calls: self.limits.max_tool_calls,
+            max_tokens: self.limits.max_tokens,
+            max_wall_clock_secs: self.limits.max_wall_clock.as_secs(),
+        }
+    }
+
+    /// 用量的可序列化快照（含 created_at_unix 恢复锚点）。
+    fn usage_snapshot(&self) -> BudgetUsageSnapshot {
+        let usage = self.lock_usage();
+        BudgetUsageSnapshot {
+            tool_calls: usage.tool_calls,
+            tokens_in: usage.tokens_in,
+            tokens_out: usage.tokens_out,
+            wall_clock_secs: self.wall_clock_elapsed().as_secs(),
+            created_at_unix: self.created_at_unix,
+        }
+    }
 }
 
 // ============================================================================
@@ -370,6 +523,278 @@ pub fn reserve_child_spec(
             declared.max_wall_clock_seconds,
             remaining.wall_clock_secs,
         ),
+    }
+}
+
+// ============================================================================
+// G08-P2 持久化通道：快照落库 + settings 读取
+// ============================================================================
+//
+// attach/consume/drop 的调用方（pipeline/hooks、workspace_handlers）不携带
+// db 句柄且签名冻结，故持久化通道由 `ChatV2Database::new` 启动时注册
+// （进程级单例）。全部热路径写入 fail-soft：通道未绑定（单元测试）→ 跳过；
+// 写失败 → warn，账本语义不受影响。
+
+static SNAPSHOT_POOL: OnceLock<RwLock<Option<ChatV2Pool>>> = OnceLock::new();
+static MAIN_DB_PATH: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+fn snapshot_pool_cell() -> &'static RwLock<Option<ChatV2Pool>> {
+    SNAPSHOT_POOL.get_or_init(|| RwLock::new(None))
+}
+
+fn main_db_path_cell() -> &'static RwLock<Option<PathBuf>> {
+    MAIN_DB_PATH.get_or_init(|| RwLock::new(None))
+}
+
+/// 启动装配（`ChatV2Database::new` 调用）：注册快照写入通道（chat_v2 连接
+/// 池克隆，与主库连接共享 WAL/busy_timeout 初始化）与主库 settings 路径。
+/// 可重复绑定（后绑定覆盖，测试库频繁构造即短暂重绑）；所有经此通道的
+/// 读写均 fail-soft，不影响账本判定。
+pub fn configure_persistence(chat_v2_pool: ChatV2Pool, main_db_path: PathBuf) {
+    *write_lock(main_db_path_cell()) = Some(main_db_path);
+    *write_lock(snapshot_pool_cell()) = Some(chat_v2_pool);
+}
+
+fn snapshot_pool() -> Option<ChatV2Pool> {
+    read_lock(snapshot_pool_cell()).clone()
+}
+
+fn main_db_path() -> Option<PathBuf> {
+    read_lock(main_db_path_cell()).clone()
+}
+
+/// 从主库 settings 表读单个 key。独立短连接 + busy_timeout（settings 读
+/// 不在热路径，仅账本创建时一次）；任何失败 → None + warn（解析层回退
+/// 默认，见 [`resolve_limits`]）。
+pub(crate) fn read_setting_from_main_db(db_path: &Path, key: &str) -> Option<String> {
+    let conn = match rusqlite::Connection::open(db_path) {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::warn!(
+                "[Budget] 打开主库 settings 失败（{}），key '{}' 回退默认: {}",
+                db_path.display(),
+                key,
+                e
+            );
+            return None;
+        }
+    };
+    let _ = conn.pragma_update(None, "busy_timeout", 2_000i64);
+    match conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            rusqlite::params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+    {
+        Ok(value) => value,
+        Err(e) => {
+            log::warn!(
+                "[Budget] 读取 settings key '{}' 失败，回退默认: {}",
+                key,
+                e
+            );
+            None
+        }
+    }
+}
+
+/// 当前生效的默认树上限：settings 可配（主库路径已绑定时），否则内置默认。
+pub fn effective_limits() -> BudgetLimits {
+    match main_db_path() {
+        Some(path) => resolve_limits(&|key| read_setting_from_main_db(&path, key)),
+        None => BudgetLimits::default(),
+    }
+}
+
+/// `budget_snapshots.limits_json` 形态（V20260910）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetLimitsSnapshot {
+    pub max_tool_calls: u64,
+    pub max_tokens: u64,
+    pub max_wall_clock_secs: u64,
+}
+
+/// `budget_snapshots.usage_json` 形态（V20260910）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetUsageSnapshot {
+    pub tool_calls: u64,
+    pub tokens_in: u64,
+    pub tokens_out: u64,
+    /// 快照时刻已耗时秒数（审计可读性；恢复的权威锚点是 `created_at_unix`）。
+    pub wall_clock_secs: u64,
+    /// 账本创建锚点（unix 秒）。恢复时据此推算累计耗时（停机期间继续
+    /// 计时），超时的树恢复即 exhausted。
+    pub created_at_unix: i64,
+}
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+/// 连接级快照 upsert（pool 路径与显式 db 路径共用）。
+fn persist_snapshot_conn(
+    conn: &rusqlite::Connection,
+    ledger: &BudgetLedger,
+) -> Result<(), String> {
+    let limits_json = serde_json::to_string(&ledger.limits_snapshot())
+        .map_err(|e| format!("limits snapshot serialize failed: {e}"))?;
+    let usage_json = serde_json::to_string(&ledger.usage_snapshot())
+        .map_err(|e| format!("usage snapshot serialize failed: {e}"))?;
+    conn.execute(
+        "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(root_id) DO UPDATE SET
+           limits_json = excluded.limits_json,
+           usage_json = excluded.usage_json,
+           updated_at = excluded.updated_at",
+        rusqlite::params![ledger.root_id(), limits_json, usage_json, now_rfc3339()],
+    )
+    .map_err(|e| format!("budget_snapshots upsert failed (root={}): {e}", ledger.root_id()))?;
+    Ok(())
+}
+
+/// 显式落库一个账本快照（测试与未来的命令/审计路径用）。
+pub fn persist_snapshot(db: &ChatV2Database, ledger: &BudgetLedger) -> Result<(), String> {
+    let conn = db
+        .get_conn()
+        .map_err(|e| format!("budget_snapshots: get conn failed: {e}"))?;
+    persist_snapshot_conn(&conn, ledger)
+}
+
+/// 热路径 best-effort 快照：通道未绑定 → 静默跳过（单元测试）；指纹一致
+/// → 跳过；写失败 → warn 且不记指纹（下一写入点重试）。
+fn persist_snapshot_best_effort(ledger: &BudgetLedger) {
+    let Some(pool) = snapshot_pool() else {
+        return;
+    };
+    let fingerprint = ledger.snapshot_fingerprint();
+    if ledger.snapshot_already_persisted(fingerprint) {
+        return;
+    }
+    let result = pool
+        .get()
+        .map_err(|e| format!("budget_snapshots: pool get failed: {e}"))
+        .and_then(|conn| persist_snapshot_conn(&conn, ledger));
+    match result {
+        Ok(()) => ledger.mark_snapshot_persisted(fingerprint),
+        Err(e) => {
+            log::warn!(
+                "[Budget] snapshot persist failed (root={}): {}",
+                ledger.root_id(),
+                e
+            );
+        }
+    }
+}
+
+/// `budget_snapshots` 表是否已迁移存在。
+fn budget_snapshots_table_exists(conn: &rusqlite::Connection) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='budget_snapshots')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+        == 1
+}
+
+/// 启动恢复（`ChatV2Database::new` 调用）：把快照表中仍未完成的任务树
+/// 账本恢复到进程内注册表——重启/模型切换/重试不得重置任务累计预算。
+///
+/// - 已存在于注册表的 root_id 跳过（不覆盖活账本）；
+/// - 坏行（JSON 解析失败等）warn 跳过，不让一条脏数据拖垮整个恢复；
+/// - 表缺失（未迁移库）debug 跳过；整体 fail-soft 不阻塞启动；
+/// - 恢复不回写快照表（恢复后由正常运行路径的写入点继续推进）。
+pub fn restore_budget_ledgers_from_db(db: &ChatV2Database) {
+    let conn = match db.get_conn() {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::error!("[Budget] 恢复预算快照失败（get conn）: {}", e);
+            return;
+        }
+    };
+    if !budget_snapshots_table_exists(&conn) {
+        log::debug!("[Budget] budget_snapshots table absent; nothing to restore");
+        return;
+    }
+    let rows = (|| -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+        let mut stmt =
+            conn.prepare("SELECT root_id, limits_json, usage_json FROM budget_snapshots")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.collect()
+    })();
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("[Budget] 读取 budget_snapshots 失败: {}", e);
+            return;
+        }
+    };
+    let mut restored_count = 0usize;
+    for (root_id, limits_json, usage_json) in rows {
+        let parsed = (|| -> Result<(BudgetLimits, UsageCore, i64), String> {
+            let limits: BudgetLimitsSnapshot = serde_json::from_str(&limits_json)
+                .map_err(|e| format!("limits_json parse failed: {e}"))?;
+            let usage: BudgetUsageSnapshot = serde_json::from_str(&usage_json)
+                .map_err(|e| format!("usage_json parse failed: {e}"))?;
+            Ok((
+                BudgetLimits {
+                    max_tool_calls: limits.max_tool_calls,
+                    max_tokens: limits.max_tokens,
+                    max_wall_clock: Duration::from_secs(limits.max_wall_clock_secs),
+                },
+                UsageCore {
+                    tool_calls: usage.tool_calls,
+                    tokens_in: usage.tokens_in,
+                    tokens_out: usage.tokens_out,
+                },
+                usage.created_at_unix,
+            ))
+        })();
+        let (limits, usage, created_at_unix) = match parsed {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                log::warn!(
+                    "[Budget] 跳过损坏的预算快照行（root={}）: {}",
+                    root_id,
+                    e
+                );
+                continue;
+            }
+        };
+        let mut registry = write_lock(ledgers());
+        if registry.contains_key(&root_id) {
+            continue;
+        }
+        let ledger = Arc::new(BudgetLedger::restored(
+            root_id.clone(),
+            limits,
+            usage,
+            created_at_unix,
+        ));
+        log::info!(
+            "[Budget] Restored tree ledger from snapshot: root={} (exhausted={})",
+            root_id,
+            ledger.is_exhausted()
+        );
+        registry.insert(root_id, ledger);
+        restored_count += 1;
+    }
+    if restored_count > 0 {
+        log::info!(
+            "[Budget] 启动恢复完成：共恢复 {} 个任务树根账本",
+            restored_count
+        );
     }
 }
 
@@ -419,27 +844,49 @@ pub fn ledger_for_tree(key: &BudgetKey) -> Option<Arc<BudgetLedger>> {
     read_lock(ledgers()).get(key).cloned()
 }
 
-/// 取或懒建根账本（默认上限）。供门内/测试直接按 key 计数。
+/// 取或懒建根账本（settings 生效的默认上限）。供门内/测试直接按 key 计数。
 pub fn get_or_ensure_ledger(key: &BudgetKey) -> Arc<BudgetLedger> {
     let mut registry = write_lock(ledgers());
-    registry
+    let mut created = false;
+    let ledger = registry
         .entry(key.clone())
-        .or_insert_with(|| Arc::new(BudgetLedger::new(key.clone(), BudgetLimits::default())))
-        .clone()
+        .or_insert_with(|| {
+            created = true;
+            Arc::new(BudgetLedger::new(key.clone(), effective_limits()))
+        })
+        .clone();
+    drop(registry);
+    if created {
+        // G08-P2 快照写入点：账本创建
+        persist_snapshot_best_effort(&ledger);
+    }
+    ledger
 }
 
 /// 自由函数版扣减（hooks 门调用形态：`try_consume(&tree_key, delta)`）。
-/// 账本缺失时按默认上限懒建（防御；正常路径 attach 已建账）。
+/// 账本缺失时按 settings 生效的默认上限懒建（防御；正常路径 attach 已建账）。
 pub fn try_consume(
     key: &BudgetKey,
     delta: BudgetDelta,
 ) -> Result<BudgetRemaining, BudgetExceeded> {
-    get_or_ensure_ledger(key).try_consume(delta)
+    let ledger = get_or_ensure_ledger(key);
+    let result = ledger.try_consume(delta);
+    if result.is_err() {
+        // G08-P2 快照写入点：超额（指纹去重——超额后的模型重试不重复写）
+        persist_snapshot_best_effort(&ledger);
+    }
+    result
 }
 
 /// 自由函数版实报入账（tokens 轮末记账点用；G08-P2 接线 tool_loop）。
 pub fn record_usage(key: &BudgetKey, delta: BudgetDelta) -> BudgetRemaining {
-    get_or_ensure_ledger(key).record_usage(delta)
+    let ledger = get_or_ensure_ledger(key);
+    let remaining = ledger.record_usage(delta);
+    if ledger.is_exhausted() {
+        // 实报越顶同样落快照（下一次 try_consume 才拦截，但账本已跨线）
+        persist_snapshot_best_effort(&ledger);
+    }
+    remaining
 }
 
 // ============================================================================
@@ -461,8 +908,9 @@ pub struct ChildBudgetAttachment {
 /// - `parent_session_id`：父会话 id（tree key 解析入参；父已是树成员
 ///   → 复用其父的根 key，实现任意深度归集）。
 /// - `child_session_id`：worker（子）会话 id，绑定到根 key。
-/// - `declared`：子代理声明的预算（G08-P2 settings/profile 可配；现恒
-///   None → 子上限 = 父剩余快照）。
+/// - `declared`：子代理声明的预算（per-child 声明维度，现恒 None → 子上限
+///   = 父剩余快照；树的**默认总上限**已由 G08-P2 settings 三 key 可配，见
+///   [`effective_limits`]）。
 ///
 /// 账本轮换：根账本已耗尽且树上无活跃绑定时，重建新账本（同 key 覆盖），
 /// 避免"历史任务耗尽 → 会话永久被拒"。
@@ -476,7 +924,7 @@ pub fn attach_child_to_tree(
         .unwrap_or_else(|| parent_session_id.to_string());
 
     // 2. 取/建/轮换根账本（单写锁内完成判定，防并发双建）。
-    let ledger = {
+    let (ledger, created_new) = {
         let mut registry = write_lock(ledgers());
         let reuse = registry
             .get(&tree_key)
@@ -485,9 +933,9 @@ pub fn attach_child_to_tree(
             })
             .cloned();
         match reuse {
-            Some(existing) => existing,
+            Some(existing) => (existing, false),
             None => {
-                let fresh = Arc::new(BudgetLedger::new(tree_key.clone(), BudgetLimits::default()));
+                let fresh = Arc::new(BudgetLedger::new(tree_key.clone(), effective_limits()));
                 if registry.insert(tree_key.clone(), fresh.clone()).is_some() {
                     log::info!(
                         "[Budget] Rotated exhausted tree ledger: root={}",
@@ -497,15 +945,20 @@ pub fn attach_child_to_tree(
                     log::debug!(
                         "[Budget] Created tree ledger: root={} (limits: {} calls / {} tokens / {}s)",
                         tree_key,
-                        DEFAULT_MAX_TOOL_CALLS,
-                        DEFAULT_MAX_TOKENS,
-                        DEFAULT_MAX_WALL_CLOCK_SECS
+                        fresh.limits().max_tool_calls,
+                        fresh.limits().max_tokens,
+                        fresh.limits().max_wall_clock.as_secs()
                     );
                 }
-                fresh
+                (fresh, true)
             }
         }
     };
+    if created_new {
+        // G08-P2 快照写入点：账本创建（含轮换重建）。移出注册表写锁之外，
+        // 避免 IO 阻塞其他 attach。
+        persist_snapshot_best_effort(&ledger);
+    }
 
     // 3. 绑定子 session → 根 key，活跃计数 +1（代际 id 唯一化本次绑定）。
     let binding_id = NEXT_BINDING_ID.fetch_add(1, Ordering::SeqCst);
@@ -561,6 +1014,9 @@ impl Drop for SessionBudgetBindingGuard {
         }
         drop(bindings);
         self.ledger.active_bindings.fetch_sub(1, Ordering::SeqCst);
+        // G08-P2 快照写入点：worker 绑定解绑（推进最终用量；指纹去重，
+        // 无变化时不写）。
+        persist_snapshot_best_effort(&self.ledger);
         log::debug!(
             "[Budget] Detached child session {} from tree {}",
             self.session_id,
@@ -577,6 +1033,23 @@ impl Drop for SessionBudgetBindingGuard {
 mod tests {
     use super::*;
 
+    /// 带 V20260910 表的临时 chat_v2 库（真实迁移 SQL）。
+    /// 构造时表尚不存在，`ChatV2Database::new` 的启动恢复为空操作。
+    /// 注意：new() 会把全局快照池/主库路径重绑到本临时库——并行测试的
+    /// 热路径快照写入可能落进本库（root_id 均 ULID 唯一），故断言一律
+    /// 按"本用例专属 key"查询，绝不断言全表行数。
+    fn budget_test_db() -> (tempfile::TempDir, ChatV2Database) {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db = ChatV2Database::new(dir.path()).expect("chat_v2 db");
+        db.get_conn()
+            .expect("conn")
+            .execute_batch(include_str!(
+                "../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"
+            ))
+            .expect("apply V20260910");
+        (dir, db)
+    }
+
     fn small_limits(max_tool_calls: u64, max_tokens: u64, max_wall_clock: Duration) -> BudgetLimits {
         BudgetLimits {
             max_tool_calls,
@@ -584,6 +1057,255 @@ mod tests {
             max_wall_clock,
         }
     }
+
+    /// G08-P2 settings 解析：合法值覆盖默认；缺失/非法（非数字、0、负、空）
+    /// 回退默认。
+    #[test]
+    fn settings_resolve_limits_valid_and_invalid() {
+        // 全部缺失 → 内置默认
+        let limits = resolve_limits(&|_| None);
+        assert_eq!(limits, BudgetLimits::default());
+
+        // 合法覆盖
+        let limits = resolve_limits(&|key| match key {
+            SETTING_BUDGET_MAX_TOOL_CALLS => Some("42".to_string()),
+            SETTING_BUDGET_MAX_TOKENS => Some("123456".to_string()),
+            SETTING_BUDGET_MAX_WALL_CLOCK_SECS => Some("90".to_string()),
+            _ => None,
+        });
+        assert_eq!(limits.max_tool_calls, 42);
+        assert_eq!(limits.max_tokens, 123_456);
+        assert_eq!(limits.max_wall_clock, Duration::from_secs(90));
+
+        // 非法值逐一回退默认（含 0 / 负数 / 非数字 / 空白）
+        for bad in ["abc", "0", "-5", "  ", "1.5"] {
+            let limits = resolve_limits(&|key| {
+                if key == SETTING_BUDGET_MAX_TOOL_CALLS {
+                    Some(bad.to_string())
+                } else {
+                    None
+                }
+            });
+            assert_eq!(
+                limits.max_tool_calls, DEFAULT_MAX_TOOL_CALLS,
+                "非法值 {bad:?} 必须回退默认"
+            );
+            // 其余维度不受污染
+            assert_eq!(limits.max_tokens, DEFAULT_MAX_TOKENS);
+        }
+        // 带空白包裹的合法值可解析
+        let limits = resolve_limits(&|key| {
+            if key == SETTING_BUDGET_MAX_TOKENS {
+                Some("  777  ".to_string())
+            } else {
+                None
+            }
+        });
+        assert_eq!(limits.max_tokens, 777);
+    }
+
+    /// G08-P2 settings 主库读取：真实 mistakes.db 文件 + settings 表。
+    /// 缺表/缺 key/坏文件均回退 None（由解析层转默认）。
+    #[test]
+    fn settings_read_from_main_db_file() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let main_db_path = dir.path().join("mistakes.db");
+        let conn = rusqlite::Connection::open(&main_db_path).expect("main db");
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT);
+             INSERT INTO settings (key, value, updated_at)
+             VALUES ('headless_budget_max_tool_calls', '55', 't0'),
+                    ('headless_budget_max_tokens', 'not-a-number', 't0');",
+        )
+        .expect("seed settings");
+        drop(conn);
+
+        assert_eq!(
+            read_setting_from_main_db(&main_db_path, SETTING_BUDGET_MAX_TOOL_CALLS),
+            Some("55".to_string())
+        );
+        // 非法值原样返回（解析层负责回退）
+        assert_eq!(
+            read_setting_from_main_db(&main_db_path, SETTING_BUDGET_MAX_TOKENS),
+            Some("not-a-number".to_string())
+        );
+        // 缺 key → None
+        assert_eq!(
+            read_setting_from_main_db(&main_db_path, SETTING_BUDGET_MAX_WALL_CLOCK_SECS),
+            None
+        );
+        // 文件不存在 → None（不 panic）
+        assert_eq!(
+            read_setting_from_main_db(&dir.path().join("nope.db"), SETTING_BUDGET_MAX_TOKENS),
+            None
+        );
+
+        // 端到端：以该文件为读取源的解析结果
+        let limits = resolve_limits(&|key| read_setting_from_main_db(&main_db_path, key));
+        assert_eq!(limits.max_tool_calls, 55);
+        assert_eq!(limits.max_tokens, DEFAULT_MAX_TOKENS, "非法值回退默认");
+        assert_eq!(limits.max_wall_clock, Duration::from_secs(DEFAULT_MAX_WALL_CLOCK_SECS));
+    }
+
+    /// G08-P2 快照 roundtrip：persist → restore → 全局注册表中的账本
+    /// 用量/上限与源账本一致（重启不重置累计预算）。
+    #[test]
+    fn snapshot_persist_and_restore_roundtrip() {
+        let (_dir, db) = budget_test_db();
+        let root = fresh_key("snap");
+        let ledger = BudgetLedger::new(
+            root.clone(),
+            small_limits(100, 10_000, Duration::from_secs(3600)),
+        );
+        ledger.try_consume(BudgetDelta::ONE_TOOL_CALL).unwrap();
+        ledger.record_usage(BudgetDelta::tokens(300, 200));
+        persist_snapshot(&db, &ledger).expect("persist snapshot");
+
+        // "新进程"：从库恢复进全局注册表
+        restore_budget_ledgers_from_db(&db);
+        let restored = ledger_for_tree(&root).expect("restored ledger must exist");
+        assert_eq!(restored.usage().tool_calls, 1);
+        assert_eq!(restored.usage().tokens_in, 300);
+        assert_eq!(restored.usage().tokens_out, 200);
+        assert_eq!(restored.limits().max_tool_calls, 100);
+        assert_eq!(restored.limits().max_tokens, 10_000);
+        assert_eq!(restored.created_at_unix(), ledger.created_at_unix());
+
+        // 恢复后 continue counting：累计预算不被重置
+        restored.try_consume(BudgetDelta::ONE_TOOL_CALL).unwrap();
+        assert_eq!(restored.usage().tool_calls, 2);
+
+        // 重复恢复幂等（不覆盖活账本）
+        restore_budget_ledgers_from_db(&db);
+        assert_eq!(ledger_for_tree(&root).unwrap().usage().tool_calls, 2);
+    }
+
+    /// G08-P2 快照恢复后超额状态延续：wall_clock 已超时的树按
+    /// created_at_unix 推算耗时，恢复即 exhausted；用量到顶的树同样。
+    #[test]
+    fn snapshot_restore_preserves_exhaustion() {
+        let (_dir, db) = budget_test_db();
+        let root_timeout = fresh_key("timeout");
+        let root_usedup = fresh_key("usedup");
+        let old_unix = chrono::Utc::now().timestamp() - 7200;
+
+        // 直接写快照行：wall-clock 上限 1800s，但创建于 2 小时前
+        let conn = db.get_conn().expect("conn");
+        conn.execute(
+            "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES (?1, ?2, ?3, 't0')",
+            rusqlite::params![
+                root_timeout,
+                serde_json::to_string(&BudgetLimitsSnapshot {
+                    max_tool_calls: 1000,
+                    max_tokens: 10_000_000,
+                    max_wall_clock_secs: 1800,
+                })
+                .unwrap(),
+                serde_json::to_string(&BudgetUsageSnapshot {
+                    tool_calls: 3,
+                    tokens_in: 100,
+                    tokens_out: 50,
+                    wall_clock_secs: 1800,
+                    created_at_unix: old_unix,
+                })
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        // 用量到顶（tool_calls >= limit），未超时
+        conn.execute(
+            "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES (?1, ?2, ?3, 't0')",
+            rusqlite::params![
+                root_usedup,
+                serde_json::to_string(&BudgetLimitsSnapshot {
+                    max_tool_calls: 5,
+                    max_tokens: 10_000_000,
+                    max_wall_clock_secs: 86_400,
+                })
+                .unwrap(),
+                serde_json::to_string(&BudgetUsageSnapshot {
+                    tool_calls: 5,
+                    tokens_in: 0,
+                    tokens_out: 0,
+                    wall_clock_secs: 10,
+                    created_at_unix: chrono::Utc::now().timestamp() - 10,
+                })
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        restore_budget_ledgers_from_db(&db);
+
+        let timeout_ledger = ledger_for_tree(&root_timeout).expect("timeout tree restored");
+        assert!(
+            timeout_ledger.is_exhausted(),
+            "超时的树恢复后必须保持 exhausted"
+        );
+        let err = timeout_ledger
+            .try_consume(BudgetDelta::ONE_TOOL_CALL)
+            .expect_err("恢复后的超时树必须继续拦截");
+        assert_eq!(err.dimension, BudgetDimension::WallClock);
+        // 耗时从停机前累计（>= 7200s），未被重启清零
+        assert!(timeout_ledger.usage().wall_clock_secs >= 7200);
+
+        let usedup_ledger = ledger_for_tree(&root_usedup).expect("used-up tree restored");
+        assert!(usedup_ledger.is_exhausted(), "用量到顶的树恢复后必须保持 exhausted");
+        assert!(usedup_ledger.try_consume(BudgetDelta::ONE_TOOL_CALL).is_err());
+    }
+
+    /// G08-P2 恢复容错：表缺失 → 空操作；坏行跳过好行恢复。
+    #[test]
+    fn snapshot_restore_tolerates_missing_table_and_bad_rows() {
+        // 表缺失：不 panic、不报错
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db_no_table = ChatV2Database::new(dir.path()).expect("db without table");
+        restore_budget_ledgers_from_db(&db_no_table);
+
+        // 坏行跳过
+        let (_dir, db) = budget_test_db();
+        let good_root = fresh_key("good");
+        let conn = db.get_conn().expect("conn");
+        conn.execute(
+            "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES ('root-bad-json', 'not json', '{}', 't0')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES (?1, ?2, ?3, 't0')",
+            rusqlite::params![
+                good_root,
+                serde_json::to_string(&BudgetLimitsSnapshot {
+                    max_tool_calls: 9,
+                    max_tokens: 99,
+                    max_wall_clock_secs: 999,
+                })
+                .unwrap(),
+                serde_json::to_string(&BudgetUsageSnapshot {
+                    tool_calls: 1,
+                    tokens_in: 2,
+                    tokens_out: 3,
+                    wall_clock_secs: 4,
+                    created_at_unix: chrono::Utc::now().timestamp(),
+                })
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        drop(conn);
+
+        restore_budget_ledgers_from_db(&db);
+        assert!(ledger_for_tree(&"root-bad-json".to_string()).is_none());
+        let good = ledger_for_tree(&good_root).expect("good row restored");
+        assert_eq!(good.usage().tool_calls, 1);
+        assert_eq!(good.limits().max_tool_calls, 9);
+    }
+
 
     fn fresh_key(tag: &str) -> BudgetKey {
         format!("tree_{tag}_{}", ulid::Ulid::new())
