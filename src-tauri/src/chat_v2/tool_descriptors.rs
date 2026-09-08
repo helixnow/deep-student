@@ -25,10 +25,13 @@
 //! - 已迁移：`executor_registry::get_tool_timeout_secs`（G01-c，行为等价）；
 //!   `headless.rs` 只读白名单（G01-e：`headless_allowed_tools` /
 //!   `is_headless_allowed_tool` 改由 `headless_allowed` 标志位驱动，历史手写
-//!   清单保留为 headless 侧 `#[cfg(test)]` 对照 oracle）。
-//! - 待迁移（G01-e 后续小步）：`ptc_runtime.rs::PTC_ALLOWED_TOOLS` /
-//!   `grants.rs` 的 ToolScope 校验。查询函数 [`is_ptc_allowed`] /
-//!   [`grants_scope_hint`] 与等价性测试已就绪，切换时删除旧常量即可。
+//!   清单保留为 headless 侧 `#[cfg(test)]` 对照 oracle）；
+//!   `grants.rs` 的 ToolScope 推导（G01-e grants 半边：`ToolScope::
+//!   from_allow_entry` 的 Builtin/Shell 分类改由 [`grants_scope_hint`] 驱动，
+//!   字符串规则先行不变、shell 族收紧为 fail-closed 语义位，等价性由
+//!   grants 侧四层断言对照测试锁定）。
+//! - 待迁移（G01-e 后续小步）：`ptc_runtime.rs::PTC_ALLOWED_TOOLS`。
+//!   查询函数 [`is_ptc_allowed`] 与等价性测试已就绪，切换时删除旧常量即可。
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -750,9 +753,11 @@ pub fn is_ptc_allowed(tool_name: &str) -> bool {
 
 /// 该工具的 grants ToolScope 映射提示（接受 `builtin-` 前缀或裸名）。
 ///
-/// 未登记名字（外部 MCP 动态工具等）返回 `None`，由 grants 侧按现有
-// `ToolScope::from_allow_entry` 规则处理。
-// TODO(G01-e): grants.rs / agent_profile.rs 的 ToolScope 推导可用本提示校验。
+/// G01-e（grants 半边）起为 grants 侧 ToolScope 推导的分类权威：
+/// `grants::ToolScope::from_allow_entry` 在字符串规则（`::` / `mcp_` 前缀）
+/// 之后以本函数决定 Builtin/Shell 归类。未登记名字（外部 MCP 动态工具等）
+/// 返回 `None`，由 grants 侧兜底为 `ToolScope::Builtin`（与旧纯字符串规则
+/// 结果一致）。
 pub fn grants_scope_hint(tool_name: &str) -> Option<GrantsScopeHint> {
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
     lookup(stripped).map(|d| d.grants_scope_hint)

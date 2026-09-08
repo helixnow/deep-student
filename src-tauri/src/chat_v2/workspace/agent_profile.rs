@@ -123,9 +123,11 @@ impl AgentProfile {
         Ok(hex::encode(<sha2::Sha256 as sha2::Digest>::digest(bytes)))
     }
 
-    /// G02-P1：profile → grant 工具范围映射（无损：`allowed_tools` 每个条目
-    /// 恰好映射一个 [`crate::chat_v2::grants::ToolScope`]，匹配语义复用
-    /// `tool_policy::tool_allow_entry_matches`）。
+    /// G02-P1：profile → grant 工具范围映射（`allowed_tools` 每个条目恰好
+    /// 映射一个 [`crate::chat_v2::grants::ToolScope`]，匹配语义复用
+    /// `tool_policy::tool_allow_entry_matches`；G01-e 起条目的 Builtin/Shell
+    /// 分类由 ToolDescriptor 注册表 `grants_scope_hint` 驱动，见
+    /// [`crate::chat_v2::grants::ToolScope::from_allow_entry`]）。
     pub fn grant_tool_scopes(&self) -> Vec<crate::chat_v2::grants::ToolScope> {
         crate::chat_v2::grants::ToolScope::scopes_from_allowed_tools(&self.allowed_tools)
     }
@@ -497,6 +499,26 @@ mod tests {
             assert!(profile
                 .allowed_tools
                 .contains(&"builtin-workspace_query".to_string()));
+        }
+    }
+
+    /// G01-e：内建 profile 声明的每个工具必须是注册表已登记的内建工具，
+    /// 且映射 Builtin 族（profile 白名单只含 builtin-* 本地工具；shell 族
+    /// 收紧为 Shell 语义位后若混入会让 grant 求值与白名单漂移——由本测试
+    /// 与 grants 侧四层断言双重锁定）。
+    #[test]
+    fn built_in_profile_tools_are_registry_builtins() {
+        use crate::chat_v2::tool_descriptors::{grants_scope_hint, GrantsScopeHint};
+
+        for id in [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID] {
+            let profile = AgentProfileResolver::built_in(id).unwrap();
+            for tool in &profile.allowed_tools {
+                assert_eq!(
+                    grants_scope_hint(tool),
+                    Some(GrantsScopeHint::Builtin),
+                    "profile {id} 的工具 {tool} 必须是注册表已登记的 Builtin 族内建工具"
+                );
+            }
         }
     }
 
