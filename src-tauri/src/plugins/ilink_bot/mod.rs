@@ -1,6 +1,10 @@
 //! WeChat iLink Bot channel plugin.
+//!
+//! G10-P1：入站消息统一解析为 `TaskCommand`（chat_v2::task_command），
+//! Create/Steer 经 ChatV2 headless 通路（`run_headless_agent_turn`）创建/推进
+//! 真实任务，不再另起独立聊天模型；Stop 即时取消会话流，Inspect 返回任务摘要，
+//! Approve 仅返回桌面端确认指引（远程批准写操作属 P2）。
 
-mod ai;
 mod client;
 mod guard;
 mod qr;
@@ -13,6 +17,7 @@ use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::watch;
 
+use crate::chat_v2::task_command::{self, RemoteTaskManager};
 use crate::database::Database;
 use crate::models::AppError;
 use crate::plugins::events;
@@ -22,7 +27,6 @@ use crate::plugins::types::{
     PluginStatusSnapshot,
 };
 
-use ai::ConversationStore;
 use client::{
     extract_text, is_api_error, is_session_expired, IlinkClient, IlinkCredentials,
     DEFAULT_LONG_POLL_TIMEOUT_MS,
@@ -32,6 +36,13 @@ use guard::{is_bound_user, RateLimiter};
 pub const PLUGIN_ID: &str = "ilinkbot";
 pub const CREDENTIALS_KEY: &str = "plugin.ilinkbot.credentials";
 pub const SETTINGS_PREFIX: &str = "plugin.ilinkbot.";
+
+/// 出站文本分片上限（微信单条消息长度约束）
+const OUTBOUND_CHUNK_LIMIT: usize = 2000;
+/// 远程任务的 system prompt 追加段（headless 约束说明之外）
+const DEFAULT_REMOTE_SYSTEM_APPEND: &str = "你正在通过微信 iLink 机器人远程协助用户。回复使用简洁、友善的简体中文纯文本（微信不渲染 Markdown 表格/图片），结论先行、长度适中。你没有本地文件写入/命令执行权限；涉及写操作的请求请告知用户在桌面端确认。";
+/// 同时运行的远程任务上限
+const MAX_CONCURRENT_TASKS: usize = 3;
 
 const DESC: PluginDescriptor = PluginDescriptor {
     id: PLUGIN_ID,
@@ -49,7 +60,8 @@ struct SharedUi {
 
 pub struct IlinkBotPlugin {
     client: IlinkClient,
-    conversations: ConversationStore,
+    /// G10-P1：远程任务注册表（TaskCommand 路由/幂等/隔离）
+    tasks: Arc<RemoteTaskManager>,
     ui: SharedUi,
     login_running: AtomicBool,
 }
@@ -58,7 +70,7 @@ impl IlinkBotPlugin {
     pub fn new() -> Self {
         Self {
             client: IlinkClient::new(),
-            conversations: ConversationStore::default(),
+            tasks: Arc::new(RemoteTaskManager::default()),
             ui: SharedUi {
                 qrcode_png: Mutex::new(None),
                 qrcode_status: Mutex::new(None),
@@ -114,6 +126,44 @@ impl IlinkBotPlugin {
         if let Ok(mut g) = self.ui.last_activity.lock() {
             *g = Some(summary.to_string());
         }
+    }
+
+    /// 分片发送回复文本；-14（会话过期）时清凭证并切回 WaitingLogin。
+    async fn send_reply(
+        &self,
+        ctx: &PluginRuntimeCtx,
+        creds: &IlinkCredentials,
+        peer: &str,
+        ctx_token: &str,
+        text: &str,
+    ) -> Result<(), AppError> {
+        let mut send_failures = 0u32;
+        for chunk in client::chunk_text(text, OUTBOUND_CHUNK_LIMIT) {
+            match self.client.send_text(creds, peer, ctx_token, &chunk).await {
+                Ok(_) => {
+                    send_failures = 0;
+                    let out = format!("已回复: {}", chunk.chars().take(40).collect::<String>());
+                    self.set_activity(&out);
+                    events::emit_activity(&ctx.app, PLUGIN_ID, "msg_out", &out);
+                }
+                Err(e) => {
+                    let msg_err = e.to_string();
+                    if msg_err.contains("-14") || msg_err.contains("session expired") {
+                        let _ = Self::clear_credentials(&ctx.database);
+                        let manager = ctx.app.state::<PluginManager>();
+                        manager
+                            .set_state(PLUGIN_ID, PluginState::WaitingLogin, Some(msg_err.clone()))
+                            .await;
+                        return Err(AppError::configuration(msg_err));
+                    }
+                    send_failures += 1;
+                    let delay = if send_failures >= 3 { 30 } else { 2 };
+                    tracing::warn!("[ilinkbot] send failed: {}", e);
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn run_login_flow(&self, ctx: PluginRuntimeCtx) -> Result<(), AppError> {
@@ -274,10 +324,21 @@ impl IlinkBotPlugin {
         let rate = RateLimiter::new(Self::read_rate_limit(&ctx.database));
         let model_id = Self::read_setting(&ctx.database, "plugin.ilinkbot.model_config_id");
         let system_prompt = Self::read_setting(&ctx.database, "plugin.ilinkbot.system_prompt");
+        // 远程任务的 system prompt 追加段：用户配置优先，否则用默认微信行为约束
+        let system_append = Some(
+            system_prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(DEFAULT_REMOTE_SYSTEM_APPEND)
+                .to_string(),
+        );
 
         let mut timeout_ms = DEFAULT_LONG_POLL_TIMEOUT_MS;
         let mut failures = 0u32;
-        let ai_slots = Arc::new(tokio::sync::Semaphore::new(3));
+        // 并发远程任务上限（permit 随任务结束释放；Stop/Inspect 不占额度，
+        // 停止命令永远不被排在任务完成之后）
+        let task_slots = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_TASKS));
 
         loop {
             tokio::select! {
@@ -348,70 +409,110 @@ impl IlinkBotPlugin {
                                 self.set_activity(&summary);
                                 events::emit_activity(&ctx.app, PLUGIN_ID, "msg_in", &summary);
 
-                                // Held until this message's reply is fully sent so the
-                                // semaphore actually bounds concurrent AI replies.
-                                let _permit = match ai_slots.clone().acquire_owned().await {
-                                    Ok(p) => p,
-                                    Err(_) => continue,
+                                let ctx_token = creds
+                                    .context_tokens
+                                    .get(&peer)
+                                    .cloned()
+                                    .or(msg.context_token.clone())
+                                    .unwrap_or_default();
+                                if ctx_token.is_empty() {
+                                    tracing::warn!("[ilinkbot] missing context_token for {}", peer);
+                                    continue;
+                                }
+
+                                // —— G10-P1：入站统一解析为 TaskCommand，接入 ChatV2 任务运行系统 ——
+                                // 显式绑定：account(bot) + device(绑定用户) + channel + thread
+                                // （iLink 会话 session_id，缺失回退 peer），不再按 peer 字符串合并。
+                                let binding = task_command::RemoteBinding {
+                                    account: creds.account_id.clone(),
+                                    device_id: creds.user_id.clone(),
+                                    channel: task_command::CHANNEL_ILINK_WECHAT.to_string(),
+                                    thread_id: msg
+                                        .session_id
+                                        .clone()
+                                        .filter(|s| !s.is_empty())
+                                        .unwrap_or_else(|| peer.clone()),
+                                    ..Default::default()
                                 };
-                                let llm = ctx.llm.clone();
-                                let model_id = model_id.clone();
-                                let system_prompt = system_prompt.clone();
-                                let peer_c = peer.clone();
-                                let text_c = text.clone();
-                                let creds_c = creds.clone();
-                                let client = self.client.clone();
-                                let app = ctx.app.clone();
-                                match ai::complete_reply(
-                                    &llm,
-                                    model_id.as_deref(),
-                                    system_prompt.as_deref(),
-                                    &self.conversations,
-                                    &peer_c,
-                                    &text_c,
-                                ).await {
-                                    Ok(reply) => {
-                                        let ctx_token = creds_c
-                                            .context_tokens
-                                            .get(&peer_c)
-                                            .cloned()
-                                            .or(msg.context_token.clone())
-                                            .unwrap_or_default();
-                                        if ctx_token.is_empty() {
-                                            tracing::warn!("[ilinkbot] missing context_token for {}", peer_c);
-                                            continue;
-                                        }
-                                        let mut send_failures = 0u32;
-                                        for chunk in ai::outbound_chunks(&reply) {
-                                            match client.send_text(&creds_c, &peer_c, &ctx_token, &chunk).await {
-                                                Ok(_) => {
-                                                    send_failures = 0;
-                                                    let out = format!("已回复: {}", chunk.chars().take(40).collect::<String>());
-                                                    self.set_activity(&out);
-                                                    events::emit_activity(&app, PLUGIN_ID, "msg_out", &out);
-                                                }
-                                                Err(e) => {
-                                                    let msg_err = e.to_string();
-                                                    if msg_err.contains("-14") || msg_err.contains("session expired") {
-                                                        let _ = Self::clear_credentials(&ctx.database);
-                                                        manager.set_state(PLUGIN_ID, PluginState::WaitingLogin, Some(msg_err.clone())).await;
-                                                        return Err(AppError::configuration(msg_err));
-                                                    }
-                                                    send_failures += 1;
-                                                    let delay = if send_failures >= 3 { 30 } else { 2 };
-                                                    tracing::warn!("[ilinkbot] send failed: {}", e);
-                                                    tokio::time::sleep(Duration::from_secs(delay)).await;
-                                                }
-                                            }
+                                // 幂等键：message_id > seq > client_id（都没有则不去重）
+                                let dedup_key = msg
+                                    .message_id
+                                    .map(|id| format!("m{}", id))
+                                    .or_else(|| msg.seq.map(|s| format!("s{}", s)))
+                                    .or_else(|| {
+                                        msg.client_id
+                                            .clone()
+                                            .filter(|c| !c.is_empty())
+                                            .map(|c| format!("c{}", c))
+                                    })
+                                    .unwrap_or_default();
+
+                                let outcome = self.tasks.dispatch(task_command::InboundRemote {
+                                    binding,
+                                    message_id: dedup_key,
+                                    text: text.clone(),
+                                });
+
+                                match outcome {
+                                    task_command::DispatchOutcome::IgnoredDuplicate => {}
+                                    task_command::DispatchOutcome::Reply(reply) => {
+                                        self.send_reply(&ctx, &creds, &peer, &ctx_token, &reply).await?;
+                                    }
+                                    task_command::DispatchOutcome::StopAck { reply, session_id } => {
+                                        // 停止优先：回复与取消都立即执行，不等待任务完成
+                                        self.send_reply(&ctx, &creds, &peer, &ctx_token, &reply).await?;
+                                        if let Some(sid) = session_id {
+                                            let app_c = ctx.app.clone();
+                                            tokio::spawn(async move {
+                                                let cancelled =
+                                                    task_command::cancel_session_stream_with_retry(&app_c, &sid).await;
+                                                tracing::info!(
+                                                    "[ilinkbot] stop cancel session={} cancelled={}",
+                                                    sid,
+                                                    cancelled
+                                                );
+                                            });
                                         }
                                     }
-                                    Err(e) => {
-                                        tracing::warn!("[ilinkbot] AI failed: {}", e);
-                                        events::emit_activity(&app, PLUGIN_ID, "warn", &format!("AI 回复失败: {}", e));
-                                        let ctx_token = creds_c.context_tokens.get(&peer_c).cloned().unwrap_or_default();
-                                        if !ctx_token.is_empty() {
-                                            let _ = client.send_text(&creds_c, &peer_c, &ctx_token, "抱歉，我现在无法回答，请稍后再试。").await;
-                                        }
+                                    task_command::DispatchOutcome::Launch { ack, plan } => {
+                                        self.send_reply(&ctx, &creds, &peer, &ctx_token, &ack).await?;
+                                        let permit = match task_slots.clone().try_acquire_owned() {
+                                            Ok(p) => p,
+                                            Err(_) => {
+                                                if let Some(text) = self.tasks.finish_turn(
+                                                    &plan.task_id,
+                                                    task_command::RemoteTaskStatus::Failed,
+                                                    "",
+                                                    Some("同时运行的任务已达上限，请稍后再试"),
+                                                ) {
+                                                    self.send_reply(&ctx, &creds, &peer, &ctx_token, &text).await?;
+                                                }
+                                                continue;
+                                            }
+                                        };
+                                        let app = ctx.app.clone();
+                                        let tasks = Arc::clone(&self.tasks);
+                                        let client = self.client.clone();
+                                        let creds_c = creds.clone();
+                                        let peer_c = peer.clone();
+                                        let model_id = model_id.clone();
+                                        let system_append = system_append.clone();
+                                        tokio::spawn(async move {
+                                            // permit 持有至任务结束，限制并发远程任务数
+                                            let _permit = permit;
+                                            run_remote_task(
+                                                app,
+                                                tasks,
+                                                client,
+                                                creds_c,
+                                                peer_c,
+                                                ctx_token,
+                                                plan,
+                                                model_id,
+                                                system_append,
+                                            )
+                                            .await;
+                                        });
                                     }
                                 }
                             }
@@ -428,6 +529,103 @@ impl IlinkBotPlugin {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// 后台发送任务结果（分片）；失败只记日志/活动，不影响 poll 循环。
+async fn send_chunks(
+    client: &IlinkClient,
+    creds: &IlinkCredentials,
+    peer: &str,
+    ctx_token: &str,
+    text: &str,
+) -> Result<(), AppError> {
+    for chunk in client::chunk_text(text, OUTBOUND_CHUNK_LIMIT) {
+        client.send_text(creds, peer, ctx_token, &chunk).await?;
+    }
+    Ok(())
+}
+
+/// 执行一个远程任务（G10-P1）：Create 新建会话 / Steer 复用会话，
+/// 经 ChatV2 headless 通路（`run_headless_agent_turn`，G01-d 收口）跑完整
+/// agent turn；工具面 = headless 只读白名单（写/connector/shell 双层被拒）。
+#[allow(clippy::too_many_arguments)]
+async fn run_remote_task(
+    app: tauri::AppHandle,
+    tasks: Arc<RemoteTaskManager>,
+    client: IlinkClient,
+    creds: IlinkCredentials,
+    peer: String,
+    ctx_token: String,
+    plan: task_command::PlannedTurn,
+    model_id: Option<String>,
+    system_append: Option<String>,
+) {
+    // 1. 解析会话：Steer 复用既有会话；Create 新建（绑定 JSON 写入会话 metadata）
+    let session_id = match plan.existing_session_id.clone() {
+        Some(s) => Some(s),
+        None => match task_command::create_remote_task_session(&app, &plan) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!("[ilinkbot] create remote task session failed: {}", e);
+                None
+            }
+        },
+    };
+    let Some(session_id) = session_id else {
+        if let Some(text) = tasks.finish_turn(
+            &plan.task_id,
+            task_command::RemoteTaskStatus::Failed,
+            "",
+            Some("ChatV2 未就绪，任务启动失败"),
+        ) {
+            let _ = send_chunks(&client, &creds, &peer, &ctx_token, &text).await;
+        }
+        return;
+    };
+    // 2. 附着会话：若 Stop 先于附着到达（记录已 Cancelled），放弃启动——
+    //    停止命令不被排在任务完成之后
+    if !tasks.attach_session(&plan.task_id, &session_id) {
+        tracing::info!(
+            "[ilinkbot] task {} stopped before session attach, abort launch",
+            plan.task_id
+        );
+        return;
+    }
+    // 3. 经 headless 通路执行（无人审批、只读白名单、硬超时）
+    let turn = task_command::build_session_turn(&plan, session_id.clone(), model_id, system_append);
+    let result = crate::chat_v2::headless::run_headless_agent_turn(&app, turn).await;
+    let (status, summary, error) = match result {
+        Ok(outcome) => (task_command::RemoteTaskStatus::Completed, outcome.content, None),
+        Err(m) if m.contains("timed out") => {
+            (task_command::RemoteTaskStatus::Timeout, String::new(), Some(m))
+        }
+        Err(m) if m.contains("cancelled") => {
+            (task_command::RemoteTaskStatus::Cancelled, String::new(), Some(m))
+        }
+        Err(m) => (task_command::RemoteTaskStatus::Failed, String::new(), Some(m)),
+    };
+    // 4. 回写记录并通知（记录已被 Stop 取消时 finish_turn 返回 None，不再发结果）
+    if let Some(text) = tasks.finish_turn(&plan.task_id, status, &summary, error.as_deref()) {
+        match send_chunks(&client, &creds, &peer, &ctx_token, &text).await {
+            Ok(_) => {
+                events::emit_activity(
+                    &app,
+                    PLUGIN_ID,
+                    "msg_out",
+                    &format!("任务 #{} 结果已发送", plan.task_id),
+                );
+            }
+            Err(e) => {
+                tracing::warn!("[ilinkbot] send task result failed: {}", e);
+                events::emit_activity(
+                    &app,
+                    PLUGIN_ID,
+                    "warn",
+                    &format!("任务结果发送失败: {}", e),
+                );
             }
         }
     }
