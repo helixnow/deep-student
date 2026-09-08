@@ -766,11 +766,28 @@ fn resolve_single_ref_with_conn(
 
                 // 合并内容
                 if content_parts.is_empty() {
-                    warn!("[PDF_DEBUG] No text available for PDF source_id={}, returning filename hint", r.source_id);
-                    (
-                        Some(format!("[文档: {}]", title)),
-                        Some(format!("「{}」文本提取失败，该文档内容未能送入对话", title)),
-                    )
+                    // ★ 2026-09 修复（误报）：纯图片模式（include_image=true）下，
+                    // 页图经 multimodal_blocks 单独送入对话，文本类 content_parts
+                    // 本来就为空——这不是"文本提取失败"。只有图片模式也没开时，
+                    // 才是真的无任何内容可送。
+                    let include_image =
+                        pdf_resolved_modes.map(|(_, _, img, _)| img).unwrap_or(true);
+                    if include_image {
+                        info!(
+                            "[PDF_DEBUG] PDF {} in image-only mode: text parts empty by design, page images delivered via multimodal_blocks",
+                            r.source_id
+                        );
+                        (Some(format!("[文档: {}]", title)), None)
+                    } else {
+                        warn!(
+                            "[PDF_DEBUG] No text available for PDF source_id={}, returning filename hint",
+                            r.source_id
+                        );
+                        (
+                            Some(format!("[文档: {}]", title)),
+                            Some(format!("「{}」文本提取失败，该文档内容未能送入对话", title)),
+                        )
+                    }
                 } else {
                     (Some(content_parts.join("\n\n")), None)
                 }
