@@ -36,6 +36,10 @@ export interface GeneratedQuestionDraft {
   explanation?: string;
   difficulty?: Difficulty;
   tags?: string[];
+  /** 分子结构式 SMILES 串（可选，SmilesText 渲染为骨架式） */
+  smiles?: string;
+  /** SMILES 结构名称（如 "乙醇"） */
+  smiles_caption?: string;
 }
 
 export interface QuestionGenerationSpec {

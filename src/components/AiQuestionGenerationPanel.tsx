@@ -17,6 +17,7 @@ import { AppSelect } from '@/components/ui/app-menu';
 import { CircleNotch, Sparkle, WarningCircle, CheckCircle } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useQbankAiGeneration, type GeneratedQuestionDraft } from '@/hooks/useQbankAiGeneration';
+import SmilesText from '@/components/SmilesText';
 import type { QuestionType, Difficulty, Question, QuestionOption } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -355,6 +356,16 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                     <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
                       {draft.content}
                     </div>
+                    {draft.smiles && (
+                      <div className="mt-1.5 flex justify-center">
+                        <SmilesText
+                          smiles={draft.smiles}
+                          caption={draft.smiles_caption ?? undefined}
+                          width={220}
+                          height={150}
+                        />
+                      </div>
+                    )}
                     {draft.options && draft.options.length > 0 && (
                       <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                         {draft.options.map((opt) => (

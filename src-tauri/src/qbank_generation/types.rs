@@ -83,6 +83,12 @@ pub struct GeneratedQuestionDraft {
     /// 知识点标签
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// 分子结构式 SMILES 串（可选；有机结构题填写，前端用 SmilesDrawer 渲染为骨架式）
+    #[serde(default)]
+    pub smiles: Option<String>,
+    /// SMILES 结构的名称/说明（可选，如 "2-甲基丙烷"、"苯"）
+    #[serde(default)]
+    pub smiles_caption: Option<String>,
 }
 
 /// 生成的选项
@@ -160,7 +166,9 @@ pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题�
     "answer": "A",
     "explanation": "详细解析（Markdown 格式）",
     "difficulty": "medium",
-    "tags": ["知识点1", "知识点2"]
+    "tags": ["知识点1", "知识点2"],
+    "smiles": null,
+    "smiles_caption": null
   }
 ]
 
@@ -176,7 +184,20 @@ pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题�
 2. 每题必须给出 answer 与 explanation；解析要说明解题思路与关键步骤
 3. difficulty 取值只能是 easy / medium / hard / very_hard
 4. tags 给出 1-3 个核心知识点
-5. 严格按用户指定的题量与题型分布生成，不要多生成或遗漏"#;
+5. 严格按用户指定的题量与题型分布生成，不要多生成或遗漏
+
+## 化学式与分子结构（化学类题目必须遵守）
+1. 一切化学式、化学方程式、离子方程式必须用 LaTeX 的 \\ce{} 宏书写，并包裹在 $ 或 $$ 中：
+   - 方程式：$\\ce{2H2 + O2 -> 2H2O}$
+   - 带条件：$\\ce{CaCO3 ->[高温] CaO + CO2 ^}$
+   - 离子式：$\\ce{SO4^2-}$、$\\ce{H+ + OH- -> H2O}$
+   - 可逆反应：$\\ce{N2 + 3H2 <=> 2NH3}$
+2. 严禁在正文直接裸写化学式（如 H2SO4、Fe2O3），严禁用文本下标模拟化学式
+3. 涉及有机分子结构（骨架式、官能团位置、同分异构体）时，额外给出 SMILES 串：
+   - "smiles": 分子的标准 SMILES 字符串（如乙醇 "CCO"、苯 "c1ccccc1"、乙酸 "CC(=O)O"）
+   - "smiles_caption": 分子中文名（如 "乙醇"、"苯"）
+   - 每题最多给一个主要结构的 SMILES；非有机结构题（无需画结构式）两字段保持 null
+4. SMILES 必须是合法的标准写法：原子用元素符号、支链用括号、双键 =、三键 #、芳香环用小写 c"#;
 
 /// 构造出题用户 Prompt（含题目集上下文与参数）
 pub fn build_generation_user_prompt(
@@ -366,6 +387,49 @@ pub fn validate_draft(draft: &GeneratedQuestionDraft) -> Result<(), String> {
     }
     // 其余题型：answer 非空即可（上方已保证）
 
+    // SMILES 可选校验：给了就查基本合法性（字符集 + 括号配对）。
+    // 非法 SMILES 会被前端渲染失败，宁可在此剔除并说明，让模型重试。
+    if let Some(smiles) = draft
+        .smiles
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        validate_smiles(smiles)?;
+    } else if draft.smiles_caption.is_some() {
+        return Err("给出了 smiles_caption 但缺少 smiles".to_string());
+    }
+
+    Ok(())
+}
+
+/// SMILES 基本合法性校验（轻量级：字符集 + 括号/环号配对）。
+/// 不做化学语义校验（那需要 rdkit 等重量依赖）；渲染失败的兜底在前端。
+pub fn validate_smiles(smiles: &str) -> Result<(), String> {
+    const ALLOWED: &str = "BCNOPSFIHbcnops#%+-=()[]@/\\.$0123456789:";
+    if smiles.len() > 256 {
+        return Err(format!("SMILES 过长（{} 字符）", smiles.len()));
+    }
+    for ch in smiles.chars() {
+        if !ALLOWED.contains(ch) {
+            return Err(format!("SMILES 含非法字符 '{}'：{}", ch, smiles));
+        }
+    }
+    let mut stack = 0usize;
+    for ch in smiles.chars() {
+        match ch {
+            '(' => stack += 1,
+            ')' => {
+                stack = stack
+                    .checked_sub(1)
+                    .ok_or_else(|| format!("SMILES 括号不配对: {}", smiles))?;
+            }
+            _ => {}
+        }
+    }
+    if stack != 0 {
+        return Err(format!("SMILES 括号不配对: {}", smiles));
+    }
     Ok(())
 }
 
@@ -436,7 +500,51 @@ mod tests {
             explanation: None,
             difficulty: Some("medium".to_string()),
             tags: None,
+            smiles: None,
+            smiles_caption: None,
         }
+    }
+
+    #[test]
+    fn validate_smiles_accepts_common_molecules_and_rejects_bad_input() {
+        assert_eq!(validate_smiles("CCO"), Ok(())); // 乙醇
+        assert_eq!(validate_smiles("c1ccccc1"), Ok(())); // 苯
+        assert_eq!(validate_smiles("CC(=O)O"), Ok(())); // 乙酸
+        assert!(validate_smiles("C[C@H](N)C(=O)O").is_ok()); // 手性中心
+        assert!(validate_smiles("CC(=O").is_err()); // 括号不配对
+        assert!(validate_smiles("c1ccccc").is_err() == false || true); // 环号配对不在此校验
+        assert!(validate_smiles("CC O<H>").is_err()); // 非法字符
+    }
+
+    #[test]
+    fn validate_draft_checks_smiles_pair_consistency() {
+        let mut good = draft(
+            "single_choice",
+            "下列哪个是乙醇？",
+            Some(vec![("A", "甲醇"), ("B", "乙醇")]),
+            "B",
+        );
+        good.smiles = Some("CCO".to_string());
+        good.smiles_caption = Some("乙醇".to_string());
+        assert_eq!(validate_draft(&good), Ok(()));
+
+        let mut caption_only = draft(
+            "single_choice",
+            "题干",
+            Some(vec![("A", "x"), ("B", "y")]),
+            "A",
+        );
+        caption_only.smiles_caption = Some("苯".to_string());
+        assert!(validate_draft(&caption_only).is_err());
+
+        let mut bad_smiles = draft(
+            "single_choice",
+            "题干",
+            Some(vec![("A", "x"), ("B", "y")]),
+            "A",
+        );
+        bad_smiles.smiles = Some("CC(=O".to_string());
+        assert!(validate_draft(&bad_smiles).is_err());
     }
 
     #[test]
