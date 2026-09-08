@@ -289,7 +289,7 @@ fn render_single_page(
     // 1. 获取页面
     let page = document
         .pages()
-        .get(page_index as u16)
+        .get(page_index as i32)
         .map_err(|e| VfsError::Other(format!("获取页面 {} 失败: {:?}", page_index, e)))?;
 
     // 2. 渲染为位图
@@ -298,8 +298,10 @@ fn render_single_page(
         .map_err(|e| VfsError::Other(format!("渲染页面 {} 失败: {:?}", page_index, e)))?;
 
     // 3. 转换为 RGB 图像
-    let image = bitmap.as_image();
-    let rgb_image = image.to_rgb8();
+    let rgb_image = bitmap
+        .as_image()
+        .map_err(|e| VfsError::Other(format!("转换位图失败: {:?}", e)))?
+        .to_rgb8();
     let (width, height) = rgb_image.dimensions();
 
     // 4. 编码为 JPEG（v2.0：使用 JPEG 替代 PNG，减少存储空间）

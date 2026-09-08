@@ -401,7 +401,7 @@ impl PdfOcrService {
                     break;
                 }
 
-                let page = match document.pages().get(page_index as u16) {
+                let page = match document.pages().get(page_index as i32) {
                     Ok(p) => p,
                     Err(e) => {
                         let err_msg = format!("获取页面失败: {:?}", e);
@@ -450,8 +450,28 @@ impl PdfOcrService {
                     }
                 };
 
-                let image = bitmap.as_image();
-                let rgb_image = image.to_rgb8();
+                let rgb_image = match bitmap.as_image() {
+                    Ok(image) => image.to_rgb8(),
+                    Err(e) => {
+                        let err_msg = format!("位图转换失败: {:?}", e);
+                        error!("[PDF-OCR-Backend] 页面 {} {}", page_index, err_msg);
+                        // ★ 记录渲染失败的页面（使用 poison-recovery 避免 panic）
+                        render_failed_for_thread
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push((page_index, err_msg.clone()));
+                        let _ = render_app_handle.emit(
+                            "pdf_ocr_progress",
+                            serde_json::json!({
+                                "type": "PageRenderFailed",
+                                "session_id": render_session_id,
+                                "page_index": page_index,
+                                "error": err_msg,
+                            }),
+                        );
+                        continue;
+                    }
+                };
                 let (width, height) = rgb_image.dimensions();
 
                 // 保存为 JPEG
