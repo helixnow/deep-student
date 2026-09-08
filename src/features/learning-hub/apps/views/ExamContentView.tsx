@@ -1125,6 +1125,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, []);
 
+  // AI 出题知识点候选：现有题目 tags 去重（C2）
+  const availableTagsForAiGeneration = useMemo(() => {
+    const tags = new Set<string>();
+    questions.forEach((question) => {
+      question.tags?.forEach((tag) => {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      });
+    });
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [questions]);
+
   const manageQuestions = useMemo(() => {
     const normalizedSearch = manageFilters.search?.trim().toLowerCase();
     return questions.filter((question) => {
@@ -2543,6 +2555,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
               onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
               onCsvImport={readOnly ? undefined : handleOpenCsvImport}
+              onAiGenerate={readOnly ? undefined : handleOpenAiGeneration}
               createRequestKey={listCreateRequestKey}
               onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
               onDraftNavigationRequested={(index) => {
@@ -2563,6 +2576,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             examId={sessionId}
             examName={sessionDetail?.summary?.exam_name || node.name}
             onImportComplete={handleListChanged}
+            availableTags={availableTagsForAiGeneration}
           />
         </Suspense>
       )}

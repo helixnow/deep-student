@@ -58,6 +58,12 @@ export interface QbankGenerationRequestPayload {
   topic_hint?: string | null;
   based_on_existing: boolean;
   language?: string | null;
+  /** 资源库参考文件（后端直读提取文本） */
+  reference_file_ids?: string[];
+  /** 前端临时上传的参考文件（base64，不落资源库） */
+  reference_files_base64?: { name: string; base64: string }[];
+  /** 知识点（从现有题目 tags 选择或手动输入） */
+  knowledge_points?: string[];
 }
 
 export interface QbankGenerationState {
@@ -166,9 +172,39 @@ export function useQbankAiGeneration() {
       request: Omit<QbankGenerationRequestPayload, 'stream_session_id'>,
       onComplete?: (drafts: GeneratedQuestionDraft[]) => void,
     ): Promise<'completed' | 'cancelled'> => {
-      return new Promise(async (resolve, reject) => {
+      // no-async-promise-executor：executor 内不写 async/await，异步流程拆到
+      // run() 中链式执行；resolve/reject 由 settle/fail 闭包持有
+      let resolvePromise: (result: 'completed' | 'cancelled') => void = () => {};
+      let rejectPromise: (error: Error) => void = () => {};
+      const promise = new Promise<'completed' | 'cancelled'>((resolve, reject) => {
+        resolvePromise = resolve;
+        rejectPromise = reject;
+      });
+
+      let settled = false;
+      const settledRef = { current: false };
+
+      const settle = (result: 'completed' | 'cancelled') => {
+        if (settledRef.current) return;
+        settledRef.current = true;
+        settled = true;
+        settleRef.current = null;
+        failRef.current = null;
+        resolvePromise(result);
+      };
+
+      const fail = (error: Error) => {
+        if (settledRef.current) return;
+        settledRef.current = true;
+        settled = true;
+        settleRef.current = null;
+        failRef.current = null;
+        rejectPromise(error);
+      };
+
+      const run = async () => {
         if (isStartingRef.current || isActiveRef.current) {
-          reject(new Error('出题正在进行中'));
+          fail(new Error('出题正在进行中'));
           return;
         }
 
@@ -187,27 +223,6 @@ export function useQbankAiGeneration() {
           rejectionReasons: [],
           streamSessionId,
         });
-
-        let settled = false;
-        const settledRef = { current: false };
-
-        const settle = (result: 'completed' | 'cancelled') => {
-          if (settledRef.current) return;
-          settledRef.current = true;
-          settled = true;
-          settleRef.current = null;
-          failRef.current = null;
-          resolve(result);
-        };
-
-        const fail = (error: Error) => {
-          if (settledRef.current) return;
-          settledRef.current = true;
-          settled = true;
-          settleRef.current = null;
-          failRef.current = null;
-          reject(error);
-        };
 
         settleRef.current = settle;
         failRef.current = fail;
@@ -294,7 +309,10 @@ export function useQbankAiGeneration() {
             fail(error instanceof Error ? error : new Error(errMsg));
           }
         }
-      });
+      };
+
+      void run();
+      return promise;
     },
     [cleanup, resetTimeout],
   );

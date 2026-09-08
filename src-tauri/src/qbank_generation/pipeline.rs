@@ -10,6 +10,7 @@ use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 
+use crate::document_parser::DocumentParser;
 use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
@@ -19,7 +20,7 @@ use crate::vfs::repos::VfsExamRepo;
 use super::events::QbankGenerationEmitter;
 use super::types::{
     build_generation_user_prompt, parse_generation_output, QbankGenerationRequest,
-    QbankGenerationResponse, GENERATION_SYSTEM_PROMPT,
+    QbankGenerationResponse, ReferenceText, GENERATION_SYSTEM_PROMPT, REFERENCE_FILES_MAX_COUNT,
 };
 
 /// 建连/响应头超时：send() 在收到响应头后即完成，不限制流式 body 时长
@@ -58,9 +59,14 @@ pub async fn run_qbank_generation(
     let (exam_name, existing_samples) = collect_exam_context(&deps.vfs_db, &request.exam_id)
         .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
 
+    // 1.5 收集参考资料文本（资源库 file_id 直读 + 前端临时上传 base64）
+    let reference_texts = collect_reference_texts(&deps.vfs_db, &request)
+        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
+
     // 2. 构造 Prompt
     let system_prompt = GENERATION_SYSTEM_PROMPT.to_string();
-    let user_prompt = build_generation_user_prompt(&exam_name, &existing_samples, &request);
+    let user_prompt =
+        build_generation_user_prompt(&exam_name, &existing_samples, &request, &reference_texts);
 
     // 3. 获取模型配置
     let config = resolve_generation_config(&deps.llm, request.model_config_id.as_ref())
@@ -180,6 +186,97 @@ fn collect_exam_context(vfs_db: &VfsDatabase, exam_id: &str) -> VfsResult<(Strin
 }
 
 type VfsResult<T> = Result<T, crate::vfs::VfsError>;
+
+/// 把一份提取结果并入收集列表；空/提取失败记日志并跳过
+fn push_reference_text(
+    texts: &mut Vec<ReferenceText>,
+    skipped: &mut Vec<String>,
+    name: String,
+    text: Option<String>,
+) {
+    match text {
+        Some(t) if !t.trim().is_empty() => {
+            texts.push(ReferenceText { name, text: t });
+        }
+        _ => {
+            log::warn!("[QbankGeneration] 参考文件 {} 未提取到文本，已跳过", name);
+            skipped.push(name);
+        }
+    }
+}
+
+/// 收集参考资料文本。
+///
+/// - `reference_file_ids`：资源库文件。先用 `VfsFileRepo::get_file` 拿元数据，
+///   再走 `extract_file_text_with_strategy`（OCR / extracted_text / DocumentParser
+///   实时解析三者取优）——与对话附件送入模型的文本同源。base64_content 传 None：
+///   extracted_text 过短时函数内部无法实时解析，直接接受现有文本。
+/// - `reference_files_base64`：前端临时上传，直接 DocumentParser 提取。
+///
+/// 文件数上限 REFERENCE_FILES_MAX_COUNT（超出按顺序丢弃并记日志）；
+/// 单份文本截断在 build_generation_user_prompt 内做（REFERENCE_TEXT_MAX_CHARS）。
+fn collect_reference_texts(
+    vfs_db: &VfsDatabase,
+    request: &QbankGenerationRequest,
+) -> VfsResult<Vec<ReferenceText>> {
+    use crate::vfs::repos::VfsFileRepo;
+
+    let mut texts: Vec<ReferenceText> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    let total_requested = request.reference_file_ids.len() + request.reference_files_base64.len();
+    if total_requested > REFERENCE_FILES_MAX_COUNT {
+        log::warn!(
+            "[QbankGeneration] 参考文件数 {} 超上限 {}，多余的将忽略",
+            total_requested,
+            REFERENCE_FILES_MAX_COUNT
+        );
+    }
+
+    let conn = vfs_db.get_conn_safe()?;
+    for file_id in request.reference_file_ids.iter() {
+        if texts.len() >= REFERENCE_FILES_MAX_COUNT {
+            break;
+        }
+        let file = match VfsFileRepo::get_file_with_conn(&conn, file_id)? {
+            Some(f) => f,
+            None => {
+                log::warn!("[QbankGeneration] 参考文件不存在: {}", file_id);
+                skipped.push(file_id.clone());
+                continue;
+            }
+        };
+        let name = file.file_name.clone();
+        let text =
+            crate::vfs::ref_handlers::extract_file_text_with_strategy(&conn, file_id, &name, None);
+        push_reference_text(&mut texts, &mut skipped, name, text);
+    }
+
+    for upload in request.reference_files_base64.iter() {
+        if texts.len() >= REFERENCE_FILES_MAX_COUNT {
+            break;
+        }
+        let parser = DocumentParser::new();
+        let text = parser
+            .extract_text_from_base64(&upload.name, &upload.base64)
+            .ok();
+        push_reference_text(&mut texts, &mut skipped, upload.name.clone(), text);
+    }
+
+    if !skipped.is_empty() {
+        log::info!(
+            "[QbankGeneration] 参考文件收集中跳过 {} 份: {:?}",
+            skipped.len(),
+            skipped
+        );
+    }
+    log::info!(
+        "[QbankGeneration] 参考资料收集完成：{} 份，总字符数 {}",
+        texts.len(),
+        texts.iter().map(|r| r.text.chars().count()).sum::<usize>()
+    );
+    Ok(texts)
+}
 
 /// 解析出题使用的模型配置
 ///

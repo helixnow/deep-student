@@ -28,6 +28,15 @@ fn default_count() -> u32 {
     1
 }
 
+/// 前端临时上传的参考文件（未经资源库，直接 base64 随请求传入）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReferenceFileBase64 {
+    /// 文件名（含扩展名，供 DocumentParser 分流与 prompt 标注）
+    pub name: String,
+    /// 文件内容（base64）
+    pub base64: String,
+}
+
 /// AI 出题请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QbankGenerationRequest {
@@ -55,6 +64,15 @@ pub struct QbankGenerationRequest {
     /// 语言（默认跟随前端 locale，如 zh-CN / en-US）
     #[serde(default)]
     pub language: Option<String>,
+    /// 参考资料来源一：资源库文件 ID（后端直读并提取文本）
+    #[serde(default)]
+    pub reference_file_ids: Vec<String>,
+    /// 参考资料来源二：前端临时上传文件（base64，不落资源库）
+    #[serde(default)]
+    pub reference_files_base64: Vec<ReferenceFileBase64>,
+    /// 知识点（前端从现有题目 tags 收集或手动输入；注入 prompt 限定出题范围）
+    #[serde(default)]
+    pub knowledge_points: Vec<String>,
 }
 
 fn default_max_questions() -> u32 {
@@ -199,11 +217,17 @@ pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题�
    - 每题最多给一个主要结构的 SMILES；非有机结构题（无需画结构式）两字段保持 null
 4. SMILES 必须是合法的标准写法：原子用元素符号、支链用括号、双键 =、三键 #、芳香环用小写 c"#;
 
+/// 单份参考文本的最大注入长度（字符）；超出截断，避免 prompt 体积失控
+pub const REFERENCE_TEXT_MAX_CHARS: usize = 30_000;
+/// 参考文件数量上限（file_ids 与 base64 合计）
+pub const REFERENCE_FILES_MAX_COUNT: usize = 3;
+
 /// 构造出题用户 Prompt（含题目集上下文与参数）
 pub fn build_generation_user_prompt(
     exam_name: &str,
     existing_samples: &[String],
     request: &QbankGenerationRequest,
+    reference_texts: &[ReferenceText],
 ) -> String {
     let language = request.language.as_deref().unwrap_or("zh-CN");
     let mut prompt = String::new();
@@ -235,6 +259,20 @@ pub fn build_generation_user_prompt(
         ));
     }
 
+    let knowledge_points: Vec<&str> = request
+        .knowledge_points
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !knowledge_points.is_empty() {
+        prompt.push_str("## 知识点范围（围绕这些知识点出题）\n");
+        for point in &knowledge_points {
+            prompt.push_str(&format!("- {}\n", point));
+        }
+        prompt.push('\n');
+    }
+
     if let Some(hint) = request
         .topic_hint
         .as_deref()
@@ -253,11 +291,42 @@ pub fn build_generation_user_prompt(
         prompt.push('\n');
     }
 
+    if !reference_texts.is_empty() {
+        prompt.push_str("## 参考资料（据此出题；题干不得直接抄袭原文成句）\n");
+        for reference in reference_texts {
+            prompt.push_str(&format!("### 文件：{}\n", reference.name));
+            let mut text = reference.text.as_str();
+            if text.len() > REFERENCE_TEXT_MAX_CHARS {
+                // 按字符边界截断（文本可能是多字节 UTF-8）
+                let mut cut = REFERENCE_TEXT_MAX_CHARS;
+                while !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                text = &text[..cut];
+                prompt.push_str(text);
+                prompt.push_str("\n…（原文过长，已截断）\n");
+            } else {
+                prompt.push_str(text);
+                prompt.push('\n');
+            }
+            prompt.push('\n');
+        }
+    }
+
     prompt.push_str(&format!(
         "## 输出语言\n题目使用 {}。现在请生成题目，只输出 JSON 数组。\n",
         language
     ));
     prompt
+}
+
+/// 一份参考文件的提取文本（已就绪，供 prompt 注入）
+#[derive(Debug, Clone)]
+pub struct ReferenceText {
+    /// 展示名（文件名）
+    pub name: String,
+    /// 提取出的纯文本
+    pub text: String,
 }
 
 // ============================================================================
@@ -659,11 +728,75 @@ mod tests {
             topic_hint: Some("二次函数".to_string()),
             based_on_existing: false,
             language: Some("zh-CN".to_string()),
+            reference_file_ids: vec![],
+            reference_files_base64: vec![],
+            knowledge_points: vec![],
         };
-        let prompt = build_generation_user_prompt("测试题目集", &[], &request);
+        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &[]);
         assert!(prompt.contains("「测试题目集」"));
         assert!(prompt.contains("single_choice: 3 题"));
         assert!(prompt.contains("二次函数"));
         assert!(prompt.contains("zh-CN"));
+    }
+
+    #[test]
+    fn build_generation_user_prompt_includes_knowledge_points_and_references() {
+        let request = QbankGenerationRequest {
+            exam_id: "exam_1".to_string(),
+            stream_session_id: "sess".to_string(),
+            model_config_id: None,
+            max_questions: 5,
+            specs: vec![],
+            difficulty: None,
+            topic_hint: None,
+            based_on_existing: false,
+            language: Some("zh-CN".to_string()),
+            reference_file_ids: vec!["file_1".to_string()],
+            reference_files_base64: vec![],
+            knowledge_points: vec![
+                "二次函数".to_string(),
+                "  ".to_string(),
+                "因式分解".to_string(),
+            ],
+        };
+        let references = vec![ReferenceText {
+            name: "课本第2章.pdf".to_string(),
+            text: "二次函数的图像是抛物线。".to_string(),
+        }];
+        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &references);
+        assert!(prompt.contains("## 知识点范围（围绕这些知识点出题）"));
+        assert!(prompt.contains("- 二次函数"));
+        // 空白知识点被过滤
+        assert!(!prompt.contains("-  "));
+        assert!(prompt.contains("## 参考资料"));
+        assert!(prompt.contains("### 文件：课本第2章.pdf"));
+        assert!(prompt.contains("抛物线"));
+    }
+
+    #[test]
+    fn build_generation_user_prompt_truncates_long_reference_text() {
+        let request = QbankGenerationRequest {
+            exam_id: "exam_1".to_string(),
+            stream_session_id: "sess".to_string(),
+            model_config_id: None,
+            max_questions: 5,
+            specs: vec![],
+            difficulty: None,
+            topic_hint: None,
+            based_on_existing: false,
+            language: None,
+            reference_file_ids: vec![],
+            reference_files_base64: vec![],
+            knowledge_points: vec![],
+        };
+        let long_text = "长".repeat(REFERENCE_TEXT_MAX_CHARS + 500);
+        let references = vec![ReferenceText {
+            name: "big.txt".to_string(),
+            text: long_text,
+        }];
+        let prompt = build_generation_user_prompt("测试", &[], &request, &references);
+        assert!(prompt.contains("（原文过长，已截断）"));
+        // 截断后总长度应有界
+        assert!(prompt.len() < REFERENCE_TEXT_MAX_CHARS + 2000);
     }
 }
