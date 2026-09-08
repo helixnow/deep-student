@@ -54,7 +54,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
 use crate::chat_v2::task_objects::{
-    read_task_object_page, ManagedLocator, OBJECT_READ_PAGE_MAX_BYTES,
+    read_task_object_page, write_task_object_page, DerivedEdge, ManagedLocator, ObjectCapabilities,
+    TaskObjectHandleBuilder, TaskObjectKind, OBJECT_READ_PAGE_MAX_BYTES,
 };
 
 // ============================================================================
@@ -90,21 +91,27 @@ const TRACE_ERROR_MAX_CHARS: usize = 300;
 pub const OBJECT_READ_DEFAULT_LIMIT: i64 = 8 * 1024;
 
 // ============================================================================
-// 工具面白名单（fail-closed，独立维护）
+// 工具面白名单（fail-closed）
 // ============================================================================
 //
-// 与 `headless::headless_allowed_tools()`（chat_v2/headless.rs:534-590）的
-// 关系：本名单 = headless 集中 33 个 `builtin-*` 只读数据工具 + 2 个检索类
-// 补充（arxiv_search / scholar_search，Low 敏感度 + ReadOnly 并发，纯外部
-// API 查询）。**有意排除** headless 集的 5 个 agent 元工具：
-// - `attempt_completion`：控制面工具，脚本内调用会错误地终止整轮对话；
-// - `todo_init` / `todo_update` / `todo_add` / `todo_get`：写代理侧 todo
-//   面板状态，不属于"只读数据面"。
+// ## 只读面（G01-e 起注册表驱动）
+// 生产判定委托 [`crate::chat_v2::tool_descriptors::is_ptc_allowed`]（按
+// descriptor 的 `ptc_allowed` 标志位）；`PTC_ALLOWED_TOOLS` 保留为
+// #[cfg(test)] oracle，集合等价性由 tool_descriptors 同步测试与本模块
+// `ptc_whitelist_delegates_to_descriptor_registry` 双重锁定。
 //
-// 写工具 / connector / shell / 子代理 / tool_pack / ptc_run 一律不在名单
-// （ptc_run 自我排除防递归，见 `call` 内的显式检查，报错信息更友好）。
-// 扩充规则：新增条目必须同时满足 ① 纯后端执行无 WebView 往返 ② Low 敏感度
-// ③ 只读无副作用，并在 headless 集中或此处补注释说明来源。
+// 名单语义（与注册表注释一致）：headless 集中 33 个 `builtin-*` 只读数据
+// 工具 + 2 个检索类补充（arxiv_search / scholar_search）；有意排除 5 个
+// agent 元工具（attempt_completion / todo_* 控制面）。
+//
+// ## 受控写面（G05-P3）
+// `PTC_WRITE_TOOLS` 是**策略常量**（不是工具元数据，故不进注册表）：允许
+// 脚本调用的一小组写工具。每个子调用仍与只读调用走**同一**
+// `dispatch_with_admission` 中央准入——kill-switch / 工具自身敏感度审批
+// 逐次生效；脚本级 fail-closed 仅是外加的一层。收录规则：① 纯后端执行
+// ② 敏感度 ≤ Medium ③ 非破坏性（创建/更新语义；删除/移动/远程写不收）。
+// 当前写集恒 ≤ Medium，故 ptc_run 整体敏感度（Medium 基线）无需脚本级
+// 静态分级——若未来纳入 High 写工具，应先实现静态分级再收录。
 pub const PTC_ALLOWED_TOOLS: &[&str] = &[
     // —— 检索（BuiltinRetrievalExecutor / FetchExecutor，Low）——
     "builtin-unified_search",
@@ -153,13 +160,42 @@ pub const PTC_ALLOWED_TOOLS: &[&str] = &[
     "builtin-review_stats",
 ];
 
-/// 白名单的 O(1) 查找缓存（编译期常量集合，进程内不变）。
+/// 受控写工具面（G05-P3，策略常量——收录规则见上方注释）。
+///
+/// - `workspace_artifact_write`（Medium / WriteLocal）：向工作区受管 root
+///   写产物——PTC 脚本产出的主出口；
+/// - `todo_init` / `todo_update` / `todo_add`（Low / WriteLocal）：代理侧
+///   任务状态（headless 白名单同样放行）；
+/// - `workspace_send`（Low / WriteLocal）：工作区协作消息。
+///
+/// 与只读面**不相交**（同步测试锁定）；ptc_run 自我排除防递归。
+pub const PTC_WRITE_TOOLS: &[&str] = &[
+    "builtin-workspace_artifact_write",
+    "builtin-todo_init",
+    "builtin-todo_update",
+    "builtin-todo_add",
+    "builtin-workspace_send",
+];
+
+/// 只读白名单的 O(1) 查找缓存（#[cfg(test)] oracle 配套；生产判定走注册表）。
+#[cfg(test)]
 static PTC_ALLOWED_TOOL_SET: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| PTC_ALLOWED_TOOLS.iter().copied().collect());
 
+static PTC_WRITE_TOOL_SET: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| PTC_WRITE_TOOLS.iter().copied().collect());
+
 /// 判断某（归一化后）工具名是否允许在 PTC 脚本内调用（fail-closed）。
+///
+/// G01-e 起委托 ToolDescriptor 注册表（`ptc_allowed` 标志位）；与手写
+/// oracle 的集合等价性由双重同步测试锁定。
 pub fn is_ptc_allowed_tool(tool_name: &str) -> bool {
-    PTC_ALLOWED_TOOL_SET.contains(tool_name)
+    crate::chat_v2::tool_descriptors::is_ptc_allowed(tool_name)
+}
+
+/// 判断某（归一化后）工具名是否属于 PTC 受控写面（fail-closed）。
+pub fn is_ptc_writable_tool(tool_name: &str) -> bool {
+    PTC_WRITE_TOOL_SET.contains(tool_name)
 }
 
 /// 归一化工具名：省略 `builtin-` 前缀的写法补齐前缀。
@@ -191,8 +227,22 @@ pub struct PtcTraceEntry {
     pub duration_ms: u64,
     pub result_bytes: usize,
     pub ok: bool,
+    /// G05-P3：该调用是否产生副作用（写工具 / object_write）。执行器据此
+    /// 组装 `writes_summary` 供 G07 验收消费。
+    #[serde(skip_serializing_if = "is_false")]
+    pub side_effect: bool,
+    /// object_write 的目标 locator（审计定位；仅写路径回填）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<Value>,
+    /// object_write 写入后的整文件 sha256（乐观锁回链；仅写路径回填）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub written_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// canonical 化 JSON（对象键递归排序），用于稳定的审计指纹。
@@ -241,12 +291,22 @@ pub struct PtcCallRequest {
     pub resp_tx: std::sync::mpsc::Sender<Result<Value, String>>,
 }
 
+/// object_read 记录的一条血缘来源（G05-P3：object_write 的 derived_from
+/// 输入）。`sha256` 使来源内容寻址——写产物的血缘钉在"读过的那一版"。
+#[derive(Debug, Clone)]
+pub struct PtcReadSource {
+    pub root_id: String,
+    pub relative_path: String,
+    pub sha256: String,
+}
+
 /// 脚本侧共享状态（经 `Evaluator::extra` 注入，配合内部可变性）。
 ///
 /// `trace` / `calls_used` 用 Arc 共享给执行器侧：wall-clock 超时后脚本线程
 /// 可能仍在 unwind，执行器仍能把"已发生的调用轨迹"带回给模型。
-/// `artifact_root` 是本次会话的 artifacts 根（object_read 的读取面），
-/// 无窗口（headless/测试）时为 None，object_read 一律结构化报错。
+/// `artifact_root` 是本次会话的 artifacts 根（object_read 的读取面 /
+/// object_write 的写入面），无窗口（headless/测试）时为 None，两者一律
+/// 结构化报错。`read_log` 只在脚本线程内使用（object_write 血缘输入）。
 #[derive(ProvidesStaticType)]
 pub struct PtcBrokerState {
     req_tx: UnboundedSender<PtcCallRequest>,
@@ -256,6 +316,7 @@ pub struct PtcBrokerState {
     cancel: CancellationToken,
     deadline: Instant,
     artifact_root: Option<PathBuf>,
+    read_log: Mutex<Vec<PtcReadSource>>,
 }
 
 impl PtcBrokerState {
@@ -277,6 +338,7 @@ impl PtcBrokerState {
                 cancel,
                 deadline,
                 artifact_root,
+                read_log: Mutex::new(Vec::new()),
             },
             calls_used,
             trace,
@@ -287,6 +349,22 @@ impl PtcBrokerState {
         match self.trace.lock() {
             Ok(mut trace) => trace.push(entry),
             Err(poisoned) => poisoned.into_inner().push(entry),
+        }
+    }
+
+    /// object_read 成功后登记血缘来源（object_write 的 derived_from 输入）。
+    fn record_read_source(&self, source: PtcReadSource) {
+        match self.read_log.lock() {
+            Ok(mut log) => log.push(source),
+            Err(poisoned) => poisoned.into_inner().push(source),
+        }
+    }
+
+    /// 当前已登记读取来源的快照（object_write 血缘构建用）。
+    fn read_sources(&self) -> Vec<PtcReadSource> {
+        match self.read_log.lock() {
+            Ok(log) => log.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 }
@@ -313,10 +391,14 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
         if normalized == "builtin-ptc_run" {
             anyhow::bail!("ptc_run cannot invoke itself (recursive call)");
         }
-        if !is_ptc_allowed_tool(&normalized) {
+        // G05-P3：受控写面与只读面同路准入；写调用 trace 标 side_effect。
+        let is_write = is_ptc_writable_tool(&normalized);
+        if !is_write && !is_ptc_allowed_tool(&normalized) {
             anyhow::bail!(
                 "ptc_run: tool '{}' is not in the PTC allowlist (fail-closed). \
-                 Only read-only builtin tools are callable from scripts.",
+                 Callable from scripts: read-only builtin tools plus the small \
+                 controlled write set (workspace_artifact_write / todo_* / \
+                 workspace_send).",
                 normalized
             );
         }
@@ -357,9 +439,7 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                 args: args_json,
                 resp_tx,
             })
-            .map_err(|_| {
-                anyhow::anyhow!("ptc_run: dispatcher channel closed; aborting script")
-            })?;
+            .map_err(|_| anyhow::anyhow!("ptc_run: dispatcher channel closed; aborting script"))?;
 
         // —— 有界等待：轮询间隙检查取消/超时，保证脚本线程可被打断 ——
         let started = Instant::now();
@@ -372,6 +452,9 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                     duration_ms: started.elapsed().as_millis() as u64,
                     result_bytes: 0,
                     ok: false,
+                    side_effect: is_write,
+                    locator: None,
+                    written_sha256: None,
                     error: Some("cancelled or timed out while awaiting dispatch".to_string()),
                 });
                 anyhow::bail!("ptc_run: call to '{normalized}' cancelled or timed out");
@@ -387,6 +470,9 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                         duration_ms: started.elapsed().as_millis() as u64,
                         result_bytes: 0,
                         ok: false,
+                        side_effect: is_write,
+                        locator: None,
+                        written_sha256: None,
                         error: Some("dispatcher dropped the call".to_string()),
                     });
                     anyhow::bail!("ptc_run: dispatcher dropped the call to '{normalized}'");
@@ -398,9 +484,7 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
         let duration_ms = started.elapsed().as_millis() as u64;
         let envelope = match response {
             Ok(output) => {
-                let result_bytes = serde_json::to_string(&output)
-                    .map(|s| s.len())
-                    .unwrap_or(0);
+                let result_bytes = serde_json::to_string(&output).map(|s| s.len()).unwrap_or(0);
                 broker.record(PtcTraceEntry {
                     seq,
                     tool: normalized,
@@ -408,6 +492,9 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                     duration_ms,
                     result_bytes,
                     ok: true,
+                    side_effect: is_write,
+                    locator: None,
+                    written_sha256: None,
                     error: None,
                 });
                 json!({ "ok": true, "output": output })
@@ -420,6 +507,9 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                     duration_ms,
                     result_bytes: 0,
                     ok: false,
+                    side_effect: is_write,
+                    locator: None,
+                    written_sha256: None,
                     error: Some(truncate_chars(&error, TRACE_ERROR_MAX_CHARS)),
                 });
                 json!({ "ok": false, "error": error })
@@ -485,6 +575,9 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                     duration_ms,
                     result_bytes,
                     ok: true,
+                    side_effect: false,
+                    locator: None,
+                    written_sha256: None,
                     error: None,
                 });
                 Ok(eval.heap().alloc(page))
@@ -497,9 +590,115 @@ fn ptc_globals(builder: &mut GlobalsBuilder) {
                     duration_ms,
                     result_bytes: 0,
                     ok: false,
+                    side_effect: false,
+                    locator: None,
+                    written_sha256: None,
                     error: Some(truncate_chars(&error, TRACE_ERROR_MAX_CHARS)),
                 });
                 Err(anyhow::anyhow!("ptc_run: object_read failed: {error}"))
+            }
+        }
+    }
+
+    /// object_write(object, content, offset=None, expected_sha256=None,
+    /// encoding="utf-8") —— 受控写产物到会话 artifacts 根（G05-P3）。
+    ///
+    /// 入参为 handle dict（fail-closed 校验 `capabilities.writable`）或显式
+    /// `{root_id, relative_path}` locator dict（camelCase 键同受支持）。
+    /// `offset=None`（默认）整体覆盖/新建；`offset=n` 按 pwrite 语义原地覆盖
+    /// （n 不得越过现有长度）。`expected_sha256` 乐观锁：目标已存在且指纹
+    /// 不匹配时拒绝（防并发覆盖）。`encoding`：`"utf-8"`（默认）或
+    /// `"base64"`（二进制内容解码后写入）。
+    ///
+    /// 返回 `{locator, sha256, total_size, written_bytes, created,
+    /// object_handle}`：handle 带 derived_from 血缘（本脚本内 object_read
+    /// 读取过的来源，内容寻址到 sha256）。与 call() 同一 max_calls 预算账本；
+    /// trace 记 `"object_write"` 且 `side_effect=True`。
+    fn object_write<'v>(
+        #[starlark(require = pos)] object: StarlarkValue<'v>,
+        #[starlark(require = pos)] content: &str,
+        #[starlark(require = named)] offset: Option<i64>,
+        #[starlark(require = named)] expected_sha256: Option<&str>,
+        #[starlark(require = named, default = "utf-8")] encoding: &str,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> anyhow::Result<StarlarkValue<'v>> {
+        let broker = eval
+            .extra
+            .and_then(|extra| extra.downcast_ref::<PtcBrokerState>())
+            .ok_or_else(|| anyhow::anyhow!("ptc_run: internal broker state unavailable"))?;
+
+        if broker.cancel.is_cancelled() || Instant::now() >= broker.deadline {
+            anyhow::bail!("ptc_run: object_write cancelled or timed out");
+        }
+
+        // —— 预算：object_write 与 call()/object_read 同一账本 ——
+        let seq = broker.calls_used.load(Ordering::SeqCst);
+        if seq >= broker.max_calls {
+            anyhow::bail!(
+                "ptc_run: call budget exhausted (max_calls={}); object_write shares the \
+                 call budget, restructure the script to write with fewer calls",
+                broker.max_calls
+            );
+        }
+        broker.calls_used.store(seq + 1, Ordering::SeqCst);
+
+        let started = Instant::now();
+        let mut trace_locator = json!({"root_id": "", "relative_path": ""});
+        let outcome = object_write_impl(
+            broker,
+            object,
+            content,
+            offset,
+            expected_sha256,
+            encoding,
+            &mut trace_locator,
+        );
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let args_hash = args_fingerprint(&json!({
+            "locator": trace_locator,
+            "offset": offset,
+            "encoding": encoding,
+            "content_bytes": content.len(),
+            "content_sha256": hex::encode(Sha256::digest(content.as_bytes())),
+        }));
+        match outcome {
+            Ok(result) => {
+                let written_sha256 = result
+                    .get("sha256")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let result_bytes = result
+                    .get("written_bytes")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0) as usize;
+                broker.record(PtcTraceEntry {
+                    seq,
+                    tool: "object_write".to_string(),
+                    args_hash,
+                    duration_ms,
+                    result_bytes,
+                    ok: true,
+                    side_effect: true,
+                    locator: Some(trace_locator),
+                    written_sha256,
+                    error: None,
+                });
+                Ok(eval.heap().alloc(result))
+            }
+            Err(error) => {
+                broker.record(PtcTraceEntry {
+                    seq,
+                    tool: "object_write".to_string(),
+                    args_hash,
+                    duration_ms,
+                    result_bytes: 0,
+                    ok: false,
+                    side_effect: true,
+                    locator: Some(trace_locator),
+                    written_sha256: None,
+                    error: Some(truncate_chars(&error, TRACE_ERROR_MAX_CHARS)),
+                });
+                Err(anyhow::anyhow!("ptc_run: object_write failed: {error}"))
             }
         }
     }
@@ -536,8 +735,7 @@ fn object_read_impl(
                 .unwrap_or(false);
             if !readable {
                 return Err(
-                    "handle capabilities.readable is not true; object is not readable"
-                        .to_string(),
+                    "handle capabilities.readable is not true; object is not readable".to_string(),
                 );
             }
             locator
@@ -553,8 +751,8 @@ fn object_read_impl(
             .or_else(|| locator_dict.get(camel))
             .and_then(Value::as_str)
     };
-    let root_id = lookup("root_id", "rootId")
-        .ok_or_else(|| "locator requires root_id".to_string())?;
+    let root_id =
+        lookup("root_id", "rootId").ok_or_else(|| "locator requires root_id".to_string())?;
     let relative_path = lookup("relative_path", "relativePath")
         .ok_or_else(|| "locator requires relative_path".to_string())?;
     // ManagedLocator::new 做段级校验（拒绝 `..` / 绝对路径 / 反斜杠）。
@@ -576,6 +774,13 @@ fn object_read_impl(
         "no artifacts root in this context; materialized objects are unavailable".to_string()
     })?;
     let page = read_task_object_page(root, &locator, offset as u64, limit)?;
+    // G05-P3：登记读取来源，object_write 的 derived_from 血缘引用同一内容
+    // 指纹（内容寻址：源被改后 sha 变化，旧血缘不会误认新版本）。
+    broker.record_read_source(PtcReadSource {
+        root_id: locator.root_id.clone(),
+        relative_path: locator.relative_path.clone(),
+        sha256: page.sha256.clone(),
+    });
     Ok(json!({
         "content": page.content,
         "encoding": page.encoding,
@@ -585,6 +790,157 @@ fn object_read_impl(
         "total_size": page.total_size,
         "eof": page.eof,
         "sha256": page.sha256,
+    }))
+}
+
+/// object_write 的参数解析 + 受管写入 + 血缘 handle 构建（纯逻辑，与
+/// object_read_impl 同构，便于 host fn 内统一 trace）。
+fn object_write_impl(
+    broker: &PtcBrokerState,
+    object: StarlarkValue<'_>,
+    content: &str,
+    offset: Option<i64>,
+    expected_sha256: Option<&str>,
+    encoding: &str,
+    trace_locator: &mut Value,
+) -> Result<Value, String> {
+    let object_json = object
+        .to_json_value()
+        .map_err(|e| format!("argument must be JSON-representable: {e}"))?;
+    let dict = object_json.as_object().ok_or_else(|| {
+        "expected a task object handle dict (with locator) or an explicit \
+         {root_id, relative_path} locator dict"
+            .to_string()
+    })?;
+
+    // handle 形态（带 locator 键）：fail-closed 校验 capabilities.writable；
+    // 显式 locator 形态：无能力位可校，写入面由 root 白名单收口。
+    let locator_value = match dict.get("locator") {
+        Some(locator) => {
+            let writable = dict
+                .get("capabilities")
+                .and_then(|capabilities| capabilities.get("writable"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !writable {
+                return Err(
+                    "handle capabilities.writable is not true; object is not writable".to_string(),
+                );
+            }
+            locator
+        }
+        None => &object_json,
+    };
+    let locator_dict = locator_value
+        .as_object()
+        .ok_or_else(|| "locator must be a dict".to_string())?;
+    let lookup = |snake: &str, camel: &str| {
+        locator_dict
+            .get(snake)
+            .or_else(|| locator_dict.get(camel))
+            .and_then(Value::as_str)
+    };
+    let root_id =
+        lookup("root_id", "rootId").ok_or_else(|| "locator requires root_id".to_string())?;
+    let relative_path = lookup("relative_path", "relativePath")
+        .ok_or_else(|| "locator requires relative_path".to_string())?;
+    // ManagedLocator::new 做段级校验（拒绝 `..` / 绝对路径 / 反斜杠）。
+    let locator = ManagedLocator::new(root_id, relative_path)?;
+    *trace_locator = json!({
+        "root_id": locator.root_id,
+        "relative_path": locator.relative_path,
+    });
+
+    if let Some(at) = offset {
+        if at < 0 {
+            return Err(format!("offset must be >= 0, got {at}"));
+        }
+    }
+    let bytes = match encoding {
+        "utf-8" => content.as_bytes().to_vec(),
+        "base64" => {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .decode(content)
+                .map_err(|e| format!("content is not valid base64: {e}"))?
+        }
+        other => return Err(format!("unsupported encoding '{other}' (utf-8 | base64)")),
+    };
+
+    let root = broker.artifact_root.as_ref().ok_or_else(|| {
+        "no artifacts root in this context; object writes are unavailable".to_string()
+    })?;
+    let outcome = write_task_object_page(
+        root,
+        &locator,
+        &bytes,
+        offset.map(|at| at as u64),
+        expected_sha256,
+    )?;
+
+    // —— 血缘 handle（G11）：derived_from = 本脚本内 object_read 读取过的
+    // 全部来源（内容寻址）；一次未读则显式 origin_unknown（构建器强制显式）。
+    let edges: Vec<DerivedEdge> = broker
+        .read_sources()
+        .into_iter()
+        .map(|source| {
+            DerivedEdge::new(
+                format!(
+                    "{}:{}#{}",
+                    source.root_id, source.relative_path, source.sha256
+                ),
+                "ptc.script",
+            )
+        })
+        .collect();
+    let file_name = locator
+        .relative_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&locator.relative_path)
+        .to_string();
+    let builder = TaskObjectHandleBuilder::new(
+        format!("ptc-write:{}", outcome.sha256),
+        TaskObjectKind::Artifact,
+        file_name,
+        "deep-student-ptc",
+    )
+    .tool(Some("builtin-ptc_run"))
+    .media_type(Some(if encoding == "utf-8" {
+        "text/plain; charset=utf-8"
+    } else {
+        "application/octet-stream"
+    }))
+    .size_bytes(Some(outcome.total_size))
+    .sha256(Some(outcome.sha256.clone()))
+    .locator(Some(locator.clone()))
+    .capabilities(ObjectCapabilities {
+        readable: true,
+        materializable: true,
+        writable: true,
+        shareable: false,
+        sendable: false,
+        deletable: true,
+    });
+    let handle = if edges.is_empty() {
+        builder.origin_unknown("script wrote without reading any source object first")
+    } else {
+        builder.derived_edges(edges)
+    }
+    .build()?;
+    let handle_json = serde_json::to_value(&handle)
+        .map_err(|e| format!("failed to serialize object handle: {e}"))?;
+
+    Ok(json!({
+        "locator": {
+            "root_id": locator.root_id,
+            "relative_path": locator.relative_path,
+        },
+        "sha256": outcome.sha256,
+        "total_size": outcome.total_size,
+        "written_bytes": outcome.written_bytes,
+        "created": outcome.created,
+        "object_handle": handle_json,
     }))
 }
 
@@ -770,6 +1126,99 @@ mod tests {
     }
 
     #[test]
+    fn ptc_whitelist_delegates_to_descriptor_registry() {
+        use crate::chat_v2::tool_descriptors::BUILTIN_DESCRIPTORS;
+
+        // ① 集合相等：注册表标志位是生产权威，常量仅为测试 oracle。
+        let oracle: HashSet<String> = PTC_ALLOWED_TOOLS
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect();
+        let registry: HashSet<String> = BUILTIN_DESCRIPTORS
+            .iter()
+            .filter(|descriptor| descriptor.ptc_allowed)
+            .map(|descriptor| format!("builtin-{}", descriptor.name))
+            .collect();
+        assert_eq!(registry, oracle);
+
+        // ② 名单内逐名：裸名与 builtin- 形式均被注册表认领。
+        for full_name in PTC_ALLOWED_TOOLS {
+            let bare = full_name.strip_prefix("builtin-").unwrap();
+            assert!(is_ptc_allowed_tool(full_name), "{full_name}");
+            assert!(is_ptc_allowed_tool(bare), "{bare}");
+            assert!(PTC_ALLOWED_TOOL_SET.contains(full_name));
+        }
+
+        // ③ 名单外逐名：全部已登记非 PTC 工具均拒绝。
+        for descriptor in BUILTIN_DESCRIPTORS
+            .iter()
+            .filter(|descriptor| !descriptor.ptc_allowed)
+        {
+            assert!(!is_ptc_allowed_tool(descriptor.name), "{}", descriptor.name);
+            assert!(
+                !is_ptc_allowed_tool(&format!("builtin-{}", descriptor.name)),
+                "{}",
+                descriptor.name
+            );
+        }
+
+        // ④ 未登记名恒拒（含看似合法的 builtin 名）。
+        for unknown in ["retired_tool", "builtin-retired_tool", "server::tool"] {
+            assert!(!is_ptc_allowed_tool(unknown), "{unknown}");
+        }
+    }
+
+    #[test]
+    fn controlled_write_policy_is_registered_non_destructive_and_disjoint() {
+        use crate::chat_v2::tool_descriptors::{lookup, SideEffectClass};
+        use crate::chat_v2::tools::executor::ToolSensitivity;
+
+        assert_eq!(PTC_WRITE_TOOLS.len(), 5);
+        for full_name in PTC_WRITE_TOOLS {
+            assert!(is_ptc_writable_tool(full_name));
+            assert!(
+                !is_ptc_allowed_tool(full_name),
+                "read/write sets must be disjoint"
+            );
+            let bare = full_name.strip_prefix("builtin-").unwrap();
+            let descriptor = lookup(bare).unwrap_or_else(|| panic!("missing descriptor: {bare}"));
+            assert_eq!(descriptor.side_effect_class, SideEffectClass::WriteLocal);
+            assert!(matches!(
+                descriptor.sensitivity,
+                ToolSensitivity::Low | ToolSensitivity::Medium
+            ));
+        }
+        for denied in [
+            "builtin-workspace_file_delete",
+            "builtin-workspace_file_move",
+            "builtin-note_replace",
+            "builtin-connector_operation_commit",
+        ] {
+            assert!(!is_ptc_writable_tool(denied), "{denied}");
+        }
+    }
+
+    #[test]
+    fn controlled_write_call_uses_same_broker_and_marks_side_effect() {
+        let (broker, req_rx) = broker_for_test(10);
+        let _pump = spawn_stub_pump(req_rx, |req| {
+            assert_eq!(req.tool, "builtin-workspace_artifact_write");
+            Ok(json!({"path": "report.md"}))
+        });
+        let result = run_ptc_script(
+            r#"call("workspace_artifact_write", {"path": "report.md", "content": "ok"})"#,
+            &broker,
+        )
+        .result
+        .expect("controlled write should dispatch");
+        assert_eq!(result["ok"], json!(true));
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 1);
+        assert!(trace[0].side_effect);
+        assert_eq!(trace[0].tool, "builtin-workspace_artifact_write");
+    }
+
+    #[test]
     fn args_fingerprint_is_key_order_independent_and_stable() {
         let a = json!({"b": 1, "a": {"y": [1, 2], "x": true}});
         let b = json!({"a": {"x": true, "y": [1, 2]}, "b": 1});
@@ -797,7 +1246,10 @@ for i in range(5):
 {"sum": total, "items": [x * 2 for x in range(3)]}
 "#;
         let outcome = run_ptc_script(script, &broker);
-        assert_eq!(outcome.result.unwrap(), json!({"sum": 10, "items": [0, 2, 4]}));
+        assert_eq!(
+            outcome.result.unwrap(),
+            json!({"sum": 10, "items": [0, 2, 4]})
+        );
     }
 
     #[test]
@@ -892,14 +1344,20 @@ res = call("rag_search", {"query": "hello"})
             assert_eq!(req.args, json!({"query": "x"}));
             Ok(json!(null))
         });
-        let outcome = run_ptc_script(r#"call("builtin-web_search", "{\"query\":\"x\"}")"#, &broker);
+        let outcome = run_ptc_script(
+            r#"call("builtin-web_search", "{\"query\":\"x\"}")"#,
+            &broker,
+        );
         assert!(outcome.result.is_ok());
     }
 
     #[test]
     fn call_denied_tool_is_hard_error() {
         let (broker, _rx) = broker_for_test(10);
-        let outcome = run_ptc_script(r#"call("builtin-local_shell_execute", {"command": "ls"})"#, &broker);
+        let outcome = run_ptc_script(
+            r#"call("builtin-local_shell_execute", {"command": "ls"})"#,
+            &broker,
+        );
         let err = outcome.result.unwrap_err();
         assert!(err.contains("allowlist"), "unexpected: {err}");
     }
@@ -941,7 +1399,9 @@ res["error"]
         let outcome = run_ptc_script(script, &broker);
         let value = outcome.result.unwrap();
         assert!(
-            value.as_str().is_some_and(|s| s.contains("AUTHORITY_BLOCKED")),
+            value
+                .as_str()
+                .is_some_and(|s| s.contains("AUTHORITY_BLOCKED")),
             "unexpected: {value}"
         );
         // trace 记录失败条目
@@ -989,7 +1449,10 @@ res["error"]
         });
         let outcome = run_ptc_script(r#"call("builtin-rag_search", {})"#, &broker);
         let err = outcome.result.unwrap_err();
-        assert!(err.contains("cancelled") || err.contains("timed out"), "unexpected: {err}");
+        assert!(
+            err.contains("cancelled") || err.contains("timed out"),
+            "unexpected: {err}"
+        );
     }
 
     // —— object_read（G05-P2）——
@@ -1095,14 +1558,25 @@ object_read(handle)
         let dir = tempfile::TempDir::new().expect("temp dir");
         std::fs::write(dir.path().join("inside.txt"), "safe").expect("write");
         let cases = [
-            (r#"{"root_id": "artifacts", "relative_path": "../escape.txt"}"#, "unsafe path segment"),
-            (r#"{"root_id": "artifacts", "relative_path": "/etc/passwd"}"#, "relative path"),
-            (r#"{"root_id": "temp", "relative_path": "x.txt"}"#, "not object-readable"),
-            (r#"{"root_id": "workspace", "relative_path": "x.txt"}"#, "not object-readable"),
+            (
+                r#"{"root_id": "artifacts", "relative_path": "../escape.txt"}"#,
+                "unsafe path segment",
+            ),
+            (
+                r#"{"root_id": "artifacts", "relative_path": "/etc/passwd"}"#,
+                "relative path",
+            ),
+            (
+                r#"{"root_id": "temp", "relative_path": "x.txt"}"#,
+                "not object-readable",
+            ),
+            (
+                r#"{"root_id": "workspace", "relative_path": "x.txt"}"#,
+                "not object-readable",
+            ),
         ];
         for (locator, needle) in cases {
-            let (broker, _rx) =
-                broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+            let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
             let script = format!("object_read({locator})");
             let err = run_ptc_script(&script, &broker).result.unwrap_err();
             assert!(err.contains("object_read failed"), "unexpected: {err}");
@@ -1115,8 +1589,7 @@ object_read(handle)
     fn object_read_rejects_symlink_escape() {
         let dir = tempfile::TempDir::new().expect("temp dir");
         let outside = tempfile::NamedTempFile::new().expect("outside file");
-        std::os::unix::fs::symlink(outside.path(), dir.path().join("link.txt"))
-            .expect("symlink");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link.txt")).expect("symlink");
         let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
         let err = run_ptc_script(
             r#"object_read({"root_id": "artifacts", "relative_path": "link.txt"})"#,
@@ -1124,7 +1597,10 @@ object_read(handle)
         )
         .result
         .unwrap_err();
-        assert!(err.contains("escapes the managed root"), "unexpected: {err}");
+        assert!(
+            err.contains("escapes the managed root"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]
@@ -1191,7 +1667,10 @@ p2 = object_read(h, offset=p1["next_offset"], limit=1)
         )
         .result
         .unwrap_err();
-        assert!(err.contains("splits a UTF-8 character"), "unexpected: {err}");
+        assert!(
+            err.contains("splits a UTF-8 character"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]
@@ -1259,5 +1738,103 @@ object_read({"root_id": "artifacts", "relative_path": "f.txt"})
         let trace = broker.trace.lock().unwrap();
         assert_eq!(trace.len(), 1);
         assert!(!trace[0].ok);
+    }
+
+    #[test]
+    fn object_write_creates_handle_and_records_read_lineage() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("source.txt"), "source-v1").unwrap();
+        let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+        let script = r#"
+source = object_read({"root_id": "artifacts", "relative_path": "source.txt"})
+written = object_write(
+    {"root_id": "artifacts", "relative_path": "generated/result.txt"},
+    source["content"] + "-derived",
+)
+written
+"#;
+        let value = run_ptc_script(script, &broker)
+            .result
+            .expect("object_write should succeed");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("generated/result.txt")).unwrap(),
+            "source-v1-derived"
+        );
+        assert_eq!(value["created"], json!(true));
+        assert_eq!(
+            value["object_handle"]["capabilities"]["writable"],
+            json!(true)
+        );
+        assert_eq!(
+            value["object_handle"]["locator"]["rootId"],
+            json!("artifacts")
+        );
+        let edges = value["object_handle"]["provenance"]["derivedFrom"]
+            .as_array()
+            .expect("derivedFrom array");
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["transformId"], json!("ptc.script"));
+        assert!(edges[0]["sourceHandleId"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("artifacts:source.txt#")));
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 2);
+        assert!(!trace[0].side_effect);
+        assert!(trace[1].side_effect);
+        assert_eq!(trace[1].tool, "object_write");
+        assert_eq!(trace[1].written_sha256.as_deref(), value["sha256"].as_str());
+    }
+
+    #[test]
+    fn object_write_enforces_capability_lock_and_managed_path() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("locked.txt"), "v1").unwrap();
+        let stale = "0".repeat(64);
+
+        let cases = [
+            format!(
+                r#"object_write({{"locator": {{"rootId": "artifacts", "relativePath": "locked.txt"}}, "capabilities": {{"writable": False}}}}, "v2")"#
+            ),
+            format!(
+                r#"object_write({{"root_id": "artifacts", "relative_path": "locked.txt"}}, "v2", expected_sha256="{stale}")"#
+            ),
+            r#"object_write({"root_id": "temp", "relative_path": "x.txt"}, "x")"#.to_string(),
+            r#"object_write({"root_id": "artifacts", "relative_path": "../x.txt"}, "x")"#
+                .to_string(),
+        ];
+        for script in cases {
+            let (broker, _rx) = broker_for_test_with_root(10, Some(dir.path().to_path_buf()));
+            let error = run_ptc_script(&script, &broker).result.unwrap_err();
+            assert!(error.contains("object_write failed"), "unexpected: {error}");
+            let trace = broker.trace.lock().unwrap();
+            assert_eq!(trace.len(), 1);
+            assert!(trace[0].side_effect);
+            assert!(!trace[0].ok);
+        }
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("locked.txt")).unwrap(),
+            "v1"
+        );
+    }
+
+    #[test]
+    fn object_write_shares_budget_and_audit_hash_distinguishes_content() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let (broker, _rx) = broker_for_test_with_root(2, Some(dir.path().to_path_buf()));
+        let error = run_ptc_script(
+            r#"
+object_write({"root_id": "artifacts", "relative_path": "a.txt"}, "aa")
+object_write({"root_id": "artifacts", "relative_path": "b.txt"}, "bb")
+object_write({"root_id": "artifacts", "relative_path": "c.txt"}, "cc")
+"#,
+            &broker,
+        )
+        .result
+        .unwrap_err();
+        assert!(error.contains("budget"), "unexpected: {error}");
+        let trace = broker.trace.lock().unwrap();
+        assert_eq!(trace.len(), 2);
+        assert_ne!(trace[0].args_hash, trace[1].args_hash);
+        assert!(trace.iter().all(|entry| entry.side_effect));
     }
 }

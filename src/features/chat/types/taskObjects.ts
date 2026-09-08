@@ -30,6 +30,14 @@ export interface ObjectCapabilities {
   deletable: boolean;
 }
 
+/** 后端 `chat_v2::task_objects::DerivedEdge` 的 camelCase wire 形态。 */
+export interface DerivedEdge {
+  sourceHandleId: string;
+  transformId: string;
+  transformParamsHash?: string;
+  observedAt: string;
+}
+
 export interface TaskObjectHandle {
   schemaVersion: number;
   handleId: string;
