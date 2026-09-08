@@ -55,6 +55,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::database::ChatV2Database;
+use super::tool_descriptors::{self, GrantsScopeHint};
 use super::tool_policy;
 
 /// DelegatedGrant 结构版本。P1 = 1；schema 演进时递增并在此注释变更点。
@@ -105,7 +106,28 @@ impl ToolScope {
         }
     }
 
-    /// 从白名单条目还原类型化范围（P1：与条目一一对应，内容无损）。
+    /// 从白名单条目还原类型化范围（P1：与条目一一对应）。
+    ///
+    /// G01-e：「条目对应哪个已知内建工具、其 scope 类别」的判定切换到
+    /// ToolDescriptor 注册表（[`tool_descriptors::grants_scope_hint`]）。
+    /// 显式源限定（`server::tool`）与 `mcp_`/`mcp.tools.` 命名空间条目仍按
+    /// 字符串规则**先行**分类为 [`ToolScope::Mcp`]（规则与顺序逐字节不变，
+    /// 注册表不接管——注册表内 `mcp_server_*` 等裸名工具的白名单条目本就以
+    /// `builtin-` 前缀形式出现）；其余条目查注册表 hint：
+    /// - `Shell` 族（local_shell_*）→ [`ToolScope::Shell`] 语义位（P1 恒
+    ///   fail-closed；`prefixes` 留空——不携带任何命令前缀授权，P2 接线时
+    ///   由 profile 的 shell_command_prefixes 另行构造）；
+    /// - `Builtin` 族与未登记名字（外部 MCP 动态工具等）→ [`ToolScope::Builtin`]
+    ///   兜底（与旧纯字符串规则结果一致）。
+    ///
+    /// 既定语义差异（与 G01-e headless 半边同型）：worker/profile 白名单均
+    /// 不含 shell 族条目（内建 profile = 协作工具 ∪ headless 只读子集；
+    /// custom profile 安全全集同样无 shell；legacy 回退仅两个协作工具），
+    /// 故生产求值（`issue_worker_grant` / `effective_tools`）结果集与旧规则
+    /// 逐字节一致；差异仅在手工构造 shell 工具名条目时从「按白名单匹配」
+    /// 收紧为「恒拒」，正是 [`GrantsScopeHint::Shell`] 的声明性语义。
+    /// 等价性由 `registry_driven_scope_derivation_matches_legacy_rules`
+    /// 四层断言锁定。
     pub fn from_allow_entry(entry: &str) -> Self {
         let entry = entry.trim();
         if let Some((server, tool)) = entry.split_once("::") {
@@ -120,13 +142,19 @@ impl ToolScope {
                 tool: entry.to_string(),
             };
         }
-        Self::Builtin {
-            name: entry.to_string(),
+        match tool_descriptors::grants_scope_hint(entry) {
+            Some(GrantsScopeHint::Shell) => Self::Shell {
+                prefixes: Vec::new(),
+            },
+            Some(GrantsScopeHint::Builtin) | None => Self::Builtin {
+                name: entry.to_string(),
+            },
         }
     }
 
-    /// profile.allowed_tools → scopes 的无损映射（保序、不去重——输入已被
-    /// profile 规范化去重过）。
+    /// profile.allowed_tools → scopes 的映射（保序、不去重——输入已被
+    /// profile 规范化去重）。G01-e 起每个条目的 Builtin/Shell 分类由
+    /// 注册表 hint 驱动（见 [`ToolScope::from_allow_entry`]）。
     pub fn scopes_from_allowed_tools(allowed_tools: &[String]) -> Vec<Self> {
         allowed_tools
             .iter()
@@ -629,6 +657,20 @@ impl Drop for GrantRegistrationGuard {
 // 测试
 // ============================================================================
 
+/// G01-e 切换前，grants 的 ToolScope 推导是纯字符串规则（见
+/// [`ToolScope::from_allow_entry`] 文档），不区分 shell 族；本清单是切换时
+/// 为锁定「注册表收紧范围」而立的书面 ground truth（与
+/// [`GrantsScopeHint::Shell`] 的声明性语义一致），保留为测试对照 oracle
+/// （第二信源）。生产推导已切换为注册表驱动；防漂移测试逐名锁定「注册表
+/// `grants_scope_hint == Shell` 集合 == 本清单」。新增/移除 shell 族工具时
+/// 必须同步更新本清单与 `tool_descriptors::BUILTIN_DESCRIPTORS` 的
+/// `grants_scope_hint` 标志，否则对照测试红灯。
+#[cfg(test)]
+pub(crate) const LEGACY_SHELL_FAMILY_TOOLS: &[&str] = &[
+    "builtin-local_shell_execute",
+    "builtin-local_shell_preflight",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -762,6 +804,104 @@ mod tests {
             prefixes: vec!["ls".into()],
         };
         assert!(!shell.allows("builtin-local_shell_execute", &json!({})));
+    }
+
+    /// G01-e 切换前的纯字符串规则参考实现（oracle，第二信源）：锁定「除
+    /// shell 族收紧为 Shell 语义位外，其余条目的推导逐字节等价」。
+    fn legacy_from_allow_entry(entry: &str) -> ToolScope {
+        let entry = entry.trim();
+        if let Some((server, tool)) = entry.split_once("::") {
+            return ToolScope::Mcp {
+                server: server.to_string(),
+                tool: tool.to_string(),
+            };
+        }
+        if entry.starts_with("mcp.tools.") || entry.starts_with("mcp_") {
+            return ToolScope::Mcp {
+                server: String::new(),
+                tool: entry.to_string(),
+            };
+        }
+        ToolScope::Builtin {
+            name: entry.to_string(),
+        }
+    }
+
+    /// G01-e 防漂移对照：ToolScope 推导切换注册表驱动后与旧字符串规则
+    /// 逐名等价——唯一既定差异是 shell 族（LEGACY oracle）收紧为 Shell
+    /// 语义位（fail-closed），生产路径白名单不含 shell 条目故结果集不变。
+    #[test]
+    fn registry_driven_scope_derivation_matches_legacy_rules() {
+        use std::collections::HashSet;
+
+        // ① 集合级：注册表 Shell-hint 裸名集与手写 shell 族 oracle 完全一致
+        let flagged: HashSet<&str> = tool_descriptors::BUILTIN_DESCRIPTORS
+            .iter()
+            .filter(|d| d.grants_scope_hint == GrantsScopeHint::Shell)
+            .map(|d| d.name)
+            .collect();
+        let legacy: HashSet<&str> = LEGACY_SHELL_FAMILY_TOOLS
+            .iter()
+            .map(|name| name.strip_prefix("builtin-").unwrap_or(name))
+            .collect();
+        assert_eq!(
+            flagged, legacy,
+            "shell 族工具集与注册表 grants_scope_hint 标志发生漂移"
+        );
+
+        // ② 名单内逐名：shell 族按线上名与裸名两种形式都映射 Shell 语义位，
+        //    且恒 fail-closed（P1 不携带命令前缀授权）
+        for name in LEGACY_SHELL_FAMILY_TOOLS {
+            let bare = name.strip_prefix("builtin-").unwrap_or(name);
+            for entry in [*name, bare] {
+                let scope = ToolScope::from_allow_entry(entry);
+                assert!(
+                    matches!(scope, ToolScope::Shell { .. }),
+                    "{entry} 应推导为 Shell 语义位，实际 {scope:?}"
+                );
+                assert!(
+                    !scope.allows(entry, &json!({})),
+                    "shell 族 scope 在 P1 必须恒 fail-closed：{entry}"
+                );
+            }
+        }
+
+        // ③ 名单外逐名：注册表内全部 Builtin-hint 工具（线上名/裸名两种
+        //    形式）的推导结果与旧字符串规则参考实现逐字节相等
+        for descriptor in tool_descriptors::BUILTIN_DESCRIPTORS {
+            if descriptor.grants_scope_hint == GrantsScopeHint::Shell {
+                continue;
+            }
+            let prefixed = format!("builtin-{}", descriptor.name);
+            for entry in [descriptor.name.to_string(), prefixed] {
+                assert_eq!(
+                    ToolScope::from_allow_entry(&entry),
+                    legacy_from_allow_entry(&entry),
+                    "{entry} 的 ToolScope 推导与旧字符串规则发生漂移"
+                );
+            }
+        }
+
+        // ④ 未登记名：注册表恒不认领（hint=None），推导保持旧规则兜底
+        //    （`::`/`mcp_` 字符串规则 → Mcp；裸外部名 → Builtin 兜底）
+        for outsider in [
+            "mcp_anything",
+            "builtin-mcp_foo",
+            "anki_generate_cards",
+            "nonexistent_tool",
+            "server-a::fetch",
+        ] {
+            assert_eq!(
+                tool_descriptors::grants_scope_hint(outsider),
+                None,
+                "未登记名 {outsider} 不得被注册表认领"
+            );
+            assert_eq!(
+                ToolScope::from_allow_entry(outsider),
+                legacy_from_allow_entry(outsider),
+                "未登记名 {outsider} 的兜底推导与旧字符串规则发生漂移"
+            );
+        }
     }
 
     /// expiry 语义（纯函数）：过去 → Expired；未来/None → live。
