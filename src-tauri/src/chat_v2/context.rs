@@ -219,6 +219,8 @@ pub(crate) fn is_retrieval_source_tool(tool_name: &str) -> bool {
             | "multimodal_search"
             | "unified_search"
             | "web_search"
+            | "arxiv_search"
+            | "scholar_search"
             | "insight_recall"
     )
 }
