@@ -26,6 +26,8 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
 import { useMessageSearchContext } from '../messageSearchContext';
 import { rehypeSearchHighlights } from './rehypeSearchHighlights';
+import { inlineSmilesRemarkPlugin } from './inlineSmilesRemarkPlugin';
+import { InlineSmiles } from './InlineSmiles';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -87,6 +89,7 @@ const markdownSanitizeSchema = {
       'dataPdfPage',
       // Per-word fade-in animation
       'dataSdAnimate',
+      'dataSmiles',
     ],
     code: [
       ...(defaultSchema.attributes?.code || []),
@@ -725,6 +728,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       normalizeFullWidthPunctPlugin as any,
       convertMathCodeBlocksPlugin as any,
       remarkMath as any,
+      inlineSmilesRemarkPlugin as any,
       remarkGfm as any,
     ];
     if (shouldEnableCitations) {
@@ -850,6 +854,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             return <p {...props}>{children}</p>;
           },
           span: ({ children, node: _node, ...props }: any) => {
+            const encodedSmiles = props['data-smiles'] ?? props.dataSmiles;
+            if (typeof encodedSmiles === 'string') {
+              try {
+                return <InlineSmiles smiles={decodeURIComponent(encodedSmiles)} />;
+              } catch {
+                // 损坏的 URL 编码不应让整条聊天消息渲染失败。
+                return <span {...props}>{children}</span>;
+              }
+            }
+
             // Generative UI research reports mark non-interactive source labels with their
             // literal citation id. Re-apply note semantics after rehype-sanitize strips `role`.
             // Prefer the pre-computed i18n aria-label when sanitize let it through.

@@ -8,6 +8,25 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 describe('MarkdownRenderer code block fidelity', () => {
+  it('turns inline SMILES into a controlled molecule placeholder', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'苯的结构为 \\smiles{c1ccccc1}。'} />
+    );
+
+    const molecule = container.querySelector('.inline-smiles');
+    expect(molecule?.querySelector('svg')).not.toBeNull();
+    expect(molecule?.getAttribute('title')).toBe('分子结构：c1ccccc1');
+  });
+
+  it('does not treat SMILES syntax inside code as a molecule', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'`\\smiles{c1ccccc1}`'} />
+    );
+
+    expect(container.querySelector('.inline-smiles')).toBeNull();
+    expect(container.querySelector('code')?.textContent).toBe('\\smiles{c1ccccc1}');
+  });
+
   it('preserves consecutive blank lines inside fenced code blocks', () => {
     const code = 'def a():\n    pass\n\n\n\ndef b():\n    pass';
     const { container } = render(

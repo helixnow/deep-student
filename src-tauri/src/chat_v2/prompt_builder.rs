@@ -106,6 +106,24 @@ $$
 </self_check>
 </latex_rules>"#;
 
+/// 化学表达与结构式输出规则。
+///
+/// 结构式不是 KaTeX 命令，必须与数学公式契约分开说明；否则模型会把
+/// `\smiles{...}` 误包进 `$...$`，导致前端无法识别内联结构占位符。
+const CHEMISTRY_RENDERING_RULES: &str = r#"<chemistry_rendering_rules priority="high">
+<description>化学内容的表达规范</description>
+<rules>
+1. 化学式、离子式、反应方程式使用 mhchem：行内写 $\ce{...}$，展示式写 $$\ce{...}$$。
+2. 需要展示分子骨架、环系、键线式或立体结构时，使用 \smiles{标准 SMILES}；它会在正文中渲染为内联结构图。
+3. \smiles{...} 不是 LaTeX：不得放进 $...$、$$...$$、反引号或代码块；把它直接嵌入自然语言句子。
+4. 只在结构本身有助于理解时使用；不要向用户解释内部渲染语法，除非用户询问。
+</rules>
+<examples>
+- 苯的分子式是 $\ce{C6H6}$，结构为 \smiles{c1ccccc1}。
+- 乙醇可写作 $\ce{C2H5OH}$，其骨架为 \smiles{CCO}。
+</examples>
+</chemistry_rendering_rules>"#;
+
 /// 各来源类型的最大条目数
 const MAX_RAG_ITEMS: usize = 5;
 const MAX_MEMORY_ITEMS: usize = 3;
@@ -581,6 +599,9 @@ impl PromptBuilder {
 
         // 0. LaTeX 规则（最高优先级，稳定前缀第一块）
         parts.push(LATEX_RULES.to_string());
+
+        // 0.5 化学结构渲染约定（固定静态块，紧随 LaTeX 规则）
+        parts.push(CHEMISTRY_RENDERING_RULES.to_string());
 
         // 1. 系统指令块
         let instructions = self.base_prompt.clone();
@@ -1118,10 +1139,10 @@ mod tests {
             .build();
 
         let expected = format!(
-            "{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
+            "{}\n\n{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
              <project_agents_instructions>\nAGENTS 常驻指令\n</project_agents_instructions>\n\n\
              <user_preferences>\n请用中文回答\n</user_preferences>\n\n{}",
-            LATEX_RULES, CITATION_GUIDE
+            LATEX_RULES, CHEMISTRY_RENDERING_RULES, CITATION_GUIDE
         );
         assert_eq!(prompt, expected);
     }
@@ -1212,10 +1233,13 @@ mod tests {
     /// 并更新 docs/dev/optimization0824/progress/R4-WI-10-full.md。
     /// 2026-09-07：CITATION_GUIDE 750 → 780，新增 [灵感-N] 来源类型行
     /// （Insight Recall v2 阶段二，引用契约必须进固定 system 块）。
+    /// 2026-09-08：新增独立化学结构渲染契约；它必须留在稳定 system，
+    /// 才能让所有会话模型知晓 `\smiles{...}`，而不是依赖某个前端页面的提示。
     #[test]
     fn test_static_prompt_blocks_stay_within_budget() {
         let latex_chars = LATEX_RULES.chars().count();
         let citation_chars = CITATION_GUIDE.chars().count();
+        let chemistry_chars = CHEMISTRY_RENDERING_RULES.chars().count();
         assert!(
             latex_chars <= 950,
             "LATEX_RULES 超出静态预算：{} > 950 chars",
@@ -1225,6 +1249,11 @@ mod tests {
             citation_chars <= 780,
             "CITATION_GUIDE 超出静态预算：{} > 780 chars",
             citation_chars
+        );
+        assert!(
+            chemistry_chars <= 620,
+            "CHEMISTRY_RENDERING_RULES 超出静态预算：{} > 620 chars",
+            chemistry_chars
         );
 
         // \boxed{C} 只应出现在规则 7（正确/禁止两种写法各一次），示例区不再重复
@@ -1242,6 +1271,8 @@ mod tests {
         // 规则句本身必须保留（删的是重复示例，不是约束）
         assert!(LATEX_RULES.contains("\\boxed{} 命令必须用 $...$ 包裹"));
         assert!(CITATION_GUIDE.contains("禁止在回复末尾生成"));
+        assert!(CHEMISTRY_RENDERING_RULES.contains("\\smiles{标准 SMILES}"));
+        assert!(CHEMISTRY_RENDERING_RULES.contains("不得放进 $...$、$$...$$、反引号或代码块"));
     }
 
     #[test]

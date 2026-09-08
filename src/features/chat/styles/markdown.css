@@ -1209,3 +1209,24 @@
 .chat-v2 .markdown-content .katex-display {
   overflow: visible;
 }
+
+/* 正文内联分子结构：与文字同一排版节奏，不使用独立图表容器。 */
+.chat-v2 .markdown-content .inline-smiles {
+  display: inline-flex;
+  max-width: min(100%, 18rem);
+  margin: 0 0.18em;
+  vertical-align: -0.72em;
+}
+
+.chat-v2 .markdown-content .inline-smiles svg {
+  display: block;
+  width: auto !important;
+  height: 2.35em !important;
+  max-width: 100%;
+}
+
+.chat-v2 .markdown-content .inline-smiles-error {
+  padding: 0.08em 0.25em;
+  color: hsl(var(--destructive));
+  white-space: nowrap;
+}
