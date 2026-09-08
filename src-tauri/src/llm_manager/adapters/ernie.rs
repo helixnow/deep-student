@@ -425,9 +425,10 @@ mod tests {
         adapter.apply_common_params(&mut body, &config);
 
         // ERNIE 使用 penalty_score。
-        // 注意：repetition_penalty 是 f32，经 serde_json 提升为 f64 会带精度尾数
-        //（1.2f32 as f64 = 1.2000000476837158），按同样方式构造期望值。
-        assert_eq!(body.get("penalty_score"), Some(&json!(1.2f32 as f64)));
+        // 注意：repetition_penalty 是 f32；serde_json ≥1.0.145 的 f32→Number
+        // 走 ryu 最短回环表示（1.2f32 序列化为 1.2，不再带 1.2000000476837158
+        // 精度尾数），线上 payload 更干净。
+        assert_eq!(body.get("penalty_score"), Some(&json!(1.2)));
         assert!(!body.contains_key("repetition_penalty"));
     }
 }
