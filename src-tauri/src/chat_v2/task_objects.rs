@@ -4,6 +4,7 @@
 //! to operate on it. `TaskObjectHandle` keeps those concerns explicit across
 //! chat attachments, browser downloads, MCP resources, and future connectors.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -517,6 +518,199 @@ impl BatchManifest {
                 .items
                 .iter()
                 .all(|item| item.status == BatchItemStatus::Succeeded)
+    }
+}
+
+// ============================================================================
+// 分页语料清单（G11-P2：CorpusManifest）
+// ============================================================================
+//
+// 附件/资料超过单次携带上限时产出完整分页清单，绝不静默丢弃第 N 个文件：
+// - `total_count` 在创建时钉定（接受时的全量对象数；G07-b BatchCoverage
+//   可直接消费作「处理全部文件」的验收分母）；
+// - 重复引用按 handle_id 去重并保留 `ref_count`；同名不同内容文件、多版本
+//   云对象的 handle_id 各不相同，各自独立成条、绝不合并；
+// - 清单建成后不可变（内容寻址快照语义）：成员句柄内嵌 sha256，源文件中途
+//   修改只会产生新句柄，不影响既有页；
+// - 清单自身物化为 artifacts root 下的 JSON 文件，经 G05-P2
+//   `read_task_object_page`（PTC object_read，白名单仅含 artifacts）分页回读
+//   任意页；成员对象经各自 locator 读取（如 temp root 走 workspace_file_read）。
+
+/// CorpusManifest 当前 schema 版本。
+pub const CORPUS_MANIFEST_SCHEMA_VERSION: u16 = 1;
+
+/// 清单条目：对象句柄 + 引用计数。
+///
+/// 同一对象被重复引用（同 handle_id）时去重为单条，`ref_count` 累计引用
+/// 次数——「重复引用不错误合并」指不丢计数，而非保留多份拷贝。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusManifestEntry {
+    pub handle: TaskObjectHandle,
+    pub ref_count: u32,
+}
+
+/// 清单单页。`page_no` 从 1 开始连续编号；仅末页可不满 `page_size`。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusManifestPage {
+    pub page_no: u32,
+    pub object_handles: Vec<CorpusManifestEntry>,
+}
+
+/// 分页语料清单：一次性钉定全量对象成员，供上下文只携带第一页时
+/// 仍能对「全部文件」负责。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusManifest {
+    pub schema_version: u16,
+    pub manifest_id: String,
+    /// 去重后的对象总数（= 全页条目数之和），创建时钉定、之后不漂移。
+    /// 输入引用总数 = 各条目 `ref_count` 之和。
+    pub total_count: u64,
+    pub page_size: u32,
+    pub pages: Vec<CorpusManifestPage>,
+    pub created_at: String,
+    pub source_session_id: String,
+}
+
+impl CorpusManifest {
+    /// 从有序句柄列表构建分页清单：按 handle_id 去重（保留 ref_count，
+    /// 条目顺序 = 首次出现序），再按 `page_size` 连续切片分页。
+    ///
+    /// 去重索引用 HashMap 仅作查找，产出与序列化只含顺序 Vec——不涉及
+    /// HashMap 迭代序（见项目 AGENTS.md 红线）。
+    pub fn build(
+        manifest_id: impl Into<String>,
+        source_session_id: impl Into<String>,
+        handles: Vec<TaskObjectHandle>,
+        page_size: u32,
+    ) -> Result<Self, String> {
+        if page_size == 0 {
+            return Err("page_size must be positive".to_string());
+        }
+
+        let mut index_by_handle_id: HashMap<String, usize> = HashMap::new();
+        let mut entries: Vec<CorpusManifestEntry> = Vec::new();
+        for handle in handles {
+            handle.validate()?;
+            let handle_id = handle.handle_id.clone();
+            if let Some(&index) = index_by_handle_id.get(&handle_id) {
+                entries[index].ref_count = entries[index]
+                    .ref_count
+                    .checked_add(1)
+                    .ok_or_else(|| format!("ref_count overflow for handle '{handle_id}'"))?;
+                continue;
+            }
+            index_by_handle_id.insert(handle_id, entries.len());
+            entries.push(CorpusManifestEntry {
+                handle,
+                ref_count: 1,
+            });
+        }
+
+        let total_count = entries.len() as u64;
+        let pages: Vec<CorpusManifestPage> = entries
+            .chunks(page_size as usize)
+            .enumerate()
+            .map(|(index, chunk)| CorpusManifestPage {
+                page_no: (index + 1) as u32,
+                object_handles: chunk.to_vec(),
+            })
+            .collect();
+
+        let manifest = Self {
+            schema_version: CORPUS_MANIFEST_SCHEMA_VERSION,
+            manifest_id: manifest_id.into(),
+            total_count,
+            page_size,
+            pages,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            source_session_id: source_session_id.into(),
+        };
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != CORPUS_MANIFEST_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported corpus manifest schema version: {}",
+                self.schema_version
+            ));
+        }
+        if self.manifest_id.trim().is_empty() {
+            return Err("manifest_id is required".to_string());
+        }
+        if self.page_size == 0 {
+            return Err("page_size must be positive".to_string());
+        }
+        let page_size = self.page_size as usize;
+        let mut counted = 0u64;
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (index, page) in self.pages.iter().enumerate() {
+            if page.page_no as usize != index + 1 {
+                return Err(format!(
+                    "page_no must be sequential from 1 (page index {} has page_no {})",
+                    index, page.page_no
+                ));
+            }
+            if page.object_handles.is_empty() {
+                return Err(format!("page {} is empty", page.page_no));
+            }
+            if page.object_handles.len() > page_size {
+                return Err(format!(
+                    "page {} exceeds page_size {}",
+                    page.page_no, self.page_size
+                ));
+            }
+            if index + 1 != self.pages.len() && page.object_handles.len() != page_size {
+                return Err(format!("non-final page {} must be full", page.page_no));
+            }
+            for entry in &page.object_handles {
+                if entry.ref_count == 0 {
+                    return Err(format!(
+                        "entry '{}' has ref_count 0",
+                        entry.handle.handle_id
+                    ));
+                }
+                if !seen.insert(entry.handle.handle_id.as_str()) {
+                    return Err(format!(
+                        "duplicate handle '{}' across pages",
+                        entry.handle.handle_id
+                    ));
+                }
+                counted += 1;
+            }
+        }
+        if counted != self.total_count {
+            return Err(format!(
+                "total_count {} does not match {} listed entries",
+                self.total_count, counted
+            ));
+        }
+        Ok(())
+    }
+
+    /// 模型可见告知文本：第一批已进上下文 + 完整清单的分页回读指引 +
+    /// 固定验收分母。`carried_count` 为本次实际随上下文携带的条目数
+    /// （通常 = 第一页大小），`locator` 为清单自身的物化位置。
+    pub fn model_notice(&self, carried_count: usize, locator: &ManagedLocator) -> String {
+        format!(
+            "本次接受 {total} 个文件对象（重复引用已按 handle 去重并保留 refCount），超出单次携带上限 {page_size}，已启用分页语料清单：\n\
+             - 第 1 页 {carried} 个对象已物化并随 <attachment_metadata> 进入上下文，可直接处理；\n\
+             - 完整清单 {manifest_id} 共 {pages} 页（每页 ≤ {page_size} 项），物化于 {root}:{path}；\
+             用 object_read 分页回读清单可获得任意成员的 rootId/relativePath/sha256；\n\
+             - 全部成员已物化到会话受管 root（locator 见清单条目），取得路径后可用 workspace_file_read 或 local_shell_execute 按需处理；\n\
+             - 「处理全部文件」的验收分母固定为 totalCount={total}（接受时钉定），逐项核对，不得遗漏，不得因同名或重复引用而错误合并。",
+            total = self.total_count,
+            page_size = self.page_size,
+            carried = carried_count,
+            manifest_id = self.manifest_id,
+            pages = self.pages.len(),
+            root = locator.root_id,
+            path = locator.relative_path,
+        )
     }
 }
 
@@ -1066,5 +1260,238 @@ mod tests {
         assert_eq!(page.encoding, "utf-8");
         // limit=0 拒绝
         assert!(read_task_object_page(dir.path(), &locator, 0, 0).is_err());
+    }
+
+    // —— G11-P2 分页语料清单（CorpusManifest）——
+
+    /// 构造内容寻址风格的成员句柄：`sha_fill` 必须是合法 hex 字符。
+    fn corpus_handle(handle_id: &str, display_name: &str, sha_fill: char) -> TaskObjectHandle {
+        TaskObjectHandleBuilder::new(
+            handle_id,
+            TaskObjectKind::File,
+            display_name,
+            "chat_context_ref",
+        )
+        .tool(Some("send_time_attachment_stage"))
+        .derived_edge(DerivedEdge::new("res_1", "attachment.stage_context"))
+        .sha256(Some(sha_fill.to_string().repeat(64)))
+        .build()
+        .expect("corpus member handle")
+    }
+
+    fn distinct_corpus_handles(count: usize) -> Vec<TaskObjectHandle> {
+        const HEX: &[u8] = b"0123456789abcdef";
+        (1..=count)
+            .map(|i| {
+                corpus_handle(
+                    &format!("attachment:src_{i}:{}", "0".repeat(8)),
+                    &format!("file_{i}.bin"),
+                    HEX[i % HEX.len()] as char,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn corpus_manifest_paginates_without_dropping_any_file() {
+        // 25 个文件、page_size 20 → 2 页（20 + 5），第 21 个起全部在清单中
+        let manifest =
+            CorpusManifest::build("corpus_test", "sess_1", distinct_corpus_handles(25), 20)
+                .expect("build");
+        assert_eq!(manifest.total_count, 25);
+        assert_eq!(manifest.page_size, 20);
+        assert_eq!(manifest.pages.len(), 2);
+        assert_eq!(manifest.pages[0].page_no, 1);
+        assert_eq!(manifest.pages[0].object_handles.len(), 20);
+        assert_eq!(manifest.pages[1].page_no, 2);
+        assert_eq!(manifest.pages[1].object_handles.len(), 5);
+        // 第 21 个文件（首个超出页）确实在第二页
+        assert_eq!(
+            manifest.pages[1].object_handles[0].handle.handle_id,
+            "attachment:src_21:00000000"
+        );
+        // 全量 handle_id 无一丢失、无一重复
+        let all: HashSet<&str> = manifest
+            .pages
+            .iter()
+            .flat_map(|page| page.object_handles.iter())
+            .map(|entry| entry.handle.handle_id.as_str())
+            .collect();
+        assert_eq!(all.len(), 25);
+        manifest.validate().expect("valid");
+
+        // serde roundtrip + camelCase 键
+        let value = serde_json::to_value(&manifest).unwrap();
+        assert_eq!(value["schemaVersion"], 1);
+        assert_eq!(value["totalCount"], 25);
+        assert_eq!(value["pageSize"], 20);
+        assert_eq!(value["pages"][0]["pageNo"], 1);
+        assert_eq!(
+            value["pages"][0]["objectHandles"][0]["refCount"],
+            serde_json::json!(1)
+        );
+        assert!(value.get("createdAt").is_some());
+        assert_eq!(value["sourceSessionId"], "sess_1");
+        let parsed: CorpusManifest = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, manifest);
+    }
+
+    #[test]
+    fn corpus_manifest_keeps_same_name_files_as_distinct_entries() {
+        // 同名不同内容：handle_id/sha 不同 → 各自独立成条，绝不合并
+        let first = corpus_handle("attachment:src_a:aa", "报告.pdf", 'a');
+        let second = corpus_handle("attachment:src_b:bb", "报告.pdf", 'b');
+        let manifest =
+            CorpusManifest::build("corpus_test", "sess_1", vec![first, second], 20).unwrap();
+        assert_eq!(manifest.total_count, 2);
+        let entries = &manifest.pages[0].object_handles;
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].handle.display_name, "报告.pdf");
+        assert_eq!(entries[1].handle.display_name, "报告.pdf");
+        assert_ne!(
+            entries[0].handle.handle_id, entries[1].handle.handle_id,
+            "same-name files must not be merged"
+        );
+        assert!(entries.iter().all(|entry| entry.ref_count == 1));
+    }
+
+    #[test]
+    fn corpus_manifest_dedupes_repeated_refs_and_keeps_ref_count() {
+        let dup = || corpus_handle("attachment:src_a:aa", "a.bin", 'a');
+        let manifest = CorpusManifest::build(
+            "corpus_test",
+            "sess_1",
+            vec![
+                dup(),
+                corpus_handle("attachment:src_b:bb", "b.bin", 'b'),
+                dup(),
+                dup(),
+            ],
+            20,
+        )
+        .unwrap();
+        assert_eq!(manifest.total_count, 2, "去重后对象数");
+        let entries = &manifest.pages[0].object_handles;
+        // 顺序 = 首次出现序；重复引用保留计数
+        assert_eq!(entries[0].handle.handle_id, "attachment:src_a:aa");
+        assert_eq!(entries[0].ref_count, 3);
+        assert_eq!(entries[1].handle.handle_id, "attachment:src_b:bb");
+        assert_eq!(entries[1].ref_count, 1);
+        // 引用总数 = 接受时的输入数
+        let ref_sum: u64 = manifest
+            .pages
+            .iter()
+            .flat_map(|page| page.object_handles.iter())
+            .map(|entry| entry.ref_count as u64)
+            .sum();
+        assert_eq!(ref_sum, 4);
+    }
+
+    #[test]
+    fn corpus_manifest_notice_states_totals_and_readback_path() {
+        let manifest =
+            CorpusManifest::build("corpus_abc", "sess_1", distinct_corpus_handles(21), 20).unwrap();
+        let locator = ManagedLocator::new("artifacts", "corpus/corpus_abc.json").unwrap();
+        let notice = manifest.model_notice(20, &locator);
+        assert!(notice.contains("21"), "{notice}");
+        assert!(notice.contains("第 1 页 20"), "{notice}");
+        assert!(notice.contains("corpus_abc"), "{notice}");
+        assert!(notice.contains("共 2 页"), "{notice}");
+        assert!(
+            notice.contains("artifacts:corpus/corpus_abc.json"),
+            "{notice}"
+        );
+        assert!(notice.contains("object_read"), "{notice}");
+        assert!(notice.contains("totalCount=21"), "{notice}");
+        assert!(notice.contains("分母"), "{notice}");
+    }
+
+    #[test]
+    fn corpus_manifest_pages_are_snapshot_immutable_after_source_change() {
+        // 内容寻址快照语义：源文件中途修改产生新句柄，既有页不受影响
+        let v1 = corpus_handle("attachment:src_a:sha_v1", "a.bin", 'a');
+        let manifest = CorpusManifest::build("corpus_abc", "sess_1", vec![v1], 20).unwrap();
+        let before = serde_json::to_string(&manifest).unwrap();
+
+        // 「修改后的源」是另一个句柄（sha 变化 → handle_id 变化）
+        let v2 = corpus_handle("attachment:src_a:sha_v2", "a.bin", 'b');
+        let after = serde_json::to_string(&manifest).unwrap();
+        assert_eq!(before, after, "既有页不得随源变化");
+        assert_eq!(
+            manifest.pages[0].object_handles[0].handle.handle_id,
+            "attachment:src_a:sha_v1"
+        );
+        assert!(after.contains("sha_v1"));
+        assert!(!after.contains("sha_v2"));
+
+        // 修改后的对象若被接受，进入新的清单，与旧清单各自独立
+        let manifest2 = CorpusManifest::build("corpus_def", "sess_1", vec![v2], 20).unwrap();
+        assert_eq!(
+            manifest2.pages[0].object_handles[0].handle.handle_id,
+            "attachment:src_a:sha_v2"
+        );
+        assert_ne!(manifest.manifest_id, manifest2.manifest_id);
+    }
+
+    #[test]
+    fn corpus_manifest_validate_rejects_bad_shape() {
+        // page_size = 0
+        assert!(CorpusManifest::build("m", "s", vec![corpus_handle("h1", "a", 'a')], 0).is_err());
+        // total_count 与全页条目数不符
+        let mut manifest =
+            CorpusManifest::build("m", "s", vec![corpus_handle("h1", "a", 'a')], 20).unwrap();
+        manifest.total_count = 2;
+        assert!(manifest.validate().is_err());
+        // 未支持的新版本
+        let mut future =
+            CorpusManifest::build("m", "s", vec![corpus_handle("h1", "a", 'a')], 20).unwrap();
+        future.schema_version = CORPUS_MANIFEST_SCHEMA_VERSION + 1;
+        assert!(future.validate().is_err());
+
+        let dup = corpus_handle("h1", "a", 'a');
+        let entry = |handle: TaskObjectHandle| CorpusManifestEntry {
+            handle,
+            ref_count: 1,
+        };
+        // 跨页重复 handle（与第一页同 handle_id）
+        let mut duplicated =
+            CorpusManifest::build("m", "s", distinct_corpus_handles(2), 1).unwrap();
+        let first_handle = duplicated.pages[0].object_handles[0].handle.clone();
+        duplicated.pages[1].object_handles = vec![entry(first_handle)];
+        assert!(duplicated.validate().is_err());
+        // page_no 不连续
+        let mut bad_no = CorpusManifest::build("m", "s", distinct_corpus_handles(2), 1).unwrap();
+        bad_no.pages[1].page_no = 7;
+        assert!(bad_no.validate().is_err());
+        // 非末页不满（手工构造）
+        let partial_first = CorpusManifest {
+            schema_version: CORPUS_MANIFEST_SCHEMA_VERSION,
+            manifest_id: "m".to_string(),
+            total_count: 2,
+            page_size: 2,
+            pages: vec![
+                CorpusManifestPage {
+                    page_no: 1,
+                    object_handles: vec![entry(dup.clone())],
+                },
+                CorpusManifestPage {
+                    page_no: 2,
+                    object_handles: vec![entry(corpus_handle("h2", "b", 'b'))],
+                },
+            ],
+            created_at: "2026-09-08T00:00:00Z".to_string(),
+            source_session_id: "s".to_string(),
+        };
+        assert!(partial_first.validate().is_err());
+        // 空页
+        let empty_page = CorpusManifest {
+            pages: vec![CorpusManifestPage {
+                page_no: 1,
+                object_handles: Vec::new(),
+            }],
+            total_count: 0,
+            ..partial_first
+        };
+        assert!(empty_page.validate().is_err());
     }
 }
