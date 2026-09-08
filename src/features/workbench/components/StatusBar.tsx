@@ -598,7 +598,7 @@ const StatusBarComponent: React.FC = () => {
               aria-labelledby={titleId}
               tabIndex={-1}
             >
-              <WallpaperReplica hostRef={panelRef} enabled={centerPhase !== 'closed'} />
+              <WallpaperReplica hostRef={panelRef} enabled />
               <h2 id={titleId} className="wb-menubar-flyout-title">
                 {t('menubar.centerTitle')}
               </h2>
