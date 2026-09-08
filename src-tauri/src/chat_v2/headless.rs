@@ -45,7 +45,7 @@
 //! - `run_headless_agent_turn(&app, HeadlessSessionTurn)`：低层入口，
 //!   供已自管会话 ID 的调用方使用（返回未截断的最终回复全文）。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 
@@ -64,6 +64,7 @@ use super::events::ChatV2EventEmitter;
 use super::pipeline::ChatV2Pipeline;
 use super::repo::ChatV2Repo;
 use super::state::{ChatV2State, StreamGuard};
+use super::tool_descriptors;
 use super::tools::attempt_completion::is_attempt_completion;
 use super::types::{
     block_status, ChatMessage, ChatSession, McpToolSchema, MessageBlock, PersistStatus,
@@ -536,72 +537,99 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
 /// 1. 纯后端执行，不依赖前端 WebView 往返；
 /// 2. 敏感度为 Low（无人审批下可自动执行）；
 /// 3. 对学情简报 / 复习提醒等 automation 场景有实际价值。
+///
+/// G01-e：名单成员由注册表 SSOT `tool_descriptors::BUILTIN_DESCRIPTORS` 的
+/// `headless_allowed` 标志位驱动，本函数只负责把裸名映射回线上调用名
+/// （见 [`headless_wire_name`]）。与历史手写清单的逐名等价由
+/// `#[cfg(test)] LEGACY_HEADLESS_ALLOWED_TOOLS` 对照测试锁定。
 pub fn headless_allowed_tools() -> Vec<String> {
-    [
-        // Agent 元工具（todo_* 经 schema_tool_ids 注入；attempt_completion 是
-        // control tool 本就绕过白名单，列入仅为语义完整）
-        "attempt_completion",
-        "todo_init",
-        "todo_update",
-        "todo_add",
-        "todo_get",
-        // 检索（BuiltinRetrievalExecutor / FetchExecutor，Low）
-        "builtin-unified_search",
-        "builtin-rag_search",
-        "builtin-web_search",
-        "builtin-web_fetch",
-        // 系统观测（阶段七，只读 Low；所有写入仍在 blocked 清单）
-        "builtin-settings_get",
-        "builtin-model_assignments_get",
-        "builtin-llm_usage_query",
-        "builtin-backup_status",
-        "builtin-backup_job_status",
-        "builtin-sync_status",
-        // VFS index diagnosis is read-only; rebuild/archive remain blocked.
-        "builtin-index_status",
-        // 学习概览与番茄钟统计（阶段十，只读 Low）
-        "builtin-learning_overview",
-        "builtin-pomodoro_today_stats",
-        "builtin-pomodoro_daily_stats",
-        // 记忆只读面（无人值守不得修改用户长期记忆）
-        "builtin-memory_read",
-        "builtin-memory_list",
-        // VFS 学习资源（BuiltinResourceExecutor，只读，Low）
-        "builtin-resource_list",
-        "builtin-resource_read",
-        "builtin-resource_search",
-        "builtin-folder_list",
-        "builtin-dstu_list_trash",
-        // 用户待办只读面（无人值守不得修改用户真实待办）
-        "builtin-user_todo_list_lists",
-        "builtin-user_todo_list_items",
-        "builtin-user_todo_get_summary",
-        "builtin-user_todo_search",
-        "builtin-user_todo_list_trash",
-        // 题库只读（QBankExecutor，Low）——到期复习卡 / 学情统计
-        "builtin-qbank_list",
-        "builtin-qbank_list_questions",
-        "builtin-qbank_get_question",
-        "builtin-qbank_get_stats",
-        "builtin-qbank_get_next_question",
-        // 复习计划只读（ReviewToolExecutor，Low；schedule/plan_generate 为
-        // Medium 不收录）——heartbeat "检查今天到期复习" 场景
-        "builtin-review_get_due",
-        "builtin-review_stats",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    tool_descriptors::BUILTIN_DESCRIPTORS
+        .iter()
+        .filter(|descriptor| descriptor.headless_allowed)
+        .map(|descriptor| headless_wire_name(descriptor.name))
+        .collect()
 }
 
-/// 白名单的 O(1) 查找缓存（白名单是编译期常量集合，进程内不变）。
-static HEADLESS_ALLOWED_TOOL_SET: LazyLock<HashSet<String>> =
-    LazyLock::new(|| headless_allowed_tools().into_iter().collect());
+/// 线上调用名口径：`attempt_completion` / `todo_*` 元工具由后端裸名注入
+/// （control tool 自动追加 / `SendOptions.schema_tool_ids`），其余内建工具
+/// 一律携带 `builtin-` 命名空间前缀。
+fn headless_wire_name(bare_name: &str) -> String {
+    if bare_name == "attempt_completion" || bare_name.starts_with("todo_") {
+        bare_name.to_string()
+    } else {
+        format!("builtin-{bare_name}")
+    }
+}
 
 /// 判断某工具是否允许出现在 headless 上下文（schema 注入前的预过滤）。
+///
+/// G01-e：准入判定切换到注册表查询 [`tool_descriptors::is_headless_readonly`]
+/// （`DESCRIPTOR_INDEX` 提供 O(1) 查找，原 `HEADLESS_ALLOWED_TOOL_SET` 缓存
+/// 随之退役）。查询接受 `builtin-` 前缀或裸名；未登记名字（含全部 MCP 动态
+/// 工具）恒为 false——fail-closed 语义不变。
 pub fn is_headless_allowed_tool(tool_name: &str) -> bool {
-    HEADLESS_ALLOWED_TOOL_SET.contains(tool_name)
+    tool_descriptors::is_headless_readonly(tool_name)
 }
+
+/// G01-e 迁移前的手写白名单，保留为测试对照 oracle（第二信源）。
+///
+/// 生产代码已切换为注册表驱动（见 [`headless_allowed_tools`]）；防漂移测试
+/// 逐名锁定"注册表派生集合 == 本清单"。新增/移除 headless 工具时必须同步
+/// 更新本清单与 `tool_descriptors::BUILTIN_DESCRIPTORS` 的 `headless_allowed`
+/// 标志，否则对照测试红灯。
+#[cfg(test)]
+pub(crate) const LEGACY_HEADLESS_ALLOWED_TOOLS: &[&str] = &[
+    // Agent 元工具（todo_* 经 schema_tool_ids 注入；attempt_completion 是
+    // control tool 本就绕过白名单，列入仅为语义完整）
+    "attempt_completion",
+    "todo_init",
+    "todo_update",
+    "todo_add",
+    "todo_get",
+    // 检索（BuiltinRetrievalExecutor / FetchExecutor，Low）
+    "builtin-unified_search",
+    "builtin-rag_search",
+    "builtin-web_search",
+    "builtin-web_fetch",
+    // 系统观测（阶段七，只读 Low；所有写入仍在 blocked 清单）
+    "builtin-settings_get",
+    "builtin-model_assignments_get",
+    "builtin-llm_usage_query",
+    "builtin-backup_status",
+    "builtin-backup_job_status",
+    "builtin-sync_status",
+    // VFS index diagnosis is read-only; rebuild/archive remain blocked.
+    "builtin-index_status",
+    // 学习概览与番茄钟统计（阶段十，只读 Low）
+    "builtin-learning_overview",
+    "builtin-pomodoro_today_stats",
+    "builtin-pomodoro_daily_stats",
+    // 记忆只读面（无人值守不得修改用户长期记忆）
+    "builtin-memory_read",
+    "builtin-memory_list",
+    // VFS 学习资源（BuiltinResourceExecutor，只读，Low）
+    "builtin-resource_list",
+    "builtin-resource_read",
+    "builtin-resource_search",
+    "builtin-folder_list",
+    "builtin-dstu_list_trash",
+    // 用户待办只读面（无人值守不得修改用户真实待办）
+    "builtin-user_todo_list_lists",
+    "builtin-user_todo_list_items",
+    "builtin-user_todo_get_summary",
+    "builtin-user_todo_search",
+    "builtin-user_todo_list_trash",
+    // 题库只读（QBankExecutor，Low）——到期复习卡 / 学情统计
+    "builtin-qbank_list",
+    "builtin-qbank_list_questions",
+    "builtin-qbank_get_question",
+    "builtin-qbank_get_stats",
+    "builtin-qbank_get_next_question",
+    // 复习计划只读（ReviewToolExecutor，Low；schedule/plan_generate 为
+    // Medium 不收录）——heartbeat "检查今天到期复习" 场景
+    "builtin-review_get_due",
+    "builtin-review_stats",
+];
 
 /// fail-closed 预过滤：从任意 schema 列表中剔除不在白名单内的工具。
 ///
@@ -2715,13 +2743,54 @@ mod tests {
         ));
     }
 
+    /// G01-e 防漂移对照：注册表派生的白名单与历史手写清单逐名等价——
+    /// 白名单内每个工具准入（两种名字形式），名单外每个工具拒绝。
     #[test]
-    fn whitelist_lookup_set_matches_vec() {
-        for tool in headless_allowed_tools() {
-            assert!(is_headless_allowed_tool(&tool), "{tool} 应在白名单查找集内");
+    fn registry_driven_whitelist_matches_legacy_list() {
+        use std::collections::HashSet;
+
+        // 集合级：派生 Vec 与手写 oracle 内容完全一致（逐名、无增无减）
+        let derived: HashSet<String> = headless_allowed_tools().into_iter().collect();
+        let legacy: HashSet<&str> = LEGACY_HEADLESS_ALLOWED_TOOLS.iter().copied().collect();
+        let legacy_strings: HashSet<String> = legacy.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            derived, legacy_strings,
+            "headless 白名单与 tool_descriptors 的 headless_allowed 标志发生漂移"
+        );
+
+        // 准入级（名单内）：每个工具按线上名与裸名两种形式都必须准入
+        for name in &legacy {
+            assert!(is_headless_allowed_tool(name), "{name} 应在白名单内");
+            let bare = name.strip_prefix("builtin-").unwrap_or(name);
+            assert!(is_headless_allowed_tool(bare), "裸名 {bare} 应在白名单内");
         }
-        assert!(!is_headless_allowed_tool("builtin-local_shell_execute"));
-        assert!(!is_headless_allowed_tool("mcp_anything"));
+
+        // 准入级（名单外）：注册表内全部未标记工具（两种形式）逐一拒绝
+        for descriptor in tool_descriptors::BUILTIN_DESCRIPTORS {
+            if descriptor.headless_allowed {
+                continue;
+            }
+            assert!(
+                !is_headless_allowed_tool(descriptor.name),
+                "裸名 {} 应被拒绝",
+                descriptor.name
+            );
+            let prefixed = format!("builtin-{}", descriptor.name);
+            assert!(
+                !is_headless_allowed_tool(&prefixed),
+                "{prefixed} 应被拒绝"
+            );
+        }
+
+        // 注册表外的代表性名字（MCP 动态工具 / 退役前端桥 / 未登记名）恒拒绝
+        for outsider in [
+            "mcp_anything",
+            "builtin-mcp_foo",
+            "anki_generate_cards",
+            "nonexistent_tool",
+        ] {
+            assert!(!is_headless_allowed_tool(outsider), "{outsider} 应被拒绝");
+        }
     }
 
     #[test]
