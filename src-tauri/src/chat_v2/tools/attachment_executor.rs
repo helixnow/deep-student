@@ -538,8 +538,78 @@ fn read_context_ref_content(
         .optional()
         .map_err(|e| e.to_string())?;
 
-    let (name, mime_type, raw_content) =
-        row.ok_or_else(|| format!("Resource not found in VFS: {}", context_ref.resource_id))?;
+    // ★ 2026-09 修复（PDF 二次读取）：context_ref.resource_id 可能是"引用资源"
+    // （inline，data=refs，source_id 指向 att_*/file_* 或另一 resources 行），
+    // files 表没有它的行。经 resources.source_id 间接解析到真实 files.id 后重试。
+    let row = match row {
+        Some(row) => Some(row),
+        None if context_ref.resource_id.starts_with("res_") => {
+            let source_id: Option<String> = conn
+                .query_row(
+                    "SELECT COALESCE(source_id, '') FROM resources WHERE id = ?1",
+                    rusqlite::params![context_ref.resource_id.as_str()],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .ok()
+                .flatten()
+                .filter(|s: &String| !s.is_empty());
+            match source_id {
+                Some(sid) if sid.starts_with("att_") || sid.starts_with("file_") => {
+                    conn.query_row(
+                        r#"
+                        SELECT COALESCE(f.file_name, f.id) AS name, COALESCE(f.mime_type, ''), COALESCE(r.content, '')
+                        FROM files f
+                        LEFT JOIN resources r ON f.resource_id = r.id
+                        WHERE f.id = ?1
+                          AND f.deleted_at IS NULL
+                          AND (r.deleted_at IS NULL OR r.id IS NULL)
+                        "#,
+                        rusqlite::params![sid],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?
+                }
+                Some(sid) => conn
+                    .query_row(
+                        r#"
+                        SELECT COALESCE(f.file_name, f.id) AS name, COALESCE(f.mime_type, ''), COALESCE(r.content, '')
+                        FROM files f
+                        LEFT JOIN resources r ON f.resource_id = r.id
+                        WHERE f.resource_id = ?1
+                          AND f.deleted_at IS NULL
+                          AND (r.deleted_at IS NULL OR r.id IS NULL)
+                        "#,
+                        rusqlite::params![sid],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?,
+                None => None,
+            }
+        }
+        None => None,
+    };
+
+    let (name, mime_type, raw_content) = row.ok_or_else(|| {
+        format!(
+            "Resource not found in VFS: {}（可尝试用 resource_list 确认资源，或重新上传附件）",
+            context_ref.resource_id
+        )
+    })?;
 
     let is_image_ref = context_ref.type_id == "image" || mime_type.starts_with("image/");
     if is_image_ref && !parse_content {
