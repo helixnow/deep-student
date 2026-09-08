@@ -346,9 +346,10 @@ mod tests {
 
         adapter.apply_common_params(&mut body, &config);
 
-        // f32 经 serde_json 提升为 f64 带精度尾数，按相同方式构造期望值
-        assert_eq!(body.get("min_p"), Some(&json!(0.1f32 as f64)));
+        // serde_json ≥1.0.145 的 f32→Number 走 ryu 最短回环表示：
+        // json!(0.1f32) == json!(0.1f64)，线上 payload 不再带精度尾数。
+        assert_eq!(body.get("min_p"), Some(&json!(0.1)));
         assert_eq!(body.get("top_k"), Some(&json!(50)));
-        assert_eq!(body.get("repetition_penalty"), Some(&json!(1.1f32 as f64)));
+        assert_eq!(body.get("repetition_penalty"), Some(&json!(1.1)));
     }
 }
