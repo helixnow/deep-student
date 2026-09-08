@@ -130,6 +130,7 @@ commands.allow = [
   "chat_v2_revert_workspace_change",
   "chat_v2_revoke_runtime_root",
   "chat_v2_rollback_migration",
+  "chat_v2_rollback_skill_candidate",
   "chat_v2_save_session",
   "chat_v2_search_content",
   "chat_v2_search_sessions",

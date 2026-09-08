@@ -2162,6 +2162,8 @@ pub fn run() {
             ,crate::chat_v2::skill_replay::chat_v2_list_skill_candidates
             ,crate::chat_v2::skill_replay::chat_v2_replay_skill_candidate
             ,crate::chat_v2::skill_replay::chat_v2_promote_skill_candidate
+            // 🆕 G09-P2 候选回滚：published → rolled_back + 技能文件退役归档
+            ,crate::chat_v2::skill_replay::chat_v2_rollback_skill_candidate
             ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
             ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
             ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write

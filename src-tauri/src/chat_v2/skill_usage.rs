@@ -27,10 +27,15 @@
 //! token 数等统计量；**绝不写入用户消息内容、助手回复内容、工具输入输出**。
 //! `evidence_refs_json` 只存不透明 id 引用。测试 `privacy_*` 用例强制该边界。
 //!
-//! **outcome 终态对接（TODO G07）**：usage 行 outcome 本阶段恒为 'unknown'，
-//! 待 G07 `finalizer.rs` 的 `TaskFinalizer`/`FinalizationVerdict` 在轮末产出
-//! 终态后，由 finalizer 侧调用 [`SkillUsageRepo::mark_run_outcome`] 收敛为
-//! success/failed（user_corrected 已由本模块回写）。
+//! **outcome 终态对接（G09-P2 已接）**：G07 `finalizer.rs` 在完成块写入
+//! `toolOutput.finalization.verdict`；tool_loop 在 finalize 返回后调
+//! [`on_task_finalized`]（立即通路：该 run 已存在的 unknown 行直接收敛），
+//! 轮末 `process_turn` 在写入本轮账目行后按同一映射补标（延迟通路——
+//! 账目行在 save_results_post_commit 才落账，两轮通路都以 unknown 守卫防
+//! 覆盖）。映射：verified_complete/complete_with_exceptions→success、
+//! partial/blocked→failed、outcome_unknown→不标记。终态失败且本轮加载过
+//! 技能时另写 trigger='outcome_failed' 的失败反例候选（trace_hash 锚定
+//! 失败 run，复用候选插入通路，不新造表）。
 //!
 //! **P1 回放器接口预留**：[`SkillCandidateRepo::list_by_status`] 拉取
 //! `status='new'` 候选；[`SkillCandidateRepo::update_status`] 提供原子守卫的
@@ -115,6 +120,19 @@ impl SkillOutcome {
             "failed" => Some(Self::Failed),
             "user_corrected" => Some(Self::UserCorrected),
             "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+
+    /// G09-P2：G07 `FinalizationVerdict` → 账目终态映射。
+    ///
+    /// - `verified_complete` / `complete_with_exceptions` → success
+    /// - `partial` / `blocked` → failed
+    /// - `outcome_unknown`（及任何未知值）→ None（不标记）
+    pub fn from_finalization_verdict(verdict: &str) -> Option<Self> {
+        match verdict {
+            "verified_complete" | "complete_with_exceptions" => Some(Self::Success),
+            "partial" | "blocked" => Some(Self::Failed),
             _ => None,
         }
     }
@@ -650,6 +668,10 @@ struct TurnUsageSummary {
     /// 粗筛：可能是纠错触发的重跑（skip_user_message_save + 非 headless + 非
     /// goal 续跑）。精确锚定由 process_turn 内的 DB 探针完成。
     correction_hint: bool,
+    /// G09-P2：完成块 `toolOutput.finalization.verdict`（G07 终态，raw 字符串；
+    /// 非任务完成轮为 None）。映射规则见
+    /// [`SkillOutcome::from_finalization_verdict`]。
+    finalization_verdict: Option<String>,
     tools: Vec<ToolCallTrace>,
 }
 
@@ -662,6 +684,7 @@ impl TurnUsageSummary {
             latency_ms: ctx.start_time.elapsed().as_millis().min(i64::MAX as u128) as i64,
             total_tokens: i64::from(ctx.token_usage.total_tokens),
             correction_hint: detect_correction_hint(&ctx.options),
+            finalization_verdict: finalization_verdict_of(&ctx.tool_results),
             tools: ctx.tool_results.iter().map(tool_trace).collect(),
         }
     }
@@ -801,10 +824,40 @@ fn process_turn(
         })?;
     }
 
-    // 3. trajectory 正例候选：非纠错触发 + ≥3 个不同成功工具。
-    //    "任务成功完成" P0 语义 = save_results 事务提交到达轮末；
-    //    TODO(G07): 终态对接后改由 FinalizationVerdict 门控。
-    if !is_correction {
+    // 2.5 G09-P2：G07 终态回流——本轮账目行落账后，按完成块
+    //     `toolOutput.finalization.verdict` 收敛 outcome。
+    //     顺序不变量：步骤 1 的纠错处理已先把被推翻 run 的旧行收敛为
+    //     user_corrected，`mark_run_outcome` 的 unknown 守卫保证此处只
+    //     标本轮新行（retry 复用 run_id 时旧行绝不被 verdict 覆盖）。
+    let final_outcome = summary
+        .finalization_verdict
+        .as_deref()
+        .and_then(SkillOutcome::from_finalization_verdict);
+    if let Some(outcome) = final_outcome {
+        let marked = usage_repo.mark_run_outcome(&summary.run_id, outcome)?;
+        if marked > 0 {
+            log::info!(
+                "[G09::skill_usage] outcome reflux: session={}, run={}, verdict={:?}, outcome={}, rows={}",
+                summary.session_id,
+                summary.run_id,
+                summary.finalization_verdict,
+                outcome.as_str(),
+                marked
+            );
+        }
+        // 失败反例：终态失败且本轮加载过已发布技能 → 写 user_correction
+        // 类候选（复用候选插入通路，insert_if_new 按 trace_hash 去重，
+        // 同一失败 run 只留一条）。
+        if outcome == SkillOutcome::Failed && !loaded_skill_ids.is_empty() {
+            write_outcome_failed_candidate(summary, &loaded_skill_ids, &candidate_repo)?;
+        }
+    }
+
+    // 3. trajectory 正例候选：非纠错触发 + 终态非失败 + ≥3 个不同成功工具。
+    //    "任务成功完成" P2 语义 = save_results 事务提交到达轮末，且 G07
+    //    验收未判失败（Partial/Blocked 的完成块不沉淀正例——它已在步骤 2.5
+    //    被记为反例；OutcomeUnknown / 非任务轮保持 P0 行为）。
+    if !is_correction && final_outcome != Some(SkillOutcome::Failed) {
         let mut seen = std::collections::HashSet::new();
         let tool_sequence: Vec<String> = summary
             .tools
@@ -929,6 +982,114 @@ fn message_exists(db: &Arc<ChatV2Database>, message_id: &str) -> Result<bool, St
         .optional()
         .map_err(|e| format!("failed to probe message existence: {}", e))?;
     Ok(exists.is_some())
+}
+
+/// 失败反例候选写入（G09-P2）：outcome=failed 且该 run 加载过已发布技能时，
+/// 往候选库写一条 user_correction 类候选（trigger='outcome_failed'，
+/// trace_hash 锚定失败 run——复用 P0 候选插入通路，不新造表）。
+///
+/// 隐私边界与 P0 同级：payload 只含触发信号、run 锚点 id、技能 ID 列表与
+/// verdict 枚举，绝不写用户内容。
+fn write_outcome_failed_candidate(
+    summary: &TurnUsageSummary,
+    loaded_skill_ids: &[String],
+    candidate_repo: &SkillCandidateRepo,
+) -> Result<(), String> {
+    let draft_payload = serde_json::json!({
+        "kind": "user_correction",
+        "trigger": "outcome_failed",
+        "corrected_run_id": summary.run_id,
+        "corrected_skill_ids": loaded_skill_ids,
+        "verdict": summary.finalization_verdict.as_deref().unwrap_or(""),
+    });
+    let evidence_refs = serde_json::json!({
+        "run_id": summary.run_id,
+        "corrected_run_id": summary.run_id,
+    });
+    candidate_repo.insert_if_new(&NewSkillCandidate {
+        source_kind: CandidateSourceKind::UserCorrection,
+        session_id: summary.session_id.clone(),
+        trace_hash: correction_trace_hash(&summary.session_id, "outcome_failed", &summary.run_id),
+        draft_payload_json: draft_payload.to_string(),
+        evidence_refs_json: evidence_refs.to_string(),
+    })?;
+    Ok(())
+}
+
+// ============================================================================
+// G09-P2：G07 终态 outcome 回流（tool_loop 接线 + 轮末补标双通路）
+// ============================================================================
+
+/// 从完成块 toolOutput 提取 finalization verdict（G07 finalizer 在工具环内
+/// 写入；取最后一个 task_completed 工具结果，与 finalizer 的定位口径一致）。
+fn finalization_verdict_of(tool_results: &[ToolResultInfo]) -> Option<String> {
+    let result = tool_results.iter().rev().find(|r| {
+        r.output
+            .get("task_completed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    })?;
+    result
+        .output
+        .get("finalization")?
+        .get("verdict")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// tool_loop 接线点（`finalize_task_completion` 返回后调用）：把 verdict 映射
+/// 为 outcome，对该 run 已存在的 unknown 账目行立即收敛。
+///
+/// 时序说明：本轮 usage 行要到阶段 6 `save_results_post_commit` 才落账，
+/// 因此常规首轮这里标记 0 行——真正落地由轮末 `process_turn` 按同一映射
+/// 补标（verdict 随 ctx.tool_results 流到轮末）。correction_hint 轮跳过
+/// 立即通路：retry 复用被推翻 run 的 run_id，其旧行此时仍是 unknown，
+/// 必须留给轮末纠错处理先收敛为 user_corrected，绝不能在此被 verdict 误标。
+///
+/// fire-and-forget：任何失败只 log，绝不影响主循环终止路径。
+pub(crate) fn on_task_finalized(db: &Arc<ChatV2Database>, ctx: &PipelineContext) {
+    on_task_finalized_inner(
+        db,
+        &ctx.assistant_message_id,
+        &ctx.tool_results,
+        detect_correction_hint(&ctx.options),
+    );
+}
+
+fn on_task_finalized_inner(
+    db: &Arc<ChatV2Database>,
+    run_id: &str,
+    tool_results: &[ToolResultInfo],
+    correction_hint: bool,
+) {
+    let Some(verdict) = finalization_verdict_of(tool_results) else {
+        return;
+    };
+    let Some(outcome) = SkillOutcome::from_finalization_verdict(&verdict) else {
+        return; // OutcomeUnknown / 未知值：不标记
+    };
+    if correction_hint {
+        return;
+    }
+    match SkillUsageRepo::new(db.clone()).mark_run_outcome(run_id, outcome) {
+        Ok(marked) if marked > 0 => {
+            log::info!(
+                "[G09::skill_usage] outcome reflux (finalize): run={}, verdict={}, outcome={}, rows={}",
+                run_id,
+                verdict,
+                outcome.as_str(),
+                marked
+            );
+        }
+        Ok(_) => {} // 行尚未落账——轮末 process_turn 补标
+        Err(err) => {
+            log::warn!(
+                "[G09::skill_usage] outcome reflux at finalize failed (non-fatal): run={}, err={}",
+                run_id,
+                err
+            );
+        }
+    }
 }
 
 // ============================================================================
@@ -1059,6 +1220,7 @@ mod tests {
             latency_ms: 1200,
             total_tokens: 3456,
             correction_hint,
+            finalization_verdict: None,
             tools,
         }
     }
@@ -1641,5 +1803,319 @@ mod tests {
 
         // 普通发送：不命中
         assert!(!detect_correction_hint(&SendOptions::default()));
+    }
+
+    // ------------------------------------------------------------------------
+    // G09-P2：G07 终态 outcome 回流 + 失败反例候选
+    // ------------------------------------------------------------------------
+
+    /// finalizer 写入完成块 toolOutput 的形状（task_completed + finalization）。
+    fn completion_tool_result(verdict: &str) -> ToolResultInfo {
+        ToolResultInfo {
+            tool_name: "attempt_completion".to_string(),
+            output: serde_json::json!({
+                "task_completed": true,
+                "finalization": { "verdict": verdict },
+            }),
+            ..tool_result("attempt_completion", true)
+        }
+    }
+
+    #[test]
+    fn g09p2_finalization_verdict_maps_to_three_state_outcome() {
+        assert_eq!(
+            SkillOutcome::from_finalization_verdict("verified_complete"),
+            Some(SkillOutcome::Success)
+        );
+        assert_eq!(
+            SkillOutcome::from_finalization_verdict("complete_with_exceptions"),
+            Some(SkillOutcome::Success)
+        );
+        assert_eq!(
+            SkillOutcome::from_finalization_verdict("partial"),
+            Some(SkillOutcome::Failed)
+        );
+        assert_eq!(
+            SkillOutcome::from_finalization_verdict("blocked"),
+            Some(SkillOutcome::Failed)
+        );
+        // OutcomeUnknown 不标记；未知值 fail-closed
+        assert_eq!(
+            SkillOutcome::from_finalization_verdict("outcome_unknown"),
+            None
+        );
+        assert_eq!(SkillOutcome::from_finalization_verdict("bogus"), None);
+    }
+
+    #[test]
+    fn g09p2_process_turn_refluxes_verdict_into_usage_rows() {
+        let (_dir, db) = setup_test_db();
+        insert_session(&db, "sess-1");
+        let usage_repo = SkillUsageRepo::new(db.clone());
+
+        // verified_complete / complete_with_exceptions → success
+        let mut ok = summary_for(
+            "sess-1",
+            "msg_run_ok",
+            "msg_u1",
+            false,
+            traces(&[load_skills_result(&["skill-a"], &[])]),
+        );
+        ok.finalization_verdict = Some("complete_with_exceptions".to_string());
+        process_turn(&db, &ok).unwrap();
+        let rows = usage_repo.list_by_run("msg_run_ok").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].outcome, SkillOutcome::Success);
+        // 成功终态不产生失败反例；工具数不足也不产生 trajectory
+        assert!(list_all_candidates(&db).is_empty());
+
+        // partial / blocked → failed
+        let mut bad = summary_for(
+            "sess-1",
+            "msg_run_bad",
+            "msg_u2",
+            false,
+            traces(&[load_skills_result(&["skill-b"], &[])]),
+        );
+        bad.finalization_verdict = Some("blocked".to_string());
+        process_turn(&db, &bad).unwrap();
+        let rows = usage_repo.list_by_run("msg_run_bad").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].outcome, SkillOutcome::Failed);
+
+        // outcome_unknown → 不标记
+        let mut unknown = summary_for(
+            "sess-1",
+            "msg_run_unknown",
+            "msg_u3",
+            false,
+            traces(&[load_skills_result(&["skill-c"], &[])]),
+        );
+        unknown.finalization_verdict = Some("outcome_unknown".to_string());
+        process_turn(&db, &unknown).unwrap();
+        let rows = usage_repo.list_by_run("msg_run_unknown").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].outcome, SkillOutcome::Unknown);
+
+        // 无完成块 verdict（非任务轮）→ 保持 unknown（P0 行为不变）
+        let plain = summary_for(
+            "sess-1",
+            "msg_run_plain",
+            "msg_u4",
+            false,
+            traces(&[load_skills_result(&["skill-d"], &[])]),
+        );
+        process_turn(&db, &plain).unwrap();
+        let rows = usage_repo.list_by_run("msg_run_plain").unwrap();
+        assert_eq!(rows[0].outcome, SkillOutcome::Unknown);
+    }
+
+    #[test]
+    fn g09p2_failed_outcome_writes_counter_example_candidate() {
+        let (_dir, db) = setup_test_db();
+        insert_session(&db, "sess-1");
+
+        let mut failed = summary_for(
+            "sess-1",
+            "msg_run_bad",
+            "msg_u1",
+            false,
+            traces(&[load_skills_result(&["skill-a", "skill-b"], &[])]),
+        );
+        failed.finalization_verdict = Some("partial".to_string());
+        process_turn(&db, &failed).unwrap();
+
+        let candidates = list_all_candidates(&db);
+        assert_eq!(candidates.len(), 1);
+        let candidate = &candidates[0];
+        assert_eq!(candidate.source_kind, CandidateSourceKind::UserCorrection);
+        assert_eq!(candidate.status, CandidateStatus::New);
+        // trace_hash 含失败锚点（失败 run id）
+        assert_eq!(
+            candidate.trace_hash,
+            correction_trace_hash("sess-1", "outcome_failed", "msg_run_bad")
+        );
+        let payload: Value = serde_json::from_str(&candidate.draft_payload_json).unwrap();
+        assert_eq!(payload["kind"], "user_correction");
+        assert_eq!(payload["trigger"], "outcome_failed");
+        assert_eq!(payload["corrected_run_id"], "msg_run_bad");
+        assert_eq!(
+            payload["corrected_skill_ids"],
+            serde_json::json!(["skill-a", "skill-b"])
+        );
+        assert_eq!(payload["verdict"], "partial");
+        let evidence: Value = serde_json::from_str(&candidate.evidence_refs_json).unwrap();
+        assert_eq!(evidence["run_id"], "msg_run_bad");
+        assert_eq!(evidence["corrected_run_id"], "msg_run_bad");
+
+        // 同一失败 run 重复处理 → 候选按 trace_hash 去重
+        process_turn(&db, &failed).unwrap();
+        assert_eq!(list_all_candidates(&db).len(), 1);
+    }
+
+    #[test]
+    fn g09p2_failed_verdict_without_loaded_skills_writes_no_candidate() {
+        let (_dir, db) = setup_test_db();
+        insert_session(&db, "sess-1");
+
+        // 终态失败 + ≥3 个不同成功工具但没加载技能：
+        // 既不写失败反例（无已发布技能涉及），也不写 trajectory 正例
+        // （G07 门控：失败完成块不沉淀正例）。
+        let mut failed = summary_for(
+            "sess-1",
+            "msg_run_bad",
+            "msg_u1",
+            false,
+            traces(&[
+                tool_result("a", true),
+                tool_result("b", true),
+                tool_result("c", true),
+            ]),
+        );
+        failed.finalization_verdict = Some("partial".to_string());
+        process_turn(&db, &failed).unwrap();
+        assert!(
+            list_all_candidates(&db).is_empty(),
+            "failed verdict must suppress trajectory candidate and needs loaded skills for counter-example"
+        );
+
+        // 对照：同样的工具序列但验收通过 → trajectory 正例照常写入
+        let mut ok = summary_for(
+            "sess-1",
+            "msg_run_ok",
+            "msg_u2",
+            false,
+            traces(&[
+                tool_result("a", true),
+                tool_result("b", true),
+                tool_result("c", true),
+            ]),
+        );
+        ok.finalization_verdict = Some("verified_complete".to_string());
+        process_turn(&db, &ok).unwrap();
+        let candidates = list_all_candidates(&db);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].source_kind, CandidateSourceKind::Trajectory);
+    }
+
+    #[test]
+    fn g09p2_retry_correction_precedes_failed_outcome_reflux() {
+        let (_dir, db) = setup_test_db();
+        insert_session(&db, "sess-1");
+        let usage_repo = SkillUsageRepo::new(db.clone());
+
+        // 被推翻 run 的旧行（同 run_id，tokens=Some(7) 用于区分新行）
+        usage_repo
+            .insert(&NewSkillUsage {
+                skill_id: "skill-a".to_string(),
+                task_session_id: "sess-1".to_string(),
+                run_id: Some("msg_run_retry".to_string()),
+                kind: SkillUsageKind::ToolLoad,
+                loads: 7,
+                latency_ms: None,
+                tokens: Some(7),
+            })
+            .unwrap();
+
+        // 重试轮：correction_hint=true，且本轮验收也失败（partial）
+        let mut retry = summary_for(
+            "sess-1",
+            "msg_run_retry",
+            "msg_u_new",
+            true,
+            traces(&[load_skills_result(&["skill-a"], &[])]),
+        );
+        retry.finalization_verdict = Some("partial".to_string());
+        process_turn(&db, &retry).unwrap();
+
+        // 顺序不变量：旧行先被纠错收敛为 user_corrected（绝不能被 verdict
+        // 覆盖成 failed），本轮新行才被标本 failed
+        let rows = usage_repo.list_by_run("msg_run_retry").unwrap();
+        assert_eq!(rows.len(), 2);
+        let old = rows.iter().find(|r| r.tokens == Some(7)).expect("old row");
+        let new = rows.iter().find(|r| r.tokens == Some(3456)).expect("new row");
+        assert_eq!(old.outcome, SkillOutcome::UserCorrected);
+        assert_eq!(new.outcome, SkillOutcome::Failed);
+
+        // 候选：retry 反例 + outcome_failed 反例各一（锚点不同 trigger）
+        let candidates = list_all_candidates(&db);
+        assert_eq!(candidates.len(), 2);
+        let triggers: Vec<String> = candidates
+            .iter()
+            .map(|c| {
+                let payload: Value = serde_json::from_str(&c.draft_payload_json).unwrap();
+                payload["trigger"].as_str().unwrap().to_string()
+            })
+            .collect();
+        assert!(triggers.contains(&"retry".to_string()));
+        assert!(triggers.contains(&"outcome_failed".to_string()));
+    }
+
+    #[test]
+    fn g09p2_on_task_finalized_marks_existing_rows_only_when_safe() {
+        let (_dir, db) = setup_test_db();
+        insert_session(&db, "sess-1");
+        let usage_repo = SkillUsageRepo::new(db.clone());
+        let insert_unknown = |run_id: &str| {
+            usage_repo
+                .insert(&NewSkillUsage {
+                    skill_id: "skill-a".to_string(),
+                    task_session_id: "sess-1".to_string(),
+                    run_id: Some(run_id.to_string()),
+                    kind: SkillUsageKind::ToolLoad,
+                    loads: 1,
+                    latency_ms: None,
+                    tokens: None,
+                })
+                .unwrap();
+        };
+
+        // 立即通路：行已存在 + 非纠错轮 → 直接收敛
+        insert_unknown("msg_run_a");
+        on_task_finalized_inner(
+            &db,
+            "msg_run_a",
+            &[completion_tool_result("verified_complete")],
+            false,
+        );
+        assert_eq!(
+            usage_repo.list_by_run("msg_run_a").unwrap()[0].outcome,
+            SkillOutcome::Success
+        );
+
+        // 纠错轮（retry 复用 run_id）：跳过立即通路——旧行必须留给轮末
+        // 纠错处理先收敛为 user_corrected
+        insert_unknown("msg_run_b");
+        on_task_finalized_inner(&db, "msg_run_b", &[completion_tool_result("partial")], true);
+        assert_eq!(
+            usage_repo.list_by_run("msg_run_b").unwrap()[0].outcome,
+            SkillOutcome::Unknown,
+            "correction-hint turn must not early-mark reused run_id rows"
+        );
+
+        // outcome_unknown：不标记
+        insert_unknown("msg_run_c");
+        on_task_finalized_inner(
+            &db,
+            "msg_run_c",
+            &[completion_tool_result("outcome_unknown")],
+            false,
+        );
+        assert_eq!(
+            usage_repo.list_by_run("msg_run_c").unwrap()[0].outcome,
+            SkillOutcome::Unknown
+        );
+
+        // 无完成块：no-op
+        insert_unknown("msg_run_d");
+        on_task_finalized_inner(&db, "msg_run_d", &[tool_result("vfs_search", true)], false);
+        assert_eq!(
+            usage_repo.list_by_run("msg_run_d").unwrap()[0].outcome,
+            SkillOutcome::Unknown
+        );
+
+        // 行尚不存在（常规首轮：usage 行在轮末才落账）：标记 0 行，不报错
+        on_task_finalized_inner(&db, "msg_run_e", &[completion_tool_result("blocked")], false);
+        assert!(usage_repo.list_by_run("msg_run_e").unwrap().is_empty());
     }
 }
