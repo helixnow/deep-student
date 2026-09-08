@@ -147,6 +147,10 @@ export function getEffectiveReadyModes(
     }
   }
 
+  if (!effectiveStatus && mediaType === 'image' && attachment.status === 'ready') {
+    return ['image'];
+  }
+
   // 完成状态也必须以真实 readyModes 为准；空列表不可伪装为 text/image。
 
   // ★ P1 收紧：处理中的图片不再乐观补 'image'。
