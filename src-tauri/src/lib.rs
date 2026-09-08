@@ -53,7 +53,6 @@ pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
-pub mod startup_gate;
 #[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
@@ -116,6 +115,7 @@ pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
+pub mod startup_gate;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
 pub mod system_notification;
@@ -667,9 +667,18 @@ pub fn run() {
     // 调试日志只写 stdout。不要启用 TargetKind::Webview：
     // 后台日志 emit 与主线程 resize/focus 窗口事件可能争用 WebView 锁，
     // 形成锁反转并让 Windows 主窗口触发 AppHangB1。
-    #[cfg(debug_assertions)]
+    // Android：release 构建同样需要 Stdout target——tauri-plugin-log 在安卓上
+    // 把 Stdout 路由到 logcat（android_logger），使非 debuggable 包的后端日志
+    // 可经 `adb logcat` 查看（LogDir 文件目标落在应用私有目录，外部不可读）。
+    #[cfg(any(debug_assertions, target_os = "android"))]
     {
         log_plugin_builder = log_plugin_builder.target(Target::new(TargetKind::Stdout));
+    }
+    // Android：deep_student_lib 提到 Debug，现场排查启动链问题（预检超时、迁移卡顿）所需
+    #[cfg(target_os = "android")]
+    {
+        log_plugin_builder =
+            log_plugin_builder.level_for("deep_student_lib", log::LevelFilter::Debug);
     }
 
     builder
