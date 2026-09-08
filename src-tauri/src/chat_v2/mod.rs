@@ -27,6 +27,7 @@ pub mod connector_providers; // 🆕 Connector provider 抽象（G04-P1：Connec
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
+pub mod environment_manifest; // 🆕 G08：每任务环境清单（OS/runtime/工具表/模型/技能/网络/工作目录身份）+ 漂移检测
 pub mod events;
 pub mod finalizer; // 🆕 G07-a：candidate_complete 与任务验收分离（TaskFinalizer 骨架）
 pub mod goal; // 🆕 Goal 模式（P0）：跨轮次会话目标（续跑运行时 + 提示词注入）

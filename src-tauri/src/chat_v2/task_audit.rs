@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::environment_manifest::EnvironmentManifest;
 use super::task_objects::TaskObjectHandle;
 
 pub const TASK_AUDIT_SCHEMA_VERSION: u16 = 1;
@@ -67,6 +68,14 @@ pub struct TaskAuditManifest {
     pub connector_targets: Vec<ConnectorAuditTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role_pack_version: Option<String>,
+    /// G08：任务环境清单全文（environment_manifest.rs 采集快照）。
+    /// 留在 audit JSON 内（侵入最小，不落新表），重放/复验时作 baseline。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_manifest: Option<EnvironmentManifest>,
+    /// G08：环境清单内容指纹（`EnvironmentManifest::content_fingerprint`），
+    /// 与全文同源生成，供快速比对/列表展示，不必 parse 全文。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_manifest_hash: Option<String>,
     pub change_coverage: ChangeCoverage,
     pub coverage_complete: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -82,6 +91,7 @@ pub struct TaskAuditManifestBuilder {
     outputs: BTreeMap<String, AuditOutput>,
     connector_targets: BTreeMap<String, ConnectorAuditTarget>,
     role_pack_version: Option<String>,
+    environment_manifest: Option<EnvironmentManifest>,
     change_coverage: ChangeCoverage,
     backend_ledger_verified: bool,
 }
@@ -124,6 +134,15 @@ impl TaskAuditManifestBuilder {
 
     pub fn role_pack_version(&mut self, version: impl Into<String>) -> &mut Self {
         self.role_pack_version = Some(version.into());
+        self
+    }
+
+    /// G08：挂接任务开始时采集的环境清单（environment_manifest.rs）。
+    ///
+    /// 全文与内容指纹同源记录（build 时指纹由清单算出，保证两者一致）。
+    /// 环境清单是上下文元数据，不参与 coverage/authoritative 判定。
+    pub fn environment_manifest(&mut self, manifest: EnvironmentManifest) -> &mut Self {
+        self.environment_manifest = Some(manifest);
         self
     }
 
@@ -173,6 +192,10 @@ impl TaskAuditManifestBuilder {
         }
 
         let coverage_complete = missing.is_empty();
+        let environment_manifest_hash = self
+            .environment_manifest
+            .as_ref()
+            .map(EnvironmentManifest::content_fingerprint);
         Ok(TaskAuditManifest {
             schema_version: TASK_AUDIT_SCHEMA_VERSION,
             task_id: self.task_id,
@@ -188,6 +211,8 @@ impl TaskAuditManifestBuilder {
             outputs: self.outputs.into_values().collect(),
             connector_targets: self.connector_targets.into_values().collect(),
             role_pack_version: self.role_pack_version,
+            environment_manifest: self.environment_manifest,
+            environment_manifest_hash,
             change_coverage: self.change_coverage,
             coverage_complete,
             missing_coverage: missing,
@@ -283,6 +308,59 @@ fn is_secret_key(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::environment_manifest::CaptureInputs;
+
+    /// G08：环境清单挂进审计记录——全文内嵌 + 指纹同源，且不影响
+    /// coverage/authoritative 判定（环境清单是上下文元数据，非覆盖项）。
+    #[test]
+    fn g08_environment_manifest_is_embedded_with_matching_hash() {
+        let env_manifest = EnvironmentManifest::capture(&CaptureInputs {
+            model_id: Some("deepseek-chat".to_string()),
+            ..CaptureInputs::default()
+        });
+        let expected_hash = env_manifest.content_fingerprint();
+
+        let mut builder = TaskAuditManifestBuilder::new("task-env-1");
+        builder
+            .add_tool_call(AuditToolCall {
+                call_id: "call-1".into(),
+                tool_name: "example".into(),
+                arguments: Value::Null,
+                result_hash: None,
+            })
+            .environment_manifest(env_manifest.clone());
+        let manifest = builder.build().unwrap();
+
+        assert_eq!(manifest.environment_manifest, Some(env_manifest));
+        assert_eq!(
+            manifest.environment_manifest_hash.as_deref(),
+            Some(expected_hash.as_str())
+        );
+        // 环境清单不补齐任何 coverage 缺口（仍 fail-closed）
+        assert!(!manifest.coverage_complete);
+        assert!(!manifest.authoritative);
+
+        // 序列化键名 camelCase，且 export 重放逐字段稳定
+        let value = manifest.export_value().unwrap();
+        assert!(value.get("environmentManifest").is_some());
+        assert_eq!(
+            value["environmentManifestHash"].as_str(),
+            Some(expected_hash.as_str())
+        );
+        assert!(value["environmentManifest"].get("toolSchemaHash").is_some());
+
+        // 未挂环境清单时两字段均缺席（skip_serializing_if）
+        let mut plain = TaskAuditManifestBuilder::new("task-env-0");
+        plain.add_tool_call(AuditToolCall {
+            call_id: "call-1".into(),
+            tool_name: "example".into(),
+            arguments: Value::Null,
+            result_hash: None,
+        });
+        let value = plain.build().unwrap().export_value().unwrap();
+        assert!(value.get("environmentManifest").is_none());
+        assert!(value.get("environmentManifestHash").is_none());
+    }
 
     #[test]
     fn secx_01_export_recursively_redacts_secret_values() {
