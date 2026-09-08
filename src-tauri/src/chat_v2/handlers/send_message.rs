@@ -27,7 +27,13 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 use crate::vfs::types::{ImageInjectMode, PdfInjectMode, ResourceInjectModes, VfsContextRefData};
 
-/// ★ 2026-01-26：根据模型 ID 判断是否支持多模态
+pub(crate) async fn is_model_multimodal_for_review(
+    llm_manager: &LLMManager,
+    model_id: Option<&str>,
+) -> bool {
+    is_model_multimodal(llm_manager, model_id).await
+}
+
 ///
 /// 从 LLMManager 获取模型配置，返回 is_multimodal 属性。
 /// 当 model_id 为空时，回退到默认对话模型再判断，避免误降级为文本模式。

@@ -584,6 +584,10 @@ export interface UploadAttachmentResult {
     contentHash: string;
     createdAt: string;
     updatedAt: string;
+    /** PDF native text extracted during upload, when available */
+    extractedText?: string;
+    /** PDF page count, when available */
+    pageCount?: number;
   };
   /** 处理状态（v2.1 新增：用于 PDF/图片预处理流水线） */
   processingStatus?: string;
@@ -591,6 +595,8 @@ export interface UploadAttachmentResult {
   processingPercent?: number;
   /** 已就绪的模式列表 */
   readyModes?: string[];
+  /** PDF 内容分类（由后端按提取文本判定） */
+  contentKind?: 'text' | 'scanned';
 }
 
 /**
