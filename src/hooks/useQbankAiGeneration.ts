@@ -1,384 +1,159 @@
 /**
- * 题目集 AI 出题 Hook（MVP）
+ * 题目集 AI 出题 Hook（后台任务版，2026-09-09）
  *
- * 复用 useQbankAiGrading 的 Promise 包装 + Tauri 事件监听模式：
- * - Promise 包装 + settle 幂等
- * - Ref 防竞态（currentStreamSessionIdRef）
- * - 120s 超时 + 事件重置
- * - 组件卸载清理
+ * 与 MVP 版本的差异：
+ * - 不再监听 SSE 流式事件（后端已后台化），改为「提交任务 → 全局 store 跟踪 → 面板读结果」
+ * - 不再有 180s 前端看门狗（超时由后端 120s 空闲超时 + 任务状态收敛负责）
+ * - 组件卸载不再取消任务（这是后台化的核心诉求）
  *
- * 与批改 hook 的差异：complete 事件回传的是校验后的题目草稿列表
- * （GeneratedQuestionDraft[]），不落库；入库由调用方在用户确认后
- * 通过 qbank_batch_create_questions 完成（source_type=ai_generated）。
+ * 任务状态由 `useQbankGenerationTasks`（App 壳层常驻）统一刷新；
+ * 本 hook 只负责「提交 / 取消 / 恢复该题目集的任务列表」。
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { nanoid } from 'nanoid';
+
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import type { QuestionType, Difficulty } from '@/api/questionBankApi';
+import { useQbankGenerationStore } from '@/stores/qbankGenerationStore';
+import type {
+  GeneratedQuestionDraft,
+  QbankGenerationRequestPayload,
+  QbankGenerationTask,
+} from '@/types/qbankGeneration';
 
-// ============================================================================
-// 类型定义（与 Rust qbank_generation::types 对齐）
-// ============================================================================
+// 类型从共享定义处再导出，保持既有 import 路径兼容
+export type {
+  GeneratedQuestionDraft,
+  GeneratedQuestionOption,
+  QuestionGenerationSpec,
+  QbankGenerationRequestPayload,
+  QbankGenerationTask,
+  QbankGenerationTaskStatus,
+  SkippedReference,
+} from '@/types/qbankGeneration';
 
-export interface GeneratedQuestionOption {
-  key: string;
-  content: string;
+/** 面板关心的任务视图（无任务时为 undefined） */
+export interface UseQbankAiGenerationResult {
+  /** 当前跟踪的任务（提交后由 store 更新） */
+  task: QbankGenerationTask | undefined;
+  /** 是否正在提交（invoke 往返） */
+  submitting: boolean;
+  /** 提交阶段的错误（任务运行阶段的错误在 task.error） */
+  submitError: string | null;
+  /** 提交出题任务；返回创建的任务视图 */
+  startGeneration: (
+    request: Omit<QbankGenerationRequestPayload, 'stream_session_id'>,
+  ) => Promise<QbankGenerationTask>;
+  /** 请求取消当前任务（后端收尾后任务状态变为 cancelled） */
+  cancelGeneration: () => Promise<void>;
+  /** 重置面板状态（不取消任务，任务仍在后台跑） */
+  resetState: () => void;
+  /** 切换到某个历史任务（面板预览用） */
+  selectTask: (taskId: string | null) => void;
 }
 
-export interface GeneratedQuestionDraft {
-  question_type: QuestionType;
-  content: string;
-  options?: GeneratedQuestionOption[];
-  answer?: string;
-  explanation?: string;
-  difficulty?: Difficulty;
-  tags?: string[];
-  /** 分子结构式 SMILES 串（可选，SmilesText 渲染为骨架式） */
-  smiles?: string;
-  /** SMILES 结构名称（如 "乙醇"） */
-  smiles_caption?: string;
-}
+export function useQbankAiGeneration(examId: string): UseQbankAiGenerationResult {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
 
-export interface QuestionGenerationSpec {
-  question_type: QuestionType;
-  count: number;
-  difficulty?: Difficulty | null;
-}
-
-export interface QbankGenerationRequestPayload {
-  exam_id: string;
-  stream_session_id: string;
-  model_config_id?: string | null;
-  max_questions: number;
-  specs: QuestionGenerationSpec[];
-  difficulty?: Difficulty | null;
-  topic_hint?: string | null;
-  based_on_existing: boolean;
-  language?: string | null;
-  /** 资源库参考文件（后端直读提取文本） */
-  reference_file_ids?: string[];
-  /** 前端临时上传的参考文件（base64，不落资源库） */
-  reference_files_base64?: { name: string; base64: string }[];
-  /** 知识点（从现有题目 tags 选择或手动输入） */
-  knowledge_points?: string[];
-}
-
-export interface QbankGenerationState {
-  /** 是否正在生成 */
-  isGenerating: boolean;
-  /** 流式累积的原始输出（JSON 数组文本，用于生成中展示） */
-  rawOutput: string;
-  /** 生成完成后的题目草稿（仅 complete 时填充） */
-  drafts: GeneratedQuestionDraft[];
-  /** 被剔除的题目数（校验失败） */
-  rejectedCount: number;
-  rejectionReasons: string[];
-  /** 错误信息 */
-  error?: string;
-  /** 当前流 session ID */
-  streamSessionId?: string;
-}
-
-interface QbankGenerationStreamEvent {
-  type: 'data' | 'complete' | 'error' | 'cancelled';
-  // data
-  chunk?: string;
-  accumulated?: string;
-  // complete
-  exam_id?: string;
-  drafts?: GeneratedQuestionDraft[];
-  rejected_count?: number;
-  rejection_reasons?: string[];
-  // error
-  message?: string;
-}
-
-const INITIAL_STATE: QbankGenerationState = {
-  isGenerating: false,
-  rawOutput: '',
-  drafts: [],
-  rejectedCount: 0,
-  rejectionReasons: [],
-};
-
-const TIMEOUT_MS = 180_000; // 180 秒超时（批量出题比单题批改长）
-
-// ============================================================================
-// Hook
-// ============================================================================
-
-export function useQbankAiGeneration() {
-  const [state, setState] = useState<QbankGenerationState>(INITIAL_STATE);
-
-  // Refs 防竞态
-  const currentStreamSessionIdRef = useRef<string | null>(null);
-  const isActiveRef = useRef(false);
-  const isStartingRef = useRef(false);
-  const unlistenRef = useRef<UnlistenFn | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 结束进行中 Promise（超时/取消/重置路径），避免 startGeneration 永久挂起
-  const settleRef = useRef<((result: 'completed' | 'cancelled') => void) | null>(null);
-  const failRef = useRef<((error: Error) => void) | null>(null);
-
-  const cleanup = useCallback(() => {
-    if (unlistenRef.current) {
-      unlistenRef.current();
-      unlistenRef.current = null;
-    }
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
-
-  // 超时重置
-  const resetTimeout = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => {
-      debugLog.warn('[useQbankAiGeneration] 超时：180 秒无数据');
-      cleanup();
-      setState((prev) => ({
-        ...prev,
-        isGenerating: false,
-        error: 'AI 出题超时，请重试',
-      }));
-      const sid = currentStreamSessionIdRef.current;
-      if (sid) {
-        currentStreamSessionIdRef.current = null;
-        void invoke('qbank_cancel_generation', {
-          streamEventName: `qbank_generation_stream_${sid}`,
-        });
-      }
-      isActiveRef.current = false;
-      isStartingRef.current = false;
-      failRef.current?.(new Error('AI 出题超时，请重试'));
-    }, TIMEOUT_MS);
-  }, [cleanup]);
-
-  /**
-   * 启动 AI 出题
-   *
-   * @param request 出题参数（stream_session_id 由本 hook 生成）
-   * @param onComplete 生成完成时的回调（草稿列表，未入库）
-   * @returns Promise<'completed' | 'cancelled'>
-   */
-  const startGeneration = useCallback(
-    (
-      request: Omit<QbankGenerationRequestPayload, 'stream_session_id'>,
-      onComplete?: (drafts: GeneratedQuestionDraft[]) => void,
-    ): Promise<'completed' | 'cancelled'> => {
-      // no-async-promise-executor：executor 内不写 async/await，异步流程拆到
-      // run() 中链式执行；resolve/reject 由 settle/fail 闭包持有
-      let resolvePromise: (result: 'completed' | 'cancelled') => void = () => {};
-      let rejectPromise: (error: Error) => void = () => {};
-      const promise = new Promise<'completed' | 'cancelled'>((resolve, reject) => {
-        resolvePromise = resolve;
-        rejectPromise = reject;
-      });
-
-      let settled = false;
-      const settledRef = { current: false };
-
-      const settle = (result: 'completed' | 'cancelled') => {
-        if (settledRef.current) return;
-        settledRef.current = true;
-        settled = true;
-        settleRef.current = null;
-        failRef.current = null;
-        resolvePromise(result);
-      };
-
-      const fail = (error: Error) => {
-        if (settledRef.current) return;
-        settledRef.current = true;
-        settled = true;
-        settleRef.current = null;
-        failRef.current = null;
-        rejectPromise(error);
-      };
-
-      const run = async () => {
-        if (isStartingRef.current || isActiveRef.current) {
-          fail(new Error('出题正在进行中'));
-          return;
-        }
-
-        isStartingRef.current = true;
-        isActiveRef.current = true;
-
-        const streamSessionId = nanoid(12);
-        currentStreamSessionIdRef.current = streamSessionId;
-
-        cleanup();
-        setState({
-          isGenerating: true,
-          rawOutput: '',
-          drafts: [],
-          rejectedCount: 0,
-          rejectionReasons: [],
-          streamSessionId,
-        });
-
-        settleRef.current = settle;
-        failRef.current = fail;
-
-        try {
-          const eventName = `qbank_generation_stream_${streamSessionId}`;
-          const unlisten = await listen<QbankGenerationStreamEvent>(eventName, (event) => {
-            if (currentStreamSessionIdRef.current !== streamSessionId) return;
-
-            const payload = event.payload;
-            resetTimeout();
-
-            if (payload.type === 'data') {
-              setState((prev) => ({
-                ...prev,
-                rawOutput: payload.accumulated || prev.rawOutput,
-              }));
-            }
-
-            if (payload.type === 'complete') {
-              cleanup();
-              const drafts = payload.drafts ?? [];
-              setState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                drafts,
-                rejectedCount: payload.rejected_count ?? 0,
-                rejectionReasons: payload.rejection_reasons ?? [],
-              }));
-              isActiveRef.current = false;
-              currentStreamSessionIdRef.current = null;
-              onComplete?.(drafts);
-              settle('completed');
-            }
-
-            if (payload.type === 'error') {
-              cleanup();
-              setState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                error: payload.message || '出题失败',
-              }));
-              isActiveRef.current = false;
-              currentStreamSessionIdRef.current = null;
-              fail(new Error(payload.message || '出题失败'));
-            }
-
-            if (payload.type === 'cancelled') {
-              cleanup();
-              setState((prev) => ({
-                ...prev,
-                isGenerating: false,
-              }));
-              isActiveRef.current = false;
-              currentStreamSessionIdRef.current = null;
-              settle('cancelled');
-            }
-          });
-
-          unlistenRef.current = unlisten;
-          isStartingRef.current = false;
-          resetTimeout();
-
-          await invoke('qbank_ai_generate_questions', {
-            request: {
-              ...request,
-              stream_session_id: streamSessionId,
-            },
-          });
-        } catch (error: unknown) {
-          cleanup();
-          isStartingRef.current = false;
-          isActiveRef.current = false;
-          currentStreamSessionIdRef.current = null;
-
-          const errMsg = error instanceof Error ? error.message : String(error);
-          setState((prev) => ({
-            ...prev,
-            isGenerating: false,
-            error: errMsg,
-          }));
-
-          if (!settled) {
-            fail(error instanceof Error ? error : new Error(errMsg));
-          }
-        }
-      };
-
-      void run();
-      return promise;
-    },
-    [cleanup, resetTimeout],
+  const upsertTask = useQbankGenerationStore((state) => state.upsertTask);
+  const upsertTasks = useQbankGenerationStore((state) => state.upsertTasks);
+  const task = useQbankGenerationStore((state) =>
+    taskId ? state.tasks[taskId] : undefined,
   );
 
-  /**
-   * 取消出题
-   */
-  const cancelGeneration = useCallback(async () => {
-    const sid = currentStreamSessionIdRef.current;
-    if (!sid) return;
-
-    currentStreamSessionIdRef.current = null;
-    cleanup();
-
-    setState((prev) => ({
-      ...prev,
-      isGenerating: false,
-    }));
-
-    isActiveRef.current = false;
-    isStartingRef.current = false;
-    settleRef.current?.('cancelled');
-
-    await invoke('qbank_cancel_generation', {
-      streamEventName: `qbank_generation_stream_${sid}`,
-    });
-  }, [cleanup]);
-
-  /**
-   * 重置状态（同时取消正在进行的后端流）
-   */
-  const resetState = useCallback(() => {
-    const sid = currentStreamSessionIdRef.current;
-    if (sid && isActiveRef.current) {
-      void invoke('qbank_cancel_generation', {
-        streamEventName: `qbank_generation_stream_${sid}`,
-      });
-    }
-    cleanup();
-    setState(INITIAL_STATE);
-    currentStreamSessionIdRef.current = null;
-    isActiveRef.current = false;
-    isStartingRef.current = false;
-    settleRef.current?.('cancelled');
-  }, [cleanup]);
-
-  // 组件卸载清理
+  // 打开面板时恢复该题目集的任务列表（关闭面板/重启后仍能取回结果）
   useEffect(() => {
-    return () => {
-      if (isActiveRef.current) {
-        const sid = currentStreamSessionIdRef.current;
-        if (sid) {
-          void invoke('qbank_cancel_generation', {
-            streamEventName: `qbank_generation_stream_${sid}`,
-          });
+    if (!examId) return;
+    void invoke<QbankGenerationTask[]>('qbank_list_generation_tasks', {
+      examId,
+      limit: 20,
+    })
+      .then((tasks) => {
+        upsertTasks(tasks);
+        // 自动跟踪最新任务，便于面板直接展示最近一次结果
+        const latest = tasks[0];
+        if (latest) {
+          setTaskId((prev) => prev ?? latest.id);
         }
+      })
+      .catch((error) => {
+        debugLog.warn('[useQbankAiGeneration] 恢复任务列表失败:', error);
+      });
+  }, [examId, upsertTasks]);
+
+  const startGeneration = useCallback(
+    async (
+      request: Omit<QbankGenerationRequestPayload, 'stream_session_id'>,
+    ): Promise<QbankGenerationTask> => {
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        const view = await invoke<QbankGenerationTask>(
+          'qbank_ai_generate_questions',
+          {
+            request: { ...request, stream_session_id: nanoid(12) },
+          },
+        );
+        upsertTask(view);
+        setTaskId(view.id);
+        debugLog.info('[useQbankAiGeneration] 出题任务已提交:', view.id);
+        return view;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSubmitError(message);
+        debugLog.error('[useQbankAiGeneration] 提交出题任务失败:', error);
+        throw error instanceof Error ? error : new Error(message);
+      } finally {
+        setSubmitting(false);
       }
-      settleRef.current?.('cancelled');
-      cleanup();
-    };
-  }, [cleanup]);
+    },
+    [upsertTask],
+  );
+
+  const cancelGeneration = useCallback(async () => {
+    if (!taskId) return;
+    try {
+      const view = await invoke<QbankGenerationTask | null>(
+        'qbank_cancel_generation_task',
+        { taskId },
+      );
+      if (view) upsertTask(view);
+    } catch (error) {
+      debugLog.warn('[useQbankAiGeneration] 取消失题任务失败:', error);
+    }
+  }, [taskId, upsertTask]);
+
+  const resetState = useCallback(() => {
+    setTaskId(null);
+    setSubmitError(null);
+  }, []);
+
+  const selectTask = useCallback((nextTaskId: string | null) => {
+    setTaskId(nextTaskId);
+  }, []);
 
   return {
-    state,
+    task,
+    submitting,
+    submitError,
     startGeneration,
     cancelGeneration,
     resetState,
+    selectTask,
   };
+}
+
+/** 从任务草稿派生「是否还有未入库结果」 */
+export function hasImportableDrafts(task: QbankGenerationTask | undefined): boolean {
+  return Boolean(task && task.status === 'completed' && task.drafts.length > 0);
+}
+
+/** 便捷取草稿（面板渲染用） */
+export function taskDrafts(
+  task: QbankGenerationTask | undefined,
+): GeneratedQuestionDraft[] {
+  return task?.drafts ?? [];
 }

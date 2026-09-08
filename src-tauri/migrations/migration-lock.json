@@ -960,6 +960,14 @@
       "path": "vfs/V20260824__note_props.sql",
       "sha256": "6607400be7282ab39ad24edfd8d49caba3d6eee212e38926ff6f968d8fd49cb9",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260909,
+      "name": "qbank_generation_tasks",
+      "path": "vfs/V20260909__qbank_generation_tasks.sql",
+      "sha256": "b60cfeebebf076aa8c9c0e3d9309ecfd56f14d3649470434e0efda38965209b7",
+      "dangers": []
     }
   ]
 }

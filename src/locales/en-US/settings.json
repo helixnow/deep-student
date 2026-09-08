@@ -1843,7 +1843,8 @@
     "user_profile_title": "User Preferences",
     "search_settings_title": "Search Settings",
     "index_maintenance_title": "Chat Index Maintenance",
-    "developer_options_title": "Developer Options"
+    "developer_options_title": "Developer Options",
+    "qbank_ai_generation_model_title": "Question Bank AI Generation Model (question authoring)"
   },
   "messages": {
     "restored_default_prompt": "Restored default tutor prompt",
@@ -1940,7 +1941,8 @@
     "preset_saved": "Preset saved",
     "preset_deleted": "Preset deleted",
     "tutor_prompt_saved": "Tutor mode prompt saved",
-    "loaded_auto_save": "{{label}} (Loaded, will auto-save)"
+    "loaded_auto_save": "{{label}} (Loaded, will auto-save)",
+    "qbank_ai_generation_saved": "Question bank AI generation model configuration saved"
   },
   "mapping_keys": {
     "model1_configured": "First Model: Deprecated",
@@ -1957,7 +1959,8 @@
     "question_parsing_configured": "Question Parsing Model: Configured",
     "memory_decision_configured": "Memory Decision Model: Configured",
     "voice_input_asr_configured": "Voice Input ASR Model: Configured",
-    "image_generation_configured": "Image Generation Model: Configured"
+    "image_generation_configured": "Image Generation Model: Configured",
+    "qbank_ai_generation_configured": "Question Bank AI Generation Model: Configured"
   },
   "status_labels": {
     "summary_model": "Summary Generation Model (Deprecated)",
@@ -1983,7 +1986,8 @@
     "thinking_label": "Thinking Mode",
     "thinking_desc": "Allow the OCR model to use extended reasoning when supported.",
     "thinking_on": "On",
-    "thinking_off": "Off"
+    "thinking_off": "Off",
+    "qbank_ai_generation_model": "Question Bank AI Generation Model"
   },
   "descriptions": {
     "model1_desc": "Deprecated: OCR uses dedicated engines (DeepSeek-OCR / PaddleOCR-VL-1.5)",
@@ -2006,7 +2010,8 @@
     "brave_desc": "An independent web search engine focused on privacy.",
     "searxng_desc": "An open-source metasearch engine that aggregates multiple sources.",
     "zhipu_desc": "A China-based internet search aggregation service from Zhipu.",
-    "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes."
+    "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes.",
+    "qbank_ai_generation_desc": "Used for AI question generation in question banks. If not configured, it falls back to the AI grading model, then the second model. Vision-capable models can generate questions directly from scanned page images."
   },
   "common_labels": {
     "no_data": "No data",

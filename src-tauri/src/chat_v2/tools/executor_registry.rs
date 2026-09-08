@@ -98,6 +98,9 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         // VFS 全量索引重建：大 PDF 的抽取 + 分块 + 嵌入远超默认 120s，
         // 必须使用专用长超时，否则重建中途被 watchdog 掐断。
         "index_rebuild" => 600, // 10 分钟
+        // AI 出题（同步模式）：一次生成多题需流式调用 LLM，默认 120s 不够；
+        // 大批量场景模型应改用 background=true（立即返回 task_id，不占工具超时）。
+        "qbank_generate_questions" => 600, // 10 分钟
         // 网页存档：大 Markdown（最大 4 MiB）落盘 + Unit 同步可能较慢
         "webpage_save" => 300, // 5 分钟
         // 文档写入/转换工具（大文件处理可能耗时较长）

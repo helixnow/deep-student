@@ -27,10 +27,17 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useQbankAiGeneration, type GeneratedQuestionDraft } from '@/hooks/useQbankAiGeneration';
 import SmilesText from '@/components/SmilesText';
+import {
+  UnifiedModelSelector,
+  type UnifiedModelInfo,
+} from '@/components/shared/UnifiedModelSelector';
 import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
 import { Z_INDEX } from '@/config/zIndex';
-import type { QuestionType, Difficulty, Question, QuestionOption } from '@/api/questionBankApi';
+import { TauriAPI } from '@/utils/tauriApi';
+import type { ApiConfig } from '@/types';
+import type { QuestionType, Difficulty, Question } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { buildCreateParams } from '@/utils/qbankDraftToParams';
 
 // ============================================================================
 // 题型选项
@@ -109,7 +116,15 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   availableTags = [],
 }) => {
   const { t, i18n } = useTranslation(['exam_sheet', 'common']);
-  const { state, startGeneration, cancelGeneration, resetState } = useQbankAiGeneration();
+  // 2026-09-09 后台任务化：hook 只负责提交/取消，任务状态由全局 store 跟踪
+  const {
+    task,
+    submitting,
+    submitError,
+    startGeneration,
+    cancelGeneration,
+    selectTask,
+  } = useQbankAiGeneration(examId);
 
   // 参数面板状态
   const [specs, setSpecs] = useState<SpecRow[]>([newSpecRow()]);
@@ -119,20 +134,24 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   // 预览阶段每题的选中状态（key = 草稿在 drafts 中的下标）
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
+  // 2026-09-09（B3）：本次出题使用的模型（空 = 跟随设置里的「AI 出题模型」槽位）
+  const [modelId, setModelId] = useState<string>('');
 
-  const isGenerating = state.isGenerating;
-  const hasDrafts = state.drafts.length > 0;
+  const isGenerating = task?.status === 'queued' || task?.status === 'running';
+  const drafts = task?.drafts ?? [];
+  const hasDrafts = drafts.length > 0;
+  const taskFailed = task?.status === 'failed';
   const maxQuestions = useMemo(
     () => specs.reduce((sum, spec) => sum + (Number.isFinite(spec.count) ? spec.count : 0), 0),
     [specs],
   );
 
-  // 面板打开时重置预览选择；关闭时若不在生成中则复位状态
+  // 面板打开时重置预览选择；关闭时**不再取消任务**（后台继续），仅复位表单
   useEffect(() => {
     if (open) {
       setSelected(new Set());
-    } else if (!isGenerating) {
-      resetState();
+    } else {
+      selectTask(null);
       setSpecs([newSpecRow()]);
       setTopicHint('');
       setDifficulty('');
@@ -144,6 +163,16 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // 任务完成时默认全选草稿（面板关闭期间完成也适用）；
+  // 每个任务只初始化一次，避免后续 store 刷新覆盖用户勾选
+  const selectedInitTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (task?.status !== 'completed' || task.drafts.length === 0) return;
+    if (selectedInitTaskRef.current === task.id) return;
+    selectedInitTaskRef.current = task.id;
+    setSelected(new Set(task.drafts.map((_, index) => index)));
+  }, [task]);
+
   // ===== 参考资料（C2）=====
   const [references, setReferences] = useState<SelectedReference[]>([]);
   const [libraryFiles, setLibraryFiles] = useState<VfsFileMeta[]>([]);
@@ -154,6 +183,41 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   // ===== 知识点（C2）=====
   const [selectedKnowledgePoints, setSelectedKnowledgePoints] = useState<string[]>([]);
   const [knowledgeInput, setKnowledgeInput] = useState('');
+
+  // ===== 出题模型（B3，2026-09-09）=====
+  const [availableModels, setAvailableModels] = useState<UnifiedModelInfo[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  const loadModels = useCallback(async () => {
+    if (modelsLoading || availableModels.length > 0) return;
+    setModelsLoading(true);
+    try {
+      const configs = await TauriAPI.getApiConfigurations();
+      setAvailableModels(
+        (configs || [])
+          .filter(
+            (cfg: ApiConfig) =>
+              cfg.enabled !== false && !cfg.isEmbedding && !cfg.isReranker,
+          )
+          .map((cfg: ApiConfig) => ({
+            id: cfg.id,
+            name: cfg.name,
+            model: cfg.model,
+            isMultimodal: cfg.isMultimodal,
+            isReasoning: cfg.isReasoning,
+          })),
+      );
+    } catch (error) {
+      debugLog.error('[AiQuestionGenerationPanel] load models failed:', error);
+      setAvailableModels([]);
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [availableModels.length, modelsLoading]);
+
+  useEffect(() => {
+    if (open) void loadModels();
+  }, [open, loadModels]);
 
   // 打开资源库菜单时按需拉取文档类文件列表
   const loadLibraryFiles = useCallback(async () => {
@@ -282,35 +346,34 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   const handleStart = async () => {
     if (maxQuestions <= 0 || maxQuestions > 50) return;
     try {
-      await startGeneration(
-        {
-          exam_id: examId,
-          model_config_id: null,
-          max_questions: maxQuestions,
-          specs: specs.map((spec) => ({
-            question_type: spec.questionType,
-            count: spec.count,
-            difficulty: (difficulty || null) as Difficulty | null,
-          })),
+      await startGeneration({
+        exam_id: examId,
+        model_config_id: modelId || null,
+        max_questions: maxQuestions,
+        specs: specs.map((spec) => ({
+          question_type: spec.questionType,
+          count: spec.count,
           difficulty: (difficulty || null) as Difficulty | null,
-          topic_hint: topicHint.trim() || null,
-          based_on_existing: basedOnExisting,
-          language: i18n.resolvedLanguage || i18n.language || null,
-          reference_file_ids: references
-            .filter((ref) => ref.source === 'library')
-            .map((ref) => ref.id),
-          reference_files_base64: references
-            .filter((ref) => ref.source === 'local' && ref.base64)
-            .map((ref) => ({ name: ref.name, base64: ref.base64 as string })),
-          knowledge_points: selectedKnowledgePoints,
-        },
-        (drafts) => {
-          // 默认全部勾选
-          setSelected(new Set(drafts.map((_, index) => index)));
-        },
+        })),
+        difficulty: (difficulty || null) as Difficulty | null,
+        topic_hint: topicHint.trim() || null,
+        based_on_existing: basedOnExisting,
+        language: i18n.resolvedLanguage || i18n.language || null,
+        reference_file_ids: references
+          .filter((ref) => ref.source === 'library')
+          .map((ref) => ref.id),
+        reference_files_base64: references
+          .filter((ref) => ref.source === 'local' && ref.base64)
+          .map((ref) => ({ name: ref.name, base64: ref.base64 as string })),
+        knowledge_points: selectedKnowledgePoints,
+      });
+      // 后台任务化：提交成功即可关闭面板，任务在后台继续执行
+      showGlobalNotification(
+        'info',
+        t('exam_sheet:aiGeneration.taskSubmitted'),
       );
     } catch (error) {
-      // 错误已由 hook 的 state.error 呈现在面板内；吞掉 rejection 避免 unhandled
+      // 提交失败已由 submitError 呈现在面板内；吞掉 rejection 避免 unhandled
       debugLog.warn('[AiQuestionGenerationPanel] generation failed:', error);
     }
   };
@@ -331,7 +394,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     if (selected.size === 0 || importing) return;
     setImporting(true);
     try {
-      const paramsList = state.drafts
+      const paramsList = drafts
         .filter((_, index) => selected.has(index))
         .map((draft) => buildCreateParams(draft, examId));
       const created = await invoke<Question[]>('qbank_batch_create_questions', {
@@ -369,7 +432,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     <DsDialog
       open={open}
       onOpenChange={(next) => {
-        if (isGenerating) return; // 生成中不允许关闭（先取消）
+        // 后台任务化：生成中允许关闭，任务继续在后台执行（结果可在下次打开时取回）
         onOpenChange(next);
       }}
       maxWidth="max-w-2xl"
@@ -383,6 +446,22 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
             默认 z-index 110 会被对话框面板（modal+1=3001）盖住——题型/难度下拉
             表现为"点击无反应"。包一层 OverlayLayerProvider 让菜单抬到 3050。 */}
         <OverlayLayerProvider baseZ={Z_INDEX.modal}>
+        {/* 任务失败提示（后台任务错误经 store 回传） */}
+        {taskFailed && !hasDrafts && (
+          <div className="mb-3 flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 p-2.5 text-xs text-destructive">
+            <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
+            <div>
+              {task?.error || t('exam_sheet:aiGeneration.taskFailed', { error: '' })}
+            </div>
+          </div>
+        )}
+        {/* 提交阶段错误提示 */}
+        {submitError && !taskFailed && (
+          <div className="mb-3 flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 p-2.5 text-xs text-destructive">
+            <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
+            <div>{submitError}</div>
+          </div>
+        )}
         {/* 阶段一：参数面板 */}
         {!hasDrafts && !isGenerating && (
           <div className="space-y-4">
@@ -439,6 +518,26 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 {t('exam_sheet:aiGeneration.difficultyLabel')}
               </div>
               <AppSelect value={difficulty} onValueChange={setDifficulty} options={difficultyOptions} />
+            </div>
+
+            {/* 2026-09-09（B3）：本次出题模型；留空则跟随设置里的「AI 出题模型」槽位 */}
+            <div>
+              <div className="text-sm font-medium mb-2">
+                {t('exam_sheet:aiGeneration.modelLabel')}
+              </div>
+              <UnifiedModelSelector
+                models={availableModels}
+                value={modelId}
+                onChange={setModelId}
+                allowEmpty
+                emptyLabel={t('exam_sheet:aiGeneration.modelFollowSettings')}
+                placeholder={t('exam_sheet:aiGeneration.modelFollowSettings')}
+                variant="full"
+                side="top"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t('exam_sheet:aiGeneration.modelHint')}
+              </p>
             </div>
 
             <div>
@@ -633,19 +732,22 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
           </div>
         )}
 
-        {/* 阶段二：生成中（展示流式原始输出） */}
+        {/* 阶段二：任务进行中（后台执行，可关闭面板） */}
         {isGenerating && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CircleNotch size={16} className="animate-spin" />
+            <div className="flex items-center gap-2 text-sm">
+              <CircleNotch size={16} className="animate-spin text-primary" />
               {t('exam_sheet:aiGeneration.generating')}
             </div>
-            <pre className="max-h-72 overflow-auto rounded-md bg-muted/40 p-3 text-xs whitespace-pre-wrap break-all">
-              {state.rawOutput || '...'}
-            </pre>
-            <div className="flex justify-end">
+            <p className="text-xs text-muted-foreground">
+              {t('exam_sheet:aiGeneration.backgroundHint')}
+            </p>
+            <div className="flex justify-end gap-2">
               <DsButton variant="ghost" size="sm" onClick={() => void cancelGeneration()}>
                 {t('common:cancel')}
+              </DsButton>
+              <DsButton variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                {t('exam_sheet:aiGeneration.closeKeepRunning')}
               </DsButton>
             </div>
           </div>
@@ -654,21 +756,46 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
         {/* 阶段三：预览确认 */}
         {hasDrafts && !isGenerating && (
           <div className="space-y-3">
-            {state.rejectedCount > 0 && (
+            {task && task.rejectedCount > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 p-2.5 text-xs text-warning">
                 <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
                 <div>
-                  {t('exam_sheet:aiGeneration.rejectedSummary', { count: state.rejectedCount })}
+                  {t('exam_sheet:aiGeneration.rejectedSummary', { count: task.rejectedCount })}
                   <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                    {state.rejectionReasons.slice(0, 3).map((reason, index) => (
+                    {task.rejectionReasons.slice(0, 3).map((reason, index) => (
                       <li key={index}>{reason}</li>
                     ))}
                   </ul>
                 </div>
               </div>
             )}
+            {/* C2（2026-09-09）：参考资料未能送入时的显式提示（此前静默跳过） */}
+            {task && task.skippedReferences.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md bg-warning/10 border border-warning/30 p-2.5 text-xs text-warning">
+                <WarningCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <div>
+                  {t('exam_sheet:aiGeneration.skippedReferences', {
+                    count: task.skippedReferences.length,
+                  })}
+                  <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                    {task.skippedReferences.map((ref, index) => (
+                      <li key={index}>
+                        {ref.name}：
+                        {t(`exam_sheet:aiGeneration.skipReason.${ref.reason}`, ref.reason)}
+                        {ref.detail ? `（${ref.detail}）` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {task && task.usedReferenceCount > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {t('exam_sheet:aiGeneration.usedReferences', { count: task.usedReferenceCount })}
+              </div>
+            )}
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
-              {state.drafts.map((draft, index) => (
+              {drafts.map((draft, index) => (
                 <label
                   key={index}
                   className="flex items-start gap-2.5 rounded-md border border-border p-2.5 cursor-pointer hover:bg-muted/30"
@@ -734,14 +861,14 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               <span>
                 {t('exam_sheet:aiGeneration.selectedCount', {
                   selected: selected.size,
-                  total: state.drafts.length,
+                  total: drafts.length,
                 })}
               </span>
               <button
                 type="button"
                 className="text-primary hover:underline"
                 onClick={() => {
-                  resetState();
+                  selectTask(null);
                   setSpecs([newSpecRow()]);
                 }}
               >
@@ -792,51 +919,5 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     </DsDialog>
   );
 };
-
-// ============================================================================
-// 草稿 → CreateQuestionParams 映射
-// ============================================================================
-
-/**
- * 把 AI 草稿映射为后端 CreateQuestionParams（snake_case 契约）。
- * 选择题 answer 归一为大写 key 串；判断题归一为小写 true/false。
- */
-function buildCreateParams(draft: GeneratedQuestionDraft, examId: string) {
-  let answer = draft.answer?.trim() ?? null;
-  if (
-    answer &&
-    (draft.question_type === 'single_choice' ||
-      draft.question_type === 'multiple_choice' ||
-      draft.question_type === 'indefinite_choice')
-  ) {
-    answer = answer.toUpperCase();
-  }
-  if (answer && draft.question_type === 'true_false') {
-    answer = answer.toLowerCase();
-  }
-
-  const options: QuestionOption[] | null =
-    draft.options && draft.options.length > 0
-      ? draft.options.map((opt) => ({ key: opt.key.trim(), content: opt.content }))
-      : null;
-
-  return {
-    exam_id: examId,
-    content: draft.content,
-    question_type: draft.question_type,
-    options,
-    answer,
-    structured_data: null,
-    explanation: draft.explanation?.trim() || null,
-    difficulty: draft.difficulty ?? null,
-    tags: draft.tags && draft.tags.length > 0 ? draft.tags : null,
-    question_label: null,
-    card_id: null,
-    source_type: 'ai_generated',
-    source_ref: null,
-    images: null,
-    parent_id: null,
-  };
-}
 
 export default AiQuestionGenerationPanel;

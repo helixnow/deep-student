@@ -911,6 +911,22 @@ pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
 )
 .with_expected_columns(&[("notes", "props")]);
 
+/// V20260909: 题库 AI 出题后台任务表。
+///
+/// 后台化改造：出题任务状态与结果落库，关闭面板 / 切页 / 重启后可恢复。
+/// 新建表 + 索引，不触碰既有数据（无危险 SQL）。
+pub const V20260909_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
+    20260909,
+    "qbank_generation_tasks",
+    include_str!("../../../migrations/vfs/V20260909__qbank_generation_tasks.sql"),
+)
+.with_expected_tables(&["qbank_generation_tasks"])
+.with_expected_indexes(&[
+    "idx_qbank_generation_tasks_exam",
+    "idx_qbank_generation_tasks_status",
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -970,6 +986,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260807_QUESTION_STRUCTURED_DATA,
     V20260808_FILE_DELETION_INTENT_JOURNAL,
     V20260824_NOTE_PROPS,
+    V20260909_QBANK_GENERATION_TASKS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1121,13 +1138,20 @@ mod tests {
     }
 
     #[test]
-    fn test_note_props_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260824);
-        assert_eq!(V20260824_NOTE_PROPS.expected_columns, &[("notes", "props")]);
+    fn test_qbank_generation_tasks_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260909);
+        assert_eq!(
+            V20260909_QBANK_GENERATION_TASKS.expected_tables,
+            &["qbank_generation_tasks"]
+        );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("note_props")
+            Some("qbank_generation_tasks")
         );
+        // note_props 仍注册在链上（历史迁移不可删除）
+        assert!(VFS_MIGRATIONS
+            .iter()
+            .any(|migration| migration.name == "note_props"));
     }
 
     #[test]

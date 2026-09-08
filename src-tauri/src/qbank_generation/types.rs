@@ -126,45 +126,12 @@ pub struct QbankGenerationResponse {
     pub rejected_count: usize,
     /// 拒绝原因（与被剔除题目对应，供调试展示）
     pub rejection_reasons: Vec<String>,
-}
-
-// ============================================================================
-// SSE 事件负载
-// ============================================================================
-
-/// SSE 事件 - 增量数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QbankGenerationStreamData {
-    #[serde(rename = "type")]
-    pub event_type: String, // "data"
-    pub chunk: String,
-    pub accumulated: String,
-}
-
-/// SSE 事件 - 完成
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QbankGenerationStreamComplete {
-    #[serde(rename = "type")]
-    pub event_type: String, // "complete"
-    pub exam_id: String,
-    pub drafts: Vec<GeneratedQuestionDraft>,
-    pub rejected_count: usize,
-    pub rejection_reasons: Vec<String>,
-}
-
-/// SSE 事件 - 错误
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QbankGenerationStreamError {
-    #[serde(rename = "type")]
-    pub event_type: String, // "error"
-    pub message: String,
-}
-
-/// SSE 事件 - 取消
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QbankGenerationStreamCancelled {
-    #[serde(rename = "type")]
-    pub event_type: String, // "cancelled"
+    /// 被跳过的参考文件（提取失败/超限；前端据此提示用户）
+    #[serde(default)]
+    pub skipped_references: Vec<SkippedReference>,
+    /// 实际注入 prompt 的参考资料数（文本份数 + 图片页数）
+    #[serde(default)]
+    pub used_reference_count: usize,
 }
 
 // ============================================================================
@@ -189,6 +156,10 @@ pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题�
     "smiles_caption": null
   }
 ]
+
+## 字符串转义要求（重要）
+JSON 字符串内部的换行必须使用标准 JSON 转义 \n（一个反斜杠），严禁写成 \\n（两个反斜杠）——
+后者会让题目里出现字面的 "\n" 字符而不是换行。同理制表符用 \t，不要写成 \\t。
 
 ## 各题型的字段约定
 1. single_choice / multiple_choice / indefinite_choice：必须给出 options（2-6 个），answer 为正确选项 key 的拼接（如 "A" 或 "ABD"）
@@ -221,6 +192,11 @@ pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题�
 pub const REFERENCE_TEXT_MAX_CHARS: usize = 30_000;
 /// 参考文件数量上限（file_ids 与 base64 合计）
 pub const REFERENCE_FILES_MAX_COUNT: usize = 3;
+/// 文本层有效性的最小字符数：低于该值视为「未提取到有效文本」，
+/// 触发页面图直读路径（2026-09-09 修复：扫描件此前被静默跳过）
+pub const REFERENCE_TEXT_MIN_CHARS: usize = 100;
+/// 参考资料页面图直读的最大页数（防止多模态 prompt 体积失控）
+pub const REFERENCE_IMAGE_MAX_PAGES: usize = 20;
 
 /// 构造出题用户 Prompt（含题目集上下文与参数）
 pub fn build_generation_user_prompt(
@@ -228,6 +204,7 @@ pub fn build_generation_user_prompt(
     existing_samples: &[String],
     request: &QbankGenerationRequest,
     reference_texts: &[ReferenceText],
+    reference_images: &[ReferenceImage],
 ) -> String {
     let language = request.language.as_deref().unwrap_or("zh-CN");
     let mut prompt = String::new();
@@ -313,6 +290,20 @@ pub fn build_generation_user_prompt(
         }
     }
 
+    if !reference_images.is_empty() {
+        // 页面图作为 image 内容块附在本消息末尾（见 pipeline::build_user_message）
+        prompt.push_str(&format!(
+            "## 参考资料图片\n本消息末尾附有 {} 页参考文件扫描图（依次为：{}）。\
+请阅读这些图片内容，据此出题；题干不得直接抄袭原文成句。\n\n",
+            reference_images.len(),
+            reference_images
+                .iter()
+                .map(|img| format!("《{}》第 {} 页", img.name, img.page))
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
+    }
+
     prompt.push_str(&format!(
         "## 输出语言\n题目使用 {}。现在请生成题目，只输出 JSON 数组。\n",
         language
@@ -327,6 +318,73 @@ pub struct ReferenceText {
     pub name: String,
     /// 提取出的纯文本
     pub text: String,
+    /// 文本来源（文本层提取 / 资源库现成 OCR 结果），供日志与前端展示区分
+    pub source: ReferenceTextSource,
+}
+
+/// 参考文本来源
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceTextSource {
+    /// 文本层提取（pdfium / DocumentParser / 资源库 extracted_text）
+    TextLayer,
+    /// 资源库现成 OCR 结果（复用已处理数据，非本次触发 OCR）
+    LibraryOcr,
+}
+
+/// 页面图内容块（多模态模型直读，无需 OCR）
+///
+/// 2026-09-09 新增：扫描版 PDF / 图片文件在文本层为空时，直接把页面图
+/// 作为 image 内容块送进 LLM（复用对话侧 PDF 注入模式的数据来源）。
+#[derive(Debug, Clone)]
+pub struct ReferenceImage {
+    /// 来源文件名（用于 prompt 中的页面标注）
+    pub name: String,
+    /// 页码（1-based）
+    pub page: usize,
+    /// MIME 类型（image/jpeg 或 image/png）
+    pub media_type: String,
+    /// base64 图片数据
+    pub base64: String,
+}
+
+/// 被跳过的参考文件（提取失败 / 超限）
+///
+/// 2026-09-09 新增：此前提取失败只写后端日志、静默丢弃，用户完全感知不到
+/// 「上传的扫描件没有进 prompt」。现随 complete 事件回传前端提示。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedReference {
+    /// 文件名（取不到元数据时为 file_id）
+    pub name: String,
+    /// 机器可读原因码（前端映射本地化文案）：
+    /// `text_extract_failed` | `file_not_found` | `unsupported_format` |
+    /// `read_failed` | `too_many_files` | `model_not_multimodal`
+    pub reason: String,
+    /// 补充诊断信息（如解析错误摘要），可直接展示
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl SkippedReference {
+    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            reason: reason.into(),
+            detail: None,
+        }
+    }
+
+    pub fn with_detail(
+        name: impl Into<String>,
+        reason: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            reason: reason.into(),
+            detail: Some(detail.into()),
+        }
+    }
 }
 
 // ============================================================================
@@ -504,6 +562,92 @@ pub fn validate_smiles(smiles: &str) -> Result<(), String> {
 
 /// 解析 LLM 完整输出为校验后的草稿列表。
 /// 单题校验失败不整体失败——剔除并记录原因（rejected_count / rejection_reasons）。
+/// 还原模型偶发的「双重转义」文本。
+///
+/// 背景（2026-09-09 实测）：模型在 JSON 字符串里把换行写成 `\\n`（两个反斜杠），
+/// 标准 serde 解析后得到**字面** `\n` 两个字符，题目里因此显示 "\n" 而不是换行。
+///
+/// 保守策略：仅当反斜杠后跟 n/t/r 且**再后面不是字母**时才还原，
+/// 避免误伤 LaTeX 命令（`\nu`、`\neq`、`\nabla` 等 `\` + 字母 的写法）。
+fn normalize_escaped_text(text: &str) -> String {
+    if !text.contains("\\n") && !text.contains("\\t") && !text.contains("\\r") {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() {
+            let next = chars[i + 1];
+            // 只把 ASCII 字母视为 LaTeX 命令（`\nu`/`\neq`）；
+            // 中文/标点紧跟 `\n` 时应正常还原（is_alphabetic 对中文也返回 true，故不用它）
+            let after_is_ascii_alpha = chars
+                .get(i + 2)
+                .map(|c| c.is_ascii_alphabetic())
+                .unwrap_or(false);
+            if !after_is_ascii_alpha {
+                match next {
+                    // \r\n（双重转义的 CRLF）→ 单个换行
+                    'r' if chars.get(i + 2) == Some(&'\\') && chars.get(i + 3) == Some(&'n') => {
+                        out.push('\n');
+                        i += 4;
+                        continue;
+                    }
+                    'r' | 'n' => {
+                        out.push('\n');
+                        i += 2;
+                        continue;
+                    }
+                    't' => {
+                        out.push('\t');
+                        i += 2;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// 对单题的文本字段做双重转义还原；返回是否发生过还原（供日志）
+fn normalize_draft_text(draft: &mut GeneratedQuestionDraft) -> bool {
+    let mut changed = false;
+    let normalized = normalize_escaped_text(&draft.content);
+    if normalized != draft.content {
+        draft.content = normalized;
+        changed = true;
+    }
+    if let Some(explanation) = draft.explanation.as_mut() {
+        let normalized = normalize_escaped_text(explanation);
+        if &normalized != explanation {
+            *explanation = normalized;
+            changed = true;
+        }
+    }
+    if let Some(answer) = draft.answer.as_mut() {
+        let normalized = normalize_escaped_text(answer);
+        if &normalized != answer {
+            *answer = normalized;
+            changed = true;
+        }
+    }
+    if let Some(options) = draft.options.as_mut() {
+        for option in options.iter_mut() {
+            let normalized = normalize_escaped_text(&option.content);
+            if normalized != option.content {
+                option.content = normalized;
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// 解析并校验模型输出，得到可预览的草稿列表。
 pub fn parse_generation_output(
     raw: &str,
     max_questions: u32,
@@ -528,10 +672,21 @@ pub fn parse_generation_output(
             break;
         }
         match serde_json::from_value::<GeneratedQuestionDraft>(item) {
-            Ok(draft) => match validate_draft(&draft) {
-                Ok(()) => drafts.push(draft),
-                Err(reason) => reasons.push(format!("第 {} 题被剔除：{}", index + 1, reason)),
-            },
+            Ok(mut draft) => {
+                // 2026-09-09：还原模型偶发的双重转义（字面 "\n" → 真换行）
+                if normalize_draft_text(&mut draft) {
+                    log::info!(
+                        "[QbankGeneration] 第 {} 题检测到双重转义文本，已还原为真实换行",
+                        index + 1
+                    );
+                }
+                match validate_draft(&draft) {
+                    Ok(()) => drafts.push(draft),
+                    Err(reason) => {
+                        reasons.push(format!("第 {} 题被剔除：{}", index + 1, reason))
+                    }
+                }
+            }
             Err(e) => reasons.push(format!("第 {} 题结构不符合契约：{}", index + 1, e)),
         }
     }
@@ -541,6 +696,9 @@ pub fn parse_generation_output(
         rejected_count: reasons.len(),
         rejection_reasons: reasons,
         drafts,
+        // 参考资料统计由 run_qbank_generation 填充
+        skipped_references: Vec::new(),
+        used_reference_count: 0,
     })
 }
 
@@ -732,7 +890,7 @@ mod tests {
             reference_files_base64: vec![],
             knowledge_points: vec![],
         };
-        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &[]);
+        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &[], &[]);
         assert!(prompt.contains("「测试题目集」"));
         assert!(prompt.contains("single_choice: 3 题"));
         assert!(prompt.contains("二次函数"));
@@ -762,8 +920,9 @@ mod tests {
         let references = vec![ReferenceText {
             name: "课本第2章.pdf".to_string(),
             text: "二次函数的图像是抛物线。".to_string(),
+            source: ReferenceTextSource::TextLayer,
         }];
-        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &references);
+        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &references, &[]);
         assert!(prompt.contains("## 知识点范围（围绕这些知识点出题）"));
         assert!(prompt.contains("- 二次函数"));
         // 空白知识点被过滤
@@ -793,10 +952,82 @@ mod tests {
         let references = vec![ReferenceText {
             name: "big.txt".to_string(),
             text: long_text,
+            source: ReferenceTextSource::TextLayer,
         }];
-        let prompt = build_generation_user_prompt("测试", &[], &request, &references);
+        let prompt = build_generation_user_prompt("测试", &[], &request, &references, &[]);
         assert!(prompt.contains("（原文过长，已截断）"));
         // 截断后总长度应有界
         assert!(prompt.len() < REFERENCE_TEXT_MAX_CHARS + 2000);
+    }
+
+    #[test]
+    fn build_generation_user_prompt_includes_reference_images_section() {
+        let request = QbankGenerationRequest {
+            exam_id: "exam_1".to_string(),
+            stream_session_id: "sess".to_string(),
+            model_config_id: None,
+            max_questions: 5,
+            specs: vec![],
+            difficulty: None,
+            topic_hint: None,
+            based_on_existing: false,
+            language: Some("zh-CN".to_string()),
+            reference_file_ids: vec![],
+            reference_files_base64: vec![],
+            knowledge_points: vec![],
+        };
+        let images = vec![
+            ReferenceImage {
+                name: "单词表.pdf".to_string(),
+                page: 1,
+                media_type: "image/jpeg".to_string(),
+                base64: "AAAA".to_string(),
+            },
+            ReferenceImage {
+                name: "单词表.pdf".to_string(),
+                page: 2,
+                media_type: "image/jpeg".to_string(),
+                base64: "BBBB".to_string(),
+            },
+        ];
+        let prompt = build_generation_user_prompt("测试", &[], &request, &[], &images);
+        assert!(prompt.contains("## 参考资料图片"));
+        assert!(prompt.contains("2 页"));
+        assert!(prompt.contains("《单词表.pdf》第 1 页"));
+        assert!(prompt.contains("《单词表.pdf》第 2 页"));
+    }
+
+    #[test]
+    fn normalize_escaped_text_restores_literal_newlines() {
+        assert_eq!(
+            normalize_escaped_text("Read the sentence:\\n\\n> quote"),
+            "Read the sentence:\n\n> quote"
+        );
+        // 后跟非 ASCII 字母（空格/数字/中文）时正常还原
+        assert_eq!(normalize_escaped_text("a\\t b"), "a\t b");
+        assert_eq!(normalize_escaped_text("第一行\\n第二行"), "第一行\n第二行");
+        assert_eq!(normalize_escaped_text("a\\r\\nb"), "a\nb");
+    }
+
+    #[test]
+    fn normalize_escaped_text_keeps_latex_commands() {
+        // \nu / \neq / \nabla 等 LaTeX 命令（\ + ASCII 字母）不能被当成换行转义还原
+        assert_eq!(normalize_escaped_text("$\\nu$"), "$\\nu$");
+        assert_eq!(normalize_escaped_text("$a \\neq b$"), "$a \\neq b$");
+        assert_eq!(normalize_escaped_text("$\\nabla f$"), "$\\nabla f$");
+        assert_eq!(normalize_escaped_text("$\\textbf{x}$"), "$\\textbf{x}$");
+    }
+
+    #[test]
+    fn parse_generation_output_restores_double_escaped_fields() {
+        // 模拟模型双重转义：JSON 文本里的 \\n 经 serde 解析后变成字面 "\n"
+        let raw = r#"[{"question_type":"single_choice","content":"第一行\\n\\n第二行","options":[{"key":"A","content":"选项\\n说明"},{"key":"B","content":"普通"}],"answer":"A","explanation":"解析\\n结束","difficulty":"medium","tags":["t"]}]"#;
+        let response = parse_generation_output(raw, 5).expect("parse");
+        assert_eq!(response.drafts.len(), 1);
+        let draft = &response.drafts[0];
+        assert_eq!(draft.content, "第一行\n\n第二行");
+        assert_eq!(draft.explanation.as_deref(), Some("解析\n结束"));
+        assert_eq!(draft.options.as_ref().unwrap()[0].content, "选项\n说明");
+        assert_eq!(draft.options.as_ref().unwrap()[1].content, "普通");
     }
 }

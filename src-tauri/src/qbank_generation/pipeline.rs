@@ -10,17 +10,16 @@ use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::document_parser::DocumentParser;
 use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsExamRepo;
 
-use super::events::QbankGenerationEmitter;
+use super::reference::collect_references;
 use super::types::{
     build_generation_user_prompt, parse_generation_output, QbankGenerationRequest,
-    QbankGenerationResponse, ReferenceText, GENERATION_SYSTEM_PROMPT, REFERENCE_FILES_MAX_COUNT,
+    QbankGenerationResponse, ReferenceImage, GENERATION_SYSTEM_PROMPT,
 };
 
 /// 建连/响应头超时：send() 在收到响应头后即完成，不限制流式 body 时长
@@ -39,126 +38,105 @@ enum StreamStatus {
 pub struct QbankGenerationDeps {
     pub llm: Arc<LLMManager>,
     pub vfs_db: Arc<VfsDatabase>,
-    pub emitter: QbankGenerationEmitter,
 }
 
-/// 运行 AI 出题管线
+/// 运行 AI 出题管线（纯任务执行器，不发任何前端事件）
+///
+/// 2026-09-09 后台化：事件出口收敛到调用方（命令层发全局任务事件、工具层返回结果），
+/// 管线只负责「跑完并返回结果」。
+///
+/// 返回：
+/// - `Ok(Some(response))`：正常完成
+/// - `Ok(None)`：被取消（上层据此把任务标记为 cancelled）
+/// - `Err(e)`：失败（上层据此把任务标记为 failed）
 pub async fn run_qbank_generation(
     request: QbankGenerationRequest,
     deps: QbankGenerationDeps,
 ) -> Result<Option<QbankGenerationResponse>, AppError> {
-    // 错误传播完整性：任何前置失败都要同时发 error 事件，
-    // 保证只监听流事件（不 await invoke 结果）的前端也能拿到可读错误。
-    let emit_and_return = |err: AppError| -> AppError {
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        err
-    };
-
     // 1. 题目集元信息 + 现有题目样本（变式参考）
     let (exam_name, existing_samples) = collect_exam_context(&deps.vfs_db, &request.exam_id)
-        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
-    // 1.5 收集参考资料文本（资源库 file_id 直读 + 前端临时上传 base64）
-    let reference_texts = collect_reference_texts(&deps.vfs_db, &request)
-        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
+    // 2. 获取模型配置（提前：参考资料收集需要知道模型是否支持视觉）
+    let config = resolve_generation_config(&deps.llm, request.model_config_id.as_ref()).await?;
+    let api_key = deps.llm.decrypt_api_key(&config.api_key)?;
 
-    // 2. 构造 Prompt
-    let system_prompt = GENERATION_SYSTEM_PROMPT.to_string();
-    let user_prompt =
-        build_generation_user_prompt(&exam_name, &existing_samples, &request, &reference_texts);
-
-    // 3. 获取模型配置
-    let config = resolve_generation_config(&deps.llm, request.model_config_id.as_ref())
+    // 3. 收集参考资料（注入模式解析：sha256 查重 / 文本层 / 多模态页面图）
+    let references = collect_references(&deps.vfs_db, &request, config.is_multimodal)
         .await
-        .map_err(&emit_and_return)?;
-    let api_key = deps
-        .llm
-        .decrypt_api_key(&config.api_key)
-        .map_err(&emit_and_return)?;
+        .map_err(|e| AppError::database(e.to_string()))?;
 
-    // 4. 流式调用 LLM
+    // 4. 构造 Prompt
+    let system_prompt = GENERATION_SYSTEM_PROMPT.to_string();
+    let user_prompt = build_generation_user_prompt(
+        &exam_name,
+        &existing_samples,
+        &request,
+        &references.texts,
+        &references.images,
+    );
+
+    // 5. 流式调用 LLM
     let mut accumulated = String::new();
     let stream_event = format!("qbank_generation_stream_{}", request.stream_session_id);
 
-    let stream_status = match stream_generate(
+    let stream_status = stream_generate(
         &config,
         &api_key,
         &system_prompt,
         &user_prompt,
+        &references.images,
         &stream_event,
         deps.llm.clone(),
         |chunk| {
             accumulated.push_str(&chunk);
-            deps.emitter
-                .emit_data(&request.stream_session_id, chunk, accumulated.clone());
         },
     )
-    .await
-    {
-        Ok(status) => status,
-        Err(e) => {
-            deps.emitter
-                .emit_error(&request.stream_session_id, e.message.clone());
-            return Err(e);
-        }
-    };
+    .await?;
 
     if matches!(stream_status, StreamStatus::Cancelled) {
-        deps.emitter.emit_cancelled(&request.stream_session_id);
+        log::info!("[QbankGeneration] 出题被取消：exam={}", request.exam_id);
         return Ok(None);
     }
 
     if matches!(stream_status, StreamStatus::Incomplete) && accumulated.trim().is_empty() {
-        let err = AppError::llm(
+        return Err(AppError::llm(
             "AI 出题流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
-        );
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+        ));
     }
 
     // S-014: 二次检查取消状态
     if deps.llm.consume_pending_cancel(&stream_event).await {
         log::info!("[QbankGeneration] 流完成后发现已取消，丢弃结果");
-        deps.emitter.emit_cancelled(&request.stream_session_id);
         return Ok(None);
     }
 
     // 5. 解析 JSON 数组 + 逐题校验（单题失败剔除并记录，不整体失败）
-    let mut response =
-        parse_generation_output(&accumulated, request.max_questions).map_err(|e| {
-            let err = AppError::llm(format!("AI 出题结果解析失败：{}", e));
-            deps.emitter
-                .emit_error(&request.stream_session_id, err.message.clone());
-            err
-        })?;
+    let mut response = parse_generation_output(&accumulated, request.max_questions)
+        .map_err(|e| AppError::llm(format!("AI 出题结果解析失败：{}", e)))?;
     if response.drafts.is_empty() {
-        let err = AppError::llm("AI 生成的题目全部未通过校验，请调整要求后重试。".to_string());
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+        return Err(AppError::llm(
+            "AI 生成的题目全部未通过校验，请调整要求后重试。".to_string(),
+        ));
     }
     response.exam_id = request.exam_id.clone();
 
-    // 6. 发送完成事件（不落库，前端预览确认后自行调 qbank_batch_create_questions）
-    deps.emitter.emit_complete(
-        &request.stream_session_id,
-        response.exam_id.clone(),
-        response.drafts.clone(),
-        response.rejected_count,
-        response.rejection_reasons.clone(),
-    );
-
+    // 6. 返回结果（事件与落库由调用方处理：命令层写任务表 + 发全局任务事件）
     log::info!(
-        "[QbankGeneration] 出题完成：exam={}, drafts={}, rejected={}",
+        "[QbankGeneration] 出题完成：exam={}, drafts={}, rejected={}, used_references={}, skipped_references={}",
         response.exam_id,
         response.drafts.len(),
-        response.rejected_count
+        response.rejected_count,
+        references.used_count(),
+        references.skipped.len()
     );
 
+    response.skipped_references = references.skipped.clone();
+    response.used_reference_count = references.used_count();
     Ok(Some(response))
 }
+
+type VfsResult<T> = Result<T, crate::vfs::VfsError>;
 
 /// 题目集名称 + 现有题目样本（based_on_existing 时给 prompt 出变式参考）
 fn collect_exam_context(vfs_db: &VfsDatabase, exam_id: &str) -> VfsResult<(String, Vec<String>)> {
@@ -185,143 +163,73 @@ fn collect_exam_context(vfs_db: &VfsDatabase, exam_id: &str) -> VfsResult<(Strin
     Ok((exam_name, samples))
 }
 
-type VfsResult<T> = Result<T, crate::vfs::VfsError>;
-
-/// 把一份提取结果并入收集列表；空/提取失败记日志并跳过
-fn push_reference_text(
-    texts: &mut Vec<ReferenceText>,
-    skipped: &mut Vec<String>,
-    name: String,
-    text: Option<String>,
-) {
-    match text {
-        Some(t) if !t.trim().is_empty() => {
-            texts.push(ReferenceText { name, text: t });
-        }
-        _ => {
-            log::warn!("[QbankGeneration] 参考文件 {} 未提取到文本，已跳过", name);
-            skipped.push(name);
-        }
-    }
-}
-
-/// 收集参考资料文本。
-///
-/// - `reference_file_ids`：资源库文件。先用 `VfsFileRepo::get_file` 拿元数据，
-///   再走 `extract_file_text_with_strategy`（OCR / extracted_text / DocumentParser
-///   实时解析三者取优）——与对话附件送入模型的文本同源。base64_content 传 None：
-///   extracted_text 过短时函数内部无法实时解析，直接接受现有文本。
-/// - `reference_files_base64`：前端临时上传，直接 DocumentParser 提取。
-///
-/// 文件数上限 REFERENCE_FILES_MAX_COUNT（超出按顺序丢弃并记日志）；
-/// 单份文本截断在 build_generation_user_prompt 内做（REFERENCE_TEXT_MAX_CHARS）。
-fn collect_reference_texts(
-    vfs_db: &VfsDatabase,
-    request: &QbankGenerationRequest,
-) -> VfsResult<Vec<ReferenceText>> {
-    use crate::vfs::repos::VfsFileRepo;
-
-    let mut texts: Vec<ReferenceText> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
-
-    let total_requested = request.reference_file_ids.len() + request.reference_files_base64.len();
-    if total_requested > REFERENCE_FILES_MAX_COUNT {
-        log::warn!(
-            "[QbankGeneration] 参考文件数 {} 超上限 {}，多余的将忽略",
-            total_requested,
-            REFERENCE_FILES_MAX_COUNT
-        );
-    }
-
-    let conn = vfs_db.get_conn_safe()?;
-    for file_id in request.reference_file_ids.iter() {
-        if texts.len() >= REFERENCE_FILES_MAX_COUNT {
-            break;
-        }
-        let file = match VfsFileRepo::get_file_with_conn(&conn, file_id)? {
-            Some(f) => f,
-            None => {
-                log::warn!("[QbankGeneration] 参考文件不存在: {}", file_id);
-                skipped.push(file_id.clone());
-                continue;
-            }
-        };
-        let name = file.file_name.clone();
-        let text =
-            crate::vfs::ref_handlers::extract_file_text_with_strategy(&conn, file_id, &name, None);
-        push_reference_text(&mut texts, &mut skipped, name, text);
-    }
-
-    for upload in request.reference_files_base64.iter() {
-        if texts.len() >= REFERENCE_FILES_MAX_COUNT {
-            break;
-        }
-        let parser = DocumentParser::new();
-        let text = parser
-            .extract_text_from_base64(&upload.name, &upload.base64)
-            .ok();
-        push_reference_text(&mut texts, &mut skipped, upload.name.clone(), text);
-    }
-
-    if !skipped.is_empty() {
-        log::info!(
-            "[QbankGeneration] 参考文件收集中跳过 {} 份: {:?}",
-            skipped.len(),
-            skipped
-        );
-    }
-    log::info!(
-        "[QbankGeneration] 参考资料收集完成：{} 份，总字符数 {}",
-        texts.len(),
-        texts.iter().map(|r| r.text.chars().count()).sum::<usize>()
-    );
-    Ok(texts)
-}
-
 /// 解析出题使用的模型配置
 ///
-/// 优先级：请求显式指定 > 模型分配表中的 qbank_ai_grading 槽 > Model2 默认配置。
-/// （与 qbank_grading::resolve_grading_config 同构；出题 MVP 复用批改模型槽，
-/// 避免新增 ModelAssignments 字段与 UI 的长期成本，见可行文档 §三-4）
+/// 优先级（2026-09-09 新增出题专用槽位）：
+/// 请求显式指定 > `qbank_ai_generation_model_config_id` 出题槽
+/// > `qbank_ai_grading_model_config_id` 批改槽 > Model2 默认配置。
 async fn resolve_generation_config(
     llm: &LLMManager,
     model_config_id: Option<&String>,
 ) -> Result<ApiConfig, AppError> {
     if let Some(model_id) = model_config_id {
-        let configs = llm.get_api_configs().await?;
-        let found = configs
-            .into_iter()
-            .find(|c| c.id == *model_id)
-            .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
-        if !found.enabled {
-            return Err(AppError::llm(format!("模型配置已禁用: {}", model_id)));
-        }
-        if found.is_embedding || found.is_reranker {
-            return Err(AppError::llm(format!(
-                "嵌入/重排序模型不支持 AI 出题: {}",
-                model_id
-            )));
-        }
-        return Ok(found);
+        log::info!("[QbankGeneration] 使用请求显式指定的模型: {}", model_id);
+        return resolve_generation_config_by_id(llm, model_id).await;
     }
 
     let assignments = llm.get_model_assignments().await?;
-    if let Some(model_id) = assignments.qbank_ai_grading_model_config_id {
-        let configs = llm.get_api_configs().await?;
-        let found = configs
-            .into_iter()
-            .find(|c| c.id == model_id)
-            .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
-        if found.is_embedding || found.is_reranker {
-            return Err(AppError::llm(format!(
-                "嵌入/重排序模型不支持 AI 出题: {}",
-                model_id
-            )));
-        }
-        Ok(found)
-    } else {
-        llm.get_model2_config().await
+    if let Some(model_id) = assignments.qbank_ai_generation_model_config_id.as_deref() {
+        log::info!("[QbankGeneration] 使用出题专用模型槽位: {}", model_id);
+        return resolve_generation_config_by_id(llm, model_id).await;
     }
+    if let Some(model_id) = assignments.qbank_ai_grading_model_config_id.as_deref() {
+        log::info!(
+            "[QbankGeneration] 出题槽位未设置，回退批改槽位: {}",
+            model_id
+        );
+        return resolve_generation_config_by_id(llm, model_id).await;
+    }
+    log::info!("[QbankGeneration] 出题/批改槽位均未设置，回退 Model2 默认配置");
+    llm.get_model2_config().await
+}
+
+/// 按配置 ID 解析并校验（存在 / 启用 / 非嵌入非重排序）
+async fn resolve_generation_config_by_id(
+    llm: &LLMManager,
+    model_id: &str,
+) -> Result<ApiConfig, AppError> {
+    let configs = llm.get_api_configs().await?;
+    let found = configs
+        .into_iter()
+        .find(|c| c.id == model_id)
+        .ok_or_else(|| AppError::llm(format!("未找到模型配置: {}", model_id)))?;
+    if !found.enabled {
+        return Err(AppError::llm(format!("模型配置已禁用: {}", model_id)));
+    }
+    if found.is_embedding || found.is_reranker {
+        return Err(AppError::llm(format!(
+            "嵌入/重排序模型不支持 AI 出题: {}",
+            model_id
+        )));
+    }
+    Ok(found)
+}
+
+/// 构造 user 消息：无图片时纯文本；有页面图参考资料时用多模态 content 数组
+/// （格式与对话侧 model2_pipeline 一致，`sanitize_openai_request_body` 只清理 tools，
+/// messages 数组原样透传）
+fn build_user_message(user_prompt: &str, images: &[ReferenceImage]) -> serde_json::Value {
+    if images.is_empty() {
+        return json!({ "role": "user", "content": user_prompt });
+    }
+    let mut content = vec![json!({ "type": "text", "text": user_prompt })];
+    for image in images {
+        content.push(json!({
+            "type": "image_url",
+            "image_url": { "url": format!("data:{};base64,{}", image.media_type, image.base64) }
+        }));
+    }
+    json!({ "role": "user", "content": content })
 }
 
 /// 流式调用 LLM（骨架与 qbank_grading::stream_grade 一致；独立成模块私有实现，
@@ -331,6 +239,7 @@ async fn stream_generate<F>(
     api_key: &str,
     system_prompt: &str,
     user_prompt: &str,
+    images: &[ReferenceImage],
     stream_event: &str,
     llm: Arc<LLMManager>,
     mut on_chunk: F,
@@ -341,7 +250,7 @@ where
     let result = async {
         let messages = vec![
             json!({ "role": "system", "content": system_prompt }),
-            json!({ "role": "user", "content": user_prompt }),
+            build_user_message(user_prompt, images),
         ];
 
         let mut request_body = json!({

@@ -651,7 +651,28 @@
     "knowledgePointsLabel": "知识点（可选）",
     "knowledgePointsEmpty": "暂无可选知识点，可手动输入",
     "knowledgePointInputPlaceholder": "输入知识点后回车添加",
-    "referenceCollecting": "正在读取文件…"
+    "referenceCollecting": "正在读取文件…",
+    "taskSubmitted": "任务已提交，将在后台生成；可以关闭本面板，完成后会通知你",
+    "taskCompleted": "AI 出题完成：{{count}} 道题待确认",
+    "taskFailed": "AI 出题失败：{{error}}",
+    "backgroundHint": "出题在后台进行，关闭面板或切换页面都不会中断；完成后会通知你",
+    "closeKeepRunning": "关闭并后台运行",
+    "skippedReferences": "{{count}} 份参考资料未能送入模型：",
+    "usedReferences": "已使用 {{count}} 项参考资料",
+    "modelLabel": "出题模型（可选）",
+    "modelFollowSettings": "跟随设置",
+    "modelHint": "留空则使用「设置 → 模型分配 → AI 出题模型」中配置的模型",
+    "skipReason": {
+      "text_extract_failed": "未提取到文本，且没有可用的页面图",
+      "file_not_found": "文件不存在",
+      "unsupported_format": "不支持的文件格式",
+      "read_failed": "文件读取失败",
+      "too_many_files": "超出参考文件数量上限",
+      "model_not_multimodal": "该文件是扫描件（无文本层），当前出题模型不支持读图"
+    },
+    "blockTitle": "AI 出题结果（{{count}} 道待确认）",
+    "blockCancelled": "本次 AI 出题已取消",
+    "blockImported": "已入库 {{count}} 题"
   },
   "editor": {
     "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",

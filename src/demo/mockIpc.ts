@@ -117,6 +117,7 @@ export function installDemoIpcMocks(): void {
             model2_config_id: 'demo-config-deepseek',
             anki_card_model_config_id: null,
             qbank_ai_grading_model_config_id: null,
+            qbank_ai_generation_model_config_id: null,
             embedding_model_config_id: null,
             reranker_model_config_id: null,
             chat_title_model_config_id: null,

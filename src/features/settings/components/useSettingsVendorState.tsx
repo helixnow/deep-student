@@ -1072,6 +1072,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       model2_config_id: mapping[t('settings:mapping_keys.model2_configured')] || null,
       anki_card_model_config_id: mapping[t('settings:mapping_keys.anki_configured')] || null,
       qbank_ai_grading_model_config_id: mapping[t('settings:mapping_keys.qbank_ai_grading_configured')] || null,
+      qbank_ai_generation_model_config_id:
+        mapping[t('settings:mapping_keys.qbank_ai_generation_configured')] || null,
       // 嵌入模型通过维度管理设置，不在此处分配
       embedding_model_config_id: null,
       reranker_model_config_id: mapping[t('settings:mapping_keys.reranker_configured')] || null,

@@ -1156,6 +1156,9 @@ pub struct ModelAssignments {
     pub review_analysis_model_config_id: Option<String>, // 回顾分析模型配置ID
     pub anki_card_model_config_id: Option<String>,       // Anki制卡模型配置ID
     pub qbank_ai_grading_model_config_id: Option<String>, // 题库AI批改/解析模型配置ID
+    /// 🆕 题库 AI 出题专用模型（2026-09-09 独立槽位）：
+    /// 未设置时回退 qbank_ai_grading 槽 → Model2，保证旧配置行为不变
+    pub qbank_ai_generation_model_config_id: Option<String>,
     pub embedding_model_config_id: Option<String>,       // 新增: 第五模型（嵌入模型）配置ID
     pub reranker_model_config_id: Option<String>,        // 新增: 第六模型（重排序模型）配置ID
     pub chat_title_model_config_id: Option<String>,      // 新增：常规聊天标题生成模型配置ID

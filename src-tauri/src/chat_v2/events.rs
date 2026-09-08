@@ -68,6 +68,8 @@ pub mod event_types {
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
     pub const ANKI_CARDS: &str = "anki_cards";
+    /// 🆕 AI 出题预览块（2026-09-09 D2）
+    pub const QBANK_QUESTIONS: &str = "qbank_questions";
     /// 结构化 UI 意图（Generative UI）
     pub const GENERATIVE_UI: &str = "generative_ui";
 
