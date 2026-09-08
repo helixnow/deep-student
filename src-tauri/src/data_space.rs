@@ -2167,9 +2167,9 @@ pub async fn get_startup_recovery_status(
             crate::startup_gate::STARTUP_READY_WAIT.as_secs()
         )));
     }
-    let state = app.try_state::<StartupRecoveryState>().ok_or_else(|| {
-        AppError::internal("启动恢复状态未注册（setup 异常退出）".to_string())
-    })?;
+    let state = app
+        .try_state::<StartupRecoveryState>()
+        .ok_or_else(|| AppError::internal("启动恢复状态未注册（setup 异常退出）".to_string()))?;
     state
         .status()
         .map_err(|error| AppError::internal(format!("读取启动恢复状态失败: {error}")))

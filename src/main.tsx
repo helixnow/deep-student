@@ -399,8 +399,14 @@ const recoveryTree = (
 // 超时只是「IPC 彻底无响应」的兜底，取值 = 后端闸门 120s + 15s 余量。
 // 注意：Tauri 先创建窗口再跑 setup 闭包，慢设备上 setup 数十秒属正常，
 // 此前 15s 硬超时会把「启动慢」误报成「预检失败」的 blocked 屏。
+//
+// Android 冷启动竞态补充：早期发出的 invoke 可能在 WebView JS↔原生消息桥
+// 就绪前丢失（后端从未收到、Promise 永不 settle），单次 135s 死等会把竞态
+// 变成死局（现场复现：三次启动 2 次 blocked）。改为短超时轮询重试：每次尝试
+// 独立限时，消息桥就绪后的重发必然到达后端；总窗口不变，全失败才进恢复壳。
 const BACKEND_STARTUP_GATE_MS = 120_000;
 const STARTUP_PREFLIGHT_TIMEOUT_MS = BACKEND_STARTUP_GATE_MS + 15_000;
+const PREFLIGHT_ATTEMPT_TIMEOUT_MS = 10_000;
 const MAINTENANCE_STATUS_TIMEOUT_MS = 30_000;
 
 const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -420,12 +426,25 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: st
   }
 };
 
-const getStartupRecoveryStatusWithTimeout = () =>
-  withTimeout(
-    getStartupRecoveryStatus(),
-    STARTUP_PREFLIGHT_TIMEOUT_MS,
-    'Startup recovery preflight',
+const getStartupRecoveryStatusWithTimeout = async () => {
+  const startedAt = Date.now();
+  let attempt = 0;
+  while (Date.now() - startedAt + PREFLIGHT_ATTEMPT_TIMEOUT_MS <= STARTUP_PREFLIGHT_TIMEOUT_MS) {
+    attempt += 1;
+    try {
+      return await withTimeout(
+        getStartupRecoveryStatus(),
+        PREFLIGHT_ATTEMPT_TIMEOUT_MS,
+        `Startup recovery preflight attempt ${attempt}`,
+      );
+    } catch (error) {
+      console.warn(`[main] Startup preflight attempt ${attempt} failed, retrying`, error);
+    }
+  }
+  throw new Error(
+    `Startup recovery preflight timed out after ${Math.round((Date.now() - startedAt) / 1000)} seconds (${attempt} attempts)`,
   );
+};
 
 // F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
 // 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。

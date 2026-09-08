@@ -300,7 +300,8 @@ pub(super) fn build_static_fallback_summary(
     } else {
         identifiers.join("、")
     };
-    let degraded_note = "（本节为静态降级摘要：LLM 摘要调用失败，以下内容由本地确定性提取生成，可能不完整）";
+    let degraded_note =
+        "（本节为静态降级摘要：LLM 摘要调用失败，以下内容由本地确定性提取生成，可能不完整）";
 
     // 4. 按模板档案填充全部必需标题
     let is_learning = profile
@@ -825,9 +826,21 @@ fn main() { /* 3000 lines */ }
 ";
         let summary =
             build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, chunk, 4_000, None);
-        assert!(summary.contains("第一个诉求：分析滚动吸底实现"), "{}", summary);
-        assert!(summary.contains("最后一个诉求：改成 transform 分页"), "{}", summary);
-        assert!(summary.contains("git_log"), "工具统计应包含 git_log：{}", summary);
+        assert!(
+            summary.contains("第一个诉求：分析滚动吸底实现"),
+            "{}",
+            summary
+        );
+        assert!(
+            summary.contains("最后一个诉求：改成 transform 分页"),
+            "{}",
+            summary
+        );
+        assert!(
+            summary.contains("git_log"),
+            "工具统计应包含 git_log：{}",
+            summary
+        );
         assert!(
             summary.contains("静态降级摘要"),
             "必须明确标注降级来源：{}",
@@ -849,8 +862,7 @@ fn main() { /* 3000 lines */ }
     #[test]
     fn static_fallback_summary_respects_hard_cap() {
         let huge = format!("[#0 USER]\n{}\n", "汉".repeat(50_000));
-        let summary =
-            build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, &huge, 512, None);
+        let summary = build_static_fallback_summary(&GENERIC_COMPACTION_PROFILE, &huge, 512, None);
         let tokens = crate::utils::token_budget::estimate_tokens_with_model(&summary, None);
         assert!(tokens <= 512, "输出必须受 hard_cap 约束：{} tokens", tokens);
     }
