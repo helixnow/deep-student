@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -49,6 +49,7 @@ import { registerContentDirtyChecker } from '@/features/workbench/apps/content/c
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
 const QuestionBankListView = lazy(() => import('@/components/QuestionBankListView'));
+const AiQuestionGenerationPanel = lazy(() => import('@/components/AiQuestionGenerationPanel'));
 const QuestionBankManageView = lazy(() => import('@/components/QuestionBankManageView'));
 const QuestionBankStatsView = lazy(() => import('@/components/QuestionBankStatsView'));
 const QuestionFavoritesView = lazy(() => import('@/components/QuestionFavoritesView'));
@@ -388,6 +389,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
   // 从「添加题目」菜单请求列表视图打开内联创建编辑器的信号（递增触发）
   const [listCreateRequestKey, setListCreateRequestKey] = useState(0);
+  // AI 出题面板开关（MVP：ai-question-generation-feasibility-2026-09-07.md）
+  const [showAiGenerationPanel, setShowAiGenerationPanel] = useState(false);
   const [draftState, setDraftState] = useState({ examId: sessionId, dirty: false });
   const [pendingDraftNavigation, setPendingDraftNavigation] = useState<PendingDraftNavigation | null>(null);
   const activeDraftExamIdRef = useRef(sessionId);
@@ -1122,6 +1125,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, []);
 
+  // AI 出题知识点候选：现有题目 tags 去重（C2）
+  const availableTagsForAiGeneration = useMemo(() => {
+    const tags = new Set<string>();
+    questions.forEach((question) => {
+      question.tags?.forEach((tag) => {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      });
+    });
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [questions]);
+
   const manageQuestions = useMemo(() => {
     const normalizedSearch = manageFilters.search?.trim().toLowerCase();
     return questions.filter((question) => {
@@ -1846,6 +1861,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     switchViewMode('list');
   }, [switchViewMode]);
 
+  // 「添加题目」菜单：AI 出题（生成预览 → 确认入库）
+  const handleOpenAiGeneration = useCallback(() => {
+    setShowAiGenerationPanel(true);
+  }, []);
+
   // 「添加题目」菜单：手动新建 → 切到题库列表并请求打开内联创建编辑器
   const handleCreateQuestionEntry = useCallback(() => {
     requestViewMode('list', () => setListCreateRequestKey((key) => key + 1));
@@ -2326,6 +2346,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   >
                     {t('exam_sheet:questionBank.create.title')}
                   </AppMenuItem>
+                  <AppMenuItem
+                    onClick={handleOpenAiGeneration}
+                    icon={<Sparkle size={16} />}
+                  >
+                    {t('exam_sheet:aiGeneration.title')}
+                  </AppMenuItem>
                   <AppMenuSeparator />
                   <AppMenuItem
                     onClick={handleOpenUploadEntry}
@@ -2529,6 +2555,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
               onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
               onCsvImport={readOnly ? undefined : handleOpenCsvImport}
+              onAiGenerate={readOnly ? undefined : handleOpenAiGeneration}
               createRequestKey={listCreateRequestKey}
               onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
               onDraftNavigationRequested={(index) => {
@@ -2539,6 +2566,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           </div>
         </Suspense>
       </div>
+
+      {/* AI 出题面板（MVP：生成预览 → 确认入库 source_type=ai_generated） */}
+      {showAiGenerationPanel && (
+        <Suspense fallback={null}>
+          <AiQuestionGenerationPanel
+            open={showAiGenerationPanel}
+            onOpenChange={setShowAiGenerationPanel}
+            examId={sessionId}
+            examName={sessionDetail?.summary?.exam_name || node.name}
+            onImportComplete={handleListChanged}
+            availableTags={availableTagsForAiGeneration}
+          />
+        </Suspense>
+      )}
 
       {/* 导出 / 历史：全端统一走组件自带的内联子屏形态（absolute inset-0） */}
       <Suspense fallback={null}>

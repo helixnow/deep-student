@@ -31,6 +31,23 @@ use crate::vfs::repos::{
 
 static QBANK_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// 发全局出题任务事件（无 app handle 时静默跳过，如无窗口集成测试）
+fn emit_task_event_if_possible(
+    app: &Option<tauri::AppHandle>,
+    vfs_db: &crate::vfs::database::VfsDatabase,
+    task_id: &str,
+) {
+    let Some(app) = app else { return };
+    match crate::qbank_generation::task_repo::get_task(vfs_db, task_id) {
+        Ok(Some(record)) => crate::qbank_generation::events::emit_task_event(
+            app,
+            &crate::qbank_generation::task_repo::GenerationTaskView::from(record),
+        ),
+        Ok(None) => log::warn!("[QBankExecutor] 任务不存在，无法发事件: {}", task_id),
+        Err(e) => log::warn!("[QBankExecutor] 读取任务失败: id={}, {}", task_id, e),
+    }
+}
+
 fn qbank_error(code: &str, message: impl Into<String>, hint: &str) -> String {
     let message = message.into();
     with_localized_message(
@@ -4332,6 +4349,211 @@ impl QBankExecutor {
         ))
     }
 
+    /// 2026-09-09（D1）：对话内 AI 出题 —— 复用 qbank_generation 后台任务管线。
+    ///
+    /// `background=false`（默认）：同步跑完并返回草稿，模型随后用 `qbank_batch_import` 入库；
+    /// `background=true`：立即返回 task_id，任务在后台执行，完成后发全局事件通知（D3）。
+    async fn execute_generate_questions(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        use crate::qbank_generation::pipeline::{run_qbank_generation, QbankGenerationDeps};
+        use crate::qbank_generation::task_repo;
+        use crate::qbank_generation::types::{QbankGenerationRequest, QuestionGenerationSpec};
+
+        let exam_id = required_non_empty_string(&call.arguments, "exam_id")?;
+        let llm = ctx
+            .llm_manager
+            .as_ref()
+            .ok_or("LLM Manager not available")?
+            .clone();
+        let vfs_db = ctx
+            .vfs_db
+            .as_ref()
+            .ok_or("VFS database not available")?
+            .clone();
+
+        let specs: Vec<QuestionGenerationSpec> = call
+            .arguments
+            .get("specs")
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default();
+
+        let request = QbankGenerationRequest {
+            exam_id: exam_id.clone(),
+            stream_session_id: format!("chat_{}", nanoid::nanoid!(10)),
+            model_config_id: call
+                .arguments
+                .get("model_config_id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            max_questions: call
+                .arguments
+                .get("max_questions")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .clamp(1, 50) as u32,
+            specs,
+            difficulty: call
+                .arguments
+                .get("difficulty")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            topic_hint: call
+                .arguments
+                .get("topic_hint")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            based_on_existing: call
+                .arguments
+                .get("based_on_existing")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            language: call
+                .arguments
+                .get("language")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            reference_file_ids: call
+                .arguments
+                .get("reference_file_ids")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            // 对话工具不接收 base64（体积大、易被模型误传）；参考资料走资源库 file_id
+            reference_files_base64: vec![],
+            knowledge_points: call
+                .arguments
+                .get("knowledge_points")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+
+        let background = call
+            .arguments
+            .get("background")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // 2026-09-09：同步/后台统一创建任务记录（便于追溯、面板恢复与块轮询）
+        let task_id = format!("task_{}", nanoid::nanoid!(10));
+        let stream_event = format!("qbank_generation_stream_{}", request.stream_session_id);
+        let request_json =
+            serde_json::to_string(&request).map_err(|e| format!("序列化出题请求失败: {}", e))?;
+        task_repo::create_task(&vfs_db, &task_id, &exam_id, &request_json, &stream_event)
+            .map_err(|e| format!("创建出题任务失败: {}", e))?;
+
+        let app_handle = ctx
+            .tauri_window
+            .as_ref()
+            .map(|window| window.app_handle().clone());
+
+        if background {
+            let app = app_handle.ok_or("后台出题需要窗口上下文（app handle 不可用）")?;
+            log::info!(
+                "[QBankExecutor] qbank_generate_questions 后台任务已提交: task_id={}, exam={}",
+                task_id,
+                exam_id
+            );
+            crate::qbank_generation::spawn_generation_task(
+                app,
+                vfs_db.clone(),
+                llm.clone(),
+                task_id.clone(),
+                request.clone(),
+                stream_event,
+            );
+            return Ok(json!({
+                "action": "generate_questions_background",
+                "taskId": task_id,
+                "examId": exam_id,
+                "status": "queued",
+                "hint": "任务已在后台执行，完成后会通知用户；用 qbank_get_generation_task 查询结果，再用 qbank_batch_import 入库。",
+            }));
+        }
+
+        log::info!(
+            "[QBankExecutor] qbank_generate_questions 同步执行: task_id={}, exam={}, max_questions={}, specs={}",
+            task_id,
+            exam_id,
+            request.max_questions,
+            request.specs.len()
+        );
+        let deps = QbankGenerationDeps {
+            llm,
+            vfs_db: vfs_db.clone(),
+        };
+        let result = run_qbank_generation(request, deps).await;
+
+        match result {
+            Ok(Some(response)) => {
+                if let Err(e) = task_repo::mark_completed(
+                    &vfs_db,
+                    &task_id,
+                    &response.drafts,
+                    response.rejected_count,
+                    &response.rejection_reasons,
+                    &response.skipped_references,
+                    response.used_reference_count,
+                ) {
+                    log::warn!("[QBankExecutor] 写任务完成状态失败: {}", e);
+                }
+                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
+
+                Ok(json!({
+                    "action": "generate_questions",
+                    "taskId": task_id,
+                    "examId": response.exam_id,
+                    "drafts": response.drafts,
+                    "rejectedCount": response.rejected_count,
+                    "rejectionReasons": response.rejection_reasons,
+                    "skippedReferences": response.skipped_references,
+                    "usedReferenceCount": response.used_reference_count,
+                    "hint": "草稿已渲染为可勾选预览块，用户确认后入库；也可直接调用 qbank_batch_import 导入题目集。",
+                }))
+            }
+            Ok(None) => {
+                let _ = task_repo::mark_cancelled(&vfs_db, &task_id);
+                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
+                Err("出题已取消".to_string())
+            }
+            Err(e) => {
+                let _ = task_repo::mark_failed(&vfs_db, &task_id, &e.message);
+                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
+                Err(format!("出题失败: {}", e))
+            }
+        }
+    }
+
+    /// 2026-09-09（D3）：查询后台出题任务状态与结果。
+    async fn execute_get_generation_task(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        use crate::qbank_generation::task_repo::{self, GenerationTaskView};
+
+        let task_id = required_non_empty_string(&call.arguments, "task_id")?;
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let record = task_repo::get_task(vfs_db, &task_id)
+            .map_err(|e| format!("查询任务失败: {}", e))?
+            .ok_or_else(|| format!("任务不存在: {}", task_id))?;
+        let view = GenerationTaskView::from(record);
+        serde_json::to_value(&view).map_err(|e| format!("序列化任务失败: {}", e))
+    }
+
     /// P2-3: 批量导入 - 解析 AI 生成的题目并添加到题目集
     async fn execute_batch_import(
         &self,
@@ -4789,6 +5011,8 @@ impl ToolExecutor for QBankExecutor {
                 | "qbank_reset_progress"
                 | "qbank_export"
                 | "qbank_ai_grade"
+                | "qbank_generate_questions"
+                | "qbank_get_generation_task"
         )
     }
 
@@ -4836,6 +5060,8 @@ impl ToolExecutor for QBankExecutor {
             "qbank_batch_import" => self.execute_batch_import(call, ctx).await,
             "qbank_import_document" => self.execute_import_document(call, ctx).await,
             "qbank_ai_grade" => self.execute_ai_grade(call, ctx).await,
+            "qbank_generate_questions" => self.execute_generate_questions(call, ctx).await,
+            "qbank_get_generation_task" => self.execute_get_generation_task(call, ctx).await,
             _ => Err(format!("Unknown qbank tool: {}", tool_name)),
         };
 
@@ -4910,7 +5136,9 @@ impl ToolExecutor for QBankExecutor {
             | "qbank_import_document"
             | "qbank_reset_progress"
             | "qbank_export"
-            | "qbank_ai_grade" => ToolSensitivity::Medium,
+            | "qbank_ai_grade"
+            // 2026-09-09：AI 出题消耗 LLM 额度（不写库，草稿由模型确认后再 batch_import）
+            | "qbank_generate_questions" => ToolSensitivity::Medium,
             // These calls only read questions and build in-memory/tool-result
             // handoffs or score summaries. They do not persist practice state,
             // answers, variants, or score cards in the question bank.

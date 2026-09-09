@@ -43,4 +43,3 @@ export function inlineSmilesRemarkPlugin() {
     visit(tree);
   };
 }
-

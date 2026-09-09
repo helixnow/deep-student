@@ -46,7 +46,9 @@ android_ndk_find_tool() {
   local tool="$2"
   local suffix candidate
 
-  for suffix in '' .cmd .exe .bat; do
+  # Rust/Cargo is a native Windows process on Windows hosts. Prefer .cmd wrappers
+  # over Bash wrappers so Windows can execute the selected compiler/linker.
+  for suffix in .cmd .exe .bat ''; do
     candidate="$prebuilt_dir/bin/${tool}${suffix}"
     if [[ -x "$candidate" || ( -f "$candidate" && -n "$suffix" ) ]]; then
       printf '%s\n' "$candidate"

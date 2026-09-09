@@ -94,7 +94,7 @@ describe('N09 — 超时后 in-flight 占用可恢复', () => {
     rejectLate(new Error('late failure'));
     await vi.advanceTimersByTimeAsync(10);
 
-    let calls = 0;
+    const calls = 0;
     void calls;
     const ok = applyActionGuards(makeDef(async () => 'ok'), { timeoutMs: 10, cooldownMs: 5 });
     await expect(ok.handler({})).resolves.toBe('ok');
