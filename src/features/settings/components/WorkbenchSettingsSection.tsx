@@ -46,6 +46,7 @@ import {
 } from './browserNetworkModePersistence';
 import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/WallpaperManagerDialog';
 import { importWallpaperToLibrary } from './wallpaperLibrary';
+import { logWallpaperDiag } from '@/features/workbench/core/wallpaperDiagnostics';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
 import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
 // 接缝三 handoff（r5 边界审阅接线）：与 workbenchMode.persistWorkbenchModeEnabled
@@ -366,6 +367,11 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
   const saveWallpaper = useCallback(
     (next: WallpaperSetting) => {
+      logWallpaperDiag('persist', {
+        source: 'settings',
+        key: WORKBENCH_SETTING_KEYS.wallpaper,
+        value: next,
+      });
       setWallpaper(next);
       void persist(WORKBENCH_SETTING_KEYS.wallpaper, JSON.stringify(next), next);
     },
