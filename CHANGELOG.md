@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.59](https://github.com/helixnow/deep-student/compare/v0.9.58...v0.9.59) (2026-09-09)
+
+
+### Features
+
+* **qbank:** AI question generation v3 — background tasks, dedicated model slot, reference injection modes & chat tools ([#391](https://github.com/helixnow/deep-student/issues/391)) ([6ec3cb1](https://github.com/helixnow/deep-student/commit/6ec3cb161fb93232b5c3ccb7a9b518e71bdb6b4d))
+
+
+### Bug Fixes
+
+* **ci:** cap Android build jobs and expand swap ([bc8546c](https://github.com/helixnow/deep-student/commit/bc8546ce1bf9eb065cef4cfc7b4809acdddcbca8))
+* **ci:** stabilize release migration gate runner ([d4aa0fe](https://github.com/helixnow/deep-student/commit/d4aa0fe82bfffabb28a4bd3565aaa700a0e62db2))
+
 ## [0.9.58](https://github.com/helixnow/deep-student/compare/v0.9.57...v0.9.58) (2026-09-08)
 
 
