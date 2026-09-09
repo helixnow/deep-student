@@ -70,6 +70,8 @@ pub mod event_types {
     /// 灵感召回（Insight Recall v2 阶段二，范式 A：实时即类型块）
     pub const INSIGHT_RECALL: &str = "insight_recall";
     pub const ANKI_CARDS: &str = "anki_cards";
+    /// 🆕 AI 出题预览块（2026-09-09 D2）
+    pub const QBANK_QUESTIONS: &str = "qbank_questions";
     /// 结构化 UI 意图（Generative UI）
     pub const GENERATIVE_UI: &str = "generative_ui";
 

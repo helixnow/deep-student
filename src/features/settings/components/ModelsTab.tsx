@@ -36,6 +36,7 @@ interface ModelsTabProps {
     model2ConfigId: string;
     ankiCardModelConfigId: string;
     qbank_ai_grading_model_config_id: string;
+    qbank_ai_generation_model_config_id: string;
     rerankerModelConfigId: string;
     vl_reranker_model_config_id: string;
     chat_title_model_config_id: string;
@@ -271,6 +272,18 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
             <ModelAssignmentRow
+              title={t('settings:cards.qbank_ai_generation_model_title')}
+              description={t('settings:descriptions.qbank_ai_generation_desc')}
+              value={config.qbank_ai_generation_model_config_id}
+              field="qbank_ai_generation_model_config_id"
+              configKey="qbank_ai_generation_model_config_id"
+              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_generation_model_config_id))}
+              placeholder={t('settings:api.select_model')}
+              notificationKey={notify('qbank_ai_generation_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+            <ModelAssignmentRow
               title={t('settings:api_config.chat_title_model_label')}
               description={t('settings:api_config.chat_title_model_hint')}
               value={config.chat_title_model_config_id}
@@ -423,6 +436,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               { id: config.model2ConfigId, label: t('settings:config_status.model2') },
               { id: config.ankiCardModelConfigId, label: t('settings:config_status.anki_card') },
               { id: config.qbank_ai_grading_model_config_id, label: t('settings:status_labels.qbank_ai_grading_model') },
+              { id: config.qbank_ai_generation_model_config_id, label: t('settings:status_labels.qbank_ai_generation_model'), optional: true },
               { id: config.rerankerModelConfigId, label: t('settings:config_status.reranker'), optional: true },
               { id: config.chat_title_model_config_id, label: t('settings:status_labels.chat_title_model') },
               { id: config.voice_input_asr_model_config_id, label: t('settings:status_labels.voice_input_asr_model'), optional: true },

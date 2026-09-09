@@ -10,6 +10,7 @@
  * - workspace_status / sleep / subagent_embed / subagent_retry
  * - workspace_injection / workspace_send
  * - anki_cards
+ * - qbank_questions（AI 出题预览）
  * - rag / memory / web_search / academic_search / multimodal_rag
  */
 
@@ -37,6 +38,9 @@ import './workspaceStatus';
 
 // 🆕 C11: 工作区消息注入块（主代理插话可见化）
 import './workspaceInjection';
+
+// 🆕 D2: AI 出题预览块（对话内可勾选草稿 + 一键入库）
+import './qbankQuestionsBlock';
 
 // 🆕 缺口 2: workspace_send 投递卡片块
 import './workspaceSend';

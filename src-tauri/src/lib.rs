@@ -100,6 +100,7 @@ pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub mod providers;
+pub mod qbank_generation;
 pub mod qbank_grading;
 #[allow(dead_code)]
 pub mod question_bank_service;
@@ -1890,6 +1891,11 @@ pub fn run() {
             // Qbank AI Grading Commands
             crate::qbank_grading::qbank_ai_grade,
             crate::qbank_grading::qbank_cancel_grading,
+            // Qbank AI Generation Commands（后台任务化：提交/查询/列表/取消）
+            crate::qbank_generation::qbank_ai_generate_questions,
+            crate::qbank_generation::qbank_get_generation_task,
+            crate::qbank_generation::qbank_list_generation_tasks,
+            crate::qbank_generation::qbank_cancel_generation_task,
             // TTS Commands (optional fallback for Web Speech API)
             crate::tts::tts_check_available,
             crate::tts::tts_speak,
@@ -3064,6 +3070,10 @@ fn build_app_state(
             .unwrap_or_else(|e| panic!("Failed to initialise VFS Database: {}", e)),
     );
     app_handle.manage(vfs_db.clone());
+
+    // ★ AI 出题后台任务：应用启动时收敛中断任务（queued/running → failed），
+    // 否则前端会一直显示「生成中」（任务表见 migrations/vfs/V20260909__qbank_generation_tasks.sql）
+    crate::qbank_generation::recover_interrupted_tasks(&vfs_db);
 
     // ★ VfsLanceStore：非核心，可降级
     let vfs_lance_store = match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {

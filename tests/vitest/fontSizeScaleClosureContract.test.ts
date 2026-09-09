@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import {
   buttonBaseClassName,
   buttonIconSizeClassNames,
@@ -60,7 +60,8 @@ describe('font size scale closure contract', () => {
 
     const offenders: string[] = [];
     for (const file of collectCss(resolve(process.cwd(), 'src/styles'))) {
-      if (EXEMPT.has(file.split('/').pop() ?? '')) continue;
+      // Windows 路径分隔符为 ''，split('/') 不会分割 → 必须用 basename
+      if (EXEMPT.has(basename(file))) continue;
       const source = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
       // 裸 px 字号不参与 --font-size-scale；max(Npx, var(--font-size-*)) 地板
       // 写法（floor 只兜下限、放大照常跟随）不在此列。

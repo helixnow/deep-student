@@ -1032,6 +1032,14 @@
       "path": "vfs/V20260911__insight_fts_update_trigger_narrowing.sql",
       "sha256": "c7b0574f0fec193596d847fc9db2146d632a7328a96c6c950d4abb6112abbc21",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260912,
+      "name": "qbank_generation_tasks",
+      "path": "vfs/V20260912__qbank_generation_tasks.sql",
+      "sha256": "b60cfeebebf076aa8c9c0e3d9309ecfd56f14d3649470434e0efda38965209b7",
+      "dangers": []
     }
   ]
 }

@@ -120,6 +120,7 @@ const SLOTS: AssignmentSlot[] = [
   { field: 'model2_config_id', filter: isChatModel },
   { field: 'anki_card_model_config_id', filter: isChatModel },
   { field: 'qbank_ai_grading_model_config_id', filter: isChatModel },
+  { field: 'qbank_ai_generation_model_config_id', filter: isChatModel },
   { field: 'chat_title_model_config_id', filter: isChatModel },
   { field: 'translation_model_config_id', filter: isChatModel },
   { field: 'memory_decision_model_config_id', filter: isChatModel },
