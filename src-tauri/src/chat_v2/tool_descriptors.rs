@@ -358,7 +358,7 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("goal_create", Low, false, WriteLocal),
     d("goal_update", Low, false, WriteLocal),
     d("goal_get", Low, true, Read),
-    // —— QBankExecutor（32）——
+    // —— QBankExecutor（34）——
     d("qbank_list", Low, true, Read).headless_ptc(),
     d("qbank_list_questions", Low, true, Read).headless_ptc(),
     d("qbank_get_question", Low, true, Read).headless_ptc(),
@@ -385,6 +385,10 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     d("qbank_import_document", Medium, false, WriteLocal),
     d("qbank_export", Medium, false, WriteLocal),
     d("qbank_ai_grade", Medium, false, WriteLocal),
+    // AI 出题（同步模式）：一次生成多题需流式调用 LLM，默认 120s 不够；
+    // 大批量场景模型应改用 background=true（立即返回 task_id，不占工具超时）。
+    d("qbank_generate_questions", Medium, false, WriteLocal).with_timeout(600),
+    d("qbank_get_generation_task", Low, true, Read),
     d("qbank_start_timed_practice", Low, false, WriteLocal),
     d("qbank_generate_mock_exam", Low, false, WriteLocal),
     d("qbank_submit_mock_exam", Low, false, WriteLocal),

@@ -998,6 +998,23 @@ pub const V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING: MigrationDef = Migrati
 )
 .with_expected_tables(&["insight_fts"])
 .idempotent();
+
+/// V20260912: 题库 AI 出题后台任务表。
+///
+/// 后台化改造：出题任务状态与结果落库，关闭面板 / 切页 / 重启后可恢复。
+/// 新建表 + 索引，不触碰既有数据（无危险 SQL）。
+pub const V20260912_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
+    20260912,
+    "qbank_generation_tasks",
+    include_str!("../../../migrations/vfs/V20260912__qbank_generation_tasks.sql"),
+)
+.with_expected_tables(&["qbank_generation_tasks"])
+.with_expected_indexes(&[
+    "idx_qbank_generation_tasks_exam",
+    "idx_qbank_generation_tasks_status",
+])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1061,6 +1078,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260909_MASTERY_EVENTS_INSIGHT_SOURCE,
     V20260910_INSIGHT_JOBS,
     V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING,
+    V20260912_QBANK_GENERATION_TASKS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1212,11 +1230,15 @@ mod tests {
     }
 
     #[test]
-    fn test_insight_fts_trigger_narrowing_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260911);
+    fn test_qbank_generation_tasks_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260912);
+        assert_eq!(
+            V20260912_QBANK_GENERATION_TASKS.expected_tables,
+            &["qbank_generation_tasks"]
+        );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("insight_fts_update_trigger_narrowing")
+            Some("qbank_generation_tasks")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

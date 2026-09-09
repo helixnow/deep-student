@@ -345,7 +345,9 @@
     "workspace_lsp_hover": "View Symbol Hover Info",
     "workspace_lsp_references": "Find Symbol References",
     "workspace_symbol_outline": "Extract Symbol Outline",
-    "workspace_text_search": "Search Workspace Text"
+    "workspace_text_search": "Search Workspace Text",
+    "qbank_generate_questions": "AI Question Generation",
+    "qbank_get_generation_task": "Get Generation Task"
   },
   "labels": {
     "skill": "Skill"

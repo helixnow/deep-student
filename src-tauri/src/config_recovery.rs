@@ -141,6 +141,7 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         review_analysis_model_config_id: None,
         anki_card_model_config_id: None,
         qbank_ai_grading_model_config_id: None,
+        qbank_ai_generation_model_config_id: None,
         embedding_model_config_id: None,
         reranker_model_config_id: None,
         chat_title_model_config_id: None,

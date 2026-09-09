@@ -1845,7 +1845,8 @@
     "user_profile_title": "用户偏好配置",
     "search_settings_title": "搜索设置",
     "index_maintenance_title": "聊天索引维护",
-    "developer_options_title": "开发者选项"
+    "developer_options_title": "开发者选项",
+    "qbank_ai_generation_model_title": "题库AI出题模型（生成题目）"
   },
   "messages": {
     "restored_default_prompt": "已恢复默认导师提示",
@@ -1942,7 +1943,8 @@
     "preset_saved": "预设已保存",
     "preset_deleted": "预设已删除",
     "tutor_prompt_saved": "导师模式提示已保存",
-    "loaded_auto_save": "{{label}}（已载入，将自动保存）"
+    "loaded_auto_save": "{{label}}（已载入，将自动保存）",
+    "qbank_ai_generation_saved": "题库AI出题模型配置已保存"
   },
   "mapping_keys": {
     "model1_configured": "第一模型：已废弃",
@@ -1959,7 +1961,8 @@
     "question_parsing_configured": "题目解析模型：已配置",
     "memory_decision_configured": "记忆决策模型：已配置",
     "voice_input_asr_configured": "语音输入 ASR 模型：已配置",
-    "image_generation_configured": "生图模型：已配置"
+    "image_generation_configured": "生图模型：已配置",
+    "qbank_ai_generation_configured": "题库AI出题模型：已配置"
   },
   "status_labels": {
     "summary_model": "总结生成模型（已废弃）",
@@ -1985,7 +1988,8 @@
     "thinking_label": "思考模式",
     "thinking_desc": "模型支持时允许 OCR 使用更长的推理过程。",
     "thinking_on": "开启",
-    "thinking_off": "关闭"
+    "thinking_off": "关闭",
+    "qbank_ai_generation_model": "题库AI出题模型"
   },
   "descriptions": {
     "model1_desc": "已废弃：OCR 使用专用引擎（DeepSeek-OCR / PaddleOCR-VL-1.5）",
@@ -2008,7 +2012,8 @@
     "brave_desc": "注重隐私的独立网页搜索引擎。",
     "searxng_desc": "免费开源、聚合多个搜索源的元搜索引擎。",
     "zhipu_desc": "智谱提供的国产化互联网搜索聚合服务。",
-    "bocha_desc": "专注于中文资料索引的轻量级检索服务。"
+    "bocha_desc": "专注于中文资料索引的轻量级检索服务。",
+    "qbank_ai_generation_desc": "用于题目集的 AI 出题。若未配置，将回退「题库AI批改模型」→「对话模型」。支持读图的模型可直接参考扫描件页面出题。"
   },
   "common_labels": {
     "no_data": "暂无数据",
