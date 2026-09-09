@@ -241,7 +241,7 @@ export const LLMOutputPlayground: React.FC = () => {
                   调试台模式 · 预设 {getStreamingPresetLabel(presetA)} · 模式 {renderMode === 'legacy' ? '整段' : '块级'}
                 </span>
               </div>
-              <AgentTaskPanel store={storeA} />
+              <AgentTaskPanel store={storeA} chatStore={storeA} />
               <div className="chat-composer-motion-frame chat-composer-motion-frame--docked">
                 <InputBarV2
                   store={storeA}

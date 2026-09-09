@@ -20,6 +20,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
   ListChecks,
@@ -27,10 +28,6 @@ import {
   CaretDown,
   CaretUp,
   Notebook,
-  FileDoc,
-  FileXls,
-  FilePpt,
-  FilePdf,
   File as FileIcon,
   Globe,
   Brain,
@@ -39,17 +36,20 @@ import {
   Terminal,
   FolderOpen,
   DownloadSimple,
+  SquaresFour,
+  CardsThree,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
+import type { StoreApi } from 'zustand';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { motion, AnimatePresence } from 'framer-motion';
-import { openResource } from '@/dstu/openResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { Block } from '../core/types/block';
+import type { ChatStore } from '../core/types';
 import {
   listRuntimeDirectory,
   listTaskBrowserDownloads,
@@ -58,12 +58,10 @@ import {
 import type { BrowserDownloadObservation } from '@/features/browser/types';
 import type {
   AgentTaskStoreApi,
-  ArtifactItem,
   ChangeItem,
   SourceItem,
 } from './agent-task/types';
 import {
-  extractArtifacts,
   extractChangeCoverageIssues,
   extractChanges,
   extractRuntimeEnvironment,
@@ -78,6 +76,15 @@ import {
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
+import {
+  getSessionArtifacts,
+  type ArtifactEntry,
+  type ArtifactKind,
+} from '../core/store/artifactRegistry';
+import { useArtifactRegistrySync } from './artifacts/useArtifactRegistrySync';
+import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatBlockBridge';
+import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
+import { AnkiCardsBlock } from '../plugins/blocks/ankiCardsBlock';
 
 // 兼容既有消费方/测试的提取函数出口（实现已迁移到 agent-task/extractors）
 export {
@@ -98,13 +105,28 @@ const ORIGIN_ICONS: Record<string, Icon> = {
   tool: MagnifyingGlass,
 };
 
-function fileArtifactIcon(toolName: string): Icon {
-  const short = toolName.replace('builtin-', '');
-  if (short.startsWith('docx_')) return FileDoc;
-  if (short.startsWith('xlsx_')) return FileXls;
-  if (short.startsWith('pptx_')) return FilePpt;
-  if (short === 'paper_save') return FilePdf;
-  return FileIcon;
+const ARTIFACT_KIND_ICONS: Record<ArtifactKind, Icon> = {
+  'generative-ui': SquaresFour,
+  'anki-cards': CardsThree,
+  note: Notebook,
+  file: FileIcon,
+};
+
+const ARTIFACT_KIND_LABEL_KEYS: Record<ArtifactKind, string> = {
+  'generative-ui': 'generativeUi',
+  'anki-cards': 'ankiCards',
+  note: 'note',
+  file: 'file',
+};
+
+/** 产物分区行尾的相对时间（刚刚 / N 分钟前 / N 小时前 / N 天前） */
+function relativeTimeLabel(ts: number, t: TFunction): string {
+  const minutes = Math.floor((Date.now() - ts) / 60_000);
+  if (minutes < 1) return t('artifacts.time.justNow');
+  if (minutes < 60) return t('artifacts.time.minutesAgo', { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('artifacts.time.hoursAgo', { count: hours });
+  return t('artifacts.time.daysAgo', { count: Math.floor(hours / 24) });
 }
 
 // ============================================================================
@@ -129,10 +151,12 @@ const EMPTY_BLOCKS: Block[] = [];
 
 interface Props {
   store: AgentTaskStoreApi;
+  /** 完整 ChatStore（产物分区读写面：registry 水合 + AnkiCardsBlock）；调用方传真实 store */
+  chatStore?: StoreApi<ChatStore> | null;
   className?: string;
 }
 
-export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
+export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, className }) => {
   const { t } = useTranslation('chatV2');
   const [expanded, setExpanded] = useState(false);
   // 📱 小屏：面板高度受限 + 不自动展开（避免把输入栏挤出视口）
@@ -203,10 +227,18 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     return all;
   }, [blocksMap, expanded]);
 
-  const { sources, artifacts } = useMemo(() => ({
-    sources: extractSources(expandedBlocks),
-    artifacts: extractArtifacts(expandedBlocks),
-  }), [expandedBlocks]);
+  // ── 产物架（会话级 registry：generative-ui / anki-cards / note / file）──
+  // 折叠态也参与：有产物但无计划/运行时，面板同样出现（pill 显示「产物 N」）
+  const { registryVersion } = useArtifactRegistrySync(sessionId ?? null, chatStore);
+  const artifacts = useMemo<ArtifactEntry[]>(() => {
+    if (!sessionId) return [];
+    void registryVersion;
+    return getSessionArtifacts(sessionId);
+  }, [sessionId, registryVersion]);
+  // 内联详情只对「产物即视图」的两类展开；note/file 走右侧附件预览（完整编辑器）
+  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
+
+  const sources = useMemo(() => extractSources(expandedBlocks), [expandedBlocks]);
 
   const changes = useMemo(() => extractChanges(expandedBlocks), [expandedBlocks]);
   const changeCoverageIssues = useMemo(
@@ -234,15 +266,55 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       .catch(() => setBrowserDownloads([]));
   }, [expanded, has, isAllDone, loadWorkspacePage, sessionId]);
 
-  const openArtifact = useCallback((item: ArtifactItem) => {
-    if (item.kind === 'note') {
-      window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
-        detail: { noteId: item.id, source: 'agent_task_panel' },
-      }));
-    } else {
-      void openResource(`/${item.id}`, { handlerNamespace: 'chat-v2' });
+  /**
+   * 产物点击：
+   * - generative-ui / anki-cards → 面板内手风琴展开（产物即视图，无别的完整应用）
+   * - note / file → 右侧附件预览面板（复用学习资源管理器预览器，完整编辑器）
+   */
+  const openArtifact = useCallback((entry: ArtifactEntry) => {
+    if (entry.kind === 'generative-ui' || entry.kind === 'anki-cards') {
+      setOpenArtifactId((prev) => (prev === entry.artifactId ? null : entry.artifactId));
+      return;
     }
+    if (!entry.targetId) return;
+    window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+      detail: { id: entry.targetId, type: entry.kind, title: entry.title },
+    }));
   }, []);
+
+  /** 手风琴详情（仅 generative-ui / anki-cards 调用） */
+  const renderArtifactDetail = useCallback((entry: ArtifactEntry) => {
+    const block = blocksMap?.get(entry.artifactId);
+    if (!block) {
+      return (
+        <div className="px-1 py-2 text-2xs text-[color:var(--text-muted)]">
+          {t('artifacts.intentUnavailable')}
+        </div>
+      );
+    }
+    if (entry.kind === 'generative-ui') {
+      const extracted = extractGenerativeUIIntent(
+        block.toolOutput, block.content, block.toolInput, block.id,
+      );
+      const intent = extracted && !extracted.isStreaming ? extracted.intent : null;
+      if (!intent) {
+        return (
+          <div className="px-1 py-2 text-2xs text-[color:var(--text-muted)]">
+            {t('artifacts.intentUnavailable')}
+          </div>
+        );
+      }
+      return <GenerativeUIPanel intent={intent} forceCompact />;
+    }
+    if (!chatStore) {
+      return (
+        <div className="px-1 py-2 text-2xs text-[color:var(--text-muted)]">
+          {t('artifacts.storeUnavailable')}
+        </div>
+      );
+    }
+    return <AnkiCardsBlock block={block} store={chatStore} />;
+  }, [blocksMap, chatStore, t]);
 
   /** 在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）。 */
   const revealRuntimeFile = useCallback(async (item: ChangeItem) => {
@@ -302,7 +374,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     setExpanded(true);
   }, [has, streaming, steps, isSmallScreen]);
 
-  if (!has && !hasRuntimeActivity) return null;
+  if (!has && !hasRuntimeActivity && artifacts.length === 0) return null;
 
   const showSources = sources.length > 0;
   const showArtifacts = artifacts.length > 0;
@@ -314,6 +386,15 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     || showWorkspaceResults || showBrowserDownloads;
   const completionNarrative = completion?.result || message;
   const showCompletion = isAllDone === true && !!(completionNarrative || showChanges || showArtifacts);
+  // 折叠 pill / 展开头部共用：无计划时优先显示产物，其次环境
+  const PillIcon = has ? ListChecks : showArtifacts ? SquaresFour : Terminal;
+  const baseLabel = title || (has
+    ? t('agentPanel.plan')
+    : showArtifacts
+      ? `${t('agentPanel.artifacts')} ${artifacts.length}`
+      : t('agentPanel.environment'));
+  // 折叠态正在执行时显示当前步骤；展开头部保持标题（测试锁定旧语义）
+  const pillLabel = running ? running.description : baseLabel;
 
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
@@ -338,21 +419,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               aria-expanded={false}
               className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-2 [@media(pointer:coarse)]:after:-inset-y-3.5 [@media(pointer:coarse)]:after:content-['']"
             >
-              {has ? (
-                <ListChecks size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
-              ) : (
-                <Terminal size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
-              )}
+              <PillIcon size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
               {running && (
                 <span className="flex-shrink-0 text-2xs font-normal text-[color:var(--text-muted)]">
                   {t('agentPanel.runningPrefix')}
                 </span>
               )}
-              <span className="truncate max-w-[180px]">
-                {running
-                  ? running.description
-                  : title || (has ? t('agentPanel.plan') : t('agentPanel.environment'))}
-              </span>
+              <span className="truncate max-w-[180px]">{pillLabel}</span>
               <CaretDown size={10} className="text-[color:var(--text-muted)]" />
             </DsButton>
 
@@ -403,13 +476,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               )}
             >
               <div className="flex flex-shrink-0 items-center gap-2 px-4 py-2.5">
-                {has ? (
-                  <ListChecks size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
-                ) : (
-                  <Terminal size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
-                )}
+                <PillIcon size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
                 <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate flex-1 min-w-0">
-                  {title || (has ? t('agentPanel.plan') : t('agentPanel.environment'))}
+                  {baseLabel}
                 </span>
                 {has && (
                   <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
@@ -565,7 +634,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 </>
               )}
 
-              {/* ── 区 5：产物 ── */}
+              {/* ── 区 5：产物（会话级产物架：列表点击展开/打开，替代原右侧产物面板） ── */}
               {showArtifacts && (
                 <>
                   <SectionDivider />
@@ -573,27 +642,43 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {t('agentPanel.artifacts')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{artifacts.length}</span>
                   </SectionLabel>
-                  <div className="flex flex-wrap gap-1.5 px-4 pb-2">
-                    {artifacts.map((item) => {
-                      const ArtifactIcon = item.kind === 'note' ? Notebook : fileArtifactIcon(item.toolName);
+                  <div className="px-4 pb-2">
+                    {artifacts.map((entry) => {
+                      const ArtifactIcon = ARTIFACT_KIND_ICONS[entry.kind];
+                      const expandable = entry.kind === 'generative-ui' || entry.kind === 'anki-cards';
+                      const isOpen = openArtifactId === entry.artifactId;
                       return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => openArtifact(item)}
-                          className={cn(
-                            'inline-flex items-center gap-1.5 h-6 px-2 max-w-[220px]',
-                            'rounded-full border border-[color:var(--border-soft)]',
-                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
-                            'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
-                            // ★ 触控目标：触屏 chip 高度提到 44px
-                            '[@media(pointer:coarse)]:!min-h-11',
+                        <div key={entry.artifactId}>
+                          <button
+                            type="button"
+                            onClick={() => openArtifact(entry)}
+                            aria-expanded={expandable ? isOpen : undefined}
+                            className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                            title={entry.title}
+                          >
+                            <ArtifactIcon size={12} className="shrink-0 text-[color:hsl(var(--primary))]" />
+                            <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                            <span className="shrink-0 text-2xs text-[color:var(--text-muted)]">
+                              {t(`artifacts.kind.${ARTIFACT_KIND_LABEL_KEYS[entry.kind]}`)}
+                              {' · '}
+                              {relativeTimeLabel(entry.createdAt, t)}
+                            </span>
+                            {expandable && (
+                              <CaretDown
+                                size={10}
+                                className={cn(
+                                  'shrink-0 text-[color:var(--text-muted)] transition-transform',
+                                  isOpen && 'rotate-180',
+                                )}
+                              />
+                            )}
+                          </button>
+                          {expandable && isOpen && (
+                            <div className="mb-2 mt-1 rounded-[6px] border border-[color:var(--border-soft)] bg-[color:var(--composer-panel-surface)] p-2">
+                              {renderArtifactDetail(entry)}
+                            </div>
                           )}
-                          title={item.label}
-                        >
-                          <ArtifactIcon size={11} className="flex-shrink-0 text-[color:hsl(var(--primary))]" />
-                          <span className="truncate">{item.label}</span>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
