@@ -10,18 +10,22 @@
  *   （落库 intent 在 tool_input），GenerativeUIPanel 渲染；actionHandlers 不传
  *   （未注册安全模式，action-bar 按钮不渲染——MVP 可接受）。
  * - anki-cards 重开：直接重渲染持久化块（cards 在 toolOutput 自包含）。
+ * - note/file 重开：内联复用 UnifiedAppPanel（学习资源预览器）直接预览，
+ *   头部保留「在应用中打开」跳完整应用。
  * - pin 存 sessionMetadata['artifactMeta']（整体替换语义 → read-modify-write）。
  *
  * 设计文档：docs/plans/2026-09-06-canvas-patterns-absorption.md P1
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowClockwise,
+  ArrowSquareOut,
   CardsThree,
+  CircleNotch,
   File,
   FileText,
   PushPin,
@@ -51,6 +55,12 @@ import {
 import { useArtifactRegistrySync } from './useArtifactRegistrySync';
 import { extractChanges } from '../agent-task/extractors';
 import type { ChangeItem } from '../agent-task/types';
+
+// 学习资源管理器预览器（UnifiedAppPanel）懒加载：与 ChatV2Page 附件预览同一组件、
+// 同一渲染形态；静态引入会把 Crepe 编辑器拖进主包
+const UnifiedAppPanel = lazy(() =>
+  import('@/features/learning-hub/apps/UnifiedAppPanel').then((m) => ({ default: m.UnifiedAppPanel })),
+);
 
 // ============================================================================
 // 工具
@@ -196,7 +206,11 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
         detail: { noteId: entry.targetId, source: 'artifacts_panel' },
       }));
     } else {
-      void openResource(`/${entry.targetId}`, { handlerNamespace: 'chat-v2' });
+      // 完整应用 = 学习中心页。不能走 openResource：chat-v2 handler 只开 canvas 侧栏，
+      // 而产物面板在次级面板模式链里优先级更高，表现为点击无反应。
+      window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+        detail: { view: 'learning-hub', openResource: `/${entry.targetId}` },
+      }));
     }
   }, []);
 
@@ -248,7 +262,30 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
       );
     }
 
-    // note / file：详情即「打开入口」（内容在完整应用中查看编辑）
+    // note / file：内联复用学习资源管理器预览器（UnifiedAppPanel）——
+    // 点进产物即见内容，不再是「在应用中打开」占位死胡同
+    if (entry.targetId) {
+      return (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full text-muted-foreground" role="status" aria-live="polite">
+              <CircleNotch size={20} className="animate-spin" aria-hidden="true" />
+              <span className="ml-2 text-sm">{t('common:loading')}</span>
+            </div>
+          }>
+            <UnifiedAppPanel
+              type={entry.kind}
+              resourceId={entry.targetId}
+              dstuPath={`/${entry.targetId}`}
+              isActive
+              className="h-full"
+            />
+          </Suspense>
+        </div>
+      );
+    }
+
+    // 历史数据缺 targetId：退回「打开入口」占位（保持原语义）
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-sm text-muted-foreground">
         <p>{t('artifacts.openInAppHint')}</p>
@@ -277,6 +314,16 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ sessionId, store
         <span className={cn('flex-1 truncate text-sm font-medium', !selected && 'ml-1.5')}>
           {selected ? selected.title : t('artifacts.title')}
         </span>
+        {selected && (selected.kind === 'note' || selected.kind === 'file') && selected.targetId ? (
+          <CommonTooltip content={t('artifacts.openInApp')} position="bottom">
+            <DsButton variant="ghost" size="icon" iconOnly
+              onClick={() => openInApp(selected)}
+              aria-label={t('artifacts.openInApp')} title={t('artifacts.openInApp')}
+              className="!h-7 !w-7">
+              <ArrowSquareOut size={15} />
+            </DsButton>
+          </CommonTooltip>
+        ) : null}
         {selected?.refreshPrompt ? (
           <CommonTooltip content={t('artifacts.refresh')} position="bottom">
             <DsButton variant="ghost" size="icon" iconOnly disabled={refreshing || !store}
