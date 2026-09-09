@@ -88,6 +88,8 @@ pub mod block_types {
 
     // 特殊功能块
     pub const ANKI_CARDS: &str = "anki_cards";
+    /// 🆕 AI 出题预览块（2026-09-09 D2）：对话内可勾选草稿 + 一键入库
+    pub const QBANK_QUESTIONS: &str = "qbank_questions";
 
     // 🆕 多代理协作块
     /// 主代理睡眠块（等待子代理完成）

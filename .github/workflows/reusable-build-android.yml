@@ -71,6 +71,10 @@ jobs:
       CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || 'z' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '16' }}
       CARGO_PROFILE_RELEASE_DEBUG: '0'
+      # OOM/回收缓解：Android 链接期峰值高，默认 4 路并行在 7GB runner 上会
+      # 触发 runner service 被 OOM 杀掉（"shutdown signal"）；降到 2 路压峰值，
+      # 与 ci.yml rust-test-build / reusable-migration-gate 同策略。
+      CARGO_BUILD_JOBS: '2'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
       - name: Preflight — require Android signing secrets (fail-closed)
@@ -126,9 +130,9 @@ jobs:
           if swapon --show --noheadings | grep -q .; then
             echo "Swap already enabled on runner; skipping allocation"
           else
-            if ! sudo fallocate -l 8G "$SWAPFILE"; then
+            if ! sudo fallocate -l 12G "$SWAPFILE"; then
               echo "::warning::fallocate failed; retrying swap creation with dd"
-              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
+              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=12288 status=progress
             fi
 
             sudo chmod 600 "$SWAPFILE"

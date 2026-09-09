@@ -235,6 +235,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     model2ConfigId: '',
     ankiCardModelConfigId: '',
     qbank_ai_grading_model_config_id: '',
+    qbank_ai_generation_model_config_id: '',
     // 嵌入模型通过维度管理设置
     rerankerModelConfigId: '',
     autoSave: true,
@@ -350,6 +351,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       model2ConfigId: modelAssignments.model2_config_id || '',
       ankiCardModelConfigId: modelAssignments.anki_card_model_config_id || '',
       qbank_ai_grading_model_config_id: modelAssignments.qbank_ai_grading_model_config_id || '',
+      qbank_ai_generation_model_config_id:
+        modelAssignments.qbank_ai_generation_model_config_id || '',
       rerankerModelConfigId: modelAssignments.reranker_model_config_id || '',
       exam_sheet_ocr_model_config_id: modelAssignments.exam_sheet_ocr_model_config_id || '',
       translation_model_config_id: modelAssignments.translation_model_config_id || '',
@@ -1088,6 +1091,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           model2_config_id: string | null;
           anki_card_model_config_id: string | null;
           qbank_ai_grading_model_config_id: string | null;
+          qbank_ai_generation_model_config_id: string | null;
           reranker_model_config_id: string | null;
           exam_sheet_ocr_model_config_id: string | null;
           translation_model_config_id: string | null;
@@ -1104,6 +1108,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           model2ConfigId: modelAssignments?.model2_config_id || '',
           ankiCardModelConfigId: modelAssignments?.anki_card_model_config_id || '',
           qbank_ai_grading_model_config_id: modelAssignments?.qbank_ai_grading_model_config_id || '',
+          qbank_ai_generation_model_config_id:
+            modelAssignments?.qbank_ai_generation_model_config_id || '',
           rerankerModelConfigId: modelAssignments?.reranker_model_config_id || '',
           chat_title_model_config_id: modelAssignments?.chat_title_model_config_id || '',
           exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',

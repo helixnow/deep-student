@@ -45,6 +45,7 @@ const modelAssignmentSlots = [
   'review_analysis_model_config_id',
   'anki_card_model_config_id',
   'qbank_ai_grading_model_config_id',
+  'qbank_ai_generation_model_config_id',
   'chat_title_model_config_id',
   'translation_model_config_id',
   'memory_decision_model_config_id',

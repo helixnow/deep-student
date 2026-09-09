@@ -87,9 +87,11 @@ async function loadAllPages(data: Uint8Array) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({
     data,
-    cMapUrl: `${subsetCMapsDir}${path.sep}`,
+    // pdfjs 的 cMapUrl / standardFontDataUrl 必须是 URL 形式（正斜杠结尾）；
+    // Windows 的 path.sep 是反斜杠，会抛 "Invalid factory url ... must include trailing slash"。
+    cMapUrl: `${subsetCMapsDir.replace(/\\/g, '/')}/`,
     cMapPacked: true,
-    standardFontDataUrl: `${standardFontsDir}${path.sep}`,
+    standardFontDataUrl: `${standardFontsDir.replace(/\\/g, '/')}/`,
     useSystemFonts: false,
   });
   try {
