@@ -237,6 +237,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   }, [sessionId, registryVersion]);
   // 内联详情只对「产物即视图」的两类展开；note/file 走右侧附件预览（完整编辑器）
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
+  // 工作区文件：与本次会话产物的关联弱（不一定在会话中变动），默认折叠且沉到面板末尾
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
 
   const sources = useMemo(() => extractSources(expandedBlocks), [expandedBlocks]);
 
@@ -380,7 +382,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   const showArtifacts = artifacts.length > 0;
   const showChanges = changes.length > 0 || changeCoverageIssues.length > 0;
   const showRuntime = runtimeItems.length > 0;
-  const showWorkspaceResults = workspacePage !== null;
+  const showWorkspaceResults = workspacePage !== null
+    && (workspacePage.entries.length > 0 || workspacePage.truncated);
   const showBrowserDownloads = browserDownloads.length > 0;
   const showSections = showSources || showArtifacts || showChanges || showRuntime
     || showWorkspaceResults || showBrowserDownloads;
@@ -539,73 +542,6 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
                 </>
               )}
 
-              {/* ── 区 4a：工作区文件 ── */}
-              {showWorkspaceResults && workspacePage && (
-                <>
-                  <SectionDivider />
-                  <SectionLabel>
-                    {t('agentPanel.workspaceFiles')}
-                    <span className="ml-1.5 normal-case tracking-normal font-normal">
-                      {workspacePage.entries.length}{workspacePage.truncated ? '+' : ''}
-                    </span>
-                  </SectionLabel>
-                  <div className="px-4 pb-2">
-                    <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-2xs text-[color:var(--text-muted)]">
-                      {workspacePage.relativePath && (
-                        <button type="button" onClick={openWorkspaceParent} className="inline-flex shrink-0 items-center hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:min-h-11">
-                          .. /
-                        </button>
-                      )}
-                      <span className="truncate font-mono">{workspacePage.relativePath || '/'}</span>
-                    </div>
-                    <div>
-                      {workspacePage.entries.map((entry) => {
-                        const isDirectory = entry.kind === 'directory';
-                        return (
-                          <button
-                            key={`${entry.kind}:${entry.relativePath}`}
-                            type="button"
-                            onClick={() => isDirectory
-                              ? void loadWorkspacePage(entry.relativePath)
-                              : void revealResultFile('workspace', entry.relativePath)}
-                            // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
-                            className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
-                            title={entry.relativePath}
-                          >
-                            {isDirectory ? <FolderOpen size={12} /> : <FileIcon size={12} />}
-                            <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                            {entry.sizeBytes != null && (
-                              <span className="shrink-0 text-2xs text-[color:var(--text-muted)]">{entry.sizeBytes} B</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {workspacePage.nextCursor && (
-                      <button
-                        type="button"
-                        disabled={workspaceLoading}
-                        onClick={() => void loadWorkspacePage(
-                          workspacePage.relativePath,
-                          workspacePage.nextCursor ?? undefined,
-                          true,
-                        )}
-                        className="mt-1 inline-flex items-center px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
-                      >
-                        {workspaceLoading
-                          ? t('agentPanel.loadingFiles')
-                          : t('agentPanel.loadMoreFiles')}
-                      </button>
-                    )}
-                    {workspacePage.truncated && !workspacePage.nextCursor && (
-                      <div className="px-2 pt-1 text-2xs text-[color:var(--text-muted)]">
-                        {t('agentPanel.fileTreeTruncated')}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
               {/* ── 区 4b：浏览器下载 ── */}
               {showBrowserDownloads && (
                 <>
@@ -731,6 +667,85 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
                     </code>
                   )}
                 </div>
+              )}
+
+              {/* ── 区 8：工作区文件（沉底 + 默认折叠：与本次会话产物关联弱，
+                     不一定是会话内产生的变动；展开后仍可浏览/定位文件） ── */}
+              {showWorkspaceResults && workspacePage && (
+                <>
+                  <SectionDivider />
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceExpanded((prev) => !prev)}
+                    aria-expanded={workspaceExpanded}
+                    className="flex w-full items-center gap-1.5 px-4 pt-2 pb-1 text-left text-2xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none hover:text-[color:var(--text-primary)]"
+                  >
+                    <span>{t('agentPanel.workspaceFiles')}</span>
+                    <span className="normal-case tracking-normal font-normal">
+                      {workspacePage.entries.length}{workspacePage.truncated ? '+' : ''}
+                    </span>
+                    <CaretDown
+                      size={10}
+                      className={cn('transition-transform', workspaceExpanded && 'rotate-180')}
+                    />
+                  </button>
+                  {workspaceExpanded && (
+                    <div className="px-4 pb-2">
+                      <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-2xs text-[color:var(--text-muted)]">
+                        {workspacePage.relativePath && (
+                          <button type="button" onClick={openWorkspaceParent} className="inline-flex shrink-0 items-center hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:min-h-11">
+                            .. /
+                          </button>
+                        )}
+                        <span className="truncate font-mono">{workspacePage.relativePath || '/'}</span>
+                      </div>
+                      <div>
+                        {workspacePage.entries.map((entry) => {
+                          const isDirectory = entry.kind === 'directory';
+                          return (
+                            <button
+                              key={`${entry.kind}:${entry.relativePath}`}
+                              type="button"
+                              onClick={() => isDirectory
+                                ? void loadWorkspacePage(entry.relativePath)
+                                : void revealResultFile('workspace', entry.relativePath)}
+                              // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
+                              className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                              title={entry.relativePath}
+                            >
+                              {isDirectory ? <FolderOpen size={12} /> : <FileIcon size={12} />}
+                              <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                              {entry.sizeBytes != null && (
+                                <span className="shrink-0 text-2xs text-[color:var(--text-muted)]">{entry.sizeBytes} B</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {workspacePage.nextCursor && (
+                        <button
+                          type="button"
+                          disabled={workspaceLoading}
+                          onClick={() => void loadWorkspacePage(
+                            workspacePage.relativePath,
+                            workspacePage.nextCursor ?? undefined,
+                            true,
+                          )}
+                          className="mt-1 inline-flex items-center px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+                        >
+                          {workspaceLoading
+                            ? t('agentPanel.loadingFiles')
+                            : t('agentPanel.loadMoreFiles')}
+                        </button>
+                      )}
+                      {workspacePage.truncated && !workspacePage.nextCursor && (
+                        <div className="px-2 pt-1 text-2xs text-[color:var(--text-muted)]">
+                          {t('agentPanel.fileTreeTruncated')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
               </CustomScrollArea>{/* ★ 高-2 滚动容器结束 */}
             </motion.div>

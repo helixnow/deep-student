@@ -954,7 +954,11 @@ describe('AgentTaskPanel', () => {
     render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
     fireEvent.click(screen.getByRole('button', { name: /Results extraction/i }));
 
+    // 工作区文件默认折叠且沉底：展开分区后才见文件
     expect(await screen.findByText('工作区文件')).toBeInTheDocument();
+    expect(screen.queryByText('summary.md')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /工作区文件/ }));
+
     expect(screen.getByText('reports')).toBeInTheDocument();
     expect(screen.getByText('summary.md')).toBeInTheDocument();
     expect(screen.getByText('浏览器下载')).toBeInTheDocument();
