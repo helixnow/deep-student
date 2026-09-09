@@ -968,4 +968,60 @@ describe('AgentTaskPanel', () => {
       limit: 40,
     });
   });
+
+  it('shows a session artifact shelf without todo/runtime and opens note in the preview panel', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_list_runtime_directory') {
+        return { rootId: 'workspace', relativePath: '', entries: [], nextCursor: null, truncated: false, scanned: 0 };
+      }
+      if (cmd === 'browser_list_task_downloads') return [];
+      return {};
+    });
+    const store = createMockStore({
+      sessionId: 'sess-artifact-shelf',
+      blocks: new Map([
+        [
+          'note-block-1',
+          {
+            id: 'note-block-1',
+            messageId: 'msg-1',
+            type: 'mcp_tool',
+            status: 'success',
+            toolName: 'builtin-note_create',
+            toolInput: {},
+            toolOutput: { result: { note_id: 'note_1', title: '上下文机制详解' } },
+            startedAt: 1,
+            endedAt: 2,
+          },
+        ],
+      ]),
+      activeBlockIds: new Set(),
+    });
+
+    const onPreview = vi.fn();
+    window.addEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onPreview);
+    try {
+      render(
+        <AgentTaskPanel
+          store={store as unknown as StoreApi<any>}
+          chatStore={store as unknown as StoreApi<any>}
+        />,
+      );
+
+      // 无 todo / runtime：仅凭产物也要出现折叠 pill
+      fireEvent.click(await screen.findByRole('button', { name: /产物 1/i }));
+
+      // 产物行与「变更」记录同名，取 DOM 在前的产物行
+      fireEvent.click((await screen.findAllByRole('button', { name: /上下文机制详解/ }))[0]);
+
+      expect(onPreview).toHaveBeenCalledTimes(1);
+      expect((onPreview.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+        id: 'note_1',
+        type: 'note',
+        title: '上下文机制详解',
+      });
+    } finally {
+      window.removeEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onPreview);
+    }
+  });
 });

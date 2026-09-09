@@ -44,9 +44,6 @@ import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
-import { ArtifactsPanel } from '../components/artifacts/ArtifactsPanel';
-import { useArtifactRegistrySync } from '../components/artifacts/useArtifactRegistrySync';
-import { getSessionArtifacts } from '../core/store/artifactRegistry';
 import {
   createSandboxOwnerKey,
   selectSandboxWorkbenchOwnerState,
@@ -92,7 +89,7 @@ interface OpenApp {
   filePath?: string;
 }
 
-type DesktopSecondaryPanelMode = 'sandbox' | 'attachment' | 'canvas' | 'artifacts';
+type DesktopSecondaryPanelMode = 'sandbox' | 'attachment' | 'canvas';
 
 interface DesktopSecondaryPanelSnapshot {
   mode: DesktopSecondaryPanelMode;
@@ -187,7 +184,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     if (newId !== prev) {
       setOpenApp(null);
       setAttachmentPreviewOpen(false);
-      setArtifactsPanelOpen(false);
       useSandboxWorkbenchStore.getState().closeSession(sandboxOwnerKey);
     }
     setCurrentSessionIdState(newId);
@@ -266,19 +262,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       return next;
     });
   }, []);
-  // P1 产物面板（DesktopSecondaryPanelMode 'artifacts'）：入口/互斥/切会话重置均显式接线
-  const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
-  const toggleArtifactsPanel = useCallback(() => {
-    setArtifactsPanelOpen(prev => !prev);
-  }, []);
-  // 入口可见性：会话有产物才显示（与 sandbox 钮同逻辑，空会话不出现空态入口）；
-  // 水合/增量补齐与 ArtifactsPanel 共用同一 hook，registry 通知即 bump 版本触发重取
-  const currentChatStore = currentSessionId ? sessionManager.get(currentSessionId) ?? null : null;
-  const { registryVersion: artifactRegistryVersion } = useArtifactRegistrySync(currentSessionId, currentChatStore);
-  const hasSessionArtifacts = useMemo(() => {
-    void artifactRegistryVersion;
-    return currentSessionId ? getSessionArtifacts(currentSessionId).length > 0 : false;
-  }, [currentSessionId, artifactRegistryVersion]);
+  // P1 产物面板已收敛为会话底部可折叠产物列表（AgentTaskPanel 产物分区），
+  // 顶栏入口与 DesktopSecondaryPanelMode 'artifacts' 已移除
   const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
   // 会话切换加载态统一：由 ChatContainer 负责「保留上一帧 + 轻蒙层」，
@@ -827,11 +812,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     ? 'sandbox'
     : attachmentPreviewOpen && openApp
       ? 'attachment'
-      : artifactsPanelOpen
-        ? 'artifacts'
-        : canvasSidebarOpen
-          ? 'canvas'
-          : null;
+      : canvasSidebarOpen
+        ? 'canvas'
+        : null;
   const desktopSecondaryPanelOpen = !isSmallScreen && desktopSecondaryPanelMode !== null;
   const desktopSecondaryPanelSnapshotApp = desktopSecondaryPanelMode === 'attachment'
     ? openApp
@@ -903,17 +886,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
     if (panelMode === 'attachment' && panelOpenApp) {
       return renderOpenAppPanel({ openAppOverride: panelOpenApp });
-    }
-
-    if (panelMode === 'artifacts') {
-      if (!currentSessionId) return null;
-      return (
-        <ArtifactsPanel
-          sessionId={currentSessionId}
-          store={sessionManager.get(currentSessionId)}
-          onClose={() => setArtifactsPanelOpen(false)}
-        />
-      );
     }
 
     return (
@@ -1475,39 +1447,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   <SidebarFrameWithLeftRailIcon />
                 </span>
               </span>
-            </DsButton>
-          </CommonTooltip>
-        </div>
-      )}
-
-      {/* P1 产物面板入口（桌面端顶栏钮，与 sandbox 钮同位同族；有产物才显示，互斥由推导链处理） */}
-      {!isSmallScreen && currentSessionId && hasSessionArtifacts && (
-        <div
-          className="absolute z-20"
-          style={{
-            top: `calc(var(--topbar-safe-area, 0px) + ${(DESKTOP_SHELL.titlebarBaseHeight - 32) / 2}px)`,
-            right: '16px',
-          }}
-        >
-          <CommonTooltip
-            content={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
-            position="bottom"
-          >
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              onClick={toggleArtifactsPanel}
-              className={cn(
-                // 对齐 desktop-shell-toolbar-button 家族：透明底、无边框阴影，
-                // hover/active 走 shell control token（ghost 基底自带 hover）
-                '!h-8 !w-8 rounded-[var(--shell-nav-row-radius)] text-muted-foreground transition-colors duration-150 hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
-                artifactsPanelOpen && 'bg-[var(--shell-control-active)] text-foreground'
-              )}
-              aria-label={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
-              title={artifactsPanelOpen ? t('artifacts.collapsePanel') : t('artifacts.expandPanel')}
-            >
-              <SquaresFour size={17} />
             </DsButton>
           </CommonTooltip>
         </div>

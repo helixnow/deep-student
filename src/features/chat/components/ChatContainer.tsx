@@ -372,7 +372,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               compact: true,
             })}
             {renderFooter('chat-empty-composer-layout__footer')}
-            <AgentTaskPanel store={store} />
+            <AgentTaskPanel store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
           </ThreadContentShell>
         </div>
@@ -387,7 +387,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
 
           {/* Agent todo panel — 贴在输入栏上方 */}
-          <AgentTaskPanel store={store} />
+          <AgentTaskPanel store={store} chatStore={store} />
 
           {/* 输入栏 */}
           {renderInputBar(undefined, 'docked', shouldAutoFocusMobileEmptyComposer)}

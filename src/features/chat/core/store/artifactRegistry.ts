@@ -129,8 +129,9 @@ export function ensureArtifactRegistryLifecycle(): void {
 
 interface DeriveStateLike {
   blocks: Map<string, Block>;
-  messageMap: Map<string, Message>;
-  messageOrder: string[];
+  /** 窄 store（如 AgentTaskPanel 的读取切片）可不带消息面；缺失时刷新快照为空 */
+  messageMap?: Map<string, Message>;
+  messageOrder?: string[];
 }
 
 /** 前溯到前一用户消息，取刷新快照（refreshPrompt + userRefs） */
@@ -138,11 +139,14 @@ function findRefreshSnapshot(
   state: DeriveStateLike,
   assistantMessageId: string,
 ): { refreshPrompt?: string; contextRefs?: ContextRef[] } {
-  const idx = state.messageOrder.indexOf(assistantMessageId);
+  const order = state.messageOrder;
+  const messageMap = state.messageMap;
+  if (!order || !messageMap) return {};
+  const idx = order.indexOf(assistantMessageId);
   if (idx <= 0) return {};
 
   for (let i = idx - 1; i >= 0; i -= 1) {
-    const msg = state.messageMap.get(state.messageOrder[i]);
+    const msg = messageMap.get(order[i]);
     if (!msg || msg.role !== 'user') continue;
 
     const userBlocks = msg.blockIds
