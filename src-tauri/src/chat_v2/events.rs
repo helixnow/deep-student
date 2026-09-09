@@ -67,6 +67,8 @@ pub mod event_types {
     pub const MEMORY: &str = "memory";
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
+    /// 灵感召回（Insight Recall v2 阶段二，范式 A：实时即类型块）
+    pub const INSIGHT_RECALL: &str = "insight_recall";
     pub const ANKI_CARDS: &str = "anki_cards";
     /// 🆕 AI 出题预览块（2026-09-09 D2）
     pub const QBANK_QUESTIONS: &str = "qbank_questions";
@@ -914,11 +916,150 @@ pub fn clear_session_sequence_counter(session_id: &str) {
     SESSION_EVENT_SEQUENCE_COUNTERS.remove(session_id);
 }
 
+// ============================================================
+// 执行事件出口（G01-a：统一无界面执行内核）
+// ============================================================
+
+/// 执行内核的事件出口抽象。
+///
+/// 覆盖 `ChatV2EventEmitter` 的全部发射路径（块级 + 会话级事件）：
+/// - 桌面窗口运行时由 [`WindowEventSink`] 经 Tauri `Window` 发到前端事件通道；
+/// - 无窗口运行时（headless / 测试）由 [`NoopEventSink`] 丢弃事件（仅 trace 日志）。
+///
+/// 少数仍需要真实窗口的路径（LLM 流式调用、shell 审批作用域绑定、MCP 产物
+/// 落盘）经 [`ExecutionEventSink::window`] 取回窗口；无窗口 runtime 返回 `None`，
+/// 由调用方决定降级策略。
+pub trait ExecutionEventSink: Send + Sync {
+    /// 发射块级事件到 `chat_v2_event_{session_id}` 通道。
+    fn emit_block_event(&self, channel: &str, event: &BackendEvent);
+
+    /// 发射会话级事件到 `chat_v2_session_{session_id}` 通道。
+    fn emit_session_event(&self, channel: &str, event: &SessionEvent);
+
+    /// 取回底层 Tauri 窗口；无窗口 runtime 返回 `None`。
+    fn window(&self) -> Option<Window>;
+}
+
+/// 桌面窗口事件出口：包装现有 `Window::emit` 行为。
+///
+/// 🔧 P0 修复语义保持：emit 失败不再静默丢弃 —— 立即重试一次（Tauri emit
+/// 失败多为瞬时 IPC/序列化抖动），仍失败则记录错误日志并累计失败计数。
+pub struct WindowEventSink {
+    window: Window,
+}
+
+impl WindowEventSink {
+    pub fn new(window: Window) -> Self {
+        Self { window }
+    }
+}
+
+impl ExecutionEventSink for WindowEventSink {
+    fn emit_block_event(&self, channel: &str, event: &BackendEvent) {
+        if let Err(e) = self.window.emit(channel, event) {
+            log::error!(
+                "[ChatV2::events] Failed to emit block event (attempt 1/2): {} type={} phase={} seq={} - {:?}",
+                channel,
+                event.r#type,
+                event.phase,
+                event.sequence_id,
+                e
+            );
+            if let Err(e2) = self.window.emit(channel, event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Block event DROPPED after retry: {} type={} phase={} seq={} - {:?} (total_dropped={})",
+                    channel,
+                    event.r#type,
+                    event.phase,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
+        } else {
+            log::debug!(
+                "[ChatV2::events] Emitted block event: {} type={} phase={} seq={}",
+                channel,
+                event.r#type,
+                event.phase,
+                event.sequence_id
+            );
+        }
+    }
+
+    fn emit_session_event(&self, channel: &str, event: &SessionEvent) {
+        if let Err(e) = self.window.emit(channel, event) {
+            log::error!(
+                "[ChatV2::events] Failed to emit session event (attempt 1/2): {} type={} seq={:?} - {:?}",
+                channel,
+                event.event_type,
+                event.sequence_id,
+                e
+            );
+            if let Err(e2) = self.window.emit(channel, event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Session event DROPPED after retry: {} type={} seq={:?} - {:?} (total_dropped={})",
+                    channel,
+                    event.event_type,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
+        } else {
+            log::debug!(
+                "[ChatV2::events] Emitted session event: {} type={} seq={:?}",
+                channel,
+                event.event_type,
+                event.sequence_id
+            );
+        }
+    }
+
+    fn window(&self) -> Option<Window> {
+        Some(self.window.clone())
+    }
+}
+
+/// 无窗口事件出口（headless / 测试）：事件全部丢弃（仅 trace 日志），
+/// `window()` 返回 `None`。
+///
+/// G01-a 把原 `new_windowless_for_test` 的测试能力提升为生产可用：
+/// headless 执行内核在没有 Tauri 窗口时用它构造 emitter。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopEventSink;
+
+impl ExecutionEventSink for NoopEventSink {
+    fn emit_block_event(&self, channel: &str, event: &BackendEvent) {
+        log::trace!(
+            "[ChatV2::events] NoopSink drop block event: {} type={} phase={} seq={}",
+            channel,
+            event.r#type,
+            event.phase,
+            event.sequence_id
+        );
+    }
+
+    fn emit_session_event(&self, channel: &str, event: &SessionEvent) {
+        log::trace!(
+            "[ChatV2::events] NoopSink drop session event: {} type={} seq={:?}",
+            channel,
+            event.event_type,
+            event.sequence_id
+        );
+    }
+
+    fn window(&self) -> Option<Window> {
+        None
+    }
+}
+
 pub struct ChatV2EventEmitter {
-    /// `None` only in unit tests that exercise pipeline logic without a real
-    /// Tauri window; production always holds `Some`. Emits become no-ops when
-    /// absent so behaviour-level tests can assert executor/gate effects.
-    window: Option<Window>,
+    /// 事件出口。桌面窗口运行时为 [`WindowEventSink`]；无窗口 runtime
+    /// （headless / 测试）为 [`NoopEventSink`]，emit 全部成为 no-op。
+    sink: Arc<dyn ExecutionEventSink>,
     session_id: String,
     /// One backend registration generation shared by every lifecycle event from this emitter.
     stream_generation: Option<u64>,
@@ -938,10 +1079,25 @@ struct BlockEventMeta {
 }
 
 impl ChatV2EventEmitter {
-    /// 创建新的事件发射器
+    /// 创建新的事件发射器（桌面窗口运行时）
     pub fn new(window: Window, session_id: String) -> Self {
+        Self::with_sink(Arc::new(WindowEventSink::new(window)), session_id)
+    }
+
+    /// 创建无窗口（headless）事件发射器：事件经 [`NoopEventSink`] 丢弃。
+    ///
+    /// G01-a：原 `new_windowless_for_test` 的测试能力提升为生产可用。
+    /// 需要真实窗口的少数路径（LLM 流式调用、shell 审批绑定等）在
+    /// `try_window()` 返回 `None` 时由调用方 fail-fast 或降级。
+    pub fn new_headless(session_id: String) -> Self {
+        Self::with_sink(Arc::new(NoopEventSink), session_id)
+    }
+
+    /// 以自定义事件出口构造 emitter（测试替身 / 未来 headless 录制 sink
+    /// 等扩展点）。
+    pub fn with_sink(sink: Arc<dyn ExecutionEventSink>, session_id: String) -> Self {
         Self {
-            window: Some(window),
+            sink,
             session_id: session_id.clone(),
             stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
@@ -955,14 +1111,7 @@ impl ChatV2EventEmitter {
     /// effects rather than emitted events.
     #[cfg(test)]
     pub fn new_windowless_for_test(session_id: String) -> Self {
-        Self {
-            window: None,
-            session_id: session_id.clone(),
-            stream_generation: None,
-            sequence_counter: get_or_create_session_counter(&session_id),
-            session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
-            block_event_meta: Arc::new(DashMap::new()),
-        }
+        Self::new_headless(session_id)
     }
 
     pub fn with_stream_generation(mut self, stream_generation: Option<u64>) -> Self {
@@ -975,19 +1124,25 @@ impl ChatV2EventEmitter {
         &self.session_id
     }
 
-    /// 获取 Window 引用（供 LLM 调用使用）
-    ///
-    /// 生产环境始终持有 window；仅无窗口测试构造器会缺失，此时 panic 以
-    /// 暴露误用（测试路径不应调用需要真实 window 的 LLM 能力）。
-    pub fn window(&self) -> Window {
-        self.window
-            .clone()
-            .expect("ChatV2EventEmitter::window() called on a windowless test emitter")
+    /// 访问底层事件出口（G01-a）。
+    pub fn sink(&self) -> &Arc<dyn ExecutionEventSink> {
+        &self.sink
     }
 
-    /// Optional window for tool execution (windowless integration tests return `None`).
+    /// 获取 Window 引用（供 LLM 调用使用）
+    ///
+    /// 生产环境始终持有 window；无窗口 runtime（headless/测试）缺失，此时
+    /// panic 以暴露误用。允许缺失窗口的路径应改用 [`Self::try_window`]
+    /// 并显式处理 `None` 分支。
+    pub fn window(&self) -> Window {
+        self.sink
+            .window()
+            .expect("ChatV2EventEmitter::window() called on a windowless emitter")
+    }
+
+    /// Optional window for tool execution (windowless runtimes return `None`).
     pub fn try_window(&self) -> Option<Window> {
-        self.window.clone()
+        self.sink.window()
     }
 
     /// 获取下一个序列号（原子递增）
@@ -1051,53 +1206,21 @@ impl ChatV2EventEmitter {
 
     /// 发射块级事件（内部方法）
     ///
-    /// 🔧 P0 修复：emit 失败不再静默丢弃 —— 立即重试一次（Tauri emit 失败
-    /// 多为瞬时 IPC/序列化抖动），仍失败则记录错误日志并累计失败计数。
+    /// 事件构造（序列号 / session_id 补齐 / meta 应用）在 emitter 内完成，
+    /// 实际投递委托给 [`ExecutionEventSink`]；失败重试与计数策略由
+    /// [`WindowEventSink`] 保持现状语义，无窗口 sink 直接丢弃。
     fn emit(&self, mut event: BackendEvent) {
         let event_name = self.block_event_channel();
         if event.session_id.is_none() {
             event.session_id = Some(self.session_id.clone());
         }
-
-        let Some(window) = self.window.as_ref() else {
-            return;
-        };
-        if let Err(e) = window.emit(&event_name, &event) {
-            log::error!(
-                "[ChatV2::events] Failed to emit block event (attempt 1/2): {} type={} phase={} seq={} - {:?}",
-                event_name,
-                event.r#type,
-                event.phase,
-                event.sequence_id,
-                e
-            );
-            if let Err(e2) = window.emit(&event_name, &event) {
-                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-                log::error!(
-                    "[ChatV2::events] Block event DROPPED after retry: {} type={} phase={} seq={} - {:?} (total_dropped={})",
-                    event_name,
-                    event.r#type,
-                    event.phase,
-                    event.sequence_id,
-                    e2,
-                    total
-                );
-            }
-        } else {
-            log::debug!(
-                "[ChatV2::events] Emitted block event: {} type={} phase={} seq={}",
-                event_name,
-                event.r#type,
-                event.phase,
-                event.sequence_id
-            );
-        }
+        self.sink.emit_block_event(&event_name, &event);
     }
 
     /// 发射会话级事件（内部方法）
     ///
     /// 🆕 补齐 sequence_id（会话级通道独立递增计数），前端可据此检测
-    /// 乱序/丢失；emit 失败重试一次并计数（同块级事件策略）。
+    /// 乱序/丢失；投递策略同块级事件。
     fn emit_session(&self, mut event: SessionEvent) {
         let event_name = self.session_event_channel();
         if event.stream_generation.is_none() {
@@ -1109,36 +1232,7 @@ impl ChatV2EventEmitter {
                     .fetch_add(1, Ordering::SeqCst),
             );
         }
-        let Some(window) = self.window.as_ref() else {
-            return;
-        };
-        if let Err(e) = window.emit(&event_name, &event) {
-            log::error!(
-                "[ChatV2::events] Failed to emit session event (attempt 1/2): {} type={} seq={:?} - {:?}",
-                event_name,
-                event.event_type,
-                event.sequence_id,
-                e
-            );
-            if let Err(e2) = window.emit(&event_name, &event) {
-                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-                log::error!(
-                    "[ChatV2::events] Session event DROPPED after retry: {} type={} seq={:?} - {:?} (total_dropped={})",
-                    event_name,
-                    event.event_type,
-                    event.sequence_id,
-                    e2,
-                    total
-                );
-            }
-        } else {
-            log::debug!(
-                "[ChatV2::events] Emitted session event: {} type={} seq={:?}",
-                event_name,
-                event.event_type,
-                event.sequence_id
-            );
-        }
+        self.sink.emit_session_event(&event_name, &event);
     }
 
     // ========== 块级事件便捷方法 ==========
@@ -2191,5 +2285,203 @@ mod tests {
         assert!(json2.contains("\"status\":\"success\""));
         assert!(!json2.contains("\"error\""));
         assert!(!json2.contains("\"usage\"")); // usage 为 None 时不序列化
+    }
+
+    // ========== G01-a：ExecutionEventSink 抽象 ==========
+
+    /// 测试用录制 sink：捕获 emitter 投递的全部事件，验证 emitter 与 sink
+    /// 之间的契约（通道名 / session_id 补齐 / 序列号 / meta 应用）。
+    #[derive(Default)]
+    struct RecordingSink {
+        block_events: std::sync::Mutex<Vec<(String, BackendEvent)>>,
+        session_events: std::sync::Mutex<Vec<(String, SessionEvent)>>,
+    }
+
+    impl ExecutionEventSink for RecordingSink {
+        fn emit_block_event(&self, channel: &str, event: &BackendEvent) {
+            self.block_events
+                .lock()
+                .unwrap()
+                .push((channel.to_string(), event.clone()));
+        }
+
+        fn emit_session_event(&self, channel: &str, event: &SessionEvent) {
+            self.session_events
+                .lock()
+                .unwrap()
+                .push((channel.to_string(), event.clone()));
+        }
+
+        fn window(&self) -> Option<Window> {
+            None
+        }
+    }
+
+    /// NoopEventSink 下 emitter 全路径不 panic（生产化后的 headless 出口）。
+    #[test]
+    fn noop_sink_emitter_all_paths_do_not_panic() {
+        let emitter = ChatV2EventEmitter::new_headless("test_noop_all_paths".to_string())
+            .with_stream_generation(Some(7));
+
+        // 块级事件
+        emitter.emit_start(event_types::CONTENT, "msg_1", Some("blk_1"), None, None);
+        emitter.emit_start_with_meta(
+            event_types::THINKING,
+            "msg_1",
+            Some("blk_2"),
+            None,
+            None,
+            Some(3),
+            Some("round_1"),
+        );
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "chunk", None);
+        emitter.emit_chunk_with_meta(
+            event_types::CONTENT,
+            "blk_1",
+            "chunk",
+            None,
+            Some(3),
+            Some("round_1"),
+        );
+        emitter.emit_end(event_types::CONTENT, "blk_1", None, None);
+        emitter.emit_end_with_meta(event_types::CONTENT, "blk_1", None, None, Some(3), None);
+        emitter.emit_error(event_types::TOOL_CALL, "blk_1", "boom", None);
+        emitter.emit_error_with_meta(event_types::TOOL_CALL, "blk_1", "boom", None, Some(3), None);
+        emitter.emit_skill_injection_audit("msg_1", serde_json::json!({"k": "v"}), None, None, None);
+        emitter.emit_content_chunk("blk_1", "content", None);
+        emitter.emit_thinking_chunk("blk_2", "thinking", None);
+        emitter.emit_tool_call_start(
+            "msg_1",
+            "blk_3",
+            "builtin:rag",
+            serde_json::json!({"query": "x"}),
+            Some("tc_1"),
+            None,
+        );
+        emitter.emit_tool_call_preparing("msg_1", "tc_1", "builtin:rag", Some("blk_3"));
+        emitter.emit_tool_call_preparing_with_meta(
+            "msg_1",
+            "tc_1",
+            "builtin:rag",
+            Some("blk_3"),
+            None,
+            Some(3),
+            None,
+        );
+        emitter.emit_tool_call_preparing_with_variant("msg_1", "tc_1", "builtin:rag", Some("blk_3"), "var_1");
+
+        // 变体生命周期
+        emitter.emit_variant_start("msg_1", "var_1", "gpt-4");
+        emitter.emit_variant_end("var_1", "success", None, None);
+
+        // 会话级事件
+        emitter.emit_stream_start("msg_1", Some("gpt-4"));
+        emitter.emit_stream_reconnect("msg_1", 1, 2);
+        emitter.emit_stream_complete("msg_1", 1500);
+        emitter.emit_stream_complete_with_usage("msg_1", 1500, None);
+        emitter.emit_stream_error("msg_1", "network down");
+        emitter.emit_stream_cancelled("msg_1");
+        emitter.emit_save_complete();
+        emitter.emit_save_error("db write failed");
+        emitter.emit_summary_updated("title", "description");
+        emitter.emit_compaction_failed("summaryFailed");
+        emitter.emit_context_trimmed(2, Some(128));
+    }
+
+    /// NoopEventSink：try_window() 返回 None，window() 保持 panic 语义。
+    #[test]
+    fn noop_sink_window_accessors() {
+        let emitter = ChatV2EventEmitter::new_headless("test_noop_window".to_string());
+        assert!(emitter.try_window().is_none());
+        assert!(emitter.sink().window().is_none());
+    }
+
+    /// window() 在无窗口 sink 上 panic（暴露误用），与现状语义一致。
+    #[test]
+    #[should_panic(expected = "windowless emitter")]
+    fn noop_sink_window_panics_on_window() {
+        let emitter = ChatV2EventEmitter::new_headless("test_noop_window_panic".to_string());
+        let _ = emitter.window();
+    }
+
+    /// NoopEventSink 的丢弃不计入 emit 失败计数（失败计数只跟踪真实
+    /// window.emit 投递失败）。
+    #[test]
+    fn noop_sink_does_not_increment_failure_count() {
+        let before = emit_failure_count();
+        let emitter = ChatV2EventEmitter::new_headless("test_noop_failure_count".to_string());
+        emitter.emit_content_chunk("blk_1", "data", None);
+        emitter.emit_stream_complete("msg_1", 10);
+        assert_eq!(emit_failure_count(), before);
+    }
+
+    /// NoopEventSink 下块级序列号仍然递增（事件构造在 sink 之前完成，
+    /// 与窗口缺失时现状行为一致）。
+    #[test]
+    fn noop_sink_sequence_ids_still_advance() {
+        let emitter = ChatV2EventEmitter::new_headless("test_noop_seq".to_string());
+        let start = emitter.current_sequence_id();
+        emitter.emit_content_chunk("blk_1", "a", None);
+        emitter.emit_content_chunk("blk_1", "b", None);
+        assert_eq!(emitter.current_sequence_id(), start + 2);
+    }
+
+    /// 块级事件经 sink 投递：通道名 / session_id 补齐 / 序列号递增 /
+    /// 注册的 block meta 应用，全部与窗口路径一致。
+    #[test]
+    fn recording_sink_captures_block_events() {
+        let sink = Arc::new(RecordingSink::default());
+        let emitter = ChatV2EventEmitter::with_sink(
+            sink.clone(),
+            "test_recording_block".to_string(),
+        );
+        emitter.register_block_event_meta("blk_meta", Some("var_9"), Some(42), Some("round_7"));
+
+        emitter.emit_start(event_types::CONTENT, "msg_1", Some("blk_1"), None, None);
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "hello", None);
+        // 未显式携带 meta 的事件应从注册表补齐
+        emitter.emit_chunk(event_types::CONTENT, "blk_meta", "meta", None);
+        emitter.emit_end(event_types::CONTENT, "blk_1", None, None);
+
+        let captured = sink.block_events.lock().unwrap();
+        assert_eq!(captured.len(), 4);
+        for (channel, event) in captured.iter() {
+            assert_eq!(channel, "chat_v2_event_test_recording_block");
+            assert_eq!(event.session_id.as_deref(), Some("test_recording_block"));
+        }
+        // 序列号严格递增
+        for pair in captured.windows(2) {
+            assert!(pair[0].1.sequence_id < pair[1].1.sequence_id);
+        }
+        // 注册 meta 被应用到未显式携带的事件
+        let meta_event = &captured[2].1;
+        assert_eq!(meta_event.variant_id.as_deref(), Some("var_9"));
+        assert_eq!(meta_event.skill_state_version, Some(42));
+        assert_eq!(meta_event.round_id.as_deref(), Some("round_7"));
+    }
+
+    /// 会话级事件经 sink 投递：通道名 / stream_generation 补齐 / 会话级
+    /// 序列号独立递增。
+    #[test]
+    fn recording_sink_captures_session_events() {
+        let sink = Arc::new(RecordingSink::default());
+        let emitter = ChatV2EventEmitter::with_sink(
+            sink.clone(),
+            "test_recording_session".to_string(),
+        )
+        .with_stream_generation(Some(73));
+
+        emitter.emit_stream_start("msg_1", None);
+        emitter.emit_stream_complete("msg_1", 100);
+
+        let captured = sink.session_events.lock().unwrap();
+        assert_eq!(captured.len(), 2);
+        for (channel, event) in captured.iter() {
+            assert_eq!(channel, "chat_v2_session_test_recording_session");
+            assert_eq!(event.stream_generation, Some(73));
+        }
+        let first_seq = captured[0].1.sequence_id.expect("sequence_id filled");
+        let second_seq = captured[1].1.sequence_id.expect("sequence_id filled");
+        assert!(first_seq < second_seq);
     }
 }

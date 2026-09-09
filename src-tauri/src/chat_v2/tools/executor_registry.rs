@@ -21,8 +21,11 @@ use serde_json::{json, Value};
 // 全局超时配置
 // ============================================================================
 
-/// 默认工具执行超时时间（秒）
-const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
+/// 默认工具执行超时时间（秒）。
+///
+/// G01-c：数值的唯一来源是 `tool_descriptors::DEFAULT_TIMEOUT_SECS`（注册表
+/// 驱动超时的默认档位），此处保留别名避免 churn 既有引用。
+const DEFAULT_TOOL_TIMEOUT_SECS: u64 = crate::chat_v2::tool_descriptors::DEFAULT_TIMEOUT_SECS;
 const NO_TOOL_TIMEOUT_SECS: u64 = 0;
 /// ACR 最长一次桥事务为 probe(3s) + apply_ops(120s)。外层 watchdog 必须
 /// 留出完整事务预算，不能先于桥层超时丢弃已提交的 apply future。
@@ -39,12 +42,17 @@ fn executor_may_delegate_to_acr(executor_name: &str) -> bool {
 /// 是后端自有的 MCP 管理工具，与外部 MCP 的 `mcp_` 前缀撞名。它们必须由
 /// McpManageExecutor 拦截（High/Medium 敏感度 + 审批），绝不能被当作外部
 /// MCP 调用转发到 GeneralToolExecutor（见 pipeline.rs 注册顺序测试）。
+///
+/// `mcp_server_propose`（McpProposeExecutor，High）同理——G01-c 注册表同步
+/// 测试发现裸名此前被漏掉：一直静默走 GeneralToolExecutor（Medium 兜底），
+/// 只有 `builtin-` 前缀名能到达专属 executor。
 fn is_builtin_mcp_management_tool_name(tool_name: &str) -> bool {
     matches!(
         tool_name,
         super::mcp_manage_executor::tool_names::MCP_SERVER_UPDATE
             | super::mcp_manage_executor::tool_names::MCP_SERVER_SET_ENABLED
             | super::mcp_manage_executor::tool_names::MCP_SERVER_REMOVE
+            | super::mcp_propose_executor::tool_names::MCP_SERVER_PROPOSE
     )
 }
 
@@ -62,81 +70,39 @@ fn get_executor_timeout_secs(tool_name: &str, executor_name: &str) -> u64 {
 
 /// 获取工具特定的超时时间（秒）
 ///
-/// 某些工具可能需要更长的执行时间，在此处配置特例。
+/// G01-c：内建工具的超时由 [`crate::chat_v2::tool_descriptors`] 注册表驱动
+/// （`ToolDescriptor::timeout_secs`；`None` = 默认 120s，`Some(0)` = 豁免看门狗）。
+/// 注册表未覆盖的名字（外部 MCP 动态工具 / 未知工具）保留迁移前兜底：
+/// `mcp_` / `mcp.tools.` 前缀 180s，其余默认 120s。
+///
+/// 有意的语义收窄：旧实现用 `chatanki_*` / `workbench_*` 前缀规则覆盖整族
+/// （含未登记名字）；迁移后这两个家族的全部真实工具（29 + 11 个，由
+/// tool_descriptors 同步测试保证覆盖）在注册表内显式携带超时，未登记的
+/// 同前缀名字落默认值——新增同族工具必须登记 descriptor 并显式选择超时。
+///
+/// 行为与迁移前的字符串匹配表**逐字节等价**，由本文件测试模块的
+/// `timeout_migration_matches_legacy_mapping_for_every_tool` 锁定
+/// （迁移前的完整匹配表作为 legacy 对照实现保留在测试中）。
 ///
 /// ## 工具命名规范
 /// - 内置工具使用 `builtin-` 前缀，如 `builtin-rag_search`、`builtin-web_search`
 /// - MCP 工具使用 `mcp_` 前缀，如 `mcp_brave_search`
 fn get_tool_timeout_secs(tool_name: &str) -> u64 {
-    // 去掉 builtin- 前缀用于统一匹配
+    // 去掉 builtin- 前缀用于统一匹配（剥一次，与迁移前口径一致：
+    // 双前缀输入会落到未登记兜底分支）
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
 
-    if stripped == "ask_user" {
-        return NO_TOOL_TIMEOUT_SECS;
+    if let Some(descriptor) = crate::chat_v2::tool_descriptors::lookup(stripped) {
+        return descriptor
+            .timeout_secs
+            .unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
     }
 
-    // 精确匹配：内置检索和搜索工具（使用 stripped name 以同时支持
-    // `builtin-` 前缀和 ToolPack 子工具传入的无前缀名称）
-    match stripped {
-        // 网络搜索工具（需要较长时间）
-        "web_search" => 180, // 3 分钟
-        // 学术论文搜索工具（arXiv / OpenAlex API）
-        "arxiv_search" | "scholar_search" => 180, // 3 分钟
-        // 论文保存工具（下载 PDF + VFS 存储，批量最多 5 篇）
-        "paper_save" => 600, // 10 分钟（批量下载+处理）
-        // Long translation can require multiple sequential 100K-character segments.
-        "translate_text" => 600,
-        // 引用格式化工具（纯计算，无网络）
-        "cite_format" => 30, // 30 秒
-        // 网络请求和 HTML 解析工具（涉及网络请求和 HTML 解析）
-        "web_fetch" => 180, // 3 分钟
-        // RAG 检索工具（可能涉及大量数据）。
-        // 注意：multimodal_search 已在工具暴露层收敛进 unified_search，但
-        // 检索执行器仍接受该名称（历史会话回放 / retrieval executor 改造中），
-        // 此处的超时配置必须保留，不要删除。
-        "rag_search" | "multimodal_search" | "unified_search" => 180, // 3 分钟
-        // VFS 全量索引重建：大 PDF 的抽取 + 分块 + 嵌入远超默认 120s，
-        // 必须使用专用长超时，否则重建中途被 watchdog 掐断。
-        "index_rebuild" => 600, // 10 分钟
-        // AI 出题（同步模式）：一次生成多题需流式调用 LLM，默认 120s 不够；
-        // 大批量场景模型应改用 background=true（立即返回 task_id，不占工具超时）。
-        "qbank_generate_questions" => 600, // 10 分钟
-        // 网页存档：大 Markdown（最大 4 MiB）落盘 + Unit 同步可能较慢
-        "webpage_save" => 300, // 5 分钟
-        // 文档写入/转换工具（大文件处理可能耗时较长）
-        "docx_create" | "pptx_create" | "xlsx_create" | "docx_to_spec" | "pptx_to_spec"
-        | "xlsx_to_spec" | "docx_replace_text" | "pptx_replace_text" | "xlsx_replace_text" => 300, // 5 分钟
-        // 阻塞型协作工具：默认阻塞等待子代理终态，内部自带
-        // SUBAGENT_WAIT_BUDGET_SECS（750s）等待预算与取消处理，外层看门狗
-        // 若先行掐断会丢弃取消/回收逻辑，因此豁免。
-        "subagent_call" => NO_TOOL_TIMEOUT_SECS,
-        // 阻塞型协作工具：sleep 自身有 60 分钟硬上限 + 取消令牌
-        // （见 sleep_executor.rs），默认睡眠 30 分钟远超 DEFAULT 120s，
-        // 外层看门狗必须豁免，否则所有长睡眠都会被误判超时（P0）。
-        "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
-        "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
-        // The executor has its own bounded command deadline, but cleanup may need to unwind a
-        // Windows AppContainer helper and temporary ACLs. Never drop that cleanup future here.
-        "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
-        _ => {
-            // ChatAnki 工具：chatanki_wait 内部默认 5 分钟、timeoutMs 上限 60 分钟；
-            // 外层看门狗只是防呆兜底，必须覆盖内部上限，否则显式长等待会被误杀。
-            if stripped == "chatanki_wait" {
-                61 * 60 // 61 分钟（内部 timeoutMs 上限 60 分钟 + 竞态缓冲）
-            } else if stripped.starts_with("chatanki_") {
-                600 // 10 分钟（chatanki_run/start/export/sync 可能涉及大量 IO）
-            } else if stripped == "image_generate" {
-                300 // 5 分钟（第三方生图 API 可能排队）
-            } else if stripped.starts_with("workbench_") {
-                // ACR workbench_*：桥调用 + 前端 pacing 演出，外层放宽到 180s（DESIGN §6）
-                180 // 3 分钟
-            } else if is_external_mcp_tool_name(stripped) {
-                // 前缀匹配：MCP 工具通常需要网络请求
-                180 // 3 分钟
-            } else {
-                DEFAULT_TOOL_TIMEOUT_SECS
-            }
-        }
+    // 注册表未覆盖的名字：外部 MCP 动态工具通常需要网络请求
+    if is_external_mcp_tool_name(stripped) {
+        180 // 3 分钟
+    } else {
+        DEFAULT_TOOL_TIMEOUT_SECS
     }
 }
 
@@ -894,5 +860,100 @@ mod tests {
             get_executor_timeout_secs("builtin-template_validate", "TemplateExecutor"),
             DEFAULT_TOOL_TIMEOUT_SECS
         );
+    }
+
+    // ========================================================================
+    // G01-c：超时迁移等价性（注册表驱动 vs 迁移前字符串匹配表）
+    // ========================================================================
+
+    /// 迁移前 `get_tool_timeout_secs` 的完整对照实现（2026-09 冻结，勿再修改）。
+    ///
+    /// 若新实现需要有意变更某工具超时，应改 `tool_descriptors::BUILTIN_DESCRIPTORS`
+    /// 并同步本对照（测试会迫使变更显式化）。
+    fn legacy_get_tool_timeout_secs(tool_name: &str) -> u64 {
+        let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
+
+        if stripped == "ask_user" {
+            return NO_TOOL_TIMEOUT_SECS;
+        }
+
+        match stripped {
+            "web_search" => 180,
+            "arxiv_search" | "scholar_search" => 180,
+            "paper_save" => 600,
+            "translate_text" => 600,
+            "cite_format" => 30,
+            "web_fetch" => 180,
+            "rag_search" | "multimodal_search" | "unified_search" => 180,
+            "index_rebuild" => 600,
+            "webpage_save" => 300,
+            "docx_create" | "pptx_create" | "xlsx_create" | "docx_to_spec" | "pptx_to_spec"
+            | "xlsx_to_spec" | "docx_replace_text" | "pptx_replace_text" | "xlsx_replace_text" => {
+                300
+            }
+            "subagent_call" => NO_TOOL_TIMEOUT_SECS,
+            "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
+            "tool_pack" => 600,
+            "ptc_run" => 600,
+            "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
+            _ => {
+                if stripped == "chatanki_wait" {
+                    61 * 60
+                } else if stripped.starts_with("chatanki_") {
+                    600
+                } else if stripped == "image_generate" {
+                    300
+                } else if stripped.starts_with("workbench_") {
+                    180
+                } else if is_external_mcp_tool_name(stripped) {
+                    180
+                } else {
+                    DEFAULT_TOOL_TIMEOUT_SECS
+                }
+            }
+        }
+    }
+
+    /// 注册表驱动实现与 legacy 对照对**每个已登记工具名**（裸名 + `builtin-`
+    /// 前缀两种形态）逐一相等；注册表外名字走兜底分支也逐一相等。
+    #[test]
+    fn timeout_migration_matches_legacy_mapping_for_every_tool() {
+        for descriptor in crate::chat_v2::tool_descriptors::BUILTIN_DESCRIPTORS {
+            for name in [
+                descriptor.name.to_string(),
+                format!("builtin-{}", descriptor.name),
+            ] {
+                assert_eq!(
+                    get_tool_timeout_secs(&name),
+                    legacy_get_tool_timeout_secs(&name),
+                    "timeout drift for tool '{name}'"
+                );
+            }
+        }
+
+        // 未登记名字：外部 MCP 前缀、未知工具、双前缀等兜底形态
+        for name in [
+            "mcp_brave_search",
+            "mcp.tools.brave_search",
+            "builtin-mcp_unknown_tool",
+            "totally_unknown_tool",
+            "builtin-totally_unknown_tool",
+            "builtin-builtin-web_search",
+        ] {
+            assert_eq!(
+                get_tool_timeout_secs(name),
+                legacy_get_tool_timeout_secs(name),
+                "fallback drift for '{name}'"
+            );
+        }
+
+        // 有意的语义收窄（2026-09 G01-c）：旧表对未登记的 `chatanki_*` /
+        // `workbench_*` 名字经前缀规则给 600s/180s；注册表化后只有登记在册的
+        // 29 个 chatanki 工具与 11 个 workbench 工具携带对应超时，未登记的
+        // 同前缀名字落默认 120s。两族现有全部真实工具均在注册表内（由
+        // tool_descriptors 的同步测试保证覆盖），未来新增同族工具必须登记
+        // descriptor 并显式选择超时，不再被前缀规则静默覆盖。
+        assert_eq!(get_tool_timeout_secs("builtin-chatanki_x"), 120);
+        assert_eq!(get_tool_timeout_secs("builtin-workbench_x"), 120);
     }
 }

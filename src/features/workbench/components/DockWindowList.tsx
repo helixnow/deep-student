@@ -17,7 +17,7 @@ import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
 import { requestCloseAnimated } from '../hooks/useWindowLifecycleAnim';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
 import './DockWindowList.css';
 
@@ -394,6 +394,7 @@ export function DockWindowList({
         className={cn('wb-docklist-surface', 'wb-glass', 'wb-glass-lens')}
         onAnimationEnd={handleSurfaceAnimationEnd}
       >
+        <WallpaperReplica hostRef={surfaceRef} />
         <div className="wb-docklist-arrow" aria-hidden />
         {/* 应用名头部：触屏无 hover tooltip，长按开列表时由此提供应用名
             （a11y 清单 §4 tooltip 触屏等价）；可访问名已由 role=menu 的

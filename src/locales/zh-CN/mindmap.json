@@ -513,7 +513,7 @@
     }
   },
   "agent": {
-    "suggestion_pending": "目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，或提示用户保存/结束编辑后重试。",
+    "suggestion_pending": "目标导图存在未保存编辑或正在编辑，破坏性操作已暂存为建议（suggestionPending=true）：画布上已弹出确认条，用户会接受或拒绝，接受时暂存操作会自动应用。请勿重复提交同一批操作（会导致双重应用），也不要改走后端数据路径重提；如需调整，等用户反馈后再行动。",
     "validation_children_not_array": "data.children 必须是数组",
     "validation_item_not_node": "children 中每一项都必须是节点对象",
     "validation_cycle": "children 中存在循环引用",
@@ -569,6 +569,18 @@
     "all_ops_failed": "全部操作未能应用（锚点缺失或限制）",
     "partially_applied": "部分操作已应用（自动保存）；未执行项见 undone",
     "applied": "已应用（自动保存）",
-    "no_active_run": "无活跃 run"
+    "no_active_run": "无活跃 run",
+    "suggestion_bar": {
+      "title": "AI 建议修改",
+      "accept": "接受",
+      "reject": "拒绝",
+      "added": "+{{count}} 新增",
+      "removed": "−{{count}} 删除",
+      "updated": "改 {{count}}",
+      "moved": "移 {{count}}",
+      "accepted": "已应用 {{count}} 项修改",
+      "accept_partial": "已应用 {{applied}} 项，{{failed}} 项失败",
+      "save_failed": "内容已应用但保存失败，请手动保存"
+    }
   }
 }

@@ -20,8 +20,8 @@ use crate::chat_v2::runtime_roots::{
     runtime_root_by_id, RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::task_objects::{
-    BatchItemStatus, BatchManifest, BatchManifestItem, ManagedLocator, ObjectCapabilities,
-    ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+    hash_transform_params, BatchItemStatus, BatchManifest, BatchManifestItem, DerivedEdge,
+    ManagedLocator, ObjectCapabilities, TaskObjectHandle, TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -557,31 +557,40 @@ impl FileManagerExecutor {
             .file_name()
             .map(|v| v.to_string_lossy().to_string())
             .unwrap_or_else(|| relative_path.to_string());
-        let mut handle = TaskObjectHandle::new(
+        let operation_str = serde_json::to_value(item.operation)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_else(|| "unknown".to_string());
+        let handle = TaskObjectHandleBuilder::new(
             format!("fileobj_{}", Uuid::new_v4()),
             TaskObjectKind::File,
             display_name,
-            ObjectProvenance {
-                source: "file_manager".to_string(),
-                source_uri: None,
-                server: None,
-                tool: Some(tool_names::COMMIT.to_string()),
-                derived_from: vec![item.source_path.clone()],
-                observed_at: Utc::now().to_rfc3339(),
-            },
-        );
-        handle.sha256 = Some(hash);
-        handle.size_bytes = Some(bytes);
-        handle.locator = Some(ManagedLocator::new("workspace", relative_path)?);
-        handle.capabilities = ObjectCapabilities {
+            "file_manager",
+        )
+        .tool(Some(tool_names::COMMIT))
+        .derived_edge(
+            DerivedEdge::new(
+                &item.source_path,
+                format!("file_manager.{operation_str}"),
+            )
+            .with_params_hash(hash_transform_params(&json!({
+                "operation": &operation_str,
+                "source_path": &item.source_path,
+                "destination_path": &item.destination_path,
+            }))),
+        )
+        .sha256(Some(&hash))
+        .size_bytes(Some(bytes))
+        .locator(Some(ManagedLocator::new("workspace", relative_path)?))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: true,
             shareable: false,
             sendable: false,
             deletable: true,
-        };
-        handle.validate()?;
+        })
+        .build()?;
         Ok(handle)
     }
 

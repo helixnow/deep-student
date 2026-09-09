@@ -45,6 +45,11 @@ import type {
   StageManagerApi,
 } from '../types';
 import { withUserPatch } from '../userPatch';
+import {
+  stashMindmapSuggestion,
+  getMindmapSuggestion,
+  clearMindmapSuggestion,
+} from './mindmapSuggestionStore';
 
 const TYPE_ID = 'mindmap';
 /**
@@ -76,17 +81,16 @@ function agentExitingMs(): number {
 export const VIEWPORT_FOLLOW_EVERY = 5;
 
 /**
- * R2-02 定稿：维持 v1 拒绝式（不升级 AIDiff 式预览）。
- * 理由见 progress/R2-02.md「设计决策」。
- * ACR 4.0 A4：types.ts 回执状态枚举无 blocked/rejected 可选，维持 completed +
- * suggestionPending，但 message 改为明确指令式文案，避免 LLM 傻等一个
- * 永远不会到来的确认回执。
+ * P2 人机双写：破坏性 ops 暂存为建议，画布确认条（MindmapAgentSuggestionBar）
+ * 裁决——接受经 acceptMindmapSuggestion 合成 instant run 应用，拒绝丢弃。
+ * 文案必须明确"不要重复提交"：接受会自动应用暂存 ops，若 LLM 同时按旧
+ * 拒绝式语义从后端路径重提，同一批改动会双重应用。
  */
 export const SUGGESTION_MESSAGE =
-  '目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：'
-  + '用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。'
-  + 'suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，'
-  + '或提示用户保存/结束编辑后重试。';
+  '目标导图存在未保存编辑或正在编辑，破坏性操作已暂存为建议（suggestionPending=true）：'
+  + '画布上已弹出确认条，用户会接受或拒绝，接受时暂存操作会自动应用。'
+  + '请勿重复提交同一批操作（会导致双重应用），也不要改走后端数据路径重提；'
+  + '如需调整，等用户反馈后再行动。';
 
 /**
  * 写入回执时走 i18n（mindmap:agent.*；语言可运行时切换，故用函数而非模块级常量）。
@@ -1241,6 +1245,14 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       stoppedAtSuggestion = true;
       receipt.mode = 'suggestion';
       receipt.suggestionPending = true;
+      // P2 人机双写 MVP：剩余 ops 暂存（含命中 op），画布确认条裁决后
+      // acceptMindmapSuggestion 应用 / 拒绝丢弃（此前为纯拒绝式，无确认 UI）。
+      stashMindmapSuggestion({
+        runId: run.runId,
+        mindmapId: resourceId,
+        windowId: run.windowId,
+        ops: ops.slice(i),
+      });
       for (let j = i; j < ops.length; j++) {
         receipt.undone.push(ops[j].label);
       }
@@ -1449,6 +1461,120 @@ export const mindmapDriver: CollabDriver = {
   apply: applyMindmap,
   abort: abortMindmap,
 };
+
+// ============================================================================
+// P2 人机双写 MVP：暂存建议的裁决（确认条接受/拒绝）
+// ============================================================================
+
+export interface MindmapSuggestionApplyResult {
+  applied: number;
+  /** 应用失败的 op 人读列表（label + reason） */
+  failed: string[];
+  /** save 是否成功（失败时内容在内存/草稿，不丢） */
+  saved: boolean;
+}
+
+/**
+ * 接受暂存建议：逐 op 应用（复用 applyOneOp，含锚点解析/校验/逆操作构造）
+ * + 批量 flash 标记 + save。
+ *
+ * 合成 run 上下文的取舍（MVP）：
+ * - pacing instant（用户已确认，不再逐 op  pacing 演出；收尾统一 flash）；
+ * - ledger noop——接受的暂存不进 runLedger（原 run 已 seal），
+ *   恢复路径 = 导图版本历史（save 落版本）；
+ * - reportProgress noop（确认条有自己的应用中态，无需工具卡进度）。
+ */
+export async function acceptMindmapSuggestion(
+  suggestionId: string,
+  mindmapId: string,
+): Promise<MindmapSuggestionApplyResult | null> {
+  const suggestion = getMindmapSuggestion(mindmapId);
+  if (!suggestion || suggestion.id !== suggestionId) return null;
+
+  const storeApi = suggestion.windowId
+    ? getMindMapStoreForWindow(suggestion.windowId, mindmapId)
+    : getMindMapStoreForResource(mindmapId);
+  if (!storeApi || storeApi.getState().mindmapId !== mindmapId) {
+    // store 已卸载/切换：暂存失效，清掉避免幽灵确认条
+    clearMindmapSuggestion(mindmapId);
+    return null;
+  }
+
+  const syntheticRun: AcrRunContext = {
+    runId: `${suggestion.runId}:accept`,
+    sessionId: '',
+    target: { typeId: TYPE_ID, resourceId: mindmapId },
+    windowId: suggestion.windowId,
+    pacing: {
+      profile: {
+        name: 'fast',
+        opIntervalMs: 0,
+        typeBatchMin: 0,
+        typeBatchMax: 0,
+        typeIntervalMs: 0,
+        instant: true,
+      },
+      tick: async () => {},
+      dispose: () => {},
+    },
+    reportProgress: () => {},
+    checkPaused: async () => 'resume',
+    ledger: {
+      record: () => {},
+      revertRun: async () => true,
+      hasRun: () => false,
+      sealRun: () => {},
+    },
+  };
+
+  const enteredIds: string[] = [];
+  const updatedIds: string[] = [];
+  const failed: string[] = [];
+  let applied = 0;
+
+  for (const op of suggestion.ops) {
+    // 应用期间目标导图被切换 → 停止，剩余计入失败列表
+    if (storeApi.getState().mindmapId !== mindmapId) {
+      for (const rest of suggestion.ops.slice(applied + failed.length)) {
+        failed.push(rest.label);
+      }
+      break;
+    }
+    const result = applyOneOp(syntheticRun, storeApi, mindmapId, op);
+    if (!result.ok) {
+      failed.push(
+        i18n.t('mindmap:agent.op_undone_with_reason', {
+          label: op.label,
+          reason: result.reason ?? '',
+          defaultValue: '{{label}}（{{reason}}）',
+        }),
+      );
+      continue;
+    }
+    applied += 1;
+    if (result.entityId) {
+      if (op.kind === 'update_node') updatedIds.push(result.entityId);
+      else if (op.kind !== 'delete_node') enteredIds.push(result.entityId);
+    }
+  }
+
+  // 直落终态 + flash（instant 语义，与 applyMindmap 收尾一致）
+  if (enteredIds.length > 0) markEntering(storeApi, enteredIds);
+  if (updatedIds.length > 0) markUpdated(storeApi, updatedIds);
+
+  let saved = true;
+  if (applied > 0 && storeApi.getState().mindmapId === mindmapId) {
+    saved = await storeApi.getState().save();
+  }
+
+  clearMindmapSuggestion(mindmapId);
+  return { applied, failed, saved };
+}
+
+/** 拒绝暂存建议：丢弃暂存 ops（从未应用，无需回滚） */
+export function dismissMindmapSuggestion(mindmapId: string): void {
+  clearMindmapSuggestion(mindmapId);
+}
 
 export function registerMindmapDriver(stage: StageManagerApi): void {
   stage.registerDriver(mindmapDriver);

@@ -164,6 +164,27 @@ pub async fn run_qbank_grading(
         );
     }
 
+    // N13（2026-09-07 审阅）：Grade 模式的不完整流只落草稿，绝不提交正式成绩。
+    // parser 取全文最后一个 verdict/score 匹配——若流在真正结论之前中断，正文中
+    // 复述的格式示例（如 correct/100）会成为"最后一个匹配"被当最终成绩落库，
+    // 污染统计与 mastery。此处把 draft_text 与 authoritative_result 分离：
+    // 半截解析保留可见（ai_feedback 草稿，保留既有 ai_score），成绩维持待判，
+    // 返回错误引导重试。合法的 finish_reason=stop 无 [DONE] 网关在流层已被
+    // 归一化为 Completed（sse_block_signals_finish），不受此分支影响。
+    let stream_incomplete = matches!(stream_status, StreamStatus::Incomplete);
+    if stream_incomplete && request.mode == QbankGradingMode::Grade {
+        if let Err(e) = persist_draft_feedback(&deps.vfs_db, &question, &accumulated) {
+            // 草稿持久化是尽力而为；主错误仍是流不完整
+            log::warn!("[QbankGrading] 不完整流的草稿反馈保存失败: {}", e.message);
+        }
+        let err = AppError::llm(
+            "AI 评判流异常中断：已保留部分解析草稿，正式成绩未更新。请重试评判。".to_string(),
+        );
+        deps.emitter
+            .emit_error(&request.stream_session_id, err.message.clone());
+        return Err(err);
+    }
+
     // S-014: 二次检查取消状态
     if deps.llm.consume_pending_cancel(&stream_event).await {
         log::info!("[QbankGrading] 流完成后发现已取消，丢弃结果");
@@ -302,8 +323,64 @@ pub async fn run_qbank_grading(
 ///
 /// 返回 Grade 模式下原语给出的 `VerdictApplyOutcome`（Analyze 为 None），
 /// 供调用方在事务外接 SM-2 复习计划与 learner_profile 回流。
-fn persist_grading_result(
-    conn: &rusqlite::Connection,
+/// N13：不完整评判流的草稿持久化——只更新 ai_feedback，保留既有 ai_score，
+/// 不触碰 submission 判定、统计与 mastery（Analyze 分支语义）。
+/// SAVEPOINT 包裹，失败整体回滚。
+fn persist_draft_feedback(
+    vfs_db: &Arc<VfsDatabase>,
+    question: &Question,
+    feedback: &str,
+) -> Result<(), AppError> {
+    let conn = vfs_db
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+    conn.execute("SAVEPOINT qbank_grading_draft", [])
+        .map_err(|e| AppError::database(format!("创建 SAVEPOINT 失败: {}", e)))?;
+
+    let result = (|| -> Result<(), AppError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let updated = conn
+            .execute(
+                r#"UPDATE questions SET ai_feedback = ?1, ai_graded_at = ?2, updated_at = ?2
+                   WHERE id = ?3 AND deleted_at IS NULL"#,
+                params![feedback, &now, &question.id],
+            )
+            .map_err(|e| AppError::database(format!("保存草稿反馈失败: {}", e)))?;
+        if updated == 0 {
+            return Err(AppError::not_found(format!(
+                "题目不存在或已删除: {}",
+                question.id
+            )));
+        }
+        // 与 Analyze 分支一致：标记同步 + 重算 content hash，
+        // 否则云同步会用远端旧值覆盖草稿。
+        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
+            &conn,
+            &question.id,
+        )
+        .map_err(|e| AppError::database(format!("标记同步状态失败: {}", e)))?;
+        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+            &conn,
+            &question.id,
+        )
+        .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
+        Ok(())
+    })();
+
+    match &result {
+        Ok(()) => {
+            conn.execute("RELEASE qbank_grading_draft", [])
+                .map_err(|e| AppError::database(format!("提交草稿 SAVEPOINT 失败: {}", e)))?;
+        }
+        Err(_) => {
+            let _ = conn.execute("ROLLBACK TO qbank_grading_draft", []);
+            let _ = conn.execute("RELEASE qbank_grading_draft", []);
+        }
+    }
+    result
+}
+
+fn persist_grading_result(    conn: &rusqlite::Connection,
     vfs_db: &Arc<VfsDatabase>,
     question: &Question,
     mode: &QbankGradingMode,
@@ -1144,5 +1221,63 @@ mod tests {
             outcome.needs_review_plan,
             "判错需在事务外接 SM-2 复习计划（与人工改判对称）"
         );
+    }
+
+    /// N13：不完整流的草稿持久化——只更新 ai_feedback，保留既有 ai_score，
+    /// 不触碰 submission 判定、计数与 mastery 事件。
+    #[test]
+    fn n13_draft_feedback_preserves_score_counters_and_mastery() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, Some(true));
+        assert_eq!(question.correct_count, 1, "基线首判 correct");
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE questions SET ai_score = 88 WHERE id = ?1",
+                params![question.id],
+            )
+            .expect("seed ai_score");
+        }
+
+        // 正文复述格式示例后流中断的半截文本（审阅主样本形态）
+        let draft = "输出格式示例：verdict: correct, score: 100\n下面开始分析……（流在此中断）";
+        persist_draft_feedback(&db, &question, draft).expect("draft persist");
+
+        let conn = db.get_conn_safe().expect("conn");
+        let (correct_count, is_correct, status, attempt_count) =
+            question_counters(&conn, &question.id);
+        assert_eq!(correct_count, 1, "草稿不得推进 correct_count");
+        assert_eq!(is_correct, Some(1));
+        assert_eq!(status, "in_progress");
+        assert_eq!(attempt_count, 1, "草稿不得新增作答次数");
+
+        let (ai_score, ai_feedback): (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT ai_score, ai_feedback FROM questions WHERE id = ?1",
+                params![question.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("query ai fields");
+        assert_eq!(ai_score, Some(88), "草稿必须保留既有 ai_score");
+        assert_eq!(ai_feedback.as_deref(), Some(draft), "草稿文本可见");
+
+        let (sub_correct, method) = submission_state(&conn, &submission_id);
+        assert_eq!(sub_correct, Some(1), "submission 判定不得被草稿改动");
+        assert_eq!(method, "manual", "grading_method 保持首判来源");
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "correct"),
+            1,
+            "草稿不得新增 mastery 事件"
+        );
+    }
+
+    /// N13：题目不存在时草稿持久化报错（SAVEPOINT 回滚路径）。
+    #[test]
+    fn n13_draft_feedback_missing_question_errors() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _submission_id) = seed_question_with_submission(&db, None);
+        let mut ghost = question.clone();
+        ghost.id = "question_ghost".to_string();
+        assert!(persist_draft_feedback(&db, &ghost, "draft").is_err());
     }
 }

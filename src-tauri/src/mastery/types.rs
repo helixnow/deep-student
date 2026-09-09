@@ -2,12 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 事件来源：题库 / FSRS 闪卡
+/// 事件来源：题库 / FSRS 闪卡 / 灵感召回（Insight Recall v2 阶段二）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MasterySource {
     Qbank,
     Fsrs,
+    Insight,
 }
 
 impl MasterySource {
@@ -15,6 +16,7 @@ impl MasterySource {
         match self {
             Self::Qbank => "qbank",
             Self::Fsrs => "fsrs",
+            Self::Insight => "insight",
         }
     }
 
@@ -22,6 +24,7 @@ impl MasterySource {
         match raw {
             "qbank" => Some(Self::Qbank),
             "fsrs" => Some(Self::Fsrs),
+            "insight" => Some(Self::Insight),
             _ => None,
         }
     }

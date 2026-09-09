@@ -29,16 +29,33 @@ impl ChatV2Pipeline {
         // waiting_user 会在用户回复时由 send_message 入口先翻回 active）
         let active_goal = self.load_active_goal_summary(&ctx.session_id);
 
-        let parts = prompt_builder::build_system_prompt_with_profile_and_agents(
+        // 🆕 Insight Recall v2 阶段二：被动注入（存在级最小披露）
+        let insight_hints = self.load_insight_existence_hints(ctx);
+
+        // 只向模型声明用户在设置中启用的渲染语法。
+        let renderer_capabilities = self.load_renderer_capabilities();
+
+        let parts = prompt_builder::build_system_prompt_with_profile_agents_and_renderers(
             &ctx.options,
             &ctx.retrieved_sources,
             canvas_note,
             user_profile,
             agents_instructions,
             active_goal,
+            insight_hints,
+            renderer_capabilities,
         );
         ctx.turn_volatile_context = parts.turn_volatile;
         parts.stable_system
+    }
+
+    pub(crate) fn load_renderer_capabilities(&self) -> prompt_builder::RendererCapabilities {
+        let raw = self
+            .main_db
+            .as_ref()
+            .and_then(|db| db.get_setting(prompt_builder::RENDERER_CAPABILITIES_SETTING_KEY).ok())
+            .flatten();
+        prompt_builder::parse_renderer_capabilities(raw.as_deref())
     }
 
     /// 🆕 Goal 模式（P0）：从 chat_v2 db 读取活跃目标并格式化为注入纯文本。
@@ -75,6 +92,136 @@ impl ChatV2Pipeline {
             return None;
         }
         Some(crate::chat_v2::goal::format_active_goal_summary(&goal))
+    }
+
+    /// 🆕 Insight Recall v2 阶段二：被动注入（存在级最小披露）。
+    ///
+    /// 纪律（D2 / 规格 §4 阶段二验收）：
+    /// - 只走 FTS（同步、微秒级）——被动注入在每轮热路径上，LLM 级联升级
+    ///   （改写/唱反调）属于 insight_recall 工具路径，不在此发生；
+    /// - 披露控制器门控（开关/置信/预算），存在级只给标题，方法零泄露；
+    /// - 沉默四态幂等记账（确定性事件 id，重试/变体重建不重复）；
+    /// - 任何失败降级为 None，绝不阻塞主流程。
+    fn load_insight_existence_hints(&self, ctx: &PipelineContext) -> Option<String> {
+        use crate::insight::disclosure::{self, DisclosureOutcome};
+        use crate::insight::recall::InsightRecallService;
+        use crate::insight::types::{DisclosureLevel, InsightEventType};
+
+        let vfs_db = self.vfs_db.as_ref()?;
+        let policy = disclosure::load_policy(self.main_db.as_deref());
+        // 阶段四：三本账校准（效用门控路由器）
+        let policy = match vfs_db.get_conn_safe() {
+            Ok(conn) => disclosure::calibrate_policy_from_ledger(&conn, policy),
+            Err(_) => policy,
+        };
+
+        // 用户禁用：每轮至多一条沉默账本（幂等键），然后静默退出
+        if !policy.enabled {
+            if let Ok(conn) = vfs_db.get_conn_safe() {
+                let _ = InsightRecallService::record_event_idempotent(
+                    &conn,
+                    Some(&ctx.session_id),
+                    Some(&ctx.user_message_id),
+                    None,
+                    InsightEventType::SilenceUserDisabled,
+                    DisclosureLevel::Hidden,
+                    None,
+                );
+            }
+            return None;
+        }
+
+        let query = ctx.user_content.trim();
+        // 太短没有召回价值（trigram 下限 3 字符；多留一点防噪音注入）
+        if query.chars().count() < 4 {
+            return None;
+        }
+
+        let recall = InsightRecallService::new(std::sync::Arc::clone(vfs_db));
+        let candidates = match recall.recall_fts(query, policy.max_per_turn * 2) {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("[ChatV2::pipeline] insight passive recall failed: {e}");
+                return None;
+            }
+        };
+
+        let conn = vfs_db.get_conn_safe().ok()?;
+
+        // 无候选：沉默记账（验收：无匹配完整走沉默分支）
+        if candidates.is_empty() {
+            let _ = InsightRecallService::record_event_idempotent(
+                &conn,
+                Some(&ctx.session_id),
+                Some(&ctx.user_message_id),
+                None,
+                InsightEventType::SilenceNoMatch,
+                DisclosureLevel::Hidden,
+                None,
+            );
+            return None;
+        }
+
+        let scored: Vec<disclosure::ScoredRef> = candidates
+            .iter()
+            .map(|c| disclosure::ScoredRef { confidence: c.confidence })
+            .collect();
+        let outcomes = disclosure::decide_passive(&policy, &scored);
+
+        let mut lines: Vec<String> = Vec::new();
+        for (cand, outcome) in candidates.iter().zip(outcomes.iter()) {
+            match outcome {
+                DisclosureOutcome::Disclose(level) => {
+                    // 存在级只暴露标题（filter_content 是红线收口）
+                    let (title, _, _) = disclosure::filter_content(
+                        *level,
+                        &cand.card.title,
+                        "",
+                        "",
+                    );
+                    let inserted = InsightRecallService::record_event_idempotent(
+                        &conn,
+                        Some(&ctx.session_id),
+                        Some(&ctx.user_message_id),
+                        Some(&cand.card.id),
+                        InsightEventType::ShownExistence,
+                        *level,
+                        None,
+                    );
+                    // 计数器只在事件真正插入时累加（重试/变体幂等一致）
+                    if inserted.unwrap_or(false) {
+                        let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                    }
+                    lines.push(format!("- [灵感] {title}"));
+                }
+                DisclosureOutcome::Silence(reason) => {
+                    let event_type = match reason {
+                        disclosure::SilenceReason::NoMatch => InsightEventType::SilenceNoMatch,
+                        disclosure::SilenceReason::LowConfidence => {
+                            InsightEventType::SilenceLowConfidence
+                        }
+                        disclosure::SilenceReason::Budget => InsightEventType::SilenceBudget,
+                        disclosure::SilenceReason::UserDisabled => {
+                            InsightEventType::SilenceUserDisabled
+                        }
+                    };
+                    let _ = InsightRecallService::record_event_idempotent(
+                        &conn,
+                        Some(&ctx.session_id),
+                        Some(&ctx.user_message_id),
+                        Some(&cand.card.id),
+                        event_type,
+                        DisclosureLevel::Hidden,
+                        None,
+                    );
+                }
+            }
+        }
+
+        if lines.is_empty() {
+            return None;
+        }
+        Some(lines.join("\n"))
     }
 
     /// 解析会话绑定 workspace 根并加载 AGENTS.md 常驻指令

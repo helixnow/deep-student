@@ -195,6 +195,87 @@ describe('voice input controller', () => {
     expect(controller.getSnapshot().phase).toBe('idle');
   });
 
+  it('cancelling during the permission wait invalidates a late recorder session (N08)', async () => {
+    let resolveSession: ((session: { stop: unknown; cancel: unknown }) => void) | undefined;
+    const lateCancel = vi.fn().mockResolvedValue(undefined);
+    const createRecorderSession = vi
+      .fn()
+      .mockImplementation(
+        () => new Promise((resolve) => { resolveSession = resolve; }),
+      );
+    const controller = createVoiceInputController({
+      config: defaultConfig,
+      notifications: { show: vi.fn() },
+      getActiveTarget: () => null,
+      getProvider: () => null,
+      createRecorderSession,
+    });
+
+    const startPromise = controller.toggleRecording();
+    expect(createRecorderSession).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().phase).toBe('idle');
+
+    // 权限等待期间取消：随后迟到的授权成功必须释放资源且不进入 recording
+    await controller.cancelRecording();
+    resolveSession!({ stop: vi.fn().mockResolvedValue(null), cancel: lateCancel });
+    await startPromise;
+
+    expect(controller.getSnapshot().phase).toBe('idle');
+    expect(lateCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('releasing the hold key during the permission wait cancels the pending start (N08)', async () => {
+    let resolveSession: ((session: { stop: unknown; cancel: unknown }) => void) | undefined;
+    const lateCancel = vi.fn().mockResolvedValue(undefined);
+    const createRecorderSession = vi
+      .fn()
+      .mockImplementation(
+        () => new Promise((resolve) => { resolveSession = resolve; }),
+      );
+    const controller = createVoiceInputController({
+      config: defaultConfig,
+      notifications: { show: vi.fn() },
+      getActiveTarget: () => null,
+      getProvider: () => null,
+      createRecorderSession,
+    });
+
+    const startPromise = controller.startHoldRecording();
+    expect(createRecorderSession).toHaveBeenCalledTimes(1);
+
+    await controller.stopHoldRecording();
+    resolveSession!({ stop: vi.fn().mockResolvedValue(null), cancel: lateCancel });
+    await startPromise;
+
+    expect(controller.getSnapshot().phase).toBe('idle');
+    expect(lateCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('window blur during the permission wait cancels the pending start (N08)', async () => {
+    let resolveSession: ((session: { stop: unknown; cancel: unknown }) => void) | undefined;
+    const lateCancel = vi.fn().mockResolvedValue(undefined);
+    const createRecorderSession = vi
+      .fn()
+      .mockImplementation(
+        () => new Promise((resolve) => { resolveSession = resolve; }),
+      );
+    const controller = createVoiceInputController({
+      config: defaultConfig,
+      notifications: { show: vi.fn() },
+      getActiveTarget: () => null,
+      getProvider: () => null,
+      createRecorderSession,
+    });
+
+    const startPromise = controller.toggleRecording();
+    controller.handleWindowBlur();
+    resolveSession!({ stop: vi.fn().mockResolvedValue(null), cancel: lateCancel });
+    await startPromise;
+
+    expect(controller.getSnapshot().phase).toBe('idle');
+    expect(lateCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores the app-wide hotkey while the user is typing in an unrelated editable field', () => {
     const createRecorderSession = vi.fn();
     const ownedTextarea = document.createElement('textarea');

@@ -5,9 +5,17 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use std::time::Duration;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// N12（2026-09-07 审阅）：安装子进程的总 deadline。安装脚本可能走网络，
+/// 挂起时不能无限占据 runtime。
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// 每个输出流（stdout/stderr）的保留上限；超出的部分继续读但丢弃，
+/// 既防内存放大又不让子进程因管道满而卡住。
+const MAX_INSTALL_OUTPUT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManagerInfo {
@@ -261,15 +269,122 @@ pub fn detect_required_package_manager(command: &str) -> Option<PackageManagerIn
     }
 }
 
+/// N12：异步执行安装命令——tokio::process + 总 deadline + kill_on_drop +
+/// 有界输出捕获（持续排空管道、只保留前 1 MiB）。此前在 async fn 里直接
+/// `std::process::Command::output()`：安装脚本挂起会长期占住 runtime
+/// 工作线程，且无超时、无取消、无输出预算。
+async fn run_install_command(install_cmd: &str) -> Result<(bool, String), String> {
+    run_install_command_with_timeout(install_cmd, INSTALL_TIMEOUT).await
+}
+
+async fn run_install_command_with_timeout(
+    install_cmd: &str,
+    timeout: Duration,
+) -> Result<(bool, String), String> {
+    use tokio::io::AsyncReadExt;
+
+    /// 持续排空一个输出流，只保留前 `cap` 字节（超出部分读了就丢，
+    /// 防止子进程因管道满而卡住）。
+    async fn drain_capped<R: tokio::io::AsyncRead + Unpin>(mut reader: R, cap: usize) -> Vec<u8> {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let room = cap.saturating_sub(kept.len());
+                    if room > 0 {
+                        kept.extend_from_slice(&buf[..n.min(room)]);
+                    }
+                }
+            }
+        }
+        kept
+    }
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("powershell");
+        c.arg("-Command")
+            .arg(install_cmd)
+            .creation_flags(CREATE_NO_WINDOW);
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("sh");
+        c.arg("-c").arg(install_cmd);
+        c
+    };
+
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("启动安装进程失败: {}", e))?;
+
+    let stdout_task = child
+        .stdout
+        .take()
+        .map(|s| tokio::spawn(drain_capped(s, MAX_INSTALL_OUTPUT_BYTES)));
+    let stderr_task = child
+        .stderr
+        .take()
+        .map(|s| tokio::spawn(drain_capped(s, MAX_INSTALL_OUTPUT_BYTES)));
+
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(e)) => return Err(format!("等待安装进程失败: {}", e)),
+        Err(_) => {
+            // 总 deadline：终止并回收子进程，避免残留孤儿安装进程
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(format!(
+                "安装超时（{} 秒），已终止安装进程",
+                timeout.as_secs()
+            ));
+        }
+    };
+
+    let stderr_bytes = match stderr_task {
+        Some(task) => task.await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if let Some(task) = stdout_task {
+        let _ = task.await;
+    }
+
+    Ok((
+        status.success(),
+        String::from_utf8_lossy(&stderr_bytes).to_string(),
+    ))
+}
+
 /// 尝试自动安装包管理器（仅支持有安全安装命令的）
 pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallResult {
-    let info = match manager_type {
-        "uv" => check_uv_environment(),
-        "cargo" if cfg!(not(target_os = "windows")) => check_cargo_environment(),
-        _ => {
+    // N12：同步子进程探测放进 blocking 池，不占 runtime 工作线程
+    let manager = manager_type.to_string();
+    let probed = tokio::task::spawn_blocking(move || match manager.as_str() {
+        "uv" => Some(check_uv_environment()),
+        "cargo" if cfg!(not(target_os = "windows")) => Some(check_cargo_environment()),
+        _ => None,
+    })
+    .await;
+    let info = match probed {
+        Ok(Some(info)) => info,
+        Ok(None) => {
             return PackageInstallResult {
                 success: false,
                 message: format!("不支持自动安装 {}，请手动安装", manager_type),
+                installed_version: None,
+            };
+        }
+        Err(e) => {
+            return PackageInstallResult {
+                success: false,
+                message: format!("环境检测失败: {}", e),
                 installed_version: None,
             };
         }
@@ -298,27 +413,21 @@ pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallR
         }
     };
 
-    // 执行安装命令
+    // 执行安装命令（N12：异步、有 deadline、有输出预算）
     log::info!("正在自动安装 {}: {}", manager_type, install_cmd);
 
-    #[cfg(target_os = "windows")]
-    let result = Command::new("powershell")
-        .arg("-Command")
-        .arg(&install_cmd)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
-
-    #[cfg(not(target_os = "windows"))]
-    let result = Command::new("sh").arg("-c").arg(&install_cmd).output();
-
-    match result {
-        Ok(output) if output.status.success() => {
-            // 重新检测版本
-            let new_info = match manager_type {
+    match run_install_command(&install_cmd).await {
+        Ok((true, _stderr)) => {
+            // 重新检测版本（同步探测放进 blocking 池，不占 runtime 工作线程）
+            let manager = manager_type.to_string();
+            let info_fallback = info.clone();
+            let new_info = tokio::task::spawn_blocking(move || match manager.as_str() {
                 "uv" => check_uv_environment(),
                 "cargo" => check_cargo_environment(),
-                _ => info.clone(),
-            };
+                _ => info_fallback,
+            })
+            .await
+            .unwrap_or_else(|_| info.clone());
 
             PackageInstallResult {
                 success: true,
@@ -326,18 +435,73 @@ pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallR
                 installed_version: new_info.version,
             }
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            PackageInstallResult {
-                success: false,
-                message: format!("{} 安装失败: {}", manager_type, stderr),
-                installed_version: None,
-            }
-        }
+        Ok((false, stderr)) => PackageInstallResult {
+            success: false,
+            message: format!("{} 安装失败: {}", manager_type, stderr),
+            installed_version: None,
+        },
         Err(e) => PackageInstallResult {
             success: false,
             message: format!("{} 安装失败: {}", manager_type, e),
             installed_version: None,
         },
+    }
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn install_command_success_captures_status() {
+        let (success, _stderr) = run_install_command_with_timeout(
+            "echo hello",
+            Duration::from_secs(10),
+        )
+        .await
+        .expect("spawn ok");
+        assert!(success);
+    }
+
+    #[tokio::test]
+    async fn install_command_failure_captures_stderr() {
+        let (success, stderr) = run_install_command_with_timeout(
+            "echo boom >&2; exit 3",
+            Duration::from_secs(10),
+        )
+        .await
+        .expect("spawn ok");
+        assert!(!success);
+        assert!(stderr.contains("boom"), "stderr 应被捕获: {}", stderr);
+    }
+
+    #[tokio::test]
+    async fn install_command_timeout_kills_child() {
+        let start = std::time::Instant::now();
+        let result = run_install_command_with_timeout(
+            "sleep 60",
+            Duration::from_millis(100),
+        )
+        .await;
+        let elapsed = start.elapsed();
+        assert!(result.is_err(), "超时必须报错");
+        assert!(result.unwrap_err().contains("超时"));
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "超时后必须立即返回（kill + reap），实际 {:?}",
+            elapsed
+        );
+    }
+
+    #[tokio::test]
+    async fn install_command_large_output_is_capped_and_drained() {
+        // 输出远超 1 MiB 上限：必须正常结束（管道持续排空）且不 OOM
+        let (success, _) = run_install_command_with_timeout(
+            "yes | head -c 5000000",
+            Duration::from_secs(30),
+        )
+        .await
+        .expect("spawn ok");
+        assert!(success);
     }
 }

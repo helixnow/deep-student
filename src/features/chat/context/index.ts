@@ -143,6 +143,20 @@ export {
 } from './definitions/retrieval';
 export type { RetrievalMetadata, RetrievalSource } from './definitions/retrieval';
 
+export { selectionDefinition, SELECTION_TYPE_ID } from './definitions/selection';
+export {
+  selectionToChat,
+  buildSelectionDisplayName,
+  serializeSelectionRefData,
+  MAX_SELECTION_TEXT_CHARS,
+} from './selectionRef';
+export type {
+  SelectionRefData,
+  SelectionSourceKind,
+  SelectionToChatParams,
+  SelectionToChatResult,
+} from './selectionRef';
+
 // ============================================================================
 // 批量导出
 // ============================================================================

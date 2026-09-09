@@ -27,13 +27,52 @@ const MAX_GOAL_CONTINUATIONS: i64 = 20;
 /// 期与本轮 DB 写入落定后再读目标做决策。
 const CONTINUATION_DELAY_MS: u64 = 150;
 
+/// 在飞续跑会话登记（2026-09-07 审阅 F4）：从流注册成功到续跑轮结束的
+/// 整个区间记录在册。pause/clear handler 据此只取消属于续跑的会话流，
+/// 不误伤用户正常消息流。
+static IN_FLIGHT_CONTINUATIONS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+fn in_flight_continuations() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    IN_FLIGHT_CONTINUATIONS.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+fn mark_continuation_in_flight(session_id: &str) {
+    in_flight_continuations()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(session_id.to_string());
+}
+
+fn unmark_continuation_in_flight(session_id: &str) {
+    in_flight_continuations()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(session_id);
+}
+
+/// 取消指定会话的在飞续跑流（pause/clear handler 调用）。仅当该会话确实
+/// 登记在册时才触发取消；返回是否实际发出了取消信号。
+pub(crate) fn cancel_in_flight_continuation(state: &ChatV2State, session_id: &str) -> bool {
+    let in_flight = in_flight_continuations()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(session_id);
+    if in_flight {
+        state.cancel_stream(session_id)
+    } else {
+        false
+    }
+}
+
 /// fire-and-forget 入口：本轮结束后若目标仍 active，自动续跑。
 ///
 /// 契约：Agent A 的 resume handler 经
 /// `crate::chat_v2::goal::runtime::spawn_goal_continuation_if_idle` 调用。
 /// 会话忙（已有活跃流）或 kill switch 生效时静默放弃，不改目标状态。
 pub fn spawn_goal_continuation_if_idle(app: AppHandle, session_id: String) {
-    crate::background_tasks::spawn(async move {
+    let _ = crate::background_tasks::spawn(async move {
         run_continuation_loop(app, session_id).await;
     });
 }
@@ -252,32 +291,59 @@ async fn run_continuation_loop(app: AppHandle, session_id: String) {
         };
         let cancel_token = registration.token().clone();
 
-        // 续跑计数 +1（带 expected goal_id 乐观并发）。计数失败只告警不阻断：
-        // 计数是预算护栏而非精确账目。get_conn 失败则必须显式按 generation
-        // 清理已注册的流再返回（StreamRegistration 本身无 Drop 清理语义）。
+        // 在飞登记必须先于认领：pause/clear 落在「认领后、登记前」的缝隙时，
+        // 认领 CAS 的 status='active' 谓词会让本次续跑失败关闭（见下），
+        // 不会带着陈旧目标进入 pipeline。
+        mark_continuation_in_flight(&session_id);
+
+        // —— 续跑认领（CAS，2026-09-07 审阅 F4）——
+        // 「读目标 → 检查 → 计数」分离会让读取之后被暂停/清除/替换的陈旧目标
+        // 继续执行。认领把检查+计数合并为一条条件 UPDATE：零行 = 状态已变，
+        // 必须放弃；DB 错误 = 预算护栏失效，必须失败关闭。两者都要按
+        // generation 清理已注册的流（StreamRegistration 无 Drop 清理语义）。
         {
             let conn = match db.get_conn() {
                 Ok(conn) => conn,
                 Err(e) => {
                     tracing::warn!(
-                        "[ChatV2::goal] get_conn for continuation increment failed (session={}): {}",
+                        "[ChatV2::goal] get_conn for continuation claim failed (session={}): {}",
                         session_id,
                         e
                     );
+                    unmark_continuation_in_flight(&session_id);
                     chat_v2_state
                         .remove_stream_if_generation(&session_id, registration.generation());
                     return;
                 }
             };
-            if let Err(e) =
-                ChatV2Repo::goal_increment_continuation_with_conn(&conn, &session_id, &goal.goal_id)
-            {
-                tracing::warn!(
-                    "[ChatV2::goal] increment continuation failed (session={}, goal={}): {}; continuing anyway",
-                    session_id,
-                    goal.goal_id,
-                    e
+            let claimed = match ChatV2Repo::goal_claim_continuation_with_conn(
+                &conn,
+                &session_id,
+                &goal.goal_id,
+                MAX_GOAL_CONTINUATIONS,
+            ) {
+                Ok(claimed) => claimed,
+                Err(e) => {
+                    tracing::warn!(
+                        "[ChatV2::goal] continuation claim failed (session={}, goal={}): {}; aborting turn",
+                        session_id,
+                        goal.goal_id,
+                        e
+                    );
+                    unmark_continuation_in_flight(&session_id);
+                    chat_v2_state
+                        .remove_stream_if_generation(&session_id, registration.generation());
+                    return;
+                }
+            };
+            if !claimed {
+                tracing::debug!(
+                    "[ChatV2::goal] continuation claim lost (goal paused/cleared/replaced or budget exhausted); stop: session={}",
+                    session_id
                 );
+                unmark_continuation_in_flight(&session_id);
+                chat_v2_state.remove_stream_if_generation(&session_id, registration.generation());
+                return;
             }
         }
 
@@ -289,6 +355,7 @@ async fn run_continuation_loop(app: AppHandle, session_id: String) {
             cancel_token,
         )
         .await;
+        unmark_continuation_in_flight(&session_id);
         // StreamGuard 随 run_send_message_pipeline 返回 drop，会话锁已释放，
         // 下一轮循环的 try_register_stream_owned 才是合法再注册时机。
 

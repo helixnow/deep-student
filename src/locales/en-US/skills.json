@@ -414,6 +414,7 @@
     "settings-tools": "Settings Management",
     "textbook-pdf-tools": "Textbook PDF",
     "tool-pack": "Tool Pack",
+    "ptc-run": "Scripted Tool Composition",
     "translation-tools": "Translation Tools",
     "user-todo-tools": "Personal Todos",
     "role-packs": "Featured Role Experts"
@@ -516,6 +517,10 @@
   },
 
   "parser": {
+    "artifactMustBeObject": "artifact must be an object (with intentSkeleton/dataTools/layoutLock)",
+    "artifactSkeletonMustBeObject": "artifact.intentSkeleton must be an object (generative-ui intent skeleton)",
+    "artifactDataToolsMustBeArray": "artifact.dataTools must be a string array (referencing embeddedTools names)",
+    "artifactLayoutLockMustBeBoolean": "artifact.layoutLock must be a boolean",
     "embeddedToolsArray": "embeddedTools must be an array",
     "embeddedToolsMustBeObject": "embeddedTools[{{index}}] must be an object",
     "embeddedToolsMissingName": "embeddedTools[{{index}}] is missing required field: name",

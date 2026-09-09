@@ -414,6 +414,7 @@
     "settings-tools": "设置管理",
     "textbook-pdf-tools": "教材 PDF",
     "tool-pack": "工具包",
+    "ptc-run": "脚本化工具组合",
     "translation-tools": "翻译工具",
     "user-todo-tools": "个人待办",
     "role-packs": "精选岗位专家"
@@ -516,6 +517,10 @@
   },
 
   "parser": {
+    "artifactMustBeObject": "artifact 字段必须是对象（含 intentSkeleton/dataTools/layoutLock）",
+    "artifactSkeletonMustBeObject": "artifact.intentSkeleton 必须是对象（generative-ui intent 骨架）",
+    "artifactDataToolsMustBeArray": "artifact.dataTools 必须是字符串数组（指向 embeddedTools 的 name）",
+    "artifactLayoutLockMustBeBoolean": "artifact.layoutLock 必须是布尔值",
     "embeddedToolsArray": "embeddedTools 必须是数组格式",
     "embeddedToolsMustBeObject": "embeddedTools[{{index}}] 必须是对象",
     "embeddedToolsMissingName": "embeddedTools[{{index}}] 缺少必填字段 name",

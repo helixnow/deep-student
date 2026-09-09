@@ -18,7 +18,7 @@ use reqwest::header::{
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tauri::{Emitter, Manager, Window};
+use tauri::Manager;
 use url::Url;
 use uuid::Uuid;
 
@@ -27,7 +27,8 @@ use super::{
     parser,
     provider_quirks::{resolve_endpoint_quirks, resolve_quirks, MaxTokensField, ProviderQuirks},
     request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
-    ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
+    ImagePayload, LLMManager, MergedChatMessage, Result, StreamEventSink,
+    AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 
 /// 流式请求的单请求超时上限（秒）
@@ -754,7 +755,7 @@ fn apply_legacy_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks
     apply_token_limit(body, quirks.legacy_max_tokens_field, max_tokens);
 }
 
-fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
+pub(crate) fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
     let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
     apply_generation_token_limit(body, quirks, max_tokens);
 
@@ -3000,6 +3001,97 @@ mod tests {
         }
     }
 
+    /// G01-b：NoopStreamSink 下流式通路端到端——全部流式事件（start/id/chunk/
+    /// usage/final）经 sink 丢弃（仅 trace），不依赖 Tauri 窗口、不 panic，
+    /// 流式内容照常聚合返回。
+    #[tokio::test]
+    async fn stream_with_noop_sink_completes_without_window() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let calls = Arc::new(AtomicCount::new(0));
+        let calls_clone = calls.clone();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let calls = calls_clone.clone();
+                async move {
+                    let calls = calls.clone();
+                    Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                        let calls = calls.clone();
+                        async move {
+                            assert_eq!(request.uri().path(), "/v1/chat/completions");
+                            calls.fetch_add(1, AtomicOrdering::SeqCst);
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .status(200)
+                                    .header("content-type", "text/event-stream; charset=utf-8")
+                                    .body(Body::from(concat!(
+                                        "data: {\"id\":\"chatcmpl-noop\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"你好\"},\"finish_reason\":null}]}\n\n",
+                                        "data: {\"id\":\"chatcmpl-noop\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"世界\"},\"finish_reason\":null}]}\n\n",
+                                        "data: {\"id\":\"chatcmpl-noop\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n",
+                                        "data: [DONE]\n\n",
+                                    )))
+                                    .unwrap(),
+                            )
+                        }
+                    }))
+                }
+            }));
+        let _handle = tokio::spawn(async move {
+            let _ = server.await;
+        });
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let mut config = raw_prompt_test_config(format!("http://{}/v1", address));
+        config.supports_tools = true;
+
+        let user_msg: ChatMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": "ping",
+            "timestamp": chrono::Utc::now(),
+        }))
+        .expect("valid chat message");
+        let context: HashMap<String, Value> = HashMap::new();
+
+        let out = manager
+            .call_unified_model_2_stream_with_config(
+                config,
+                routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK,
+                &context,
+                &[user_msg],
+                "",
+                true,
+                false,
+                Some("chat_v2"),
+                &crate::llm_manager::NoopStreamSink,
+                "chat_v2_event_noop_sink_test",
+                Some("msg-noop-1"),
+                None,
+                true, // disable_tools：无窗 runtime 本就不广告 MCP 前端桥工具
+                None,
+                None,
+            )
+            .await
+            .expect("NoopStreamSink streaming should complete");
+
+        assert_eq!(out.assistant_message, "你好世界");
+        assert!(!out.cancelled);
+        assert_eq!(calls.load(AtomicOrdering::SeqCst), 1);
+    }
+
+    /// G01-b：`build_tools_with_mcp(None)`——无窗口 runtime 下 MCP 前端桥工具
+    /// 发现整体跳过（空集合），不 panic；本地工具广告逻辑不受影响（测试库
+    /// 未配置搜索引擎，故整个工具列表为空数组）。
+    #[tokio::test]
+    async fn build_tools_with_mcp_without_window_skips_mcp() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let tools = manager.build_tools_with_mcp(None).await;
+        assert_eq!(tools, json!([]));
+    }
+
     /// 200+空 body 是瞬态故障：内部重试后成功，且第二次请求确实发出
     #[tokio::test]
     async fn raw_prompt_retries_on_empty_200_then_succeeds() {
@@ -3232,14 +3324,24 @@ pub(crate) struct DebugPersistConfig {
     pub log_dir: std::path::PathBuf,
 }
 
+/// G01-b：把流式 chunk 固化为 JSON Value，供 [`StreamEventSink::emit`] 使用。
+/// `StreamChunk` 是纯数据（String/bool 字段），序列化不会失败；产出的 wire JSON
+/// 与原 `Window::emit(channel, &chunk)` 内部序列化完全一致。
+fn stream_chunk_payload(chunk: &StreamChunk) -> Value {
+    serde_json::to_value(chunk).unwrap_or(Value::Null)
+}
+
 /// ★ 审计日志 + 前端推送 + 可选文件持久化
 ///
 /// 1. 输出 debug 级别审计日志（始终 standard 级别）
 /// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
 /// 3. 如果 persist_config 存在（Some），将脱敏请求体写入 JSON 文件
+///
+/// G01-b：前端推送经 [`StreamEventSink`]；无窗口 runtime（NoopStreamSink）下
+/// 前端推送丢弃，审计日志与文件持久化不受影响。
 pub(crate) fn log_and_emit_llm_request(
     tag: &str,
-    window: &tauri::Window,
+    sink: &dyn StreamEventSink,
     stream_event: &str,
     message_id: Option<&str>,
     model: &str,
@@ -3292,7 +3394,7 @@ pub(crate) fn log_and_emit_llm_request(
         "logFilePath": log_file_path,
     });
 
-    if let Err(e) = window.emit("chat_v2_llm_request_body", &payload) {
+    if let Err(e) = sink.emit("chat_v2_llm_request_body", &payload) {
         warn!("[LLM_AUDIT] Failed to emit llm_request_body event: {}", e);
     }
 }
@@ -4044,7 +4146,7 @@ impl LLMManager {
     /// 内层重试原来完全静默，前端在等待期间看不到任何状态变化。
     /// 这里复用 `stream_reconnect` 事件通道让前端显示 "reconnect...(N/max)"。
     fn emit_inner_retry_progress(
-        window: &Window,
+        sink: &dyn StreamEventSink,
         stream_event: &str,
         message_id: Option<&str>,
         retry_attempt: u32,
@@ -4076,7 +4178,7 @@ impl LLMManager {
         if let Some(generation) = stream_generation {
             payload["streamGeneration"] = json!(generation);
         }
-        let _ = window.emit(&session_channel, &payload);
+        let _ = sink.emit(&session_channel, &payload);
     }
 
     fn compute_retry_delay(min_delay_ms: u64, max_delay_ms: u64) -> u64 {
@@ -4110,6 +4212,10 @@ impl LLMManager {
     // 「主模型 → 同 provider key 轮换（含冷却）→ fallback 模型」的尝试序列。
     // 流式出口属于对话主链路：用户显式选择的模型（model_override_id）是严格的，
     // 仅当用户开启 auto_degrade_chat 才允许模型级降级；key 轮换不受此限制。
+    //
+    // G01-b：`sink` 取代原 `window: Window`——窗口 runtime 传
+    // [`WindowStreamSink`]（行为不变），无窗口 runtime 传 [`NoopStreamSink`]
+    // （全部流式事件丢弃；MCP 前端桥工具随之缺席）。
     #[allow(clippy::too_many_arguments)]
     pub async fn call_unified_model_2_stream(
         &self,
@@ -4119,7 +4225,7 @@ impl LLMManager {
         enable_chain_of_thought: bool,
         enable_thinking: bool,
         task_context: Option<&str>,
-        window: Window,
+        sink: &dyn StreamEventSink,
         stream_event: &str,
         message_id: Option<&str>,
         _trace_id: Option<&str>,
@@ -4166,7 +4272,7 @@ impl LLMManager {
             task: task_key.to_string(),
             scenario: routing::FailoverScenario::ChatMain,
             user_pinned: model_override_id.is_some(),
-            window: Some(window.clone()),
+            stream_sink: Some(sink),
             // 建立阶段的 429/5xx 退避重试由本函数内部循环完成
             attempts_handle_429_internally: true,
             required_is_multimodal,
@@ -4196,7 +4302,7 @@ impl LLMManager {
                     enable_chain_of_thought,
                     enable_thinking,
                     task_context,
-                    window.clone(),
+                    sink,
                     stream_event,
                     message_id,
                     _trace_id,
@@ -4229,7 +4335,7 @@ impl LLMManager {
         enable_chain_of_thought: bool,
         enable_thinking: bool,
         task_context: Option<&str>,
-        window: Window,
+        sink: &dyn StreamEventSink,
         stream_event: &str,
         message_id: Option<&str>,
         _trace_id: Option<&str>,
@@ -4251,6 +4357,10 @@ impl LLMManager {
         let config = resolved_config;
         ensure_model_accepts_message_modalities(&config, chat_history)?;
         let quirks = resolve_quirks(&config);
+
+        // G01-b：少数仍需真实窗口的路径（MCP 前端桥工具发现、ToolContext.window）
+        // 经 sink 取回；无窗口 runtime 为 None，对应路径自动降级/缺席。
+        let sink_window = sink.window();
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();
@@ -4792,7 +4902,8 @@ impl LLMManager {
             }
         } else if !disable_tools && tools_enabled && config.supports_tools {
             // 构建工具列表，包含本地工具和 MCP 工具
-            let mut tools = self.build_tools_with_mcp(&window).await;
+            // G01-b：无窗口 runtime（sink_window=None）时 MCP 前端桥工具缺席
+            let mut tools = self.build_tools_with_mcp(sink_window.as_ref()).await;
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
             if server_side_web_search_enabled(&quirks, &config, context) {
                 if let Some(tools_array) = tools.as_array_mut() {
@@ -4895,7 +5006,7 @@ impl LLMManager {
                         db: Some(&self.db),
                         mcp_client,
                         supports_tools: false, // 专门为降级注入场景
-                        window: Some(&window),
+                        window: sink_window.as_ref(), // G01-b：无窗 runtime 为 None
                         stream_event: Some(stream_event),
                         stage: Some("fallback"),
                         memory_enabled: memory_enabled_from_context,
@@ -4905,7 +5016,7 @@ impl LLMManager {
                     if let Some(last_user_msg) = chat_history.iter().rfind(|m| m.role == "user") {
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
                         if memory_enabled_effective {
-                            let _ = window.emit(
+                            let _ = sink.emit(
                                 &format!("{}_memory_sources", stream_event),
                                 &serde_json::json!({"stage":"disabled"}),
                             );
@@ -5037,9 +5148,9 @@ impl LLMManager {
                 budget_trim.tokens_after,
                 input_limit
             );
-            let _ = window.emit(
+            let _ = sink.emit(
                 "chat_v2_context_budget_trimmed",
-                json!({
+                &json!({
                     "messageId": message_id,
                     "removedMessages": budget_trim.removed_messages,
                     "trimmedTailChars": budget_trim.trimmed_tail_chars,
@@ -5161,7 +5272,7 @@ impl LLMManager {
         let debug_persist = self.build_debug_persist_config();
         log_and_emit_llm_request(
             "CHAT_STREAM",
-            &window,
+            sink,
             stream_event,
             message_id,
             &config.model,
@@ -5171,7 +5282,7 @@ impl LLMManager {
         );
 
         // 发出开始事件
-        if let Err(e) = window.emit(
+        if let Err(e) = sink.emit(
             &format!("{}_start", stream_event),
             &json!({
                 "id": request_id,
@@ -5237,7 +5348,7 @@ impl LLMManager {
                 response = request_builder.json(&preq.body).send() => response,
                 changed = establish_cancel_rx.changed() => {
                     if changed.is_ok() && *establish_cancel_rx.borrow() {
-                        let _ = window.emit(
+                        let _ = sink.emit(
                             &format!("{}_cancelled", stream_event),
                             &json!({
                                 "id": request_id,
@@ -5263,7 +5374,7 @@ impl LLMManager {
                         error.without_url()
                     );
                     Self::emit_inner_retry_progress(
-                        &window,
+                        sink,
                         stream_event,
                         message_id,
                         retry_count,
@@ -5340,7 +5451,7 @@ impl LLMManager {
                             wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
-                            &window,
+                            sink,
                             stream_event,
                             message_id,
                             retry_count,
@@ -5400,7 +5511,7 @@ impl LLMManager {
                             status_code, wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
-                            &window,
+                            sink,
                             stream_event,
                             message_id,
                             retry_count,
@@ -5475,7 +5586,7 @@ impl LLMManager {
             config.model
         );
         // start 已在 HTTP 建连前发送；此处仅补发稳定的 request id。
-        if let Err(e) = window.emit(
+        if let Err(e) = sink.emit(
             &format!("{}_id", stream_event),
             &json!({
                 "request_id": stream_event,
@@ -5589,7 +5700,7 @@ impl LLMManager {
                     cancel_flag
                 );
                 // P1修复：生命周期对齐 - 发送cancelled事件
-                if let Err(e) = window.emit(
+                if let Err(e) = sink.emit(
                     &format!("{}_cancelled", stream_event),
                     &json!({
                         "id": request_id,
@@ -5671,7 +5782,8 @@ impl LLMManager {
                                     // 否则直接 emit StreamChunk（兼容旧调用方）
                                     if let Some(h) = self.get_hook(stream_event).await {
                                         h.on_content_chunk(&content);
-                                    } else if let Err(e) = window.emit(stream_event, &stream_chunk)
+                                    } else if let Err(e) = sink
+                                        .emit(stream_event, &stream_chunk_payload(&stream_chunk))
                                     {
                                         warn!("发送内容块失败: {}", e);
                                     }
@@ -5691,9 +5803,9 @@ impl LLMManager {
                                     // 🔧 修复：当 hook 存在时由 hook 负责发送事件
                                     if let Some(h) = self.get_hook(stream_event).await {
                                         h.on_reasoning_chunk(&reasoning);
-                                    } else if let Err(e) = window.emit(
+                                    } else if let Err(e) = sink.emit(
                                         &format!("{}_reasoning", stream_event),
-                                        &reasoning_chunk,
+                                        &stream_chunk_payload(&reasoning_chunk),
                                     ) {
                                         warn!("发送思维链块失败: {}", e);
                                     }
@@ -5839,7 +5951,7 @@ impl LLMManager {
                                     // 存储 usage 数据以便最终记录到数据库
                                     captured_usage = Some(usage_value.clone());
                                     // emit usage 事件
-                                    if let Err(e) = window
+                                    if let Err(e) = sink
                                         .emit(&format!("{}_usage", stream_event), &usage_value)
                                     {
                                         error!("发送用量事件失败: {}", e);
@@ -5864,7 +5976,7 @@ impl LLMManager {
                                         "stage": stage,
                                         "tool_name": "web_search",
                                     });
-                                    if let Err(e) = window.emit(
+                                    if let Err(e) = sink.emit(
                                         &format!("{}_web_search", stream_event),
                                         &search_payload,
                                     ) {
@@ -5879,7 +5991,7 @@ impl LLMManager {
                                     ));
                                     stream_ended = true;
                                     // emit safety_blocked 事件
-                                    if let Err(e) = window.emit(
+                                    if let Err(e) = sink.emit(
                                         &format!("{}_safety_blocked", stream_event),
                                         &safety_info,
                                     ) {
@@ -5904,7 +6016,7 @@ impl LLMManager {
                                             "details": safety_info
                                         })
                                     };
-                                    if let Err(e) = window
+                                    if let Err(e) = sink
                                         .emit(&format!("{}_error", stream_event), &error_event)
                                     {
                                         error!("发送安全错误事件失败: {}", e);
@@ -6015,7 +6127,7 @@ impl LLMManager {
                             "stream_event": stream_event,
                             "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
                         });
-                        if let Err(emit_err) = window.emit(&truncated_event, &truncated_payload) {
+                        if let Err(emit_err) = sink.emit(&truncated_event, &truncated_payload) {
                             warn!("发送截断警示事件失败: {}", emit_err);
                         }
                         terminal_failure = Some(responses_stream_interruption_message(
@@ -6035,11 +6147,11 @@ impl LLMManager {
                             "stream_event": stream_event,
                             "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
                         });
-                        if let Err(emit_err) = window.emit(&error_event, &error_payload) {
+                        if let Err(emit_err) = sink.emit(&error_event, &error_payload) {
                             error!("发送作用域错误事件失败: {}", emit_err);
                         }
                         // 同时发送兼容性全局错误事件
-                        if let Err(emit_err) = window.emit("stream_error", &error_payload) {
+                        if let Err(emit_err) = sink.emit("stream_error", &error_payload) {
                             error!("发送全局错误事件失败: {}", emit_err);
                         }
                         return Err(AppError::network(format!("流式请求失败: {}", e)));
@@ -6250,7 +6362,7 @@ impl LLMManager {
                     },
                 );
                 debug!("通过 hook 处理完成信号，内容长度: {}", full_content.len());
-            } else if let Err(e) = window.emit(stream_event, &final_chunk) {
+            } else if let Err(e) = sink.emit(stream_event, &stream_chunk_payload(&final_chunk)) {
                 error!("发送最终主内容完成信号失败: {}", e);
             } else {
                 debug!("发送主内容完成信号成功，内容长度: {}", full_content.len());
@@ -6270,9 +6382,9 @@ impl LLMManager {
                 &reasoning_content.chars().take(100).collect::<String>()
             );
 
-            if let Err(e) = window.emit(
+            if let Err(e) = sink.emit(
                 &format!("{}_reasoning", stream_event),
-                &reasoning_final_chunk,
+                &stream_chunk_payload(&reasoning_final_chunk),
             ) {
                 error!("发送思维链完成信号失败: {}", e);
             } else {
@@ -6448,7 +6560,7 @@ impl LLMManager {
             task: task.to_string(),
             scenario: routing::FailoverScenario::BackgroundTask,
             user_pinned: false,
-            window: None,
+            stream_sink: None,
             attempts_handle_429_internally: false,
             required_is_multimodal: (chat_messages_require_multimodal(chat_history)
                 || image_paths
@@ -6878,7 +6990,7 @@ impl LLMManager {
             task: "chat_title".to_string(),
             scenario: routing::FailoverScenario::BackgroundTask,
             user_pinned: false,
-            window: None,
+            stream_sink: None,
             attempts_handle_429_internally: false,
             required_is_multimodal: None,
             param_overrides: routing::ParamOverrides {
@@ -7726,7 +7838,7 @@ impl LLMManager {
             task: task.to_string(),
             scenario: routing::FailoverScenario::BackgroundTask,
             user_pinned: false,
-            window: None,
+            stream_sink: None,
             attempts_handle_429_internally: false,
             required_is_multimodal: image_payloads
                 .as_ref()

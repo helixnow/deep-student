@@ -5,10 +5,14 @@
 //!
 //! ## 核心设计（参考成熟代理运行时的 cron/heartbeat 与"工具策略预过滤"）
 //!
-//! 1. **复用现有管线**：构建 `SendMessageRequest` → 经 `handlers::send_message::
-//!    run_send_message_pipeline`（StreamGuard + `ChatV2Pipeline::execute`）执行，
-//!    事件照常经 Window emit（无前端监听也无害），全部块照常落库，用户之后打开
-//!    会话能看到完整过程。
+//! 1. **复用现有管线**：构建 `SendMessageRequest` → 经
+//!    `ChatV2Pipeline::execute_with_emitter`（G01-d 无窗总入口，StreamGuard
+//!    照常保护流注册）执行。事件出口统一为
+//!    `ChatV2EventEmitter::new_headless`（G01-a NoopEventSink，全部块/会话
+//!    事件丢弃）；LLM 流式调用经 G01-b `NoopStreamSink`（tool_loop /
+//!    multi_variant 在 `try_window()=None` 分支自动选用）。不依赖任何应用
+//!    窗口——纯后台驻留（窗口全部关闭）场景照常跑完，全部块照常落库，
+//!    用户之后打开会话能看到完整过程。
 //! 2. **工具集 fail-closed（双层防线）**：
 //!    - Schema 层：只注入 `headless_tool_schemas()` 白名单工具的 schema，
 //!      依赖前端 WebView 往返的工具（MCP 桥 / ask_user / 前端 CardAgent 桥 /
@@ -41,14 +45,14 @@
 //! - `run_headless_agent_turn(&app, HeadlessSessionTurn)`：低层入口，
 //!   供已自管会话 ID 的调用方使用（返回未截断的最终回复全文）。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Window};
+use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 use super::automations::{
@@ -56,9 +60,11 @@ use super::automations::{
 };
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
+use super::events::ChatV2EventEmitter;
 use super::pipeline::ChatV2Pipeline;
 use super::repo::ChatV2Repo;
-use super::state::ChatV2State;
+use super::state::{ChatV2State, StreamGuard};
+use super::tool_descriptors;
 use super::tools::attempt_completion::is_attempt_completion;
 use super::types::{
     block_status, ChatMessage, ChatSession, McpToolSchema, MessageBlock, PersistStatus,
@@ -531,72 +537,99 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
 /// 1. 纯后端执行，不依赖前端 WebView 往返；
 /// 2. 敏感度为 Low（无人审批下可自动执行）；
 /// 3. 对学情简报 / 复习提醒等 automation 场景有实际价值。
+///
+/// G01-e：名单成员由注册表 SSOT `tool_descriptors::BUILTIN_DESCRIPTORS` 的
+/// `headless_allowed` 标志位驱动，本函数只负责把裸名映射回线上调用名
+/// （见 [`headless_wire_name`]）。与历史手写清单的逐名等价由
+/// `#[cfg(test)] LEGACY_HEADLESS_ALLOWED_TOOLS` 对照测试锁定。
 pub fn headless_allowed_tools() -> Vec<String> {
-    [
-        // Agent 元工具（todo_* 经 schema_tool_ids 注入；attempt_completion 是
-        // control tool 本就绕过白名单，列入仅为语义完整）
-        "attempt_completion",
-        "todo_init",
-        "todo_update",
-        "todo_add",
-        "todo_get",
-        // 检索（BuiltinRetrievalExecutor / FetchExecutor，Low）
-        "builtin-unified_search",
-        "builtin-rag_search",
-        "builtin-web_search",
-        "builtin-web_fetch",
-        // 系统观测（阶段七，只读 Low；所有写入仍在 blocked 清单）
-        "builtin-settings_get",
-        "builtin-model_assignments_get",
-        "builtin-llm_usage_query",
-        "builtin-backup_status",
-        "builtin-backup_job_status",
-        "builtin-sync_status",
-        // VFS index diagnosis is read-only; rebuild/archive remain blocked.
-        "builtin-index_status",
-        // 学习概览与番茄钟统计（阶段十，只读 Low）
-        "builtin-learning_overview",
-        "builtin-pomodoro_today_stats",
-        "builtin-pomodoro_daily_stats",
-        // 记忆只读面（无人值守不得修改用户长期记忆）
-        "builtin-memory_read",
-        "builtin-memory_list",
-        // VFS 学习资源（BuiltinResourceExecutor，只读，Low）
-        "builtin-resource_list",
-        "builtin-resource_read",
-        "builtin-resource_search",
-        "builtin-folder_list",
-        "builtin-dstu_list_trash",
-        // 用户待办只读面（无人值守不得修改用户真实待办）
-        "builtin-user_todo_list_lists",
-        "builtin-user_todo_list_items",
-        "builtin-user_todo_get_summary",
-        "builtin-user_todo_search",
-        "builtin-user_todo_list_trash",
-        // 题库只读（QBankExecutor，Low）——到期复习卡 / 学情统计
-        "builtin-qbank_list",
-        "builtin-qbank_list_questions",
-        "builtin-qbank_get_question",
-        "builtin-qbank_get_stats",
-        "builtin-qbank_get_next_question",
-        // 复习计划只读（ReviewToolExecutor，Low；schedule/plan_generate 为
-        // Medium 不收录）——heartbeat "检查今天到期复习" 场景
-        "builtin-review_get_due",
-        "builtin-review_stats",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    tool_descriptors::BUILTIN_DESCRIPTORS
+        .iter()
+        .filter(|descriptor| descriptor.headless_allowed)
+        .map(|descriptor| headless_wire_name(descriptor.name))
+        .collect()
 }
 
-/// 白名单的 O(1) 查找缓存（白名单是编译期常量集合，进程内不变）。
-static HEADLESS_ALLOWED_TOOL_SET: LazyLock<HashSet<String>> =
-    LazyLock::new(|| headless_allowed_tools().into_iter().collect());
+/// 线上调用名口径：`attempt_completion` / `todo_*` 元工具由后端裸名注入
+/// （control tool 自动追加 / `SendOptions.schema_tool_ids`），其余内建工具
+/// 一律携带 `builtin-` 命名空间前缀。
+fn headless_wire_name(bare_name: &str) -> String {
+    if bare_name == "attempt_completion" || bare_name.starts_with("todo_") {
+        bare_name.to_string()
+    } else {
+        format!("builtin-{bare_name}")
+    }
+}
 
 /// 判断某工具是否允许出现在 headless 上下文（schema 注入前的预过滤）。
+///
+/// G01-e：准入判定切换到注册表查询 [`tool_descriptors::is_headless_readonly`]
+/// （`DESCRIPTOR_INDEX` 提供 O(1) 查找，原 `HEADLESS_ALLOWED_TOOL_SET` 缓存
+/// 随之退役）。查询接受 `builtin-` 前缀或裸名；未登记名字（含全部 MCP 动态
+/// 工具）恒为 false——fail-closed 语义不变。
 pub fn is_headless_allowed_tool(tool_name: &str) -> bool {
-    HEADLESS_ALLOWED_TOOL_SET.contains(tool_name)
+    tool_descriptors::is_headless_readonly(tool_name)
 }
+
+/// G01-e 迁移前的手写白名单，保留为测试对照 oracle（第二信源）。
+///
+/// 生产代码已切换为注册表驱动（见 [`headless_allowed_tools`]）；防漂移测试
+/// 逐名锁定"注册表派生集合 == 本清单"。新增/移除 headless 工具时必须同步
+/// 更新本清单与 `tool_descriptors::BUILTIN_DESCRIPTORS` 的 `headless_allowed`
+/// 标志，否则对照测试红灯。
+#[cfg(test)]
+pub(crate) const LEGACY_HEADLESS_ALLOWED_TOOLS: &[&str] = &[
+    // Agent 元工具（todo_* 经 schema_tool_ids 注入；attempt_completion 是
+    // control tool 本就绕过白名单，列入仅为语义完整）
+    "attempt_completion",
+    "todo_init",
+    "todo_update",
+    "todo_add",
+    "todo_get",
+    // 检索（BuiltinRetrievalExecutor / FetchExecutor，Low）
+    "builtin-unified_search",
+    "builtin-rag_search",
+    "builtin-web_search",
+    "builtin-web_fetch",
+    // 系统观测（阶段七，只读 Low；所有写入仍在 blocked 清单）
+    "builtin-settings_get",
+    "builtin-model_assignments_get",
+    "builtin-llm_usage_query",
+    "builtin-backup_status",
+    "builtin-backup_job_status",
+    "builtin-sync_status",
+    // VFS index diagnosis is read-only; rebuild/archive remain blocked.
+    "builtin-index_status",
+    // 学习概览与番茄钟统计（阶段十，只读 Low）
+    "builtin-learning_overview",
+    "builtin-pomodoro_today_stats",
+    "builtin-pomodoro_daily_stats",
+    // 记忆只读面（无人值守不得修改用户长期记忆）
+    "builtin-memory_read",
+    "builtin-memory_list",
+    // VFS 学习资源（BuiltinResourceExecutor，只读，Low）
+    "builtin-resource_list",
+    "builtin-resource_read",
+    "builtin-resource_search",
+    "builtin-folder_list",
+    "builtin-dstu_list_trash",
+    // 用户待办只读面（无人值守不得修改用户真实待办）
+    "builtin-user_todo_list_lists",
+    "builtin-user_todo_list_items",
+    "builtin-user_todo_get_summary",
+    "builtin-user_todo_search",
+    "builtin-user_todo_list_trash",
+    // 题库只读（QBankExecutor，Low）——到期复习卡 / 学情统计
+    "builtin-qbank_list",
+    "builtin-qbank_list_questions",
+    "builtin-qbank_get_question",
+    "builtin-qbank_get_stats",
+    "builtin-qbank_get_next_question",
+    // 复习计划只读（ReviewToolExecutor，Low；schedule/plan_generate 为
+    // Medium 不收录）——heartbeat "检查今天到期复习" 场景
+    "builtin-review_get_due",
+    "builtin-review_stats",
+];
 
 /// fail-closed 预过滤：从任意 schema 列表中剔除不在白名单内的工具。
 ///
@@ -1226,7 +1259,7 @@ pub struct HeadlessTurnOutcome {
 
 /// 后端自主发起一个完整 agent turn（无前端参与）。
 ///
-/// 基础设施级失败（管线未初始化 / 无可用窗口 / 会话创建失败 / 会话流冲突）
+/// 基础设施级失败（管线未初始化 / 会话创建失败 / 会话流冲突）
 /// 返回 `Err`；管线执行期的失败（LLM 错误、超时等）返回 `Ok` 且
 /// `status = cancelled|timeout|error`，因为此时消息/块已按管线取消/错误路径落库，
 /// 调用方可据此发失败通知。
@@ -1550,26 +1583,14 @@ async fn execute_headless_pipeline(
         return Err(HeadlessPipelineTermination::Failed(error));
     }
 
-    // —— 事件发射所需的 Window（AppHandle 全局 emit 语义：无前端监听也无害）。
-    //    Tauri 窗口在应用存续期间通常存活（最小化/隐藏不影响 emit）。
-    //
-    //    无窗口容错评估（2026-07）：`run_send_message_pipeline` →
-    //    `ChatV2Pipeline::execute(window: Window, ...)` 的签名强依赖具体
-    //    `tauri::Window`（emitter 构造 + 工具 ExecutionContext 的 window 桥），
-    //    `ChatV2EventEmitter` 的 windowless 形态仅 `#[cfg(test)]` 暴露，且这些
-    //    文件属于其他并行改造，headless 侧无法在不改管线签名的前提下安全降级为
-    //    "无 UI 事件模式"。此处保守保留 fail-fast，但补充 run 上下文日志便于排查
-    //    纯后台驻留场景（所有窗口已销毁）下的任务失败原因。
-    let window = resolve_emit_window(app).ok_or_else(|| {
-        log::error!(
-            "[ChatV2::headless] 没有可用的应用窗口，headless turn 无法启动: session={}, assistant_message={}（纯后台驻留/窗口全部关闭场景；管线事件通道强依赖 Window，暂不支持无窗口降级）",
-            session_id,
-            assistant_message_id
-        );
-        HeadlessPipelineTermination::Failed(format!(
-            "没有可用的应用窗口，无法创建事件发射通道（session={session_id}）"
-        ))
-    })?;
+    // —— G01-d 事件出口收口：headless emitter 单一形态 ——
+    //    `ChatV2EventEmitter::new_headless`（NoopEventSink，全部事件丢弃），
+    //    不再解析/依赖任何应用窗口；LLM 流式由 G01-b NoopStreamSink 承载
+    //    （tool_loop / multi_variant 的 try_window()=None 分支）。纯后台驻留
+    //    （窗口全部关闭）场景 headless turn 照常执行。
+    //    hooks 的 shell 审批绑定在 try_window()=None 下保持 fail-fast（结构化
+    //    错误而非 panic），且 headless 白名单本就不含 shell 工具——双层
+    //    fail-closed 语义不变。
 
     // 轮次预算：run_headless_turn 已经通过 resolve_budget（profile > 请求 >
     // 设置 > 默认 + 硬顶）解析并经 override 传入，这里直接采信不再重算；
@@ -1627,7 +1648,7 @@ async fn execute_headless_pipeline(
         ..Default::default()
     };
 
-    let request = SendMessageRequest {
+    let mut request = SendMessageRequest {
         session_id: session_id.to_string(),
         content: prompt.to_string(),
         options: Some(options),
@@ -1681,19 +1702,36 @@ async fn execute_headless_pipeline(
         stream_generation
     );
 
-    // —— 执行：复用 send_message 的内部管线路径（StreamGuard + Pipeline::execute），
+    // —— 执行：G01-d 无窗管线路径（StreamGuard + Pipeline::execute_with_emitter
+    //    + headless emitter）。StreamGuard 语义与原 run_send_message_pipeline
+    //    一致：存活期间持有流注册，drop 时按 generation 精确清理；
+    //    from_registered_token 在 token 已取消的竞态下返回 None，由
+    //    finalize_overrun_pipeline 的 compare-and-remove 兜底。
     //    硬超时命中后先 cancel 让管线走"取消保存部分结果"路径，再限时收尾。
-    //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop 触发
-    //    StreamGuard 的清理，再做流注册泄漏兜底检查。
+    //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop；
     //    catch_unwind 隔离 panic：单次 run 的 panic 转化为 error 结果回传，
-    //    unwind 过程中 StreamGuard 照常 drop 清理，调度器不受影响。
+    //    调度器不受影响。
+    let stream_guard = StreamGuard::from_registered_token(
+        chat_v2_state.clone(),
+        session_id.to_string(),
+        &cancel_token,
+    );
+    if stream_guard.is_some() {
+        request
+            .options
+            .get_or_insert_with(SendOptions::default)
+            .stream_generation = Some(stream_generation);
+    }
+    let emitter = Arc::new(
+        ChatV2EventEmitter::new_headless(session_id.to_string())
+            .with_stream_generation(request.options.as_ref().and_then(|o| o.stream_generation)),
+    );
     let mut pipeline_fut = Box::pin(
-        AssertUnwindSafe(super::handlers::send_message::run_send_message_pipeline(
-            pipeline,
-            chat_v2_state.clone(),
-            window,
+        AssertUnwindSafe(pipeline.execute_with_emitter(
+            emitter,
             request,
             cancel_token.clone(),
+            Some(chat_v2_state.clone()),
         ))
         .catch_unwind(),
     );
@@ -1789,6 +1827,11 @@ async fn execute_headless_pipeline(
         }
         Err(_) => false,
     };
+    // StreamGuard 必须先于 finalize 显式 drop：finalize 内的
+    // remove_stream_if_generation 兜底检查要求注册已被 guard 清理，
+    // 否则会对正常清理误报"StreamGuard 未生效"。（正常完成路径在上方
+    // loop 内 return，guard 随函数返回 drop。）
+    drop(stream_guard);
     finalize_overrun_pipeline(
         pipeline_fut,
         graceful,
@@ -1900,15 +1943,6 @@ fn finalize_overrun_pipeline<F>(
 // ============================================================================
 // 内部辅助
 // ============================================================================
-
-/// 获取用于事件发射的 Window：优先 main，其次任意存活窗口。
-fn resolve_emit_window(app: &AppHandle) -> Option<Window> {
-    let webviews = app.webview_windows();
-    if let Some(main) = webviews.get("main") {
-        return Some(main.as_ref().window());
-    }
-    webviews.values().next().map(|w| w.as_ref().window())
-}
 
 /// 解析高层请求的超时/轮次预算：请求值 > 全局设置 > 默认值，并施加硬顶。
 fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, Option<u32>) {
@@ -2709,13 +2743,54 @@ mod tests {
         ));
     }
 
+    /// G01-e 防漂移对照：注册表派生的白名单与历史手写清单逐名等价——
+    /// 白名单内每个工具准入（两种名字形式），名单外每个工具拒绝。
     #[test]
-    fn whitelist_lookup_set_matches_vec() {
-        for tool in headless_allowed_tools() {
-            assert!(is_headless_allowed_tool(&tool), "{tool} 应在白名单查找集内");
+    fn registry_driven_whitelist_matches_legacy_list() {
+        use std::collections::HashSet;
+
+        // 集合级：派生 Vec 与手写 oracle 内容完全一致（逐名、无增无减）
+        let derived: HashSet<String> = headless_allowed_tools().into_iter().collect();
+        let legacy: HashSet<&str> = LEGACY_HEADLESS_ALLOWED_TOOLS.iter().copied().collect();
+        let legacy_strings: HashSet<String> = legacy.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            derived, legacy_strings,
+            "headless 白名单与 tool_descriptors 的 headless_allowed 标志发生漂移"
+        );
+
+        // 准入级（名单内）：每个工具按线上名与裸名两种形式都必须准入
+        for name in &legacy {
+            assert!(is_headless_allowed_tool(name), "{name} 应在白名单内");
+            let bare = name.strip_prefix("builtin-").unwrap_or(name);
+            assert!(is_headless_allowed_tool(bare), "裸名 {bare} 应在白名单内");
         }
-        assert!(!is_headless_allowed_tool("builtin-local_shell_execute"));
-        assert!(!is_headless_allowed_tool("mcp_anything"));
+
+        // 准入级（名单外）：注册表内全部未标记工具（两种形式）逐一拒绝
+        for descriptor in tool_descriptors::BUILTIN_DESCRIPTORS {
+            if descriptor.headless_allowed {
+                continue;
+            }
+            assert!(
+                !is_headless_allowed_tool(descriptor.name),
+                "裸名 {} 应被拒绝",
+                descriptor.name
+            );
+            let prefixed = format!("builtin-{}", descriptor.name);
+            assert!(
+                !is_headless_allowed_tool(&prefixed),
+                "{prefixed} 应被拒绝"
+            );
+        }
+
+        // 注册表外的代表性名字（MCP 动态工具 / 退役前端桥 / 未登记名）恒拒绝
+        for outsider in [
+            "mcp_anything",
+            "builtin-mcp_foo",
+            "anki_generate_cards",
+            "nonexistent_tool",
+        ] {
+            assert!(!is_headless_allowed_tool(outsider), "{outsider} 应被拒绝");
+        }
     }
 
     #[test]

@@ -81,7 +81,7 @@ describe('ShadApiEditModal Codex OAuth connection test', () => {
   });
 
   it('tests Codex OAuth without requiring an API key', async () => {
-    invokeMock.mockResolvedValueOnce(true);
+    invokeMock.mockResolvedValueOnce({ ok: true, latencyMs: 5 });
     renderEditor('openai_codex_oauth');
 
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));

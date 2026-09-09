@@ -10,6 +10,7 @@
 export { knowledgeRetrievalSkill } from './knowledge-retrieval';
 export { canvasNoteSkill } from './canvas-note';
 export { vfsMemorySkill } from './vfs-memory';
+export { insightRecallSkill } from './insight-recall';
 export { learningResourceSkill } from './learning-resource';
 export { dstuToolsSkill } from './dstu-tools';
 export { mindmapToolsSkill } from './mindmap-tools';
@@ -34,6 +35,7 @@ export { userTodoToolsSkill } from './user-todo-tools';
 export { imageGenerationSkill } from './image-generation';
 export { generativeUiSkill } from './generative-ui';
 export { toolPackSkill } from './tool-pack';
+export { ptcRunSkill } from './ptc-run';
 export { selfServiceToolsSkill } from './self-service-tools';
 export { automationToolsSkill } from './automation-tools';
 export { rootRequestToolsSkill } from './root-request-tools';
@@ -56,6 +58,7 @@ export { goalToolsSkill } from './goal-tools';
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
 import { vfsMemorySkill } from './vfs-memory';
+import { insightRecallSkill } from './insight-recall';
 import { learningResourceSkill } from './learning-resource';
 import { dstuToolsSkill } from './dstu-tools';
 import { mindmapToolsSkill } from './mindmap-tools';
@@ -80,6 +83,7 @@ import { userTodoToolsSkill } from './user-todo-tools';
 import { imageGenerationSkill } from './image-generation';
 import { generativeUiSkill } from './generative-ui';
 import { toolPackSkill } from './tool-pack';
+import { ptcRunSkill } from './ptc-run';
 import { selfServiceToolsSkill } from './self-service-tools';
 import { automationToolsSkill } from './automation-tools';
 import { rootRequestToolsSkill } from './root-request-tools';
@@ -121,6 +125,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   knowledgeRetrievalSkill,
   canvasNoteSkill,
   vfsMemorySkill,
+  insightRecallSkill,
   learningResourceSkill,
   dstuToolsSkill,
   mindmapToolsSkill,
@@ -145,6 +150,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   imageGenerationSkill,
   generativeUiSkill,
   toolPackSkill,
+  ptcRunSkill,
   selfServiceToolsSkill,
   automationToolsSkill,
   rootRequestToolsSkill,

@@ -166,6 +166,15 @@ impl GenerativeUiExecutor {
             .and_then(Self::sanitize_research_session_id)
     }
 
+    /// P3 产物模板：skeletonRef 是 skill id（目录名，小写字母+数字+连字符），
+    /// 复用 research_session_id 的字符白名单做防御性消毒
+    fn parse_skeleton_ref(arguments: &Value) -> Option<String> {
+        arguments
+            .get("skeletonRef")
+            .and_then(Value::as_str)
+            .and_then(Self::sanitize_research_session_id)
+    }
+
     fn parse_note_edit(arguments: &Value) -> Result<Option<Value>, String> {
         let Some(raw) = arguments.get("noteEdit") else {
             return Ok(None);
@@ -274,13 +283,18 @@ impl GenerativeUiExecutor {
         );
     }
 
-    fn emit_end(ctx: &ExecutionContext, intent: &Value, research_session_id: Option<&str>) {
+    fn emit_end(ctx: &ExecutionContext, intent: &Value, research_session_id: Option<&str>, skeleton_ref: Option<&str>) {
         let mut payload = json!({
             "intent": intent,
             "isStreaming": false,
         });
         if let Some(session_id) = research_session_id {
             payload["researchSessionId"] = json!(session_id);
+        }
+        // P3 产物模板：回显 skeletonRef——live 路径下前端块没有 toolInput
+        // （tool_input 仅持久化到 DB，restore 才回读），onEnd 骨架校验靠此回显消歧
+        if let Some(skeleton_ref) = skeleton_ref {
+            payload["skeletonRef"] = json!(skeleton_ref);
         }
         ctx.emitter.emit_end_with_meta(
             event_types::GENERATIVE_UI,
@@ -426,7 +440,7 @@ impl ToolExecutor for GenerativeUiExecutor {
 
         Self::emit_start(ctx, title);
         Self::emit_chunk(ctx, &content_str);
-        Self::emit_end(ctx, &intent, research_session_id.as_deref());
+        Self::emit_end(ctx, &intent, research_session_id.as_deref(), Self::parse_skeleton_ref(&call.arguments).as_deref());
         if let Some(ref session_id) = research_session_id {
             if intent_has_research_blocks(&intent) {
                 Self::emit_hpias_session_started_if_needed(
@@ -782,6 +796,29 @@ mod tests {
                 .and_then(Value::as_str),
             Some("research-chat-1")
         );
+    }
+
+    #[test]
+    fn parse_skeleton_ref_accepts_valid_skill_id() {
+        let args = json!({ "skeletonRef": "weekly-report" });
+        assert_eq!(
+            GenerativeUiExecutor::parse_skeleton_ref(&args).as_deref(),
+            Some("weekly-report")
+        );
+    }
+
+    #[test]
+    fn parse_skeleton_ref_rejects_invalid_or_absent() {
+        // 缺失
+        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({})).is_none());
+        // 非字符串
+        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": 42 })).is_none());
+        // 非法字符（空格/斜杠）
+        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "bad id" })).is_none());
+        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "../escape" })).is_none());
+        // 超长
+        let long = "a".repeat(200);
+        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": long })).is_none());
     }
 
     #[test]

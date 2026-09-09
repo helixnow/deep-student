@@ -78,6 +78,7 @@ import {
 import { collectSchemaToolIds } from '../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../skills/registry';
+import { renderSkillContentWithArtifact } from '../skills/artifactSkeleton';
 import { getSkillRuntimeAdmissionWithDependencies } from '../skills/runtimeAdmission';
 import { SKILL_INSTRUCTION_TYPE_ID, type SkillDefinition } from '../skills/types';
 import { groupCache } from '../core/store/groupCache';
@@ -336,10 +337,13 @@ export class ChatV2TauriAdapter {
   /** 防止并发查询的旧结果覆盖更新的重试终态。 */
   private ankiRetryReconcileRevisions = new Map<string, number>();
   /** 🚀 性能修复（2026-09-06）：anki 卡片事件合并缓冲（blockId → 待写入卡片）。
-   * 100ms 窗口批量写入 store，避免每卡一次 updateBlock 造成 O(N²) 渲染开销。 */
+   * 100ms 窗口批量写入 store，避免每卡一次 updateBlock 造成 O(N²) 渲染开销。
+   * cardIds（2026-09-07 审阅 F3）：窗口内 ID 判重索引，条目创建时从已落盘
+   * 卡片播种（每窗口 O(M) 一次），窗口期内判重 O(1)；落盘时仍按最新状态
+   * 重新建索引过滤，作为正确性兜底。 */
   private ankiCardFlushQueue = new Map<
     string,
-    { cards: AnkiCard[]; documentId?: string; timer: ReturnType<typeof setTimeout> | null }
+    { cards: AnkiCard[]; cardIds: Set<string>; documentId?: string; timer: ReturnType<typeof setTimeout> | null }
   >();
 
   constructor(sessionId: string, store: ChatStore, storeApi?: StoreApi<ChatStore>) {
@@ -1649,9 +1653,13 @@ export class ChatV2TauriAdapter {
 
     const currentOutput = (targetBlock.toolOutput as Record<string, unknown> | undefined) ?? {};
     const currentCards = (currentOutput.cards as AnkiCard[] | undefined) ?? [];
-    const newCards = queued.cards.filter(
-      (card) => !card.id || !currentCards.some((c) => c.id === card.id),
-    );
+    // 落盘前按最新状态重建 ID 索引（O(M)），窗口内新卡逐一 O(1) 判重——
+    // 整体 O(M+N) 而非逐个 some() 的 O(N²)（2026-09-07 审阅 F3）。
+    const existingIds = new Set<string>();
+    for (const card of currentCards) {
+      if (card.id) existingIds.add(card.id);
+    }
+    const newCards = queued.cards.filter((card) => !card.id || !existingIds.has(card.id));
     if (newCards.length === 0) return;
 
     const nextCards = [...currentCards, ...newCards];
@@ -1924,10 +1932,24 @@ export class ChatV2TauriAdapter {
       // 🚀 性能修复（2026-09-06）：卡片事件进入合并缓冲，100ms 窗口批量写入 store。
       // 原实现每张卡一次 O(N) 签名计算 + updateBlock + 调试 CustomEvent，
       // N 张卡产生 O(N²) 渲染与事件洪水。
-      const existsInState = cardData.id ? currentCards.some((c) => c.id === cardData.id) : false;
-      const queued = this.ankiCardFlushQueue.get(targetBlock.id);
-      const existsInQueue = !!(cardData.id && queued && queued.cards.some((c) => c.id === cardData.id));
-      if (existsInState || existsInQueue) {
+      // F3（2026-09-07）：判重改 ID 索引——条目创建时从已落盘卡片播种
+      // （每窗口 O(M) 一次），窗口期内每张新卡 O(1)；无 ID 卡片不参与判重，
+      // 始终保留（与原语义一致）。
+      let queued = this.ankiCardFlushQueue.get(targetBlock.id);
+      if (!queued) {
+        const seededIds = new Set<string>();
+        for (const card of currentCards) {
+          if (card.id) seededIds.add(card.id);
+        }
+        queued = {
+          cards: [],
+          cardIds: seededIds,
+          documentId,
+          timer: setTimeout(() => this.flushAnkiCardBuffer(targetBlock.id), 100),
+        };
+        this.ankiCardFlushQueue.set(targetBlock.id, queued);
+      }
+      if (cardData.id && queued.cardIds.has(cardData.id)) {
         try {
           window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
             level: 'debug', phase: 'bridge:event',
@@ -1937,16 +1959,9 @@ export class ChatV2TauriAdapter {
         } catch { /* debug only */ }
         return;
       }
-      if (queued) {
-        queued.cards.push(cardData);
-        if (documentId && !queued.documentId) queued.documentId = documentId;
-      } else {
-        this.ankiCardFlushQueue.set(targetBlock.id, {
-          cards: [cardData],
-          documentId,
-          timer: setTimeout(() => this.flushAnkiCardBuffer(targetBlock.id), 100),
-        });
-      }
+      queued.cards.push(cardData);
+      if (cardData.id) queued.cardIds.add(cardData.id);
+      if (documentId && !queued.documentId) queued.documentId = documentId;
       // 重试对账读的是后端 TaskSnapshot，与前端缓冲时序无关，保持立即调度
       if (isRetryFlow && documentId) {
         this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
@@ -5043,7 +5058,9 @@ export class ChatV2TauriAdapter {
       // Keep an explicit entry even for tool-only skills. The backend uses
       // membership in this map as the admitted-set check; omitting an empty
       // body would incorrectly classify an admitted tool-only skill as missing.
-      skillContents[skill.id] = skill.content ?? '';
+      // P3：产物模板骨架随正文注入（renderSkillContentWithArtifact 对无
+      // artifact 声明的 skill 原样返回）。
+      skillContents[skill.id] = renderSkillContentWithArtifact(skill);
       if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
         skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
       }
@@ -5433,8 +5450,8 @@ export class ChatV2TauriAdapter {
           console.log(LOG_PREFIX, '[TransientSkills] Skip rejected skill injection:', skill.id, admission.code);
           continue;
         }
-        skillContents[skill.id] = skill.content ?? '';
-        replaySkillContents[skill.id] = skill.content ?? '';
+        skillContents[skill.id] = renderSkillContentWithArtifact(skill);
+        replaySkillContents[skill.id] = renderSkillContentWithArtifact(skill);
         if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
           skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
         }

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
+import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
 import { useNotesOptional } from './NotesContext';
@@ -411,6 +412,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  // P0 选区即上下文：笔记选区 → 结构化 contextRef（与 dropZone 共用同一 relative 容器）
+  const selectionContainerRef = useRef<HTMLDivElement>(null);
+  const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
 
@@ -464,6 +468,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+
+  // P0 选区即上下文：笔记选区 → 结构化 contextRef 注入聊天。
+  // 动态 import 避免把 chat context 链路静态打进笔记 chunk。
+  const handleSelectionAddAsContext = useCallback((text: string) => {
+    if (!noteId) return;
+    const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
+    void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+      selectionToChat({
+        text,
+        source: { kind: 'note', sourceId: noteId, title },
+      })
+    );
+  }, [noteId, isDstuMode, initialTitle, active?.title]);
 
   useEffect(() => {
     const onFindQuery = (event: Event) => {
@@ -1431,6 +1448,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     handleReject,
     isApplying: isAIEditApplying,
     checkpoint: aiCheckpoint,
+    checkpoints: aiCheckpoints,
     rollbackCheckpoint,
     dismissCheckpoint,
   } = useCanvasAIEditHandler({
@@ -2103,17 +2121,24 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           />
         )}
 
-        {/* ★ 2.1 AI 编辑检查点：接受后仍可整轮回滚。
+        {/* ★ 2.1 AI 编辑检查点栈：接受后仍可逐条回滚（顺序 undo，栈顶优先）。
             内联 info bar（参与布局、不遮挡文档标题），随 pane 顶栏保持可见 */}
         {aiCheckpoint && !aiEditState.isActive && (
           <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
             <div className="mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-2 px-5 py-1.5 sm:px-12">
               <Robot size={14} className="text-primary shrink-0" />
-              <span className="min-w-0 truncate text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
+              <span className="min-w-0 truncate text-xs text-foreground">
+                {aiCheckpoint.stale
+                  ? t('notes:aiCheckpoint.stale')
+                  : aiCheckpoints.length > 1
+                    ? t('notes:aiCheckpoint.appliedCount', { count: aiCheckpoints.length })
+                    : t('notes:aiCheckpoint.applied')}
+              </span>
               <div className="ml-auto flex flex-shrink-0 items-center gap-1">
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  disabled={aiCheckpoint.stale}
                   className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => { void rollbackCheckpoint(); }}
                 >
@@ -2124,7 +2149,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                  onClick={dismissCheckpoint}
+                  onClick={() => dismissCheckpoint()}
                   aria-label={t('notes:aiCheckpoint.keep')}
                 >
                   <X size={12} />
@@ -2189,8 +2214,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               ? 'calc(var(--mobile-toolbar-height, 52px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12vh)'
               : '30vh',
           }}
-          ref={dropZoneRef}
+          ref={(el) => {
+            dropZoneRef.current = el;
+            selectionContainerRef.current = el;
+          }}
         >
+          {/* P0 选区即上下文：笔记面只启用「引用到聊天」（解释/翻译沿用 PDF 面模式，后续按需补） */}
+          <SelectionToolbar
+            selectedText={noteSelection.selectedText}
+            selectionRect={noteSelection.selectionRect}
+            isVisible={noteSelection.isVisible && !effectiveReadOnly}
+            containerRef={selectionContainerRef}
+            onClear={noteSelection.clear}
+            onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
+            hideUnavailableActions
+            dismissOnLeaveView={null}
+          />
           <NotesEditorHeader
             lastSaved={lastSaved}
             saveStatus={saveStatus}

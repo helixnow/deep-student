@@ -9,8 +9,8 @@ use crate::chat_v2::runtime_roots::{
     revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
-    TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, ProviderObjectRef,
+    TaskObjectHandle, TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind};
 use crate::commands::AppState;
@@ -20,6 +20,8 @@ use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
 pub enum OfficeOperation {
     Create,
     ReplaceText,
+    /// ★ G06-P0：xlsx_edit_cells 回归统一交付通道后的操作标识
+    EditCells,
 }
 
 impl OfficeOperation {
@@ -27,6 +29,7 @@ impl OfficeOperation {
         match self {
             Self::Create => "create",
             Self::ReplaceText => "replace_text",
+            Self::EditCells => "edit_cells",
         }
     }
 }
@@ -321,26 +324,33 @@ fn common_handle(
     format: &str,
     operation: OfficeOperation,
     source_resource_id: Option<&str>,
-) -> TaskObjectHandle {
-    let mut handle = TaskObjectHandle::new(
+) -> Result<TaskObjectHandle, String> {
+    let transform_id = format!("{}.{}", format, operation.as_str());
+    let builder = TaskObjectHandleBuilder::new(
         handle_id,
         TaskObjectKind::File,
         display_name,
-        ObjectProvenance {
-            source: "deep-student-office".to_string(),
-            source_uri: source_resource_id.map(|id| format!("vfs://{}", id)),
-            server: None,
-            tool: Some(format!("{}_{}", format, operation.as_str())),
-            derived_from: source_resource_id
-                .map(|id| vec![format!("vfs:{}", id)])
-                .unwrap_or_default(),
-            observed_at: chrono::Utc::now().to_rfc3339(),
-        },
-    );
-    handle.media_type = Some(mime_type.to_string());
-    handle.size_bytes = Some(bytes.len() as u64);
-    handle.sha256 = Some(hex::encode(Sha256::digest(bytes)));
-    handle
+        "deep-student-office",
+    )
+    .source_uri(source_resource_id.map(|id| format!("vfs://{}", id)))
+    .tool(Some(format!("{}_{}", format, operation.as_str())))
+    .media_type(Some(mime_type))
+    .size_bytes(Some(bytes.len() as u64))
+    .sha256(Some(hex::encode(Sha256::digest(bytes))));
+    let builder = match source_resource_id {
+        Some(id) => builder.derived_edge(
+            DerivedEdge::new(format!("vfs:{id}"), transform_id).with_params_hash(
+                hash_transform_params(&json!({
+                    "format": format,
+                    "operation": operation.as_str(),
+                    "source_resource_id": id,
+                })),
+            ),
+        ),
+        // 纯新建（无源资源）没有任何可填的来源对象，显式走逃生门。
+        None => builder.origin_unknown("office_create_without_source_resource"),
+    };
+    builder.build()
 }
 
 fn vfs_task_object(
@@ -360,7 +370,7 @@ fn vfs_task_object(
         format,
         operation,
         source_resource_id,
-    );
+    )?;
     handle.provider_ref = Some(ProviderObjectRef {
         provider: "deep-student-vfs".to_string(),
         external_id: file_id.to_string(),
@@ -400,7 +410,7 @@ fn workspace_task_object(
         format,
         operation,
         source_resource_id,
-    );
+    )?;
     handle.locator = Some(ManagedLocator::new(root_id, relative_path)?);
     handle.capabilities = ObjectCapabilities {
         readable: true,
@@ -421,6 +431,13 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
             "tracked_changes",
             "embedded_ole",
             "full_style_round_trip",
+            // ★ G06-P1：与 office_fidelity_executor 的 docx 检测表对齐
+            // （replace_text 为 docx-rs 文本级全量重建，以下特征必然丢失）
+            "content_controls",
+            "toc_crossref_fields",
+            "images",
+            "headers_footers",
+            "footnotes_endnotes",
         ],
         "xlsx" => vec![
             "macros",
@@ -435,6 +452,12 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
             "transitions",
             "speaker_notes",
             "slide_master_round_trip",
+            // ★ G06-P1：与 office_fidelity_executor 的 pptx 检测表对齐
+            // （replace_text 为 spec 文本级全量重建，以下特征必然丢失）
+            "media",
+            "embedded_ole",
+            "charts",
+            "diagrams",
         ],
         _ => vec!["macros", "unknown_ooxml_extensions"],
     };
@@ -458,7 +481,9 @@ fn fidelity_manifest(format: &str, operation: OfficeOperation) -> Value {
         "source_preflight": {
             "tool": "builtin-office_fidelity_inspect",
             "required_for_source_edits": true,
-            "inspection_result_consumed_by_current_resource_id_editors": false,
+            // ★ G06-P0/P1：xlsx_edit_cells 与 docx/pptx replace_text 均已通过
+            // `OfficeFidelityExecutor::preflight_for_edit` 强制消费 inspect gate
+            "inspection_result_consumed_by_current_resource_id_editors": true,
             "preservation_claim_allowed": false,
         }
     })
@@ -503,7 +528,63 @@ mod tests {
         assert_eq!(
             manifest["source_preflight"]
                 ["inspection_result_consumed_by_current_resource_id_editors"],
-            false
+            true
         );
+    }
+
+    #[test]
+    fn edit_cells_operation_uses_edit_semantics_not_create() {
+        assert_eq!(OfficeOperation::EditCells.as_str(), "edit_cells");
+        let manifest = fidelity_manifest("xlsx", OfficeOperation::EditCells);
+        // 非 Create：preserved 走"受支持内容"语义，不承诺完整 round-trip
+        assert_eq!(
+            manifest["preserved"],
+            json!(["supported_text_content", "supported_structural_content"])
+        );
+        assert_eq!(manifest["operation"], "edit_cells");
+    }
+
+    // ========================================================================
+    // G06-P1：docx / pptx 编辑交付的血缘 handle（与 xlsx 共用 vfs_task_object）
+    // ========================================================================
+
+    #[test]
+    fn docx_pptx_delivery_handles_carry_lineage_and_capabilities() {
+        for (format, mime, transform) in [
+            (
+                "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx.replace_text",
+            ),
+            (
+                "pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx.replace_text",
+            ),
+        ] {
+            let handle = vfs_task_object(
+                "file-1",
+                "edited.out",
+                mime,
+                b"payload",
+                format,
+                OfficeOperation::ReplaceText,
+                Some("src-res-1"),
+            )
+            .unwrap();
+            assert_eq!(handle.handle_id, "vfs-file:file-1");
+            // 血缘：derived_from 指回源资源，transform_id 与操作对应
+            let edges = &handle.provenance.derived_from;
+            assert_eq!(edges.len(), 1, "{format} lineage edge missing");
+            assert_eq!(edges[0].source_handle_id, "vfs:src-res-1");
+            assert_eq!(edges[0].transform_id, transform);
+            assert!(edges[0].transform_params_hash.is_some());
+            // VFS 交付：provider_ref + 能力位
+            let provider = handle.provider_ref.as_ref().unwrap();
+            assert_eq!(provider.provider, "deep-student-vfs");
+            assert_eq!(provider.external_id, "file-1");
+            assert!(handle.capabilities.readable && handle.capabilities.writable);
+            handle.validate().unwrap();
+        }
     }
 }

@@ -249,6 +249,7 @@ fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
         VfsResourceType::Translation => 10 * 1024 * 1024, // 10MB
         VfsResourceType::Essay => 10 * 1024 * 1024, // 10MB
         VfsResourceType::MindMap => 50 * 1024 * 1024, // 50MB
+        VfsResourceType::InsightCard => 10 * 1024 * 1024, // 10MB（纯文本快照）
     }
 }
 

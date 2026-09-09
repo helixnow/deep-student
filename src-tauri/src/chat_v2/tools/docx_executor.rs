@@ -18,6 +18,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::office_fidelity_executor::{
+    build_edit_fidelity_warning, enforce_edit_preflight, EditGateWording, OfficeFidelityExecutor,
+};
 use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
 use super::OFFICE_DOC_PARSE_MAX_BYTES;
@@ -27,6 +30,16 @@ use crate::document_parser::DocumentParser;
 // ============================================================================
 // DOCX 工具执行器
 // ============================================================================
+
+/// ★ G06-P1：docx 编辑门禁措辞。replace_text 的写路径是 docx-rs 文本级全量
+/// 重建（extract_as_spec → 修改 → generate_from_spec），修订/内容控件/图片/
+/// OLE/复杂页眉页脚/TOC 域等 critical 特征必然静默丢失，故门禁拒绝；
+/// 批注/普通页眉页脚/脚注等 high 特征放行但附 fidelity warning。
+const DOCX_EDIT_GATE_WORDING: EditGateWording = EditGateWording {
+    write_path: "docx-rs 文本重建",
+    office_apps: "Word/WPS",
+    high_features_dropped: true,
+};
 
 /// DOCX 文档工具执行器
 pub struct DocxToolExecutor;
@@ -207,6 +220,13 @@ impl DocxToolExecutor {
 
         let bytes = self.load_docx_bytes(ctx, resource_id)?;
 
+        // ★ G06-P1：强制 preflight（与 xlsx_edit_cells 同一门禁，复用
+        // office_fidelity_inspect 的只读清点）。replace_text 的写路径是
+        // docx-rs 文本级全量重建——含 critical 特征（修订/内容控件/图片/OLE/
+        // 复杂页眉页脚/TOC 域）的源文件在此被拒绝，不会产生静默丢失特征的产物。
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes)?;
+        enforce_edit_preflight(&preflight, &DOCX_EDIT_GATE_WORDING)?;
+
         // spawn_blocking 防止同步解析阻塞 tokio 线程
         let (new_bytes, total_count) = tokio::task::spawn_blocking(move || {
             let parser = DocumentParser::new();
@@ -237,6 +257,11 @@ impl DocxToolExecutor {
             Some(resource_id),
         )?;
         output["replacements_made"] = json!(total_count);
+        // ★ G06-P1：high 特征（批注/普通页眉页脚/脚注等）放行但必须附 warning
+        if let Some(warning) = build_edit_fidelity_warning(&preflight, &DOCX_EDIT_GATE_WORDING, &[])
+        {
+            output["fidelity_warning"] = warning;
+        }
         output["message"] = json!(format!(
             "已完成 {} 处替换，保存为「{}」",
             total_count, file_name
@@ -513,5 +538,139 @@ mod tests {
             executor.sensitivity_level("builtin-docx_replace_text"),
             ToolSensitivity::Medium
         );
+    }
+
+    // ========================================================================
+    // G06-P1：replace_text 强制 preflight 门禁 + fidelity warning
+    // ========================================================================
+
+    use std::io::Write;
+
+    /// 手工拼包（门禁只看包结构，critical 拒绝发生在 docx-rs 解析之前）
+    fn zip_package(parts: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut output = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut output);
+            let options = zip::write::FileOptions::default();
+            for (name, bytes) in parts {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(bytes).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        output.into_inner()
+    }
+
+    /// docx-rs 生成的普通文档（真实可编辑路径）
+    fn build_plain_docx(text: &str) -> Vec<u8> {
+        let docx = docx_rs::Docx::new().add_paragraph(
+            docx_rs::Paragraph::new().add_run(docx_rs::Run::new().add_text(text)),
+        );
+        let mut output = std::io::Cursor::new(Vec::new());
+        docx.build().pack(&mut output).unwrap();
+        output.into_inner()
+    }
+
+    #[test]
+    fn g06_docx_replace_blocks_tracked_revisions() {
+        let bytes = zip_package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/document.xml",
+                br#"<w:document><w:ins w:id="7" w:author="a"><w:r><w:t>x</w:t></w:r></w:ins></w:document>"#,
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        let err = enforce_edit_preflight(&preflight, &DOCX_EDIT_GATE_WORDING).unwrap_err();
+        assert!(err.contains("OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES"));
+        assert!(err.contains("tracked_revisions"));
+        assert!(err.contains("Word/WPS"));
+        assert!(err.contains("docx-rs 文本重建"));
+    }
+
+    #[test]
+    fn g06_docx_replace_blocks_images_sdt_ole_and_complex_headers() {
+        let cases: Vec<(&str, &[u8], &str)> = vec![
+            ("word/media/image1.png", &b"img"[..], "images"),
+            (
+                "word/embeddings/oleObject1.bin",
+                &b"ole"[..],
+                "embedded_ole",
+            ),
+            (
+                "word/document.xml",
+                &b"<w:document><w:sdt><w:sdtContent/></w:sdt></w:document>"[..],
+                "content_controls",
+            ),
+            (
+                "word/document.xml",
+                &b"<w:document><w:sectPr><w:titlePg/></w:sectPr></w:document>"[..],
+                "complex_headers_footers",
+            ),
+        ];
+        for (part_name, part_bytes, expected_feature) in cases {
+            let mut parts: Vec<(&str, &[u8])> = vec![("[Content_Types].xml", &b"<Types/>"[..])];
+            // document.xml 类用例直接以内容为准，其余补一个空 document.xml
+            if part_name != "word/document.xml" {
+                parts.push(("word/document.xml", &b"<w:document/>"[..]));
+            }
+            parts.push((part_name, part_bytes));
+            let bytes = zip_package(&parts);
+            let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+            let err = enforce_edit_preflight(&preflight, &DOCX_EDIT_GATE_WORDING).unwrap_err();
+            assert!(
+                err.contains(expected_feature),
+                "expected '{expected_feature}' in: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn g06_docx_replace_plain_document_passes_gate_and_edits() {
+        let bytes = build_plain_docx("hello world");
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        // docx-rs 自产普通文档必须可再编辑（无 critical）
+        assert!(
+            !preflight.has_critical(),
+            "self-generated docx must be editable: {:?}",
+            preflight.critical_features
+        );
+        enforce_edit_preflight(&preflight, &DOCX_EDIT_GATE_WORDING).unwrap();
+        // 真实替换路径（DocumentParser::replace_text_in_docx）工作正常
+        let (new_bytes, count) = DocumentParser::new()
+            .replace_text_in_docx(&bytes, &[("world".to_string(), "deep-student".to_string())])
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_ne!(new_bytes, bytes);
+        // 无 high 特征（docx-rs 默认包无批注/页眉页脚/脚注）→ 不附 warning
+        assert!(build_edit_fidelity_warning(&preflight, &DOCX_EDIT_GATE_WORDING, &[]).is_none());
+    }
+
+    #[test]
+    fn g06_docx_replace_comments_document_passes_with_warning() {
+        let bytes = zip_package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("word/document.xml", b"<w:document/>"),
+            (
+                "word/comments.xml",
+                br#"<w:comments><w:comment w:id="0" w:author="a"><w:p/></w:comment></w:comments>"#,
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        // 批注是 high 而非 critical：放行
+        enforce_edit_preflight(&preflight, &DOCX_EDIT_GATE_WORDING).unwrap();
+        // 但交付结果必须附 fidelity warning（文本重建会丢弃批注）
+        let warning = build_edit_fidelity_warning(&preflight, &DOCX_EDIT_GATE_WORDING, &[])
+            .expect("comments document must carry fidelity warning");
+        assert_eq!(
+            warning["preserved_at_risk_features"],
+            json!(["comments"])
+        );
+        assert_eq!(
+            warning["write_path_semantics"],
+            "text_only_rebuild_drops_listed_features"
+        );
+        assert_eq!(warning["post_edit_comparison"], "not_performed");
+        assert!(warning["message"].as_str().unwrap().contains("Word/WPS"));
     }
 }

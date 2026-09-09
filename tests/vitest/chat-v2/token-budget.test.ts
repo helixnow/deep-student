@@ -140,7 +140,10 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // （先精简一轮 7025→6900，剩余属合理功能增长）；记录见 R4-WI-10-full.md 末节。
 const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_000;
 const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
-const MAX_TOTAL_TOKENS = 75_500;
+// 2026-09-09 合并 #391（qbank AI 出题）后实测 total = 75900：main 新增工具
+// 与 qbank-tools 叠加，属合理功能增长，有意识上调至 76500；记录见
+// docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
+const MAX_TOTAL_TOKENS = 76_500;
 
 // ============================================================================
 // 测试

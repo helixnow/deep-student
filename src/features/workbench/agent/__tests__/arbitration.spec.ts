@@ -191,3 +191,57 @@ describe('ACR arbitration — DESIGN §4.1', () => {
     arb.dispose();
   });
 });
+
+describe('N14 — abort 吸收态（2026-09-07 审阅）', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('暂停超时时无等待者：之后的 checkPaused 仍返回 abort', async () => {
+    const arb = createArbitrator({ abortAfterMs: 5 });
+    arb.pause();
+    // driver 正在 await 长 op，尚未 checkPaused（pending 为空）
+    await vi.advanceTimersByTimeAsync(10);
+    expect(arb.paused).toBe(false);
+    // 超时才到达的 checkPaused 必须看到吸收态 abort，而不是 resume
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    arb.dispose();
+  });
+
+  it('暂停超时前已有等待者：waiter 与迟到 checkPaused 都得到 abort', async () => {
+    const arb = createArbitrator({ abortAfterMs: 5 });
+    arb.pause();
+    const waiter = arb.checkPaused();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(waiter).resolves.toBe('abort');
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    arb.dispose();
+  });
+
+  it('abort 后 resume/pause/onUserInput 均不能复活同一实例', async () => {
+    const arb = createArbitrator({ abortAfterMs: 5 });
+    arb.pause();
+    await vi.advanceTimersByTimeAsync(10);
+    arb.resume();
+    arb.pause();
+    arb.onUserInput();
+    expect(arb.paused).toBe(false);
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    arb.dispose();
+  });
+
+  it('stop 无等待者时同样是吸收态', async () => {
+    const arb = createArbitrator({});
+    arb.pause();
+    arb.stop();
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    arb.resume();
+    await expect(arb.checkPaused()).resolves.toBe('abort');
+    arb.dispose();
+  });
+});

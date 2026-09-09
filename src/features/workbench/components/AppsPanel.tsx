@@ -9,7 +9,7 @@
  *
  * 开合状态见 appsPanelStore（openAppsPanel / closeAppsPanel）。
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChatCenteredText,
@@ -40,6 +40,7 @@ import {
   type WorkbenchSearchHost,
 } from '../search/globalSearchProviders';
 import { closeAppsPanel, useAppsPanelOpen } from './appsPanelStore';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { hasWorkbenchAppIcon, WorkbenchAppIcon } from './WorkbenchAppIcon';
 import './AppsPanel.css';
 
@@ -140,6 +141,11 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
+
+  // 液态玻璃透镜：入场 320ms 真折射读出透镜感，之后自动降级静态毛玻璃
+  // （Chromium + full 档；其余环境由 wb-glass-lens 的 CSS 回退普通玻璃）。
+  // 挂载期（含退场动画）保持附着；非常驻大面折射，不触碰性能纪律。
+  useLiquidGlassLens(dialogRef, rendered);
 
   const searching = query.trim().length > 0;
   const contentSearchReady = query.trim().length >= CONTENT_SEARCH_MIN_CHARS;
@@ -371,6 +377,21 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     el?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, open, rendered, viewMode, items]);
 
+  // Scroll edge effect（对标 macOS）：视口上/下仍有隐藏内容时，
+  // 该侧边缘内容溶解进玻璃，维持浮层与内容层的分离感。
+  const syncScrollEdge = useCallback(() => {
+    const vp = listRef.current;
+    if (!vp) return;
+    const top = vp.scrollTop > 2;
+    const bottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight > 2;
+    if (vp.dataset.wbEdgeTop !== String(top)) vp.dataset.wbEdgeTop = String(top);
+    if (vp.dataset.wbEdgeBottom !== String(bottom)) vp.dataset.wbEdgeBottom = String(bottom);
+  }, []);
+
+  useEffect(() => {
+    syncScrollEdge();
+  }, [syncScrollEdge, items, viewMode, searching, open]);
+
   const activateItem = (item: GlobalSearchItem | undefined) => {
     if (!item) return;
     void item.open();
@@ -548,12 +569,13 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       />
       <div
         ref={dialogRef}
-        className="wb-glass wb-glass-highlight wb-apps-panel"
+        className="wb-glass wb-glass-highlight wb-glass-lens wb-glass-rim wb-apps-panel"
         role="dialog"
         aria-modal="true"
         aria-label={t('workbench:appsPanel.title')}
         tabIndex={-1}
       >
+        <WallpaperReplica hostRef={dialogRef} enabled={rendered} />
         <div className="wb-apps-header">
           <h2 className="wb-apps-title">{t('workbench:appsPanel.title')}</h2>
           {/* 搜索态结果固定为分区列表，网格/列表切换不适用 → 隐藏死控件 */}
@@ -624,6 +646,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
           className="wb-apps-body"
           viewportRef={listRef}
           viewportClassName="wb-apps-body-viewport"
+          viewportProps={{ onScroll: syncScrollEdge }}
           trackOffsetTop={4}
           trackOffsetBottom={12}
           trackOffsetRight={4}

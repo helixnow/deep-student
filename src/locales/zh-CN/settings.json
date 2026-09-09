@@ -666,7 +666,9 @@
       "accent": "强调色：{{accent}}"
     },
     "sidebar_translucent_title": "侧边栏半透明",
-    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。"
+    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。",
+    "thread_width_ratio_title": "会话宽度占比",
+    "thread_width_ratio_description": "会话内容列超过默认阅读宽度后，按可用宽度的该占比继续延展。"
   },
   "appearance": {
     "theme": {
@@ -2990,6 +2992,27 @@
   "params": {
     "temperature": "温度",
     "top_p": "Top P"
+  },
+  "renderer_capabilities": {
+    "title": "聊天渲染能力",
+    "description": "只启用你会使用的专用格式。关闭后聊天不会渲染该格式，模型也不会收到相应语法提示。",
+    "saved": "聊天渲染设置已保存",
+    "chemicalStructures": "有机化学结构",
+    "chemicalStructures_description": "SMILES 内联结构式与苯环等有机骨架。",
+    "charts": "数据图表",
+    "charts_description": "Vega-Lite 图表，用于函数、实验和统计数据。",
+    "graphviz": "关系图",
+    "graphviz_description": "Graphviz DOT 依赖图、状态机和网络图。",
+    "music": "乐谱",
+    "music_description": "ABC 记谱法，渲染为标准五线谱。",
+    "timing": "数字时序图",
+    "timing_description": "WaveDrom 波形与总线时序。",
+    "chemicalFiles": "化学结构文件",
+    "chemicalFiles_description": "Molfile/SDF 二维结构式。",
+    "molecular3d": "三维分子",
+    "molecular3d_description": "PDB、SDF 等本地结构的可旋转三维模型。",
+    "geojson": "地理数据",
+    "geojson_description": "GeoJSON 本地矢量地图；不请求在线底图。"
   },
   "plugins": {
     "title": "插件与集成",

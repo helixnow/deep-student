@@ -5,6 +5,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 
 import { SettingSection } from './SettingsCommon';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
+import { RendererCapabilitiesSection } from './RendererCapabilitiesSection';
 import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
 import { SystemPermissionsSection } from './SystemPermissionsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
@@ -326,6 +327,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         <div className="mt-8">
           <AnkiConnectSettingsSection />
         </div>
+
+        <RendererCapabilitiesSection />
 
         <SettingsGroup
           title={t('settings:diagnostics.title', 'Diagnostics and feedback')}

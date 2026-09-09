@@ -41,9 +41,10 @@ use super::attachment_executor::{localized_attachment_failure, required_attachme
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::runtime_roots::{normalize_runtime_relative_path, temp_root};
+use crate::chat_v2::runtime_roots::{artifact_root, normalize_runtime_relative_path, temp_root};
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+    hash_transform_params, CorpusManifest, DerivedEdge, ManagedLocator, ObjectCapabilities,
+    TaskObjectHandle, TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::repos::attachment_repo::VfsAttachmentContentSource;
@@ -78,7 +79,14 @@ const MAX_SUFFIX_ATTEMPTS: u32 = 100;
 const MAX_FILE_NAME_CHARS: usize = 120;
 /// A single user turn is bounded independently from the UI attachment limit.
 /// This also covers context refs assembled by plugins or restored drafts.
+///
+/// G11-P2：该值现在是「单次进上下文的第一页大小」。超过它不再静默截断——
+/// 全部条目照常物化，并产出分页 CorpusManifest（见
+/// [`AutoStageContextAttachmentsResult::corpus_manifest`]）。
 const MAX_AUTO_STAGE_ITEMS: usize = 64;
+/// 语料清单的绝对上限（防滥用）：超过即显式报错，宁可响亮失败也绝不
+/// 静默丢弃任何文件。
+const MAX_CORPUS_ITEMS: usize = 4_096;
 const MAX_ARCHIVE_ENTRIES: usize = 4_096;
 const MAX_ARCHIVE_TOTAL_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
@@ -142,15 +150,37 @@ pub struct AutoStageContextAttachmentFailure {
     pub error: String,
 }
 
+/// G11-P2：超过单次携带上限时产出的分页语料清单载荷。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusManifestPayload {
+    /// 完整分页清单（全量成员，total_count 钉在接受/创建时）。
+    pub manifest: CorpusManifest,
+    /// 清单自身的物化句柄（locator 指向 artifacts root 下的 JSON 文件，
+    /// 可经 PTC `object_read` 分页回读）。
+    pub object_handle: TaskObjectHandle,
+    /// 模型可见告知文本：第一批已进上下文 + 分页回读指引 + 固定验收分母。
+    pub model_notice: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoStageContextAttachmentsResult {
+    /// 接受时的输入条目数（验收分母，钉定不漂移）。
     pub expected_items: usize,
+    /// 实际处理的条目数（staged + failed；全量处理，不做静默截断）。
     pub observed_items: usize,
+    /// 接受条目全部有记账结果（成功或失败）即为 true。
     pub coverage_complete: bool,
+    /// true 表示 `attachments` 仅携带第一页（前 MAX_AUTO_STAGE_ITEMS 个
+    /// 成功物化项），完整成员见 `corpus_manifest`——不再表示静默丢弃。
     pub truncated: bool,
+    /// 随上下文携带的第一批；`corpus_manifest` 存在时仅为第一页。
     pub attachments: Vec<AutoStagedContextAttachment>,
     pub failures: Vec<AutoStageContextAttachmentFailure>,
+    /// 超过单次携带上限时产出的分页语料清单（G11-P2）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub corpus_manifest: Option<CorpusManifestPayload>,
 }
 
 fn archive_format(name: &str, mime_type: Option<&str>) -> Option<&'static str> {
@@ -1226,32 +1256,39 @@ impl AttachmentStageExecutor {
         )?;
 
         let locator = ManagedLocator::new(temp.id.clone(), staged.relative_path.clone())?;
-        let mut object_handle = TaskObjectHandle::new(
+        let stage_params_hash = hash_transform_params(&json!({
+            "resource_id": &input.resource_id,
+            "source_id": &input.source_id,
+            "display_name": &input.display_name,
+        }));
+        let object_handle = TaskObjectHandleBuilder::new(
             format!("attachment:{}:{}", input.source_id, staged.sha256),
             TaskObjectKind::File,
-            resolved.name,
-            ObjectProvenance {
-                source: "chat_context_ref".to_string(),
-                source_uri: None,
-                server: None,
-                tool: Some("send_time_attachment_stage".to_string()),
-                derived_from: vec![input.resource_id.clone(), input.source_id.clone()],
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        object_handle.media_type = resolved.mime_type.clone();
-        object_handle.size_bytes = Some(staged.size_bytes);
-        object_handle.sha256 = Some(staged.sha256.clone());
-        object_handle.locator = Some(locator);
-        object_handle.capabilities = ObjectCapabilities {
+            resolved.name.clone(),
+            "chat_context_ref",
+        )
+        .tool(Some("send_time_attachment_stage"))
+        .derived_edge(
+            DerivedEdge::new(&input.resource_id, "attachment.stage_context")
+                .with_params_hash(stage_params_hash.clone()),
+        )
+        .derived_edge(
+            DerivedEdge::new(&input.source_id, "attachment.stage_context")
+                .with_params_hash(stage_params_hash),
+        )
+        .media_type(resolved.mime_type.clone())
+        .size_bytes(Some(staged.size_bytes))
+        .sha256(Some(&staged.sha256))
+        .locator(Some(locator))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: false,
             deletable: false,
-        };
-        object_handle.validate()?;
+        })
+        .build()?;
 
         Ok(AutoStagedContextAttachment {
             resource_id: input.resource_id.clone(),
@@ -1446,32 +1483,34 @@ impl AttachmentStageExecutor {
         );
 
         let locator = ManagedLocator::new(temp_id.clone(), staged.relative_path.clone())?;
-        let mut object_handle = TaskObjectHandle::new(
+        let object_handle = TaskObjectHandleBuilder::new(
             format!("attachment:{}:{}", attachment_id, staged.sha256),
             TaskObjectKind::File,
             original_name.clone(),
-            ObjectProvenance {
-                source: "chat_attachment".to_string(),
-                source_uri: None,
-                server: None,
-                tool: Some("attachment_stage".to_string()),
-                derived_from: vec![attachment_id.clone()],
-                observed_at: chrono::Utc::now().to_rfc3339(),
-            },
-        );
-        object_handle.media_type = mime_type.clone();
-        object_handle.size_bytes = Some(staged.size_bytes);
-        object_handle.sha256 = Some(staged.sha256.clone());
-        object_handle.locator = Some(locator);
-        object_handle.capabilities = ObjectCapabilities {
+            "chat_attachment",
+        )
+        .tool(Some("attachment_stage"))
+        .derived_edge(
+            DerivedEdge::new(&attachment_id, "attachment.stage").with_params_hash(
+                hash_transform_params(&json!({
+                    "attachment_id": &attachment_id,
+                    "message_id": &message_id,
+                })),
+            ),
+        )
+        .media_type(mime_type.clone())
+        .size_bytes(Some(staged.size_bytes))
+        .sha256(Some(&staged.sha256))
+        .locator(Some(locator))
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: false,
             deletable: false,
-        };
-        object_handle.validate()?;
+        })
+        .build()?;
 
         let mut output = json!({
             "success": true,
@@ -1552,11 +1591,98 @@ impl AttachmentStageExecutor {
     }
 }
 
+/// G11-P2：把全量成员句柄构建成分页 CorpusManifest，物化到 artifacts root
+/// （`corpus/<manifest_id>.json`），并为清单自身构建 TaskObjectHandle
+/// （derived_from 全部成员句柄）。
+///
+/// 清单必须落 artifacts root：G05-P2 `object_read` 的可读面白名单仅含
+/// artifacts，后续轮次借此分页回读任意页。物化失败时整体报错——宁可响亮
+/// 失败，也不退回静默截断。
+fn materialize_corpus_manifest(
+    app: &AppHandle,
+    session_id: &str,
+    handles: Vec<TaskObjectHandle>,
+    page_size: u32,
+    carried_count: usize,
+) -> Result<CorpusManifestPayload, String> {
+    let manifest_id = format!("corpus_{}", uuid::Uuid::new_v4());
+    let manifest = CorpusManifest::build(&manifest_id, session_id, handles, page_size)?;
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Failed to serialize corpus manifest: {e}"))?;
+
+    let artifacts = artifact_root(app, session_id, true)?;
+    let locator = ManagedLocator::new("artifacts", format!("corpus/{manifest_id}.json"))?;
+    let root_canon = artifacts
+        .path
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize artifacts root: {e}"))?;
+    let target = root_canon.join(&locator.relative_path);
+    let parent = target
+        .parent()
+        .ok_or("Corpus manifest target has no parent directory")?;
+    fs::create_dir_all(parent).map_err(|e| format!("Failed to create corpus manifest dir: {e}"))?;
+    let parent_canon = parent
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize corpus manifest dir: {e}"))?;
+    if !parent_canon.starts_with(&root_canon) {
+        return Err("Corpus manifest target escapes the artifacts root".to_string());
+    }
+    fs::write(&target, &manifest_json)
+        .map_err(|e| format!("Failed to write corpus manifest: {e}"))?;
+
+    let page_params_hash = hash_transform_params(&json!({
+        "manifest_id": &manifest_id,
+        "page_size": page_size,
+    }));
+    let edges: Vec<DerivedEdge> = manifest
+        .pages
+        .iter()
+        .flat_map(|page| page.object_handles.iter())
+        .map(|entry| {
+            DerivedEdge::new(&entry.handle.handle_id, "corpus.paginate")
+                .with_params_hash(page_params_hash.clone())
+        })
+        .collect();
+    let object_handle = TaskObjectHandleBuilder::new(
+        format!("corpus_manifest:{manifest_id}"),
+        TaskObjectKind::Artifact,
+        format!("corpus manifest ({} objects)", manifest.total_count),
+        "chat_context_ref",
+    )
+    .tool(Some("send_time_attachment_stage"))
+    .derived_edges(edges)
+    .media_type(Some("application/json"))
+    .size_bytes(Some(manifest_json.len() as u64))
+    .sha256(Some(sha256_hex(manifest_json.as_bytes())))
+    .locator(Some(locator.clone()))
+    .capabilities(ObjectCapabilities {
+        readable: true,
+        materializable: true,
+        writable: false,
+        shareable: false,
+        sendable: false,
+        deletable: false,
+    })
+    .build()?;
+
+    let model_notice = manifest.model_notice(carried_count, &locator);
+    Ok(CorpusManifestPayload {
+        manifest,
+        object_handle,
+        model_notice,
+    })
+}
+
 /// Materialize binary user ContextRefs before the model turn begins.
 ///
 /// The command is deliberately source-id based: the user message does not exist in
 /// the backend yet, while the VFS attachment already does. Folder refs are never
 /// accepted here, preventing an implicit recursive upload.
+///
+/// G11-P2：超过单次携带上限（[`MAX_AUTO_STAGE_ITEMS`]）时不再静默截断——
+/// 全部条目照常物化（绝对上限 [`MAX_CORPUS_ITEMS`]，超出显式报错），
+/// `attachments` 携带第一页，其余成员以分页 CorpusManifest 形式完整记账并
+/// 物化到 artifacts root 供后续轮次回读。
 #[tauri::command]
 pub async fn chat_v2_stage_context_attachments(
     app: AppHandle,
@@ -1569,21 +1695,26 @@ pub async fn chat_v2_stage_context_attachments(
     }
 
     let expected_items = items.len();
-    let truncated = expected_items > MAX_AUTO_STAGE_ITEMS;
-    let bounded_items: Vec<_> = items.into_iter().take(MAX_AUTO_STAGE_ITEMS).collect();
-    let observed_items = bounded_items.len();
+    if expected_items > MAX_CORPUS_ITEMS {
+        return Err(format!(
+            "Too many context attachments: {} exceeds the {} item corpus ceiling. \
+             Split the batch and retry; no items were staged or silently dropped.",
+            expected_items, MAX_CORPUS_ITEMS
+        ));
+    }
+    let paginated = expected_items > MAX_AUTO_STAGE_ITEMS;
     let vfs_db = Arc::clone(vfs_db.inner());
     tokio::task::spawn_blocking(move || {
-        let mut attachments = Vec::with_capacity(observed_items);
+        let mut staged_all = Vec::with_capacity(expected_items);
         let mut failures = Vec::new();
-        for input in bounded_items {
+        for input in items {
             match AttachmentStageExecutor::stage_context_attachment(
                 &app,
                 &vfs_db,
                 &session_id,
                 &input,
             ) {
-                Ok(staged) => attachments.push(staged),
+                Ok(staged) => staged_all.push(staged),
                 Err(error) => failures.push(AutoStageContextAttachmentFailure {
                     resource_id: input.resource_id,
                     source_id: input.source_id,
@@ -1591,14 +1722,37 @@ pub async fn chat_v2_stage_context_attachments(
                 }),
             }
         }
+        let observed_items = staged_all.len() + failures.len();
+
+        // 第一批照常进上下文；超出的成员不丢弃，进分页清单
+        let carried_count = staged_all.len().min(MAX_AUTO_STAGE_ITEMS);
+        let corpus_manifest = if paginated {
+            let handles: Vec<TaskObjectHandle> = staged_all
+                .iter()
+                .map(|staged| staged.object_handle.clone())
+                .collect();
+            Some(materialize_corpus_manifest(
+                &app,
+                &session_id,
+                handles,
+                MAX_AUTO_STAGE_ITEMS as u32,
+                carried_count,
+            )?)
+        } else {
+            None
+        };
+        if paginated {
+            staged_all.truncate(MAX_AUTO_STAGE_ITEMS);
+        }
 
         Ok(AutoStageContextAttachmentsResult {
             expected_items,
             observed_items,
-            coverage_complete: !truncated && observed_items == expected_items,
-            truncated,
-            attachments,
+            coverage_complete: observed_items == expected_items,
+            truncated: paginated,
+            attachments: staged_all,
             failures,
+            corpus_manifest,
         })
     })
     .await
@@ -1711,6 +1865,13 @@ mod tests {
     use crate::data_governance::migration::coordinator::MigrationCoordinator;
     use crate::data_governance::schema_registry::DatabaseId;
     use serde_json::{json, Value};
+
+    #[test]
+    fn corpus_ceiling_covers_first_page() {
+        // G11-P2：分页清单绝对上限必须不小于单次携带上限（第一页大小），
+        // 否则超限路径会在产出清单前就被天花板拒绝。
+        assert!(MAX_CORPUS_ITEMS >= MAX_AUTO_STAGE_ITEMS);
+    }
 
     #[test]
     fn test_can_handle() {

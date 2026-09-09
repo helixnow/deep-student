@@ -1994,7 +1994,10 @@ impl ToolExecutor for ChatAnkiToolExecutor {
         match strip_tool_namespace(tool_name) {
             "chatanki_undo_last_review"
             | "chatanki_undo_library_last_review"
-            | "chatanki_delete_library_card" => ToolSensitivity::High,
+            | "chatanki_delete_library_card"
+            // P2 人机双写：LLM 改库卡提级 High——Craft+Relaxed 预设会绕过
+            // Medium（authority_mode.rs），必须 High 才恒走审批通道。
+            | "chatanki_update_library_card" => ToolSensitivity::High,
             "chatanki_set_suspended"
             | "chatanki_enqueue_library_review"
             | "chatanki_set_library_suspended"
@@ -10476,6 +10479,13 @@ fn resolve_context_ref_from_any_id(
                 trimmed, resource.resource_type
             ));
         }
+        // 灵感卡的 SRS 投影走 Insight 模块的专用通道（物化 + 回链），不经 chatanki
+        VfsResourceType::InsightCard => {
+            return Err(format!(
+                "Resource '{}' is an insight card; use the insight SRS projection channel instead of chatanki_run.",
+                trimmed
+            ));
+        }
         VfsResourceType::Retrieval => None,
     };
 
@@ -18042,7 +18052,8 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-chatanki_update_library_card"),
-            ToolSensitivity::Low
+            // P2 人机双写：LLM 改库卡恒走审批（Relaxed 绕过 Medium，故须 High）
+            ToolSensitivity::High
         );
         assert_eq!(
             executor.sensitivity_level("builtin-chatanki_enqueue_library_review"),

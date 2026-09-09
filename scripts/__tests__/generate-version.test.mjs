@@ -49,8 +49,8 @@ function writeBuildConfigFixture(
 }
 
 test('Android release code is one above nightly and build numbers remain monotonic', () => {
-  // "下一版本"断言从基线版本派生，基线推进（release-please 注解自动 bump）
-  // 时无需手工跟进
+  // 基线是固定锚点（不得由 release-please 自动推进），"下一版本"断言直接
+  // 从锚点派生：应用版本 bump 而锚点不动时，versionCode 必须严格递增。
   const [baseMajor, baseMinor, basePatch] = ANDROID_VERSION_BASE_APP_VERSION.split('.')
     .map(Number);
   const nextPatchVersion = `${baseMajor}.${baseMinor}.${basePatch + 1}`;
@@ -126,7 +126,12 @@ test('explicit build number override remains validated against the published bas
 test('repository config has no pinned proxy and keeps a non-regressing fallback code', () => {
   const { androidVersionCode, appVersion } = validateBuildConfiguration(projectRoot);
   assert.equal(androidVersionCode, ANDROID_VERSION_CODE);
-  assert.equal(appVersion, ANDROID_VERSION_BASE_APP_VERSION);
+  // 应用版本可以领先锚点（release-please 只 bump 应用版本），但不得落后于锚点，
+  // 且解析出的 versionCode 不得小于锚点码——跨发布单调性的仓库级契约。
+  assert.ok(
+    resolveAndroidVersionCode(appVersion) >= ANDROID_VERSION_CODE,
+    `appVersion ${appVersion} must not resolve below the anchor code`,
+  );
 
   const cargoConfig = readFileSync(
     join(projectRoot, 'src-tauri', '.cargo', 'config.toml'),
@@ -134,6 +139,40 @@ test('repository config has no pinned proxy and keeps a non-regressing fallback 
   );
   assert.doesNotMatch(cargoConfig, /^\s*proxy\s*=/mu);
   assert.doesNotMatch(cargoConfig, /^\s*\[target\.[^\]]+-linux-android\]\s*$/mu);
+});
+
+test('Android baseline is a fixed anchor that release-please must not auto-advance', () => {
+  // F1 防回归（2026-09-07 审阅）：基准行挂 x-release-please-version 时，
+  // release-please 会把基准与应用版本同步推进，差值恒为 0，versionCode 跨
+  // 发布停滞甚至回退（0.9.54 tag 为 14640，0.9.55 线曾回落 14639）。
+  const generatorSource = readFileSync(
+    join(projectRoot, 'scripts', 'generate-version.mjs'),
+    'utf-8',
+  );
+  const baselineLine = generatorSource
+    .split('\n')
+    .find((line) => line.includes('ANDROID_VERSION_BASE_APP_VERSION ='));
+  assert.ok(baselineLine, 'baseline constant must exist');
+  assert.doesNotMatch(baselineLine, /x-release-please-version/u);
+
+  const releasePleaseConfig = JSON.parse(
+    readFileSync(join(projectRoot, 'release-please-config.json'), 'utf-8'),
+  );
+  const extraFiles = releasePleaseConfig.packages['.']['extra-files'].map((f) => f.path);
+  assert.ok(
+    !extraFiles.includes('scripts/generate-version.mjs'),
+    'release-please must not rewrite the version generator',
+  );
+
+  // 跨发布单调性：模拟「应用版本已 bump、锚点不动」的下一发布态。
+  const [major, minor, patch] = ANDROID_VERSION_BASE_APP_VERSION.split('.').map(Number);
+  const simulatedNextRelease = `${major}.${minor}.${patch + 1}`;
+  assert.ok(
+    resolveAndroidVersionCode(simulatedNextRelease) > resolveAndroidVersionCode(ANDROID_VERSION_BASE_APP_VERSION),
+    'a release on top of a frozen anchor must yield a strictly greater versionCode',
+  );
+  // 锚点码必须高于任何「可能已发布」的历史码。
+  assert.ok(ANDROID_VERSION_CODE > PUBLISHED_ANDROID_VERSION_CODE);
 });
 
 test('package, Cargo, and Tauri versions must stay aligned', () => {

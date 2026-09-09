@@ -331,6 +331,46 @@ impl PipelineHook for ApprovalGateHook {
         // Feature flag checks (memory, RAG, web search)
         let short_name = ChatV2Pipeline::canonical_tool_short_name(&tool_call.name);
 
+        // 🆕 G02-P1：DelegatedGrant 存活门（仅比对 revocation_epoch / expiry，
+        // 不改写有效工具集——执行面仍由下方 execution_allowed_tools 白名单决定）。
+        // 仅 worker run 路径会在注册表登记 grant，普通会话无登记直接跳过（行为
+        // 与现状一致）。revoke_all_grants / revoke_grants_for 后，在跑 worker 的
+        // 下一次工具调用即在此被拦截（错误信息明确"授权已撤销"），无需等待
+        // worker 600s 超时窗口。
+        if let Some(grant) = crate::chat_v2::grants::lookup_grant_for_session(session_id) {
+            if let Err(denial) = grant.ensure_live() {
+                let message = denial.message(&grant.grant_id, &tool_call.name);
+                log::warn!(
+                    "[ChatV2::pipeline] DelegatedGrant gate blocked tool '{}': {}",
+                    tool_call.name,
+                    message
+                );
+                return ToolGateOutcome::Block(build_preflight_blocked_result(message));
+            }
+        }
+
+        // 🆕 G08：任务树预算门（紧挨 grant 存活门，位于白名单检查之前——被拒
+        // 的尝试同样消耗额度，防无限重试绕过）。仅 worker 树成员（spawn 时经
+        // budget::attach_child_to_tree 绑定 session → 树根账本）在此记账；
+        // 普通会话无绑定直接跳过（行为不变）。tool_pack / ptc 子调用经
+        // dispatch_with_admission → execute_single_tool 回到本门（子上下文继承
+        // session_id），自动归集同一树根账本，执行器侧不得重复计数。
+        // wall_clock 在 try_consume 内惰性检查（账本创建起算）。
+        if let Some(tree_key) = crate::chat_v2::budget::tree_key_for_session(session_id) {
+            if let Err(exceeded) = crate::chat_v2::budget::try_consume(
+                &tree_key,
+                crate::chat_v2::budget::BudgetDelta::ONE_TOOL_CALL,
+            ) {
+                let message = exceeded.message(&tool_call.name);
+                log::warn!(
+                    "[ChatV2::pipeline] Tree budget gate blocked tool '{}': {}",
+                    tool_call.name,
+                    message
+                );
+                return ToolGateOutcome::Block(build_preflight_blocked_result(message));
+            }
+        }
+
         if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
             &tool_call.name,
             &tool_call.arguments,
@@ -1140,7 +1180,16 @@ impl ChatV2Pipeline {
         use serde_json::json;
         use tauri::Manager;
 
-        let window = emitter.window();
+        // G01-a：无窗口 runtime（headless）下 shell 审批绑定无法取得
+        // AppState/AppHandle。fail-fast 阻止执行（调用点将 Err 转为
+        // ToolGateOutcome::Block），与 headless 现状的 fail-fast 语义一致——
+        // 静默跳过会让审批缺少 root binding，削弱文件系统授权语义。
+        let Some(window) = emitter.try_window() else {
+            return Err(
+                "windowless runtime: local shell approval binding requires a Tauri window"
+                    .to_string(),
+            );
+        };
         let state = window.state::<crate::commands::AppState>();
         let authority = ChatV2Repo::get_session_authority_state(&self.db, session_id)
             .map_err(|error| format!("Failed to resolve shell authority: {error}"))?;

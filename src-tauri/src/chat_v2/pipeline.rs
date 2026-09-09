@@ -335,6 +335,7 @@ impl ChatV2Pipeline {
         // AnkiToolExecutor 已移除 — 旧 CardForge 2.0 管线由 ChatAnki 完全接管
         executors.push(Arc::new(ChatAnkiToolExecutor::new()));
         executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
+        executors.push(Arc::new(super::tools::InsightRecallExecutor::new()));
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
         executors.push(Arc::new(super::tools::ConnectorToolExecutor::new()));
         executors.push(Arc::new(super::tools::TaskAuditExecutor::new()));
@@ -434,6 +435,8 @@ impl ChatV2Pipeline {
         let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
             // ToolPackExecutor must be registered before GeneralToolExecutor
             executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
+            // PTC (Starlark 程序化工具组合)：只读白名单 + 每次 call 独立过中央准入
+            executors.push(Arc::new(super::tools::PtcExecutor::new()));
             // GeneralToolExecutor must be last (catch-all)
             executors.push(Arc::new(GeneralToolExecutor::new()));
             ToolExecutorRegistry::from_vec(executors)
@@ -456,11 +459,12 @@ impl ChatV2Pipeline {
     ///
     /// 目标不存在或状态非 active/waiting_user 时跳过（waiting_user 也算账：
     /// 置 waiting_user 的本轮已真实消耗了 token）。累加后重新读取记录并
-    /// 广播 goal_updated，供前端目标面板刷新。
+    /// 广播 goal_updated，供前端目标面板刷新；G01-d 无窗 runtime 传
+    /// `window=None`，仅跳过广播，DB 账目不受影响。
     fn accumulate_goal_usage(
         &self,
         session_id: &str,
-        window: &Window,
+        window: Option<&Window>,
         total_tokens: u32,
         elapsed_ms: u64,
     ) {
@@ -510,10 +514,13 @@ impl ChatV2Pipeline {
             );
             return;
         }
-        // 广播累加后的最新记录（None = 目标被并发删除，前端应移除面板）
+        // 广播累加后的最新记录（None = 目标被并发删除，前端应移除面板）；
+        // 无窗 runtime（G01-d headless emitter）没有前端监听，跳过广播。
         match ChatV2Repo::goal_get_with_conn(&conn, session_id) {
             Ok(updated) => {
-                crate::chat_v2::goal::emit_goal_updated(window, session_id, updated.as_ref())
+                if let Some(window) = window {
+                    crate::chat_v2::goal::emit_goal_updated(window, session_id, updated.as_ref());
+                }
             }
             Err(e) => {
                 log::warn!(
@@ -552,6 +559,7 @@ impl ChatV2Pipeline {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
+            "insight_recall" => block_types::INSIGHT_RECALL.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
             "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
@@ -700,6 +708,54 @@ impl ChatV2Pipeline {
             }
         }
 
+        // === 单变体模式：窗口事件出口 → 共享核心（G01-d）===
+        let emitter = Arc::new(
+            ChatV2EventEmitter::new(window, request.session_id.clone())
+                .with_stream_generation(
+                    request.options.as_ref().and_then(|o| o.stream_generation),
+                ),
+        );
+        self.execute_with_emitter(emitter, request, cancel_token, chat_v2_state)
+            .await
+    }
+
+    /// G01-d：以调用方提供的事件出口执行单变体管线（无窗 runtime 总入口）。
+    ///
+    /// 与 [`Self::execute`] 的单变体路径完全同构，唯一差异是事件出口由调用方
+    /// 注入而非从 Window 构造：
+    /// - 桌面窗口 runtime：`ChatV2EventEmitter::new(window, session)`（由
+    ///   `execute` 委托而来，行为与重构前一致）；
+    /// - 无窗 runtime（headless 自动化 / 完成派发唤醒轮等）：
+    ///   `ChatV2EventEmitter::new_headless(session)`——NoopEventSink 丢弃全部
+    ///   块/会话事件，LLM 流式经 G01-b `NoopStreamSink`（tool_loop 与
+    ///   multi_variant 在 `try_window()=None` 分支自动选用）。
+    ///
+    /// 防御：多变体执行（`parallel_model_ids` ≥ 2）需要 Window 为每个变体构造
+    /// emitter，无窗 runtime 无意义——fail-fast（headless 构造的 options 本就
+    /// 不含 parallel_model_ids，此闸仅防误用）。
+    ///
+    /// Goal 账目照常累加（DB 权威）；`goal_updated` 广播随
+    /// `emitter.try_window()` 缺失自动跳过（无前端监听）。
+    pub async fn execute_with_emitter(
+        &self,
+        emitter: Arc<ChatV2EventEmitter>,
+        request: SendMessageRequest,
+        cancel_token: CancellationToken,
+        chat_v2_state: Option<Arc<super::state::ChatV2State>>,
+    ) -> ChatV2Result<String> {
+        // 多变体 fail-fast（见文档注释）：emitter 路径没有 Window 可供
+        // execute_multi_variant 构造逐变体 emitter。
+        if request
+            .options
+            .as_ref()
+            .and_then(|o| o.parallel_model_ids.as_ref())
+            .is_some_and(|ids| ids.len() >= 2)
+        {
+            return Err(ChatV2Error::Validation(
+                "multi-variant execution requires a windowed emitter; use execute()".to_string(),
+            ));
+        }
+
         // === 单变体模式（原有逻辑）===
         let mut ctx = PipelineContext::new(request);
         // Freeze the active model and capability route before emitting/saving anything. The
@@ -711,12 +767,6 @@ impl ChatV2Pipeline {
         // 🆕 设置取消令牌：传递给工具执行器，支持工具执行取消
         let session_id = ctx.session_id.clone();
         let assistant_message_id = ctx.assistant_message_id.clone();
-
-        // 创建事件发射器
-        let emitter = Arc::new(
-            ChatV2EventEmitter::new(window.clone(), session_id.clone())
-                .with_stream_generation(ctx.options.stream_generation),
-        );
 
         // 获取模型名称用于前端显示
         // 从 API 配置中解析 model_id 到真正的模型名称（如 "Qwen/Qwen3-8B"）
@@ -863,9 +913,11 @@ impl ChatV2Pipeline {
 
                 // 🆕 Goal 模式（P0）：本轮成功完成后同步累加目标账目
                 // （token + 轮时长）；目标不存在/非活跃时内部静默跳过。
+                // G01-d：无窗 runtime 下 try_window()=None，仅跳过
+                // goal_updated 广播，DB 账目照常累加。
                 self.accumulate_goal_usage(
                     &session_id,
-                    &window,
+                    emitter.try_window().as_ref(),
                     ctx.token_usage.total_tokens,
                     ctx.elapsed_ms(),
                 );

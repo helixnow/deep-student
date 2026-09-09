@@ -12,8 +12,15 @@
  *
  * 用法：元素加 `wb-glass-lens`，再 `useLiquidGlassLens(ref)` /
  * `attachLiquidGlassLens(el)`。
+ *
+ * 另提供 `acquireLensDisplacementFilter`（元素级 filter: url(#)）：
+ * backdrop-filter: url(#) 仅 Chromium 支持，元素级 filter: url(#) 在
+ * WebKit（macOS 桌面版 WKWebView）可用。
+ *
+ * 学习桌面玻璃面统一走整面壁纸复刻：`<WallpaperReplica hostRef={el} />`
+ * 铺满宿主，与边界同一套折射，不挖环。
  */
-import { useLayoutEffect, type RefObject } from 'react';
+import { createElement, useLayoutEffect, useRef, type ReactElement, type RefObject } from 'react';
 import { getMaterialTier } from './materialTier';
 
 const HTML_LENS_ATTR = 'data-wb-lens';
@@ -318,6 +325,40 @@ export function getSharedDisplacementMap(bucket: number): string {
   return url;
 }
 
+/**
+ * 元素级位移滤镜（「内壁复刻折射」用）：复用同档共享 filter，作用于元素自身
+ * 渲染结果（filter: url(#)），而非 backdrop。
+ *
+ * 与 attachLiquidGlassLens 的差异：无 UA 门（WebKit 支持元素级 filter: url(#)）、
+ * 不占 MAX_ACTIVE_LENSES 并发槽、不挂 ResizeObserver、无 320ms 降级（元素滤镜
+ * 静态合成一次即被缓存）；生命周期由调用方 release() 管理。
+ * 门控：materialTier=full + 非减少透明度。
+ */
+export function acquireLensDisplacementFilter(
+  radiusCss: number,
+): { filterId: string; release: () => void } | null {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+  if (getMaterialTier() !== 'full') return null;
+  try {
+    if (window.matchMedia?.(REDUCED_TRANSPARENCY_QUERY)?.matches) return null;
+  } catch {
+    /* ignore */
+  }
+  const bucket = bucketRadius(radiusCss);
+  const filterId = filterIdForBucket(bucket);
+  ensureSharedFilter(filterId, bucket, DISPLACE_SCALE);
+  retainFilter(filterId);
+  let released = false;
+  return {
+    filterId,
+    release: () => {
+      if (released) return;
+      released = true;
+      releaseFilter(filterId);
+    },
+  };
+}
+
 function parseRadiusPx(el: HTMLElement): number {
   const raw = getComputedStyle(el).borderTopLeftRadius || '0';
   const match = raw.match(/([\d.]+)px/);
@@ -565,6 +606,86 @@ export function detachLiquidGlassLens(el: HTMLElement): void {
   deactivateBinding(binding);
   clearElementFilter(el);
   bindings.delete(el);
+}
+
+const REPLICA_FILTER = 'blur(18px) url(#FILTER) saturate(1.85) brightness(1.1)';
+
+/**
+ * 整面壁纸复刻折射：克隆 `.wb-wallpaper-root` 并对齐视口，滤镜铺满宿主。
+ * 宿主需 `position: relative`（`.wb-glass` 已具备）。
+ */
+export function useWallpaperReplicaLens(
+  hostRef: RefObject<HTMLElement | null>,
+  replicaRef: RefObject<HTMLElement | null>,
+  enabled = true,
+): void {
+  useLayoutEffect(() => {
+    if (!enabled) return undefined;
+    const replica = replicaRef.current;
+    const host = hostRef.current;
+    const wallpaper = document.querySelector<HTMLElement>('.wb-wallpaper-root');
+    if (!replica || !host || !wallpaper) return undefined;
+    const radius = parseFloat(getComputedStyle(host).borderTopLeftRadius) || 18;
+    const lens = acquireLensDisplacementFilter(radius);
+    if (!lens) return undefined;
+
+    const clone = wallpaper.cloneNode(true) as HTMLElement;
+    clone.removeAttribute('id');
+    clone.style.position = 'absolute';
+    clone.style.inset = 'auto';
+    clone.style.width = '100vw';
+    clone.style.height = '100vh';
+    replica.appendChild(clone);
+    replica.style.filter = REPLICA_FILTER.replace('FILTER', lens.filterId);
+
+    const syncReplica = () => {
+      const rect = host.getBoundingClientRect();
+      clone.style.left = `${-rect.left}px`;
+      clone.style.top = `${-rect.top}px`;
+    };
+    syncReplica();
+
+    const ro =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncReplica) : null;
+    ro?.observe(host);
+    window.addEventListener('resize', syncReplica);
+
+    const enterStart = performance.now();
+    let rafId = 0;
+    const rafSync = () => {
+      syncReplica();
+      if (performance.now() - enterStart < 280) {
+        rafId = requestAnimationFrame(rafSync);
+      }
+    };
+    rafId = requestAnimationFrame(rafSync);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro?.disconnect();
+      window.removeEventListener('resize', syncReplica);
+      lens.release();
+      replica.style.filter = '';
+      replica.replaceChildren();
+    };
+  }, [hostRef, replicaRef, enabled]);
+}
+
+/** 玻璃面第一子节点：整面壁纸复刻。 */
+export function WallpaperReplica({
+  hostRef,
+  enabled = true,
+}: {
+  hostRef: RefObject<HTMLElement | null>;
+  enabled?: boolean;
+}): ReactElement {
+  const replicaRef = useRef<HTMLDivElement | null>(null);
+  useWallpaperReplicaLens(hostRef, replicaRef, enabled);
+  return createElement('div', {
+    ref: replicaRef,
+    className: 'wb-glass-replica',
+    'aria-hidden': true,
+  });
 }
 
 /** React：对 ref 启用透镜 */

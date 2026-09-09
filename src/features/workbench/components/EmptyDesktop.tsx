@@ -19,7 +19,7 @@
  * - 不指向隐藏项：菜单栏 autohide 开启时状态栏不可见，跳过 statusBar 步
  *   （步数与进度随之收缩），tour 不再指向一个看不见的目标。
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppWindow,
@@ -32,6 +32,7 @@ import {
 } from '@phosphor-icons/react';
 import { isMacOS } from '@/utils/platform';
 import { workbenchBus } from '../core/workbenchBus';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useMenuBarAutohide } from './menuBarAutohideStore';
 import '../styles/workbench.css';
 import './EmptyDesktop.css';
@@ -100,6 +101,7 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   onRestoreSession,
 }) => {
   const { t } = useTranslation();
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [tourDismissed, setTourDismissed] = useState(readOnboardingDismissed);
   const [sessionSkipped, setSessionSkipped] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -163,7 +165,8 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
 
   return (
     <div className="wb-empty-desktop">
-      <div className="wb-empty-card wb-glass wb-glass-highlight wb-empty-card-pro" role="note">
+      <div ref={cardRef} className="wb-empty-card wb-glass wb-glass-highlight wb-empty-card-pro" role="note">
+        <WallpaperReplica hostRef={cardRef} />
         <div className="wb-empty-scene wb-empty-rise" aria-hidden="true">
           <div className="wb-empty-icons"><SquaresFour size={28} weight="duotone" /></div>
         </div>

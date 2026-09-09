@@ -194,7 +194,11 @@ export function isChangeProducingTool(toolName: string): boolean {
     short.startsWith('xlsx_') ||
     short.startsWith('pptx_') ||
     short === 'paper_save' ||
-    short === 'workspace_update_document'
+    short === 'workspace_update_document' ||
+    // P2 聚合视图数据源补全（文档 P2.5 两壳通用已持久化来源）：
+    // 导图后端路径编辑（toolOutput 含 versionId/citation）与 Anki 库卡 CAS 更新
+    short === 'mindmap_edit_nodes' ||
+    short === 'chatanki_update_library_card'
   );
 }
 
@@ -347,6 +351,24 @@ export function extractChanges(blocks: Block[]): ChangeItem[] {
       openId = firstString(data.document_id, data.id);
       target = openId;
       label = firstString(data.title, input.title, openId) ?? label;
+    } else if (short === 'mindmap_edit_nodes') {
+      // 导图后端路径：output 含 versionId + citation（[思维导图:vid:title]），
+      // 标题从 citation 取；openId=mindmap_id 供 CHAT_OPEN_ATTACHMENT_PREVIEW 打开
+      kind = 'mindmap';
+      openId = firstString(input.mindmap_id, data.mindmap_id, input.mindmapId);
+      const citation = firstString(data.citation);
+      const citationTitle = citation?.match(/^\[思维导图:[^:]+:(.+)\]$/)?.[1];
+      label = citationTitle ?? openId ?? label;
+      target = openId;
+    } else if (short === 'chatanki_update_library_card') {
+      // Anki 库卡 CAS 更新：无可靠打开目标（卡片管理器无深链），不可点击仅留痕
+      kind = 'anki';
+      const cardId = firstString(input.cardId, input.card_id, data.cardId, data.card_id);
+      const fields = Object.keys(asRecord(input.fields) ?? {});
+      label = fields.length > 0
+        ? `卡片 ${cardId ? cardId.slice(0, 8) : '?'}（${fields.join('/')}）`
+        : (cardId ?? label);
+      target = undefined;
     } else if (short.startsWith('docx_') || short.startsWith('xlsx_') || short.startsWith('pptx_') || short === 'paper_save') {
       openId = firstString(data.file_id, data.new_file_id, input.file_id, input.resource_id);
       target = openId ?? target;

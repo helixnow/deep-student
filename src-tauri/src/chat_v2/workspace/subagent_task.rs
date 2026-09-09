@@ -19,6 +19,10 @@ pub enum SubagentTaskStatus {
     Completed,
     Failed,
     Cancelled,
+    /// 运行代际失效（G03-a）：进程重启后遗留的 running 任务，其 owner 进程
+    /// 已死，真实结果未知（可能已完成/失败/中断）。不盲重跑——副作用可能
+    /// 重复；由恢复路径返回给用户决策（重跑 / 放弃）。
+    Unknown,
 }
 
 /// 子代理任务数据
@@ -100,12 +104,13 @@ impl SubagentTaskManager {
     }
 
     /// 全部状态（用于从 [`Self::is_valid_transition`] 推导合法前驱列表）
-    const ALL_STATUSES: [SubagentTaskStatus; 5] = [
+    const ALL_STATUSES: [SubagentTaskStatus; 6] = [
         SubagentTaskStatus::Pending,
         SubagentTaskStatus::Running,
         SubagentTaskStatus::Completed,
         SubagentTaskStatus::Failed,
         SubagentTaskStatus::Cancelled,
+        SubagentTaskStatus::Unknown,
     ];
 
     /// 状态的数据库字符串表示
@@ -116,6 +121,7 @@ impl SubagentTaskManager {
             SubagentTaskStatus::Completed => "completed",
             SubagentTaskStatus::Failed => "failed",
             SubagentTaskStatus::Cancelled => "cancelled",
+            SubagentTaskStatus::Unknown => "unknown",
         }
     }
 
@@ -134,7 +140,10 @@ impl SubagentTaskManager {
     ///
     /// 规则：
     /// - `Pending` → `Running` / `Cancelled` / `Failed`
-    /// - `Running` → `Completed` / `Failed` / `Cancelled`
+    /// - `Running` → `Completed` / `Failed` / `Cancelled` / `Unknown`
+    /// - `Unknown` → `Running`（用户决策重跑）/ `Completed` / `Failed`（迟到的
+    ///   完成事实补终态，如完成闭包在 sweep 后才走到落库）/ `Cancelled`（用户
+    ///   决策放弃）
     /// - 终止状态（`Completed` / `Failed` / `Cancelled`）不允许任何外向转换
     /// - 同状态幂等（视为合法，便于重试场景）
     fn is_valid_transition(from: &SubagentTaskStatus, to: &SubagentTaskStatus) -> bool {
@@ -147,7 +156,12 @@ impl SubagentTaskManager {
             | (SubagentTaskStatus::Pending, SubagentTaskStatus::Failed) => true,
             (SubagentTaskStatus::Running, SubagentTaskStatus::Completed)
             | (SubagentTaskStatus::Running, SubagentTaskStatus::Failed)
-            | (SubagentTaskStatus::Running, SubagentTaskStatus::Cancelled) => true,
+            | (SubagentTaskStatus::Running, SubagentTaskStatus::Cancelled)
+            | (SubagentTaskStatus::Running, SubagentTaskStatus::Unknown) => true,
+            (SubagentTaskStatus::Unknown, SubagentTaskStatus::Running)
+            | (SubagentTaskStatus::Unknown, SubagentTaskStatus::Completed)
+            | (SubagentTaskStatus::Unknown, SubagentTaskStatus::Failed)
+            | (SubagentTaskStatus::Unknown, SubagentTaskStatus::Cancelled) => true,
             _ => false,
         }
     }
@@ -229,6 +243,15 @@ impl SubagentTaskManager {
                 ),
                 rusqlite::params![status_str, task_id],
             ),
+            // Unknown 不是终态：保留 started_at/completed_at 原值（审计痕迹），
+            // result_summary 仅在显式提供时覆盖（COALESCE 保留旧值）。
+            SubagentTaskStatus::Unknown => conn.execute(
+                &format!(
+                    "UPDATE subagent_task SET status = ?1, result_summary = COALESCE(?2, result_summary) \
+                     WHERE id = ?3 AND status IN ({allowed_from})"
+                ),
+                rusqlite::params![status_str, result_summary, task_id],
+            ),
         }
         .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
 
@@ -295,6 +318,120 @@ impl SubagentTaskManager {
         self.update_status(task_id, SubagentTaskStatus::Failed, error_message)
     }
 
+    /// 标记任务运行代际失效（Running → Unknown）
+    pub fn mark_unknown(
+        &self,
+        task_id: &str,
+        reason: Option<&str>,
+    ) -> Result<(), SubagentTaskError> {
+        self.update_status(task_id, SubagentTaskStatus::Unknown, reason)
+    }
+
+    /// 启动 sweep（G03-a）：把 owner 进程已死的 running 任务收敛为 Unknown。
+    ///
+    /// `is_agent_alive(agent_session_id)` 由调用方提供——生产路径判定"该 agent
+    /// 会话在本进程有活跃流注册"（`ChatV2State::has_active_stream`）。重启后
+    /// 首次恢复时本进程不可能持有任何流，所有 running 任务被收敛；运行期另一
+    /// 窗口正在执行的任务因有流注册而被跳过。
+    ///
+    /// 返回本次被转换的任务（供恢复响应汇总）；并发下已被他处迁移的单个任务
+    /// 跳过不计错误（InvalidTransition 视为收敛竞态，非故障）。
+    pub fn sweep_orphaned_running(
+        &self,
+        is_agent_alive: impl Fn(&str) -> bool,
+    ) -> Result<Vec<SubagentTaskData>, SubagentTaskError> {
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM subagent_task WHERE status = 'running' ORDER BY created_at",
+            )
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+        let running_ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+        drop(stmt);
+        drop(conn);
+
+        let mut swept = Vec::new();
+        for task_id in running_ids {
+            let Some(task) = self.get_task(&task_id)? else {
+                continue;
+            };
+            if is_agent_alive(&task.agent_session_id) {
+                continue;
+            }
+            match self.mark_unknown(
+                &task.id,
+                Some("owner process lost before terminal state; outcome unknown"),
+            ) {
+                Ok(()) => {
+                    log::warn!(
+                        "[SubagentTaskManager] Swept orphaned running task to unknown: id={}, agent={}",
+                        task.id,
+                        task.agent_session_id
+                    );
+                    swept.push(SubagentTaskData {
+                        status: SubagentTaskStatus::Unknown,
+                        ..task
+                    });
+                }
+                Err(SubagentTaskError::InvalidTransition { .. }) => {
+                    // 并发下已被他处迁移（如完成闭包补了终态）：跳过即可
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(swept)
+    }
+
+    /// 获取待用户决策的 Unknown 任务（恢复路径的"不盲重跑"清单）。
+    pub fn get_unknown_tasks(&self) -> Result<Vec<SubagentTaskData>, SubagentTaskError> {
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, workspace_id, agent_session_id, skill_id, initial_task, \
+             status, created_at, started_at, completed_at, result_summary \
+             FROM subagent_task WHERE status = 'unknown' ORDER BY created_at",
+            )
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([], |row| {
+                Ok(SubagentTaskData {
+                    id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    agent_session_id: row.get(2)?,
+                    skill_id: row.get(3)?,
+                    initial_task: row.get(4)?,
+                    status: Self::parse_status(&row.get::<_, String>(5)?),
+                    created_at: parse_db_utc_datetime(row.get::<_, String>(6)?, "created_at")?,
+                    started_at: row
+                        .get::<_, Option<String>>(7)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    completed_at: row
+                        .get::<_, Option<String>>(8)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    result_summary: row.get(9)?,
+                })
+            })
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        Ok(tasks.flatten().collect())
+    }
+
     /// 获取任务
     pub fn get_task(&self, task_id: &str) -> Result<Option<SubagentTaskData>, SubagentTaskError> {
         let conn = self
@@ -337,6 +474,11 @@ impl SubagentTaskManager {
     }
 
     /// 获取需要恢复的任务（pending 或 running 状态）
+    ///
+    /// G03-a：恢复路径（`workspace_restore_executions`）在调用本方法前应先执行
+    /// [`Self::sweep_orphaned_running`]——owner 已死的 running 任务届时已收敛为
+    /// Unknown（不再出现在本列表，避免盲重跑重复副作用）；本查询保留 running
+    /// 仅覆盖"另一窗口正在执行"的存活任务。
     pub fn get_tasks_to_restore(&self) -> Result<Vec<SubagentTaskData>, SubagentTaskError> {
         let conn = self
             .db
@@ -485,6 +627,7 @@ impl SubagentTaskManager {
             "completed" => SubagentTaskStatus::Completed,
             "failed" => SubagentTaskStatus::Failed,
             "cancelled" => SubagentTaskStatus::Cancelled,
+            "unknown" => SubagentTaskStatus::Unknown,
             _ => SubagentTaskStatus::Pending,
         }
     }
@@ -586,6 +729,7 @@ mod tests {
                 SubagentTaskStatus::Completed,
                 SubagentTaskStatus::Failed,
                 SubagentTaskStatus::Cancelled,
+                SubagentTaskStatus::Unknown,
             ] {
                 let expected = terminal == target;
                 assert_eq!(
@@ -600,6 +744,38 @@ mod tests {
     }
 
     #[test]
+    fn is_valid_transition_unknown_edges() {
+        // Running → Unknown（启动 sweep）
+        assert!(SubagentTaskManager::is_valid_transition(
+            &SubagentTaskStatus::Running,
+            &SubagentTaskStatus::Unknown
+        ));
+        // Unknown → Running（用户决策重跑）/ Completed / Failed（迟到完成事实补终态）
+        // / Cancelled（用户决策放弃）
+        for to in [
+            SubagentTaskStatus::Running,
+            SubagentTaskStatus::Completed,
+            SubagentTaskStatus::Failed,
+            SubagentTaskStatus::Cancelled,
+        ] {
+            assert!(
+                SubagentTaskManager::is_valid_transition(&SubagentTaskStatus::Unknown, &to),
+                "Unknown -> {:?} must be legal",
+                to
+            );
+        }
+        // 非法边：Pending → Unknown（未运行过不存在"代际失效"）、Unknown → Pending
+        assert!(!SubagentTaskManager::is_valid_transition(
+            &SubagentTaskStatus::Pending,
+            &SubagentTaskStatus::Unknown
+        ));
+        assert!(!SubagentTaskManager::is_valid_transition(
+            &SubagentTaskStatus::Unknown,
+            &SubagentTaskStatus::Pending
+        ));
+    }
+
+    #[test]
     fn is_valid_transition_same_state_idempotent() {
         for state in [
             SubagentTaskStatus::Pending,
@@ -607,6 +783,7 @@ mod tests {
             SubagentTaskStatus::Completed,
             SubagentTaskStatus::Failed,
             SubagentTaskStatus::Cancelled,
+            SubagentTaskStatus::Unknown,
         ] {
             assert!(SubagentTaskManager::is_valid_transition(&state, &state));
         }
@@ -786,5 +963,103 @@ mod tests {
             !ids.contains(&task_cancelled.id.as_str()),
             "cancelled task must not be restored"
         );
+    }
+
+    #[test]
+    fn running_to_unknown_transition_via_db() {
+        let (_dir, manager) = setup_manager();
+        let task = make_task(&manager);
+        manager.mark_running(&task.id).expect("running");
+
+        manager
+            .mark_unknown(&task.id, Some("owner lost"))
+            .expect("running -> unknown");
+        let after = manager.get_task(&task.id).unwrap().unwrap();
+        assert_eq!(after.status, SubagentTaskStatus::Unknown);
+        // 审计痕迹：started_at 保留，completed_at 不动，summary 记录原因
+        assert!(after.started_at.is_some());
+        assert!(after.completed_at.is_none());
+        assert_eq!(after.result_summary.as_deref(), Some("owner lost"));
+
+        // Unknown 可补终态（迟到完成事实）与被用户取消
+        manager
+            .mark_completed(&task.id, Some("late completion"))
+            .expect("unknown -> completed");
+        let after = manager.get_task(&task.id).unwrap().unwrap();
+        assert_eq!(after.status, SubagentTaskStatus::Completed);
+        assert_eq!(after.result_summary.as_deref(), Some("late completion"));
+    }
+
+    #[test]
+    fn unknown_preserves_result_summary_when_reason_absent() {
+        let (_dir, manager) = setup_manager();
+        let task = make_task(&manager);
+        manager.mark_running(&task.id).expect("running");
+        // 先标一次 unknown 带原因，再以 None 二次进入（幂等）不清空原因
+        manager
+            .mark_unknown(&task.id, Some("first reason"))
+            .expect("unknown");
+        manager
+            .update_status(&task.id, SubagentTaskStatus::Unknown, None)
+            .expect("unknown -> unknown idempotent");
+        let after = manager.get_task(&task.id).unwrap().unwrap();
+        assert_eq!(after.result_summary.as_deref(), Some("first reason"));
+    }
+
+    #[test]
+    fn sweep_orphaned_running_converts_only_dead_owners() {
+        let (_dir, manager) = setup_manager();
+
+        let task_dead_a = make_task(&manager);
+        manager.mark_running(&task_dead_a.id).expect("running a");
+        let task_alive = make_task(&manager);
+        manager.mark_running(&task_alive.id).expect("running alive");
+        let task_dead_b = make_task(&manager);
+        manager.mark_running(&task_dead_b.id).expect("running b");
+        let task_pending = make_task(&manager);
+
+        // alive 集合只含 task_alive 的 agent
+        let alive_agent = task_alive.agent_session_id.clone();
+        let swept = manager
+            .sweep_orphaned_running(|agent| agent == alive_agent)
+            .expect("sweep");
+
+        let swept_ids: Vec<&str> = swept.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(swept.len(), 2);
+        assert!(swept_ids.contains(&task_dead_a.id.as_str()));
+        assert!(swept_ids.contains(&task_dead_b.id.as_str()));
+
+        assert_eq!(
+            manager.get_task(&task_alive.id).unwrap().unwrap().status,
+            SubagentTaskStatus::Running,
+            "存活 owner 的 running 任务不得被 sweep"
+        );
+        assert_eq!(
+            manager.get_task(&task_pending.id).unwrap().unwrap().status,
+            SubagentTaskStatus::Pending,
+            "pending 任务不受影响"
+        );
+
+        // 幂等：以相同 alive 判定再次 sweep，无行可收敛（unknown 不再是 running，
+        // alive 任务仍被跳过）
+        let again = manager
+            .sweep_orphaned_running(|agent| agent == alive_agent)
+            .expect("second sweep");
+        assert!(again.is_empty());
+
+        // Unknown 任务出现在待决策列表，且不再出现在恢复列表
+        let unknown = manager.get_unknown_tasks().expect("unknown list");
+        let unknown_ids: Vec<&str> = unknown.iter().map(|t| t.id.as_str()).collect();
+        assert!(unknown_ids.contains(&task_dead_a.id.as_str()));
+        assert!(unknown_ids.contains(&task_dead_b.id.as_str()));
+
+        let restore = manager.get_tasks_to_restore().expect("restore list");
+        let restore_ids: Vec<&str> = restore.iter().map(|t| t.id.as_str()).collect();
+        assert!(
+            !restore_ids.contains(&task_dead_a.id.as_str()),
+            "unknown 任务不得再被盲重跑"
+        );
+        assert!(restore_ids.contains(&task_alive.id.as_str()));
+        assert!(restore_ids.contains(&task_pending.id.as_str()));
     }
 }

@@ -215,7 +215,13 @@ pub(crate) fn is_retrieval_source_tool(tool_name: &str) -> bool {
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
     matches!(
         stripped,
-        "rag_search" | "multimodal_search" | "unified_search" | "web_search"
+        "rag_search"
+            | "multimodal_search"
+            | "unified_search"
+            | "web_search"
+            | "arxiv_search"
+            | "scholar_search"
+            | "insight_recall"
     )
 }
 
@@ -918,6 +924,7 @@ impl PipelineContext {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
+            "insight_recall" => block_types::INSIGHT_RECALL.to_string(),
             "arxiv_search" | "scholar_search" => block_types::ACADEMIC_SEARCH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
             "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),

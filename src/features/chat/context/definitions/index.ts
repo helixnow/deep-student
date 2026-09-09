@@ -26,6 +26,8 @@ export type { FileMetadata } from './file';
 export { retrievalDefinition, RETRIEVAL_TYPE_ID, RETRIEVAL_SOURCES, isValidRetrievalSource } from './retrieval';
 export type { RetrievalMetadata, RetrievalSource } from './retrieval';
 
+export { selectionDefinition, SELECTION_TYPE_ID } from './selection';
+
 export { textbookDefinition, TEXTBOOK_TYPE_ID, TEXTBOOK_TOOLS } from './textbook';
 export type { TextbookMetadata } from './textbook';
 
@@ -49,6 +51,7 @@ import { noteDefinition } from './note';
 import { imageDefinition } from './image';
 import { fileDefinition } from './file';
 import { retrievalDefinition } from './retrieval';
+import { selectionDefinition } from './selection';
 import { textbookDefinition } from './textbook';
 import { examDefinition } from './exam';
 import { essayDefinition } from './essay';
@@ -57,7 +60,7 @@ import { folderDefinition } from './folder';
 
 /**
  * 所有预定义类型定义数组
- * 按优先级排序：system_prompt(1) > note(10) > exam(22) > essay(23) > translation(24) > textbook(25) > image(30) = file(30) > retrieval(50) > folder(100)
+ * 按优先级排序：system_prompt(1) > note(10) > selection(15) > exam(22) > essay(23) > translation(24) > textbook(25) > image(30) = file(30) > retrieval(50) > folder(100)
  * ★ 2025-12-26: Card 类型已删除
  * ★ 2025-12-28: 添加 system_prompt 类型
  * ★ 2025-01-03: User Preference 类型已删除，由新的 User Memory 系统替代
@@ -67,6 +70,7 @@ export const builtInDefinitions: ContextTypeDefinition[] = [
   // userPreferenceDefinition 已删除
   noteDefinition,
   // cardDefinition 已删除
+  selectionDefinition,
   examDefinition,
   essayDefinition,
   translationDefinition,
@@ -88,6 +92,7 @@ export const definitionMap: Record<string, ContextTypeDefinition> = {
   // user_preference 已删除
   note: noteDefinition,
   // card 已删除
+  selection: selectionDefinition,
   exam: examDefinition,
   essay: essayDefinition,
   translation: translationDefinition,
@@ -104,7 +109,7 @@ export const definitionMap: Record<string, ContextTypeDefinition> = {
  * ★ 2025-12-28: 添加 system_prompt 类型
  * ★ 2025-01-03: User Preference 类型已删除
  */
-export const builtInTypeIds = ['system_prompt', 'note', 'exam', 'essay', 'translation', 'textbook', 'image', 'file', 'retrieval', 'folder'] as const;
+export const builtInTypeIds = ['system_prompt', 'note', 'selection', 'exam', 'essay', 'translation', 'textbook', 'image', 'file', 'retrieval', 'folder'] as const;
 
 /**
  * 预定义类型 ID 类型

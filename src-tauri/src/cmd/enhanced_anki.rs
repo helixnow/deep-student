@@ -454,13 +454,31 @@ fn build_anki_library_list_response(
     }))
 }
 
+/// P2 人机双写：审批栏字段级 diff 的 before 快照——按 cardId 读 agent 库卡当前内容。
+/// 只读；审批卡（BlockingApprovalBar）在 `builtin-chatanki_update_library_card`
+/// 审批展开时调用，与 patch 现算字段级 diff。
+#[tauri::command]
+pub async fn get_anki_library_card_content(
+    card_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
+    let card = state
+        .anki_database
+        .get_anki_agent_library_card(crate::database::AnkiLibraryScope::agent(), &card_id)
+        .map_err(|e| AppError::database(format!("读取库卡片失败: {}", e)))?;
+    match card {
+        Some(record) => serde_json::to_value(&record.library_card)
+            .map_err(|e| AppError::database(format!("序列化库卡片失败: {}", e))),
+        None => Ok(serde_json::Value::Null),
+    }
+}
+
 /// 分页查询卡片库（Prompt C）
 #[tauri::command]
 pub async fn list_anki_library_cards(
     request: crate::models::ListAnkiCardsRequest,
     state: State<'_, AppState>,
-) -> Result<serde_json::Value> {
-    let page = request.page.unwrap_or(1).max(1);
+) -> Result<serde_json::Value> {    let page = request.page.unwrap_or(1).max(1);
     let page_size = request.page_size.unwrap_or(12).clamp(1, 200);
     let (items, total) = state
         .anki_database

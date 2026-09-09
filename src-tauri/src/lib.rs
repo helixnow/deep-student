@@ -78,6 +78,7 @@ pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 #[cfg(feature = "mcp")]
 pub mod mcp;
 #[allow(dead_code)]
@@ -1501,7 +1502,7 @@ pub fn run() {
                 let database_for_automation = database.clone();
                 let vfs_db_for_automation = app_state.inner().vfs_db.clone();
                 let app_handle_for_automation = app_handle.clone();
-                crate::background_tasks::spawn(async move {
+                let _ = crate::background_tasks::spawn(async move {
                     crate::chat_v2::automations::start_automation_scheduler(
                         database_for_automation,
                         vfs_db_for_automation,
@@ -1838,6 +1839,7 @@ pub fn run() {
             crate::commands::export_apkg_for_selection,
             crate::commands::get_document_cards,
             crate::commands::list_anki_library_cards,
+            crate::cmd::enhanced_anki::get_anki_library_card_content,
             crate::commands::export_anki_cards,
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,
@@ -2169,6 +2171,14 @@ pub fn run() {
             ,crate::chat_v2::runtime_roots::chat_v2_authorize_runtime_root
             ,crate::chat_v2::runtime_roots::chat_v2_revoke_runtime_root
             ,crate::chat_v2::runtime_roots::chat_v2_set_skill_trust
+            // 🆕 G09-P0 技能使用账目：前端激活计数双写（fire-and-forget）
+            ,crate::chat_v2::skill_usage::chat_v2_record_skill_activation
+            // 🆕 G09-P1 技能经验回放器：候选列表 / dry-run 对账 / 人工晋升（无自动行为）
+            ,crate::chat_v2::skill_replay::chat_v2_list_skill_candidates
+            ,crate::chat_v2::skill_replay::chat_v2_replay_skill_candidate
+            ,crate::chat_v2::skill_replay::chat_v2_promote_skill_candidate
+            // 🆕 G09-P2 候选回滚：published → rolled_back + 技能文件退役归档
+            ,crate::chat_v2::skill_replay::chat_v2_rollback_skill_candidate
             ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
             ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
             ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write
@@ -2653,6 +2663,22 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_reset_card_progress
             // =================================================
+            // Insight Recall v2 灵感库（阶段一：可信记录）
+            // =================================================
+            ,crate::insight::handlers::insight_create_draft
+            ,crate::insight::handlers::insight_confirm
+            ,crate::insight::handlers::insight_correct
+            ,crate::insight::handlers::insight_delete
+            ,crate::insight::handlers::insight_get
+            ,crate::insight::handlers::insight_list
+            ,crate::insight::handlers::insight_list_revisions
+            ,crate::insight::handlers::insight_list_evidence
+            ,crate::insight::handlers::insight_list_relations
+            ,crate::insight::handlers::insight_list_events
+            ,crate::insight::handlers::insight_record_feedback
+            ,crate::insight::handlers::insight_add_relation
+            ,crate::insight::handlers::insight_run_jobs
+            // =================================================
             // APKG 本地导入
             // =================================================
             ,crate::cmd::apkg_import::import_apkg_to_library
@@ -2901,7 +2927,7 @@ fn start_vfs_index_worker(
     llm_manager: Arc<crate::llm_manager::LLMManager>,
     lance_store: Arc<crate::vfs::VfsLanceStore>,
 ) {
-    crate::background_tasks::spawn(async move {
+    let _ = crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
         loop {

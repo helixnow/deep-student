@@ -6,6 +6,8 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { extractMessageContentFromBlocks } from '../components/message/messageItemUtils';
 import { pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { sessionManager } from '../core/session/sessionManager';
+import { getChatMessageListScrollHandle } from '../components/messageListScrollRegistry';
+import type { SelectionRefData } from '../context/selectionRef';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
 import { mapDstuNodeToLearningHubItem } from './openResourceMapping';
@@ -247,6 +249,90 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
   // 🆕 监听上下文引用预览事件，处理跳转到 Learning Hub
   // ★ 2026-02-09 修复：使用各资源类型的专用导航事件，避免 openResource 处理器竞态
+
+  /**
+   * P0 选区即上下文：selection 引用的回链跳转。
+   * retrieval 快照资源的 data 是 serializeSelectionRefData 产出的 JSON 字符串，
+   * 解析出 source（kind/sourceId/locator/title）后按来源类型路由：
+   * - pdf：打开对应面板/资源窗 + pdf-ref:focus 三连发跳页（复用 pdf-ref:open 链路）
+   * - mindmap / note：右侧附件面板打开（导图节点级聚焦暂无事件，MVP 只开到导图）
+   * - message：当前会话内 scrollToMessage 定位
+   */
+  const handleSelectionRefPreview = useCallback(async (rawData: unknown) => {
+    let parsed: SelectionRefData | null = null;
+    try {
+      parsed = (typeof rawData === 'string' ? JSON.parse(rawData) : rawData) as SelectionRefData;
+    } catch {
+      parsed = null;
+    }
+    const source = parsed?.source;
+    if (!source?.kind) {
+      console.warn('[ChatV2Page] selection ref: missing source in snapshot data');
+      showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
+      return;
+    }
+
+    if (source.kind === 'message') {
+      const messageId = source.messageId || source.sourceId;
+      const sessionId = sessionManager.getCurrentSessionId();
+      const handle = sessionId ? getChatMessageListScrollHandle(sessionId) : null;
+      if (!messageId || !handle) {
+        console.warn('[ChatV2Page] selection ref: no messageId or scroll handle', { messageId, sessionId });
+        return;
+      }
+      const result = await handle.scrollToMessage(messageId);
+      if (result.status !== 'scrolled') {
+        console.warn('[ChatV2Page] selection ref: message scroll failed', result.status);
+      }
+      return;
+    }
+
+    if (!source.sourceId) {
+      console.warn('[ChatV2Page] selection ref: missing sourceId', source.kind);
+      showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
+      return;
+    }
+
+    if (source.kind === 'pdf') {
+      const pageMatch = /^page:(\d+)$/.exec(source.locator ?? '');
+      const pageNumber = pageMatch ? Number(pageMatch[1]) : undefined;
+      const sourceId = source.sourceId;
+      const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
+      const isAttachmentLike = sourceId.startsWith('att_') || sourceId.startsWith('file_');
+      const dispatchFocus = (delayMs: number) => {
+        window.setTimeout(() => {
+          document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
+            detail: { sourceId, pageNumber, path: dstuPath },
+          }));
+        }, delayMs);
+      };
+      if (isAttachmentLike) {
+        window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+          detail: { id: sourceId, type: 'file', title: source.title || 'PDF' },
+        }));
+      } else {
+        window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
+          detail: { view: 'learning-hub', openResource: dstuPath },
+        }));
+      }
+      if (pageNumber) {
+        dispatchFocus(0);
+        dispatchFocus(250);
+        dispatchFocus(800);
+      }
+      return;
+    }
+
+    // mindmap / note：右侧附件面板打开
+    window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+      detail: {
+        id: source.sourceId,
+        type: source.kind,
+        title: source.title || source.sourceId,
+      },
+    }));
+  }, [t]);
+
   const handleContextRefPreview = useCallback(async (event: Event) => {
     const customEvent = event as CustomEvent<{
       resourceId: string;
@@ -266,11 +352,19 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         sourceTable?: string;
         resourceType: string;
         metadata?: { title?: string; name?: string };
+        data?: unknown;
       } | null>('vfs_get_resource', { resourceId });
 
       if (!resource) {
         console.warn('[ChatV2Page] Resource not found:', resourceId);
         showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
+        return;
+      }
+
+      // P0 选区即上下文：selection 引用的 resourceId 指向 retrieval 快照资源，
+      // 真实回链目标在 data.source（kind/sourceId/locator）里，按来源类型路由。
+      if (typeId === 'selection') {
+        await handleSelectionRefPreview(resource.data);
         return;
       }
 
@@ -297,7 +391,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       console.error('[ChatV2Page] Failed to handle context-ref:preview:', getErrorMessage(error));
       showGlobalNotification('error', getErrorMessage(error), t('contextRef.previewFailedTitle'));
     }
-  }, [t]);
+  }, [t, handleSelectionRefPreview]);
 
   useEventRegistry([
     {

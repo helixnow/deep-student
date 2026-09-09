@@ -33,6 +33,26 @@ const resolveFields = (card: AnkiCard): Record<string, string> => {
 };
 
 /**
+ * 字段映射的键序无关比对。
+ *
+ * 两侧的 fields/extra_fields 都经 Rust `HashMap<String,String>` IPC 序列化而来，
+ * 键序随随机种子逐次响应变化——`JSON.stringify` 直接比对会把同内容误判为
+ * "确有编辑"（n 个字段时命中率仅 1/n!），进而让陈旧块快照覆盖 DB 权威卡。
+ * 逐键值比对与键序无关。
+ */
+const fieldsRecordEquals = (
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean => {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(
+    (key) => Object.prototype.hasOwnProperty.call(b, key) && a[key] === b[key],
+  );
+};
+
+/**
  * 比较导出相关内容是否一致，用于识别“确有编辑”的卡。
  *
  * 注意：历史块快照可能只保留 id/front/back/text/tags 等核心键，
@@ -55,7 +75,7 @@ const cardContentEquals = (a: AnkiCard, b: AnkiCard): boolean => {
   const fieldsB = resolveFields(b);
   const hasFieldsA = Object.keys(fieldsA).length > 0;
   const hasFieldsB = Object.keys(fieldsB).length > 0;
-  if (hasFieldsA && hasFieldsB && JSON.stringify(fieldsA) !== JSON.stringify(fieldsB)) {
+  if (hasFieldsA && hasFieldsB && !fieldsRecordEquals(fieldsA, fieldsB)) {
     return false;
   }
 

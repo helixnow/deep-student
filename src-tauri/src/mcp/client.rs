@@ -666,9 +666,12 @@ pub struct DefaultNotificationHandler;
 #[async_trait]
 impl NotificationHandler for DefaultNotificationHandler {
     async fn handle_notification(&self, method: &str, params: Option<Value>) {
+        // 只记录元数据：params 可能携带工具结果/资源内容，原文进日志有内容暴露
+        // 风险（2026-09-07 审阅 F5）。log 宏在等级关闭时不会求值参数。
         debug!(
-            "Received notification: {} with params: {:?}",
-            method, params
+            "Received notification: method={}, params_bytes={:?}",
+            method,
+            params.as_ref().map(|p| p.to_string().len())
         );
     }
 }
@@ -987,7 +990,11 @@ impl McpClient {
                     match result {
                         Ok(message) => {
                             attempt = 0; // reset
-                            log::debug!("[McpClient] message_loop recv: {}", &message.chars().take(200).collect::<String>());
+                            // 只记录元数据：MCP 消息可能携带文件内容/个人资料/密钥片段，
+                            // 原文（哪怕截断 200 字符）一旦随日志等级提级进入生产日志即
+                            // 构成内容暴露（2026-09-07 审阅 F5）。结构化字段在
+                            // handle_message 内按需记录。
+                            log::debug!("[McpClient] message_loop recv: bytes={}", message.len());
                             if let Err(e) = Self::handle_message(
                                 &message,
                                 request_manager.clone(),
@@ -1024,80 +1031,141 @@ impl McpClient {
         event_emitter: Arc<EventEmitter>,
         stream_manager: Arc<StreamManager>,
     ) -> McpResult<()> {
-        // 尝试解析为响应
-        if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(message) {
-            log::debug!(
-                "[McpClient] handle_message response: id={:?} has_result={} has_error={}",
-                response.id,
-                response.result.is_some(),
-                response.error.is_some()
-            );
-            if let Some(id) = response.id.as_ref() {
-                let id_str = match id {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) => n.to_string(),
-                    _ => return Ok(()),
-                };
-                request_manager.complete_request(id_str, Ok(response)).await;
+        // N01（2026-09-07 审阅）：先按 JSON-RPC envelope 做互斥判别——
+        // 有 method 有 id = 服务器请求；有 method 无 id = 通知；无 method = 响应。
+        // 不能先尝试全 Optional 字段的 JsonRpcResponse：Serde 默认忽略未知字段，
+        // 合法通知会被吞成 id=None 的"响应"，永远进不了通知分支。
+        let envelope: Value = match serde_json::from_str(message) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!(
+                    "MCP message is not valid JSON ({} bytes): {}",
+                    message.len(),
+                    error
+                );
+                return Ok(());
+            }
+        };
+        let has_method = envelope
+            .get("method")
+            .and_then(|method| method.as_str())
+            .is_some();
+        let has_id = envelope.get("id").map(|id| !id.is_null()).unwrap_or(false);
+
+        if has_method {
+            if has_id {
+                // 服务器请求（如 roots/list、sampling/createMessage）：本客户端
+                // 尚不支持，记录元数据后忽略（不再误当响应去 complete_request）。
+                log::debug!(
+                    "[McpClient] ignoring unsupported server request: method={:?} id={:?}",
+                    envelope.get("method"),
+                    envelope.get("id")
+                );
+                return Ok(());
+            }
+            let notification: JsonRpcNotification = match serde_json::from_value(envelope) {
+                Ok(notification) => notification,
+                Err(error) => {
+                    log::warn!("MCP malformed notification envelope: {}", error);
+                    return Ok(());
+                }
+            };
+            return Self::handle_notification_message(
+                notification,
+                notification_handler,
+                event_emitter,
+                stream_manager,
+            )
+            .await;
+        }
+
+        // 响应分支（无 method）
+        match serde_json::from_value::<JsonRpcResponse>(envelope) {
+            Ok(response) => {
+                log::debug!(
+                    "[McpClient] handle_message response: id={:?} has_result={} has_error={}",
+                    response.id,
+                    response.result.is_some(),
+                    response.error.is_some()
+                );
+                if let Some(id) = response.id.as_ref() {
+                    let id_str = match id {
+                        Value::String(s) => s.clone(),
+                        Value::Number(n) => n.to_string(),
+                        _ => return Ok(()),
+                    };
+                    request_manager.complete_request(id_str, Ok(response)).await;
+                }
+            }
+            Err(error) => {
+                log::warn!("MCP malformed response envelope: {}", error);
             }
         }
-        // 尝试解析为通知
-        else if let Ok(notification) = serde_json::from_str::<JsonRpcNotification>(message) {
-            let params_for_handler = notification.params.clone();
-            notification_handler
-                .handle_notification(&notification.method, params_for_handler)
-                .await;
 
-            // 处理特定通知
-            match notification.method.as_str() {
-                "tools/list_changed" => {
-                    event_emitter.emit(McpEvent::ToolsChanged).await;
-                }
-                "tools/call_output" | "tools/call_progress" | "tools/call_chunk" => {
-                    if let Some(params) = notification.params {
-                        let id_opt = params
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .or_else(|| {
-                                params
-                                    .get("requestId")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string())
-                            });
-                        if let Some(id) = id_opt {
-                            if let Some(content_val) = params.get("content") {
-                                if let Ok(content) =
-                                    serde_json::from_value::<Content>(content_val.clone())
-                                {
-                                    stream_manager.push(&id, Ok(content)).await;
-                                } else if let Some(text) =
-                                    content_val.get("text").and_then(|x| x.as_str())
-                                {
-                                    stream_manager
-                                        .push(
-                                            &id,
-                                            Ok(Content::Text {
-                                                text: text.to_string(),
-                                            }),
-                                        )
-                                        .await;
-                                }
+        Ok(())
+    }
+
+    async fn handle_notification_message(
+        notification: JsonRpcNotification,
+        notification_handler: Arc<Box<dyn NotificationHandler>>,
+        event_emitter: Arc<EventEmitter>,
+        stream_manager: Arc<StreamManager>,
+    ) -> McpResult<()> {
+        let params_for_handler = notification.params.clone();
+        notification_handler
+            .handle_notification(&notification.method, params_for_handler)
+            .await;
+
+        // 处理特定通知。标准 MCP 通知名为 notifications/*（2025-11-25 schema）；
+        // 兼容本客户端历史上使用的私有名（tools/list_changed 等）。
+        match notification.method.as_str() {
+            "notifications/tools/list_changed" | "tools/list_changed" => {
+                event_emitter.emit(McpEvent::ToolsChanged).await;
+            }
+            "tools/call_output" | "tools/call_progress" | "tools/call_chunk" => {
+                if let Some(params) = notification.params {
+                    let id_opt = params
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .or_else(|| {
+                            params
+                                .get("requestId")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        });
+                    if let Some(id) = id_opt {
+                        if let Some(content_val) = params.get("content") {
+                            if let Ok(content) =
+                                serde_json::from_value::<Content>(content_val.clone())
+                            {
+                                stream_manager.push(&id, Ok(content)).await;
+                            } else if let Some(text) =
+                                content_val.get("text").and_then(|x| x.as_str())
+                            {
+                                stream_manager
+                                    .push(
+                                        &id,
+                                        Ok(Content::Text {
+                                            text: text.to_string(),
+                                        }),
+                                    )
+                                    .await;
                             }
                         }
                     }
                 }
-                "resources/list_changed" => {
-                    event_emitter.emit(McpEvent::ResourcesChanged).await;
-                }
-                "prompts/list_changed" => {
-                    event_emitter.emit(McpEvent::PromptsChanged).await;
-                }
-                "roots/list_changed" => {
-                    event_emitter.emit(McpEvent::RootsChanged).await;
-                }
-                _ => {}
             }
+            "notifications/resources/list_changed" | "resources/list_changed" => {
+                event_emitter.emit(McpEvent::ResourcesChanged).await;
+            }
+            "notifications/prompts/list_changed" | "prompts/list_changed" => {
+                event_emitter.emit(McpEvent::PromptsChanged).await;
+            }
+            "notifications/roots/list_changed" | "roots/list_changed" => {
+                event_emitter.emit(McpEvent::RootsChanged).await;
+            }
+            _ => {}
         }
 
         Ok(())
@@ -1940,6 +2008,129 @@ impl ReconnectingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // N01 回归（2026-09-07 审阅）：envelope 互斥判别——通知不得被
+    // Response-first 反序列化吞掉，标准 notifications/* 方法名必须命中。
+    #[derive(Clone, Default)]
+    struct RecordedNotifications(Arc<std::sync::Mutex<Vec<String>>>);
+
+    #[async_trait]
+    impl NotificationHandler for RecordedNotifications {
+        async fn handle_notification(&self, method: &str, _params: Option<Value>) {
+            self.0.lock().unwrap().push(method.to_string());
+        }
+    }
+
+    fn dispatch_fixture() -> (
+        Arc<RequestManager>,
+        Arc<Box<dyn NotificationHandler>>,
+        Arc<EventEmitter>,
+        Arc<StreamManager>,
+        RecordedNotifications,
+    ) {
+        let recorded = RecordedNotifications::default();
+        (
+            Arc::new(RequestManager::new(Duration::from_secs(600))),
+            Arc::new(Box::new(recorded.clone())),
+            Arc::new(EventEmitter::new()),
+            Arc::new(StreamManager::new()),
+            recorded,
+        )
+    }
+
+    #[tokio::test]
+    async fn standard_notification_is_not_swallowed_by_response_branch() {
+        let (request_manager, handler, emitter, stream_manager, recorded) = dispatch_fixture();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        emitter
+            .on(Arc::new(move |event| {
+                let _ = tx.send(event);
+            }))
+            .await;
+
+        McpClient::handle_message(
+            r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#,
+            request_manager,
+            handler,
+            emitter,
+            stream_manager,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            recorded.0.lock().unwrap().as_slice(),
+            ["notifications/tools/list_changed"]
+        );
+        let event = rx.try_recv().expect("ToolsChanged event must fire");
+        assert!(matches!(event, McpEvent::ToolsChanged));
+    }
+
+    #[tokio::test]
+    async fn legacy_private_notification_names_still_map_to_events() {
+        let (request_manager, handler, emitter, stream_manager, _recorded) = dispatch_fixture();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        emitter
+            .on(Arc::new(move |event| {
+                let _ = tx.send(event);
+            }))
+            .await;
+
+        McpClient::handle_message(
+            r#"{"jsonrpc":"2.0","method":"tools/list_changed","params":{}}"#,
+            request_manager,
+            handler,
+            emitter,
+            stream_manager,
+        )
+        .await
+        .unwrap();
+
+        let event = rx.try_recv().expect("ToolsChanged event must fire for legacy name");
+        assert!(matches!(event, McpEvent::ToolsChanged));
+    }
+
+    #[tokio::test]
+    async fn response_completes_pending_request_by_id() {
+        let (request_manager, handler, emitter, stream_manager, recorded) = dispatch_fixture();
+        let pending_rx = request_manager.register_request("42".to_string()).await;
+
+        McpClient::handle_message(
+            r#"{"jsonrpc":"2.0","id":"42","result":{"ok":true}}"#,
+            request_manager,
+            handler,
+            emitter,
+            stream_manager,
+        )
+        .await
+        .unwrap();
+
+        let response = pending_rx.await.expect("pending request").expect("ok response");
+        assert!(response.result.is_some());
+        assert!(recorded.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn server_request_is_not_treated_as_response_or_notification() {
+        let (request_manager, handler, emitter, stream_manager, recorded) = dispatch_fixture();
+        let mut pending_rx = request_manager.register_request("7".to_string()).await;
+
+        McpClient::handle_message(
+            r#"{"jsonrpc":"2.0","method":"roots/list","id":"7"}"#,
+            request_manager,
+            handler,
+            emitter,
+            stream_manager,
+        )
+        .await
+        .unwrap();
+
+        assert!(recorded.0.lock().unwrap().is_empty());
+        assert!(
+            pending_rx.try_recv().is_err(),
+            "server request must not complete the pending request"
+        );
+    }
 
     #[test]
     fn client_capabilities_none_experimental_is_omitted_not_null() {

@@ -226,6 +226,38 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260907,
+      "name": "connector_operations",
+      "path": "chat_v2/V20260907__connector_operations.sql",
+      "sha256": "f646c835c942d7e71ed87dd77a6aabecbd76f0a876c0dab2c45b485aa96b81cd",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260908,
+      "name": "completion_outbox",
+      "path": "chat_v2/V20260908__completion_outbox.sql",
+      "sha256": "e75a0a16395eb2b4f7943f2a1993396e01db1e9306dbc4ac78ef2cbff0914d54",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260909,
+      "name": "skill_usage_candidates",
+      "path": "chat_v2/V20260909__skill_usage_candidates.sql",
+      "sha256": "fc7c888863b6f8f295ff7348c020b4973d13f07c5256fde735264fdbae205df1",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260910,
+      "name": "revocation_epochs_and_budget",
+      "path": "chat_v2/V20260910__revocation_epochs_and_budget.sql",
+      "sha256": "304b7236d69ba82de2009317c3a227742cf0ddbdfdb803c79a5de22ec34d36b3",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
@@ -963,9 +995,49 @@
     },
     {
       "database": "vfs",
+      "version": 20260907,
+      "name": "insight_cards",
+      "path": "vfs/V20260907__insight_cards.sql",
+      "sha256": "952e7fb2a098d3638d4cc94f5f277955c3e52237c325f05b0c69c4522d2f744d",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260908,
+      "name": "insight_fts",
+      "path": "vfs/V20260908__insight_fts.sql",
+      "sha256": "7628246be9daf637c98c7eb78c0006fb5d17fef9b641b33119ad79aa8c7d090e",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
       "version": 20260909,
+      "name": "mastery_events_insight_source",
+      "path": "vfs/V20260909__mastery_events_insight_source.sql",
+      "sha256": "0f84b27599b9863c56e11976480aa9dda7a2c383ab81fe2fb4a0739cda2e29e1",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260910,
+      "name": "insight_jobs",
+      "path": "vfs/V20260910__insight_jobs.sql",
+      "sha256": "a81900b90f952257af14196c5d46719f983fd55840d3017581ef5a0688a483ab",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260911,
+      "name": "insight_fts_update_trigger_narrowing",
+      "path": "vfs/V20260911__insight_fts_update_trigger_narrowing.sql",
+      "sha256": "c7b0574f0fec193596d847fc9db2146d632a7328a96c6c950d4abb6112abbc21",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260912,
       "name": "qbank_generation_tasks",
-      "path": "vfs/V20260909__qbank_generation_tasks.sql",
+      "path": "vfs/V20260912__qbank_generation_tasks.sql",
       "sha256": "b60cfeebebf076aa8c9c0e3d9309ecfd56f14d3649470434e0efda38965209b7",
       "dangers": []
     }

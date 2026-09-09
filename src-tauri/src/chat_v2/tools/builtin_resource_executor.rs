@@ -390,6 +390,8 @@ impl BuiltinResourceExecutor {
             crate::vfs::types::VfsResourceType::Translation => Some("translations"),
             crate::vfs::types::VfsResourceType::MindMap => Some("mindmaps"),
             crate::vfs::types::VfsResourceType::Retrieval => None,
+            // InsightCard 不属于用户文件类目（灵感库有专属访问通道）
+            crate::vfs::types::VfsResourceType::InsightCard => None,
         }
     }
 

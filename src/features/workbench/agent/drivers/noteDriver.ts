@@ -13,6 +13,7 @@
  */
 import { editorViewCtx } from '@milkdown/kit/core';
 import i18n from '@/i18n';
+import { boundedRegexReplace } from '@/utils/boundedRegexReplace';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import {
   agentHighlightKey,
@@ -497,26 +498,41 @@ export function computeDestructiveMarkdown(
       return { content: original, error: i18n.t('forms:note_driver.empty_search_pattern') };
     }
     if (payload.isRegex) {
-      try {
-        const regex = new RegExp(searchPattern, 'g');
-        let replaceCount = 0;
-        const content = original.replace(regex, () => {
-          replaceCount += 1;
-          return replaceWith;
-        });
-        return replaceCount > 0
-          ? { content }
-          : { content: original, error: i18n.t('forms:note_driver.replacement_not_found') };
-      } catch (err) {
-        return {
-          content: original,
-          error: i18n.t('forms:note_driver.invalid_regex', {
-            message: err instanceof Error
-              ? err.message
-              : i18n.t('forms:note_driver.regex_syntax_error'),
-          }),
-        };
+      // N03（2026-09-07 审阅）：与 useAIEditState 共用同一输出预算实现，
+      // 逐匹配累加 UTF-8 字节，超限提前停止。
+      // 预算常量与 useAIEditState.MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES 保持一致
+      // （Notes 持久化层 1 MiB 正文上限）；此处内联以避免 workbench→notes 的
+      // 模块耦合把 diff 依赖拖进本 chunk。
+      const maxOutputBytes = 1024 * 1024;
+      const outcome = boundedRegexReplace(
+        original,
+        searchPattern,
+        replaceWith,
+        maxOutputBytes
+      );
+      // tsconfig strict: false 下真值收窄不生效，必须显式判等
+      if (outcome.ok === false) {
+        if (outcome.reason === 'invalid_regex') {
+          return {
+            content: original,
+            error: i18n.t('forms:note_driver.invalid_regex', {
+              message:
+                outcome.message ?? i18n.t('forms:note_driver.regex_syntax_error'),
+            }),
+          };
+        }
+        if (outcome.reason === 'output_too_large') {
+          return {
+            content: original,
+            error: i18n.t('notes:aiDiff.errors.output_too_large', {
+              defaultValue: `建议后的笔记超过 ${maxOutputBytes} 字节上限`,
+              maxBytes: maxOutputBytes,
+            }),
+          };
+        }
+        return { content: original, error: i18n.t('forms:note_driver.replacement_not_found') };
       }
+      return { content: outcome.content };
     }
     if (!original.includes(searchPattern)) {
       return { content: original, error: i18n.t('forms:note_driver.replacement_not_found') };

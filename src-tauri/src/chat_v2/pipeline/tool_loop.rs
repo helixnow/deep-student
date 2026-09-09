@@ -55,6 +55,7 @@
 //!   generation 声明），绝不伪造工具面分叉逼 converge +1。
 
 use super::*;
+use crate::llm_manager::{NoopStreamSink, StreamEventSink, WindowStreamSink};
 
 pub(crate) fn is_retryable_llm_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
@@ -1195,8 +1196,16 @@ impl ChatV2Pipeline {
             // 不再让前端的值直接覆盖，避免丢失 LaTeX 规则等 XML 格式内容
             let system_prompt_override = Some(system_prompt.to_string());
 
-            // 获取 window 用于流式事件发射
-            let window = emitter.window();
+            // G01-b：流式事件出口按 runtime 选择——窗口 runtime 经
+            // WindowStreamSink 透传全部事件（行为不变）；无窗口 runtime
+            //（headless/测试）用 NoopStreamSink 丢弃事件，MCP 前端桥工具
+            // 随之缺席（build_tools_with_mcp 的 None 语义）。
+            let window_sink = emitter.try_window().map(WindowStreamSink::new);
+            let noop_sink = NoopStreamSink;
+            let stream_sink: &dyn StreamEventSink = match &window_sink {
+                Some(sink) => sink,
+                None => &noop_sink,
+            };
 
             log::info!(
             "[ChatV2::pipeline] Calling LLMManager, stream_event={}, model_override={:?}, top_p={:?}, max_tokens={:?}, max_input_tokens={:?}",
@@ -1216,7 +1225,7 @@ impl ChatV2Pipeline {
                 true, // enable_chain_of_thought
                 enable_thinking,
                 Some("chat_v2"),
-                window,
+                stream_sink,
                 &stream_event,
                 Some(ctx.assistant_message_id.as_str()),
                 None, // trace_id
@@ -1356,6 +1365,8 @@ impl ChatV2Pipeline {
                         .register_stream_hooks(&stream_event, registered_hooks.clone())
                         .await;
 
+                    // G01-b：重试复用首次调用前选定的同一 sink（窗口/无窗
+                    // runtime 语义在一次执行内不变）。
                     let retry_future = self.llm_manager.call_unified_model_2_stream(
                         &llm_context,
                         &messages,
@@ -1363,7 +1374,7 @@ impl ChatV2Pipeline {
                         true,
                         enable_thinking,
                         Some("chat_v2"),
-                        emitter.window(),
+                        stream_sink,
                         &stream_event,
                         Some(ctx.assistant_message_id.as_str()),
                         None,
@@ -2256,6 +2267,26 @@ impl ChatV2Pipeline {
                     "[ChatV2::pipeline] Task completed detected via attempt_completion, stopping recursive loop at depth={}",
                     recursion_depth
                 );
+
+                    // 🆕 G07-a：candidate_complete 与任务验收分离——终止工具循环前
+                    // 对 attempt_completion 申报产物做骨架验收，终态写入完成块
+                    // toolOutput.finalization；验收器自身失败只降级为 warn log，
+                    // 绝不影响主循环终止路径。
+                    crate::chat_v2::finalizer::finalize_task_completion(
+                        ctx,
+                        &self.db,
+                        self.main_db.as_ref(),
+                    );
+
+                    // 🆕 G09-P2：G07 终态 outcome 回流技能账目——verdict 映射后
+                    // 收敛该 run 已存在的 unknown 账目行（VerifiedComplete/
+                    // CompleteWithExceptions→success，Partial/Blocked→failed，
+                    // OutcomeUnknown 不标记）。本轮新账目行要到阶段 6
+                    // save_results 才落账，由轮末 skill_usage 按同一映射补标
+                    // （verdict 随完成块 toolOutput.finalization 流动）；
+                    // retry 复用 run_id 的旧行由轮末纠错先行收敛，不会在此
+                    // 误标。fire-and-forget，绝不阻塞主循环终止路径。
+                    crate::chat_v2::skill_usage::on_task_finalized(&self.db, ctx);
 
                     // 收集当前轮次的块（无需再次调用 LLM）
                     ctx.collect_streamed_text_segments(

@@ -34,6 +34,7 @@
 
 use super::types::{MessageSources, SendOptions, SharedContext, SourceInfo};
 use super::vfs_resolver::escape_xml_content;
+use serde::Deserialize;
 
 // ============================================================================
 // 常量定义
@@ -56,6 +57,7 @@ const CITATION_GUIDE: &str = r#"<citation_rules>
 - [记忆-N]: 引用智能记忆中的内容
 - [搜索-N]: 引用网络搜索结果
 - [图片-N]: 引用多模态检索中的图片内容（仅当引用了图片来源时使用）
+- [灵感-N]: 引用灵感卡内容（insight_recall 工具返回）
 </source_types>
 <rules>
 1. 每个引用标记必须紧跟在引用内容之后，不要单独成行
@@ -104,6 +106,121 @@ $$
 发送前自检：若检测到数学符号未在 $ 或 $$ 内，请重写并补齐分隔符后再发送。
 </self_check>
 </latex_rules>"#;
+
+/// 化学表达与结构式输出规则。
+///
+/// 结构式不是 KaTeX 命令，必须与数学公式契约分开说明；否则模型会把
+/// `\smiles{...}` 误包进 `$...$`，导致前端无法识别内联结构占位符。
+const CHEMISTRY_RENDERING_RULES: &str = r#"<chemistry_rendering_rules priority="high">
+<description>化学内容的表达规范</description>
+<rules>
+1. 化学式、离子式、反应方程式使用 mhchem：行内写 $\ce{...}$，展示式写 $$\ce{...}$$。
+2. 需要展示分子骨架、环系、键线式或立体结构时，使用 \smiles{标准 SMILES}；它会在正文中渲染为内联结构图。
+3. \smiles{...} 不是 LaTeX：不得放进 $...$、$$...$$、反引号或代码块；把它直接嵌入自然语言句子。
+4. 只在结构本身有助于理解时使用；不要向用户解释内部渲染语法，除非用户询问。
+</rules>
+<examples>
+- 苯的分子式是 $\ce{C6H6}$，结构为 \smiles{c1ccccc1}。
+- 乙醇可写作 $\ce{C2H5OH}$，其骨架为 \smiles{CCO}。
+</examples>
+</chemistry_rendering_rules>"#;
+
+/// 前端设置的持久化键。只有已启用的能力才会进入 system prompt，避免让模型
+/// 背负用户从未需要的输出语法。
+pub const RENDERER_CAPABILITIES_SETTING_KEY: &str = "chat.renderer_capabilities";
+
+/// 对应前端 `RendererCapabilities` 的稳定序列化结构。
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RendererCapabilities {
+    pub chemical_structures: bool,
+    pub charts: bool,
+    pub graphviz: bool,
+    pub music: bool,
+    pub timing: bool,
+    pub chemical_files: bool,
+    pub molecular3d: bool,
+    pub geojson: bool,
+}
+
+impl Default for RendererCapabilities {
+    fn default() -> Self {
+        Self {
+            // 已经在前端落地的正文内联能力，延续此前版本的默认可用行为。
+            chemical_structures: true,
+            charts: false,
+            graphviz: false,
+            music: false,
+            timing: false,
+            chemical_files: false,
+            molecular3d: false,
+            geojson: false,
+        }
+    }
+}
+
+/// 读取失败或旧版本没有该设置时安全回退。设置只影响“如何表达”，不应阻断对话。
+pub fn parse_renderer_capabilities(raw: Option<&str>) -> RendererCapabilities {
+    raw.and_then(|json| serde_json::from_str(json).ok())
+        .unwrap_or_default()
+}
+
+const CHART_RENDERING_RULES: &str = r#"<chart_rendering_rules priority="high">
+<rules>需要数据图表时，使用 ```vega-lite 代码块输出自包含 Vega-Lite JSON。数据直接写在 data.values；不要使用 data.url、远程图片或外部脚本。只在图表能更清楚表达比较、趋势或分布时使用。</rules>
+</chart_rendering_rules>"#;
+
+const GRAPHVIZ_RENDERING_RULES: &str = r#"<graphviz_rendering_rules priority="high">
+<rules>需要流程图、关系图或有向图时，使用 ```dot 代码块输出 Graphviz DOT。图内文字直接写入，不要引用 image、href 或任何外部资源。</rules>
+</graphviz_rendering_rules>"#;
+
+const MUSIC_RENDERING_RULES: &str = r#"<music_rendering_rules priority="high">
+<rules>需要五线谱或简短旋律时，使用 ```abc 代码块输出标准 ABC notation；包含 X:、T:、M:、L:、K: 等必要头字段。不要为普通文本说明强行生成乐谱。</rules>
+</music_rendering_rules>"#;
+
+const TIMING_RENDERING_RULES: &str = r#"<timing_rendering_rules priority="high">
+<rules>需要时序图、数字波形或协议时序时，使用 ```wavedrom 代码块输出 WaveJSON 对象。内容必须自包含，不要使用外链或脚本。</rules>
+</timing_rendering_rules>"#;
+
+const CHEMICAL_FILE_RENDERING_RULES: &str = r#"<chemical_file_rendering_rules priority="high">
+<rules>用户提供或要求展示 Molfile/SDF 分子文件时，使用 ```mol 或 ```sdf 代码块原样输出有效文件内容。它们用于二维分子结构，不要把它们塞进 LaTeX。</rules>
+</chemical_file_rendering_rules>"#;
+
+const MOLECULAR_3D_RENDERING_RULES: &str = r#"<molecular_3d_rendering_rules priority="high">
+<rules>需要可旋转的三维蛋白质或分子结构时，使用 ```pdb 代码块输出自包含 PDB 文本。不要使用下载链接、远程结构 ID 或外部脚本。</rules>
+</molecular_3d_rendering_rules>"#;
+
+const GEOJSON_RENDERING_RULES: &str = r#"<geojson_rendering_rules priority="high">
+<rules>需要展示地理边界、路线或点位且数据已知时，使用 ```geojson 代码块输出自包含 GeoJSON Feature 或 FeatureCollection。不要使用地图瓦片、URL 或外部资源。</rules>
+</geojson_rendering_rules>"#;
+
+fn enabled_renderer_rules(capabilities: &RendererCapabilities) -> Vec<&'static str> {
+    let mut rules = Vec::new();
+    if capabilities.chemical_structures {
+        rules.push(CHEMISTRY_RENDERING_RULES);
+    }
+    if capabilities.charts {
+        rules.push(CHART_RENDERING_RULES);
+    }
+    if capabilities.graphviz {
+        rules.push(GRAPHVIZ_RENDERING_RULES);
+    }
+    if capabilities.music {
+        rules.push(MUSIC_RENDERING_RULES);
+    }
+    if capabilities.timing {
+        rules.push(TIMING_RENDERING_RULES);
+    }
+    if capabilities.chemical_files {
+        rules.push(CHEMICAL_FILE_RENDERING_RULES);
+    }
+    if capabilities.molecular3d {
+        rules.push(MOLECULAR_3D_RENDERING_RULES);
+    }
+    if capabilities.geojson {
+        rules.push(GEOJSON_RENDERING_RULES);
+    }
+    rules
+}
 
 /// 各来源类型的最大条目数
 const MAX_RAG_ITEMS: usize = 5;
@@ -395,6 +512,10 @@ pub struct PromptBuilder {
     active_todos: Option<String>,
     /// 🆕 活跃目标摘要（Goal 模式 P0；纯文本，本构建器负责 XML 包裹与转义）
     active_goal: Option<String>,
+    /// 🆕 灵感存在级提示（Insight Recall v2 阶段二；纯文本，本构建器负责包裹转义）
+    insight_hints: Option<String>,
+    /// 已启用的富渲染能力；仅其输出语法会注入 system。
+    renderer_capabilities: RendererCapabilities,
 }
 
 impl PromptBuilder {
@@ -419,6 +540,8 @@ impl PromptBuilder {
             project_agents_instructions: None,
             active_todos: None,
             active_goal: None,
+            insight_hints: None,
+            renderer_capabilities: RendererCapabilities::default(),
         }
     }
 
@@ -435,6 +558,20 @@ impl PromptBuilder {
     /// `<active_goal>` 标签包裹与 XML 转义。
     pub fn with_active_goal(mut self, goal: Option<String>) -> Self {
         self.active_goal = goal.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    /// 灵感存在级提示（被动注入）。调用方只提供纯文本（每行一条标题），
+    /// 本构建器负责 `<insight_hints>` 包裹与 XML 转义。
+    /// 内容纪律：只含卡片标题（存在级），方法内容零泄露（D2 红线）。
+    pub fn with_insight_hints(mut self, hints: Option<String>) -> Self {
+        self.insight_hints = hints.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    /// 设置已启用的富渲染能力。
+    pub fn with_renderer_capabilities(mut self, capabilities: RendererCapabilities) -> Self {
+        self.renderer_capabilities = capabilities;
         self
     }
 
@@ -570,6 +707,13 @@ impl PromptBuilder {
         // 0. LaTeX 规则（最高优先级，稳定前缀第一块）
         parts.push(LATEX_RULES.to_string());
 
+        // 0.5 仅注入用户已启用的富渲染输出约定，紧随 LaTeX 规则。
+        parts.extend(
+            enabled_renderer_rules(&self.renderer_capabilities)
+                .into_iter()
+                .map(str::to_string),
+        );
+
         // 1. 系统指令块
         let instructions = self.base_prompt.clone();
         parts.push(format!(
@@ -663,6 +807,16 @@ impl PromptBuilder {
             parts.push(format!(
                 "<active_goal>\n当前会话有一个进行中的目标（用户设定，跨轮次持续存在）：\n{}\n用户的插话与目标推进应服务于该目标。需要用户回答才能继续时，调用 goal_update(status=\"waiting_user\")；确证目标完成后调用 goal_update(status=\"complete\")。\n</active_goal>",
                 escape_xml_content(goal)
+            ));
+        }
+
+        // 2.5 🆕 灵感存在级提示（Insight Recall v2：被动通道）
+        // 只含卡片标题——告诉模型"这个人在类似情境卡住过"，方法内容须经
+        // insight_recall 工具按披露阶梯升级获取。标题为用户内容，必须转义。
+        if let Some(hints) = &self.insight_hints {
+            parts.push(format!(
+                "<insight_hints>\n该用户曾在以下相似情境中卡住并总结过方法（只显示标题）。若与当前问题相关，可调用 insight_recall 工具逐步唤起用户自己的方法，而不是直接给答案：\n{}\n</insight_hints>",
+                escape_xml_content(hints)
             ));
         }
 
@@ -799,6 +953,7 @@ pub fn build_system_prompt_with_profile(
         user_profile,
         None,
         None,
+        None,
     )
 }
 
@@ -810,6 +965,30 @@ pub fn build_system_prompt_with_profile_and_agents(
     user_profile: Option<String>,
     project_agents_instructions: Option<String>,
     active_goal: Option<String>,
+    insight_hints: Option<String>,
+) -> SystemPromptParts {
+    build_system_prompt_with_profile_agents_and_renderers(
+        options,
+        sources,
+        canvas_note,
+        user_profile,
+        project_agents_instructions,
+        active_goal,
+        insight_hints,
+        RendererCapabilities::default(),
+    )
+}
+
+/// 同上，但允许 pipeline 将用户已启用的富渲染能力带入稳定 system。
+pub fn build_system_prompt_with_profile_agents_and_renderers(
+    options: &SendOptions,
+    sources: &MessageSources,
+    canvas_note: Option<CanvasNoteInfo>,
+    user_profile: Option<String>,
+    project_agents_instructions: Option<String>,
+    active_goal: Option<String>,
+    insight_hints: Option<String>,
+    renderer_capabilities: RendererCapabilities,
 ) -> SystemPromptParts {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
@@ -819,6 +998,8 @@ pub fn build_system_prompt_with_profile_and_agents(
         .with_learner_profile(load_learner_profile_block(options))
         .with_project_agents_instructions(project_agents_instructions)
         .with_active_goal(active_goal)
+        .with_insight_hints(insight_hints)
+        .with_renderer_capabilities(renderer_capabilities)
         .build_split()
 }
 
@@ -919,6 +1100,30 @@ mod tests {
         assert!(!prompt.contains("<system_time>"));
         // P1-10：引用指引固定注入 system，不再按 has_sources 开关
         assert!(prompt.contains("<citation_rules>"));
+    }
+
+    #[test]
+    fn test_renderer_rules_follow_enabled_capabilities() {
+        let disabled = PromptBuilder::new(None)
+            .with_renderer_capabilities(RendererCapabilities {
+                chemical_structures: false,
+                ..RendererCapabilities::default()
+            })
+            .build();
+        assert!(!disabled.contains("<chemistry_rendering_rules"));
+        assert!(!disabled.contains("<chart_rendering_rules"));
+
+        let enabled = PromptBuilder::new(None)
+            .with_renderer_capabilities(RendererCapabilities {
+                charts: true,
+                graphviz: true,
+                ..RendererCapabilities::default()
+            })
+            .build();
+        assert!(enabled.contains("<chemistry_rendering_rules"));
+        assert!(enabled.contains("<chart_rendering_rules"));
+        assert!(enabled.contains("<graphviz_rendering_rules"));
+        assert!(!enabled.contains("<music_rendering_rules"));
     }
 
     #[test]
@@ -1093,10 +1298,10 @@ mod tests {
             .build();
 
         let expected = format!(
-            "{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
+            "{}\n\n{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
              <project_agents_instructions>\nAGENTS 常驻指令\n</project_agents_instructions>\n\n\
              <user_preferences>\n请用中文回答\n</user_preferences>\n\n{}",
-            LATEX_RULES, CITATION_GUIDE
+            LATEX_RULES, CHEMISTRY_RENDERING_RULES, CITATION_GUIDE
         );
         assert_eq!(prompt, expected);
     }
@@ -1185,19 +1390,29 @@ mod tests {
     /// 字符预算取精简后实测（905 / 727）加少量余量，且低于精简前体积
     /// （984 / 760），保证重复句不会悄悄回归；如需合理扩充请有意识上调
     /// 并更新 docs/dev/optimization0824/progress/R4-WI-10-full.md。
+    /// 2026-09-07：CITATION_GUIDE 750 → 780，新增 [灵感-N] 来源类型行
+    /// （Insight Recall v2 阶段二，引用契约必须进固定 system 块）。
+    /// 2026-09-08：新增独立化学结构渲染契约；它必须留在稳定 system，
+    /// 才能让所有会话模型知晓 `\smiles{...}`，而不是依赖某个前端页面的提示。
     #[test]
     fn test_static_prompt_blocks_stay_within_budget() {
         let latex_chars = LATEX_RULES.chars().count();
         let citation_chars = CITATION_GUIDE.chars().count();
+        let chemistry_chars = CHEMISTRY_RENDERING_RULES.chars().count();
         assert!(
             latex_chars <= 950,
             "LATEX_RULES 超出静态预算：{} > 950 chars",
             latex_chars
         );
         assert!(
-            citation_chars <= 750,
-            "CITATION_GUIDE 超出静态预算：{} > 750 chars",
+            citation_chars <= 780,
+            "CITATION_GUIDE 超出静态预算：{} > 780 chars",
             citation_chars
+        );
+        assert!(
+            chemistry_chars <= 620,
+            "CHEMISTRY_RENDERING_RULES 超出静态预算：{} > 620 chars",
+            chemistry_chars
         );
 
         // \boxed{C} 只应出现在规则 7（正确/禁止两种写法各一次），示例区不再重复
@@ -1215,6 +1430,8 @@ mod tests {
         // 规则句本身必须保留（删的是重复示例，不是约束）
         assert!(LATEX_RULES.contains("\\boxed{} 命令必须用 $...$ 包裹"));
         assert!(CITATION_GUIDE.contains("禁止在回复末尾生成"));
+        assert!(CHEMISTRY_RENDERING_RULES.contains("\\smiles{标准 SMILES}"));
+        assert!(CHEMISTRY_RENDERING_RULES.contains("不得放进 $...$、$$...$$、反引号或代码块"));
     }
 
     #[test]

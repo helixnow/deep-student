@@ -4,6 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::mem::{size_of, zeroed};
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::sync::Mutex;
@@ -43,6 +44,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Console::{
     GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
 };
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, OpenJobObjectW,
     SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -52,11 +56,11 @@ use windows_sys::Win32::System::JobObjects::{
 use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_TERMINATE, SE_GROUP_ENABLED};
 use windows_sys::Win32::System::Threading::{
     CreateEventW, CreateMutexW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcessId,
-    GetExitCodeProcess, InitializeProcThreadAttributeList, OpenEventW, ReleaseMutex, ResumeThread,
-    SetEvent, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
-    CREATE_SUSPENDED, EVENT_MODIFY_STATE, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
+    GetExitCodeProcess, InitializeProcThreadAttributeList, OpenEventW, OpenThread, ReleaseMutex,
+    ResumeThread, SetEvent, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    CREATE_NO_WINDOW, CREATE_SUSPENDED, EVENT_MODIFY_STATE, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
     PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES,
-    STARTUPINFOEXW, STARTUPINFOW,
+    STARTUPINFOEXW, STARTUPINFOW, THREAD_SUSPEND_RESUME,
 };
 
 const HELPER_ARG: &str = "--deep-student-shell-sandbox-helper";
@@ -778,10 +782,15 @@ impl SandboxBackend for UnsandboxedShellBackend {
 /// created in-process, used for cancellation and app-exit process-tree
 /// reclamation — never CPU/process-count/file-size limits. Access-class
 /// policy (command rules, guards, env, output bounds) lives in the executor.
+///
+/// Job 绑定原子性（2026-09-07 审阅 F6）：子进程以 CREATE_SUSPENDED 创建，
+/// `on_child_spawned()` 先完成 Job 绑定再恢复主线程——绑定之前子进程不运行
+/// 任何代码，后代进程不可能逃逸 Job 的回收范围。
 pub struct DirectHostShellBackend {
-    /// Per-execution Job Object: created in `command()`, bound to the live
-    /// child in `on_child_spawned()`, dropped in `cleanup_command_resources()`
-    /// (the drop fires KILL_ON_JOB_CLOSE and reclaims any survivors).
+    /// Per-execution Job Object: created in `command()`, bound to the
+    /// suspended child in `on_child_spawned()` before its main thread is
+    /// resumed, dropped in `cleanup_command_resources()` (the drop fires
+    /// KILL_ON_JOB_CLOSE and reclaims any survivors).
     job: Mutex<Option<OwnedHandle>>,
 }
 
@@ -851,6 +860,10 @@ impl SandboxBackend for DirectHostShellBackend {
             &encoded_powershell_command(shell_command),
         ]);
         configure_stdio(&mut command, cwd);
+        // 挂起创建（2026-09-07 审阅 F6）：子进程在 on_child_spawned 绑定 Job
+        // 之前不运行任何用户代码，消除「父进程先创建后代再退出、后代逃逸
+        // Job 回收」的竞态窗口。主线程由 on_child_spawned 在绑定成功后恢复。
+        command.as_std_mut().creation_flags(CREATE_SUSPENDED);
         Ok(command)
     }
 
@@ -860,12 +873,16 @@ impl SandboxBackend for DirectHostShellBackend {
         };
         let job_guard = self.job_lock();
         let Some(job) = job_guard.as_ref() else {
-            // Backend already cleaned up (spawn failure path); nothing to bind.
-            return Ok(());
+            // 进程已挂起创建：没有 Job 可绑时绝不能把它放跑（挂起态进程既
+            // 不受回收约束也永远不会退出）。返回错误由执行器 terminate_and_reap。
+            return Err(
+                "Unrestricted host shell Job Object is missing at spawn hook; refusing to resume a suspended child"
+                    .to_string(),
+            );
         };
         if unsafe { AssignProcessToJobObject(job.0, process_handle) } == 0 {
-            // A millisecond command may have exited before the assignment; the
-            // result is already produced, so an exited child is not an error.
+            // 挂起态进程无法创建后代，因此「绑定失败但进程已退出」（如加载器
+            // 初始化失败）不存在逃逸窗口，按既有语义视为成功。
             if child
                 .try_wait()
                 .map_err(|error| format!("Failed to inspect the unrestricted host shell: {error}"))?
@@ -877,7 +894,14 @@ impl SandboxBackend for DirectHostShellBackend {
                 "Failed to bind the unrestricted host shell to its Job Object",
             ));
         }
-        Ok(())
+        drop(job_guard);
+        // 绑定成功，恢复主线程。std/tokio 不暴露 CREATE_SUSPENDED 进程的主
+        // 线程句柄；进程挂起时除主线程外不存在任何线程，按属主 PID 枚举
+        // 线程即唯一命中。恢复失败同样返回错误，由执行器清理挂起进程。
+        let Some(process_id) = child.id() else {
+            return Err("Unrestricted host shell child has no process id".to_string());
+        };
+        resume_suspended_child(process_id)
     }
 
     fn terminate_child(&self, child: &mut Child) -> Result<(), String> {
@@ -1377,6 +1401,41 @@ fn create_job(relaxed: bool) -> Result<OwnedHandle, String> {
 /// 不依赖按名查找。
 fn create_anonymous_job(relaxed: bool) -> Result<OwnedHandle, String> {
     create_job_object(relaxed, null())
+}
+
+/// 恢复以 CREATE_SUSPENDED 创建的子进程主线程（2026-09-07 审阅 F6）。
+/// std/tokio 不暴露 PROCESS_INFORMATION.hThread；进程挂起时不存在除主
+/// 线程外的任何线程（主线程未运行，无从创建其它线程），按属主 PID
+/// 枚举线程即唯一命中。
+fn resume_suspended_child(process_id: u32) -> Result<(), String> {
+    let snapshot = OwnedHandle::new(
+        unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) },
+        "Failed to snapshot threads for the suspended host shell",
+    )?;
+    let mut entry: THREADENTRY32 = unsafe { zeroed() };
+    entry.dwSize = size_of::<THREADENTRY32>() as u32;
+    let mut found = false;
+    let mut has_entry = unsafe { Thread32First(snapshot.0, &mut entry) } != 0;
+    while has_entry {
+        if entry.th32OwnerProcessID == process_id {
+            found = true;
+            break;
+        }
+        has_entry = unsafe { Thread32Next(snapshot.0, &mut entry) } != 0;
+    }
+    if !found {
+        return Err(format!(
+            "No thread found for the suspended host shell (pid {process_id})"
+        ));
+    }
+    let thread = OwnedHandle::new(
+        unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) },
+        "Failed to open the suspended host shell main thread",
+    )?;
+    if unsafe { ResumeThread(thread.0) } == u32::MAX {
+        return Err(last_error("Failed to resume the host shell main thread"));
+    }
+    Ok(())
 }
 
 fn create_job_object(relaxed: bool, name: *const u16) -> Result<OwnedHandle, String> {

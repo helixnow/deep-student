@@ -72,6 +72,7 @@ import './rag';
 import './memory';
 import './webSearch';
 import './academicSearch';
+import './insightRecall';
 import './multimodalRag';
 
 // 论文下载进度块（同时保留 mcpTool 按 toolName 的委托渲染）

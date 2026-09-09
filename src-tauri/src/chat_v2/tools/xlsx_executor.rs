@@ -11,12 +11,14 @@
 //! ## 设计说明
 //! 读取使用 calamine（高性能只读解析），写入/编辑使用 umya-spreadsheet（round-trip）。
 
+use std::io::Cursor;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::office_fidelity_executor::{EditPreflight, OfficeFidelityExecutor};
 use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
 use super::OFFICE_DOC_PARSE_MAX_BYTES;
@@ -170,6 +172,10 @@ impl XlsxToolExecutor {
     }
 
     /// 编辑指定单元格并保存为新文件
+    ///
+    /// ★ G06-P0：入口强制 preflight（复用 office_fidelity_inspect 的只读清点），
+    /// critical 特征（宏/数字签名/外部链接）拒绝编辑；交付回归
+    /// `deliver_office_bytes` 统一通道（与 xlsx_create / xlsx_replace_text 一致）。
     async fn execute_edit_cells(
         &self,
         call: &ToolCall,
@@ -190,6 +196,7 @@ impl XlsxToolExecutor {
             .get("file_name")
             .and_then(|v| v.as_str())
             .unwrap_or("edited.xlsx");
+        let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
 
         // 解析编辑操作
         let mut edits: Vec<(String, String, String)> = Vec::new();
@@ -205,14 +212,25 @@ impl XlsxToolExecutor {
 
         let bytes = self.load_file_bytes(ctx, resource_id)?;
 
+        // ★ G06-P0：强制 preflight —— 消费 office_fidelity_inspect 的 completionGate。
+        // 含 critical 特征的源文件在此被拒绝，不会产生任何静默丢失特征的产物。
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes)?;
+        enforce_edit_preflight(&preflight)?;
+
         // 🔧 2026-02-16: spawn_blocking 防止同步解析阻塞 tokio 线程
-        let (new_bytes, edit_count) = tokio::task::spawn_blocking(move || {
-            let parser = DocumentParser::new();
-            parser.edit_xlsx_cells(&bytes, &edits)
-        })
+        // ★ G06-P0：编辑前快照目标单元格中的公式（umya set_value 会静默覆盖公式）
+        let (new_bytes, edit_count, overwritten_formulas) = tokio::task::spawn_blocking(
+            move || -> Result<(Vec<u8>, usize, Vec<String>), String> {
+                let overwritten = collect_overwritten_formula_cells(&bytes, &edits);
+                let parser = DocumentParser::new();
+                let (new_bytes, edit_count) = parser
+                    .edit_xlsx_cells(&bytes, &edits)
+                    .map_err(|e| format!("XLSX 编辑失败: {}", e))?;
+                Ok((new_bytes, edit_count, overwritten))
+            },
+        )
         .await
-        .map_err(|e| format!("XLSX 解析任务异常: {}", e))?
-        .map_err(|e| format!("XLSX 编辑失败: {}", e))?;
+        .map_err(|e| format!("XLSX 解析任务异常: {}", e))??;
 
         if edit_count == 0 {
             return Ok(json!({
@@ -223,40 +241,31 @@ impl XlsxToolExecutor {
             }));
         }
 
-        // 保存到 VFS
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
-
-        let blob = VfsBlobRepo::store_blob(
-            vfs_db,
+        // ★ G06-P0：回归统一交付通道（VFS / workspace、object_handle、
+        // fidelity_manifest、derived_from 溯源全部由 deliver_office_bytes 负责）
+        let mut output = deliver_office_bytes(
+            ctx,
+            &call.arguments,
             &new_bytes,
-            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-            Some("xlsx"),
-        )
-        .map_err(|e| format!("VFS Blob 存储失败: {}", e))?;
-
-        let vfs_file = VfsFileRepo::create_file_in_folder(
-            vfs_db,
-            &blob.hash,
+            "xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             file_name,
-            new_bytes.len() as i64,
-            "document",
-            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-            Some(&blob.hash),
-            None,
-            None,
-        )
-        .map_err(|e| format!("VFS 文件创建失败: {}", e))?;
-
-        Ok(json!({
-            "success": true,
-            "source_resource_id": resource_id,
-            "new_file_id": vfs_file.id,
-            "file_name": file_name,
-            "file_size": new_bytes.len(),
-            "edits_made": edit_count,
-            "message": format!("已编辑 {} 个单元格，保存为「{}」", edit_count, file_name),
-        }))
+            folder_id,
+            OfficeOperation::EditCells,
+            Some(resource_id),
+        )?;
+        output["edits_made"] = json!(edit_count);
+        if !overwritten_formulas.is_empty() {
+            output["overwritten_formula_cells"] = json!(overwritten_formulas);
+        }
+        if let Some(warning) = build_fidelity_warning(&preflight, &overwritten_formulas) {
+            output["fidelity_warning"] = warning;
+        }
+        output["message"] = json!(format!(
+            "已编辑 {} 个单元格，保存为「{}」",
+            edit_count, file_name
+        ));
+        Ok(output)
     }
 
     /// 在 XLSX 中执行查找替换，保存为新文件
@@ -439,6 +448,74 @@ impl Default for XlsxToolExecutor {
     }
 }
 
+// ============================================================================
+// G06-P0：edit_cells 强制 preflight 辅助函数
+// ============================================================================
+
+/// xlsx 的门禁措辞（G06-P1 骨架化后保持不变——umya round-trip 下 high 特征
+/// 多数保留但有降级风险，故 high_features_dropped=false）。
+const XLSX_EDIT_GATE_WORDING: super::office_fidelity_executor::EditGateWording =
+    super::office_fidelity_executor::EditGateWording {
+        write_path: "umya-spreadsheet round-trip 编辑",
+        office_apps: "Excel/WPS",
+        high_features_dropped: false,
+    };
+
+/// critical 特征门禁：源文件含 macros / digital_signatures / external_links /
+/// 加密容器等 critical 特征时拒绝 round-trip 编辑（umya-spreadsheet 会静默
+/// 丢失这些特征）。错误为结构化 JSON（含特征清单与副本模式提示）。
+/// ★ G06-P1：逻辑提取为格式无关骨架（office_fidelity_executor::enforce_edit_preflight），
+/// 本包装保持签名与输出不变。
+fn enforce_edit_preflight(preflight: &EditPreflight) -> Result<(), String> {
+    super::office_fidelity_executor::enforce_edit_preflight(preflight, &XLSX_EDIT_GATE_WORDING)
+}
+
+/// 收集编辑目标中原为公式的单元格地址（`Sheet!Cell` 格式）。
+/// umya 的 `set_value`/`set_value_number` 会静默覆盖公式，必须在结果中显式列出。
+/// 读取失败时返回空表——真正的解析错误由后续 `edit_xlsx_cells` 统一报告。
+fn collect_overwritten_formula_cells(
+    bytes: &[u8],
+    edits: &[(String, String, String)],
+) -> Vec<String> {
+    let Ok(book) = umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(bytes), true) else {
+        return Vec::new();
+    };
+    let mut overwritten: Vec<String> = Vec::new();
+    for (sheet_name, cell_ref, _) in edits {
+        let Some(ws) = book.get_sheet_by_name(sheet_name) else {
+            continue;
+        };
+        let Some(cell) = ws.get_cell(cell_ref.as_str()) else {
+            continue;
+        };
+        if cell.is_formula() {
+            let address = format!("{}!{}", sheet_name, cell_ref);
+            if !overwritten.contains(&address) {
+                overwritten.push(address);
+            }
+        }
+    }
+    overwritten
+}
+
+/// 构建交付结果中的 fidelity warning。
+/// 触发条件：源文件含 high 风险特征（charts/pivot_tables/defined_names/
+/// data_validation/formulas 等），或本次编辑覆盖了公式单元格。
+/// 普通文件（无 high 特征、未覆盖公式）返回 None，结果 JSON 不出现该字段。
+/// ★ G06-P1：逻辑提取为格式无关骨架
+/// （office_fidelity_executor::build_edit_fidelity_warning），
+/// xlsx 专属明细 overwritten_formula_cells 经 extra_fields 透传。
+fn build_fidelity_warning(
+    preflight: &EditPreflight,
+    overwritten_formulas: &[String],
+) -> Option<Value> {
+    super::office_fidelity_executor::build_edit_fidelity_warning(
+        preflight,
+        &XLSX_EDIT_GATE_WORDING,
+        &[("overwritten_formula_cells", overwritten_formulas.to_vec())],
+    )
+}
+
 #[async_trait]
 impl ToolExecutor for XlsxToolExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
@@ -563,6 +640,53 @@ impl ToolExecutor for XlsxToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    /// 含一个公式单元格（Sheet1!B1 = SUM(A1:A2)）的真实 xlsx
+    fn build_formula_xlsx() -> Vec<u8> {
+        let mut book = umya_spreadsheet::new_file();
+        {
+            let sheet = book.get_sheet_by_name_mut("Sheet1").unwrap();
+            sheet.get_cell_mut("A1").set_value_number(1.0);
+            sheet.get_cell_mut("A2").set_value_number(2.0);
+            sheet.get_cell_mut("B1").set_formula("SUM(A1:A2)");
+        }
+        let mut output = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut output).unwrap();
+        output.into_inner()
+    }
+
+    /// 纯值普通 xlsx
+    fn build_plain_xlsx() -> Vec<u8> {
+        let mut book = umya_spreadsheet::new_file();
+        {
+            let sheet = book.get_sheet_by_name_mut("Sheet1").unwrap();
+            sheet.get_cell_mut("A1").set_value("hello");
+        }
+        let mut output = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut output).unwrap();
+        output.into_inner()
+    }
+
+    /// 含宏的包（preflight 只看包结构；critical 拒绝发生在 umya 解析之前，
+    /// 无需构造 umya 可读的真实 xlsm）
+    fn build_macro_xlsx() -> Vec<u8> {
+        let mut output = Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut output);
+            let options = zip::write::FileOptions::default();
+            for (name, bytes) in [
+                ("[Content_Types].xml", &b"<Types/>"[..]),
+                ("xl/workbook.xml", &b"<workbook/>"[..]),
+                ("xl/vbaProject.bin", &b"macro payload"[..]),
+            ] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(bytes).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        output.into_inner()
+    }
 
     #[test]
     fn test_can_handle() {
@@ -607,5 +731,88 @@ mod tests {
             executor.sensitivity_level("builtin-xlsx_replace_text"),
             ToolSensitivity::Medium
         );
+    }
+
+    // ========================================================================
+    // G06-P0：强制 preflight + 公式覆盖披露
+    // ========================================================================
+
+    #[test]
+    fn g06_edit_cells_preflight_blocks_macro_workbook() {
+        let bytes = build_macro_xlsx();
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert!(preflight.has_critical());
+        let err = enforce_edit_preflight(&preflight).unwrap_err();
+        assert!(err.contains("OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES"));
+        assert!(err.contains("macros"));
+        assert!(err.contains("副本"));
+    }
+
+    #[test]
+    fn g06_edit_cells_formula_workbook_allows_edit_with_warning() {
+        let bytes = build_formula_xlsx();
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        // 公式是 high 而非 critical：门禁放行
+        assert!(!preflight.has_critical());
+        assert!(preflight.high_features.iter().any(|f| f == "formulas"));
+        enforce_edit_preflight(&preflight).unwrap();
+        // 编辑非公式单元格：无公式被覆盖
+        let edits = vec![("Sheet1".to_string(), "C1".to_string(), "42".to_string())];
+        let overwritten = collect_overwritten_formula_cells(&bytes, &edits);
+        assert!(overwritten.is_empty());
+        // 但交付结果必须附 fidelity warning（源文件含 formulas 高风险特征）
+        let warning = build_fidelity_warning(&preflight, &overwritten)
+            .expect("formula workbook must carry fidelity warning");
+        assert_eq!(
+            warning["preserved_at_risk_features"],
+            json!(["formulas"])
+        );
+        assert_eq!(warning["post_edit_comparison"], "not_performed");
+    }
+
+    #[test]
+    fn g06_edit_cells_non_formula_edit_preserves_other_formulas() {
+        let bytes = build_formula_xlsx();
+        let parser = DocumentParser::new();
+        let edits = vec![("Sheet1".to_string(), "C1".to_string(), "42".to_string())];
+        let (new_bytes, count) = parser.edit_xlsx_cells(&bytes, &edits).unwrap();
+        assert_eq!(count, 1);
+        // 未被编辑的公式单元格在产物中仍然存活
+        let book =
+            umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(&new_bytes), true).unwrap();
+        let ws = book.get_sheet_by_name("Sheet1").unwrap();
+        assert!(ws.get_cell("B1").unwrap().is_formula());
+        assert_eq!(ws.get_cell("C1").unwrap().get_value(), "42");
+    }
+
+    #[test]
+    fn g06_edit_cells_overwritten_formula_cells_are_listed() {
+        let bytes = build_formula_xlsx();
+        let edits = vec![
+            ("Sheet1".to_string(), "B1".to_string(), "99".to_string()), // 公式单元格
+            ("Sheet1".to_string(), "A1".to_string(), "5".to_string()),  // 普通值
+            ("Sheet1".to_string(), "Z9".to_string(), "x".to_string()),  // 空单元格
+        ];
+        let overwritten = collect_overwritten_formula_cells(&bytes, &edits);
+        assert_eq!(overwritten, vec!["Sheet1!B1".to_string()]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        let warning = build_fidelity_warning(&preflight, &overwritten).unwrap();
+        assert_eq!(
+            warning["overwritten_formula_cells"],
+            json!(["Sheet1!B1"])
+        );
+    }
+
+    #[test]
+    fn g06_edit_cells_plain_workbook_has_no_warning() {
+        let bytes = build_plain_xlsx();
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert!(!preflight.has_critical());
+        assert!(preflight.high_features.is_empty());
+        enforce_edit_preflight(&preflight).unwrap();
+        let edits = vec![("Sheet1".to_string(), "A1".to_string(), "world".to_string())];
+        let overwritten = collect_overwritten_formula_cells(&bytes, &edits);
+        assert!(overwritten.is_empty());
+        assert!(build_fidelity_warning(&preflight, &overwritten).is_none());
     }
 }

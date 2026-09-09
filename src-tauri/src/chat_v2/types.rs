@@ -79,6 +79,8 @@ pub mod block_types {
     pub const GRAPH: &str = "graph";
     pub const WEB_SEARCH: &str = "web_search";
     pub const MULTIMODAL_RAG: &str = "multimodal_rag";
+    /// 灵感召回块（Insight Recall v2，披露级内容随升级就地更新）
+    pub const INSIGHT_RECALL: &str = "insight_recall";
 
     pub const ACADEMIC_SEARCH: &str = "academic_search";
     pub const MCP_TOOL: &str = "mcp_tool";

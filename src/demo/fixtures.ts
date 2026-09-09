@@ -759,6 +759,76 @@ const RESEARCH_REPLY: DemoBlocks = [
 ];
 
 // ============================================================================
+// 会话④：周度学习看板（P1 产物面板 + P3 产物模板）
+//
+// generative_ui 块流式输出 intent JSON，终态经 toolOutput 落成权威 intent——
+// 播完后产物进会话产物索引（artifactRegistry），右侧浮动「产物面板」入口
+// 可重开/刷新；切走再切回经 playedHistory 快照（含 toolInput/toolOutput）
+// 直接展示完成态，演示"产物一等公民"闭环。
+// ============================================================================
+
+const DEMO_WEEKLY_REPORT_INTENT = {
+  version: '1.1',
+  layout: { mode: 'grid', columns: 2 },
+  meta: { title: '本周学习看板', description: '9 月第 1 周 · 掌握度与复习进度总览' },
+  blocks: [
+    {
+      type: 'stat-card',
+      props: { title: '整体掌握度', value: '78%', trend: 'up', trendLabel: '较上周 +6%' },
+    },
+    {
+      type: 'stat-card',
+      props: { title: '待复习卡片', value: 23, subtitle: '今日到期 8 张', trend: 'neutral' },
+    },
+    {
+      type: 'progress',
+      span: 2,
+      props: { title: '高数错题复习进度', current: 12, total: 15, label: '12 / 15 题' },
+    },
+    {
+      type: 'list',
+      span: 2,
+      props: {
+        title: '本周薄弱点',
+        items: [
+          { label: '泰勒展开余项估计', description: '错题 3 道集中在拉格朗日余项符号判断', badge: '高数' },
+          { label: '数据并行中的梯度同步', description: 'AllReduce 与 Parameter Server 的适用边界', badge: 'MLSys' },
+          { label: '间隔重复调度参数', description: 'FSRS 与 SM-2 的差异还没完全吃透', badge: '方法论' },
+        ],
+      },
+    },
+  ],
+};
+
+const WEEKLY_REPORT_REPLY: DemoBlocks = [
+  {
+    type: 'thinking',
+    status: 'success',
+    streaming: true,
+    content: `用户要本周的学习看板。我从复习统计里取几个关键数：整体掌握度 78%（较上周 +6%）、待复习卡片 23 张（今日到期 8 张）、高数错题 15 题已复习 12 题。薄弱点集中在泰勒余项、梯度同步、FSRS 参数三块。用 grid 双栏布局：两个 stat-card 打头，progress 与 list 通栏跟上。`,
+  },
+  {
+    type: 'generative_ui',
+    status: 'success',
+    streaming: true,
+    delay: 200,
+    toolName: 'builtin-render_generative_ui',
+    toolInput: { intent: DEMO_WEEKLY_REPORT_INTENT },
+    content: JSON.stringify(DEMO_WEEKLY_REPORT_INTENT, null, 2),
+    toolOutput: { intent: DEMO_WEEKLY_REPORT_INTENT, isStreaming: false },
+  },
+  {
+    type: 'content',
+    status: 'success',
+    streaming: true,
+    delay: 300,
+    content: `看板已生成。这类结构化产物会留在本会话的**产物面板**里——点右侧的「产物面板」入口可以随时重开，切去别的会话再回来也还在；数据变化后还能以当前快照刷新一版。
+
+想换个布局（比如改成单列），或者把某块展开成详细分析，直接说。`,
+  },
+];
+
+// ============================================================================
 // 导出
 // ============================================================================
 
@@ -800,6 +870,14 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 47,
     autoPrompt: '帮我查一下间隔重复（spaced repetition）领域最近有什么值得关注的进展',
     reply: RESEARCH_REPLY,
+  }),
+  makeFixture({
+    id: 'demo-weekly-report',
+    title: '周度学习看板',
+    description: 'generative-ui 结构化产物，产物面板随时重开',
+    minutesAgo: 1,
+    autoPrompt: '帮我生成本周的学习看板，看看掌握度和复习进度',
+    reply: WEEKLY_REPORT_REPLY,
   }),
 ];
 

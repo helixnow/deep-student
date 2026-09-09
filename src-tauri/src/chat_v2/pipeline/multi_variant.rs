@@ -1,5 +1,5 @@
 use super::*;
-use crate::llm_manager::ApiConfig;
+use crate::llm_manager::{ApiConfig, NoopStreamSink, StreamEventSink, WindowStreamSink};
 
 fn session_skill_state_from_snapshot(
     snapshot: &crate::chat_v2::types::SkillStateSnapshot,
@@ -1004,6 +1004,15 @@ impl ChatV2Pipeline {
 
         // 调用 LLM
         // 🔧 P1修复：添加 Pipeline 层超时保护
+        // G01-b：流式事件出口按 runtime 选择——窗口 runtime 经
+        // WindowStreamSink 透传（行为不变）；无窗口 runtime 用 NoopStreamSink
+        // 丢弃事件，MCP 前端桥工具随之缺席。
+        let window_sink = ctx.emitter().try_window().map(WindowStreamSink::new);
+        let noop_sink = NoopStreamSink;
+        let stream_sink: &dyn StreamEventSink = match &window_sink {
+            Some(sink) => sink,
+            None => &noop_sink,
+        };
         let llm_future = self.llm_manager.call_unified_model_2_stream(
             &llm_context,
             &messages,
@@ -1011,7 +1020,7 @@ impl ChatV2Pipeline {
             true,
             enable_thinking,
             Some("chat_v2_variant"),
-            ctx.emitter().window(),
+            stream_sink,
             &stream_event,
             Some(ctx.message_id()),
             None,
@@ -1455,6 +1464,15 @@ impl ChatV2Pipeline {
             );
 
             // 🔧 P1修复：添加 Pipeline 层超时保护
+            // G01-b：流式事件出口按 runtime 选择——窗口 runtime 经
+            // WindowStreamSink 透传（行为不变）；无窗口 runtime 用
+            // NoopStreamSink 丢弃事件，MCP 前端桥工具随之缺席。
+            let window_sink = ctx.emitter().try_window().map(WindowStreamSink::new);
+            let noop_sink = NoopStreamSink;
+            let stream_sink: &dyn StreamEventSink = match &window_sink {
+                Some(sink) => sink,
+                None => &noop_sink,
+            };
             let llm_future = self.llm_manager.call_unified_model_2_stream(
                 &llm_context,
                 &messages,
@@ -1462,7 +1480,7 @@ impl ChatV2Pipeline {
                 true,
                 enable_thinking,
                 Some("chat_v2_variant"),
-                ctx.emitter().window(),
+                stream_sink,
                 &stream_event,
                 Some(ctx.message_id()),
                 None,
@@ -1984,6 +2002,7 @@ impl ChatV2Pipeline {
             .with_user_profile(user_profile)
             .with_active_todos(active_todos)
             .with_active_goal(active_goal)
+            .with_renderer_capabilities(self.load_renderer_capabilities())
             .build_split()
     }
 

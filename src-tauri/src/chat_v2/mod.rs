@@ -18,11 +18,20 @@ pub mod agents_md; // AGENTS.md 常驻指令发现与注入
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
 pub mod automations; // 🆕 周期自动化定义存储与调度器
+pub mod budget; // 🆕 G08：全树预算管控（BudgetLedger 树根账本 + worker 派生绑定 + hooks 预算门）
+pub mod completion_dispatcher; // 🆕 G03-a：子代理完成投递派发器（completion_outbox 账本的后端兜底）
+#[path = "workspace/completion_outbox.rs"]
+pub mod completion_outbox; // 🆕 G03-a：子代理完成投递持久账本（chat_v2 主库，迁移 V20260908）
+pub mod connector_ledger; // 🆕 Connector 操作持久账本（G04-P0：状态机 + 系统幂等键 + outcome_unknown）
+pub mod connector_providers; // 🆕 Connector provider 抽象（G04-P1：ConnectorProvider trait + generic webhook 实现）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
+pub mod environment_manifest; // 🆕 G08：每任务环境清单（OS/runtime/工具表/模型/技能/网络/工作目录身份）+ 漂移检测
 pub mod events;
+pub mod finalizer; // 🆕 G07-a：candidate_complete 与任务验收分离（TaskFinalizer 骨架）
 pub mod goal; // 🆕 Goal 模式（P0）：跨轮次会话目标（续跑运行时 + 提示词注入）
+pub mod grants; // 🆕 G02-P1：DelegatedGrant 委派授权（worker 白名单的授权载体 + 撤权 epoch 实时生效）
 pub mod handlers;
 pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
 pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）
@@ -37,14 +46,18 @@ pub mod runtime_roots;
 pub mod session_export; // 🆕 WI-12: session JSONL 导出（规范见 docs/dev/optimization0824/WI-12-session-jsonl-spec.md）
 pub mod shell_command_policy;
 pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
+pub mod skill_replay; // 🆕 技能经验回放器（G09-P1：dry-run 对账 + 人工晋升，无自动行为）
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
 pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
+pub mod skill_usage; // 🆕 技能使用后端账目 + 经验候选库（G09-P0：只记录，不回放）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod task_audit; // Deterministic task audit manifests and export redaction
+pub mod task_command; // 🆕 G10-P1：远程渠道入站统一 TaskCommand（iLink 接入同一 ChatV2 任务运行系统）
 pub mod task_objects; // Unified file/message/event/record identity and delivery receipts
 pub mod tool_approval_policy;
+pub mod tool_descriptors; // 🆕 G01-c：ToolDescriptor 后端权威注册表（内建工具静态元数据 SSOT）
 pub mod tool_policy;
 pub mod tools;
 pub mod types;

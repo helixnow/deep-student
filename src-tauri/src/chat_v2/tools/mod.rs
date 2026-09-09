@@ -47,6 +47,7 @@ pub mod automation_executor; // 🆕 周期自动化提案/列表/启停执行�
 pub mod browser_executor; // 🆕 内置浏览器 Agent 工具（BrowserService + 注入桥；非 Playwright）
 pub mod builtin_resource_executor; // 🆕 内置学习资源工具执行器
 pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP 工具化）
+pub mod insight_recall_executor; // 🆕 灵感召回工具执行器（Insight Recall v2 阶段二）
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
@@ -88,6 +89,8 @@ pub mod office_fidelity_executor; // Read-only OOXML/PDF fidelity inventory and 
 pub mod office_output; // Shared VFS/workspace delivery for generated OOXML files
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
+pub mod ptc_executor; // 🆕 PTC 程序化工具组合执行器（builtin-ptc_run，G05-P1）
+pub mod ptc_runtime; // 🆕 PTC Starlark 脚本运行时（白名单 + 预算 + trace）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
 pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
@@ -153,6 +156,7 @@ pub use automation_executor::AutomationExecutor; // 🆕 周期自动化执行�
 pub use browser_executor::BrowserToolExecutor; // 🆕 内置浏览器 Agent 工具执行器
 pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习资源工具执行器
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
+pub use insight_recall_executor::InsightRecallExecutor; // 🆕 灵感召回工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
 pub use code_navigation_executor::CodeNavigationExecutor;
@@ -186,6 +190,8 @@ pub use memory_executor::MemoryToolExecutor;
 pub use office_fidelity_executor::OfficeFidelityExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
+pub use ptc_executor::PtcExecutor; // 🆕 PTC 程序化工具组合执行器（G05-P1）
+pub use ptc_runtime::{is_ptc_allowed_tool, PTC_ALLOWED_TOOLS}; // PTC 只读工具面白名单
 pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
 pub use session_executor::SessionToolExecutor; // 🆕 会话管理工具执行器
 pub use settings_models_executor::SettingsModelsToolExecutor;

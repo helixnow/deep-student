@@ -1003,7 +1003,7 @@ fn citation_identity(source: &SourceInfo, group: &str) -> String {
 ///   工具调用对同一来源恒定复用同一编号（`[类型-N]` 契约，前端直接信任不重排）
 /// - snippet 应用单条与总量字符预算（P1-5），避免低价值长文本挤占上下文
 /// - 平铺 blob_hash/note_id/folder_path 等字段，兼容前端 sourceAdapter
-fn build_numbered_sources(
+pub(crate) fn build_numbered_sources(
     sources: &[SourceInfo],
     ledger: &mut crate::chat_v2::context::CitationLedger,
 ) -> Vec<Value> {
@@ -1278,21 +1278,29 @@ fn planned_search_scope(tool_name: &str) -> PlannedSearchScope {
     }
 }
 
-fn citation_prefix_for_source_type(source_type: &str) -> &'static str {
+pub(crate) fn citation_prefix_for_source_type(source_type: &str) -> &'static str {
     if source_type.contains("multimodal") {
         "图片"
     } else if source_type == "memory" {
         "记忆"
+    } else if source_type == "insight" {
+        "灵感"
+    } else if source_type == "academic_search" || source_type == "web_search" {
+        "搜索"
     } else {
         "知识库"
     }
 }
 
-fn citation_group_for_source_type(source_type: &str) -> &'static str {
+pub(crate) fn citation_group_for_source_type(source_type: &str) -> &'static str {
     if source_type.contains("multimodal") {
         "multimodal"
     } else if source_type == "memory" {
         "memory"
+    } else if source_type == "insight" {
+        "insight"
+    } else if source_type == "academic_search" || source_type == "web_search" {
+        "web"
     } else {
         "rag"
     }

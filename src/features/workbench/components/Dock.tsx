@@ -22,6 +22,7 @@ import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
 import { SquaresFour } from '@phosphor-icons/react';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { DockItem } from './DockItem';
 import { DockContextMenu } from './DockContextMenu';
 import { useDockPinned } from './DockPinnedStore';
@@ -364,6 +365,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           if (event.target === event.currentTarget) setRevealing(false);
         }}
       >
+        <WallpaperReplica hostRef={dockRef} />
         {pinned.map(renderItem)}
         {pinned.length > 0 && runningExtra.length > 0 && (
           <div

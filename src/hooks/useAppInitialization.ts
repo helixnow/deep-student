@@ -11,6 +11,11 @@ import {
   applyFontSizeToDocument,
   clampFontSize,
 } from '../config/fontConfig';
+import {
+  CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY,
+  applyThreadWidthRatioToDocument,
+  normalizeThreadWidthRatio,
+} from '../config/threadWidthConfig';
 import { UI_ZOOM_STORAGE_KEY, clampZoom } from '../features/settings/components/constants';
 import { t } from '../utils/i18n';
 import { showGlobalNotification } from '../components/UnifiedNotification';
@@ -33,6 +38,17 @@ export const initializeFontSetting = async () => {
     applyFontSizeToDocument(fontSizeValue);
   } catch {
     applyFontSizeToDocument(DEFAULT_UI_FONT_SIZE);
+  }
+};
+
+// 初始化会话宽度比例（覆写数字变量 --chat-thread-ratio；读取失败保持 :root 默认 80）
+const initializeThreadWidthRatio = async () => {
+  try {
+    const raw = await getSetting(CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY);
+    if (raw == null || raw === '') return;
+    applyThreadWidthRatioToDocument(normalizeThreadWidthRatio(raw));
+  } catch {
+    // 首次使用或读取失败：保持 :root 默认值
   }
 };
 
@@ -123,6 +139,9 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
         // 初始化 UI 缩放与思维链自动折叠（与字体一样从 save_setting 存储读回）
         initializeZoomSetting().catch(console.warn);
         initializeThinkingAutoCollapseSetting().catch(console.warn);
+
+        // 初始化会话宽度比例（--chat-thread-ratio，宽屏按占比延展）
+        initializeThreadWidthRatio().catch(console.warn);
 
         // 系统通知策略：对齐 localStorage 快取与 settings 表
         // （Rust 侧自动化/驻留通知读 settings 表，旧版本只写过 localStorage）

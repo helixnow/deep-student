@@ -911,14 +911,102 @@ pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
 )
 .with_expected_columns(&[("notes", "props")]);
 
-/// V20260909: 题库 AI 出题后台任务表。
+/// V20260907: Insight Recall v2 阶段一——灵感卡核心表系。
+///
+/// insights / insight_revisions / insight_evidence / insight_relations /
+/// insight_events 五表，含同步四列与 __change_log 触发器。
+/// 设计规格：docs/dev/insight-recall/README.md
+pub const V20260907_INSIGHT_CARDS: MigrationDef = MigrationDef::new(
+    20260907,
+    "insight_cards",
+    include_str!("../../../migrations/vfs/V20260907__insight_cards.sql"),
+)
+.with_expected_tables(&[
+    "insights",
+    "insight_revisions",
+    "insight_evidence",
+    "insight_relations",
+    "insight_events",
+])
+.with_expected_columns(&[
+    ("insights", "ownership"),
+    ("insights", "verification_state"),
+    ("insight_revisions", "stuck_point"),
+    ("insight_revisions", "turning_point"),
+    ("insight_revisions", "validity_conditions"),
+    ("insight_evidence", "quote_snapshot"),
+    ("insight_relations", "relation_type"),
+    ("insight_events", "event_type"),
+    ("insight_events", "help_level"),
+])
+.idempotent();
+
+/// V20260908: Insight Recall v2 阶段二——insight_fts 全文检索。
+///
+/// contentless trigram FTS5（对齐 notes_fts / V20260724 结论），
+/// 索引 insights.title + 当前修订五字段；触发器维护 + 回填。
+pub const V20260908_INSIGHT_FTS: MigrationDef = MigrationDef::new(
+    20260908,
+    "insight_fts",
+    include_str!("../../../migrations/vfs/V20260908__insight_fts.sql"),
+)
+.with_expected_tables(&["insight_fts"])
+.idempotent();
+
+/// V20260909: mastery_events.source CHECK 扩展加入 'insight' 源。
+///
+/// rename+recreate 重建（SQLite 不支持 ALTER CHECK），完整保留
+/// V20260719 signal 列与 V20260720 同步四列 + change_log 触发器。
+pub const V20260909_MASTERY_EVENTS_INSIGHT_SOURCE: MigrationDef = MigrationDef::new(
+    20260909,
+    "mastery_events_insight_source",
+    include_str!("../../../migrations/vfs/V20260909__mastery_events_insight_source.sql"),
+)
+.with_expected_tables(&["mastery_events"])
+.with_expected_columns(&[
+    ("mastery_events", "signal"),
+    ("mastery_events", "device_id"),
+    ("mastery_events", "local_version"),
+    ("mastery_events", "deleted_at"),
+])
+.idempotent();
+
+/// V20260910: Insight Recall v2 阶段三——insight_jobs 持久任务队列。
+///
+/// 仿 automation_runs：lease + dedupe_key + next_attempt_at + 启动恢复。
+pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
+    20260910,
+    "insight_jobs",
+    include_str!("../../../migrations/vfs/V20260910__insight_jobs.sql"),
+)
+.with_expected_tables(&[
+    "insight_jobs",
+])
+.with_expected_columns(&[
+    ("insight_jobs", "dedupe_key"),
+    ("insight_jobs", "lease_owner"),
+    ("insight_jobs", "next_attempt_at"),
+    ("insight_jobs", "payload_json"),
+])
+.idempotent();
+
+/// V20260911: insight_fts UPDATE 触发器收窄为 UPDATE OF（计数器累加不重建索引）。
+pub const V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING: MigrationDef = MigrationDef::new(
+    20260911,
+    "insight_fts_update_trigger_narrowing",
+    include_str!("../../../migrations/vfs/V20260911__insight_fts_update_trigger_narrowing.sql"),
+)
+.with_expected_tables(&["insight_fts"])
+.idempotent();
+
+/// V20260912: 题库 AI 出题后台任务表。
 ///
 /// 后台化改造：出题任务状态与结果落库，关闭面板 / 切页 / 重启后可恢复。
 /// 新建表 + 索引，不触碰既有数据（无危险 SQL）。
-pub const V20260909_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
-    20260909,
+pub const V20260912_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
+    20260912,
     "qbank_generation_tasks",
-    include_str!("../../../migrations/vfs/V20260909__qbank_generation_tasks.sql"),
+    include_str!("../../../migrations/vfs/V20260912__qbank_generation_tasks.sql"),
 )
 .with_expected_tables(&["qbank_generation_tasks"])
 .with_expected_indexes(&[
@@ -927,7 +1015,6 @@ pub const V20260909_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
-/// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -986,7 +1073,12 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260807_QUESTION_STRUCTURED_DATA,
     V20260808_FILE_DELETION_INTENT_JOURNAL,
     V20260824_NOTE_PROPS,
-    V20260909_QBANK_GENERATION_TASKS,
+    V20260907_INSIGHT_CARDS,
+    V20260908_INSIGHT_FTS,
+    V20260909_MASTERY_EVENTS_INSIGHT_SOURCE,
+    V20260910_INSIGHT_JOBS,
+    V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING,
+    V20260912_QBANK_GENERATION_TASKS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1139,19 +1231,21 @@ mod tests {
 
     #[test]
     fn test_qbank_generation_tasks_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260909);
+        assert_eq!(VFS_SCHEMA_VERSION, 20260912);
         assert_eq!(
-            V20260909_QBANK_GENERATION_TASKS.expected_tables,
+            V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
             Some("qbank_generation_tasks")
         );
-        // note_props 仍注册在链上（历史迁移不可删除）
-        assert!(VFS_MIGRATIONS
-            .iter()
-            .any(|migration| migration.name == "note_props"));
+        assert!(V20260907_INSIGHT_CARDS
+            .expected_tables
+            .contains(&"insights"));
+        assert!(V20260908_INSIGHT_FTS
+            .expected_tables
+            .contains(&"insight_fts"));
     }
 
     #[test]

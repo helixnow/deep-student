@@ -35,6 +35,20 @@ import {
 
 const LOG = '[demo-ipc]';
 
+/** P0 选区快照等运行时创建的资源（vfs_create_or_reuse mock 的内存表） */
+interface DemoRuntimeResource {
+  id: string;
+  hash: string;
+  type: string;
+  sourceId?: string;
+  data: string;
+  metadata?: Record<string, unknown>;
+  refCount: number;
+  createdAt: number;
+}
+const demoRuntimeResources = new Map<string, DemoRuntimeResource>();
+let demoRuntimeResourceSeq = 1;
+
 /**
  * 每个会话的专属剧本只首播一次；之后（含自由输入）走 DEFAULT_FOLLOW_UP 兜底。
  * 播放完成的历史由 playedHistory 快照承载——重进会话直接恢复完成态，
@@ -187,12 +201,48 @@ export function installDemoIpcMocks(): void {
         // 否则引用会被当作"已删除资源"从 store 清掉
         case 'vfs_resource_exists': {
           const resourceId = String(args.resourceId ?? '');
-          return getDemoAttachmentResource(resourceId) !== null;
+          return (
+            getDemoAttachmentResource(resourceId) !== null ||
+            demoRuntimeResources.has(resourceId)
+          );
         }
         // 消息缩略图与文件 chip：resources 表 → VfsContextRefData 引用清单
         case 'vfs_get_resource': {
           const resourceId = String(args.resourceId ?? '');
-          return getDemoAttachmentResource(resourceId);
+          return getDemoAttachmentResource(resourceId) ?? demoRuntimeResources.get(resourceId) ?? null;
+        }
+        // P0 选区即上下文：「引用到聊天」经生产 resourceStoreApi.createOrReuse
+        // 落到本命令（demo 下 __TAURI_INTERNALS__ 已装，isTauriRuntime 为真）。
+        // 内存表按 data 简单 hash 去重，vfs_get_resource 回源——selection chip
+        // 的回链预览（读 data.source 路由）才能工作。
+        case 'vfs_create_or_reuse': {
+          const params = (args.params ?? {}) as {
+            type?: string;
+            data?: string;
+            sourceId?: string;
+            metadata?: Record<string, unknown>;
+          };
+          const data = String(params.data ?? '');
+          // djb2：mock 去重够用，无需密码学强度
+          let h = 5381;
+          for (let i = 0; i < data.length; i++) h = ((h << 5) + h + data.charCodeAt(i)) | 0;
+          const hash = `demo_${(h >>> 0).toString(16)}`;
+          const existing = [...demoRuntimeResources.values()].find((r) => r.hash === hash);
+          if (existing) {
+            return { resourceId: existing.id, hash, isNew: false };
+          }
+          const id = `res_demo_rt_${demoRuntimeResourceSeq++}`;
+          demoRuntimeResources.set(id, {
+            id,
+            hash,
+            type: params.type ?? 'retrieval',
+            sourceId: params.sourceId,
+            data,
+            metadata: params.metadata,
+            refCount: 0,
+            createdAt: Date.now(),
+          });
+          return { resourceId: id, hash, isNew: true };
         }
         // 引用解析：图片 → PNG base64；PDF → DocumentParser 解析文本
         case 'vfs_resolve_resource_refs': {

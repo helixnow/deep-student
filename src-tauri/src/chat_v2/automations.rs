@@ -3813,7 +3813,7 @@ fn spawn_claimed_agent_turn_with_guard(
         cancellation_token.cancel();
         return;
     }
-    crate::background_tasks::spawn(async move {
+    let _ = crate::background_tasks::spawn(async move {
         let _guard = guard;
         let _active_run_guard = active_run_guard;
         execute_agent_turn_automation(app_handle, db, claimed, cancellation_token).await;
@@ -4913,7 +4913,7 @@ pub fn run_automation_now_core(
             let run_id = claimed.run_id.clone();
             let db_task = db.clone();
             let app_handle_task = app_handle.clone();
-            crate::background_tasks::spawn(async move {
+            let _ = crate::background_tasks::spawn(async move {
                 let delivery_run_id = claimed.run_id.clone();
                 let joined = tokio::task::spawn_blocking(move || {
                     process_due_automation(

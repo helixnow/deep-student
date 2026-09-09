@@ -26,7 +26,8 @@ use uuid::Uuid;
 
 use crate::chat_v2::runtime_roots::artifact_root;
 use crate::chat_v2::task_objects::{
-    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+    hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, TaskObjectHandle,
+    TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::commands::AppState;
 use crate::feature_flags::FeatureFlagManager;
@@ -1354,27 +1355,36 @@ impl BrowserService {
         let relative_path = format!("browser-downloads/{filename}");
         let controlled_path = download_dir.join(&filename);
 
-        let mut object_handle = TaskObjectHandle::new(
+        let object_handle = TaskObjectHandleBuilder::new(
             format!("browser_download:{id}"),
             TaskObjectKind::File,
             filename.clone(),
-            ObjectProvenance {
-                source: "browser_download".into(),
-                source_uri: Some(url.clone()),
-                server: None,
-                tool: Some("browser_downloads".into()),
-                derived_from: Vec::new(),
-                observed_at: now_rfc3339(),
-            },
-        );
-        object_handle.locator = ManagedLocator::new("artifacts", relative_path.clone()).ok();
-        object_handle.capabilities = ObjectCapabilities {
+            "browser_download",
+        )
+        .source_uri(Some(url.clone()))
+        .tool(Some("browser_downloads"))
+        .derived_edge(
+            DerivedEdge::new(url.clone(), "browser.download").with_params_hash(
+                hash_transform_params(&serde_json::json!({ "url": &url })),
+            ),
+        )
+        .locator(ManagedLocator::new("artifacts", relative_path.clone()).ok())
+        .capabilities(ObjectCapabilities {
             readable: true,
             materializable: true,
             writable: false,
             shareable: false,
             sendable: false,
             deletable: true,
+        })
+        .observed_at(now_rfc3339())
+        .build();
+        let object_handle = match object_handle {
+            Ok(handle) => handle,
+            Err(error) => {
+                warn!("[browser] failed to build download object handle: {error}");
+                return false;
+            }
         };
         let observation = BrowserDownloadObservation {
             id: id.clone(),

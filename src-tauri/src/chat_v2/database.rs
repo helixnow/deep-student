@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260905;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260910;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
@@ -80,6 +80,19 @@ impl ChatV2Database {
             db_path,
             maintenance_mode: std::sync::atomic::AtomicBool::new(false),
         };
+
+        // 🆕 G02-P2 / G08-P2 启动装配（fail-soft，绝不阻塞建库）：
+        // 1. 撤权 epoch 从 revocation_epochs 表恢复（V20260910；表缺失=未迁移
+        //    的库，跳过）——撤权记录跨重启存活，重启不得静默回滚撤权；
+        // 2. 向 budget 模块注册快照写入通道（chat_v2 连接池克隆）与主库
+        //    settings 路径（主库即 `file_manager::get_database_path` 的
+        //    mistakes.db，与本库同目录），随后从 budget_snapshots 恢复仍未
+        //    完成的任务树根账本——防"重启/模型切换/重试重置任务累计预算"。
+        // 注意：本函数在测试中被频繁调用（各测试临时库均无这两张表的行，
+        // 恢复为空操作）；写库路径的测试隔离由 grants/budget 模块内注释约束。
+        super::grants::restore_revocation_epochs_from_db(&db);
+        super::budget::configure_persistence(db.get_pool(), app_data_dir.join("mistakes.db"));
+        super::budget::restore_budget_ledgers_from_db(&db);
 
         info!(
             "[ChatV2::Database] Chat V2 database initialized successfully: {}",

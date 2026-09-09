@@ -110,6 +110,29 @@ pub struct AgentProfile {
     pub skills: Vec<String>,
 }
 
+impl AgentProfile {
+    /// G02-P1：内容锁定哈希（与 `TrustedAutomationProfile::computed_hash`
+    /// 同模式：canonical JSON → SHA-256 hex）。
+    ///
+    /// 安全性：`AgentProfile` 只含 `String`/`Vec`/枚举等确定性序列化字段
+    /// （**无 HashMap**），serde 输出字节流稳定，可安全哈希；`Option` 字段
+    /// 带 `skip_serializing_if`，None 恒序列化为字段缺失，无随机性。
+    pub fn computed_hash(&self) -> Result<String, String> {
+        let bytes = serde_json::to_vec(self)
+            .map_err(|error| format!("Failed to hash agent profile: {error}"))?;
+        Ok(hex::encode(<sha2::Sha256 as sha2::Digest>::digest(bytes)))
+    }
+
+    /// G02-P1：profile → grant 工具范围映射（`allowed_tools` 每个条目恰好
+    /// 映射一个 [`crate::chat_v2::grants::ToolScope`]，匹配语义复用
+    /// `tool_policy::tool_allow_entry_matches`；G01-e 起条目的 Builtin/Shell
+    /// 分类由 ToolDescriptor 注册表 `grants_scope_hint` 驱动，见
+    /// [`crate::chat_v2::grants::ToolScope::from_allow_entry`]）。
+    pub fn grant_tool_scopes(&self) -> Vec<crate::chat_v2::grants::ToolScope> {
+        crate::chat_v2::grants::ToolScope::scopes_from_allowed_tools(&self.allowed_tools)
+    }
+}
+
 /// Exact configuration consumed by the child runtime after profile resolution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -479,6 +502,26 @@ mod tests {
         }
     }
 
+    /// G01-e：内建 profile 声明的每个工具必须是注册表已登记的内建工具，
+    /// 且映射 Builtin 族（profile 白名单只含 builtin-* 本地工具；shell 族
+    /// 收紧为 Shell 语义位后若混入会让 grant 求值与白名单漂移——由本测试
+    /// 与 grants 侧四层断言双重锁定）。
+    #[test]
+    fn built_in_profile_tools_are_registry_builtins() {
+        use crate::chat_v2::tool_descriptors::{grants_scope_hint, GrantsScopeHint};
+
+        for id in [DEFAULT_PROFILE_ID, WORKER_PROFILE_ID, EXPLORER_PROFILE_ID] {
+            let profile = AgentProfileResolver::built_in(id).unwrap();
+            for tool in &profile.allowed_tools {
+                assert_eq!(
+                    grants_scope_hint(tool),
+                    Some(GrantsScopeHint::Builtin),
+                    "profile {id} 的工具 {tool} 必须是注册表已登记的 Builtin 族内建工具"
+                );
+            }
+        }
+    }
+
     #[test]
     fn explorer_extra_tools_are_headless_read_only_subset() {
         let profile = AgentProfileResolver::built_in(EXPLORER_PROFILE_ID).unwrap();
@@ -660,5 +703,24 @@ mod tests {
         assert!(validate_persona_model_config("embedding", &configs)
             .unwrap_err()
             .contains("PERSONA_MODEL_UNSUPPORTED"));
+    }
+
+    #[test]
+    fn computed_hash_is_stable_and_content_locked() {
+        let profile = AgentProfileResolver::built_in(EXPLORER_PROFILE_ID).unwrap();
+        let hash_a = profile.computed_hash().unwrap();
+        let hash_b = profile.computed_hash().unwrap();
+        assert_eq!(hash_a, hash_b, "hash must be deterministic");
+        assert_eq!(hash_a.len(), 64);
+        assert!(hash_a.bytes().all(|b| b.is_ascii_hexdigit()));
+
+        // 内容任何变化（含白名单顺序）必须改变哈希
+        let mut mutated = profile.clone();
+        mutated.allowed_tools.push("builtin-memory_read".into());
+        assert_ne!(mutated.computed_hash().unwrap(), hash_a);
+
+        // 不同 profile 哈希不同
+        let worker = AgentProfileResolver::built_in(WORKER_PROFILE_ID).unwrap();
+        assert_ne!(worker.computed_hash().unwrap(), hash_a);
     }
 }

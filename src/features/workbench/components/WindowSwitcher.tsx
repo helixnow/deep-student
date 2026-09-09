@@ -25,7 +25,7 @@ import { useWorkbenchOverlay } from '../core/shortcuts';
 import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './WindowSwitcher.css';
@@ -230,6 +230,7 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
         aria-activedescendant={selectedId ? `wb-switcher-item-${selectedId}` : undefined}
         onAnimationEnd={handleBarAnimationEnd}
       >
+        <WallpaperReplica hostRef={barRef} enabled={switcherOpen || Boolean(exitSession)} />
         <CustomScrollArea
           className="wb-switcher-scroll"
           fullHeight={false}

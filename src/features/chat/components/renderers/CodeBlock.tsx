@@ -14,6 +14,8 @@ import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
 import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 import { reportFrontendError } from '@/logging/errorReporter';
+import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
+import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
 
 /**
  * OS 模式拖/缩/settle 手势期让路：mermaid 解析/渲染主线程开销大，
@@ -81,6 +83,8 @@ export interface CodeBlockProps {
   className?: string;
   /** 是否正在流式生成 */
   isStreaming?: boolean;
+  /** 用户已启用的可视化能力；未开启时始终以普通源码块显示。 */
+  rendererCapabilities?: RendererCapabilities;
 }
 
 // ============================================================================
@@ -217,13 +221,19 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
 // CodeBlock 主组件
 // ============================================================================
 
-export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStreaming }) => {
+export const CodeBlock: React.FC<CodeBlockProps> = ({
+  children,
+  className,
+  isStreaming,
+  rendererCapabilities = DEFAULT_RENDERER_CAPABILITIES,
+}) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [showRendered, setShowRendered] = useState(false);
   const [htmlPreviewContent, setHtmlPreviewContent] = useState<string | null>(null);
+  const [showRichRenderer, setShowRichRenderer] = useState(false);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -276,6 +286,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       prevCodeRef.current = codeContent;
       setRenderedSvg(null);
       setHtmlPreviewContent(null);
+      setShowRichRenderer(false);
       setShowRendered(false);
       setScale(1);
       setOffset({ x: 0, y: 0 });
@@ -283,6 +294,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       didAutoFitRef.current = false;
     }
   }, [codeContent, htmlPreviewContent, isStreaming, renderedSvg]);
+
+  // 设置关闭后立刻退回源码，避免已卸载能力仍留在消息中继续渲染。
+  useEffect(() => {
+    setShowRichRenderer(false);
+  }, [rendererCapabilities]);
 
   // 切回渲染视图时允许再次自动适配
   useEffect(() => {
@@ -318,6 +334,15 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   const canRenderSvg = langLower === 'svg';
   const canRenderHtml = langLower === 'html' || langLower === 'htm';
   const canRenderXml = langLower === 'xml';
+  const richRendererKind: RichCodeRendererKind | null =
+    rendererCapabilities.charts && (langLower === 'vega-lite' || langLower === 'vega') ? 'vega-lite' :
+    rendererCapabilities.graphviz && langLower === 'dot' ? 'dot' :
+    rendererCapabilities.music && langLower === 'abc' ? 'abc' :
+    rendererCapabilities.timing && langLower === 'wavedrom' ? 'wavedrom' :
+    rendererCapabilities.chemicalFiles && ['mol', 'molfile', 'sdf'].includes(langLower) ? 'molecule-2d' :
+    rendererCapabilities.molecular3d && langLower === 'pdb' ? 'molecule-3d' :
+    rendererCapabilities.geojson && langLower === 'geojson' ? 'geojson' : null;
+  const canRenderRich = richRendererKind !== null;
 
   const handleRunMermaid = async () => {
     if (!canRunMermaid || isStreaming) return;
@@ -721,17 +746,17 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           <span>{copied ? t('codeBlock.copied') : t('codeBlock.copy')}</span>
         </DsButton>
 
-        {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
-          (renderedSvg || htmlPreviewContent) ? (
+        {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml || canRenderRich) && (
+          (renderedSvg || htmlPreviewContent || showRichRenderer) ? (
             <DsButton
               variant="ghost"
               size="sm"
               className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
-              onClick={() => setShowRendered(v => !v)}
-              title={showRendered ? t('codeBlock.viewSource') : t('codeBlock.viewRender')}
+              onClick={() => canRenderRich ? setShowRichRenderer(v => !v) : setShowRendered(v => !v)}
+              title={(canRenderRich ? showRichRenderer : showRendered) ? t('codeBlock.viewSource') : t('codeBlock.viewRender')}
             >
-              <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
-              <span>{showRendered ? t('codeBlock.source') : t('codeBlock.render')}</span>
+              <span style={{ marginRight: 4 }}>{(canRenderRich ? showRichRenderer : showRendered) ? '</>' : '◎'}</span>
+              <span>{(canRenderRich ? showRichRenderer : showRendered) ? t('codeBlock.source') : t('codeBlock.render')}</span>
             </DsButton>
           ) : (
             <>
@@ -743,14 +768,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                   canRunMermaid ? handleRunMermaid :
                   canRenderSvg ? handleRunSvg :
                   canRenderHtml ? handleRunHtml :
-                  handleRunXml
+                  canRenderXml ? handleRunXml :
+                  () => setShowRichRenderer(true)
                 }
                 disabled={!!isStreaming || running}
                 title={
                   canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint') : t('codeBlock.runMermaid')) :
                   canRenderSvg ? t('codeBlock.renderSvg') :
                   canRenderHtml ? t('codeBlock.renderHtml') :
-                  t('codeBlock.renderXml')
+                  canRenderXml ? t('codeBlock.renderXml') :
+                  t('codeBlock.run')
                 }
               >
                 <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
@@ -799,7 +826,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       stickyHeader
       bodyClassName="code-block-body-shell"
     >
-      {htmlPreviewContent && showRendered ? (
+      {showRichRenderer && richRendererKind ? (
+        <RichCodeRenderer kind={richRendererKind} source={codeContent} />
+      ) : htmlPreviewContent && showRendered ? (
         <MermaidErrorBoundary
           key={errorBoundaryKey.current}
           fallbackCode={codeContent}

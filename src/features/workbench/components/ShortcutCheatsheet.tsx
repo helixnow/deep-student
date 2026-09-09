@@ -27,6 +27,7 @@ import {
   type WorkbenchShortcutFeedbackDetail,
   type WorkbenchShortcutId,
 } from '../core/shortcuts';
+import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { replayEmptyDesktopTour } from './EmptyDesktop';
@@ -223,6 +224,7 @@ const ShortcutCheatsheetComponent: React.FC = () => {
         aria-label={t('workbench:cheatsheet.title')}
         tabIndex={-1}
       >
+        <WallpaperReplica hostRef={panelRef} enabled={rendered} />
         <div className="wb-cheat-header">
           <h2 className="wb-cheat-title">{t('workbench:cheatsheet.title')}</h2>
           <button

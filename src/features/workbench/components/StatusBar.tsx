@@ -53,7 +53,7 @@ import {
 import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
-import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { StatusBarItems, formatStatusBarTime } from './StatusBarItems';
 import './StatusBar.css';
 
@@ -598,6 +598,7 @@ const StatusBarComponent: React.FC = () => {
               aria-labelledby={titleId}
               tabIndex={-1}
             >
+              <WallpaperReplica hostRef={panelRef} enabled />
               <h2 id={titleId} className="wb-menubar-flyout-title">
                 {t('menubar.centerTitle')}
               </h2>

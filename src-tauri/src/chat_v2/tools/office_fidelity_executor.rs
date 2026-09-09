@@ -42,6 +42,30 @@ struct PackagePart {
     bytes: Vec<u8>,
 }
 
+/// ★ G06-P0：Office 编辑路径强制 preflight 的判定结果。
+///
+/// 由只读清点（`inspect_bytes`）派生，供编辑执行器（`xlsx_edit_cells` 等）
+/// 在写入前消费 `completionGate`：
+/// - critical 特征（macros / digital_signatures / external_links / 加密容器）
+///   → 必须拒绝 round-trip 编辑（umya-spreadsheet 会静默丢失这些特征）；
+/// - high 特征（charts / pivot_tables / defined_names / data_validation /
+///   formulas …）→ 允许编辑，但交付结果必须附 fidelity warning。
+#[derive(Debug, Clone)]
+pub struct EditPreflight {
+    pub format: String,
+    pub risk: String,
+    pub source_sha256: String,
+    pub feature_set_hash: String,
+    pub critical_features: Vec<String>,
+    pub high_features: Vec<String>,
+}
+
+impl EditPreflight {
+    pub fn has_critical(&self) -> bool {
+        !self.critical_features.is_empty()
+    }
+}
+
 pub struct OfficeFidelityExecutor;
 
 impl OfficeFidelityExecutor {
@@ -218,6 +242,31 @@ impl OfficeFidelityExecutor {
         }
     }
 
+    /// 以"部件级谓词"（可同时看名字与内容）匹配的特征变体——用于
+    /// comments/footnotes_endnotes 这类需要区分真实内容与空样板的特征。
+    fn matching_feature_if(
+        parts: &[PackagePart],
+        feature: &'static str,
+        risk: &'static str,
+        part_matches: impl Fn(&PackagePart) -> bool,
+    ) -> FeatureEvidence {
+        let matched: Vec<&PackagePart> = parts.iter().filter(|part| part_matches(part)).collect();
+        let mut hasher = Sha256::new();
+        for part in &matched {
+            hasher.update(part.name.as_bytes());
+            hasher.update([0]);
+            hasher.update(Sha256::digest(&part.bytes));
+        }
+        FeatureEvidence {
+            feature,
+            present: !matched.is_empty(),
+            risk,
+            count: matched.len(),
+            evidence_parts: matched.iter().map(|part| part.name.clone()).collect(),
+            feature_hash: (!matched.is_empty()).then(|| hex::encode(hasher.finalize())),
+        }
+    }
+
     fn matching_feature(
         parts: &[PackagePart],
         feature: &'static str,
@@ -276,20 +325,96 @@ impl OfficeFidelityExecutor {
             ),
         ];
         match format {
+            // ★ G06-P1：docx 编辑路径（replace_text）是 docx-rs 文本级全量重建，
+            // 一切非纯文本/基础表格结构都会静默丢失——因此修订/内容控件/图片/
+            // OLE/复杂页眉页脚/TOC 域升级为 critical 门禁特征。
             "docx" => features.extend([
+                // 注意标记必须比 "<w:ins" 更精确：表格边框 <w:insideH/<w:insideV
+                // 会以 "<w:ins" 开头，若不作区分会把普通表格误判为修订文档。
                 Self::matching_feature(
                     &parts,
                     "tracked_revisions",
-                    "high",
+                    "critical",
                     |_| false,
-                    &[b"<w:ins", b"<w:del", b"<w:moveFrom", b"<w:moveTo"],
+                    &[
+                        b"<w:ins ",
+                        b"<w:ins>",
+                        b"<w:del ",
+                        b"<w:del>",
+                        b"<w:moveFrom ",
+                        b"<w:moveFrom>",
+                        b"<w:moveTo ",
+                        b"<w:moveTo>",
+                    ],
                 ),
                 Self::matching_feature(
                     &parts,
+                    "content_controls",
+                    "critical",
+                    |_| false,
+                    &[b"<w:sdt>", b"<w:sdt "],
+                ),
+                // TOC / 交叉引用域（重建后域指令与缓存结果一并丢失，正文出现空洞）。
+                // 仅针对指令文本特征（TOC \o / PAGEREF / REF / NOTEREF），
+                // 普通 PAGE 等页码域仍由 medium 级 fields 记录。
+                Self::matching_feature(
+                    &parts,
+                    "toc_crossref_fields",
+                    "critical",
+                    |_| false,
+                    &[b" TOC \\o", b" TOC \\h", b"PAGEREF ", b" REF ", b"NOTEREF "],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "images",
+                    "critical",
+                    |name| name.starts_with("word/media/"),
+                    &[],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "embedded_ole",
+                    "critical",
+                    |name| name.starts_with("word/embeddings/") || name.starts_with("word/activeX/"),
+                    &[b"oleObject"],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "complex_headers_footers",
+                    "critical",
+                    |_| false,
+                    &[b"<w:evenAndOddHeaders", b"<w:titlePg"],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "headers_footers",
+                    "high",
+                    |name| name.starts_with("word/header") || name.starts_with("word/footer"),
+                    &[],
+                ),
+                // 批注/脚注按"真实内容"判定而非部件存在性：docx-rs 默认包恒带
+                // 空 comments.xml/footnotes.xml（无 <w:comment> 条目、仅 separator
+                // 样板脚注），按部件名匹配会让全部自产文档都背 fidelity warning。
+                Self::matching_feature_if(
+                    &parts,
                     "comments",
                     "high",
-                    |name| name.starts_with("word/comments"),
-                    &[],
+                    |part| {
+                        part.name == "word/comments.xml"
+                            && contains_bytes(&part.bytes, b"<w:comment ")
+                    },
+                ),
+                // 文本重建会整体丢弃脚注/尾注（真实内容丢失）——由 medium 升为 high，
+                // 使编辑交付结果附 fidelity warning。
+                Self::matching_feature_if(
+                    &parts,
+                    "footnotes_endnotes",
+                    "high",
+                    |part| {
+                        part.name == "word/footnotes.xml" && has_real_note(&part.bytes, b"<w:footnote ")
+                            || part.name == "word/endnotes.xml"
+                                && has_real_note(&part.bytes, b"<w:endnote ")
+                    },
                 ),
                 Self::matching_feature(
                     &parts,
@@ -297,13 +422,6 @@ impl OfficeFidelityExecutor {
                     "medium",
                     |_| false,
                     &[b"<w:fldSimple", b"<w:instrText", b"<w:fldChar"],
-                ),
-                Self::matching_feature(
-                    &parts,
-                    "footnotes_endnotes",
-                    "medium",
-                    |name| name == "word/footnotes.xml" || name == "word/endnotes.xml",
-                    &[],
                 ),
             ]),
             "xlsx" => features.extend([
@@ -352,7 +470,25 @@ impl OfficeFidelityExecutor {
                     &[b"externalLink"],
                 ),
             ]),
+            // ★ G06-P1：pptx 编辑路径（replace_text）是 markdown spec 文本级
+            // 全量重建——媒体/嵌入对象必然丢失（critical）；母版/备注/动画/图表/
+            // SmartArt 同样丢失但无法词法区分默认与自定义母版，保守放行并附
+            // fidelity warning（与 xlsx 的 high 语义对齐）。
             "pptx" => features.extend([
+                Self::matching_feature(
+                    &parts,
+                    "media",
+                    "critical",
+                    |name| name.starts_with("ppt/media/"),
+                    &[],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "embedded_ole",
+                    "critical",
+                    |name| name.starts_with("ppt/embeddings/"),
+                    &[b"oleObject"],
+                ),
                 Self::matching_feature(
                     &parts,
                     "slide_masters",
@@ -379,6 +515,20 @@ impl OfficeFidelityExecutor {
                     "high",
                     |_| false,
                     &[b"<p:timing", b"<p:anim", b"<p:transition"],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "charts",
+                    "high",
+                    |name| name.starts_with("ppt/charts/"),
+                    &[],
+                ),
+                Self::matching_feature(
+                    &parts,
+                    "diagrams",
+                    "high",
+                    |name| name.starts_with("ppt/diagrams/"),
+                    &[],
                 ),
             ]),
             _ => unreachable!(),
@@ -542,6 +692,46 @@ impl OfficeFidelityExecutor {
         }
     }
 
+    /// ★ G06-P0：供 Office 编辑执行器复用的 preflight 入口。
+    ///
+    /// 与 `builtin-office_fidelity_inspect` 共享同一份只读清点逻辑
+    /// （`inspect_bytes`），保证编辑路径消费的 gate 与工具暴露的报告一致。
+    /// 输入为源文件原始字节（调用方已完成加载与大小检查）。
+    pub fn preflight_for_edit(bytes: &[u8]) -> Result<EditPreflight, String> {
+        let report = Self::inspect_bytes(bytes)?;
+        let mut critical_features = Vec::new();
+        let mut high_features = Vec::new();
+        if let Some(features) = report["features"].as_array() {
+            for feature in features {
+                if feature["present"].as_bool() != Some(true) {
+                    continue;
+                }
+                let Some(name) = feature["feature"].as_str() else {
+                    continue;
+                };
+                match feature["risk"].as_str() {
+                    Some("critical") => critical_features.push(name.to_string()),
+                    Some("high") => high_features.push(name.to_string()),
+                    _ => {}
+                }
+            }
+        }
+        Ok(EditPreflight {
+            format: report["format"].as_str().unwrap_or_default().to_string(),
+            risk: report["risk"].as_str().unwrap_or_default().to_string(),
+            source_sha256: report["sourceSha256"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            feature_set_hash: report["featureSetHash"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            critical_features,
+            high_features,
+        })
+    }
+
     async fn execute_inspect(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let (handle, bytes) = Self::load_source(args, ctx)?;
         let mut output = Self::inspect_bytes(&bytes)?;
@@ -556,6 +746,96 @@ impl Default for OfficeFidelityExecutor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ============================================================================
+// G06-P1：格式无关的编辑门禁骨架（docx / pptx / xlsx 共用）
+// ============================================================================
+
+/// 各格式执行器提供的门禁措辞。骨架逻辑（critical 拒绝 / high 警告）与格式
+/// 无关，差异只在写路径名称与办公套件名称。
+///
+/// - `write_path`：写路径描述，嵌入拒绝原因，如 "umya-spreadsheet round-trip
+///   编辑"（xlsx）/ "docx-rs 文本重建"（docx）。
+/// - `office_apps`：提示用户核对的办公套件，如 "Excel/WPS"。
+/// - `high_features_dropped`：high 特征的处置语义。xlsx 的 umya round-trip
+///   下 high 特征多数保留但有降级风险（false）；docx/pptx 的文本级全量重建
+///   必然丢弃 high 特征（true），warning 文案与语义标记相应切换。
+#[derive(Debug, Clone, Copy)]
+pub struct EditGateWording {
+    pub write_path: &'static str,
+    pub office_apps: &'static str,
+    pub high_features_dropped: bool,
+}
+
+/// critical 特征门禁：源文件含 critical 特征时拒绝编辑（写路径会静默丢失
+/// 这些特征）。错误为结构化 JSON（含特征清单与副本模式提示），供所有
+/// Office 编辑执行器统一返回。
+pub fn enforce_edit_preflight(
+    preflight: &EditPreflight,
+    wording: &EditGateWording,
+) -> Result<(), String> {
+    if !preflight.has_critical() {
+        return Ok(());
+    }
+    Err(format!(
+        "OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES: {}",
+        json!({
+            "error_code": "OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES",
+            "critical_features": preflight.critical_features,
+            "source_sha256": preflight.source_sha256,
+            "reason": format!(
+                "源文件包含 critical 保真特征，{}会静默丢失这些特征，已拒绝编辑",
+                wording.write_path
+            ),
+            "hint": format!(
+                "可改用副本模式：在 {} 中打开原文件手动编辑，或先另存为去除上述特征的副本后再对本工具编辑副本；完整特征清单可用 builtin-office_fidelity_inspect 查看",
+                wording.office_apps
+            ),
+        })
+    ))
+}
+
+/// 构建交付结果中的 fidelity warning。
+/// 触发条件：源文件含 high 风险特征，或任一 extra 明细列表非空（如 xlsx 的
+/// overwritten_formula_cells）。普通文件返回 None，结果 JSON 不出现该字段。
+/// `extra_fields` 为格式专属的附加明细（键名 → 字符串列表），原样并入输出。
+pub fn build_edit_fidelity_warning(
+    preflight: &EditPreflight,
+    wording: &EditGateWording,
+    extra_fields: &[(&str, Vec<String>)],
+) -> Option<Value> {
+    let extras_empty = extra_fields.iter().all(|(_, values)| values.is_empty());
+    if preflight.high_features.is_empty() && extras_empty {
+        return None;
+    }
+    let message = if wording.high_features_dropped {
+        format!(
+            "源文件包含的特征在{}中会被丢弃（产物仅保留受支持的文本与表格结构），且未做编辑后结构对比，建议在 {} 中打开产物核对",
+            wording.write_path, wording.office_apps
+        )
+    } else {
+        format!(
+            "源文件包含高保真风险特征，本次编辑未做编辑后结构对比，建议在 {} 中打开产物核对",
+            wording.office_apps
+        )
+    };
+    let mut warning = json!({
+        "contract": OFFICE_FIDELITY_CONTRACT,
+        "risk": preflight.risk,
+        "source_sha256": preflight.source_sha256,
+        "feature_set_hash": preflight.feature_set_hash,
+        "preserved_at_risk_features": preflight.high_features,
+        "post_edit_comparison": "not_performed",
+        "message": message,
+    });
+    if wording.high_features_dropped {
+        warning["write_path_semantics"] = json!("text_only_rebuild_drops_listed_features");
+    }
+    for (key, values) in extra_fields {
+        warning[*key] = json!(values);
+    }
+    Some(warning)
 }
 
 #[async_trait]
@@ -621,6 +901,27 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         && haystack
             .windows(needle.len())
             .any(|window| window == needle)
+}
+
+/// 脚注/尾注部件中是否存在真实条目：docx-rs/Word 的默认包里恒有
+/// separator / continuationSeparator 样板条目（不算用户内容），
+/// 逐标签检查，存在任何非 separator 条目才视为真实。
+fn has_real_note(bytes: &[u8], tag: &[u8]) -> bool {
+    for start in find_all(bytes, tag) {
+        let end = bytes[start..]
+            .iter()
+            .position(|&b| b == b'>')
+            .map(|p| start + p)
+            .unwrap_or(bytes.len());
+        let tag_lower: Vec<u8> = bytes[start..end]
+            .iter()
+            .map(|b| b.to_ascii_lowercase())
+            .collect();
+        if !contains_bytes(&tag_lower, b"separator") {
+            return true;
+        }
+    }
+    false
 }
 
 fn find_all(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
@@ -727,5 +1028,335 @@ mod tests {
             result["secretPrompt"]["reasonCode"],
             "DECRYPTOR_INTEGRATION_UNAVAILABLE"
         );
+    }
+
+    #[test]
+    fn preflight_for_edit_separates_critical_from_high_features() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("xl/workbook.xml", b"<workbook/>"),
+            (
+                "xl/worksheets/sheet1.xml",
+                b"<worksheet><f>A1+1</f></worksheet>",
+            ),
+            ("xl/charts/chart1.xml", b"<chart/>"),
+            ("xl/vbaProject.bin", b"macro payload"),
+            ("xl/externalLinks/externalLink1.xml", b"<externalLink/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "xlsx");
+        assert_eq!(preflight.risk, "critical");
+        assert!(preflight.has_critical());
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "macros"));
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "external_links"));
+        // high 特征与 critical 分桶，不互相污染
+        assert!(preflight.high_features.iter().any(|f| f == "charts"));
+        assert!(preflight.high_features.iter().any(|f| f == "formulas"));
+        assert!(!preflight.high_features.iter().any(|f| f == "macros"));
+        assert_eq!(preflight.source_sha256.len(), 64);
+        assert_eq!(preflight.feature_set_hash.len(), 64);
+    }
+
+    #[test]
+    fn preflight_for_edit_plain_xlsx_has_no_gate_features() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("xl/workbook.xml", b"<workbook/>"),
+            ("xl/worksheets/sheet1.xml", b"<worksheet/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "xlsx");
+        assert!(!preflight.has_critical());
+        assert!(preflight.critical_features.is_empty());
+        assert!(preflight.high_features.is_empty());
+    }
+
+    // ========================================================================
+    // G06-P1：docx / pptx 特征检测（编辑路径 = 文本级全量重建）
+    // ========================================================================
+
+    #[test]
+    fn docx_preflight_blocks_revisions_sdt_images_and_ole() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/document.xml",
+                br#"<w:document><w:ins w:id="1" w:author="a"><w:r><w:t>x</w:t></w:r></w:ins><w:sdt><w:sdtContent/></w:sdt></w:document>"#,
+            ),
+            ("word/media/image1.png", b"png-bytes"),
+            ("word/embeddings/oleObject1.xlsx", b"ole-payload"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "docx");
+        assert!(preflight.has_critical());
+        for expected in [
+            "tracked_revisions",
+            "content_controls",
+            "images",
+            "embedded_ole",
+        ] {
+            assert!(
+                preflight.critical_features.iter().any(|f| f == expected),
+                "critical feature '{expected}' missing: {:?}",
+                preflight.critical_features
+            );
+        }
+    }
+
+    #[test]
+    fn docx_preflight_table_borders_are_not_revisions() {
+        // <w:insideH>/<w:insideV> 以 "<w:ins" 开头，不得误判为修订标记
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/document.xml",
+                br#"<w:document><w:tbl><w:tblBorders><w:insideH w:val="single"/><w:insideV w:val="single"/></w:tblBorders></w:tbl></w:document>"#,
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert!(!preflight.has_critical());
+        assert!(!preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "tracked_revisions"));
+    }
+
+    #[test]
+    fn docx_preflight_plain_header_warns_but_complex_header_blocks() {
+        // 普通页眉页脚：high（放行 + warning）
+        let plain = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("word/document.xml", b"<w:document/>"),
+            ("word/header1.xml", b"<w:hdr/>"),
+            ("word/footer1.xml", b"<w:ftr/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&plain).unwrap();
+        assert!(!preflight.has_critical());
+        assert!(preflight
+            .high_features
+            .iter()
+            .any(|f| f == "headers_footers"));
+        // titlePg / evenAndOddHeaders → 页眉页脚关系复杂：critical（拒绝）
+        let complex = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/document.xml",
+                b"<w:document><w:sectPr><w:titlePg/></w:sectPr></w:document>",
+            ),
+            ("word/header1.xml", b"<w:hdr/>"),
+            ("word/header2.xml", b"<w:hdr/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&complex).unwrap();
+        assert!(preflight.has_critical());
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "complex_headers_footers"));
+    }
+
+    #[test]
+    fn docx_preflight_toc_and_crossref_fields_are_critical_but_plain_fields_not() {
+        let toc = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/document.xml",
+                br#"<w:document><w:p><w:instrText xml:space="preserve"> TOC \o "1-3" \h </w:instrText></w:p></w:document>"#,
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&toc).unwrap();
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "toc_crossref_fields"));
+        // 普通页码域（PAGE）不升级为 critical，仅 medium 记录、不进门禁桶
+        let page_field = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            (
+                "word/footer1.xml",
+                br#"<w:ftr><w:p><w:instrText xml:space="preserve"> PAGE </w:instrText></w:p></w:ftr>"#,
+            ),
+            ("word/document.xml", b"<w:document/>"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&page_field).unwrap();
+        assert!(!preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "toc_crossref_fields"));
+        assert!(!preflight.has_critical());
+    }
+
+    #[test]
+    fn docx_preflight_footnotes_and_comments_warn_without_blocking() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("word/document.xml", b"<w:document/>"),
+            (
+                "word/footnotes.xml",
+                br#"<w:footnotes><w:footnote w:type="separator" w:id="-1"/><w:footnote w:id="1"><w:p/></w:footnote></w:footnotes>"#,
+            ),
+            (
+                "word/comments.xml",
+                br#"<w:comments><w:comment w:id="0" w:author="a"><w:p/></w:comment></w:comments>"#,
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert!(!preflight.has_critical());
+        assert!(preflight
+            .high_features
+            .iter()
+            .any(|f| f == "footnotes_endnotes"));
+        assert!(preflight.high_features.iter().any(|f| f == "comments"));
+    }
+
+    #[test]
+    fn pptx_preflight_blocks_media_and_ole() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("ppt/presentation.xml", b"<p:presentation/>"),
+            ("ppt/media/image1.png", b"png-bytes"),
+            ("ppt/embeddings/oleObject1.bin", b"ole-payload"),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        assert_eq!(preflight.format, "pptx");
+        assert!(preflight.has_critical());
+        assert!(preflight.critical_features.iter().any(|f| f == "media"));
+        assert!(preflight
+            .critical_features
+            .iter()
+            .any(|f| f == "embedded_ole"));
+    }
+
+    #[test]
+    fn pptx_preflight_masters_notes_charts_warn_without_blocking() {
+        let bytes = package(&[
+            ("[Content_Types].xml", b"<Types/>"),
+            ("ppt/presentation.xml", b"<p:presentation/>"),
+            ("ppt/slideMasters/slideMaster1.xml", b"<p:sldMaster/>"),
+            ("ppt/slideLayouts/slideLayout1.xml", b"<p:sldLayout/>"),
+            ("ppt/notesSlides/notesSlide1.xml", b"<p:notes/>"),
+            ("ppt/charts/chart1.xml", b"<c:chart/>"),
+            ("ppt/diagrams/data1.xml", b"<dgm/>"),
+            (
+                "ppt/slides/slide1.xml",
+                b"<p:sld><p:timing/></p:sld>",
+            ),
+        ]);
+        let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
+        // 母版/版式无法词法区分默认与自定义 → 保守放行 + warning
+        assert!(!preflight.has_critical());
+        for expected in [
+            "slide_masters",
+            "speaker_notes",
+            "charts",
+            "diagrams",
+            "animations_timing",
+        ] {
+            assert!(
+                preflight.high_features.iter().any(|f| f == expected),
+                "high feature '{expected}' missing: {:?}",
+                preflight.high_features
+            );
+        }
+    }
+
+    // ========================================================================
+    // G06-P1：格式无关门禁骨架（enforce_edit_preflight / build_edit_fidelity_warning）
+    // ========================================================================
+
+    fn preflight_fixture(critical: &[&str], high: &[&str]) -> EditPreflight {
+        EditPreflight {
+            format: "docx".to_string(),
+            risk: if critical.is_empty() { "high" } else { "critical" }.to_string(),
+            source_sha256: "a".repeat(64),
+            feature_set_hash: "b".repeat(64),
+            critical_features: critical.iter().map(|f| f.to_string()).collect(),
+            high_features: high.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn shared_gate_error_carries_format_specific_wording() {
+        let preflight = preflight_fixture(&["images"], &[]);
+        let docx_wording = EditGateWording {
+            write_path: "docx-rs 文本重建",
+            office_apps: "Word/WPS",
+            high_features_dropped: true,
+        };
+        let err = enforce_edit_preflight(&preflight, &docx_wording).unwrap_err();
+        assert!(err.contains("OFFICE_EDIT_BLOCKED_CRITICAL_FEATURES"));
+        assert!(err.contains("images"));
+        assert!(err.contains("docx-rs 文本重建"));
+        assert!(err.contains("Word/WPS"));
+        assert!(err.contains("副本"));
+        // xlsx 措辞保持 G06-P0 原文（round-trip 语义 + Excel/WPS）
+        let xlsx_wording = EditGateWording {
+            write_path: "umya-spreadsheet round-trip 编辑",
+            office_apps: "Excel/WPS",
+            high_features_dropped: false,
+        };
+        let err = enforce_edit_preflight(&preflight, &xlsx_wording).unwrap_err();
+        assert!(err.contains("umya-spreadsheet round-trip 编辑会静默丢失这些特征"));
+        assert!(err.contains("Excel/WPS"));
+        // 无 critical → 放行
+        let clean = preflight_fixture(&[], &["comments"]);
+        assert!(enforce_edit_preflight(&clean, &docx_wording).is_ok());
+    }
+
+    #[test]
+    fn shared_warning_switches_semantics_by_write_path() {
+        let preflight = preflight_fixture(&[], &["comments"]);
+        let rebuild_wording = EditGateWording {
+            write_path: "pptx spec 文本重建",
+            office_apps: "PowerPoint/WPS",
+            high_features_dropped: true,
+        };
+        let warning =
+            build_edit_fidelity_warning(&preflight, &rebuild_wording, &[]).unwrap();
+        assert_eq!(
+            warning["preserved_at_risk_features"],
+            json!(["comments"])
+        );
+        assert_eq!(warning["post_edit_comparison"], "not_performed");
+        assert_eq!(
+            warning["write_path_semantics"],
+            "text_only_rebuild_drops_listed_features"
+        );
+        assert!(warning["message"].as_str().unwrap().contains("PowerPoint/WPS"));
+        // round-trip 语义（xlsx）：无 write_path_semantics 键，message 保持 P0 原文
+        let roundtrip_wording = EditGateWording {
+            write_path: "umya-spreadsheet round-trip 编辑",
+            office_apps: "Excel/WPS",
+            high_features_dropped: false,
+        };
+        let warning = build_edit_fidelity_warning(
+            &preflight,
+            &roundtrip_wording,
+            &[("overwritten_formula_cells", Vec::new())],
+        )
+        .unwrap();
+        assert!(warning.get("write_path_semantics").is_none());
+        assert_eq!(
+            warning["message"].as_str().unwrap(),
+            "源文件包含高保真风险特征，本次编辑未做编辑后结构对比，建议在 Excel/WPS 中打开产物核对"
+        );
+        assert_eq!(
+            warning["overwritten_formula_cells"],
+            json!(Vec::<String>::new())
+        );
+        // 无 high 且 extras 全空 → None；extras 非空 → 仍触发（公式覆盖语义）
+        let clean = preflight_fixture(&[], &[]);
+        assert!(build_edit_fidelity_warning(&clean, &roundtrip_wording, &[]).is_none());
+        assert!(build_edit_fidelity_warning(
+            &clean,
+            &roundtrip_wording,
+            &[("overwritten_formula_cells", vec!["Sheet1!B1".to_string()])],
+        )
+        .is_some());
     }
 }
