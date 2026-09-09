@@ -41,6 +41,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             model2_config_id: null,
             anki_card_model_config_id: null,
             qbank_ai_grading_model_config_id: null,
+            qbank_ai_generation_model_config_id: null,
             reranker_model_config_id: null,
             exam_sheet_ocr_model_config_id: null,
             translation_model_config_id: null,
@@ -55,7 +56,8 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           })) as Promise<{
             model2_config_id: string | null,
             anki_card_model_config_id: string | null,
-            qbank_ai_grading_model_config_id: string | null,
+            qbank_ai_grading_model_config_id: string | null;
+            qbank_ai_generation_model_config_id: string | null;
             reranker_model_config_id: string | null,
             exam_sheet_ocr_model_config_id: string | null,
             translation_model_config_id: string | null,
@@ -229,6 +231,8 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           model2ConfigId: modelAssignments?.model2_config_id || '',
           ankiCardModelConfigId: modelAssignments?.anki_card_model_config_id || '',
           qbank_ai_grading_model_config_id: modelAssignments?.qbank_ai_grading_model_config_id || '',
+          qbank_ai_generation_model_config_id:
+            modelAssignments?.qbank_ai_generation_model_config_id || '',
           rerankerModelConfigId: modelAssignments?.reranker_model_config_id || '',
           chat_title_model_config_id: modelAssignments?.chat_title_model_config_id || '',
           exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',

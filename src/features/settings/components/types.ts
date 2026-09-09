@@ -13,6 +13,7 @@ export interface SystemConfig {
   model2ConfigId: string;  // 对话模型（可以是任意类型）
   ankiCardModelConfigId: string;  // Anki制卡模型（可以是任意类型）
   qbank_ai_grading_model_config_id: string; // 题库AI批改/解析模型配置ID
+  qbank_ai_generation_model_config_id: string; // 题库AI出题模型配置ID
   // 嵌入模型通过维度管理设置，不再作为全局配置
   rerankerModelConfigId: string;   // 重排序模型（RAG用）
   autoSave: boolean;
