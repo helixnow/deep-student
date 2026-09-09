@@ -400,6 +400,7 @@ export interface ModelAssignments {
   model2_config_id: string | null;
   anki_card_model_config_id: string | null;
   qbank_ai_grading_model_config_id: string | null;
+  qbank_ai_generation_model_config_id: string | null;
   embedding_model_config_id: string | null;
   reranker_model_config_id: string | null;
   chat_title_model_config_id: string | null;

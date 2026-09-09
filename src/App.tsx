@@ -75,6 +75,7 @@ import { useAppUpdater } from './hooks/useAppUpdater';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { WelcomeOnboardingDialog, useWelcomeOnboarding } from './components/onboarding/WelcomeOnboardingDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
+import { useQbankGenerationTasks } from './hooks/useQbankGenerationTasks';
 import useTheme from './hooks/useTheme';
 import { emitDebug, getDebugEnabled } from './utils/emitDebug';
 import { useDialogControl } from './contexts/DialogControlContext';
@@ -537,6 +538,8 @@ function App() {
   // 🆕 监听数据治理迁移状态（启动时显示警告/错误通知）
   useMigrationStatusListener();
   useAutomationRunNotifications();
+  // 🆕 AI 出题后台任务：常驻监听全局任务事件 + 轮询兜底（2026-09-09 后台化）
+  useQbankGenerationTasks();
 
   // 🆕 用户协议同意检查（合规要求）
   const { needsAgreement, checkAgreement, acceptAgreement } = useUserAgreement();

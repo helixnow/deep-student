@@ -27,7 +27,10 @@ export const LatexText: React.FC<LatexTextProps> = ({ content, text, className }
   const html = useMemo(() => {
     const raw = renderLatexToHtml(src);
     if (!raw) return null;
-    return DOMPurify.sanitize(raw, {
+    // 2026-09-09：纯文本换行在 HTML 里会被折叠（调用方容器通常没有 white-space: pre-wrap），
+    // 统一转成 <br/> 保证题干/选项/解析里的换行可见。KaTeX 输出为单行 HTML，不会误伤公式。
+    const withBreaks = raw.replace(/\r\n|\r|\n/g, '<br/>');
+    return DOMPurify.sanitize(withBreaks, {
       ADD_TAGS: ['annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mphantom', 'mstyle'],
       ADD_ATTR: ['xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'columnlines', 'rowlines', 'frame', 'framespacing', 'equalrows', 'equalcolumns', 'displaystyle', 'side', 'minlabelspacing', 'scriptlevel', 'lspace', 'rspace', 'movablelimits', 'largeop', 'symmetric', 'maxsize', 'minsize', 'linethickness', 'depth', 'height', 'voffset', 'notation'],
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
@@ -35,7 +38,8 @@ export const LatexText: React.FC<LatexTextProps> = ({ content, text, className }
   }, [src]);
 
   if (!html) {
-    return <span className={className}>{src}</span>;
+    // 纯文本路径：pre-line 保留换行、折叠多余空白，不依赖调用方容器样式
+    return <span className={cn(className, 'whitespace-pre-line')}>{src}</span>;
   }
 
   // 含 display 公式时提供横向滚动，避免长公式在窄屏撑破布局

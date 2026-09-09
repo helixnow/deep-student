@@ -76,4 +76,3 @@ export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
     </span>
   );
 };
-

@@ -345,7 +345,9 @@
     "workspace_lsp_hover": "查看符号悬停信息",
     "workspace_lsp_references": "查找符号引用",
     "workspace_symbol_outline": "提取符号大纲",
-    "workspace_text_search": "搜索工作区文本"
+    "workspace_text_search": "搜索工作区文本",
+    "qbank_generate_questions": "AI 出题",
+    "qbank_get_generation_task": "查询出题任务"
   },
   "labels": {
     "skill": "技能"

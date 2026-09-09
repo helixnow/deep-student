@@ -934,6 +934,8 @@ impl PipelineContext {
             // 历史加载时工具块类型必须与实时块一致
             "workspace_send" => block_types::WORKSPACE_SEND.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
+            // 🆕 D2（2026-09-09）：AI 出题工具产出专属预览块（对话内可勾选草稿 + 一键入库）
+            "qbank_generate_questions" => block_types::QBANK_QUESTIONS.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
     }

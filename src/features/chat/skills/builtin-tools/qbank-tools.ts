@@ -27,6 +27,8 @@ export const qbankToolsSkill: SkillDefinition = {
 1. **建题**：单题使用 \`builtin-qbank_create_question\`；批量或文档使用
    \`builtin-qbank_batch_import\` / \`builtin-qbank_import_document\`。选择题的选项必须放在
    \`options\`，不得混入题干。
+   AI 出题用 \`builtin-qbank_generate_questions\`（按知识点/参考资料生成，默认同步返回草稿，
+   再用 \`qbank_batch_import\` 入库；大批量用 \`background=true\` 提交，\`qbank_get_generation_task\` 取结果）。
 2. **练习**：普通练习先用 \`builtin-qbank_get_next_question\` 取题；错题复习传
    \`review_only=true\`。限时、模拟考、每日一练分别使用
    \`builtin-qbank_start_timed_practice\`、\`builtin-qbank_generate_mock_exam\`、
@@ -132,6 +134,8 @@ export const qbankToolsSkill: SkillDefinition = {
     'builtin-qbank_update_question',
     'builtin-qbank_get_stats',
     'builtin-qbank_get_next_question',
+    'builtin-qbank_generate_questions',
+    'builtin-qbank_get_generation_task',
     'builtin-qbank_generate_variant',
     'builtin-qbank_batch_import',
     'builtin-qbank_reset_progress',
@@ -316,6 +320,58 @@ export const qbankToolsSkill: SkillDefinition = {
           review_only: { type: 'boolean', default: false, description: '只选择 status=review 的错题/待复习题' },
         },
         required: ['session_id'],
+      },
+    },
+    {
+      name: 'builtin-qbank_generate_questions',
+      description:
+        'AI 出题：按题量/题型/难度/知识点/参考资料生成新题草稿（Medium）。默认同步返回草稿，需用 qbank_batch_import 入库；background=true 则返回 task_id 后台执行。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          exam_id: { type: 'string', description: '目标题目集 ID' },
+          max_questions: { type: 'integer', default: 10, minimum: 1, maximum: 50 },
+          specs: {
+            type: 'array',
+            description: '题型分布',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                question_type: { type: 'string', description: '题型 snake_case' },
+                count: { type: 'integer', minimum: 1, maximum: 50 },
+                difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'] },
+              },
+              required: ['question_type', 'count'],
+            },
+          },
+          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard', 'very_hard'] },
+          knowledge_points: { type: 'array', items: { type: 'string' }, description: '知识点范围' },
+          topic_hint: { type: 'string', description: '额外出题要求' },
+          reference_file_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '资源库参考文件 ID，最多 3 份',
+          },
+          based_on_existing: { type: 'boolean', default: false, description: '参考现有题出变式' },
+          language: { type: 'string' },
+          model_config_id: { type: 'string' },
+          background: { type: 'boolean', default: false, description: 'true=后台执行' },
+        },
+        required: ['exam_id'],
+      },
+    },
+    {
+      name: 'builtin-qbank_get_generation_task',
+      description: '查询后台出题任务状态与结果（Low）。status=completed 时 drafts 可用。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          task_id: { type: 'string', description: '任务 ID' },
+        },
+        required: ['task_id'],
       },
     },
     {

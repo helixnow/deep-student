@@ -36,6 +36,7 @@ import {
   CircleNotch,
   Scan,
   Table as TableIcon,
+  Sparkle,
 } from '@phosphor-icons/react';
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
@@ -82,6 +83,8 @@ export interface QuestionBankListViewProps {
   onUploadFiles?: (files: File[]) => void;
   /** 空状态启动台打开 CSV 导入对话框 */
   onCsvImport?: () => void;
+  /** 空状态启动台打开 AI 出题面板（只读模式不提供） */
+  onAiGenerate?: () => void;
   /** 外部请求打开内联创建编辑器（值变化时触发一次） */
   createRequestKey?: number;
   /** Reports unsaved inline edits to an owning resource view. */
@@ -548,6 +551,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   onUploadQuestions,
   onUploadFiles,
   onCsvImport,
+  onAiGenerate,
   createRequestKey,
   onDraftDirtyChange,
   onDraftNavigationRequested,
@@ -1089,7 +1093,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     const canCreate = Boolean(examId && onCreateQuestion);
     const canImport = Boolean(onUploadQuestions);
     const canCsvImport = Boolean(onCsvImport);
-    const hasLauncherActions = canCreate || canImport || canCsvImport;
+    const canAiGenerate = Boolean(onAiGenerate);
+    const hasLauncherActions = canCreate || canImport || canCsvImport || canAiGenerate;
     const showCreateEditor = expandedEditId === '__new__' && canCreate;
 
     const launcher = showCreateEditor ? (
@@ -1128,13 +1133,21 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
 
         {hasLauncherActions && (
           <>
-            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {canCreate && (
                 <LauncherCard
                   icon={<Plus size={18} />}
                   title={t('exam_sheet:questionBank.create.title')}
                   desc={t('practice:questionBank.emptyCreateDesc')}
                   onClick={() => requestInlineEditorTarget('__new__')}
+                />
+              )}
+              {canAiGenerate && (
+                <LauncherCard
+                  icon={<Sparkle size={18} />}
+                  title={t('exam_sheet:aiGeneration.title')}
+                  desc={t('exam_sheet:aiGeneration.launcherCardDesc')}
+                  onClick={() => onAiGenerate?.()}
                 />
               )}
               {canImport && (
