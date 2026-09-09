@@ -48,6 +48,306 @@ use serde_json::{json, Map, Value};
 /// - 遗留 K2 Thinking: 强制 temperature = 1.0, max_tokens >= 16000
 pub struct MoonshotAdapter;
 
+// ============================================================================
+// MFJS 工具 schema 规范化
+// ============================================================================
+//
+// Moonshot 服务端按 MFJS（Moonshot Flavored JSON Schema）Ultra 级校验
+// `tools[].function.parameters`（walle 默认 ValidateLevelDefault == ultra）。
+// 规范：<https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md>
+// 校验器源码约束（walle validator.go / keyword_validators.go / model.go）：
+//
+// 1. `anyOf` 节点的同级只允许 description/title（根级另允 $defs/$id），
+//    type/properties/required 等约束必须下沉到每个分支内部
+//    （否则 400: "when using anyOf, type should be defined in anyOf items
+//    instead of the parent schema"）；分支内 required 还要求同级
+//    type:object 且 properties 覆盖全部 required 字段 → 必须完整内联。
+// 2. `oneOf`/`allOf` 不在支持列表 → oneOf 改写为 anyOf；allOf（含 if/then
+//    条件，MFJS 无法表达）丢弃，由执行器兜底校验跨字段约束。
+// 3. `enum` 不支持 null 字面量 → 全 null 的 enum 改写为 {"type":"null"}；
+//    且 enum 同层必须有 type → 裸 enum 从字面量推断 type。
+// 4. `const` 不支持 → 改写为单值 enum（语义精确等价）。
+// 5. 不在 SupportedKeywords 的关键字（minProperties/uniqueItems 等）→ 丢弃
+//    （walle 自己的简化器 SimplifyRemoveSchemaKeys 也是丢弃）。
+// 6. anyOf 分支与父级同时定义 description/title → 删除父级副本
+//    （walle simplifyFuncForAnyOfParentConflicts 的同款处理）。
+//
+// 该变换在标准 JSON Schema 语义下等价或仅放宽提示性约束（执行器仍做参数
+// 校验兜底），且对同一输入确定性输出（不破坏 prompt 缓存前缀稳定性）。
+// 仅在发往 Moonshot 时应用（见 model2_pipeline 的 tools 注入点），
+// 其它厂商请求字节保持不变。
+
+/// MFJS 支持的关键字（walle model.go SupportedKeywords ∪ FutureKeywords）。
+const MFJS_SUPPORTED_KEYWORDS: &[&str] = &[
+    "type",
+    "properties",
+    "additionalProperties",
+    "items",
+    "enum",
+    "required",
+    "anyOf",
+    "description",
+    "$defs",
+    "$ref",
+    "title",
+    "$id",
+    "default",
+    "maxLength",
+    "minLength",
+    "maximum",
+    "minimum",
+    "maxItems",
+    "minItems",
+    "pattern",
+];
+
+/// 规范化 OpenAI function 线格式工具数组（{"type":"function","function":{...}}），
+/// 返回改写的节点数（供日志与测试断言）。
+pub(crate) fn normalize_tool_schemas_for_mfjs(tools: &mut [Value]) -> usize {
+    let mut rewrites = 0;
+    for tool in tools.iter_mut() {
+        if let Some(params) = tool
+            .get_mut("function")
+            .and_then(|f| f.get_mut("parameters"))
+        {
+            normalize_mfjs_schema_node(params, true, &mut rewrites);
+        }
+    }
+    rewrites
+}
+
+/// 是否应按 MFJS 方言规范化工具 schema。命中条件（任一）：
+/// - 适配器/供应商为 moonshot（含 kimi 别名）；
+/// - base_url 直连 Moonshot 官方或 Kimi coding plan（api.moonshot.cn /
+///   api.kimi.com——后者未被前端 `inferProviderTypeFromBaseUrl` 识别为
+///   moonshot，自定义 vendor 会落通用适配器，必须按域名兜底）；
+/// - 模型名含 kimi/moonshot（覆盖经自定义中转反代到 Kimi 的场景；
+///   变换语义等价，误伤其它网关托管的同名模型也无副作用）。
+pub(crate) fn should_apply_mfjs_tool_schema_dialect(config: &ApiConfig) -> bool {
+    if matches!(config.model_adapter.as_str(), "moonshot" | "kimi")
+        || config
+            .provider_type
+            .as_deref()
+            .is_some_and(|p| matches!(p, "moonshot" | "kimi"))
+    {
+        return true;
+    }
+    let base_url = config.base_url.to_lowercase();
+    if base_url.contains("moonshot.cn") || base_url.contains("api.kimi.com") {
+        return true;
+    }
+    let model = config.model.to_lowercase();
+    model.contains("kimi") || model.contains("moonshot")
+}
+
+/// 递归规范化单个 schema 节点，改写次数累计进 `rewrites`。
+fn normalize_mfjs_schema_node(node: &mut Value, is_root: bool, rewrites: &mut usize) {
+    let Value::Object(map) = node else {
+        return;
+    };
+
+    // 1) oneOf → anyOf（MFJS 无 oneOf）
+    if let Some(one_of) = map.remove("oneOf") {
+        if let Value::Array(one_branches) = one_of {
+            match map.get_mut("anyOf").and_then(Value::as_array_mut) {
+                Some(existing) => existing.extend(one_branches),
+                None => {
+                    map.insert("anyOf".to_string(), Value::Array(one_branches));
+                }
+            }
+        }
+        *rewrites += 1;
+    }
+
+    // 2) const → 单值 enum（语义精确等价）
+    if let Some(const_val) = map.remove("const") {
+        if !map.contains_key("enum") {
+            map.insert("enum".to_string(), json!([const_val]));
+        }
+        *rewrites += 1;
+    }
+
+    // 3) enum 相关规范化：
+    //    全 null 的 enum → {"type":"null"}（MFJS enum 不支持 null 字面量）；
+    //    裸 enum（无同级 type）→ 从字面量推断 type（MFJS 要求 enum 同层有 type）
+    let enum_all_null = map
+        .get("enum")
+        .and_then(Value::as_array)
+        .is_some_and(|vals| !vals.is_empty() && vals.iter().all(Value::is_null));
+    if enum_all_null {
+        map.remove("enum");
+        map.insert("type".to_string(), Value::String("null".to_string()));
+        *rewrites += 1;
+    } else if !map.contains_key("type") {
+        if let Some(inferred) = map
+            .get("enum")
+            .and_then(Value::as_array)
+            .and_then(|vals| infer_mfjs_enum_type(vals))
+        {
+            map.insert("type".to_string(), Value::String(inferred.to_string()));
+            *rewrites += 1;
+        }
+    }
+
+    // 4) 丢弃 MFJS 不支持的关键字（walle Ultra 级报 "unsupported keywords"）
+    let unsupported: Vec<String> = map
+        .keys()
+        .filter(|k| !MFJS_SUPPORTED_KEYWORDS.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    if !unsupported.is_empty() {
+        for k in &unsupported {
+            map.remove(k);
+        }
+        *rewrites += unsupported.len();
+    }
+
+    // 5) anyOf 同级约束下沉到分支（walle distributeAnyOf 语义）：
+    //    同级仅保留 anyOf + description/title（根级另保留 $defs/$id）
+    let has_usable_anyof = map
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .is_some_and(|branches| !branches.is_empty() && branches.iter().all(Value::is_object));
+    if has_usable_anyof {
+        // 6a) 分支与父级同时定义 description/title → 删父级副本
+        //     （walle Ultra 冲突规则，保留更具体的分支注解）
+        let mut annotation_conflicts: Vec<&str> = Vec::new();
+        if let Some(branches) = map.get("anyOf").and_then(Value::as_array) {
+            for k in ["description", "title"] {
+                if map.contains_key(k) && branches.iter().any(|b| b.get(k).is_some()) {
+                    annotation_conflicts.push(k);
+                }
+            }
+        }
+        for k in annotation_conflicts {
+            map.remove(k);
+            *rewrites += 1;
+        }
+
+        let sibling_keys: Vec<String> = map
+            .keys()
+            .filter(|k| {
+                let k = k.as_str();
+                k != "anyOf" && k != "description" && k != "title"
+                    && !(is_root && (k == "$defs" || k == "$id"))
+            })
+            .cloned()
+            .collect();
+        if !sibling_keys.is_empty() {
+            let outer: Vec<(String, Value)> = sibling_keys
+                .iter()
+                .filter_map(|k| map.get(k).map(|v| (k.clone(), v.clone())))
+                .collect();
+            if let Some(any_of) = map.get_mut("anyOf").and_then(Value::as_array_mut) {
+                for branch in any_of.iter_mut().filter_map(Value::as_object_mut) {
+                    for (key, value) in &outer {
+                        merge_mfjs_branch(branch, key, value);
+                    }
+                }
+            }
+            for key in &sibling_keys {
+                map.remove(key);
+            }
+            *rewrites += 1;
+        }
+    }
+
+    // 6) 递归子 schema（anyOf 分支已并入父级约束，同样需要规范化）
+    if let Some(any_of) = map.get_mut("anyOf").and_then(Value::as_array_mut) {
+        for branch in any_of.iter_mut() {
+            normalize_mfjs_schema_node(branch, false, rewrites);
+        }
+    }
+    if let Some(props) = map.get_mut("properties").and_then(Value::as_object_mut) {
+        for sub in props.values_mut() {
+            normalize_mfjs_schema_node(sub, false, rewrites);
+        }
+    }
+    if let Some(defs) = map.get_mut("$defs").and_then(Value::as_object_mut) {
+        for sub in defs.values_mut() {
+            normalize_mfjs_schema_node(sub, false, rewrites);
+        }
+    }
+    if let Some(items) = map.get_mut("items") {
+        match items {
+            Value::Object(_) => normalize_mfjs_schema_node(items, false, rewrites),
+            Value::Array(arr) => {
+                for sub in arr.iter_mut() {
+                    normalize_mfjs_schema_node(sub, false, rewrites);
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(ap) = map.get_mut("additionalProperties") {
+        if ap.is_object() {
+            normalize_mfjs_schema_node(ap, false, rewrites);
+        }
+    }
+}
+
+/// 把父级约束并入 anyOf 分支：required 取并集（语义 = 两者交集），
+/// properties 按键合并且分支已有同名属性时保留分支（鉴别器收窄语义），
+/// 其余关键字仅在分支缺失时补入（分支自身的更严约束优先）。
+fn merge_mfjs_branch(branch: &mut Map<String, Value>, key: &str, value: &Value) {
+    if key == "required" {
+        let mut handled = false;
+        if let Some(Value::Array(existing)) = branch.get_mut(key) {
+            if let Value::Array(extra) = value {
+                for item in extra {
+                    if !existing.contains(item) {
+                        existing.push(item.clone());
+                    }
+                }
+            }
+            handled = true;
+        }
+        if handled {
+            return;
+        }
+    } else if key == "properties" {
+        let mut handled = false;
+        if let Some(Value::Object(existing)) = branch.get_mut(key) {
+            if let Value::Object(extra) = value {
+                for (k, v) in extra {
+                    if !existing.contains_key(k) {
+                        existing.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            handled = true;
+        }
+        if handled {
+            return;
+        }
+    }
+    if !branch.contains_key(key) {
+        branch.insert(key.to_string(), value.clone());
+    }
+}
+
+/// 从 enum 字面量推断 type（MFJS enum 仅支持 float/int/str，字面量类型一致）。
+/// 混合类型或含 null 时返回 None（保持原样，交给校验器报错）。
+fn infer_mfjs_enum_type(vals: &[Value]) -> Option<&'static str> {
+    if vals.is_empty() {
+        return None;
+    }
+    if vals.iter().all(Value::is_string) {
+        return Some("string");
+    }
+    if vals.iter().all(Value::is_boolean) {
+        return Some("boolean");
+    }
+    if vals.iter().all(Value::is_number) {
+        let all_integral = vals
+            .iter()
+            .filter_map(Value::as_f64)
+            .all(|f| f.fract() == 0.0);
+        return Some(if all_integral { "integer" } else { "number" });
+    }
+    None
+}
+
 impl MoonshotAdapter {
     /// 解析模型名中的 Kimi K 系版本号，返回 (major, minor)。
     ///
@@ -643,5 +943,450 @@ mod tests {
         assert!(!early_return);
         assert_eq!(body.get("temperature"), Some(&json!(0.7)));
         assert!(!body.contains_key("thinking"));
+    }
+
+    // ========================================================================
+    // MFJS 工具 schema 规范化
+    // ========================================================================
+
+    /// 构造 OpenAI function 线格式工具
+    fn mfjs_tool(parameters: Value) -> Value {
+        json!({
+            "type": "function",
+            "function": {
+                "name": "demo_tool",
+                "description": "demo",
+                "parameters": parameters,
+            }
+        })
+    }
+
+    #[test]
+    fn mfjs_distributes_root_constraints_into_anyof_branches() {
+        // builtin-chatanki_wait / user_todo_update_list 的真实形状：
+        // 根级 type:object + properties + anyOf 分支仅含 required
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "documentId": { "type": "string" },
+                "ankiBlockId": { "type": "string" }
+            },
+            "anyOf": [
+                { "required": ["documentId"] },
+                { "required": ["ankiBlockId"] }
+            ],
+            "additionalProperties": false
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        assert_eq!(rewrites, 1);
+        let params = &tools[0]["function"]["parameters"];
+        // Ultra 级 anyOf 同级只允许 description/title → 约束全部内联进分支
+        assert_eq!(
+            params,
+            &json!({
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "documentId": { "type": "string" },
+                            "ankiBlockId": { "type": "string" }
+                        },
+                        "required": ["documentId"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "documentId": { "type": "string" },
+                            "ankiBlockId": { "type": "string" }
+                        },
+                        "required": ["ankiBlockId"],
+                        "additionalProperties": false
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn mfjs_distributes_nested_and_rewrites_null_enum_and_drops_unsupported() {
+        // builtin-chatanki_update_card 的真实形状：嵌套 patch 对象
+        // type+anyOf 同层、{enum:[null]} 可空写法、minProperties 不支持
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "cardId": { "type": "string" },
+                "expectedReviewVersion": {
+                    "anyOf": [
+                        { "type": "integer", "minimum": 0 },
+                        { "enum": [null] }
+                    ],
+                    "description": "reviewState=null 时显式传 null"
+                },
+                "patch": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                        "front": { "type": "string" },
+                        "text": { "type": "string" }
+                    },
+                    "anyOf": [
+                        { "required": ["front"] },
+                        { "required": ["text"] }
+                    ],
+                    "additionalProperties": false
+                }
+            },
+            "required": ["cardId"]
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        // minProperties 丢弃 + enum-null 改写 + patch 分发 = 3
+        assert_eq!(rewrites, 3);
+        let params = &tools[0]["function"]["parameters"];
+        // 根级无 anyOf，type/required 保留
+        assert_eq!(params.get("type"), Some(&json!("object")));
+        assert_eq!(params.get("required"), Some(&json!(["cardId"])));
+        // {enum:[null]} → {type:"null"}；description 可留在 anyOf 同级
+        assert_eq!(
+            params["properties"]["expectedReviewVersion"],
+            json!({
+                "anyOf": [
+                    { "type": "integer", "minimum": 0 },
+                    { "type": "null" }
+                ],
+                "description": "reviewState=null 时显式传 null"
+            })
+        );
+        // 嵌套 patch：约束全内联进分支
+        assert_eq!(
+            params["properties"]["patch"],
+            json!({
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "front": { "type": "string" },
+                            "text": { "type": "string" }
+                        },
+                        "required": ["front"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "front": { "type": "string" },
+                            "text": { "type": "string" }
+                        },
+                        "required": ["text"],
+                        "additionalProperties": false
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn mfjs_rewrites_oneof_with_discriminator_branches() {
+        // builtin-settings_set 的真实形状：根级 oneOf，分支是带收窄 enum 的
+        // 完整 object（鉴别器模式），分支自身的 key/value 必须赢过父级
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "key": { "type": "string", "enum": ["theme", "theme_palette"] },
+                "value": {}
+            },
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["key", "value"],
+                    "properties": {
+                        "key": { "type": "string", "enum": ["theme"] },
+                        "value": { "type": "string", "enum": ["light", "dark", "auto"] }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["key", "value"],
+                    "properties": {
+                        "key": { "type": "string", "enum": ["theme_palette"] },
+                        "value": { "type": "string", "enum": ["default", "custom"] }
+                    }
+                }
+            ]
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        // oneOf→anyOf + 根级分发 = 2
+        assert_eq!(rewrites, 2);
+        let params = &tools[0]["function"]["parameters"];
+        assert!(params.get("oneOf").is_none());
+        // 根级只剩 anyOf
+        assert_eq!(params.as_object().unwrap().keys().count(), 1);
+        // 分支保留自己的收窄 enum（鉴别器语义不被父级宽约束覆盖）
+        assert_eq!(
+            params["anyOf"][0]["properties"]["key"],
+            json!({ "type": "string", "enum": ["theme"] })
+        );
+        assert_eq!(
+            params["anyOf"][1]["properties"]["value"],
+            json!({ "type": "string", "enum": ["default", "custom"] })
+        );
+        assert_eq!(
+            params["anyOf"][0]["required"],
+            json!(["key", "value"])
+        );
+    }
+
+    #[test]
+    fn mfjs_rewrites_const_and_drops_unique_items() {
+        // workbench setZoom 形状（const）+ user_todo RRULE 形状（uniqueItems）
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "zoom": {
+                    "anyOf": [
+                        { "type": "number", "minimum": 10, "maximum": 800 },
+                        { "type": "string", "const": "fit" }
+                    ]
+                },
+                "byWeekday": {
+                    "type": "array",
+                    "items": { "type": "integer", "minimum": 0, "maximum": 6 },
+                    "uniqueItems": true
+                }
+            },
+            "required": ["zoom"]
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        // const→enum + uniqueItems 丢弃 = 2
+        assert_eq!(rewrites, 2);
+        let params = &tools[0]["function"]["parameters"];
+        assert_eq!(
+            params["properties"]["zoom"]["anyOf"],
+            json!([
+                { "type": "number", "minimum": 10, "maximum": 800 },
+                { "type": "string", "enum": ["fit"] }
+            ])
+        );
+        assert_eq!(
+            params["properties"]["byWeekday"],
+            json!({
+                "type": "array",
+                "items": { "type": "integer", "minimum": 0, "maximum": 6 }
+            })
+        );
+    }
+
+    #[test]
+    fn mfjs_leaves_compliant_schemas_untouched() {
+        // 已合规：anyOf 分支自带 type、同级仅 description（MFJS 官方示例形状）
+        let compliant = mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "qs": {
+                    "anyOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } }
+                    ],
+                    "description": "place your query or queries here"
+                }
+            },
+            "required": ["qs"]
+        }));
+        // 无 anyOf 的普通 schema
+        let plain = mfjs_tool(json!({
+            "type": "object",
+            "properties": { "q": { "type": "string" } }
+        }));
+        let mut tools = vec![compliant.clone(), plain.clone()];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        assert_eq!(rewrites, 0);
+        assert_eq!(tools, vec![compliant, plain]);
+    }
+
+    #[test]
+    fn mfjs_unions_required_when_distributing() {
+        // user_todo_update_list 形状：根级 required 与分支 required 取并集
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "list_id": { "type": "string", "minLength": 1 },
+                "title": { "type": "string" },
+                "expected_updated_at": { "type": "string" }
+            },
+            "required": ["list_id", "expected_updated_at"],
+            "anyOf": [{ "required": ["title"] }]
+        }))];
+
+        normalize_tool_schemas_for_mfjs(&mut tools);
+
+        assert_eq!(
+            tools[0]["function"]["parameters"]["anyOf"][0]["required"],
+            json!(["title", "list_id", "expected_updated_at"])
+        );
+        assert_eq!(
+            tools[0]["function"]["parameters"]["anyOf"][0]["type"],
+            json!("object")
+        );
+    }
+
+    #[test]
+    fn mfjs_infers_type_for_bare_enum() {
+        // builtin-chatanki_export / transform 的真实形状：
+        // {const:"json", enum:["json"]} 去 const 后成为裸 enum
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "format": { "const": "json", "enum": ["json"] },
+                "count": { "enum": [1, 2, 3] },
+                "ratio": { "enum": [0.5, 1.5] },
+                "flag": { "enum": [true, false] }
+            }
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        // format: 去 const + 推断 type = 2；count/ratio/flag 各 1 = 5
+        assert_eq!(rewrites, 5);
+        let props = &tools[0]["function"]["parameters"]["properties"];
+        assert_eq!(props["format"], json!({ "type": "string", "enum": ["json"] }));
+        assert_eq!(props["count"], json!({ "type": "integer", "enum": [1, 2, 3] }));
+        assert_eq!(props["ratio"], json!({ "type": "number", "enum": [0.5, 1.5] }));
+        assert_eq!(props["flag"], json!({ "type": "boolean", "enum": [true, false] }));
+    }
+
+    #[test]
+    fn mfjs_drops_parent_annotation_when_branch_defines_it() {
+        // builtin-mindmap_update 的真实形状：anyOf 父级与分支同时有 description
+        // （walle Ultra 冲突规则 → 删父级副本，保留分支的更具体注解）
+        let mut tools = vec![mfjs_tool(json!({
+            "type": "object",
+            "properties": {
+                "content": {
+                    "oneOf": [
+                        { "type": "string", "description": "JSON 字符串" },
+                        { "type": "object", "description": "对象格式" }
+                    ],
+                    "description": "完整 MindMapDocument（字符串或对象）"
+                }
+            }
+        }))];
+
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+
+        assert_eq!(rewrites, 2);
+        let content = &tools[0]["function"]["parameters"]["properties"]["content"];
+        assert!(content.get("description").is_none());
+        assert_eq!(content["anyOf"][0]["description"], json!("JSON 字符串"));
+        assert_eq!(content["anyOf"][1]["description"], json!("对象格式"));
+    }
+
+    /// 递归断言：MFJS 不支持的关键字、anyOf 非法同级键、裸 enum 均不存在
+    fn assert_mfjs_clean(node: &Value, path: &str) {
+        match node {
+            Value::Object(map) => {
+                for banned in [
+                    "uniqueItems",
+                    "minProperties",
+                    "maxProperties",
+                    "exclusiveMinimum",
+                    "exclusiveMaximum",
+                    "oneOf",
+                    "allOf",
+                    "const",
+                ] {
+                    assert!(
+                        !map.contains_key(banned),
+                        "{banned} remains at {path}"
+                    );
+                }
+                if map.contains_key("anyOf") {
+                    for k in map.keys() {
+                        assert!(
+                            matches!(k.as_str(), "anyOf" | "description" | "title" | "$defs" | "$id"),
+                            "anyOf sibling '{k}' at {path}"
+                        );
+                    }
+                }
+                if map.contains_key("enum") {
+                    assert!(map.contains_key("type"), "bare enum at {path}");
+                }
+                for (k, v) in map {
+                    assert_mfjs_clean(v, &format!("{path}.{k}"));
+                }
+            }
+            Value::Array(arr) => {
+                for (i, v) in arr.iter().enumerate() {
+                    assert_mfjs_clean(v, &format!("{path}[{i}]"));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn mfjs_normalizes_real_rust_builtin_tool_schemas() {
+        // Rust 侧真实内置工具（user_todo 系）必须全部通过规范化
+        let mut tools = crate::chat_v2::tools::user_todo_executor::get_user_todo_schemas();
+        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
+        assert!(rewrites > 0, "user_todo schemas should need rewrites");
+
+        for tool in &tools {
+            let name = tool["function"]["name"].as_str().unwrap_or("<unnamed>");
+            assert_mfjs_clean(&tool["function"]["parameters"], name);
+        }
+
+        let update = tools
+            .iter()
+            .find(|t| t["function"]["name"] == json!("user_todo_update_list"))
+            .expect("user_todo_update_list schema");
+        let params = update["function"]["parameters"]
+            .as_object()
+            .expect("parameters object");
+        assert_eq!(params.keys().collect::<Vec<_>>(), vec!["anyOf"]);
+    }
+
+    #[test]
+    fn mfjs_gate_matches_moonshot_configs() {
+        // 内置 vendor：adapter 命中
+        assert!(should_apply_mfjs_tool_schema_dialect(&ApiConfig {
+            model_adapter: "moonshot".to_string(),
+            model: "kimi-k3".to_string(),
+            base_url: "https://api.moonshot.cn/v1".to_string(),
+            ..Default::default()
+        }));
+        // Kimi coding plan 自定义 vendor：通用适配器 + api.kimi.com 域名命中
+        assert!(should_apply_mfjs_tool_schema_dialect(&ApiConfig {
+            model_adapter: "openai".to_string(),
+            model: "kimi-for-coding".to_string(),
+            base_url: "https://api.kimi.com/coding/v1".to_string(),
+            ..Default::default()
+        }));
+        // 中转反代：仅模型名命中
+        assert!(should_apply_mfjs_tool_schema_dialect(&ApiConfig {
+            model_adapter: "openai".to_string(),
+            model: "kimi-k3-max".to_string(),
+            base_url: "http://47.88.78.106/v1".to_string(),
+            ..Default::default()
+        }));
+        // 普通 OpenAI 配置：不命中
+        assert!(!should_apply_mfjs_tool_schema_dialect(&ApiConfig {
+            model_adapter: "openai".to_string(),
+            model: "gpt-5.6".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            ..Default::default()
+        }));
     }
 }

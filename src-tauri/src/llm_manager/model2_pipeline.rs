@@ -4886,6 +4886,14 @@ impl LLMManager {
                 apply_server_side_web_search_tool(&mut tools);
                 debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
             }
+            // 🆕 Moonshot MFJS：anyOf 节点 type 下沉分支 + {enum:[null]} → {type:"null"}
+            if crate::llm_manager::adapters::should_apply_mfjs_tool_schema_dialect(&config) {
+                let rewrites =
+                    crate::llm_manager::adapters::normalize_tool_schemas_for_mfjs(&mut tools);
+                if rewrites > 0 {
+                    debug!("[LLM] Moonshot MFJS 规范化工具 schema：{} 处改写", rewrites);
+                }
+            }
             let tools = Value::Array(tools);
             debug!(
                 "[LLM] 使用 context 注入的自定义工具，数量: {}",
@@ -4914,6 +4922,20 @@ impl LLMManager {
 
             // 只有在工具列表非空时才设置 tools 和 tool_choice
             if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {
+                let mut tools = tools;
+                // 🆕 Moonshot MFJS：anyOf 节点 type 下沉分支 + {enum:[null]} → {type:"null"}
+                if crate::llm_manager::adapters::should_apply_mfjs_tool_schema_dialect(&config) {
+                    if let Some(arr) = tools.as_array_mut() {
+                        let rewrites =
+                            crate::llm_manager::adapters::normalize_tool_schemas_for_mfjs(arr);
+                        if rewrites > 0 {
+                            debug!(
+                                "[LLM] Moonshot MFJS 规范化工具 schema（legacy 路径）：{} 处改写",
+                                rewrites
+                            );
+                        }
+                    }
+                }
                 request_body["tools"] = tools;
                 if !(quirks.strip_tool_choice_on_tool_result && has_tool_result_messages) {
                     request_body["tool_choice"] = json!("auto");
