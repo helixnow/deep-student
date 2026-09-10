@@ -7891,7 +7891,10 @@ impl LLMManager {
             config,
             user_prompt,
             None,
-            RawPromptOptions { force_json: false, ..Default::default() },
+            RawPromptOptions {
+                force_json: false,
+                ..Default::default()
+            },
             crate::llm_usage::CallerType::ChatV2,
             "compaction",
         )
@@ -7986,7 +7989,10 @@ impl LLMManager {
             config,
             user_prompt,
             Some(image_payloads),
-            RawPromptOptions { force_json: false, ..Default::default() },
+            RawPromptOptions {
+                force_json: false,
+                ..Default::default()
+            },
             caller_type,
             routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK,
         )
@@ -8043,7 +8049,10 @@ impl LLMManager {
             config,
             user_prompt,
             image_payloads,
-            RawPromptOptions { force_json: true, ..Default::default() },
+            RawPromptOptions {
+                force_json: true,
+                ..Default::default()
+            },
             caller_type,
             task,
         )
