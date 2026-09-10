@@ -156,8 +156,12 @@ impl DeepSeekAdapter {
     fn normalize_v4_reasoning_effort(effort: &str) -> Option<&'static str> {
         match effort.trim().to_lowercase().as_str() {
             "none" | "unset" => None,
-            "low" | "medium" | "minimal" | "high" => Some("high"),
-            "xhigh" | "max" => Some("max"),
+            // 官方映射表：minimal/low → low，medium/high → high
+            "minimal" | "low" => Some("low"),
+            "medium" | "high" => Some("high"),
+            // 官方映射 xhigh → high、max/ultra → max；应用沿用旧语义把 xhigh
+            // 视为最高档别名（UI 对 V4 不再暴露 xhigh，仅兼容存量配置）
+            "xhigh" | "max" | "ultra" => Some("max"),
             _ => None,
         }
     }
@@ -200,6 +204,40 @@ impl DeepSeekAdapter {
 
         get_trimmed_effort(config).and_then(Self::normalize_v4_reasoning_effort)
     }
+}
+
+/// 官方 API 在 thinking + `reasoning_effort=max` 下的默认输出上限为 128K
+/// （官方文档：非思考 8K / thinking 64K / max 128K）。应用始终显式下发
+/// `max_tokens`，若不抬高上限会提前截断 max 档思维链。
+///
+/// 仅对官方 DeepSeek 主机生效：第三方托管未必支持 128K 输出。
+/// 返回 `None` 表示无需调整。
+pub(crate) fn v4_max_effort_output_token_floor(
+    config: &ApiConfig,
+    body: &Map<String, Value>,
+) -> Option<u32> {
+    if DeepSeekAdapter::host_protocol(config) != DeepSeekHostProtocol::Official {
+        return None;
+    }
+    if !DeepSeekAdapter::is_v4_effort_capable(DeepSeekAdapter::classify_model(&config.model)) {
+        return None;
+    }
+
+    let thinking_enabled = body
+        .get("thinking")
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(Value::as_str)
+        == Some("enabled")
+        || body.get("enable_thinking").and_then(Value::as_bool) == Some(true);
+    if !thinking_enabled {
+        return None;
+    }
+
+    if body.get("reasoning_effort").and_then(Value::as_str) != Some("max") {
+        return None;
+    }
+
+    Some(131_072)
 }
 
 impl RequestAdapter for DeepSeekAdapter {
@@ -381,6 +419,87 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+    }
+
+    #[test]
+    fn test_official_v4_reasoning_effort_low_stays_low() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("low".to_string()),
+            model: "deepseek-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("low")));
+    }
+
+    #[test]
+    fn test_official_v4_reasoning_effort_ultra_maps_to_max() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("ultra".to_string()),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+    }
+
+    #[test]
+    fn test_v4_max_effort_output_floor_official_only() {
+        let official = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut max_body = Map::new();
+        max_body.insert("thinking".to_string(), json!({ "type": "enabled" }));
+        max_body.insert("reasoning_effort".to_string(), json!("max"));
+        assert_eq!(
+            v4_max_effort_output_token_floor(&official, &max_body),
+            Some(131_072)
+        );
+
+        // 非 max 档不抬升
+        let mut high_body = max_body.clone();
+        high_body.insert("reasoning_effort".to_string(), json!("high"));
+        assert_eq!(
+            v4_max_effort_output_token_floor(&official, &high_body),
+            None
+        );
+
+        // 非思考模式不抬升
+        let mut disabled_body = max_body.clone();
+        disabled_body.insert("thinking".to_string(), json!({ "type": "disabled" }));
+        assert_eq!(
+            v4_max_effort_output_token_floor(&official, &disabled_body),
+            None
+        );
+
+        // 第三方托管不抬升
+        let third_party = ApiConfig {
+            model: "deepseek-ai/DeepSeek-V4-Pro".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            ..official.clone()
+        };
+        assert_eq!(
+            v4_max_effort_output_token_floor(&third_party, &max_body),
+            None
+        );
     }
 
     #[test]

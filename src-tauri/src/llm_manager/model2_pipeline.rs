@@ -8,7 +8,9 @@ use crate::openai_codex::{
     CodexRequestAuth,
 };
 use crate::providers::{ProviderAdapter, ProviderRequest};
-use crate::reasoning_policy::ReasoningPassbackPolicy;
+use crate::reasoning_policy::{
+    should_passback_plain_assistant_reasoning_for_request, ReasoningPassbackPolicy,
+};
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
@@ -694,7 +696,19 @@ pub(crate) fn apply_generation_params(
     config: &ApiConfig,
     quirks: &ProviderQuirks,
 ) {
-    let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    let mut max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    // 官方 DeepSeek V4 max 档：官方默认输出上限为 128K，显式下发的
+    // max_tokens 若偏低会提前截断思维链，这里按官方默认抬高下限。
+    if let Some(body_map) = body.as_object() {
+        if let Some(floor) =
+            crate::llm_manager::adapters::v4_max_effort_output_token_floor(config, body_map)
+        {
+            max_tokens = max_tokens.max(floor);
+            if let Some(limit) = config.max_tokens_limit.filter(|limit| *limit > 0) {
+                max_tokens = max_tokens.min(limit);
+            }
+        }
+    }
     apply_generation_token_limit(body, quirks, max_tokens);
 
     if quirks.sampling_params_allowed {
@@ -2475,6 +2489,35 @@ mod tests {
 
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
         assert_eq!(body.get("max_tokens"), Some(&json!(32_000)));
+    }
+
+    #[test]
+    fn official_deepseek_v4_max_effort_raises_generation_token_floor() {
+        let config = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
+            provider_type: Some("deepseek".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("max".to_string()),
+            max_output_tokens: 32_768,
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "stream": true
+        });
+
+        LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+        apply_generation_params(&mut body, &config, &resolve_quirks(&config));
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+        // 官方 max 档默认输出 128K，显式 max_output_tokens=32K 应被抬高
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(131_072)));
     }
 
     #[test]
@@ -4499,6 +4542,49 @@ impl LLMManager {
             ]
         }));
 
+        // 提前解析本次请求是否会携带 tools：DeepSeek 官方 V4 的 reasoning_content
+        // 回传策略按“请求是否带 tools”分流（官方 thinking_mode 文档），
+        // 因此必须在构建历史消息前就知道工具开关。
+        let mut tools_enabled = self
+            .db
+            .get_setting("tools.enabled")
+            .ok()
+            .flatten()
+            .map(|v| v.to_lowercase())
+            .map(|v| v != "0" && v != "false")
+            .unwrap_or(true); // 默认启用
+        if disable_tools {
+            tools_enabled = false;
+        }
+
+        // 🆕 检查 context 中是否有自定义工具（用于 Pipeline 注入 Canvas 等工具）
+        // 即使 disable_tools = true，也允许通过 context 注入工具 schema
+        // 这样 Pipeline 可以接管工具执行，但 LLM 仍然知道有哪些工具可用
+        let custom_tools = context
+            .get("custom_tools")
+            .and_then(|v| v.as_array())
+            .cloned();
+        let has_custom_tools = custom_tools
+            .as_ref()
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false);
+
+        // 保守取“有工具”一侧：legacy 工具列表构建可能返回空，多回传历史
+        // reasoning 只多占请求体积；漏回传才可能触发官方 V4 的 400。
+        let request_has_tools_hint =
+            config.supports_tools && (has_custom_tools || (!disable_tools && tools_enabled));
+
+        // 🔍 调试日志：检查 custom_tools 在 LLM 调用时的状态
+        debug!(
+            "[LLM] custom_tools check: has_custom_tools={}, count={}, disable_tools={}, tools_enabled={}, supports_tools={}, request_has_tools_hint={}",
+            has_custom_tools,
+            custom_tools.as_ref().map(|arr| arr.len()).unwrap_or(0),
+            disable_tools,
+            tools_enabled,
+            config.supports_tools,
+            request_has_tools_hint
+        );
+
         // 🔧 P1修复：预处理消息，合并连续的工具调用
         // OpenAI 协议期望：一个 assistant 消息包含 tool_calls 数组，然后跟着多个 tool 消息
         // 当前数据模型每个消息只有一个 tool_call，需要在序列化时合并
@@ -4811,9 +4897,15 @@ impl LLMManager {
                                     "content": content_blocks
                                 }));
                             }
-                        } else if has_thinking && quirks.passback_plain_assistant_reasoning {
+                        } else if has_thinking
+                            && should_passback_plain_assistant_reasoning_for_request(
+                                &config,
+                                request_has_tools_hint,
+                            )
+                        {
                             // 🔧 思维链回传策略（文档 29 第 7 节）
                             // 使用统一的 reasoning_policy 模块判断是否需要回传
+                            // （官方 DeepSeek V4：带 tools 的请求必须全量回传历史 reasoning）
                             let policy = quirks.reasoning_passback;
                             let mut assistant_msg = json!({
                                 "role": "assistant",
@@ -4923,49 +5015,6 @@ impl LLMManager {
 
         // 🆕 应用推理配置，优先使用传入的enable_thinking参数
         Self::apply_reasoning_config(&mut request_body, &config, Some(enable_thinking));
-
-        // 检查是否启用工具（全局 + 模型能力）
-        let mut tools_enabled = self
-            .db
-            .get_setting("tools.enabled")
-            .ok()
-            .flatten()
-            .map(|v| v.to_lowercase())
-            .map(|v| v != "0" && v != "false")
-            .unwrap_or(true); // 默认启用
-        if disable_tools {
-            tools_enabled = false;
-        }
-
-        // 🆕 检查 context 中是否有自定义工具（用于 Pipeline 注入 Canvas 等工具）
-        // 即使 disable_tools = true，也允许通过 context 注入工具 schema
-        // 这样 Pipeline 可以接管工具执行，但 LLM 仍然知道有哪些工具可用
-        let custom_tools = context
-            .get("custom_tools")
-            .and_then(|v| v.as_array())
-            .cloned();
-        let has_custom_tools = custom_tools
-            .as_ref()
-            .map(|arr| !arr.is_empty())
-            .unwrap_or(false);
-
-        // 🔍 调试日志：检查 custom_tools 在 LLM 调用时的状态
-        debug!(
-            "[LLM] custom_tools check: has_custom_tools={}, count={}, disable_tools={}, tools_enabled={}, supports_tools={}",
-            has_custom_tools,
-            custom_tools.as_ref().map(|arr| arr.len()).unwrap_or(0),
-            disable_tools,
-            tools_enabled,
-            config.supports_tools
-        );
-        debug!(
-            "[LLM] custom_tools check: has_custom_tools={}, count={}, disable_tools={}, tools_enabled={}, supports_tools={}",
-            has_custom_tools,
-            custom_tools.as_ref().map(|arr| arr.len()).unwrap_or(0),
-            disable_tools,
-            tools_enabled,
-            config.supports_tools
-        );
 
         if has_custom_tools && config.supports_tools {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）

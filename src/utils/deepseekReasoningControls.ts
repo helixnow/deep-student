@@ -57,6 +57,7 @@ export const DEEPSEEK_V32_EFFORT_BUDGETS: Record<'low' | 'medium' | 'high' | 'xh
 };
 
 const V4_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+  { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
   { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
@@ -407,8 +408,12 @@ export function deepSeekV32BudgetToEffort(budget: number | undefined | null): 'l
   return 'xhigh';
 }
 
-export function normalizeDeepSeekV4Effort(effort: string | undefined | null): 'high' | 'max' {
-  return normalize(effort) === 'max' || normalize(effort) === 'xhigh' ? 'max' : 'high';
+export function normalizeDeepSeekV4Effort(effort: string | undefined | null): 'low' | 'high' | 'max' {
+  const normalized = normalize(effort);
+  // 官方映射表：minimal/low → low；max/ultra → max（xhigh 为存量最高档别名）
+  if (normalized === 'minimal' || normalized === 'low') return 'low';
+  if (normalized === 'max' || normalized === 'xhigh' || normalized === 'ultra') return 'max';
+  return 'high';
 }
 
 export function resolveDeepSeekReasoningControl(
