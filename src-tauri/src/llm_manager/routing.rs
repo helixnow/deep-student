@@ -182,12 +182,72 @@ pub(crate) fn tag_establish_failure(mut err: AppError, http_status: Option<u16>)
     err
 }
 
+/// 稳定 LLM 错误码键：写入 `details.llm_error_code`，供 failover 分类与
+/// 上层（前端提示 / 上下文裁剪）复用，不受错误文案变化影响。
+pub const LLM_ERROR_CODE_KEY: &str = "llm_error_code";
+
+/// 空响应：流已建立但没有任何内容产出，重试安全（对齐 DSH 默认重试策略）。
+pub const LLM_ERROR_CODE_EMPTY_RESPONSE: &str = "EMPTY_RESPONSE";
+
+/// 上下文超限：参数类错误，重试无用，需要裁剪或换更大窗口的模型。
+pub const LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED: &str = "CONTEXT_WINDOW_EXCEEDED";
+
+/// 给错误附加稳定错误码（与 `llm_failover` 等其他 details 字段共存）。
+pub(crate) fn attach_llm_error_code(mut err: AppError, code: &str) -> AppError {
+    let mut details = err.details.take().unwrap_or_else(|| json!({}));
+    if let Some(obj) = details.as_object_mut() {
+        obj.insert(LLM_ERROR_CODE_KEY.to_string(), json!(code));
+    }
+    err.details = Some(details);
+    err
+}
+
+/// 读取错误上附加的稳定错误码。
+pub fn llm_error_code(err: &AppError) -> Option<&str> {
+    err.details
+        .as_ref()
+        .and_then(|d| d.get(LLM_ERROR_CODE_KEY))
+        .and_then(|v| v.as_str())
+}
+
+/// 从供应商错误响应体中识别「上下文超限」措辞。仅在 400/413/422 等参数类
+/// 错误上使用，避免把普通 400 误判为上下文问题。
+pub fn provider_body_indicates_context_window(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    const NEEDLES: &[&str] = &[
+        "context length",
+        "context_length",
+        "maximum context",
+        "max context",
+        "too many tokens",
+        "exceeds the maximum",
+        "exceed the maximum",
+        "prompt is too long",
+        "input is too long",
+        "reduce the length",
+        "maximum number of tokens",
+        "context window",
+        "上下文长度",
+        "超出最大",
+    ];
+    NEEDLES.iter().any(|needle| lower.contains(needle))
+}
+
 /// 错误分类：区分可重试（网络超时、5xx、429、连接失败）与
 /// 不可重试（权限/内容审核/参数错误、用户取消、流中断）
 pub fn classify_llm_error(err: &AppError) -> LlmErrorClass {
     let msg_lower = err.message.to_lowercase();
     if err.message.contains("取消") || msg_lower.contains("cancel") {
         return LlmErrorClass::Cancelled;
+    }
+
+    // 稳定错误码优先于文案匹配：为空响应 / 上下文超限提供确定的分类。
+    if let Some(code) = llm_error_code(err) {
+        match code {
+            LLM_ERROR_CODE_EMPTY_RESPONSE => return LlmErrorClass::RetryableTransient,
+            LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED => return LlmErrorClass::NonRetryable,
+            _ => {}
+        }
     }
 
     let tag = err
@@ -817,6 +877,40 @@ mod tests {
         // 即使被打了 429 标记，取消依然优先
         let err = err_with_status(Some(429), "请求已被用户取消");
         assert_eq!(classify_llm_error(&err), LlmErrorClass::Cancelled);
+    }
+
+    #[test]
+    fn classify_stable_error_codes() {
+        // 空响应：流已建立但无内容产出，重试安全（对齐 DSH 默认重试策略）
+        let empty = attach_llm_error_code(
+            AppError::llm("模型返回空响应，请重试"),
+            LLM_ERROR_CODE_EMPTY_RESPONSE,
+        );
+        assert_eq!(classify_llm_error(&empty), LlmErrorClass::RetryableTransient);
+
+        // 上下文超限：参数类错误，重试无用；显式分类供上层提示/裁剪
+        let exceeded = attach_llm_error_code(
+            AppError::llm("HTTP 400 - maximum context length exceeded"),
+            LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+        );
+        assert_eq!(classify_llm_error(&exceeded), LlmErrorClass::NonRetryable);
+    }
+
+    #[test]
+    fn provider_body_context_window_detection() {
+        assert!(provider_body_indicates_context_window(
+            "This model's maximum context length is 128000 tokens"
+        ));
+        assert!(provider_body_indicates_context_window(
+            "输入超出最大上下文长度"
+        ));
+        assert!(provider_body_indicates_context_window(
+            "prompt is too long: 200000 tokens"
+        ));
+        assert!(!provider_body_indicates_context_window(
+            "invalid model name: gpt-nope"
+        ));
+        assert!(!provider_body_indicates_context_window(""));
     }
 
     // ---------- 冷却表 ----------
