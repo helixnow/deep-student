@@ -1954,7 +1954,7 @@ fn build_chat_probe_body(config: &ApiConfig) -> serde_json::Value {
 
 /// 把 HTTP 失败状态码归类为失败类别 + 用户可读摘要（响应体已截断脱敏）。
 fn classify_probe_http_failure(status: reqwest::StatusCode, body: &str) -> (&'static str, String) {
-    let detail = truncate_provider_error_detail(body.to_string());
+    let detail = truncate_provider_error_detail(crate::debug_log_service::redact_sensitive_text(body));
     let (category, summary) = match status.as_u16() {
         401 | 403 => ("auth", "认证失败：API 密钥无效、已过期或权限不足"),
         402 => ("billing", "账户余额不足或需要订阅"),
@@ -5091,6 +5091,19 @@ mod tests {
         let (category, _) =
             classify_probe_http_failure(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "");
         assert_eq!(category, "server");
+    }
+
+    #[test]
+    fn classify_probe_http_failure_redacts_credentials_in_body() {
+        let (_, message) = classify_probe_http_failure(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "{\"error\":\"invalid api key sk-abcdefghijklmnopqrstuvwx\"}",
+        );
+        assert!(
+            !message.contains("sk-abcdefghijklmnopqrstuvwx"),
+            "credential must not leak into probe error: {message}"
+        );
+        assert!(message.contains("[REDACTED]"), "message={message}");
     }
 
     #[test]
