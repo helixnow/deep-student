@@ -641,7 +641,10 @@ jobs:
     # 钉 22.04：同 Backend 作业的 runner 回收事故（24.04 长编译被回收，
     # 本作业 2026-09-05 在 main 基线上因此 exit 143）
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # 冷缓存下 nextest archive 全量链接在 CARGO_BUILD_JOBS=3 时超过 60 分钟
+    # （2026-09-10 main 与 PR 运行均被 60 分钟超时取消），对齐 migration-gate
+    # 的 90 分钟上限。
+    timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: 0
       RUSTC_WRAPPER: sccache
