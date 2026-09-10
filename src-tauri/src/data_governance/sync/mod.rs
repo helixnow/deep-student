@@ -12239,9 +12239,23 @@ impl SyncManager {
                 if let Some(local) = local_path {
                     if local.exists() {
                         // 资产路径不是内容寻址，mtime 不能证明本地内容就是删除所针对
-                        // 的基线。删除前始终保留冲突副本，避免时钟回拨/拷贝保留 mtime
-                        // 时静默丢失本地修改。
-                        Self::save_conflict_copy(&local, &self.device_id)?;
+                        // 的基线。删除前与墓碑基线做内容哈希比对：一致（本地就是被删
+                        // 基线）直接删除——若仍保存 conflict 副本，标准同步会把副本当
+                        // 新资产上传，以相同内容寻址对象把刚回收的对象复活；不一致或
+                        // 哈希不可用时保留冲突副本，避免时钟回拨/拷贝保留 mtime 时静默
+                        // 丢失本地修改。
+                        let baseline_sha = cloud_manifest
+                            .entries
+                            .get(key)
+                            .map(|entry| entry.sha256.as_str());
+                        let matches_baseline = baseline_sha.is_some_and(|expected| {
+                            crate::backup_common::calculate_file_hash(&local)
+                                .map(|actual| actual.eq_ignore_ascii_case(expected))
+                                .unwrap_or(false)
+                        });
+                        if !matches_baseline {
+                            Self::save_conflict_copy(&local, &self.device_id)?;
+                        }
                         std::fs::remove_file(&local)?;
                     }
                 }
@@ -17424,6 +17438,114 @@ mod tests {
         assert_eq!(
             std::fs::read(blobs_b.join(&legacy_relative)).unwrap(),
             legacy_payload
+        );
+    }
+
+    /// 资产墓碑的物理回收不得退化成"删除—复活"循环：目标设备上的本地资产与
+    /// 墓碑基线逐字节一致时必须直接删除、不产生 conflict 副本——副本会被随后的
+    /// 标准同步当作新资产上传，用同一内容寻址对象把刚回收的对象重新写回云端。
+    #[tokio::test]
+    async fn asset_tombstone_reclaims_object_without_conflict_resurrection() {
+        // 该用例会写共享 sync_state.db（tombstone 序号），与其他并行测试串行。
+        let _db_guard = super::state::test_write_lock().lock().await;
+        let storage = FileE2eeMemoryStorage::default();
+        let source_active = tempfile::tempdir().unwrap();
+        let target_active = tempfile::tempdir().unwrap();
+
+        let active_rel = std::path::Path::new("images/contract/diagram.bin");
+        let active_key = "active/images/contract/diagram.bin";
+        let active_payload: Vec<u8> = (0..(12 * 1024 + 19))
+            .map(|index: usize| {
+                let mixed = index.wrapping_mul(31).wrapping_add(index / 7);
+                (mixed % 251) as u8
+            })
+            .collect();
+        std::fs::create_dir_all(source_active.path().join("images/contract")).unwrap();
+        std::fs::write(source_active.path().join(active_rel), &active_payload).unwrap();
+
+        let source_manager = SyncManager::new(uuid::Uuid::new_v4().to_string());
+        let target_manager = SyncManager::new(uuid::Uuid::new_v4().to_string());
+
+        let upload = source_manager
+            .sync_asset_directories(
+                &storage,
+                source_active.path(),
+                source_active.path(),
+                SyncDirection::Bidirectional,
+            )
+            .await
+            .unwrap();
+        assert_eq!(upload.uploaded, 1);
+        let manifest = source_manager
+            .download_assets_manifest(&storage)
+            .await
+            .unwrap();
+        let remote_key = manifest
+            .entries
+            .get(active_key)
+            .and_then(|entry| entry.object_key.clone())
+            .expect("asset manifest must point to an immutable object");
+
+        let download = target_manager
+            .sync_asset_directories(
+                &storage,
+                target_active.path(),
+                target_active.path(),
+                SyncDirection::Bidirectional,
+            )
+            .await
+            .unwrap();
+        assert_eq!(download.downloaded, 1);
+
+        std::fs::remove_file(source_active.path().join(active_rel)).unwrap();
+        // 共享 sync_state.db 与不取 test_write_lock 的并行测试仍可能瞬时锁竞争
+        // （DEFERRED 事务锁升级绕过 busy_timeout），窗口极短，重试即可。
+        let mut attempts = 0;
+        loop {
+            match source_manager
+                .mark_asset_deleted(&storage, active_key, Some(active_payload.len() as u64))
+                .await
+            {
+                Ok(()) => break,
+                Err(SyncError::Database(ref msg))
+                    if msg.contains("database is locked") && attempts < 40 =>
+                {
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+                Err(error) => panic!("upload asset tombstone: {error:?}"),
+            }
+        }
+
+        let tombstone_sync = loop {
+            match target_manager
+                .sync_asset_directories_with_tombstones(
+                    &storage,
+                    target_active.path(),
+                    target_active.path(),
+                    SyncDirection::Bidirectional,
+                )
+                .await
+            {
+                Ok(outcome) => break outcome,
+                Err(SyncError::Database(ref msg))
+                    if msg.contains("database is locked") && attempts < 40 =>
+                {
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+                Err(error) => panic!("apply asset tombstone: {error:?}"),
+            }
+        };
+        assert!(!tombstone_sync.has_failures(), "{tombstone_sync:?}");
+        assert!(!target_active.path().join(active_rel).exists());
+        assert_eq!(
+            tombstone_sync.uploaded, 0,
+            "与基线一致的本地资产不得以 conflict 副本形式重新上传"
+        );
+        assert!(
+            storage.object(&remote_key).is_none(),
+            "最后一个引用消失后内容寻址对象必须被回收"
         );
     }
 
