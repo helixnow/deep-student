@@ -9,6 +9,10 @@
 import { appDataDir, join } from '@tauri-apps/api/path';
 import { copyFile, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
 
+import {
+  describeDiagError,
+  logWallpaperDiag,
+} from '@/features/workbench/core/wallpaperDiagnostics';
 import { extractFileExtension, fileManager } from '@/utils/fileManager';
 
 export const CUSTOM_WALLPAPER_DIRECTORY = 'workbench-wallpapers';
@@ -180,23 +184,73 @@ async function tryImportDownsampled(
   managedDirectory: string,
 ): Promise<CustomWallpaperEntry | null> {
   // gif 动图必须原样保留；vitest（jsdom/node）等环境没有 createImageBitmap，直接跳过
-  if (extension === 'gif' || typeof createImageBitmap !== 'function') return null;
+  if (extension === 'gif' || typeof createImageBitmap !== 'function') {
+    logWallpaperDiag('import:downsample-skipped', {
+      source: sourcePath,
+      extension,
+      reason: extension === 'gif' ? 'gif-animated' : 'no-createImageBitmap',
+    });
+    return null;
+  }
   let bitmap: ImageBitmap | null = null;
   try {
     const bytes = await readFile(sourcePath);
     bitmap = await createImageBitmap(new Blob([bytes as BlobPart]));
     const maxEdge = resolveWallpaperMaxEdge();
     const target = computeTargetDimensions(bitmap.width, bitmap.height, maxEdge);
-    if (!shouldReencodeWallpaper(extension, target.shouldResize)) return null;
+    if (!shouldReencodeWallpaper(extension, target.shouldResize)) {
+      logWallpaperDiag('import:downsample-skipped', {
+        source: sourcePath,
+        extension,
+        reason: 'within-limit',
+        srcWidth: bitmap.width,
+        srcHeight: bitmap.height,
+        maxEdge,
+      });
+      return null;
+    }
+    logWallpaperDiag('import:downsample-decoded', {
+      source: sourcePath,
+      extension,
+      srcWidth: bitmap.width,
+      srcHeight: bitmap.height,
+      targetWidth: target.width,
+      targetHeight: target.height,
+      maxEdge,
+      sourceBytes: bytes.byteLength,
+    });
 
     const encoded = await encodeBitmapToBlob(bitmap, target.width, target.height);
-    if (!encoded) return null;
+    if (!encoded) {
+      logWallpaperDiag('import:downsample-skipped', {
+        source: sourcePath,
+        extension,
+        reason: 'encode-failed',
+      });
+      return null;
+    }
     const fileName = createManagedFileName(encoded.extension);
     const stagedPath = await join(managedDirectory, fileName);
-    await writeFile(stagedPath, new Uint8Array(await encoded.blob.arrayBuffer()));
+    const encodedBytes = new Uint8Array(await encoded.blob.arrayBuffer());
+    await writeFile(stagedPath, encodedBytes);
+    logWallpaperDiag('import:downsampled', {
+      source: sourcePath,
+      extension,
+      outputExtension: encoded.extension,
+      outputBytes: encodedBytes.byteLength,
+      width: target.width,
+      height: target.height,
+      path: stagedPath,
+    });
     return { path: stagedPath, fileName };
   } catch (error) {
     console.warn('[wallpaperLibrary] downsample failed, falling back to raw copy:', error);
+    logWallpaperDiag('import:downsample-skipped', {
+      source: sourcePath,
+      extension,
+      reason: 'error',
+      error: describeDiagError(error),
+    });
     return null;
   } finally {
     bitmap?.close();
@@ -232,20 +286,33 @@ export async function importWallpaperToLibrary(options?: {
       multiple: false,
       filters: [{ name: 'Images', extensions: [...CUSTOM_WALLPAPER_EXTENSIONS] }],
     });
-    if (!selected) return { status: 'cancelled' };
+    if (!selected) {
+      logWallpaperDiag('import:cancelled');
+      return { status: 'cancelled' };
+    }
     selectedSource = selected;
   } catch (error) {
+    logWallpaperDiag('import:error', {
+      stage: 'picker',
+      error: describeDiagError(error),
+    });
     return { status: 'error', error };
   }
 
   const extension = extractFileExtension(selectedSource);
   if (!(CUSTOM_WALLPAPER_EXTENSIONS as readonly string[]).includes(extension)) {
+    logWallpaperDiag('import:rejected-type', { source: selectedSource, extension });
     return { status: 'error', error: new Error('Unsupported wallpaper image type') };
   }
+  logWallpaperDiag('import:start', { source: selectedSource, extension });
 
   try {
     const existing = await listCustomWallpapers();
     if (existing.length >= CUSTOM_WALLPAPER_LIBRARY_LIMIT) {
+      logWallpaperDiag('import:limit-exceeded', {
+        count: existing.length,
+        limit: CUSTOM_WALLPAPER_LIBRARY_LIMIT,
+      });
       return { status: 'limit-exceeded', limit: CUSTOM_WALLPAPER_LIBRARY_LIMIT };
     }
     const managedDirectory = await resolveManagedDirectory();
@@ -259,8 +326,19 @@ export async function importWallpaperToLibrary(options?: {
     const fileName = createManagedFileName(extension);
     const stagedPath = await join(managedDirectory, fileName);
     await copyFile(selectedSource, stagedPath);
+    logWallpaperDiag('import:copied', {
+      source: selectedSource,
+      extension,
+      path: stagedPath,
+    });
     return { status: 'success', entry: { path: stagedPath, fileName } };
   } catch (error) {
+    logWallpaperDiag('import:error', {
+      stage: 'copy',
+      source: selectedSource,
+      extension,
+      error: describeDiagError(error),
+    });
     return { status: 'error', error };
   }
 }
@@ -278,4 +356,5 @@ export async function removeCustomWallpaper(path: string): Promise<void> {
     throw new Error('Refusing to remove a file outside the managed wallpaper directory');
   }
   await remove(path);
+  logWallpaperDiag('library:remove', { path });
 }

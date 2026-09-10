@@ -1069,6 +1069,104 @@ impl SecureStore {
         Ok(())
     }
 
+    /// 读取 `.key_seed` 并做常规校验（普通文件、大小上限、非空），返回 trim 后的内容。
+    fn read_seed_file_checked(seed_file: &std::path::Path) -> Result<String, SecureStoreError> {
+        let metadata = std::fs::symlink_metadata(seed_file)
+            .map_err(|e| SecureStoreError::Other(format!("读取密钥种子元数据失败: {}", e)))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(SecureStoreError::AccessDenied(
+                "密钥种子必须是普通文件，不能是目录或符号链接".to_string(),
+            ));
+        }
+        if metadata.len() > MAX_BACKUP_SEED_FILE_BYTES {
+            return Err(SecureStoreError::EncryptionError(format!(
+                "密钥种子文件异常过大: {} bytes（上限 {} bytes）",
+                metadata.len(),
+                MAX_BACKUP_SEED_FILE_BYTES
+            )));
+        }
+        use std::io::Read;
+        let mut seed = String::new();
+        let read = std::fs::File::open(seed_file)
+            .map_err(|e| SecureStoreError::Other(format!("打开密钥种子失败: {}", e)))?
+            .take(MAX_BACKUP_SEED_FILE_BYTES + 1)
+            .read_to_string(&mut seed)
+            .map_err(|e| SecureStoreError::Other(format!("读取密钥种子失败: {}", e)))?;
+        if read as u64 > MAX_BACKUP_SEED_FILE_BYTES {
+            seed.zeroize();
+            return Err(SecureStoreError::EncryptionError(
+                "密钥种子读取大小超限".to_string(),
+            ));
+        }
+        let trimmed = seed.trim().to_string();
+        seed.zeroize();
+        if trimmed.is_empty() {
+            return Err(SecureStoreError::EncryptionError(
+                "密钥种子为空".to_string(),
+            ));
+        }
+        Ok(trimmed)
+    }
+
+    /// 把 `.key_seed` 解析为明文种子（备份导出专用，只读、不迁移、不创建）。
+    ///
+    /// 密码加密的全保真备份需要把种子以明文写入**已加密的**内层载荷，才能让
+    /// 备份在任意平台恢复（否则 Windows 导出的 DPAPI 载荷在非 Windows 上
+    /// 永远无法解封）。任何当前环境无法解封的形态一律 fail-closed 返回错误。
+    pub(crate) fn resolve_seed_file_plaintext(
+        seed_file: &std::path::Path,
+    ) -> Result<Zeroizing<String>, SecureStoreError> {
+        let trimmed = Self::read_seed_file_checked(seed_file)?;
+        match classify_seed_content(&trimmed)? {
+            SeedFileContent::Plaintext(plain) => Ok(Zeroizing::new(plain.to_string())),
+            SeedFileContent::Dpapi(payload) => {
+                #[cfg(windows)]
+                {
+                    Self::unwrap_dpapi_seed(payload).map(Zeroizing::new)
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = payload;
+                    Err(SecureStoreError::PlatformUnsupported(
+                        "DPAPI 封装的密钥种子只能在原 Windows 用户/机器上解封，无法导出明文种子"
+                            .to_string(),
+                    ))
+                }
+            }
+            SeedFileContent::KeystoreRef { fingerprint } => {
+                let keystore = platform_seed_keystore();
+                resolve_keystore_seed(keystore.as_deref(), fingerprint).map(Zeroizing::new)
+            }
+        }
+    }
+
+    /// 把恢复出来的明文种子按当前平台重新封装（备份导入专用）。
+    ///
+    /// 密码加密备份的载荷内种子是明文（内层已由用户密码保护），恢复到
+    /// Windows 时必须重新做 DPAPI 封装，否则明文种子会直接留在磁盘上。
+    /// 返回 `true` 表示执行了封装；已是本平台可解封形态时返回 `false`。
+    pub(crate) fn reseal_seed_file_for_current_platform(
+        seed_file: &std::path::Path,
+    ) -> Result<bool, SecureStoreError> {
+        let trimmed = Self::read_seed_file_checked(seed_file)?;
+        match classify_seed_content(&trimmed)? {
+            SeedFileContent::Plaintext(plain) => {
+                #[cfg(windows)]
+                {
+                    Self::write_seed_file(seed_file, plain)?;
+                    Ok(true)
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = plain;
+                    Ok(false)
+                }
+            }
+            // 已是本平台可解封的形态：DPAPI 载荷（Windows）或密钥库指纹标记。
+            SeedFileContent::Dpapi(_) | SeedFileContent::KeystoreRef { .. } => Ok(false),
+        }
+    }
+
     /// 解封 DPAPI 封装的种子（`DPAPI1:` 之后的 base64 载荷）
     #[cfg(windows)]
     fn unwrap_dpapi_seed(encoded: &str) -> Result<String, SecureStoreError> {
@@ -1573,6 +1671,134 @@ mod tests {
             store.get_device_key().expect("first device key"),
             store.get_device_key().expect("second device key")
         );
+    }
+
+    // ==================== 密码加密备份：种子导出 / 按平台重封装 ====================
+
+    /// 明文 `.key_seed` 原样导出（全平台），供写入已加密的内层载荷
+    #[test]
+    fn plaintext_seed_exports_for_password_encrypted_backup() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        let exported = SecureStore::resolve_seed_file_plaintext(&seed_file)
+            .expect("plaintext seed must be exportable");
+        assert_eq!(exported.as_str(), seed.as_str());
+    }
+
+    /// 跨设备导入往返：导出的明文种子在新环境通过校验、重封装后仍解析为同一种子
+    #[test]
+    fn exported_plaintext_seed_survives_import_roundtrip() {
+        let source_dir = TempDir::new().expect("create source tempdir");
+        let source_seed_file = source_dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&source_seed_file, &seed).expect("write source seed");
+
+        let exported = SecureStore::resolve_seed_file_plaintext(&source_seed_file)
+            .expect("export plaintext seed");
+
+        // 模拟目标设备：备份载荷解出的明文种子落到新的 .secure 目录
+        let target_dir = TempDir::new().expect("create target tempdir");
+        let target_seed_file = target_dir.path().join(".key_seed");
+        std::fs::write(&target_seed_file, exported.as_bytes()).expect("write imported seed");
+        SecureStore::validate_backup_seed_file(&target_seed_file)
+            .expect("imported plaintext seed must pass validation");
+        SecureStore::reseal_seed_file_for_current_platform(&target_seed_file).expect("reseal");
+
+        let restored = SecureStore::resolve_seed_file_plaintext(&target_seed_file)
+            .expect("resolve imported seed");
+        assert_eq!(restored.as_str(), seed.as_str());
+    }
+
+    /// Windows：导入的明文种子必须重新 DPAPI 封装，且不残留明文、可重复解出
+    #[cfg(windows)]
+    #[test]
+    fn reseal_wraps_imported_plaintext_seed_on_windows() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        assert!(
+            SecureStore::reseal_seed_file_for_current_platform(&seed_file).expect("reseal"),
+            "Windows 上明文种子必须重新 DPAPI 封装"
+        );
+        let on_disk = std::fs::read_to_string(&seed_file).expect("read seed file");
+        assert!(
+            on_disk.starts_with(DPAPI_SEED_PREFIX),
+            "落盘应为 DPAPI 封装"
+        );
+        assert!(!on_disk.contains(&seed), "封装后磁盘上不应残留明文种子");
+
+        let exported = SecureStore::resolve_seed_file_plaintext(&seed_file).expect("export again");
+        assert_eq!(exported.as_str(), seed.as_str());
+        assert!(
+            !SecureStore::reseal_seed_file_for_current_platform(&seed_file).expect("reseal again"),
+            "已是 DPAPI 封装时不应重复封装"
+        );
+    }
+
+    /// 非 Windows：导入的明文种子保持文件形态（该平台无需 DPAPI）
+    #[cfg(not(windows))]
+    #[test]
+    fn reseal_keeps_imported_plaintext_seed_off_windows() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        std::fs::write(&seed_file, &seed).expect("write plaintext seed");
+
+        assert!(
+            !SecureStore::reseal_seed_file_for_current_platform(&seed_file).expect("reseal"),
+            "非 Windows 平台不封装明文种子"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&seed_file).expect("read seed file"),
+            seed
+        );
+    }
+
+    /// 非 Windows：DPAPI 封装种子无法导出明文（fail-closed，且不改动原文件）
+    #[cfg(not(windows))]
+    #[test]
+    fn dpapi_seed_export_fails_closed_off_windows() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let wrapped = "DPAPI1:Zm9yZWlnbi1ibG9i";
+        std::fs::write(&seed_file, wrapped).expect("write wrapped seed");
+
+        let error = SecureStore::resolve_seed_file_plaintext(&seed_file)
+            .expect_err("DPAPI seed must not be exported off Windows");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
+        assert_eq!(
+            std::fs::read_to_string(&seed_file).expect("read seed file"),
+            wrapped
+        );
+    }
+
+    /// 密钥库指纹标记：重封装是 no-op；无后端时导出 fail-closed
+    #[test]
+    fn keystore_marker_seed_reseal_is_noop_and_export_fails_without_backend() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let seed = sample_seed();
+        let marker = format!("KEYSTORE1:{}", seed_fingerprint(&seed));
+        std::fs::write(&seed_file, &marker).expect("write marker");
+
+        assert!(
+            !SecureStore::reseal_seed_file_for_current_platform(&seed_file).expect("reseal"),
+            "密钥库指纹标记不是待封装形态"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&seed_file).expect("read seed file"),
+            marker
+        );
+
+        // 测试环境 platform_seed_keystore() 恒为 None → 必须 fail-closed
+        let error = SecureStore::resolve_seed_file_plaintext(&seed_file)
+            .expect_err("no keystore backend must fail closed");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
     }
 
     // ==================== TD-08：种子迁移决策单测（fake keystore，纯逻辑） ====================

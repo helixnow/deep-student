@@ -14,8 +14,9 @@
  *   animationend + 超时兜底后回收旧 pane），仅动画 opacity；
  * - 纯展示层，pointer-events: none，永远垫在窗口层之下（z-index: 0）。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
 import '../styles/workbench.css';
 import './WallpaperLayer.css';
 
@@ -156,15 +157,95 @@ interface PaneEntry {
   config: WallpaperConfig;
 }
 
+/**
+ * 解析本次 pane 真正要显示的图片 URL（自定义图片走 convertFileSrc，
+ * 内置预设用项目内静态资源）。null 表示纯渐变 / 动态流动预设。
+ */
+function useResolvedWallpaperImage(config: WallpaperConfig): string | null {
+  return useMemo(() => {
+    if (config.kind === 'image') return resolveCustomImageUrl(config.value);
+    const preset = PRESET_MAP.get(resolvePresetId(config.value));
+    return preset?.imageUrl ?? null;
+  }, [config.kind, config.value]);
+}
+
+/**
+ * 链路诊断（问题 3）：记录本 pane 的渲染配置，并主动探测图片是否真的能加载。
+ * CSS `background-image` 加载失败是静默的，靠 `image:loaded` 的
+ * naturalWidth/naturalHeight 才能区分「图片没加载出来」与「图片本身过白」。
+ */
+function useWallpaperPaneDiagnostics(args: {
+  source: string;
+  kind: WallpaperConfig['kind'];
+  value: string;
+  imageUrl: string | null;
+  blur: number | null;
+  dim: number | null;
+  vignette: boolean | null;
+}): void {
+  const { source, kind, value, imageUrl, blur, dim, vignette } = args;
+
+  useEffect(() => {
+    logWallpaperDiag('render', { source, kind, value, imageUrl, blur, dim, vignette });
+  }, [source, kind, value, imageUrl, blur, dim, vignette]);
+
+  useEffect(() => {
+    if (!imageUrl) return undefined;
+    let cancelled = false;
+    const startedAt = Date.now();
+    const probe = new Image();
+    probe.onload = () => {
+      if (cancelled) return;
+      logWallpaperDiag('image:loaded', {
+        source,
+        imageUrl,
+        naturalWidth: probe.naturalWidth,
+        naturalHeight: probe.naturalHeight,
+        elapsedMs: Date.now() - startedAt,
+      });
+    };
+    probe.onerror = () => {
+      if (cancelled) return;
+      logWallpaperDiag('image:error', {
+        source,
+        imageUrl,
+        elapsedMs: Date.now() - startedAt,
+      });
+    };
+    probe.src = imageUrl;
+    return () => {
+      cancelled = true;
+      probe.onload = null;
+      probe.onerror = null;
+    };
+  }, [imageUrl, source]);
+}
+
 const PaneContent: React.FC<{ config: WallpaperConfig }> = ({ config }) => {
+  const imageUrl = useResolvedWallpaperImage(config);
+  const adaptation = config.kind === 'image' ? resolveImageAdaptation(config) : null;
+  useWallpaperPaneDiagnostics({
+    source:
+      config.kind === 'image'
+        ? `custom:${config.value}`
+        : `preset:${resolvePresetId(config.value)}`,
+    kind: config.kind,
+    value: config.kind === 'image' ? config.value : resolvePresetId(config.value),
+    imageUrl,
+    blur: adaptation?.blur ?? null,
+    dim: adaptation?.dim ?? null,
+    vignette: adaptation?.vignette ?? null,
+  });
+
   if (config.kind === 'image') {
     const { blur, dim, vignette } = resolveImageAdaptation(config);
+    if (!imageUrl) return null;
     return (
       <>
         <div
           className="wb-wallpaper-image"
           style={{
-            backgroundImage: toCssUrl(resolveCustomImageUrl(config.value)),
+            backgroundImage: toCssUrl(imageUrl),
             // 模糊时轻微放大，避免边缘出血露底
             filter: blur > 0 ? `blur(${blur}px)` : undefined,
             transform: blur > 0 ? 'scale(1.06)' : undefined,
@@ -185,7 +266,7 @@ const PaneContent: React.FC<{ config: WallpaperConfig }> = ({ config }) => {
         <div
           className="wb-wallpaper-image"
           style={{
-            backgroundImage: toCssUrl(preset.imageUrl),
+            backgroundImage: toCssUrl(imageUrl ?? preset.imageUrl),
             backgroundPosition: preset.imagePosition,
           }}
         />

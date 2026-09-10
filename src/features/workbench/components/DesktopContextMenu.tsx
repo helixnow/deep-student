@@ -48,6 +48,7 @@ import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDesktop';
 import { WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
 import { OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
+import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
 import { openAppsPanel } from './appsPanelStore';
 import { replayEmptyDesktopTour } from './EmptyDesktop';
 import './DesktopContextMenu.css';
@@ -561,6 +562,11 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   const selectWallpaper = useCallback(
     (presetId: string) => {
       const next: WallpaperConfig = { kind: 'theme', value: presetId };
+      logWallpaperDiag('persist', {
+        source: 'context-menu',
+        key: WALLPAPER_SETTING_KEY,
+        value: next,
+      });
       void persistWorkbenchSetting(WALLPAPER_SETTING_KEY, JSON.stringify(next), next);
       onClose();
     },

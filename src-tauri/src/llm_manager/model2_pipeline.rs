@@ -1385,6 +1385,88 @@ mod tests {
     }
 
     #[test]
+    fn cache_debug_tool_face_delta_tracks_append_only_prefix() {
+        let base: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+
+        // 纯追加：前缀全保留，新增项单独列出（append-only 冻结生效时的形态）
+        let appended: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            cache_debug_tool_face_delta(&base, &appended),
+            (3, vec!["d".to_string()])
+        );
+
+        // 中段插入：前缀只保留到插入点之前
+        let inserted: Vec<String> = ["a", "x", "b", "c"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            cache_debug_tool_face_delta(&base, &inserted),
+            (1, vec!["x".to_string()])
+        );
+
+        // 删除尾部：前缀保留到被删位置
+        let trimmed: Vec<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(cache_debug_tool_face_delta(&base, &trimmed), (2, vec![]));
+
+        // 重排：前缀为 0
+        let reordered: Vec<String> = ["b", "a", "c"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(cache_debug_tool_face_delta(&base, &reordered), (0, vec![]));
+    }
+
+    #[test]
+    fn cache_debug_tool_names_prefers_function_name() {
+        let body = json!({
+            "tools": [
+                { "type": "function", "function": { "name": "alpha" } },
+                { "name": "beta" }
+            ]
+        });
+        assert_eq!(cache_debug_tool_names(&body), vec!["alpha", "beta"]);
+        assert_eq!(cache_debug_tool_names(&json!({})), Vec::<String>::new());
+    }
+
+    #[test]
+    fn cache_debug_history_divergence_locates_first_differing_message() {
+        let item = |id: &str, text: &str| CacheDebugHistoryItem {
+            id: Some(id.to_string()),
+            hash: cache_debug_hash16(&json!({ "role": "user", "content": text })),
+        };
+        let base = vec![item("m1", "a"), item("m2", "b"), item("m3", "c")];
+
+        // 纯追加：前缀全同，分叉点 = 原长度，prev 侧无对应消息
+        let appended = vec![
+            item("m1", "a"),
+            item("m2", "b"),
+            item("m3", "c"),
+            item("m4", "d"),
+        ];
+        assert_eq!(
+            cache_debug_history_divergence(&base, &appended),
+            Some((3, None, Some("m4".to_string())))
+        );
+
+        // 头部重写：索引 0
+        let rewritten = vec![item("m1", "a2"), item("m2", "b"), item("m3", "c")];
+        assert_eq!(
+            cache_debug_history_divergence(&base, &rewritten),
+            Some((0, Some("m1".to_string()), Some("m1".to_string())))
+        );
+
+        // 中间插入：索引 1
+        let inserted = vec![
+            item("m1", "a"),
+            item("mx", "x"),
+            item("m2", "b"),
+            item("m3", "c"),
+        ];
+        assert_eq!(
+            cache_debug_history_divergence(&base, &inserted),
+            Some((1, Some("m2".to_string()), Some("mx".to_string())))
+        );
+
+        // 完全一致：无分叉
+        assert_eq!(cache_debug_history_divergence(&base, &base), None);
+    }
+
+    #[test]
     fn cache_debug_first_divergent_segment_orders_by_prefix() {
         let base = json!({
             "messages": [
@@ -3585,7 +3667,7 @@ const CACHE_DEBUG_SEGMENT_NAMES: [&str; 4] = ["system", "tools", "history", "cur
 /// 防止长会话调试期间无界增长；超限整体清空（只影响下一次基线判定）
 const CACHE_DEBUG_MAX_TRACKED_SCOPES: usize = 256;
 
-fn cache_debug_enabled() -> bool {
+pub(crate) fn cache_debug_enabled() -> bool {
     std::env::var("CHAT_V2_CACHE_DEBUG")
         .map(|v| v == "1")
         .unwrap_or(false)
@@ -3653,19 +3735,171 @@ fn cache_debug_split_body_segments(body: &Value) -> [Value; 4] {
     ]
 }
 
+/// 单个 JSON 值的 SHA256 前 16 hex（碰撞概率对日志 diff 场景可忽略）
+fn cache_debug_hash16(value: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(
+        serde_json::to_string(value)
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    let digest = format!("{:x}", hasher.finalize());
+    digest[..16].to_string()
+}
+
+/// 历史消息的稳定标识（各协议字段不同，取不到就退化为序号）
+fn cache_debug_message_id(item: &Value) -> Option<String> {
+    for key in ["id", "message_id", "messageId", "client_id", "uuid"] {
+        if let Some(value) = item.get(key).and_then(|value| value.as_str()) {
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 单条历史消息的指纹（用于定位段内分叉点）
+#[derive(Clone, Debug)]
+struct CacheDebugHistoryItem {
+    id: Option<String>,
+    hash: String,
+}
+
+/// 一次请求的缓存调试快照：段级指纹 + history 逐条消息指纹 + 工具名有序序列
+#[derive(Clone, Debug)]
+struct CacheDebugSnapshot {
+    segments: [String; 4],
+    history_items: Vec<CacheDebugHistoryItem>,
+    /// 工具名有序序列（用于验证 append-only 冻结是否生效）
+    tool_names: Vec<String>,
+}
+
+fn cache_debug_history_items(history: &Value) -> Vec<CacheDebugHistoryItem> {
+    let Some(items) = history.as_array() else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .map(|item| CacheDebugHistoryItem {
+            id: cache_debug_message_id(item),
+            hash: cache_debug_hash16(item),
+        })
+        .collect()
+}
+
+/// 工具名有序序列（与 `tool_schema_sort_key` 同口径：function.name 优先）
+fn cache_debug_tool_names(body: &Value) -> Vec<String> {
+    body.get("tools")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    item.get("function")
+                        .and_then(|function| function.get("name"))
+                        .and_then(|name| name.as_str())
+                        .or_else(|| item.get("name").and_then(|name| name.as_str()))
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 工具面变化：返回 (与上次逐位相同的最长前缀长度, 本次新增的工具名)。
+/// append-only 冻结生效时，前缀长度应等于上次的工具总数。
+fn cache_debug_tool_face_delta(previous: &[String], current: &[String]) -> (usize, Vec<String>) {
+    let shared = previous.len().min(current.len());
+    let mut prefix_kept = 0usize;
+    while prefix_kept < shared && previous[prefix_kept] == current[prefix_kept] {
+        prefix_kept += 1;
+    }
+    let added = current
+        .iter()
+        .filter(|name| !previous.iter().any(|prev| prev == *name))
+        .cloned()
+        .collect();
+    (prefix_kept, added)
+}
+
+fn cache_debug_snapshot(body: &Value) -> CacheDebugSnapshot {
+    let segments = cache_debug_split_body_segments(body);
+    let history_items = cache_debug_history_items(&segments[2]);
+    CacheDebugSnapshot {
+        segments: segments.map(|segment| cache_debug_hash16(&segment)),
+        history_items,
+        tool_names: cache_debug_tool_names(body),
+    }
+}
+
+/// 四段各自的字符数（判断哪一段在膨胀）
+fn cache_debug_segment_sizes(body: &Value) -> [usize; 4] {
+    cache_debug_split_body_segments(body).map(|segment| {
+        serde_json::to_string(&segment)
+            .map(|text| text.chars().count())
+            .unwrap_or(0)
+    })
+}
+
+/// 请求体摘要：消息数、总字符数、各 role 计数
+fn cache_debug_body_summary(body: &Value) -> (usize, usize, String) {
+    let chars = serde_json::to_string(body)
+        .map(|text| text.chars().count())
+        .unwrap_or(0);
+    let mut messages = 0usize;
+    let mut roles: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for key in ["messages", "input", "contents"] {
+        if let Some(items) = body.get(key).and_then(|value| value.as_array()) {
+            messages = items.len();
+            for item in items {
+                let role = item
+                    .get("role")
+                    .and_then(|role| role.as_str())
+                    .unwrap_or("other");
+                *roles.entry(role.to_string()).or_default() += 1;
+            }
+            break;
+        }
+    }
+    let roles_text = roles
+        .iter()
+        .map(|(role, count)| format!("{}:{}", role, count))
+        .collect::<Vec<_>>()
+        .join(",");
+    (messages, chars, roles_text)
+}
+
+/// history 段内的首个分叉：返回 (索引, 上次消息 id, 本次消息 id)。
+/// 前缀全同但长度不同 = 纯追加/截断，索引取较短一侧的长度。
+fn cache_debug_history_divergence(
+    previous: &[CacheDebugHistoryItem],
+    current: &[CacheDebugHistoryItem],
+) -> Option<(usize, Option<String>, Option<String>)> {
+    let shared = previous.len().min(current.len());
+    for index in 0..shared {
+        if previous[index].hash != current[index].hash {
+            return Some((
+                index,
+                previous[index].id.clone(),
+                current[index].id.clone(),
+            ));
+        }
+    }
+    if previous.len() != current.len() {
+        return Some((
+            shared,
+            previous.get(shared).and_then(|item| item.id.clone()),
+            current.get(shared).and_then(|item| item.id.clone()),
+        ));
+    }
+    None
+}
+
 /// 四段各取 SHA256 前 16 hex（碰撞概率对日志 diff 场景可忽略）
 fn cache_debug_segment_fingerprints(body: &Value) -> [String; 4] {
-    use sha2::{Digest, Sha256};
-    cache_debug_split_body_segments(body).map(|segment| {
-        let mut hasher = Sha256::new();
-        hasher.update(
-            serde_json::to_string(&segment)
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        let digest = format!("{:x}", hasher.finalize());
-        digest[..16].to_string()
-    })
+    cache_debug_split_body_segments(body).map(|segment| cache_debug_hash16(&segment))
 }
 
 /// 按前缀顺序返回首个分叉段名；完全一致返回 None
@@ -3680,15 +3914,18 @@ fn cache_debug_first_divergent_segment(
         .map(|(name, _)| *name)
 }
 
-/// 同作用域上一请求的四段指纹（scope key = session::variant，跨 run 存续，
+/// 同作用域上一请求的缓存调试快照（scope key = session::variant，跨 run 存续，
 /// 这正是 provider 端 prompt cache 的存活作用域）
-fn cache_debug_fingerprint_store() -> &'static std::sync::Mutex<HashMap<String, [String; 4]>> {
-    static STORE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, [String; 4]>>> =
+fn cache_debug_fingerprint_store() -> &'static std::sync::Mutex<HashMap<String, CacheDebugSnapshot>>
+{
+    static STORE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, CacheDebugSnapshot>>> =
         std::sync::OnceLock::new();
     STORE.get_or_init(Default::default)
 }
 
-/// 记录 post-adapter 的 system / tools / history / current-user 四段指纹与首个分叉段。
+/// 记录 post-adapter 的 system / tools / history / current-user 四段指纹与首个分叉段，
+/// 并额外输出一条 detail 日志：各段规模、history 首尾锚点、tools 明细、请求体摘要，
+/// 以及 history 段内第一条不同的消息（用于区分「纯追加」与「历史被重写」）。
 ///
 /// `scope_key` 为 `session::variant`。单变体路径里的 `variant_id` 实际通常是
 /// assistant 消息 ID，每个 turn 都会新建，因此跨 turn 往往没有同 key 的上一请求，
@@ -3705,34 +3942,106 @@ fn cache_debug_log_post_adapter_fingerprint(stream_event: &str, model: &str, bod
         ),
         None => stream_event.to_string(),
     };
-    let fingerprints = cache_debug_segment_fingerprints(body);
+    let snapshot = cache_debug_snapshot(body);
 
-    let divergence = {
+    let (divergence, history_divergence, tool_delta) = {
         let mut store = cache_debug_fingerprint_store()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let label = match store.get(&scope_key) {
             None => "baseline",
-            Some(previous) => {
-                cache_debug_first_divergent_segment(previous, &fingerprints).unwrap_or("none")
-            }
+            Some(previous) => cache_debug_first_divergent_segment(
+                &previous.segments,
+                &snapshot.segments,
+            )
+            .unwrap_or("none"),
         };
+        let history_divergence = store.get(&scope_key).and_then(|previous| {
+            cache_debug_history_divergence(&previous.history_items, &snapshot.history_items)
+        });
+        let tool_delta = store
+            .get(&scope_key)
+            .map(|previous| cache_debug_tool_face_delta(&previous.tool_names, &snapshot.tool_names));
         if !store.contains_key(&scope_key) && store.len() >= CACHE_DEBUG_MAX_TRACKED_SCOPES {
             store.clear();
         }
-        store.insert(scope_key.clone(), fingerprints.clone());
-        label
+        store.insert(scope_key.clone(), snapshot.clone());
+        (label, history_divergence, tool_delta)
     };
 
-    debug!(
+    // info! 而非 debug!：Windows 桌面端 tauri-plugin-log 硬编码 Info 级别且不读
+    // RUST_LOG，debug 会被永久过滤；本函数已由 CHAT_V2_CACHE_DEBUG=1 门控
+    // （调用点 model2_pipeline.rs:5266），普通用户不会产生任何噪音。
+    info!(
         "[PromptCache] post-adapter fingerprint: model={}, scope={}, system={}, tools={}, history={}, current_user={}, first_divergent_segment={}",
         model,
         scope_key,
-        fingerprints[0],
-        fingerprints[1],
-        fingerprints[2],
-        fingerprints[3],
+        snapshot.segments[0],
+        snapshot.segments[1],
+        snapshot.segments[2],
+        snapshot.segments[3],
         divergence
+    );
+
+    let segment_sizes = cache_debug_segment_sizes(body);
+    let (message_count, body_chars, roles) = cache_debug_body_summary(body);
+    let history_anchor = match (snapshot.history_items.first(), snapshot.history_items.last()) {
+        (Some(first), Some(last)) => format!(
+            "first={}:{},last={}:{}",
+            first.id.as_deref().unwrap_or("#0"),
+            first.hash,
+            last.id.as_deref().unwrap_or("#last"),
+            last.hash
+        ),
+        _ => "empty".to_string(),
+    };
+    let tools_count = snapshot.tool_names.len();
+    let tools_names = if tools_count == 0 {
+        "none".to_string()
+    } else {
+        cache_debug_hash16(&json!(snapshot.tool_names))
+    };
+    let tools_delta_text = match tool_delta {
+        Some((prefix_kept, added)) => {
+            let head: Vec<&str> = added.iter().take(8).map(|name| name.as_str()).collect();
+            if added.is_empty() {
+                format!("prefix_kept={},added=none", prefix_kept)
+            } else {
+                format!(
+                    "prefix_kept={},added={}[{}]",
+                    prefix_kept,
+                    added.len(),
+                    head.join("|")
+                )
+            }
+        }
+        None => "baseline".to_string(),
+    };
+    let divergence_detail = match history_divergence {
+        Some((index, previous_id, current_id)) => format!(
+            "index={},prev={},curr={}",
+            index,
+            previous_id.unwrap_or_else(|| format!("#{}", index)),
+            current_id.unwrap_or_else(|| format!("#{}", index))
+        ),
+        None => "none".to_string(),
+    };
+    info!(
+        "[PromptCache] fingerprint detail: scope={}, seg_len=[system={},tools={},history={},current_user={}], history=[count={},anchor={}], tools=[count={},names={},{}], body=[messages={},chars={},roles={}], divergence=[{}]",
+        scope_key,
+        segment_sizes[0],
+        segment_sizes[1],
+        segment_sizes[2],
+        segment_sizes[3],
+        snapshot.history_items.len(),
+        history_anchor,
+        tools_count,
+        tools_names,
+        tools_delta_text,
+        message_count,
+        body_chars,
+        roles,
+        divergence_detail
     );
 }
 

@@ -311,6 +311,10 @@ impl UsageCollector {
                 let _ = conn.execute("ROLLBACK", []);
                 return Err(format!("Failed to insert record {}: {}", record.id, e));
             }
+
+            // 命中率日志必须挂在真正的生产写库点（本函数），而不是只被单测
+            // 覆盖的 LlmUsageRepo::insert_usage*。
+            super::repo::LlmUsageRepo::log_cache_debug_usage(record);
         }
 
         conn.execute("COMMIT", [])

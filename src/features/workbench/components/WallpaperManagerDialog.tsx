@@ -25,6 +25,10 @@ import {
   type CustomWallpaperEntry,
 } from '@/features/settings/components/wallpaperLibrary';
 import { DEFAULT_WALLPAPER, WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
+import {
+  describeDiagError,
+  logWallpaperDiag,
+} from '../core/wallpaperDiagnostics';
 import './WallpaperManagerDialog.css';
 
 export const OPEN_WALLPAPER_MANAGER_EVENT = 'workbench:open-wallpaper-manager';
@@ -131,13 +135,20 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
   const adjustTimerRef = useRef<number | null>(null);
 
   const applyWallpaper = useCallback((next: WallpaperConfig) => {
+    logWallpaperDiag('persist', { key: WALLPAPER_SETTING_KEY, value: next });
     void persistWorkbenchSetting(WALLPAPER_SETTING_KEY, JSON.stringify(next), next);
   }, []);
 
   const refreshEntries = useCallback(async () => {
     try {
-      setEntries(await listCustomWallpapers());
-    } catch {
+      const listed = await listCustomWallpapers();
+      logWallpaperDiag('library:loaded', {
+        count: listed.length,
+        paths: listed.map((entry) => entry.path),
+      });
+      setEntries(listed);
+    } catch (error) {
+      logWallpaperDiag('library:load-failed', { error: describeDiagError(error) });
       setEntries([]);
     }
   }, []);
@@ -208,6 +219,11 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
     try {
       const result = await importWallpaperToLibrary({
         pickerTitle: t('wallpaperManager.selectTitle'),
+      });
+      logWallpaperDiag('import:result', {
+        status: result.status,
+        path: result.status === 'success' ? result.entry.path : undefined,
+        error: result.status === 'error' ? describeDiagError(result.error) : undefined,
       });
       if (result.status === 'success') {
         await refreshEntries();
