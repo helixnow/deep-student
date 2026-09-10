@@ -1,5 +1,8 @@
 import '@/styles/tailwind.css';
 import '@/styles/shadcn-variables.css';
+import '@/styles/theme-colors.css';
+import '@/styles/typography.css';
+import '@/features/workbench/styles/workbench.css';
 import '@/i18n';
 import './quick-assistant.css';
 
@@ -33,6 +36,9 @@ import i18n from '@/i18n';
 import useTheme from '@/hooks/useTheme';
 import { initializeFontSetting } from '@/hooks/useAppInitialization';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/utils/platform';
+import { isTauriRuntime } from '@/utils/shared';
+import { syncNativeWindowAppearance } from '@/utils/sidebarTranslucency';
 import {
   getQuickAssistantConfig,
   readQuickAssistantPinned,
@@ -70,6 +76,13 @@ type SaveKind = 'note' | 'mistake' | 'card' | 'todo';
 type Notice = { text: string; kind: 'info' | 'success' | 'error' } | null;
 
 const CAPTURE_LIMIT = 20_000;
+
+/**
+ * macOS + Tauri 下 Rust 建窗时已挂载 NSVisualEffectView（HudWindow 材质），
+ * WebView 侧只需叠低不透明 tint（见 quick-assistant.css 的 data-native-material）。
+ * 其他平台没有原生材质，保持近实心卡面。
+ */
+const NATIVE_GLASS = isTauriRuntime && isMacOS();
 
 const ACTION_ICONS: Record<QuickLearningAction, Icon> = {
   ask: Sparkle,
@@ -149,7 +162,7 @@ function homeItemKey(item: HomeItem): string {
 }
 
 export const QuickAssistantWindow: React.FC = () => {
-  useTheme();
+  const { isDarkMode } = useTheme();
   const { t } = useTranslation('quickAssistant');
   const [route, setRoute] = useState<Route>('home');
   const [input, setInput] = useState('');
@@ -172,6 +185,7 @@ export const QuickAssistantWindow: React.FC = () => {
   const [todoSummary, setTodoSummary] = useState<Awaited<ReturnType<typeof getActiveTodoSummary>>>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const shellRef = useRef<HTMLElement | null>(null);
   const lastShownAtRef = useRef(Date.now());
   const lastClipboardRef = useRef<string | null>(null);
   const runRef = useRef<QuickRunHandle | null>(null);
@@ -268,10 +282,34 @@ export const QuickAssistantWindow: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!NATIVE_GLASS) return;
+    document.documentElement.dataset.nativeMaterial = 'true';
+    return () => { delete document.documentElement.dataset.nativeMaterial; };
+  }, []);
+
+  // 原生 NSVisualEffectView 的明暗由 NSWindow appearance 决定，CSS 主题变化后需同步，
+  // 否则原生材质会停在系统外观、与应用主题不一致。
+  useEffect(() => {
+    if (!NATIVE_GLASS) return;
+    void syncNativeWindowAppearance(isDarkMode);
+  }, [isDarkMode]);
+
+  /** 呼出时重播入场动画（窗口常驻复用，需手动重置 class 才能重跑 keyframes）。 */
+  const playEnterAnimation = useCallback(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    shell.classList.remove('is-entering');
+    void shell.offsetWidth;
+    shell.classList.add('is-entering');
+  }, []);
+
+  useEffect(() => {
     let unlisten: (() => void) | null = null;
+    playEnterAnimation();
     void listen(QUICK_ASSISTANT_SHOWN_EVENT, () => {
       lastShownAtRef.current = Date.now();
       setNotice(null);
+      playEnterAnimation();
       // 窗口常驻复用：每次呼出时重读全局字体/字号/主题/语言，同步主窗口里的最新设置
       void initializeFontSetting();
       syncPreferencesFromStorage();
@@ -282,7 +320,7 @@ export const QuickAssistantWindow: React.FC = () => {
     void loadClipboard();
     focusInput();
     return () => unlisten?.();
-  }, [loadClipboard, focusInput]);
+  }, [loadClipboard, focusInput, playEnterAnimation]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -581,7 +619,7 @@ export const QuickAssistantWindow: React.FC = () => {
   ];
 
   return (
-    <main className="qa-shell">
+    <main ref={shellRef} className="qa-shell wb-glass wb-glass-rim wb-glass-highlight">
       <header className="qa-titlebar" data-tauri-drag-region>
         <div className="qa-brand" data-tauri-drag-region>
           <span className="qa-brand-mark"><Brain size={16} weight="fill" /></span>
@@ -610,17 +648,20 @@ export const QuickAssistantWindow: React.FC = () => {
       {route === 'home' && (
         <section className="qa-content qa-home">
           <div className="qa-input-row">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(event) => { setInput(event.target.value); setSelectedIndex(0); }}
-              onPaste={(event) => void handlePaste(event)}
-              placeholder={capture ? t('input.placeholder_with_capture') : t('input.placeholder')}
-              className="qa-input"
-              spellCheck={false}
-              aria-controls="qa-menu"
-              aria-activedescendant={activeDescendant}
-            />
+            <div className="qa-input-shell">
+              <Sparkle size={15} className="qa-input-icon" />
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(event) => { setInput(event.target.value); setSelectedIndex(0); }}
+                onPaste={(event) => void handlePaste(event)}
+                placeholder={capture ? t('input.placeholder_with_capture') : t('input.placeholder')}
+                className="qa-input"
+                spellCheck={false}
+                aria-controls="qa-menu"
+                aria-activedescendant={activeDescendant}
+              />
+            </div>
           </div>
 
           {capture && (
@@ -743,14 +784,17 @@ export const QuickAssistantWindow: React.FC = () => {
             <span className="qa-subhead-title">{t('search.title')}</span>
           </div>
           <div className="qa-input-row">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={t('input.search_placeholder')}
-              className="qa-input"
-              spellCheck={false}
-            />
+            <div className="qa-input-shell">
+              <MagnifyingGlass size={15} className="qa-input-icon" />
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder={t('input.search_placeholder')}
+                className="qa-input"
+                spellCheck={false}
+              />
+            </div>
           </div>
           <div className="qa-results">
             {searchResults.map((result) => (
