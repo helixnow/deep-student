@@ -14,6 +14,7 @@ import {
 } from './modelConverters';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '@/utils/modelCapabilities';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
+import type { VendorModelAddPayload } from './vendorModelService';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import type { UseSettingsVendorStateDeps } from './hookDepsTypes';
 import { buildVendorOrderMap, sortApiConfigsByVendorOrder, sortVendorsBySettingsOrder } from '@/utils/modelSorting';
@@ -807,11 +808,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   // 通用供应商模型批量添加（由 VendorModelFetcher 调用）
   const handleAddVendorModels = useCallback(async (
     vendor: VendorConfig,
-    models: Array<{ modelId: string; label: string }>
+    models: VendorModelAddPayload[]
   ) => {
     const nextProfiles = [...modelProfiles];
     let changed = false;
-    for (const { modelId, label } of models) {
+    for (const { modelId, label, contextWindow, maxOutputTokens } of models) {
       const normalizedModel = modelId.trim().toLowerCase();
       const existingIdx = nextProfiles.findIndex(
         p => p.vendorId === vendor.id && p.model.trim().toLowerCase() === normalizedModel
@@ -862,7 +863,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         supportsReasoning: effectiveSupportsReasoning,
         status: 'enabled',
         enabled: true,
-        maxOutputTokens: defaults.maxOutputTokens ?? 8192,
+        maxOutputTokens: maxOutputTokens ?? defaults.maxOutputTokens ?? 8192,
         temperature: defaults.temperature ?? 0.7,
         thinkingEnabled: enableThinkingDefault,
         includeThoughts: effectiveSupportsReasoning && !isNvidiaProvider ? (defaults.includeThoughts ?? extCaps.supportsThinkingTokens) : false,
@@ -871,7 +872,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         reasoningEffort: effectiveSupportsReasoning ? defaults.reasoningEffort : undefined,
         minP: defaults.minP,
         topK: defaults.topK,
-        contextWindow: extCaps.contextWindow,
+        contextWindow: contextWindow ?? extCaps.contextWindow,
         geminiApiVersion,
         isBuiltin: false,
       };
