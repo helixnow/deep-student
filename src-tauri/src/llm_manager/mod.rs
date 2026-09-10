@@ -1019,9 +1019,10 @@ mod tests {
 
     #[test]
     fn official_deepseek_responses_gating_follows_documented_model_list() {
-        // 2026-08-23 官方文档：Responses API 列名 deepseek-v4-flash / deepseek-v4-pro /
-        // deepseek-v4-flash-vision-exp；模型级门控在显式协议与 api_protocol=None
-        // 的默认路径都必须执行（V3.x 等未列名型号回落 chat_completions）。
+        // 2026-08-23 官方文档列名 v4-flash / v4-pro / vision-exp；2026-09-10 V4.1
+        // 发布后官方主推 deepseek-flash（旧名路由到该模型）。模型级门控在显式协议
+        // 与 api_protocol=None 的默认路径都必须执行（V3.x 等未列名型号回落
+        // chat_completions）。
         let allowed = provider_allowed_protocols(Some("deepseek"));
         assert!(allowed.contains(&"openai_responses".to_string()));
         assert_eq!(
@@ -1040,8 +1041,19 @@ mod tests {
         };
         assert!(should_use_openai_responses_for_config(&flash));
 
-        // 列名型号：显式与默认（api_protocol=None）均走 Responses
-        for model in ["deepseek-v4-pro", "deepseek-v4-flash-vision-exp"] {
+        let new_flash = ApiConfig {
+            model: "deepseek-flash".to_string(),
+            ..flash.clone()
+        };
+        assert!(should_use_openai_responses_for_config(&new_flash));
+
+        // 列名型号（含 2026-09-10 V4.1 的 deepseek-flash）：显式与默认（api_protocol=None）
+        // 均走 Responses
+        for model in [
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-vision-exp",
+        ] {
             let default_route = ApiConfig {
                 model: model.to_string(),
                 ..flash.clone()
@@ -3125,6 +3137,7 @@ fn deepseek_model_supports_openai_responses(model: &str) -> bool {
         return true;
     }
     normalized.contains("deepseek-v4-flash")
+        || normalized.contains("deepseek-flash")
         || normalized.contains("deepseek-v4-pro")
         || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
 }

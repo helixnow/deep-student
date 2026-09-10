@@ -17,6 +17,12 @@ describe('DeepSeek reasoning control mapping', () => {
     expect(resolveDeepSeekReasoningControl('deepseek-ai/DeepSeek-V4-Pro', true).kind).toBe('v4-effort');
   });
 
+  it('uses high/max effort for DeepSeek V4.1 Flash (deepseek-flash)', () => {
+    const control = resolveDeepSeekReasoningControl('deepseek-flash', true);
+    expect(control.kind).toBe('v4-effort');
+    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+  });
+
   it('uses low/medium/high/xhigh budget presets for V3.2 models', () => {
     const control = resolveDeepSeekReasoningControl('deepseek-ai/DeepSeek-V3.2', false);
 

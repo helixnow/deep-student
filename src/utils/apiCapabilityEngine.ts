@@ -157,6 +157,8 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   'codex-mini',
   'computer-use',
   'deepseek-vl',
+  // DeepSeek Flash 原生支持视觉输入
+  'deepseek-flash',
   'kimi-latest',
   'kimi-thinking-preview',
   // Kimi K2.5 多模态（2026-01新增，支持图片+视频）
@@ -242,10 +244,9 @@ const WEB_SEARCH_WHITELIST_REGEXES: RegExp[] = [
   // Gemini 2.x/3.x 系列（排除 image/tts 专用模型）
   /gemini-(?:2|3)(?:\.\d)?(?!.*(?:image|tts))[\w.-]*$/i,
   /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i,
-  // DeepSeek 官方 Responses API 原生支持服务端 web_search：当前仅确认
-  // v4-flash 系列及 legacy 别名（v4-pro 已支持 Responses，但 web_search 未列名）
-  /deepseek-v4-flash/i,
-  /^deepseek-(?:chat|reasoner)$/i,
+  // DeepSeek：2026-09-10 V4.1（deepseek-flash）起官方 Responses API 不再支持
+  // 内置 web_search（兼容表：内置工具被静默忽略，v4-flash 旧名已路由到该模型），
+  // 联网搜索统一走本地 function 工具，故不再列入白名单。
 ];
 
 // Gemini Thinking 支持：2.5系列（除了image/tts）、3系列
@@ -328,7 +329,7 @@ const PERPLEXITY_REASONING_REGEX = /sonar-reasoning-pro/i;
 // - V3.2-Speciale 不支持工具调用
 // 注意：DeepSeek 官方文档要求区分“同一问题内的 tool loop 回传 reasoning_content”
 // 与“下一次用户问题开始时删除旧 reasoning_content”
-const DEEPSEEK_V4_REGEX = /deepseek-v4/i;
+const DEEPSEEK_V4_REGEX = /deepseek-v4|deepseek-flash/i;
 const DEEPSEEK_LEGACY_ALIAS_REGEX = /^deepseek-(?:chat|reasoner)$/i;
 const DEEPSEEK_HYBRID_REGEXES: RegExp[] = [
   DEEPSEEK_V4_REGEX,
@@ -360,7 +361,7 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   // Gemini 别名（flash-latest/pro-latest 等指向 2.5+ 系列）
   { pattern: /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i, window: 1_000_000 },
   // DeepSeek V4 官方模型及兼容别名：1M context
-  { pattern: /deepseek-v4|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
+  { pattern: /deepseek-v4|deepseek-flash|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
   // NVIDIA Nemotron 3 系列：NIM/API Catalog 暴露 1M 级上下文窗口
   { pattern: /nemotron-3-(?:nano|super|ultra)/i, window: 1_000_000 },
   // Xiaomi MiMo V2.5 Pro / V2 Pro / V2.5：官方 1M context

@@ -231,6 +231,17 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
 pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     // ===== DeepSeek 模型 =====
     BuiltinModel {
+        id: "builtin-deepseek-flash",
+        vendor_id: "builtin-deepseek",
+        label: "DeepSeek V4.1 Flash",
+        model: "deepseek-flash",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32_768,
+        temperature: 0.6,
+    },
+    BuiltinModel {
         id: "builtin-deepseek-v4-flash",
         vendor_id: "builtin-deepseek",
         label: "DeepSeek V4 Flash",
@@ -1312,7 +1323,7 @@ pub fn load_all_builtins(
 
 pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
     let normalized = model.trim().to_lowercase();
-    if normalized.contains("deepseek-v4") {
+    if normalized.contains("deepseek-v4") || normalized.contains("deepseek-flash") {
         Some(1_000_000)
     } else if normalized.contains("deepseek-v3.2") || normalized.contains("deepseek-v3.1") {
         Some(128_000)
@@ -1454,10 +1465,16 @@ mod tests {
     }
 
     #[test]
-    fn official_deepseek_builtin_profiles_recommend_v4_only() {
+    fn official_deepseek_builtin_profiles_include_multimodal_flash() {
+        let flash = builtin_model("builtin-deepseek-flash").to_model_profile();
         let v4_flash = builtin_model("builtin-deepseek-v4-flash").to_model_profile();
         let v4_pro = builtin_model("builtin-deepseek-v4-pro").to_model_profile();
 
+        assert_eq!(flash.model, "deepseek-flash");
+        assert!(flash.is_multimodal);
+        assert!(flash.is_reasoning);
+        assert!(flash.supports_tools);
+        assert_eq!(flash.context_window, Some(1_000_000));
         assert_eq!(v4_flash.model, "deepseek-v4-flash");
         assert_eq!(v4_pro.model, "deepseek-v4-pro");
         assert_eq!(v4_flash.provider_scope.as_deref(), Some("deepseek"));

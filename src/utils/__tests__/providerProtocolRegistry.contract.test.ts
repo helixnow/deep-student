@@ -77,9 +77,10 @@ describe('providerProtocolRegistry contract', () => {
       expect(byType.get(providerType)?.allowed_protocols, providerType).not.toContain('openai_responses');
     }
 
-    // 2026-07-31 V4-Flash 正式版公测后，DeepSeek 官方默认 Responses（模型级门控
-    // 由后端 effective_api_protocol_for_config 与前端 modelConverters 执行：
-    // 仅 v4-flash 系列及 legacy 别名放行，V4-Pro/V3.x 回落 chat_completions）。
+    // 2026-09-10 V4.1 Flash（deepseek-flash）发布后，DeepSeek 官方默认 Responses
+    //（模型级门控由后端 effective_api_protocol_for_config 与前端 modelConverters
+    // 执行：仅 deepseek-flash / deepseek-v4-pro 及路由旧名放行，V3.x 回落
+    // chat_completions）。
     const deepseek = byType.get('deepseek');
     expect(deepseek?.supports_openai_responses, 'deepseek').toBe(true);
     expect(deepseek?.default_protocol, 'deepseek').toBe('openai_responses');
@@ -103,6 +104,6 @@ describe('providerProtocolRegistry contract', () => {
       expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_chat_completions');
     }
 
-    expect(registry.updated_at).toBe('2026-08-06');
+    expect(registry.updated_at).toBe('2026-09-10');
   });
 });

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-23",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。",
+  "updated_at": "2026-09-10",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-10 增补：DeepSeek V4.1 Flash（deepseek-flash）正式发布，原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 下线并路由到该模型，deepseek-v4-pro 将于 2026-09-14 起被路由；Responses API 内置工具（含 web_search）被静默忽略。",
   "records": [
     {
       "vendor": "OpenAI",
@@ -1247,16 +1247,18 @@
           "quirks": [
             "V4 为纯文本模型，无原生图像输入（调研 07 §1.2）。",
             "reasoning_effort:max 时官方要求为推理预留 ≥384K token 预算。",
-            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。"
+            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。",
+            "2026-09-14 12:00（北京时间）起至 V4.1 Pro 发布前，请求会被路由到 V4.1 Flash 并按后者单价计费，计划有序下线。"
           ]
         },
         {
           "model_id": "deepseek-v4-flash",
           "release_date": "2026-04-24",
-          "status": "confirmed",
+          "status": "deprecated",
+          "alias_of": "deepseek-flash",
           "capabilities": {
             "text": true,
-            "vision": false,
+            "vision": true,
             "audio": false,
             "video": false,
             "function_calling": true,
@@ -1269,11 +1271,49 @@
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
             "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
-            "notes": "高性价比默认档；legacy 别名 deepseek-chat/deepseek-reasoner 当前映射到本模型的非思考/思考模式。"
+            "notes": "V4-Flash 旧名（0731 正式版）已于 2026-09-10 下线，为兼容暂时路由到 V4.1 Flash（deepseek-flash），能力按路由后的模型记录。legacy 别名 deepseek-chat/deepseek-reasoner 也已指向同一模型。"
           },
           "quirks": [
+            "旧名请求由服务端路由到 deepseek-flash，建议存量配置迁移到 deepseek-flash。",
+            "路由后的模型原生多模态，旧解析路径需允许图片输入。",
             "思考模式下 temperature/top_p 等采样参数被静默忽略（调研 07 §1.4）。"
           ]
+        }
+      ]
+    },
+    {
+      "vendor": "DeepSeek",
+      "series": "V4.1",
+      "models": [
+        {
+          "model_id": "deepseek-flash",
+          "release_date": "2026-09-10",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 384000
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "notes": "V4.1 Flash（552B MoE，Causal-Encoder-Decoder，原生多模态）；thinking 默认 enabled，reasoning_effort 支持 low/high/max（minimal→low、medium/xhigh→high）。Responses API 模型列名 deepseek-flash / deepseek-v4-pro，内置工具（含 web_search）被静默忽略，仅 function 与 apply_patch custom 受支持。"
+          },
+          "quirks": [
+            "原生多模态：支持 JPEG/PNG/GIF/WebP，单图按尺寸折算上限 1024 tokens（官方 Vision 指南）。",
+            "旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已下线并暂时路由到本模型；deepseek-v4-pro 自 2026-09-14 12:00（北京时间）起也会被路由到本模型并按本模型单价计费。",
+            "思考模式忽略 temperature/presence_penalty/frequency_penalty；top_p 下限 0.95，非思考模式固定 1.0。",
+            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。"
+          ],
+          "source_url": "https://api-docs.deepseek.com/updates",
+          "verified_at": "2026-09-10"
         }
       ]
     },
@@ -1285,26 +1325,26 @@
           "model_id": "deepseek-reasoner",
           "release_date": "2025-01-20",
           "status": "deprecated",
-          "alias_of": "deepseek-v4-flash",
+          "alias_of": "deepseek-flash",
           "capabilities": {
             "text": true,
-            "vision": false,
+            "vision": true,
             "audio": false,
             "video": false,
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": null
+            "max_output_tokens": 384000
           },
           "param_format": {
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
             "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking"],
-            "notes": "legacy 别名：当前映射到 deepseek-v4-flash 思考模式，2026-07-24 15:59 UTC 彻底停用（调研 07 要点 1），请迁移到 deepseek-v4-pro/flash。"
+            "notes": "legacy 别名：官方自 2026-07-24 停用该名称，实际请求被兼容路由到当时的 Flash（现为 V4.1 Flash / deepseek-flash），能力按路由后的模型记录，建议迁移到 deepseek-flash。"
           },
             "quirks": [
-            "2026-07-24 停用后请求将直接失败，UI 应提示迁移。",
+            "官方已宣布停用，仅保留临时兼容路由，未来可能直接失败，UI 应提示迁移。",
             "官方文档对 top_p/temperature/presence_penalty/frequency_penalty 标记为不生效或不支持，建议优先保留服务端默认行为。"
           ]
         },
@@ -1312,26 +1352,26 @@
           "model_id": "deepseek-chat",
           "release_date": "2025-03-24",
           "status": "deprecated",
-          "alias_of": "deepseek-v4-flash",
+          "alias_of": "deepseek-flash",
           "capabilities": {
             "text": true,
-            "vision": false,
+            "vision": true,
             "audio": false,
             "video": false,
             "function_calling": true,
             "reasoning": true,
-            "coding_agent": false,
+            "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": null
+            "max_output_tokens": 384000
           },
           "param_format": {
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
             "optional_fields": ["tools", "tool_choice", "max_tokens", "temperature", "top_p", "stream", "presence_penalty", "frequency_penalty"],
-            "notes": "legacy 别名：当前映射到 deepseek-v4-flash 非思考模式，2026-07-24 15:59 UTC 彻底停用（调研 07 要点 1），请迁移到 deepseek-v4-pro/flash。"
+            "notes": "legacy 别名：官方自 2026-07-24 停用该名称，实际请求被兼容路由到当时的 Flash（现为 V4.1 Flash / deepseek-flash），能力按路由后的模型记录，建议迁移到 deepseek-flash。"
           },
           "quirks": [
-            "2026-07-24 停用后请求将直接失败，UI 应提示迁移。"
+            "官方已宣布停用，仅保留临时兼容路由，未来可能直接失败，UI 应提示迁移。"
           ]
         },
         {

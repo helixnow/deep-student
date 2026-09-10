@@ -350,6 +350,7 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
 
   it('defaults official DeepSeek documented models to Responses (2026-08-23 docs: flash/pro/vision-exp)', () => {
     for (const model of [
+      'deepseek-flash',
       'deepseek-v4-flash',
       'deepseek-v4-pro',
       'deepseek-v4-flash-vision-exp',
@@ -364,7 +365,7 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     }
 
     // 列名型号显式 responses 也能保留
-    for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+    for (const model of ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-pro']) {
       const profile: ModelProfile = {
         ...baseProfile,
         model,
