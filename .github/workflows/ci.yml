@@ -405,7 +405,9 @@ jobs:
     # 回收的最大目标（2026-09-05/06 连续 3 次被回收 exit 143）。拆分后单
     # job 墙钟降到 ~1/3，编译经 sccache/rust-cache 跨 job 共享，回收重跑
     # 成本也可控。fail-fast: false——单 provider 被回收不拖累其他两家。
-    timeout-minutes: 75
+    # 90 分钟：CARGO_BUILD_JOBS=3 压内存峰值后冷编译可达 ~70 分钟（2026-09-10
+    # s3 在 75 分钟上限被取消），与 rust-test-build/migration-gate 对齐。
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
