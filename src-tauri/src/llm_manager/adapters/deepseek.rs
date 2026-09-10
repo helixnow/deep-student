@@ -20,6 +20,7 @@
 
 use super::{get_trimmed_effort, resolve_enable_thinking, RequestAdapter};
 use crate::llm_manager::ApiConfig;
+use crate::models::AppError;
 use serde_json::{json, Map, Value};
 
 /// DeepSeek 专用适配器
@@ -251,6 +252,36 @@ impl RequestAdapter for DeepSeekAdapter {
 
     fn description(&self) -> &'static str {
         "DeepSeek 系列，支持 version-aware thinking/reasoning 参数格式"
+    }
+
+    fn validate_reasoning_config(&self, config: &ApiConfig) -> Result<(), AppError> {
+        let version = Self::classify_model(&config.model);
+        if !Self::is_v4_effort_capable(version)
+            || Self::host_protocol(config) != DeepSeekHostProtocol::Official
+        {
+            return Ok(());
+        }
+        // 思考关闭时推理强度无意义：不拦截存量脏配置，只保证「启用思考且显式给出
+        // 未知强度」在网络 I/O 前失败，而不是静默丢弃（对齐 DSH）。
+        if !Self::resolve_deepseek_thinking(config, version, None) {
+            return Ok(());
+        }
+        let Some(effort) = get_trimmed_effort(config) else {
+            return Ok(());
+        };
+        if matches!(
+            effort.to_ascii_lowercase().as_str(),
+            "none" | "unset" | "off"
+        ) {
+            return Ok(());
+        }
+        if Self::normalize_v4_reasoning_effort(effort).is_none() {
+            return Err(AppError::validation(format!(
+                "UNSUPPORTED_REASONING_EFFORT: 模型 {} 不支持推理强度 \"{}\"（支持 low/medium/high/xhigh/max）",
+                config.model, effort
+            )));
+        }
+        Ok(())
     }
 
     fn apply_reasoning_config(
@@ -523,6 +554,56 @@ mod tests {
         assert_eq!(thinking.get("type"), Some(&json!("enabled")));
         assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
         assert!(adapter.should_remove_sampling_params(&config));
+    }
+
+    #[test]
+    fn test_official_v4_rejects_unsupported_reasoning_effort_before_io() {
+        let adapter = DeepSeekAdapter;
+        let mut config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("ultra-mega".to_string()),
+            model: "deepseek-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let error = adapter
+            .validate_reasoning_config(&config)
+            .expect_err("unknown effort must fail fast");
+        assert!(
+            error.to_string().contains("UNSUPPORTED_REASONING_EFFORT"),
+            "unexpected error: {error}"
+        );
+
+        for effort in ["low", "medium", "high", "xhigh", "max", "none", "unset"] {
+            config.reasoning_effort = Some(effort.to_string());
+            adapter
+                .validate_reasoning_config(&config)
+                .unwrap_or_else(|error| panic!("{effort} must pass: {error}"));
+        }
+
+        // 第三方主机沿用宽松行为，不拦截自定义方言
+        config.reasoning_effort = Some("ultra-mega".to_string());
+        config.base_url = "https://proxy.example.com/v1".to_string();
+        adapter
+            .validate_reasoning_config(&config)
+            .expect("non-official hosts stay permissive");
+    }
+
+    #[test]
+    fn test_official_v4_validation_skips_disabled_thinking() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            enable_thinking: Some(false),
+            reasoning_effort: Some("ultra-mega".to_string()),
+            model: "deepseek-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        adapter
+            .validate_reasoning_config(&config)
+            .expect("disabled thinking makes effort irrelevant");
     }
 
     #[test]

@@ -4543,6 +4543,8 @@ impl LLMManager {
         let _chunk_count = 0usize;
 
         let config = resolved_config;
+        // 官方 DeepSeek V4 家族：未知推理强度在网络 I/O 前失败（不静默丢弃）
+        Self::validate_reasoning_config(&config)?;
         ensure_model_accepts_message_modalities(&config, chat_history)?;
         let quirks = resolve_quirks(&config);
 
@@ -7013,6 +7015,7 @@ impl LLMManager {
             "stream": false  // 非流式版本
         });
 
+        Self::validate_reasoning_config(&config)?;
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         apply_generation_params(&mut request_body, &config, &quirks);
@@ -8158,6 +8161,9 @@ impl LLMManager {
 
         // 标题等后台任务显式关闭思考；其余调用沿用模型/配置既有解析链。
         let thinking_override = opts.thinking_override();
+        if thinking_override.is_none() {
+            Self::validate_reasoning_config(&config)?;
+        }
         Self::apply_reasoning_config(&mut request_body, &config, thinking_override);
         apply_generation_params(&mut request_body, &config, &quirks);
         if let Some(max_tokens) = request_body
