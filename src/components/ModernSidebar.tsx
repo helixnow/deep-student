@@ -124,6 +124,7 @@ interface RecentSessionGroup {
   id: string;
   label: string;
   icon?: string;
+  color?: string;
   sessions: ChatSession[];
 }
 
@@ -1345,6 +1346,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       id: group.id,
       label: group.name,
       icon: group.icon,
+      color: group.color,
       sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
     });
 
@@ -1381,20 +1383,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, [areAllTopicGroupsExpanded, topicSessionGroups]);
 
   const renderRecentGroupIcon = useCallback((group: RecentSessionGroup) => {
-    const iconColorClass = '!text-[color:var(--shell-navigation-foreground)]';
+    const iconColorClass = group.color ? '' : '!text-[color:var(--shell-navigation-foreground)]';
+    const iconStyle = group.color ? { color: group.color } : undefined;
 
     if (!group.icon) {
-      return <Folder className={`size-[16px] ${iconColorClass}`} strokeWidth={2} />;
+      return <Folder className={`size-[16px] ${iconColorClass}`} strokeWidth={2} style={iconStyle} />;
     }
 
     const PresetIcon = RECENT_GROUP_PRESET_ICONS[group.icon];
     if (PresetIcon) {
       const Icon = PresetIcon;
-      return <Icon className={`size-[16px] ${iconColorClass}`} strokeWidth={2} />;
+      return <Icon className={`size-[16px] ${iconColorClass}`} strokeWidth={2} style={iconStyle} />;
     }
 
     return (
-      <span aria-hidden="true" className={`text-sm leading-none ${iconColorClass}`}>
+      <span aria-hidden="true" className={`text-sm leading-none ${iconColorClass}`} style={iconStyle}>
         {group.icon}
       </span>
     );
