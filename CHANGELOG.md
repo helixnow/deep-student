@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.60](https://github.com/helixnow/deep-student/compare/v0.9.59...v0.9.60) (2026-09-10)
+
+
+### Features
+
+* **chat:** 产物面板收敛为会话底部可折叠产物列表 ([e5221e3](https://github.com/helixnow/deep-student/commit/e5221e33ed4d12c82cbb6fba1d2dc178fd8a716f))
+* **chat:** 会话分组支持主题色 ([e774d3d](https://github.com/helixnow/deep-student/commit/e774d3d805fa72f32e3bca1f1f06c2f27b512484))
+* **chat:** 工作区文件分区沉底并默认折叠 ([2589644](https://github.com/helixnow/deep-student/commit/2589644c3baaf852db2b6908ce758c3d140792ab))
+* **llm:** Moonshot/Kimi 工具 schema 按 MFJS 方言规范化 ([9e47974](https://github.com/helixnow/deep-student/commit/9e47974e827757e4276e64c744be4b3eff6a8461))
+* **llm:** V4 历史 reasoning 回传按 tools 分流并对齐 max 档官方语义 ([26e91d6](https://github.com/helixnow/deep-student/commit/26e91d6dc7ccdb9c857b6c206a431480e1b05a3c))
+* **llm:** 官方 V4 推理强度契约 fail-fast（对齐 DSH UNSUPPORTED_REASONING_EFFORT） ([1082ee1](https://github.com/helixnow/deep-student/commit/1082ee195093d6772c01510120fa75529b15f894))
+* **llm:** 引入稳定 LLM 错误码并吸收 DSH 兼容语义（第一批） ([7692408](https://github.com/helixnow/deep-student/commit/769240881a524569e743ebe81e19f0fbca0b5e56))
+* **llm:** 支持 DeepSeek V4.1 Flash（deepseek-flash）并对齐官方 Responses 语义 ([3b6b6f5](https://github.com/helixnow/deep-student/commit/3b6b6f5a6718ab055a26ce315e8162e1afd736a2))
+* **prompt-cache:** 工具面首轮定型 + 一次性加载约束，减少中途扩容导致的缓存失效 ([#395](https://github.com/helixnow/deep-student/issues/395)) ([d03e5a8](https://github.com/helixnow/deep-student/commit/d03e5a801b9534d7ab17b0a7cc725ff66ed50057))
+* **quick-assistant:** 原生毛玻璃质感 + 逻辑像素尺寸持久化 ([8ac1ac5](https://github.com/helixnow/deep-student/commit/8ac1ac50c2d1205c557e8c301ba422b908e13e59))
+* **settings:** 供应商模型探测回填上下文窗口/最大输出（对齐 DSH 目录语义） ([ee52761](https://github.com/helixnow/deep-student/commit/ee5276142cb3ea5c57b239d94dff6fe5da40e23e))
+
+
+### Bug Fixes
+
+* **chat:** 产物面板 note/file 详情内联复用 UnifiedAppPanel 预览 ([bb9eb5b](https://github.com/helixnow/deep-student/commit/bb9eb5b61245d3c60fee7175e136de5b8fc49d73))
+* **ci:** Build Archive 超时 60→90 分钟 ([7e281db](https://github.com/helixnow/deep-student/commit/7e281db505fdcc50cb3854c185aad569130fd3ba))
+* **ci:** Provider Contract 超时 75→90 分钟 ([deff4a3](https://github.com/helixnow/deep-student/commit/deff4a3513721d8840130593c5bfa16b29387b44))
+* **ci:** 统一 OOM 缓解——Backend/provider/migration/nightly 补 swap+并行度限制 ([532dc79](https://github.com/helixnow/deep-student/commit/532dc79bea4f33b5cf12a6b88777efea05842fcf))
+* **llm:** 同步 V4 low/high/max 档与 64K 输出默认的前端镜像 ([d932907](https://github.com/helixnow/deep-student/commit/d93290745c3aa094b5b66e4fedcc20c21c25ae03))
+* **sync:** 资产墓碑回收不再被 conflict 副本复活 ([ba694a1](https://github.com/helixnow/deep-student/commit/ba694a16c323ad7c41fde5f7db396b2088a099db))
+* **wallpaper,backup,cache:** 自定义壁纸白屏、跨设备备份导入、Prompt 缓存诊断日志 ([#393](https://github.com/helixnow/deep-student/issues/393)) ([086900c](https://github.com/helixnow/deep-student/commit/086900c23a99983f3a3b854728b13cf02a325104))
+
 ## [0.9.59](https://github.com/helixnow/deep-student/compare/v0.9.58...v0.9.59) (2026-09-09)
 
 
