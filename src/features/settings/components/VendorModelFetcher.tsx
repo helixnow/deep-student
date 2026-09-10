@@ -18,7 +18,7 @@ import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { groupByModelFamily } from './modelFamily';
 import { fetchModelsFromVendor, INVALID_VENDOR_MODEL_RESPONSE } from './vendorModelService';
-import type { FetchedModel } from './vendorModelService';
+import type { FetchedModel, VendorModelAddPayload } from './vendorModelService';
 import type { VendorConfig } from '@/types';
 
 /** Codex OAuth requires a native authenticated transport, not the generic API-key fetcher. */
@@ -29,7 +29,7 @@ export function supportsModelFetching(providerType?: string | null): boolean {
 interface VendorModelFetcherProps {
   vendor: VendorConfig;
   existingModelIds: string[];
-  onAddModels: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
+  onAddModels: (vendor: VendorConfig, models: VendorModelAddPayload[]) => Promise<void>;
 }
 
 export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
@@ -184,7 +184,12 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const handleAddSingle = async (model: FetchedModel) => {
     setAddingId(model.id);
     try {
-      await onAddModels(vendor, [{ modelId: model.id, label: model.label }]);
+      await onAddModels(vendor, [{
+        modelId: model.id,
+        label: model.label,
+        contextWindow: model.contextWindow,
+        maxOutputTokens: model.maxOutputTokens,
+      }]);
       showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: 1 }));
     } catch (err: unknown) {
       showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : t('common:error.unknown_error') }));
@@ -198,7 +203,12 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     if (newModels.length === 0) return;
     setAddingAll(true);
     try {
-      await onAddModels(vendor, newModels.map(m => ({ modelId: m.id, label: m.label })));
+      await onAddModels(vendor, newModels.map(m => ({
+        modelId: m.id,
+        label: m.label,
+        contextWindow: m.contextWindow,
+        maxOutputTokens: m.maxOutputTokens,
+      })));
       showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: newModels.length }));
     } catch (err: unknown) {
       showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : t('common:error.unknown_error') }));

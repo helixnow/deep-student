@@ -20,6 +20,26 @@ import type { VendorConfig } from '@/types';
 export interface FetchedModel {
   id: string;
   label: string;
+  /** 供应商元数据回填的上下文窗口（缺省时走能力推断） */
+  contextWindow?: number;
+  /** 供应商元数据回填的最大输出 token（缺省时走默认参数） */
+  maxOutputTokens?: number;
+}
+
+/** 取第一个有限正整数（供应商字段命名不一，值可能缺失、为 0 或数字字符串）。 */
+function firstPositive(...values: Array<number | string | undefined>): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** 供应商模型列表 JSON 形状不对时的稳定错误码，由 UI 映射到 i18n */
@@ -31,6 +51,13 @@ interface OpenAIModelItem {
   object?: string;
   created?: number;
   owned_by?: string;
+  context_length?: number | string;
+  context_window?: number | string;
+  max_context_length?: number | string;
+  max_model_len?: number | string;
+  max_output_tokens?: number | string;
+  max_completion_tokens?: number | string;
+  top_provider?: { max_completion_tokens?: number | string };
 }
 
 /** Gemini API 返回的模型对象 */
@@ -39,6 +66,8 @@ interface GeminiModelItem {
   displayName?: string;
   description?: string;
   supportedGenerationMethods?: string[];
+  inputTokenLimit?: number | string;
+  outputTokenLimit?: number | string;
 }
 
 /** Anthropic API 返回的模型对象 */
@@ -48,13 +77,21 @@ interface AnthropicModelItem {
   type?: string;
 }
 
+/** 添加模型的载荷：能力回填字段可选，缺省时由前端能力推断补齐。 */
+export interface VendorModelAddPayload {
+  modelId: string;
+  label: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+}
+
 export interface AutoPostSaveOptions {
   /** 该供应商已有的模型 ID 列表，用于去重 */
   existingModelIds: string[];
   /** 添加模型到持久化的回调（对应 useSettingsVendorState.handleAddVendorModels） */
   onAddModels: (
     vendor: VendorConfig,
-    models: Array<{ modelId: string; label: string }>
+    models: VendorModelAddPayload[]
   ) => Promise<void>;
 }
 
@@ -248,7 +285,21 @@ async function fetchOpenAICompatible(
         !m.id.includes('dall-e') &&
         !m.id.includes('audio')
     )
-    .map((m: OpenAIModelItem) => ({ id: m.id, label: m.id }))
+    .map((m: OpenAIModelItem) => ({
+      id: m.id,
+      label: m.id,
+      contextWindow: firstPositive(
+        m.context_length,
+        m.context_window,
+        m.max_context_length,
+        m.max_model_len
+      ),
+      maxOutputTokens: firstPositive(
+        m.max_output_tokens,
+        m.max_completion_tokens,
+        m.top_provider?.max_completion_tokens
+      ),
+    }))
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
@@ -298,7 +349,12 @@ async function fetchGemini(
     .filter((m: GeminiModelItem) => m.supportedGenerationMethods?.includes('generateContent'))
     .map((m: GeminiModelItem) => {
       const modelId = m.name.replace(/^models\//, '');
-      return { id: modelId, label: m.displayName || modelId };
+      return {
+        id: modelId,
+        label: m.displayName || modelId,
+        contextWindow: firstPositive(m.inputTokenLimit),
+        maxOutputTokens: firstPositive(m.outputTokenLimit),
+      };
     })
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
@@ -413,7 +469,12 @@ export async function autoPostSaveFlow(
     try {
       await onAddModels(
         vendor,
-        newModels.map(m => ({ modelId: m.id, label: m.label }))
+        newModels.map(m => ({
+          modelId: m.id,
+          label: m.label,
+          contextWindow: m.contextWindow,
+          maxOutputTokens: m.maxOutputTokens,
+        }))
       );
       console.log(
         `[autoPostSaveFlow] Added ${newModels.length} models for vendor ${vendor.id} (${vendor.name})`

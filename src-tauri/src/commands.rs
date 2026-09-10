@@ -2373,7 +2373,46 @@ fn truncate_provider_error_detail(detail: String) -> String {
 pub struct FetchedVendorModel {
     pub id: String,
     pub label: String,
+    /// 供应商 /models 回填的上下文窗口（字段名各异，缺省时前端走能力推断）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+    /// 供应商回填的最大输出 token（缺省时前端走默认参数）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
+
+/// 从供应商模型条目中读取正整数能力字段；支持 `a.b` 嵌套路径与数字字符串。
+fn probe_u32_field(item: &serde_json::Value, keys: &[&str]) -> Option<u32> {
+    for key in keys {
+        let raw = key
+            .split('.')
+            .fold(Some(item), |acc, segment| acc.and_then(|v| v.get(segment)));
+        let Some(value) = raw else { continue };
+        let number = value
+            .as_u64()
+            .or_else(|| value.as_str().and_then(|text| text.trim().parse::<u64>().ok()));
+        if let Some(number) = number.and_then(|n| u32::try_from(n).ok()) {
+            if number > 0 {
+                return Some(number);
+            }
+        }
+    }
+    None
+}
+
+/// 不同网关对上下文窗口的字段命名（不把 max_tokens 当上下文，避免误判）。
+const PROBE_CONTEXT_WINDOW_KEYS: &[&str] = &[
+    "context_length",
+    "context_window",
+    "max_context_length",
+    "max_model_len",
+];
+/// 最大输出 token 的常见字段（含 OpenRouter 的嵌套形态）。
+const PROBE_MAX_OUTPUT_KEYS: &[&str] = &[
+    "max_output_tokens",
+    "max_completion_tokens",
+    "top_provider.max_completion_tokens",
+];
 
 fn vendor_models_endpoint(
     base_url: &str,
@@ -2570,7 +2609,7 @@ pub async fn fetch_vendor_models(
         .build()
         .map_err(|error| AppError::network(format!("创建供应商模型客户端失败: {error}")))?;
 
-    let mut models = HashMap::<String, String>::new();
+    let mut models = HashMap::<String, FetchedVendorModel>::new();
     let mut cursor: Option<String> = None;
     for _ in 0..20 {
         let mut page_url = endpoint.clone();
@@ -2624,7 +2663,20 @@ pub async fn fetch_vendor_models(
                         .and_then(serde_json::Value::as_str)
                         .unwrap_or(&id)
                         .to_string();
-                    models.insert(id, label);
+                    // Gemini 原生列表自带配额字段，直接回填。
+                    let context_window =
+                        probe_u32_field(item, &["inputTokenLimit"]).filter(|n| *n > 0);
+                    let max_output_tokens =
+                        probe_u32_field(item, &["outputTokenLimit"]).filter(|n| *n > 0);
+                    models.insert(
+                        id.clone(),
+                        FetchedVendorModel {
+                            id,
+                            label,
+                            context_window,
+                            max_output_tokens,
+                        },
+                    );
                 }
             }
             cursor = body
@@ -2661,7 +2713,17 @@ pub async fn fetch_vendor_models(
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(id)
                     .to_string();
-                models.insert(id.to_string(), label);
+                let context_window = probe_u32_field(item, PROBE_CONTEXT_WINDOW_KEYS);
+                let max_output_tokens = probe_u32_field(item, PROBE_MAX_OUTPUT_KEYS);
+                models.insert(
+                    id.to_string(),
+                    FetchedVendorModel {
+                        id: id.to_string(),
+                        label,
+                        context_window,
+                        max_output_tokens,
+                    },
+                );
             }
             let has_more = body
                 .get("has_more")
@@ -2686,10 +2748,7 @@ pub async fn fetch_vendor_models(
         }
     }
 
-    let mut fetched: Vec<FetchedVendorModel> = models
-        .into_iter()
-        .map(|(id, label)| FetchedVendorModel { id, label })
-        .collect();
+    let mut fetched: Vec<FetchedVendorModel> = models.into_values().collect();
     fetched.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(fetched)
 }
@@ -4745,9 +4804,9 @@ mod tests {
     use super::{
         build_chat_probe_body, build_provider_adapter, classify_probe_http_failure,
         compare_template_version, decide_builtin_import_action, extract_template_field_refs,
-        inspect_probe_buffer, is_openai_codex_oauth_test, resolve_test_model_kind,
+        inspect_probe_buffer, is_openai_codex_oauth_test, probe_u32_field, resolve_test_model_kind,
         should_update_builtin_template, validate_template_request, BuiltinImportAction,
-        ProbeVerdict, TestModelKind,
+        ProbeVerdict, TestModelKind, PROBE_CONTEXT_WINDOW_KEYS, PROBE_MAX_OUTPUT_KEYS,
     };
     use crate::llm_manager::{ApiConfig, VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
     use serde_json::json;
@@ -5104,6 +5163,48 @@ mod tests {
             "credential must not leak into probe error: {message}"
         );
         assert!(message.contains("[REDACTED]"), "message={message}");
+    }
+
+    #[test]
+    fn probe_u32_field_reads_common_provider_shapes() {
+        assert_eq!(
+            probe_u32_field(
+                &serde_json::json!({"context_length": 128000}),
+                PROBE_CONTEXT_WINDOW_KEYS
+            ),
+            Some(128_000)
+        );
+        assert_eq!(
+            probe_u32_field(
+                &serde_json::json!({"max_model_len": "32768"}),
+                PROBE_CONTEXT_WINDOW_KEYS
+            ),
+            Some(32_768)
+        );
+        assert_eq!(
+            probe_u32_field(
+                &serde_json::json!({"top_provider": {"max_completion_tokens": 8192}}),
+                PROBE_MAX_OUTPUT_KEYS
+            ),
+            Some(8_192)
+        );
+        assert_eq!(
+            probe_u32_field(&serde_json::json!({"inputTokenLimit": 1000000}), &["inputTokenLimit"]),
+            Some(1_000_000)
+        );
+        // max_tokens 在不同网关含义不定，不得当作上下文窗口
+        assert_eq!(
+            probe_u32_field(&serde_json::json!({"max_tokens": 4096}), PROBE_CONTEXT_WINDOW_KEYS),
+            None
+        );
+        assert_eq!(
+            probe_u32_field(&serde_json::json!({"context_length": 0}), PROBE_CONTEXT_WINDOW_KEYS),
+            None
+        );
+        assert_eq!(
+            probe_u32_field(&serde_json::json!({}), PROBE_MAX_OUTPUT_KEYS),
+            None
+        );
     }
 
     #[test]
