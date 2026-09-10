@@ -8148,3 +8148,94 @@ impl LLMManager {
         Ok(content.to_string())
     }
 }
+
+#[cfg(test)]
+mod proxy_env_tests {
+    use super::LLMManager;
+
+    /// 环境变量串行锁：代理测试会修改进程级 env，避免并行测试相互干扰。
+    static PROXY_ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    const PROXY_ENV_KEYS: [&str; 8] = [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+    ];
+
+    /// 主 LLM HTTP 客户端必须遵循标准代理环境变量（对齐 DSH 出站代理语义）。
+    /// 用一个本地 TCP 监听冒充代理：只要它收到绝对形式请求行（GET http://…），
+    /// 就证明 reqwest 系统代理生效；NO_PROXY 排除本机是为了不影响并行测试。
+    #[tokio::test]
+    async fn http_client_honors_proxy_environment() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let _guard = PROXY_ENV_GUARD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind proxy listener");
+        let proxy_url = format!("http://{}", listener.local_addr().expect("proxy addr"));
+
+        let saved: Vec<(&str, Option<String>)> = PROXY_ENV_KEYS
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect();
+
+        for key in [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
+            std::env::set_var(key, &proxy_url);
+        }
+        for key in ["NO_PROXY", "no_proxy"] {
+            std::env::set_var(key, "127.0.0.1,localhost,::1");
+        }
+
+        let accept = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept proxied request");
+            let mut buffer = vec![0u8; 8192];
+            let read = socket.read(&mut buffer).await.expect("read proxied request");
+            let head = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{}",
+                )
+                .await;
+            head
+        });
+
+        let client = LLMManager::create_http_client_with_fallback();
+        let outcome = client
+            .get("http://proxy-verify.invalid/v1/models")
+            .send()
+            .await;
+
+        for (key, value) in saved {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        let head = accept.await.expect("proxy task");
+        if let Err(error) = &outcome {
+            // 代理 mock 提前断连不影响结论：绝对形式请求行已经证明代理生效。
+            eprintln!("proxied request error (tolerated): {error}");
+        }
+        assert!(
+            head.starts_with("GET http://proxy-verify.invalid"),
+            "HTTP client must honor proxy env; proxy saw: {head}"
+        );
+    }
+}
