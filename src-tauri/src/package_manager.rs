@@ -454,23 +454,19 @@ mod tests {
 
     #[tokio::test]
     async fn install_command_success_captures_status() {
-        let (success, _stderr) = run_install_command_with_timeout(
-            "echo hello",
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("spawn ok");
+        let (success, _stderr) =
+            run_install_command_with_timeout("echo hello", Duration::from_secs(10))
+                .await
+                .expect("spawn ok");
         assert!(success);
     }
 
     #[tokio::test]
     async fn install_command_failure_captures_stderr() {
-        let (success, stderr) = run_install_command_with_timeout(
-            "echo boom >&2; exit 3",
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("spawn ok");
+        let (success, stderr) =
+            run_install_command_with_timeout("echo boom >&2; exit 3", Duration::from_secs(10))
+                .await
+                .expect("spawn ok");
         assert!(!success);
         assert!(stderr.contains("boom"), "stderr 应被捕获: {}", stderr);
     }
@@ -478,11 +474,7 @@ mod tests {
     #[tokio::test]
     async fn install_command_timeout_kills_child() {
         let start = std::time::Instant::now();
-        let result = run_install_command_with_timeout(
-            "sleep 60",
-            Duration::from_millis(100),
-        )
-        .await;
+        let result = run_install_command_with_timeout("sleep 60", Duration::from_millis(100)).await;
         let elapsed = start.elapsed();
         assert!(result.is_err(), "超时必须报错");
         assert!(result.unwrap_err().contains("超时"));
@@ -496,12 +488,10 @@ mod tests {
     #[tokio::test]
     async fn install_command_large_output_is_capped_and_drained() {
         // 输出远超 1 MiB 上限：必须正常结束（管道持续排空）且不 OOM
-        let (success, _) = run_install_command_with_timeout(
-            "yes | head -c 5000000",
-            Duration::from_secs(30),
-        )
-        .await
-        .expect("spawn ok");
+        let (success, _) =
+            run_install_command_with_timeout("yes | head -c 5000000", Duration::from_secs(30))
+                .await
+                .expect("spawn ok");
         assert!(success);
     }
 }

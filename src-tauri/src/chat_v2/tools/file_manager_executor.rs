@@ -569,15 +569,12 @@ impl FileManagerExecutor {
         )
         .tool(Some(tool_names::COMMIT))
         .derived_edge(
-            DerivedEdge::new(
-                &item.source_path,
-                format!("file_manager.{operation_str}"),
-            )
-            .with_params_hash(hash_transform_params(&json!({
-                "operation": &operation_str,
-                "source_path": &item.source_path,
-                "destination_path": &item.destination_path,
-            }))),
+            DerivedEdge::new(&item.source_path, format!("file_manager.{operation_str}"))
+                .with_params_hash(hash_transform_params(&json!({
+                    "operation": &operation_str,
+                    "source_path": &item.source_path,
+                    "destination_path": &item.destination_path,
+                }))),
         )
         .sha256(Some(&hash))
         .size_bytes(Some(bytes))

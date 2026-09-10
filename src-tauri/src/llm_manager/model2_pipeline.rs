@@ -755,7 +755,11 @@ fn apply_legacy_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks
     apply_token_limit(body, quirks.legacy_max_tokens_field, max_tokens);
 }
 
-pub(crate) fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
+pub(crate) fn apply_generation_params(
+    body: &mut Value,
+    config: &ApiConfig,
+    quirks: &ProviderQuirks,
+) {
     let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
     apply_generation_token_limit(body, quirks, max_tokens);
 
@@ -3739,11 +3743,7 @@ fn cache_debug_split_body_segments(body: &Value) -> [Value; 4] {
 fn cache_debug_hash16(value: &Value) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(
-        serde_json::to_string(value)
-            .unwrap_or_default()
-            .as_bytes(),
-    );
+    hasher.update(serde_json::to_string(value).unwrap_or_default().as_bytes());
     let digest = format!("{:x}", hasher.finalize());
     digest[..16].to_string()
 }
@@ -3880,11 +3880,7 @@ fn cache_debug_history_divergence(
     let shared = previous.len().min(current.len());
     for index in 0..shared {
         if previous[index].hash != current[index].hash {
-            return Some((
-                index,
-                previous[index].id.clone(),
-                current[index].id.clone(),
-            ));
+            return Some((index, previous[index].id.clone(), current[index].id.clone()));
         }
     }
     if previous.len() != current.len() {
@@ -3950,18 +3946,17 @@ fn cache_debug_log_post_adapter_fingerprint(stream_event: &str, model: &str, bod
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let label = match store.get(&scope_key) {
             None => "baseline",
-            Some(previous) => cache_debug_first_divergent_segment(
-                &previous.segments,
-                &snapshot.segments,
-            )
-            .unwrap_or("none"),
+            Some(previous) => {
+                cache_debug_first_divergent_segment(&previous.segments, &snapshot.segments)
+                    .unwrap_or("none")
+            }
         };
         let history_divergence = store.get(&scope_key).and_then(|previous| {
             cache_debug_history_divergence(&previous.history_items, &snapshot.history_items)
         });
-        let tool_delta = store
-            .get(&scope_key)
-            .map(|previous| cache_debug_tool_face_delta(&previous.tool_names, &snapshot.tool_names));
+        let tool_delta = store.get(&scope_key).map(|previous| {
+            cache_debug_tool_face_delta(&previous.tool_names, &snapshot.tool_names)
+        });
         if !store.contains_key(&scope_key) && store.len() >= CACHE_DEBUG_MAX_TRACKED_SCOPES {
             store.clear();
         }
@@ -3985,7 +3980,10 @@ fn cache_debug_log_post_adapter_fingerprint(stream_event: &str, model: &str, bod
 
     let segment_sizes = cache_debug_segment_sizes(body);
     let (message_count, body_chars, roles) = cache_debug_body_summary(body);
-    let history_anchor = match (snapshot.history_items.first(), snapshot.history_items.last()) {
+    let history_anchor = match (
+        snapshot.history_items.first(),
+        snapshot.history_items.last(),
+    ) {
         (Some(first), Some(last)) => format!(
             "first={}:{},last={}:{}",
             first.id.as_deref().unwrap_or("#0"),
@@ -5336,7 +5334,7 @@ impl LLMManager {
                     let tool_ctx = crate::tools::ToolContext {
                         db: Some(&self.db),
                         mcp_client,
-                        supports_tools: false, // 专门为降级注入场景
+                        supports_tools: false,        // 专门为降级注入场景
                         window: sink_window.as_ref(), // G01-b：无窗 runtime 为 None
                         stream_event: Some(stream_event),
                         stage: Some("fallback"),
@@ -6282,8 +6280,8 @@ impl LLMManager {
                                     // 存储 usage 数据以便最终记录到数据库
                                     captured_usage = Some(usage_value.clone());
                                     // emit usage 事件
-                                    if let Err(e) = sink
-                                        .emit(&format!("{}_usage", stream_event), &usage_value)
+                                    if let Err(e) =
+                                        sink.emit(&format!("{}_usage", stream_event), &usage_value)
                                     {
                                         error!("发送用量事件失败: {}", e);
                                     }
@@ -6347,8 +6345,8 @@ impl LLMManager {
                                             "details": safety_info
                                         })
                                     };
-                                    if let Err(e) = sink
-                                        .emit(&format!("{}_error", stream_event), &error_event)
+                                    if let Err(e) =
+                                        sink.emit(&format!("{}_error", stream_event), &error_event)
                                     {
                                         error!("发送安全错误事件失败: {}", e);
                                     }

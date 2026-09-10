@@ -57,13 +57,12 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::database::ChatV2Database;
-use super::skills::{
-    expand_path, is_portable_skill_path_component, StagedSkillDirectory,
-    DEFAULT_AGENT_SKILLS_BASE,
-};
 use super::skill_usage::{
     correction_trace_hash, trajectory_trace_hash, CandidateSourceKind, CandidateStatus,
     SkillCandidateRepo, SkillCandidateRow, SkillOutcome, SkillUsageRepo,
+};
+use super::skills::{
+    expand_path, is_portable_skill_path_component, StagedSkillDirectory, DEFAULT_AGENT_SKILLS_BASE,
 };
 use super::tools::skill_install_executor::AGENT_INSTALLED_MARKER;
 
@@ -478,10 +477,7 @@ pub fn replay_candidate(
         .ok_or_else(|| format!("skill candidate not found: {}", candidate_id))?;
     // 只有"待对账"状态可回放；passed/failed/published/rolled_back 一律拒绝
     // （一次性对账语义；周期性复验属于 P2 周期任务，不在本模块）。
-    if !matches!(
-        row.status,
-        CandidateStatus::New | CandidateStatus::Screened
-    ) {
+    if !matches!(row.status, CandidateStatus::New | CandidateStatus::Screened) {
         return Err(format!(
             "skill candidate {} is not replayable in status '{}'",
             candidate_id,
@@ -859,7 +855,11 @@ pub fn promote_candidate_with_base(
     }
 
     let installed = install_learned_skill(skills_base, &row)?;
-    if !repo.update_status(candidate_id, CandidateStatus::Passed, CandidateStatus::Published)? {
+    if !repo.update_status(
+        candidate_id,
+        CandidateStatus::Passed,
+        CandidateStatus::Published,
+    )? {
         return Err(format!(
             "skill candidate {} status changed concurrently during promote",
             candidate_id
@@ -980,8 +980,12 @@ fn retire_learned_skill(
         }
     }
     let archive_root = skills_base.join(SKILL_ARCHIVE_SUBDIR);
-    std::fs::create_dir_all(&archive_root)
-        .map_err(|e| format!("failed to create skill archive dir {:?}: {}", archive_root, e))?;
+    std::fs::create_dir_all(&archive_root).map_err(|e| {
+        format!(
+            "failed to create skill archive dir {:?}: {}",
+            archive_root, e
+        )
+    })?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ");
     let archived = archive_root.join(format!("{}.rolledback-{}", skill_id, stamp));
     std::fs::rename(&skill_dir, &archived).map_err(|e| {
@@ -1047,7 +1051,10 @@ fn render_trajectory_skill(
         .and_then(Value::as_i64)
         .unwrap_or(0);
     let description = sanitize_inline(
-        &format!("G09 习得工作流：{}（成功轨迹沉淀，回放验证通过）", flow_text),
+        &format!(
+            "G09 习得工作流：{}（成功轨迹沉淀，回放验证通过）",
+            flow_text
+        ),
         200,
     );
     format!(
@@ -1130,10 +1137,7 @@ fn render_correction_skill(
     } else {
         format!("\n- 验收终态：`{}`", sanitize_inline(verdict, 32))
     };
-    let description = sanitize_inline(
-        &format!("G09 习得反例：{}——避免重蹈", trigger_label),
-        200,
-    );
+    let description = sanitize_inline(&format!("G09 习得反例：{}——避免重蹈", trigger_label), 200);
     format!(
         r#"---
 name: {skill_id}
@@ -1287,7 +1291,10 @@ pub async fn chat_v2_replay_skill_candidate(
 ) -> Result<ReplayReport, String> {
     let candidate_id = candidate_id.trim().to_string();
     if candidate_id.is_empty() || candidate_id.len() > 255 {
-        return Err(format!("invalid candidate_id length: {}", candidate_id.len()));
+        return Err(format!(
+            "invalid candidate_id length: {}",
+            candidate_id.len()
+        ));
     }
     let db = db.inner().clone();
     tokio::task::spawn_blocking(move || replay_candidate(&db, &candidate_id))
@@ -1305,7 +1312,10 @@ pub async fn chat_v2_promote_skill_candidate(
 ) -> Result<SkillCandidatePromotion, String> {
     let candidate_id = candidate_id.trim().to_string();
     if candidate_id.is_empty() || candidate_id.len() > 255 {
-        return Err(format!("invalid candidate_id length: {}", candidate_id.len()));
+        return Err(format!(
+            "invalid candidate_id length: {}",
+            candidate_id.len()
+        ));
     }
     let skills_base = learned_skills_base()?;
     let db = db.inner().clone();
@@ -1325,7 +1335,10 @@ pub async fn chat_v2_rollback_skill_candidate(
 ) -> Result<SkillCandidateRollback, String> {
     let candidate_id = candidate_id.trim().to_string();
     if candidate_id.is_empty() || candidate_id.len() > 255 {
-        return Err(format!("invalid candidate_id length: {}", candidate_id.len()));
+        return Err(format!(
+            "invalid candidate_id length: {}",
+            candidate_id.len()
+        ));
     }
     let skills_base = learned_skills_base()?;
     let db = db.inner().clone();
@@ -1351,9 +1364,7 @@ fn learned_skills_base() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_v2::skill_usage::{
-        NewSkillCandidate, NewSkillUsage, SkillUsageKind,
-    };
+    use crate::chat_v2::skill_usage::{NewSkillCandidate, NewSkillUsage, SkillUsageKind};
     use crate::data_governance::migration::coordinator::MigrationCoordinator;
     use crate::data_governance::schema_registry::DatabaseId;
     use tempfile::TempDir;
@@ -1486,7 +1497,10 @@ mod tests {
 
     fn insert_candidate(db: &Arc<ChatV2Database>, candidate: &NewSkillCandidate) -> String {
         let repo = SkillCandidateRepo::new(db.clone());
-        assert!(repo.insert_if_new(candidate).expect("insert"), "first insert");
+        assert!(
+            repo.insert_if_new(candidate).expect("insert"),
+            "first insert"
+        );
         repo.get_by_trace_hash(&candidate.trace_hash)
             .expect("get")
             .expect("stored")
@@ -1543,7 +1557,10 @@ mod tests {
         assert_eq!(report.previous_status, CandidateStatus::New);
         assert_eq!(report.resulting_status, CandidateStatus::Passed);
         assert_eq!(report.source_kind, CandidateSourceKind::Trajectory);
-        assert_eq!(candidate_status(&db, &candidate_id), CandidateStatus::Passed);
+        assert_eq!(
+            candidate_status(&db, &candidate_id),
+            CandidateStatus::Passed
+        );
 
         // 一次性对账语义：passed 之后不可重放
         let err = replay_candidate(&db, &candidate_id).expect_err("re-replay rejected");
@@ -1558,7 +1575,11 @@ mod tests {
         let candidate_id = insert_candidate(&db, &edit_correction_candidate("sess-1", "msg_u1"));
         // new → screened（例如列表页人工初筛）
         assert!(SkillCandidateRepo::new(db.clone())
-            .update_status(&candidate_id, CandidateStatus::New, CandidateStatus::Screened)
+            .update_status(
+                &candidate_id,
+                CandidateStatus::New,
+                CandidateStatus::Screened
+            )
             .unwrap());
 
         let report = replay_candidate(&db, &candidate_id).expect("replay from screened");
@@ -1583,8 +1604,7 @@ mod tests {
 
         // 合法链：replay（new→passed）→ promote（passed→published）
         replay_candidate(&db, &candidate_id).expect("replay");
-        let promotion =
-            promote_candidate_with_base(&db, &candidate_id, base).expect("promote");
+        let promotion = promote_candidate_with_base(&db, &candidate_id, base).expect("promote");
         assert_eq!(promotion.status, CandidateStatus::Published);
         assert_eq!(
             candidate_status(&db, &candidate_id),
@@ -1617,8 +1637,8 @@ mod tests {
         );
         replay_candidate(&db, &candidate_id).expect("replay");
 
-        let promotion = promote_candidate_with_base(&db, &candidate_id, skills_dir.path())
-            .expect("promote");
+        let promotion =
+            promote_candidate_with_base(&db, &candidate_id, skills_dir.path()).expect("promote");
         // 返回草稿可供后续流程建技能文件：统计字段齐全
         assert_eq!(
             promotion.draft_payload["tool_sequence"],
@@ -1692,7 +1712,13 @@ mod tests {
         delete_message(&db, "msg_u1");
         let user_drifted = insert_candidate(
             &db,
-            &trajectory_candidate("sess-1", "msg_run_2", "msg_u1", &["a", "b", "d"], &["skill-a"]),
+            &trajectory_candidate(
+                "sess-1",
+                "msg_run_2",
+                "msg_u1",
+                &["a", "b", "d"],
+                &["skill-a"],
+            ),
         );
         let report = replay_candidate(&db, &user_drifted).expect("replay");
         assert!(!report.still_valid);
@@ -1715,7 +1741,13 @@ mod tests {
             .unwrap();
         let invalidated = insert_candidate(
             &db,
-            &trajectory_candidate("sess-1", "msg_run_1", "msg_u1", &["a", "b", "c"], &["skill-a"]),
+            &trajectory_candidate(
+                "sess-1",
+                "msg_run_1",
+                "msg_u1",
+                &["a", "b", "c"],
+                &["skill-a"],
+            ),
         );
         let report = replay_candidate(&db, &invalidated).expect("replay");
         assert!(!report.still_valid);
@@ -1730,7 +1762,13 @@ mod tests {
         insert_tool_load(&db, "skill-b", "msg_run_2");
         let diverged = insert_candidate(
             &db,
-            &trajectory_candidate("sess-1", "msg_run_2", "msg_u2", &["a", "b", "d"], &["skill-a"]),
+            &trajectory_candidate(
+                "sess-1",
+                "msg_run_2",
+                "msg_u2",
+                &["a", "b", "d"],
+                &["skill-a"],
+            ),
         );
         let report = replay_candidate(&db, &diverged).expect("replay");
         assert!(!report.still_valid);
@@ -1743,7 +1781,13 @@ mod tests {
         insert_message(&db, "sess-1", "msg_u3", "user");
         let missing = insert_candidate(
             &db,
-            &trajectory_candidate("sess-1", "msg_run_3", "msg_u3", &["a", "b", "e"], &["skill-z"]),
+            &trajectory_candidate(
+                "sess-1",
+                "msg_run_3",
+                "msg_u3",
+                &["a", "b", "e"],
+                &["skill-z"],
+            ),
         );
         let report = replay_candidate(&db, &missing).expect("replay");
         assert!(!report.still_valid);
@@ -1841,7 +1885,10 @@ mod tests {
         );
         assert_eq!(report.trace_hash_recomputed, None);
         assert!(!report.trace_hash_matches);
-        assert_eq!(candidate_status(&db, &candidate_id), CandidateStatus::Failed);
+        assert_eq!(
+            candidate_status(&db, &candidate_id),
+            CandidateStatus::Failed
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -1875,7 +1922,11 @@ mod tests {
             Some(
                 trajectory_trace_hash(
                     "sess-1",
-                    &["vfs_search".to_string(), "note_read".to_string(), "anki_add_cards".to_string()]
+                    &[
+                        "vfs_search".to_string(),
+                        "note_read".to_string(),
+                        "anki_add_cards".to_string()
+                    ]
                 )
                 .as_str()
             )
@@ -1904,7 +1955,13 @@ mod tests {
         insert_tool_load(&db, "skill-a", "msg_run_1");
         let candidate_id = insert_candidate(
             &db,
-            &trajectory_candidate("sess-1", "msg_run_1", "msg_u1", &["a", "b", "c"], &["skill-a"]),
+            &trajectory_candidate(
+                "sess-1",
+                "msg_run_1",
+                "msg_u1",
+                &["a", "b", "c"],
+                &["skill-a"],
+            ),
         );
         // 直接改库篡改库存 trace_hash → 复核必须报 mismatch 且判 drifted
         let conn = db.get_conn().expect("conn");
@@ -1999,9 +2056,11 @@ mod tests {
                 .len(),
             2
         );
-        assert!(list_candidate_summaries(&db, Some(CandidateStatus::Passed), 50)
-            .unwrap()
-            .is_empty());
+        assert!(
+            list_candidate_summaries(&db, Some(CandidateStatus::Passed), 50)
+                .unwrap()
+                .is_empty()
+        );
         for (alias, expect) in [
             ("pending", Some(CandidateStatus::New)),
             ("validated", Some(CandidateStatus::Passed)),
@@ -2064,8 +2123,8 @@ mod tests {
         );
         let row = get_candidate(&db, &candidate_id);
 
-        let promotion = promote_candidate_with_base(&db, &candidate_id, skills_dir.path())
-            .expect("promote");
+        let promotion =
+            promote_candidate_with_base(&db, &candidate_id, skills_dir.path()).expect("promote");
         assert_eq!(promotion.status, CandidateStatus::Published);
         assert!(promotion.skill_file_written);
         assert_eq!(promotion.skill_version, 1);
@@ -2097,7 +2156,10 @@ mod tests {
         assert!(content.contains("vfs_search → note_read → anki_add_cards"));
         assert!(content.contains("`skill-a`"));
         assert!(content.contains("成功 3 次"));
-        assert!(!content.contains("sess-1"), "skill body must not contain session id");
+        assert!(
+            !content.contains("sess-1"),
+            "skill body must not contain session id"
+        );
 
         // AGENT_INSTALLED 标记同目录落盘（默认不受信，走 skill_trust 授权链）
         let marker_path = skill_file.parent().unwrap().join(AGENT_INSTALLED_MARKER);
@@ -2161,8 +2223,8 @@ mod tests {
             &["a", "b", "c"],
             &["skill-a"],
         );
-        let first = promote_candidate_with_base(&db, &first_id, skills_dir.path())
-            .expect("first promote");
+        let first =
+            promote_candidate_with_base(&db, &first_id, skills_dir.path()).expect("first promote");
         assert_eq!(first.skill_version, 1);
 
         let second = promote_candidate_with_base(&db, &second_id, skills_dir.path())
@@ -2178,7 +2240,10 @@ mod tests {
         assert!(content.contains(&format!("\ntrace_hash: {}\n", row2.trace_hash)));
         // 两个候选都已发布
         assert_eq!(candidate_status(&db, &first_id), CandidateStatus::Published);
-        assert_eq!(candidate_status(&db, &second_id), CandidateStatus::Published);
+        assert_eq!(
+            candidate_status(&db, &second_id),
+            CandidateStatus::Published
+        );
     }
 
     #[test]
@@ -2298,16 +2363,16 @@ mod tests {
             &["vfs_search", "note_read", "anki_add_cards"],
             &["skill-a"],
         );
-        let promotion = promote_candidate_with_base(&db, &candidate_id, skills_dir.path())
-            .expect("promote");
+        let promotion =
+            promote_candidate_with_base(&db, &candidate_id, skills_dir.path()).expect("promote");
         let skill_dir = PathBuf::from(&promotion.skill_file_path)
             .parent()
             .unwrap()
             .to_path_buf();
         assert!(skill_dir.is_dir());
 
-        let rollback = rollback_candidate_with_base(&db, &candidate_id, skills_dir.path())
-            .expect("rollback");
+        let rollback =
+            rollback_candidate_with_base(&db, &candidate_id, skills_dir.path()).expect("rollback");
         assert_eq!(rollback.status, CandidateStatus::RolledBack);
         assert_eq!(rollback.skill_id, promotion.skill_id);
         assert!(rollback.retired_from.is_some());
@@ -2369,8 +2434,8 @@ mod tests {
             &["vfs_search", "note_read", "anki_add_cards"],
             &["skill-a"],
         );
-        let promotion = promote_candidate_with_base(&db, &candidate_id, skills_dir.path())
-            .expect("promote");
+        let promotion =
+            promote_candidate_with_base(&db, &candidate_id, skills_dir.path()).expect("promote");
         // 技能目录被外部删除 → 回滚仍推进状态机（退役为空操作）
         let skill_dir = PathBuf::from(&promotion.skill_file_path)
             .parent()
@@ -2428,7 +2493,10 @@ mod tests {
         SkillUsageRepo::new(db.clone())
             .mark_run_outcome("msg_run_bad", SkillOutcome::Failed)
             .unwrap();
-        let ok = insert_candidate(&db, &outcome_failed_candidate("sess-1", "msg_run_bad", &["skill-a"]));
+        let ok = insert_candidate(
+            &db,
+            &outcome_failed_candidate("sess-1", "msg_run_bad", &["skill-a"]),
+        );
         let report = replay_candidate(&db, &ok).expect("replay");
         assert!(report.still_valid, "drifts: {:?}", report.drift_reasons);
         assert_eq!(report.resulting_status, CandidateStatus::Passed);

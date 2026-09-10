@@ -598,14 +598,26 @@ async fn run_remote_task(
     let turn = task_command::build_session_turn(&plan, session_id.clone(), model_id, system_append);
     let result = crate::chat_v2::headless::run_headless_agent_turn(&app, turn).await;
     let (status, summary, error) = match result {
-        Ok(outcome) => (task_command::RemoteTaskStatus::Completed, outcome.content, None),
-        Err(m) if m.contains("timed out") => {
-            (task_command::RemoteTaskStatus::Timeout, String::new(), Some(m))
-        }
-        Err(m) if m.contains("cancelled") => {
-            (task_command::RemoteTaskStatus::Cancelled, String::new(), Some(m))
-        }
-        Err(m) => (task_command::RemoteTaskStatus::Failed, String::new(), Some(m)),
+        Ok(outcome) => (
+            task_command::RemoteTaskStatus::Completed,
+            outcome.content,
+            None,
+        ),
+        Err(m) if m.contains("timed out") => (
+            task_command::RemoteTaskStatus::Timeout,
+            String::new(),
+            Some(m),
+        ),
+        Err(m) if m.contains("cancelled") => (
+            task_command::RemoteTaskStatus::Cancelled,
+            String::new(),
+            Some(m),
+        ),
+        Err(m) => (
+            task_command::RemoteTaskStatus::Failed,
+            String::new(),
+            Some(m),
+        ),
     };
     // 4. 回写记录并通知（记录已被 Stop 取消时 finish_turn 返回 None，不再发结果）
     if let Some(text) = tasks.finish_turn(&plan.task_id, status, &summary, error.as_deref()) {
@@ -620,12 +632,7 @@ async fn run_remote_task(
             }
             Err(e) => {
                 tracing::warn!("[ilinkbot] send task result failed: {}", e);
-                events::emit_activity(
-                    &app,
-                    PLUGIN_ID,
-                    "warn",
-                    &format!("任务结果发送失败: {}", e),
-                );
+                events::emit_activity(&app, PLUGIN_ID, "warn", &format!("任务结果发送失败: {}", e));
             }
         }
     }

@@ -711,9 +711,7 @@ impl ChatV2Pipeline {
         // === 单变体模式：窗口事件出口 → 共享核心（G01-d）===
         let emitter = Arc::new(
             ChatV2EventEmitter::new(window, request.session_id.clone())
-                .with_stream_generation(
-                    request.options.as_ref().and_then(|o| o.stream_generation),
-                ),
+                .with_stream_generation(request.options.as_ref().and_then(|o| o.stream_generation)),
         );
         self.execute_with_emitter(emitter, request, cancel_token, chat_v2_state)
             .await

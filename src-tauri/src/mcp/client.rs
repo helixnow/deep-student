@@ -2086,7 +2086,9 @@ mod tests {
         .await
         .unwrap();
 
-        let event = rx.try_recv().expect("ToolsChanged event must fire for legacy name");
+        let event = rx
+            .try_recv()
+            .expect("ToolsChanged event must fire for legacy name");
         assert!(matches!(event, McpEvent::ToolsChanged));
     }
 
@@ -2105,7 +2107,10 @@ mod tests {
         .await
         .unwrap();
 
-        let response = pending_rx.await.expect("pending request").expect("ok response");
+        let response = pending_rx
+            .await
+            .expect("pending request")
+            .expect("ok response");
         assert!(response.result.is_some());
         assert!(recorded.0.lock().unwrap().is_empty());
     }

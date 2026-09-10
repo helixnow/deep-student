@@ -79,16 +79,17 @@ pub fn enqueue(
 
 /// 启动恢复：过期租约的 running 任务重置回 queued（幂等，可在每次 run_once 前调用）
 pub fn recover_stale_leases_with_conn(conn: &Connection) -> Result<usize, AppError> {
-    let n = conn.execute(
-        "UPDATE insight_jobs
+    let n = conn
+        .execute(
+            "UPDATE insight_jobs
          SET status = 'queued', lease_owner = NULL, leased_at = NULL, updated_at = ?1
          WHERE status = 'running'
            AND deleted_at IS NULL
            AND (leased_at IS NULL
                 OR leased_at < datetime('now', ?2))",
-        params![repo::now_iso(), format!("-{LEASE_SECS} seconds")],
-    )
-    .map_err(db_err)?;
+            params![repo::now_iso(), format!("-{LEASE_SECS} seconds")],
+        )
+        .map_err(db_err)?;
     Ok(n)
 }
 
@@ -168,7 +169,12 @@ pub fn fail_with_conn(conn: &Connection, job_id: &str, error: &str) -> Result<()
              SET status = 'queued', lease_owner = NULL, leased_at = NULL,
                  next_attempt_at = datetime('now', ?2), last_error = ?3, updated_at = ?4
              WHERE id = ?1",
-            params![job_id, format!("+{backoff} seconds"), error, repo::now_iso()],
+            params![
+                job_id,
+                format!("+{backoff} seconds"),
+                error,
+                repo::now_iso()
+            ],
         )
         .map_err(db_err)?;
     } else {
@@ -343,7 +349,9 @@ impl InsightJobWorker {
 
     /// 卡片当前修订的 resources 快照 id（待办附件回链用）
     fn card_resource_id(card: &super::types::InsightCard) -> Option<String> {
-        card.current_revision.as_ref().and_then(|r| r.resource_id.clone())
+        card.current_revision
+            .as_ref()
+            .and_then(|r| r.resource_id.clone())
     }
 
     // ========================================================================
@@ -370,9 +378,8 @@ impl InsightJobWorker {
         }
 
         // 近重复检测：用标题走 FTS（trigram 子串语义），置信阈值高于召回路径
-        let candidates = super::recall::InsightRecallService::recall_fts_with_conn(
-            conn, &card.title, 5,
-        )?;
+        let candidates =
+            super::recall::InsightRecallService::recall_fts_with_conn(conn, &card.title, 5)?;
         for cand in candidates {
             if cand.card.id == card.id || cand.confidence < 0.5 {
                 continue;
@@ -404,11 +411,23 @@ impl InsightJobWorker {
                  另一张可用 supersede 关系指向保留方（差异会保留在关系边上）。",
                 cand.confidence,
                 a.title,
-                a.current_revision.as_ref().map(|r| r.situation.as_str()).unwrap_or(""),
-                a.current_revision.as_ref().map(|r| r.rule.as_str()).unwrap_or(""),
+                a.current_revision
+                    .as_ref()
+                    .map(|r| r.situation.as_str())
+                    .unwrap_or(""),
+                a.current_revision
+                    .as_ref()
+                    .map(|r| r.rule.as_str())
+                    .unwrap_or(""),
                 b.title,
-                b.current_revision.as_ref().map(|r| r.situation.as_str()).unwrap_or(""),
-                b.current_revision.as_ref().map(|r| r.rule.as_str()).unwrap_or(""),
+                b.current_revision
+                    .as_ref()
+                    .map(|r| r.situation.as_str())
+                    .unwrap_or(""),
+                b.current_revision
+                    .as_ref()
+                    .map(|r| r.rule.as_str())
+                    .unwrap_or(""),
             );
             let attachments = [Self::card_resource_id(a), Self::card_resource_id(b)]
                 .into_iter()
@@ -510,8 +529,17 @@ impl InsightJobWorker {
         let conditions: Vec<String> = cases
             .iter()
             .filter_map(|c| {
-                let v = c.current_revision.as_ref()?.validity_conditions.trim().to_string();
-                if v.is_empty() { None } else { Some(v) }
+                let v = c
+                    .current_revision
+                    .as_ref()?
+                    .validity_conditions
+                    .trim()
+                    .to_string();
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v)
+                }
             })
             .collect();
         let case_titles: Vec<&str> = cases.iter().map(|c| c.title.as_str()).collect();
@@ -620,11 +648,12 @@ impl InsightJobWorker {
 
         let Some(card) = card else {
             // 墓碑传播：投影卡软删除
-            mconn.execute(
-                "UPDATE anki_cards SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
-                params![card_id, repo::now_iso()],
-            )
-            .map_err(db_err)?;
+            mconn
+                .execute(
+                    "UPDATE anki_cards SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
+                    params![card_id, repo::now_iso()],
+                )
+                .map_err(db_err)?;
             return Ok(());
         };
         if card.status != super::types::InsightStatus::Active {
@@ -638,7 +667,10 @@ impl InsightJobWorker {
         let front = if rev.stuck_point.trim().is_empty() {
             format!("【{}】\n{}", card.title, rev.situation)
         } else {
-            format!("【{}】\n{}\n\n卡点：{}", card.title, rev.situation, rev.stuck_point)
+            format!(
+                "【{}】\n{}\n\n卡点：{}",
+                card.title, rev.situation, rev.stuck_point
+            )
         };
         let mut back = format!("转折：{}", rev.turning_point);
         if !rev.rule.trim().is_empty() {
@@ -650,8 +682,9 @@ impl InsightJobWorker {
 
         let now = repo::now_iso();
         // 合成任务行（upsert；content_segment 存当前规则文本便于排查）
-        mconn.execute(
-            "INSERT INTO document_tasks
+        mconn
+            .execute(
+                "INSERT INTO document_tasks
              (id, document_id, original_document_name, segment_index, content_segment,
               status, created_at, updated_at, anki_generation_options_json)
              VALUES (?1, ?2, ?3, 0, ?4, 'Completed', ?5, ?5, '{}')
@@ -659,15 +692,15 @@ impl InsightJobWorker {
                original_document_name = excluded.original_document_name,
                content_segment = excluded.content_segment,
                updated_at = excluded.updated_at",
-            params![
-                task_id,
-                format!("insight:{insight_id}"),
-                card.title,
-                rev.rule,
-                now,
-            ],
-        )
-        .map_err(db_err)?;
+                params![
+                    task_id,
+                    format!("insight:{insight_id}"),
+                    card.title,
+                    rev.rule,
+                    now,
+                ],
+            )
+            .map_err(db_err)?;
 
         // 物化卡（存在则原地更新内容，保留 FSRS 状态与复习历史）
         let exists: bool = mconn
@@ -678,13 +711,14 @@ impl InsightJobWorker {
             )
             .map_err(db_err)?;
         if exists {
-            mconn.execute(
-                "UPDATE anki_cards
+            mconn
+                .execute(
+                    "UPDATE anki_cards
                  SET front = ?2, back = ?3, updated_at = ?4, deleted_at = NULL
                  WHERE id = ?1",
-                params![card_id, front, back, now],
-            )
-            .map_err(db_err)?;
+                    params![card_id, front, back, now],
+                )
+                .map_err(db_err)?;
         } else {
             mconn.execute(
                 "INSERT INTO anki_cards

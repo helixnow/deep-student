@@ -158,11 +158,8 @@ pub enum ArtifactResolution {
 /// 生产实现 = [`RuntimeRootLocator`]（复用 runtime_roots 设施）；测试可用
 /// 单目录实现。只读语义：实现方**不得**为核查创建目录或文件。
 pub trait ArtifactLocator: Send + Sync {
-    fn resolve(
-        &self,
-        root_id: Option<&str>,
-        relative: &Path,
-    ) -> Result<ArtifactResolution, String>;
+    fn resolve(&self, root_id: Option<&str>, relative: &Path)
+        -> Result<ArtifactResolution, String>;
 }
 
 /// 在已解析的 root 目录下定位产物（生产 locator 与测试共享的实现）
@@ -404,21 +401,20 @@ impl AcceptanceCheck for ArtifactsExistCheck {
 
         for artifact in ctx.declared_artifacts {
             let raw_path = artifact.path.trim();
-            let relative =
-                match runtime_roots::normalize_runtime_relative_path(Some(raw_path)) {
-                    Ok(relative) if !relative.as_os_str().is_empty() => relative,
-                    _ => {
-                        exceptions.push(FinalizationException {
-                            check: self.id().to_string(),
-                            kind: ExceptionKind::InvalidDeclaration,
-                            path: Some(artifact.path.clone()),
-                            message: "declared artifact path must be a non-empty relative \
+            let relative = match runtime_roots::normalize_runtime_relative_path(Some(raw_path)) {
+                Ok(relative) if !relative.as_os_str().is_empty() => relative,
+                _ => {
+                    exceptions.push(FinalizationException {
+                        check: self.id().to_string(),
+                        kind: ExceptionKind::InvalidDeclaration,
+                        path: Some(artifact.path.clone()),
+                        message: "declared artifact path must be a non-empty relative \
                                  path without parent traversal"
-                                .to_string(),
-                        });
-                        continue;
-                    }
-                };
+                            .to_string(),
+                    });
+                    continue;
+                }
+            };
 
             match locator.resolve(artifact.root_id.as_deref(), &relative) {
                 Ok(ArtifactResolution::Found(path)) => {
@@ -454,7 +450,10 @@ impl AcceptanceCheck for ArtifactsExistCheck {
                         path: Some(artifact.path.clone()),
                         message: format!(
                             "declared artifact does not exist under root '{}'",
-                            artifact.root_id.as_deref().unwrap_or(DEFAULT_ARTIFACT_ROOT_ID)
+                            artifact
+                                .root_id
+                                .as_deref()
+                                .unwrap_or(DEFAULT_ARTIFACT_ROOT_ID)
                         ),
                     });
                 }
@@ -828,7 +827,10 @@ fn parse_todo_steps(output: &Value) -> Vec<TodoStepEvidence> {
 /// - 终态：本轮最后一个 todo 写工具输出的 steps 快照；分母中在终态
 ///   快照找不到的步骤按 pending（未交付）计。
 fn collect_todo_batch(tool_results: &[ToolResultInfo]) -> Option<TodoBatchSnapshot> {
-    if !tool_results.iter().any(|r| is_todo_write_tool(&r.tool_name)) {
+    if !tool_results
+        .iter()
+        .any(|r| is_todo_write_tool(&r.tool_name))
+    {
         return None;
     }
 
@@ -894,24 +896,19 @@ fn collect_todo_batch(tool_results: &[ToolResultInfo]) -> Option<TodoBatchSnapsh
 ///
 /// 查询失败不抛出——作为 `Err` 证据交给检查器报 Unavailable
 /// （OutcomeUnknown），由终态推导统一处理。
-fn query_side_effects(
-    db: &ChatV2Database,
-    session_id: &str,
-) -> Result<SideEffectSummary, String> {
-    connector_ledger::session_side_effect_summary(db, session_id).map(|summary| {
-        SideEffectSummary {
-            total_operations: summary.total_operations,
-            pending: summary
-                .pending
-                .iter()
-                .map(|op| PendingSideEffect {
-                    operation_id: op.operation_id.clone(),
-                    state: op.state.as_str().to_string(),
-                    provider_id: op.provider_id.clone(),
-                    action: op.action.clone(),
-                })
-                .collect(),
-        }
+fn query_side_effects(db: &ChatV2Database, session_id: &str) -> Result<SideEffectSummary, String> {
+    connector_ledger::session_side_effect_summary(db, session_id).map(|summary| SideEffectSummary {
+        total_operations: summary.total_operations,
+        pending: summary
+            .pending
+            .iter()
+            .map(|op| PendingSideEffect {
+                operation_id: op.operation_id.clone(),
+                state: op.state.as_str().to_string(),
+                provider_id: op.provider_id.clone(),
+                action: op.action.clone(),
+            })
+            .collect(),
     })
 }
 
@@ -964,7 +961,10 @@ fn try_finalize_task_completion(
 
     // 2. 解析申报产物（executor 已校验过格式，此处失败按无申报降级）
     let declared = parse_declared_artifacts(&input).unwrap_or_else(|error| {
-        log::warn!("[Finalizer] failed to re-parse declared artifacts: {}", error);
+        log::warn!(
+            "[Finalizer] failed to re-parse declared artifacts: {}",
+            error
+        );
         Vec::new()
     });
 
@@ -1042,11 +1042,7 @@ fn inject_finalization_into_blocks(
 
     let block_id = block_id?;
     let block = interleaved_blocks.iter_mut().find(|b| b.id == block_id)?;
-    if let Some(output) = block
-        .tool_output
-        .as_mut()
-        .and_then(Value::as_object_mut)
-    {
+    if let Some(output) = block.tool_output.as_mut().and_then(Value::as_object_mut) {
         output.insert("finalization".to_string(), report_value.clone());
     }
     Some(block.clone())
@@ -1537,10 +1533,7 @@ mod tests {
             .any(|e| e.kind == ExceptionKind::HashMismatch));
         assert_eq!(
             report.checks_run,
-            vec![
-                "artifacts_exist".to_string(),
-                "batch_coverage".to_string()
-            ]
+            vec!["artifacts_exist".to_string(), "batch_coverage".to_string()]
         );
     }
 
@@ -1758,10 +1751,7 @@ mod tests {
     fn completion_block_receives_finalization_field() {
         let block_id = "blk_completion";
         let mut tool_results = vec![completion_tool_result(block_id)];
-        let mut blocks = vec![completion_block(
-            block_id,
-            tool_results[0].output.clone(),
-        )];
+        let mut blocks = vec![completion_block(block_id, tool_results[0].output.clone())];
         let report = FinalizationReport {
             verdict: FinalizationVerdict::Partial,
             exceptions: vec![FinalizationException {
@@ -1893,10 +1883,7 @@ mod tests {
             json!("verified_complete")
         );
         assert_eq!(
-            ctx.interleaved_blocks[0]
-                .tool_output
-                .as_ref()
-                .unwrap()["finalization"]["verdict"],
+            ctx.interleaved_blocks[0].tool_output.as_ref().unwrap()["finalization"]["verdict"],
             json!("verified_complete")
         );
 
@@ -2034,8 +2021,11 @@ mod tests {
                 }
             }),
         );
-        let (_dir, db, mut ctx) =
-            finalization_harness("sess-g07b-batch", "blk_completion_batch", vec![batch_result]);
+        let (_dir, db, mut ctx) = finalization_harness(
+            "sess-g07b-batch",
+            "blk_completion_batch",
+            vec![batch_result],
+        );
 
         let report = try_finalize_task_completion(&mut ctx, &db, None)
             .unwrap()
@@ -2086,7 +2076,9 @@ mod tests {
                 created_at: "2026-09-07T00:00:00Z".to_string(),
             })
             .unwrap();
-        ledger.mark_confirmed("op-e2e", &preview_sha256, "t1").unwrap();
+        ledger
+            .mark_confirmed("op-e2e", &preview_sha256, "t1")
+            .unwrap();
         ledger.mark_submitting("op-e2e", "t2", "h").unwrap();
         ledger.mark_outcome_unknown("op-e2e", "transient").unwrap();
 
@@ -2184,7 +2176,13 @@ mod tests {
         assert_eq!(report.verdict, FinalizationVerdict::Partial);
         // step_2 / step_3 未交付（终态快照中不存在 → pending）
         assert_eq!(report.exceptions.len(), 2);
-        assert!(report.exceptions.iter().any(|e| e.message.contains("step_2")));
-        assert!(report.exceptions.iter().any(|e| e.message.contains("step_3")));
+        assert!(report
+            .exceptions
+            .iter()
+            .any(|e| e.message.contains("step_2")));
+        assert!(report
+            .exceptions
+            .iter()
+            .any(|e| e.message.contains("step_3")));
     }
 }

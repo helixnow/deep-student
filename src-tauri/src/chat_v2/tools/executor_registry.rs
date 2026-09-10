@@ -93,9 +93,7 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
 
     if let Some(descriptor) = crate::chat_v2::tool_descriptors::lookup(stripped) {
-        return descriptor
-            .timeout_secs
-            .unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
+        return descriptor.timeout_secs.unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
     }
 
     // 注册表未覆盖的名字：外部 MCP 动态工具通常需要网络请求

@@ -2776,10 +2776,7 @@ mod tests {
                 descriptor.name
             );
             let prefixed = format!("builtin-{}", descriptor.name);
-            assert!(
-                !is_headless_allowed_tool(&prefixed),
-                "{prefixed} 应被拒绝"
-            );
+            assert!(!is_headless_allowed_tool(&prefixed), "{prefixed} 应被拒绝");
         }
 
         // 注册表外的代表性名字（MCP 动态工具 / 退役前端桥 / 未登记名）恒拒绝

@@ -65,11 +65,7 @@ pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__
 pub trait StreamEventSink: Send + Sync {
     /// 发射 JSON 事件到指定通道。返回底层 emit 结果，由调用方按现状记录日志
     /// （各调用点的 warn!/error! 语义保持不变）。
-    fn emit(
-        &self,
-        channel: &str,
-        payload: &Value,
-    ) -> std::result::Result<(), tauri::Error>;
+    fn emit(&self, channel: &str, payload: &Value) -> std::result::Result<(), tauri::Error>;
 
     /// 取回底层 Tauri 窗口；无窗口 runtime 返回 `None`。
     fn window(&self) -> Option<Window>;
@@ -88,11 +84,7 @@ impl WindowStreamSink {
 }
 
 impl StreamEventSink for WindowStreamSink {
-    fn emit(
-        &self,
-        channel: &str,
-        payload: &Value,
-    ) -> std::result::Result<(), tauri::Error> {
+    fn emit(&self, channel: &str, payload: &Value) -> std::result::Result<(), tauri::Error> {
         self.window.emit(channel, payload)
     }
 
@@ -107,11 +99,7 @@ impl StreamEventSink for WindowStreamSink {
 pub struct NoopStreamSink;
 
 impl StreamEventSink for NoopStreamSink {
-    fn emit(
-        &self,
-        channel: &str,
-        _payload: &Value,
-    ) -> std::result::Result<(), tauri::Error> {
+    fn emit(&self, channel: &str, _payload: &Value) -> std::result::Result<(), tauri::Error> {
         log::trace!("[LLM::stream_sink] NoopSink drop event: {}", channel);
         Ok(())
     }

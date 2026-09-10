@@ -380,7 +380,8 @@ fn persist_draft_feedback(
     result
 }
 
-fn persist_grading_result(    conn: &rusqlite::Connection,
+fn persist_grading_result(
+    conn: &rusqlite::Connection,
     vfs_db: &Arc<VfsDatabase>,
     question: &Question,
     mode: &QbankGradingMode,

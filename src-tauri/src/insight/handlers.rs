@@ -142,18 +142,12 @@ pub async fn insight_add_relation(
 
 /// 运行一批巩固任务（阶段三：闲时 worker 入口；前端在确认/纠正后或空闲时调用）
 #[tauri::command]
-pub async fn insight_run_jobs(
-    batch_size: Option<u32>,
-    state: State<'_, AppState>,
-) -> Result<u32> {
+pub async fn insight_run_jobs(batch_size: Option<u32>, state: State<'_, AppState>) -> Result<u32> {
     let vfs = state
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::database("VFS 数据库未初始化"))?;
-    let worker = super::jobs::InsightJobWorker::new(
-        vfs.clone(),
-        Some(state.anki_database.clone()),
-    );
+    let worker = super::jobs::InsightJobWorker::new(vfs.clone(), Some(state.anki_database.clone()));
     let processed = worker.run_once(batch_size.unwrap_or(5) as usize, &|| true)?;
     Ok(processed as u32)
 }

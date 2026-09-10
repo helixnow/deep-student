@@ -228,7 +228,9 @@ fn normalize_mfjs_schema_node(node: &mut Value, is_root: bool, rewrites: &mut us
             .keys()
             .filter(|k| {
                 let k = k.as_str();
-                k != "anyOf" && k != "description" && k != "title"
+                k != "anyOf"
+                    && k != "description"
+                    && k != "title"
                     && !(is_root && (k == "$defs" || k == "$id"))
             })
             .cloned()
@@ -1139,10 +1141,7 @@ mod tests {
             params["anyOf"][1]["properties"]["value"],
             json!({ "type": "string", "enum": ["default", "custom"] })
         );
-        assert_eq!(
-            params["anyOf"][0]["required"],
-            json!(["key", "value"])
-        );
+        assert_eq!(params["anyOf"][0]["required"], json!(["key", "value"]));
     }
 
     #[test]
@@ -1261,10 +1260,22 @@ mod tests {
         // format: 去 const + 推断 type = 2；count/ratio/flag 各 1 = 5
         assert_eq!(rewrites, 5);
         let props = &tools[0]["function"]["parameters"]["properties"];
-        assert_eq!(props["format"], json!({ "type": "string", "enum": ["json"] }));
-        assert_eq!(props["count"], json!({ "type": "integer", "enum": [1, 2, 3] }));
-        assert_eq!(props["ratio"], json!({ "type": "number", "enum": [0.5, 1.5] }));
-        assert_eq!(props["flag"], json!({ "type": "boolean", "enum": [true, false] }));
+        assert_eq!(
+            props["format"],
+            json!({ "type": "string", "enum": ["json"] })
+        );
+        assert_eq!(
+            props["count"],
+            json!({ "type": "integer", "enum": [1, 2, 3] })
+        );
+        assert_eq!(
+            props["ratio"],
+            json!({ "type": "number", "enum": [0.5, 1.5] })
+        );
+        assert_eq!(
+            props["flag"],
+            json!({ "type": "boolean", "enum": [true, false] })
+        );
     }
 
     #[test]
@@ -1307,15 +1318,15 @@ mod tests {
                     "allOf",
                     "const",
                 ] {
-                    assert!(
-                        !map.contains_key(banned),
-                        "{banned} remains at {path}"
-                    );
+                    assert!(!map.contains_key(banned), "{banned} remains at {path}");
                 }
                 if map.contains_key("anyOf") {
                     for k in map.keys() {
                         assert!(
-                            matches!(k.as_str(), "anyOf" | "description" | "title" | "$defs" | "$id"),
+                            matches!(
+                                k.as_str(),
+                                "anyOf" | "description" | "title" | "$defs" | "$id"
+                            ),
                             "anyOf sibling '{k}' at {path}"
                         );
                     }

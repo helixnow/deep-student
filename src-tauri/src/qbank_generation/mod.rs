@@ -76,14 +76,7 @@ pub async fn qbank_ai_generate_questions(
 
     let app_handle = app.clone();
     let vfs_db_bg = vfs_db.clone();
-    spawn_generation_task(
-        app_handle,
-        vfs_db_bg,
-        llm,
-        task_id,
-        request,
-        stream_event,
-    );
+    spawn_generation_task(app_handle, vfs_db_bg, llm, task_id, request, stream_event);
 
     Ok(view)
 }
@@ -114,7 +107,11 @@ async fn execute_generation_task(
     stream_event: String,
 ) {
     if let Err(e) = task_repo::mark_running(&vfs_db, &task_id) {
-        log::warn!("[QbankGeneration] 标记任务运行中失败: id={}, {}", task_id, e);
+        log::warn!(
+            "[QbankGeneration] 标记任务运行中失败: id={}, {}",
+            task_id,
+            e
+        );
     }
     emit_current_task(&app, &vfs_db, &task_id);
 

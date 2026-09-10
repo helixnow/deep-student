@@ -669,11 +669,7 @@ mod tests {
         let cases: Vec<(&str, &[u8], &str)> = vec![
             ("ppt/media/image1.png", &b"img"[..], "media"),
             ("ppt/media/video1.mp4", &b"vid"[..], "media"),
-            (
-                "ppt/embeddings/oleObject1.bin",
-                &b"ole"[..],
-                "embedded_ole",
-            ),
+            ("ppt/embeddings/oleObject1.bin", &b"ole"[..], "embedded_ole"),
         ];
         for (part_name, part_bytes, expected_feature) in cases {
             let bytes = zip_package(&[
@@ -739,6 +735,8 @@ mod tests {
         enforce_edit_preflight(&preflight, &PPTX_EDIT_GATE_WORDING).unwrap();
         // spec round-trip（replace_text 的读端）可正常提取
         let extracted = DocumentParser::new().extract_pptx_as_spec(&bytes).unwrap();
-        assert!(extracted["slides"].as_array().is_some_and(|s| !s.is_empty()));
+        assert!(extracted["slides"]
+            .as_array()
+            .is_some_and(|s| !s.is_empty()));
     }
 }

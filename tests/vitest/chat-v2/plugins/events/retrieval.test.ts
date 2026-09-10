@@ -130,7 +130,7 @@ describe('RetrievalEventHandlers', () => {
   });
 
   it('should export RETRIEVAL_TYPES constant', () => {
-    expect(RETRIEVAL_TYPES).toEqual(['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search']);
+    expect(RETRIEVAL_TYPES).toEqual(['rag', 'memory', 'web_search', 'multimodal_rag', 'academic_search', 'insight_recall']);
   });
 
   // ============================================================================

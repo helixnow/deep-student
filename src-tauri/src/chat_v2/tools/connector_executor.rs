@@ -675,16 +675,15 @@ impl ConnectorToolExecutor {
                 );
             }
             ConnectorOperationState::OutcomeUnknown => {
-                return Err(
-                    "connector operation outcome is unknown after a restart; \
+                return Err("connector operation outcome is unknown after a restart; \
                      it must be reconciled before any retry"
-                        .to_string(),
-                );
+                    .to_string());
             }
             ConnectorOperationState::Failed => {
                 return Err(format!(
                     "connector operation already failed: {}",
-                    row.error.unwrap_or_else(|| "unknown provider error".to_string())
+                    row.error
+                        .unwrap_or_else(|| "unknown provider error".to_string())
                 ));
             }
             ConnectorOperationState::Draft => {
@@ -820,7 +819,9 @@ impl ConnectorToolExecutor {
             CommitChannel::Webhook { provider, op } => {
                 match submit_webhook_with_retry(&provider, &op).await {
                     Ok(receipt) => receipt.result,
-                    Err(error) => return Err(classify_submit_failure(&ledger, &operation_id, error)),
+                    Err(error) => {
+                        return Err(classify_submit_failure(&ledger, &operation_id, error))
+                    }
                 }
             }
         };
@@ -833,8 +834,7 @@ impl ConnectorToolExecutor {
         ) {
             Ok(handle) => handle,
             Err(error) => {
-                if let Err(ledger_error) =
-                    ledger.mark_failed(&operation_id, &now_rfc3339(), &error)
+                if let Err(ledger_error) = ledger.mark_failed(&operation_id, &now_rfc3339(), &error)
                 {
                     log::warn!(
                         "[ConnectorToolExecutor] failed to persist failed state for {}: {}",
@@ -848,7 +848,9 @@ impl ConnectorToolExecutor {
         let external_operation_id = provider_external_id(&provider_result);
         let resolved_at = now_rfc3339();
         let mut receipt = receipt_of(&row, &preview);
-        receipt.object_handle_ids.push(object_handle.handle_id.clone());
+        receipt
+            .object_handle_ids
+            .push(object_handle.handle_id.clone());
         receipt.commit(resolved_at.clone())?;
         let output = json!({
             "success": true,
@@ -1450,7 +1452,14 @@ mod tests {
                     .to_string(),
             );
             if self.fail {
-                (false, None, Some("mock provider boom".to_string()), None, None, None)
+                (
+                    false,
+                    None,
+                    Some("mock provider boom".to_string()),
+                    None,
+                    None,
+                    None,
+                )
             } else {
                 (
                     true,
@@ -1955,9 +1964,8 @@ mod tests {
         let mut row = ledger_row_for_test(1);
         row.operation_id = "op-expired-confirmed".to_string();
         row.state = ConnectorOperationState::Confirmed;
-        row.preview_json = Some(
-            serde_json::to_string(&parse_draft(&draft_args()).unwrap()).unwrap(),
-        );
+        row.preview_json =
+            Some(serde_json::to_string(&parse_draft(&draft_args()).unwrap()).unwrap());
         ledger
             .insert_draft(&NewConnectorOperation {
                 operation_id: row.operation_id.clone(),

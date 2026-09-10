@@ -2347,7 +2347,13 @@ mod tests {
         emitter.emit_end_with_meta(event_types::CONTENT, "blk_1", None, None, Some(3), None);
         emitter.emit_error(event_types::TOOL_CALL, "blk_1", "boom", None);
         emitter.emit_error_with_meta(event_types::TOOL_CALL, "blk_1", "boom", None, Some(3), None);
-        emitter.emit_skill_injection_audit("msg_1", serde_json::json!({"k": "v"}), None, None, None);
+        emitter.emit_skill_injection_audit(
+            "msg_1",
+            serde_json::json!({"k": "v"}),
+            None,
+            None,
+            None,
+        );
         emitter.emit_content_chunk("blk_1", "content", None);
         emitter.emit_thinking_chunk("blk_2", "thinking", None);
         emitter.emit_tool_call_start(
@@ -2368,7 +2374,13 @@ mod tests {
             Some(3),
             None,
         );
-        emitter.emit_tool_call_preparing_with_variant("msg_1", "tc_1", "builtin:rag", Some("blk_3"), "var_1");
+        emitter.emit_tool_call_preparing_with_variant(
+            "msg_1",
+            "tc_1",
+            "builtin:rag",
+            Some("blk_3"),
+            "var_1",
+        );
 
         // 变体生命周期
         emitter.emit_variant_start("msg_1", "var_1", "gpt-4");
@@ -2431,10 +2443,8 @@ mod tests {
     #[test]
     fn recording_sink_captures_block_events() {
         let sink = Arc::new(RecordingSink::default());
-        let emitter = ChatV2EventEmitter::with_sink(
-            sink.clone(),
-            "test_recording_block".to_string(),
-        );
+        let emitter =
+            ChatV2EventEmitter::with_sink(sink.clone(), "test_recording_block".to_string());
         emitter.register_block_event_meta("blk_meta", Some("var_9"), Some(42), Some("round_7"));
 
         emitter.emit_start(event_types::CONTENT, "msg_1", Some("blk_1"), None, None);
@@ -2465,11 +2475,9 @@ mod tests {
     #[test]
     fn recording_sink_captures_session_events() {
         let sink = Arc::new(RecordingSink::default());
-        let emitter = ChatV2EventEmitter::with_sink(
-            sink.clone(),
-            "test_recording_session".to_string(),
-        )
-        .with_stream_generation(Some(73));
+        let emitter =
+            ChatV2EventEmitter::with_sink(sink.clone(), "test_recording_session".to_string())
+                .with_stream_generation(Some(73));
 
         emitter.emit_stream_start("msg_1", None);
         emitter.emit_stream_complete("msg_1", 100);

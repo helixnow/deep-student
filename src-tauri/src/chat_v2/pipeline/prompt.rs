@@ -53,7 +53,10 @@ impl ChatV2Pipeline {
         let raw = self
             .main_db
             .as_ref()
-            .and_then(|db| db.get_setting(prompt_builder::RENDERER_CAPABILITIES_SETTING_KEY).ok())
+            .and_then(|db| {
+                db.get_setting(prompt_builder::RENDERER_CAPABILITIES_SETTING_KEY)
+                    .ok()
+            })
             .flatten();
         prompt_builder::parse_renderer_capabilities(raw.as_deref())
     }
@@ -164,7 +167,9 @@ impl ChatV2Pipeline {
 
         let scored: Vec<disclosure::ScoredRef> = candidates
             .iter()
-            .map(|c| disclosure::ScoredRef { confidence: c.confidence })
+            .map(|c| disclosure::ScoredRef {
+                confidence: c.confidence,
+            })
             .collect();
         let outcomes = disclosure::decide_passive(&policy, &scored);
 
@@ -173,12 +178,8 @@ impl ChatV2Pipeline {
             match outcome {
                 DisclosureOutcome::Disclose(level) => {
                     // 存在级只暴露标题（filter_content 是红线收口）
-                    let (title, _, _) = disclosure::filter_content(
-                        *level,
-                        &cand.card.title,
-                        "",
-                        "",
-                    );
+                    let (title, _, _) =
+                        disclosure::filter_content(*level, &cand.card.title, "", "");
                     let inserted = InsightRecallService::record_event_idempotent(
                         &conn,
                         Some(&ctx.session_id),
@@ -190,7 +191,8 @@ impl ChatV2Pipeline {
                     );
                     // 计数器只在事件真正插入时累加（重试/变体幂等一致）
                     if inserted.unwrap_or(false) {
-                        let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                        let _ =
+                            crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
                     }
                     lines.push(format!("- [灵感] {title}"));
                 }

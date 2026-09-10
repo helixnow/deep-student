@@ -26,7 +26,8 @@ describe('ptcRunSkill contract', () => {
 
     expect(embeddedTool?.name).toBe('builtin-ptc_run');
     expect(embeddedTool?.description).toContain('Rust backend executor');
-    expect(embeddedTool?.description).toContain('central admission');
+    // 句子位置会变（词首可能大写），按概念大小写不敏感地锁契约
+    expect(embeddedTool?.description?.toLowerCase()).toContain('central admission');
   });
 
   it('requires script and matches the backend ptc_run bounds', () => {

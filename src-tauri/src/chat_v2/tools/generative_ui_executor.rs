@@ -283,7 +283,12 @@ impl GenerativeUiExecutor {
         );
     }
 
-    fn emit_end(ctx: &ExecutionContext, intent: &Value, research_session_id: Option<&str>, skeleton_ref: Option<&str>) {
+    fn emit_end(
+        ctx: &ExecutionContext,
+        intent: &Value,
+        research_session_id: Option<&str>,
+        skeleton_ref: Option<&str>,
+    ) {
         let mut payload = json!({
             "intent": intent,
             "isStreaming": false,
@@ -440,7 +445,12 @@ impl ToolExecutor for GenerativeUiExecutor {
 
         Self::emit_start(ctx, title);
         Self::emit_chunk(ctx, &content_str);
-        Self::emit_end(ctx, &intent, research_session_id.as_deref(), Self::parse_skeleton_ref(&call.arguments).as_deref());
+        Self::emit_end(
+            ctx,
+            &intent,
+            research_session_id.as_deref(),
+            Self::parse_skeleton_ref(&call.arguments).as_deref(),
+        );
         if let Some(ref session_id) = research_session_id {
             if intent_has_research_blocks(&intent) {
                 Self::emit_hpias_session_started_if_needed(
@@ -814,11 +824,18 @@ mod tests {
         // 非字符串
         assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": 42 })).is_none());
         // 非法字符（空格/斜杠）
-        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "bad id" })).is_none());
-        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "../escape" })).is_none());
+        assert!(
+            GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "bad id" })).is_none()
+        );
+        assert!(
+            GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": "../escape" }))
+                .is_none()
+        );
         // 超长
         let long = "a".repeat(200);
-        assert!(GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": long })).is_none());
+        assert!(
+            GenerativeUiExecutor::parse_skeleton_ref(&json!({ "skeletonRef": long })).is_none()
+        );
     }
 
     #[test]

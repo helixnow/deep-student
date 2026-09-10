@@ -563,9 +563,8 @@ mod tests {
 
     /// docx-rs 生成的普通文档（真实可编辑路径）
     fn build_plain_docx(text: &str) -> Vec<u8> {
-        let docx = docx_rs::Docx::new().add_paragraph(
-            docx_rs::Paragraph::new().add_run(docx_rs::Run::new().add_text(text)),
-        );
+        let docx = docx_rs::Docx::new()
+            .add_paragraph(docx_rs::Paragraph::new().add_run(docx_rs::Run::new().add_text(text)));
         let mut output = std::io::Cursor::new(Vec::new());
         docx.build().pack(&mut output).unwrap();
         output.into_inner()
@@ -662,10 +661,7 @@ mod tests {
         // 但交付结果必须附 fidelity warning（文本重建会丢弃批注）
         let warning = build_edit_fidelity_warning(&preflight, &DOCX_EDIT_GATE_WORDING, &[])
             .expect("comments document must carry fidelity warning");
-        assert_eq!(
-            warning["preserved_at_risk_features"],
-            json!(["comments"])
-        );
+        assert_eq!(warning["preserved_at_risk_features"], json!(["comments"]));
         assert_eq!(
             warning["write_path_semantics"],
             "text_only_rebuild_drops_listed_features"

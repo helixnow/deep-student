@@ -157,13 +157,15 @@ describe('pomodoroDriver R1-16', () => {
       currentTaskTitle: '任务',
       sessionStartTime: new Date().toISOString(),
     });
-    vi.mocked(createPomodoroRecord).mockRejectedValueOnce(new Error('db unavailable'));
+    // N11：单次失败会被 flushPendingRecords 自动重放一次；要落到 partial
+    // 必须让记录端持续失败（首写 + flush 重放各一次）。
+    vi.mocked(createPomodoroRecord).mockRejectedValue(new Error('db unavailable'));
 
     const receipt = await pomodoroDriver.apply(makeRun({ runId: 'run-stop-fail' }), [
       { kind: 'pomodoro_stop', destructive: false, label: '停止', payload: {} },
     ]);
 
-    expect(createPomodoroRecord).toHaveBeenCalledTimes(1);
+    expect(createPomodoroRecord).toHaveBeenCalledTimes(2);
     expect(receipt.status).toBe('partial');
     expect(receipt.applied).toBe(1);
     expect(receipt.done).toEqual(['停止']);

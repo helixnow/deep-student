@@ -67,7 +67,10 @@ impl ConnectorOperationState {
 
     /// 从数据库字符串解析状态。
     pub fn parse(raw: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|state| state.as_str() == raw)
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|state| state.as_str() == raw)
     }
 
     /// 校验状态机迁移是否合法。
@@ -148,10 +151,7 @@ impl ConnectorOperation {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         let state_raw: String = row.get("state")?;
         let state = ConnectorOperationState::parse(&state_raw).ok_or_else(|| {
-            let index = row
-                .as_ref()
-                .column_index("state")
-                .unwrap_or(usize::MAX);
+            let index = row.as_ref().column_index("state").unwrap_or(usize::MAX);
             rusqlite::Error::InvalidColumnType(
                 index,
                 state_raw.clone(),
@@ -266,7 +266,12 @@ impl ConnectorLedger {
             ConnectorOperation::from_row,
         )
         .optional()
-        .map_err(|e| format!("failed to read connector operation by idempotency key: {}", e))
+        .map_err(|e| {
+            format!(
+                "failed to read connector operation by idempotency key: {}",
+                e
+            )
+        })
     }
 
     /// 按会话查询（审计/对账视图；按创建时间升序）。
@@ -304,7 +309,10 @@ impl ConnectorLedger {
             ConnectorOperationState::predecessors_sql(to)
         );
         let changed = conn
-            .execute(&sql, params![operation_id, to.as_str(), confirmed_at, preview_sha256])
+            .execute(
+                &sql,
+                params![operation_id, to.as_str(), confirmed_at, preview_sha256],
+            )
             .map_err(|e| format!("failed to confirm connector operation: {}", e))?;
         if changed == 0 {
             return Err(
@@ -334,7 +342,12 @@ impl ConnectorLedger {
         let changed = conn
             .execute(
                 &sql,
-                params![operation_id, to.as_str(), submitted_at, request_payload_hash],
+                params![
+                    operation_id,
+                    to.as_str(),
+                    submitted_at,
+                    request_payload_hash
+                ],
             )
             .map_err(|e| format!("failed to mark connector operation submitting: {}", e))?;
         if changed == 0 {
@@ -512,8 +525,7 @@ pub fn session_side_effect_summary(
         .map_err(|e| format!("failed to list session connector operations: {}", e))?;
     let mut operations = Vec::new();
     for row in rows {
-        operations
-            .push(row.map_err(|e| format!("failed to parse connector operation: {}", e))?);
+        operations.push(row.map_err(|e| format!("failed to parse connector operation: {}", e))?);
     }
     let pending = operations
         .iter()
@@ -709,9 +721,13 @@ mod tests {
             "illegal transitions must not move the state"
         );
 
-        ledger.mark_confirmed("op-1", &"a".repeat(64), "t1").unwrap();
+        ledger
+            .mark_confirmed("op-1", &"a".repeat(64), "t1")
+            .unwrap();
         // 重复确认被拒绝（无自环）
-        assert!(ledger.mark_confirmed("op-1", &"a".repeat(64), "t2").is_err());
+        assert!(ledger
+            .mark_confirmed("op-1", &"a".repeat(64), "t2")
+            .is_err());
         // confirmed 不能回退或直接 committed
         assert!(ledger.mark_committed("op-1", "t", None, "{}").is_err());
 
@@ -734,7 +750,9 @@ mod tests {
         let (_dir, db) = setup_test_db();
         let ledger = ConnectorLedger::new(db);
         ledger.insert_draft(&draft_op("op-1", "session-a")).unwrap();
-        ledger.mark_confirmed("op-1", &"a".repeat(64), "t1").unwrap();
+        ledger
+            .mark_confirmed("op-1", &"a".repeat(64), "t1")
+            .unwrap();
         ledger.mark_submitting("op-1", "t2", "h").unwrap();
         ledger.mark_failed("op-1", "t3", "provider boom").unwrap();
 
@@ -751,7 +769,9 @@ mod tests {
         let ledger = ConnectorLedger::new(db.clone());
 
         // 三个操作：分别停在 draft / submitting / committed
-        ledger.insert_draft(&draft_op("op-draft", "session-a")).unwrap();
+        ledger
+            .insert_draft(&draft_op("op-draft", "session-a"))
+            .unwrap();
 
         ledger
             .insert_draft(&draft_op("op-submitting", "session-a"))
@@ -759,9 +779,7 @@ mod tests {
         ledger
             .mark_confirmed("op-submitting", &"a".repeat(64), "t1")
             .unwrap();
-        ledger
-            .mark_submitting("op-submitting", "t2", "h")
-            .unwrap();
+        ledger.mark_submitting("op-submitting", "t2", "h").unwrap();
 
         ledger
             .insert_draft(&draft_op("op-committed", "session-a"))
@@ -799,7 +817,9 @@ mod tests {
         let (_dir, db) = setup_test_db();
         let ledger = ConnectorLedger::new(db.clone());
         ledger.insert_draft(&draft_op("op-1", "session-a")).unwrap();
-        ledger.mark_confirmed("op-1", &"a".repeat(64), "t1").unwrap();
+        ledger
+            .mark_confirmed("op-1", &"a".repeat(64), "t1")
+            .unwrap();
         ledger.mark_submitting("op-1", "t2", "h").unwrap();
         assert_eq!(reconcile_on_startup(&db).unwrap(), 1);
 
@@ -823,7 +843,9 @@ mod tests {
         assert!(ledger.list_pending_reconcile().unwrap().is_empty());
 
         // draft / committed 不在待对账集
-        ledger.insert_draft(&draft_op("op-draft", "session-a")).unwrap();
+        ledger
+            .insert_draft(&draft_op("op-draft", "session-a"))
+            .unwrap();
         ledger
             .insert_draft(&draft_op("op-committed", "session-a"))
             .unwrap();
@@ -857,7 +879,10 @@ mod tests {
             .unwrap();
 
         let pending = ledger.list_pending_reconcile().unwrap();
-        let ids: Vec<&str> = pending.iter().map(|row| row.operation_id.as_str()).collect();
+        let ids: Vec<&str> = pending
+            .iter()
+            .map(|row| row.operation_id.as_str())
+            .collect();
         assert_eq!(ids, ["op-submitting", "op-unknown"]);
         assert_eq!(
             pending[1].error.as_deref(),
@@ -873,7 +898,9 @@ mod tests {
         ledger.insert_draft(&draft_op("op-1", "session-a")).unwrap();
         // draft 不能直接 outcome_unknown
         assert!(ledger.mark_outcome_unknown("op-1", "note").is_err());
-        ledger.mark_confirmed("op-1", &"a".repeat(64), "t1").unwrap();
+        ledger
+            .mark_confirmed("op-1", &"a".repeat(64), "t1")
+            .unwrap();
         // confirmed 也不能（只有 submitting 是合法前驱）
         assert!(ledger.mark_outcome_unknown("op-1", "note").is_err());
         ledger.mark_submitting("op-1", "t2", "h").unwrap();
@@ -900,7 +927,9 @@ mod tests {
         let ledger = ConnectorLedger::new(db.clone());
 
         // session-a：draft（未发送，不算未决）+ committed（终态）+ outcome_unknown（未决）
-        ledger.insert_draft(&draft_op("op-draft", "session-a")).unwrap();
+        ledger
+            .insert_draft(&draft_op("op-draft", "session-a"))
+            .unwrap();
 
         ledger
             .insert_draft(&draft_op("op-committed", "session-a"))
@@ -926,7 +955,9 @@ mod tests {
 
         // session-b：submitting（只属于 b 的未决）
         ledger.insert_draft(&draft_op("op-b", "session-b")).unwrap();
-        ledger.mark_confirmed("op-b", &"a".repeat(64), "t1").unwrap();
+        ledger
+            .mark_confirmed("op-b", &"a".repeat(64), "t1")
+            .unwrap();
         ledger.mark_submitting("op-b", "t2", "h").unwrap();
 
         let summary = session_side_effect_summary(&db, "session-a").unwrap();

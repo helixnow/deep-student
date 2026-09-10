@@ -152,8 +152,6 @@ pub trait ConnectorProvider: Send + Sync {
     /// 按幂等键查询远端结果。`Ok(None)` = provider 确认无此记录
     /// （never_submitted）；`Err(_)` = 查询失败/不确定（调用方不得据此
     /// 改变账本状态）。
-    async fn lookup(
-        &self,
-        idempotency_key: &str,
-    ) -> Result<Option<ProviderOutcome>, ProviderError>;
+    async fn lookup(&self, idempotency_key: &str)
+        -> Result<Option<ProviderOutcome>, ProviderError>;
 }
