@@ -249,8 +249,9 @@ describe('InputBarV2 stale context ref guard', () => {
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
+      'settings:api.modal.deepseek.depth.low',
       'settings:api.modal.deepseek.depth.high',
       'settings:api.modal.deepseek.depth.max',
     ]);
@@ -777,7 +778,7 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
   });
 
   it('repairs opaque stored model display names from profile metadata when runtime models are unavailable', async () => {
@@ -859,7 +860,7 @@ describe('InputBarV2 stale context ref guard', () => {
 
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
   });
 
   it('normalizes runtime thinking depth when switching to SiliconFlow V3.2', () => {

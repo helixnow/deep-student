@@ -42,7 +42,7 @@ describe('DeepSeek runtime reasoning controls', () => {
     expect(control.canDisable).toBe(canDisable);
   });
 
-  it('uses high/max runtime options for official DeepSeek V4', () => {
+  it('uses low/high/max runtime options for official DeepSeek V4', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'deepseek-v4-pro',
       providerType: 'deepseek',
@@ -51,10 +51,10 @@ describe('DeepSeek runtime reasoning controls', () => {
     });
 
     expect(control.kind).toBe('v4-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'high', 'max']);
   });
 
-  it('uses high/max runtime options for DeepSeek V4.1 Flash (deepseek-flash)', () => {
+  it('uses low/high/max runtime options for DeepSeek V4.1 Flash (deepseek-flash)', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'deepseek-flash',
       providerType: 'deepseek',
@@ -63,7 +63,7 @@ describe('DeepSeek runtime reasoning controls', () => {
     });
 
     expect(control.kind).toBe('v4-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'high', 'max']);
     expect(
       resolveDeepSeekRuntimeReasoningSelection({
         control,
@@ -71,9 +71,16 @@ describe('DeepSeek runtime reasoning controls', () => {
         reasoningEffort: 'xhigh',
       })
     ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control,
+        enableThinking: true,
+        reasoningEffort: 'low',
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'low', thinkingBudget: undefined });
   });
 
-  it('uses high/max runtime options for future SiliconFlow DeepSeek V4', () => {
+  it('uses low/high/max runtime options for future SiliconFlow DeepSeek V4', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'deepseek-ai/DeepSeek-V4-Pro',
       providerType: 'siliconflow',
@@ -82,7 +89,7 @@ describe('DeepSeek runtime reasoning controls', () => {
     });
 
     expect(control.kind).toBe('v4-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'high', 'max']);
   });
 
   it('uses low/medium/high/xhigh runtime options for SiliconFlow DeepSeek V3.2', () => {

@@ -101,7 +101,7 @@ describe('ThinkingDepthSlider', () => {
   });
 
   it('snaps a value from another control kind to the nearest available depth', () => {
-    // openai-effort 的 medium 切到 v4-effort（只有 high/max）时就近吸附到 high
+    // openai-effort 的 medium 切到示例档位集（只有 high/max）时就近吸附到 high
     renderSlider({ options: V4_OPTIONS, value: 'medium' });
     const slider = screen.getByRole('slider');
     expect(slider).toHaveAttribute('aria-valuemax', '2');

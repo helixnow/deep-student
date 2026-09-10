@@ -272,11 +272,16 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
   if (map[lower]) return map[lower];
 
   if (isDeepSeekV4Id(lower)) {
+    // 官方 DeepSeek V4：输出上限对齐官方默认 64K（max 档另有 128K 下限）；
+    // SiliconFlow 等第三方托管维持 32K 保守值，避免超出托管上限。
+    const providerScope = options?.providerScope?.toLowerCase();
+    const providerType = options?.providerType?.toLowerCase();
+    const isOfficialDeepseek = providerScope === 'deepseek' || providerType === 'deepseek';
     return {
       enableThinking: true,
       includeThoughts: true,
       reasoningEffort: 'high',
-      maxOutputTokens: 32_768,
+      maxOutputTokens: isOfficialDeepseek ? 65_536 : 32_768,
       temperature: 0.6,
     };
   }
