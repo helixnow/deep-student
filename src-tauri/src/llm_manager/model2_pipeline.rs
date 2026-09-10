@@ -570,77 +570,11 @@ fn process_sse_stream_input(
     }
 }
 
-/// 是否为 function 类型的 web_search 工具定义（本地执行路径，前端注入的
-/// `{"type":"function","function":{"name":"web_search",...}}` 或扁平格式）。
-#[inline]
-fn is_web_search_function_tool(tool: &Value) -> bool {
-    let name = tool
-        .get("function")
-        .and_then(|function| function.get("name"))
-        .and_then(Value::as_str)
-        .or_else(|| tool.get("name").and_then(Value::as_str))
-        .unwrap_or_default();
-    name.trim().trim_start_matches("builtin-") == "web_search"
-}
-
-/// 官方文档列名支持服务端 web_search 的 DeepSeek 型号（2026-08-23 文档：
-/// 仅 v4-flash 系列，contains 匹配含 `deepseek-v4-flash-vision-exp`；
-/// `deepseek-v4-pro` 已列名 Responses 但 web_search 未列名，不得注入
-/// `{"type":"web_search"}`）。legacy 别名 `deepseek-chat` / `deepseek-reasoner`
-/// 官方映射到 flash，同样放行。与前端 apiCapabilityEngine 的
-/// WEB_SEARCH_WHITELIST_REGEXES DeepSeek 项对齐。
-#[inline]
-fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
-    let normalized = model.trim().to_ascii_lowercase();
-    normalized.contains("deepseek-v4-flash")
-        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
-}
-
-/// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
-/// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
-/// - 必须是官方 DeepSeek 端点
-/// - 模型支持工具
-///   （以上三条已收敛进 `ProviderQuirks::server_side_web_search`，见
-///   `provider_quirks::resolve_quirks`）
-/// - 模型必须在官方 web_search 列名（仅 flash 系列；Responses 门控已放开
-///   v4-pro，不能再依赖「上游保证仅 flash」，见
-///   `deepseek_model_supports_server_side_web_search`）
-/// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
-///
-/// 启用后本地 function 版 web_search 会被替换为服务端原生工具，避免双重搜索。
-#[inline]
-fn server_side_web_search_enabled(
-    quirks: &ProviderQuirks,
-    config: &ApiConfig,
-    llm_context: &HashMap<String, Value>,
-) -> bool {
-    if !quirks.server_side_web_search {
-        return false;
-    }
-    if !deepseek_model_supports_server_side_web_search(&config.model) {
-        return false;
-    }
-    if llm_context
-        .get("web_search_enabled")
-        .and_then(|v| v.as_bool())
-        == Some(false)
-    {
-        return false;
-    }
-    true
-}
-
-/// 向请求 tools 数组注入服务端 web_search 原生工具，并移除本地 function 版本。
-#[inline]
-fn apply_server_side_web_search_tool(tools: &mut Vec<Value>) {
-    tools.retain(|tool| !is_web_search_function_tool(tool));
-    if !tools
-        .iter()
-        .any(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
-    {
-        tools.push(json!({ "type": "web_search" }));
-    }
-}
+/// 2026-09-10：DeepSeek V4.1（`deepseek-flash`）的 Responses API 不再支持内置
+/// `web_search`（官方兼容表明确内置工具被静默忽略，`v4-flash` 旧名已路由到该
+/// 模型），服务端注入/替换本地 function 的机制随之移除，联网搜索统一走本地
+/// function 工具。历史会话中持久化的 `web_search_call` item 仍按
+/// `attach_web_search_replay_items` 原样回传，供官方按旧模型数据恢复上下文。
 
 /// P2-13：把消息 metadata 里持久化的服务端 `web_search_call` 完整 item
 /// （键 `openai_responses_web_search_items`）附着到出站 assistant 消息的
@@ -2131,6 +2065,7 @@ mod tests {
     fn test_official_deepseek_documented_models_default_to_responses() {
         // 2026-08-23 官方文档列名：flash / pro / flash-vision-exp（legacy 别名映射到 flash）
         for model in [
+            "deepseek-flash",
             "deepseek-v4-flash",
             "deepseek-v4-pro",
             "deepseek-v4-flash-vision-exp",
@@ -2214,159 +2149,6 @@ mod tests {
             ..config
         };
         assert!(!should_use_openai_responses_for_config(&explicit));
-    }
-
-    #[test]
-    fn server_side_web_search_injection_only_for_official_deepseek_responses() {
-        let base = ApiConfig {
-            model_adapter: "deepseek".to_string(),
-            provider_type: Some("deepseek".to_string()),
-            base_url: "https://api.deepseek.com/v1".to_string(),
-            model: "deepseek-v4-flash".to_string(),
-            supports_tools: true,
-            supports_reasoning: true,
-            is_reasoning: true,
-            ..Default::default()
-        };
-        let enabled_context: HashMap<String, Value> = HashMap::new();
-
-        assert!(server_side_web_search_enabled(
-            &resolve_quirks(&base),
-            &base,
-            &enabled_context
-        ));
-
-        // 会话显式关闭 web 搜索 → 不注入
-        let mut disabled_context = enabled_context.clone();
-        disabled_context.insert("web_search_enabled".to_string(), json!(false));
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&base),
-            &base,
-            &disabled_context
-        ));
-
-        // chat completions 协议 → 不注入
-        let mut chat_config = base.clone();
-        chat_config.api_protocol = Some("openai_chat_completions".to_string());
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&chat_config),
-            &chat_config,
-            &enabled_context
-        ));
-
-        // 非官方托管（SiliconFlow）→ 不注入
-        let mut third_party = base.clone();
-        third_party.provider_type = Some("siliconflow".to_string());
-        third_party.provider_scope = Some("siliconflow".to_string());
-        third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&third_party),
-            &third_party,
-            &enabled_context
-        ));
-
-        // provider_type=deepseek 的反代端点（即使显式走 Responses）→ 不注入
-        let mut proxy = base.clone();
-        proxy.base_url = "https://myproxy.example.com/v1".to_string();
-        proxy.api_protocol = Some("openai_responses".to_string());
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&proxy),
-            &proxy,
-            &enabled_context
-        ));
-
-        // 模型不支持工具 → 不注入
-        let mut no_tools = base.clone();
-        no_tools.supports_tools = false;
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&no_tools),
-            &no_tools,
-            &enabled_context
-        ));
-    }
-
-    /// web_search 白名单收紧回归：Responses 门控已放开 v4-pro，服务端
-    /// web_search 必须独立按官方列名（仅 flash 系列）判定，pro 不注入。
-    #[test]
-    fn server_side_web_search_whitelist_restricts_to_flash_series() {
-        let base = ApiConfig {
-            model_adapter: "deepseek".to_string(),
-            provider_type: Some("deepseek".to_string()),
-            base_url: "https://api.deepseek.com/v1".to_string(),
-            model: "deepseek-v4-flash".to_string(),
-            supports_tools: true,
-            supports_reasoning: true,
-            is_reasoning: true,
-            ..Default::default()
-        };
-        let context: HashMap<String, Value> = HashMap::new();
-
-        // v4-pro：官方 Responses 已列名（走 Responses 协议），但 web_search
-        // 未列名 → 不得注入 {"type":"web_search"}
-        let mut pro = base.clone();
-        pro.model = "deepseek-v4-pro".to_string();
-        assert!(
-            should_use_openai_responses_for_config(&pro),
-            "v4-pro 应走 Responses 协议（前置条件）"
-        );
-        assert!(!server_side_web_search_enabled(
-            &resolve_quirks(&pro),
-            &pro,
-            &context
-        ));
-
-        // flash 系列（含官方文档列名的 vision-exp）→ 注入
-        let mut vision_exp = base.clone();
-        vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
-        assert!(server_side_web_search_enabled(
-            &resolve_quirks(&vision_exp),
-            &vision_exp,
-            &context
-        ));
-
-        // legacy 别名（官方映射到 flash）→ 注入
-        for alias in ["deepseek-chat", "deepseek-reasoner"] {
-            let mut legacy = base.clone();
-            legacy.model = alias.to_string();
-            assert!(
-                server_side_web_search_enabled(&resolve_quirks(&legacy), &legacy, &context),
-                "legacy 别名 {alias} 应放行"
-            );
-        }
-
-        // 未列名型号（V3.x 等，防御性：即使协议侧误放行也不注入）
-        assert!(!deepseek_model_supports_server_side_web_search(
-            "deepseek-v3.2-think"
-        ));
-        assert!(!deepseek_model_supports_server_side_web_search(""));
-    }
-
-    #[test]
-    fn server_side_web_search_tool_replaces_local_function_tool() {
-        let mut tools = vec![
-            json!({ "type": "function", "function": { "name": "web_search", "parameters": {} } }),
-            json!({ "type": "function", "function": { "name": "builtin-web_search", "parameters": {} } }),
-            json!({ "type": "function", "function": { "name": "rag_search", "parameters": {} } }),
-        ];
-        apply_server_side_web_search_tool(&mut tools);
-
-        let types: Vec<&str> = tools
-            .iter()
-            .map(|tool| tool["type"].as_str().unwrap_or(""))
-            .collect();
-        assert_eq!(types, vec!["function", "web_search"]);
-        assert_eq!(tools[1], json!({ "type": "web_search" }));
-        assert_eq!(tools[0]["function"]["name"], json!("rag_search"));
-
-        // 幂等：已有原生工具时不重复追加
-        apply_server_side_web_search_tool(&mut tools);
-        assert_eq!(
-            tools
-                .iter()
-                .filter(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
-                .count(),
-            1
-        );
     }
 
     #[test]
@@ -5188,11 +4970,6 @@ impl LLMManager {
         if has_custom_tools && config.supports_tools {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
             let mut tools = custom_tools.unwrap_or_default();
-            // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, &config, context) {
-                apply_server_side_web_search_tool(&mut tools);
-                debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
-            }
             // 🆕 Moonshot MFJS：anyOf 节点 type 下沉分支 + {enum:[null]} → {type:"null"}
             if crate::llm_manager::adapters::should_apply_mfjs_tool_schema_dialect(&config) {
                 let rewrites =
@@ -5219,13 +4996,6 @@ impl LLMManager {
             // 构建工具列表，包含本地工具和 MCP 工具
             // G01-b：无窗口 runtime（sink_window=None）时 MCP 前端桥工具缺席
             let mut tools = self.build_tools_with_mcp(sink_window.as_ref()).await;
-            // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, &config, context) {
-                if let Some(tools_array) = tools.as_array_mut() {
-                    apply_server_side_web_search_tool(tools_array);
-                    debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
-                }
-            }
 
             // 只有在工具列表非空时才设置 tools 和 tool_choice
             if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {

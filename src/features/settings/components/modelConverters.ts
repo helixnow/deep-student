@@ -27,6 +27,7 @@ export const deepseekModelSupportsResponses = (model?: string | null): boolean =
   if (!normalized) return true;
   return (
     normalized.includes('deepseek-v4-flash') ||
+    normalized.includes('deepseek-flash') ||
     normalized.includes('deepseek-v4-pro') ||
     normalized === 'deepseek-chat' ||
     normalized === 'deepseek-reasoner'

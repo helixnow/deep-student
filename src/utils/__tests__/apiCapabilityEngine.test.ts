@@ -158,6 +158,34 @@ describe('modelCapabilityRegistry 2026-08 supplement lookups', () => {
 });
 
 describe('apiCapabilityEngine DeepSeek version inference', () => {
+  it('resolves the V4.1 deepseek-flash registry record with native vision and 1M context', () => {
+    const record = findModelRecordById('deepseek-flash');
+    expect(record?.model_id).toBe('deepseek-flash');
+    expect(record?.capabilities.vision).toBe(true);
+    expect(record?.capabilities.function_calling).toBe(true);
+    expect(record?.capabilities.reasoning).toBe(true);
+    expect(record?.capabilities.max_context_tokens).toBe(1_000_000);
+    expect(record?.capabilities.max_output_tokens).toBe(384000);
+
+    // 旧名已下线并路由到 V4.1 Flash：登记为 deprecated alias，能力随路由后的模型
+    const legacyFlash = findModelRecordById('deepseek-v4-flash');
+    expect(legacyFlash?.status).toBe('deprecated');
+    expect(legacyFlash?.alias_of).toBe('deepseek-flash');
+    expect(legacyFlash?.capabilities.vision).toBe(true);
+  });
+
+  it('recognizes DeepSeek Flash as a multimodal V4-compatible model', () => {
+    const caps = inferApiCapabilities({ id: 'deepseek-flash', providerScope: 'deepseek' });
+
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsHybridReasoning).toBe(true);
+    expect(caps.supportsReasoningEffort).toBe(true);
+    // 2026-09-10 V4.1 起 Responses 不再支持内置 web_search（官方兼容表：内置工具被忽略）
+    expect(caps.webSearch).toBe(false);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
   it('treats official DeepSeek V4 as hybrid reasoning with V4 effort and 1M context', () => {
     const caps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
     expect(caps.functionCalling).toBe(true);
@@ -200,20 +228,20 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(caps.contextWindow).toBe(1_000_000);
   });
 
-  it('marks V4-Flash and legacy aliases as web-search capable (Responses server-side search)', () => {
-    const flashCaps = inferApiCapabilities({ id: 'deepseek-v4-flash', providerScope: 'deepseek' });
-    const chatCaps = inferApiCapabilities({ id: 'deepseek-chat', providerScope: 'deepseek' });
-    const reasonerCaps = inferApiCapabilities({ id: 'deepseek-reasoner', providerScope: 'deepseek' });
-
-    expect(flashCaps.webSearch).toBe(true);
-    expect(chatCaps.webSearch).toBe(true);
-    expect(reasonerCaps.webSearch).toBe(true);
-
-    // V4-Pro 虽已支持 Responses（2026-08-23 文档），但服务端 web_search 工具
-    // 当前仅确认 flash 系列及 legacy 别名；V3.x 无 Responses，同样不支持
-    const proCaps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
+  it('keeps DeepSeek models off the web-search whitelist (V4.1 Responses ignores built-in tools)', () => {
+    // 2026-09-10 官方 V4.1 起内置 web_search 被静默忽略；v4-flash / vision-exp
+    // 旧名已路由到 V4.1 Flash，联网搜索统一走本地 function 工具
+    for (const id of [
+      'deepseek-flash',
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'deepseek-v4-pro',
+    ]) {
+      expect(inferApiCapabilities({ id, providerScope: 'deepseek' }).webSearch, id).toBe(false);
+    }
     const v32Caps = inferApiCapabilities({ id: 'deepseek-ai/DeepSeek-V3.2', providerScope: 'siliconflow' });
-    expect(proCaps.webSearch).toBe(false);
     expect(v32Caps.webSearch).toBe(false);
   });
 });

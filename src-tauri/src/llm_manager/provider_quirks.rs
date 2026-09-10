@@ -8,7 +8,7 @@ use crate::reasoning_policy::{
 };
 use serde::Serialize;
 
-use super::{is_official_deepseek_config, should_use_openai_responses_for_config, ApiConfig};
+use super::ApiConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,8 +37,6 @@ pub(crate) struct ProviderQuirks {
     pub sampling_params_allowed: bool,
     /// B12/S1: Qwen rejects tool_choice on tool-result follow-ups.
     pub strip_tool_choice_on_tool_result: bool,
-    /// S5/B11: static half of the DeepSeek Responses web-search gate.
-    pub server_side_web_search: bool,
     /// B13: legacy raw-prompt/Anki JSON-mode behavior.
     pub force_json_response_format: bool,
     /// B4/B9: provider-specific reasoning history representation.
@@ -161,9 +159,6 @@ pub(crate) fn resolve_quirks(config: &ApiConfig) -> ProviderQuirks {
         },
         sampling_params_allowed: !config.is_reasoning || is_mimo,
         strip_tool_choice_on_tool_result: is_qwen,
-        server_side_web_search: config.supports_tools
-            && should_use_openai_responses_for_config(config)
-            && is_official_deepseek_config(config),
         // Preserve B13's case-sensitive prefix behavior exactly.
         force_json_response_format: config.model.starts_with("gpt-"),
         reasoning_passback,
@@ -206,7 +201,6 @@ mod tests {
             legacy: MaxTokensField,
             sampling: bool,
             strip_tool_choice: bool,
-            server_web_search: bool,
         }
 
         let mut mimo = config("mimo", "mimo", "mimo-v2.5-pro");
@@ -236,7 +230,6 @@ mod tests {
                 legacy: MaxTokensField::MaxCompletionTokens,
                 sampling: true,
                 strip_tool_choice: false,
-                server_web_search: false,
             },
             Case {
                 name: "mistral reasoning",
@@ -245,7 +238,6 @@ mod tests {
                 legacy: MaxTokensField::MaxTokens,
                 sampling: false,
                 strip_tool_choice: false,
-                server_web_search: false,
             },
             Case {
                 name: "qwen reasoning",
@@ -254,7 +246,6 @@ mod tests {
                 legacy: MaxTokensField::MaxTokens,
                 sampling: false,
                 strip_tool_choice: true,
-                server_web_search: false,
             },
             Case {
                 name: "official deepseek responses",
@@ -263,7 +254,6 @@ mod tests {
                 legacy: MaxTokensField::MaxTokens,
                 sampling: false,
                 strip_tool_choice: false,
-                server_web_search: true,
             },
             Case {
                 name: "third-party deepseek chat",
@@ -272,7 +262,6 @@ mod tests {
                 legacy: MaxTokensField::MaxTokens,
                 sampling: false,
                 strip_tool_choice: false,
-                server_web_search: false,
             },
         ];
 
@@ -287,11 +276,6 @@ mod tests {
             );
             assert_eq!(
                 actual.strip_tool_choice_on_tool_result, case.strip_tool_choice,
-                "{}",
-                case.name
-            );
-            assert_eq!(
-                actual.server_side_web_search, case.server_web_search,
                 "{}",
                 case.name
             );

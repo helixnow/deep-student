@@ -6,6 +6,20 @@ import {
 } from '../modelCapabilities';
 
 describe('modelCapabilities DeepSeek version defaults', () => {
+  it('uses DeepSeek Flash as the shared multimodal DeepSeek adapter family', () => {
+    const caps = inferCapabilities({ id: 'deepseek-flash', providerScope: 'deepseek' });
+
+    expect(caps.isMultimodal).toBe(true);
+    expect(caps.isReasoning).toBe(true);
+    expect(caps.supportsReasoning).toBe(true);
+    expect(caps.supportsTools).toBe(true);
+    expect(getModelDefaultParameters('deepseek-flash')).toMatchObject({
+      enableThinking: true,
+      reasoningEffort: 'high',
+      maxOutputTokens: 32_768,
+    });
+  });
+
   it('detects DeepSeek V4 as the shared DeepSeek adapter family', () => {
     const caps = inferCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
 

@@ -54,6 +54,25 @@ describe('DeepSeek runtime reasoning controls', () => {
     expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
   });
 
+  it('uses high/max runtime options for DeepSeek V4.1 Flash (deepseek-flash)', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'deepseek-flash',
+      providerType: 'deepseek',
+      providerScope: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+    });
+
+    expect(control.kind).toBe('v4-effort');
+    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control,
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+  });
+
   it('uses high/max runtime options for future SiliconFlow DeepSeek V4', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'deepseek-ai/DeepSeek-V4-Pro',
