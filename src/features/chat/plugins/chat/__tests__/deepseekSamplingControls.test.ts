@@ -14,6 +14,18 @@ describe('DeepSeek V4 sampling-control UI guard', () => {
     ).toBe(true);
   });
 
+  it('locks official DeepSeek V4.1 Flash sampling controls while thinking is active', () => {
+    expect(
+      shouldLockDeepSeekV4SamplingControls({
+        model: 'deepseek-flash',
+        providerType: 'deepseek',
+        providerScope: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        enableThinking: true,
+      })
+    ).toBe(true);
+  });
+
   it('does not lock official V4 sampling controls when thinking is disabled', () => {
     expect(
       shouldLockDeepSeekV4SamplingControls({

@@ -232,6 +232,7 @@ fn is_official_deepseek_v4_family(config: &ApiConfig) -> bool {
     let is_deepseek_host =
         provider == "deepseek" || scope == "deepseek" || base_url.contains("api.deepseek.com");
     let is_v4_family = model.contains("deepseek-v4")
+        || model.contains("deepseek-flash")
         || matches!(model.as_str(), "deepseek-chat" | "deepseek-reasoner");
 
     is_deepseek_host && is_v4_family
@@ -363,6 +364,21 @@ mod tests {
     #[test]
     fn test_deepseek_v4_official() {
         let config = make_config(Some("deepseek"), "deepseek-v4-pro", true);
+        assert_eq!(
+            get_passback_policy(&config),
+            ReasoningPassbackPolicy::DeepSeekStyle
+        );
+        assert!(requires_reasoning_passback(&config));
+        assert!(!uses_reasoning_details_format(&config));
+        assert!(!should_passback_plain_assistant_reasoning(&config));
+        assert!(should_clear_reasoning_on_new_question(&config));
+    }
+
+    #[test]
+    fn test_deepseek_v41_flash_official() {
+        // 2026-09-10 V4.1 Flash（deepseek-flash）沿用官方 V4 家族回传策略：
+        // 工具轮完整回传，新问题清除历史 reasoning_content
+        let config = make_config(Some("deepseek"), "deepseek-flash", true);
         assert_eq!(
             get_passback_policy(&config),
             ReasoningPassbackPolicy::DeepSeekStyle

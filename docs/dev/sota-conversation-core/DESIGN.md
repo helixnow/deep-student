@@ -78,7 +78,8 @@
 
 ### P3 DeepSeek / OpenAI hosted 能力
 
-- 保持 DeepSeek `web_search` 门控（仅官方 + flash 系列）。
+- DeepSeek V4.1（2026-09-10）起 Responses 内置 `web_search` 被静默忽略，注入门控已移除，
+  联网搜索统一走本地 function；历史 `web_search_call` item 仍原样回传（见 P2）。
 - 评估 OpenAI hosted web_search / file_search 是否应对齐，而不是永远走本地 function。
 - 主适配器补 `output_item.added` 与 `function_call_arguments.delta`（对齐 Codex SSE 桥）。
 - 修 `web_search_call.in_progress` 阶段误标；透传 `top_p`。

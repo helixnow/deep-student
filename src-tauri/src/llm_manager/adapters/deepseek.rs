@@ -61,7 +61,7 @@ impl DeepSeekAdapter {
             return DeepSeekModelVersion::V32;
         }
 
-        if model_lower.contains("deepseek-v4") {
+        if model_lower.contains("deepseek-v4") || model_lower.contains("deepseek-flash") {
             return DeepSeekModelVersion::V4;
         }
 
@@ -381,6 +381,29 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+    }
+
+    #[test]
+    fn test_v41_flash_uses_v4_thinking_and_sampling_rules() {
+        // 2026-09-10 起官方主推 deepseek-flash（V4.1）：默认开启思考，
+        // reasoning_effort 走 V4 high/max 方言，思考模式下移除采样参数
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("high".to_string()),
+            model: "deepseek-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        let thinking = body.get("thinking").unwrap();
+        assert_eq!(thinking.get("type"), Some(&json!("enabled")));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(adapter.should_remove_sampling_params(&config));
     }
 
     #[test]

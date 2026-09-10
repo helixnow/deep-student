@@ -164,7 +164,7 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
   };
 }
 
-const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4');
+const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4') || lowerId.includes('deepseek-flash');
 const isDeepSeekLegacyAlias = (lowerId: string): boolean => lowerId === 'deepseek-chat' || lowerId === 'deepseek-reasoner';
 const isMimoProvider = (options?: ModelDefaultParameterOptions): boolean => {
   const providerScope = options?.providerScope?.toLowerCase();

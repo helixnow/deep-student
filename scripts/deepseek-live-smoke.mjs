@@ -4,7 +4,7 @@ const officialKey = process.env.DEEPSEEK_API_KEY;
 const siliconFlowKey = process.env.SILICONFLOW_API_KEY;
 
 const officialBaseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-const officialModel = process.env.DEEPSEEK_V4_MODEL || "deepseek-v4-flash";
+const officialModel = process.env.DEEPSEEK_MODEL || process.env.DEEPSEEK_V4_MODEL || "deepseek-flash";
 const siliconFlowBaseUrl = process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1";
 const siliconFlowModel = process.env.SILICONFLOW_V32_MODEL || "deepseek-ai/DeepSeek-V3.2";
 const siliconFlowV4Model = process.env.SILICONFLOW_V4_MODEL || "deepseek-ai/DeepSeek-V4-Flash";
