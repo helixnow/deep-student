@@ -617,7 +617,7 @@ impl LLMManager {
         if !status.is_success() {
             let mut detail = json!({
                 "status": status.as_u16(),
-                "body": response_text,
+                "body": crate::debug_log_service::redact_sensitive_text(&response_text),
                 "provider": "deepseek-ocr",
             });
 

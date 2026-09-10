@@ -358,10 +358,13 @@ fn enforce_request_input_budget(
         stats.tokens_after = estimate(request_body);
     }
     if stats.tokens_after > max_input_tokens {
-        return Err(AppError::llm(format!(
-            "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={} trimmed_tail_chars={}; reduce the current attachment/tool payload or choose a larger-context model",
-            stats.tokens_after, max_input_tokens, stats.removed_messages, stats.trimmed_tail_chars
-        )));
+        return Err(routing::attach_llm_error_code(
+            AppError::llm(format!(
+                "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={} trimmed_tail_chars={}; reduce the current attachment/tool payload or choose a larger-context model",
+                stats.tokens_after, max_input_tokens, stats.removed_messages, stats.trimmed_tail_chars
+            )),
+            routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+        ));
     }
     Ok(stats)
 }
@@ -557,7 +560,10 @@ fn validate_stream_payload(
     tool_call_count: usize,
 ) -> Result<()> {
     if !was_cancelled && content.is_empty() && reasoning.is_empty() && tool_call_count == 0 {
-        return Err(AppError::llm("模型返回空响应，请重试"));
+        return Err(routing::attach_llm_error_code(
+            AppError::llm("模型返回空响应，请重试"),
+            routing::LLM_ERROR_CODE_EMPTY_RESPONSE,
+        ));
     }
     Ok(())
 }
@@ -1581,11 +1587,47 @@ mod tests {
         let error = validate_stream_payload(false, "", "", 0)
             .expect_err("a terminal-only response must not count as success");
         assert!(error.to_string().contains("空响应"));
+        // 稳定错误码：空响应可安全重试（failover 内部重试 + 工具循环兜底）
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_EMPTY_RESPONSE)
+        );
+        assert_eq!(
+            routing::classify_llm_error(&error),
+            routing::LlmErrorClass::RetryableTransient
+        );
 
         validate_stream_payload(false, "answer", "", 0).unwrap();
         validate_stream_payload(false, "", "thinking", 0).unwrap();
         validate_stream_payload(false, "", "", 1).unwrap();
         validate_stream_payload(true, "", "", 0).unwrap();
+    }
+
+    #[test]
+    fn raw_prompt_options_disable_thinking_semantics() {
+        // 默认不干预解析链；标题等后台任务显式覆盖为关闭思考
+        assert_eq!(RawPromptOptions::default().thinking_override(), None);
+        let title_opts = RawPromptOptions {
+            force_json: true,
+            disable_thinking: true,
+        };
+        assert_eq!(title_opts.thinking_override(), Some(false));
+    }
+
+    #[test]
+    fn context_window_code_is_non_retryable_but_tagged() {
+        let error = routing::attach_llm_error_code(
+            AppError::llm("HTTP 400 - maximum context length exceeded"),
+            routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+        );
+        assert_eq!(
+            routing::classify_llm_error(&error),
+            routing::LlmErrorClass::NonRetryable
+        );
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED)
+        );
     }
 
     #[test]
@@ -3316,11 +3358,25 @@ pub(crate) fn log_and_emit_llm_request(
 pub(crate) struct RawPromptOptions {
     /// gpt-* 模型是否强制 JSON 模式（默认 true，保持旧有 model2 / title 调用的语义）
     pub force_json: bool,
+    /// 是否强制关闭思考（标题等低价值后台任务：省 token/延迟，
+    /// 对齐 DSH 的 session-title 强制关思考语义）
+    pub disable_thinking: bool,
 }
 
 impl Default for RawPromptOptions {
     fn default() -> Self {
-        Self { force_json: true }
+        Self {
+            force_json: true,
+            disable_thinking: false,
+        }
+    }
+}
+
+impl RawPromptOptions {
+    /// 传递给适配器的 thinking 覆盖值：需要关闭时显式 `Some(false)`，
+    /// 否则沿用模型/配置既有解析链。
+    fn thinking_override(&self) -> Option<bool> {
+        self.disable_thinking.then_some(false)
     }
 }
 
@@ -5611,7 +5667,9 @@ impl LLMManager {
                         }
                         continue;
                     } else {
-                        let error_text = resp.text().await.unwrap_or_default();
+                        let error_text = crate::debug_log_service::redact_sensitive_text(
+                            &resp.text().await.unwrap_or_default(),
+                        );
                         let error_msg = format!(
                             "模型二API请求失败: 速率限制(429)，已重试{}次仍失败 - {}",
                             max_retries, error_text
@@ -5626,7 +5684,9 @@ impl LLMManager {
                 }
                 // 401 明确表示凭据无效；仅在此情况下轮换 key。
                 401 => {
-                    let error_text = resp.text().await.unwrap_or_default();
+                    let error_text = crate::debug_log_service::redact_sensitive_text(
+                        &resp.text().await.unwrap_or_default(),
+                    );
                     let error_msg = format!(
                         "模型二API认证失败: API Key 无效或已过期 (HTTP 401) - {}",
                         error_text
@@ -5640,7 +5700,9 @@ impl LLMManager {
                 }
                 // 403 通常是模型/组织/地区/策略权限，不能默认归因于 key 失效。
                 403 => {
-                    let error_text = resp.text().await.unwrap_or_default();
+                    let error_text = crate::debug_log_service::redact_sensitive_text(
+                        &resp.text().await.unwrap_or_default(),
+                    );
                     let error_msg = format!("模型二API访问被拒绝 (HTTP 403) - {}", error_text);
                     error!("{}", error_msg);
                     return Err(routing::tag_establish_failure(
@@ -5671,7 +5733,9 @@ impl LLMManager {
                         }
                         continue;
                     } else {
-                        let error_text = resp.text().await.unwrap_or_default();
+                        let error_text = crate::debug_log_service::redact_sensitive_text(
+                            &resp.text().await.unwrap_or_default(),
+                        );
                         let error_msg = format!(
                             "模型二API服务端错误: HTTP {} - 已重试{}次仍失败 - {}",
                             status_code, max_retries, error_text
@@ -5686,15 +5750,26 @@ impl LLMManager {
                 }
                 // 其他错误：直接返回
                 _ => {
-                    let error_text = resp.text().await.unwrap_or_default();
+                    let error_text = crate::debug_log_service::redact_sensitive_text(
+                        &resp.text().await.unwrap_or_default(),
+                    );
                     let error_msg =
                         format!("模型二API请求失败: HTTP {} - {}", status_code, error_text);
                     error!("模型二API请求失败: {}", error_msg);
-                    // 🆕 打标：400/404 等参数类错误 → 不可重试，立即失败
-                    return Err(routing::tag_establish_failure(
-                        AppError::llm(error_msg),
-                        Some(status_code),
-                    ));
+                    // 🆕 打标：400/404 等参数类错误 → 不可重试，立即失败；
+                    // 响应体命中上下文超限措辞时附加稳定错误码，供上层提示/裁剪。
+                    let err = AppError::llm(error_msg);
+                    let err = if matches!(status_code, 400 | 413 | 422)
+                        && routing::provider_body_indicates_context_window(&error_text)
+                    {
+                        routing::attach_llm_error_code(
+                            err,
+                            routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+                        )
+                    } else {
+                        err
+                    };
+                    return Err(routing::tag_establish_failure(err, Some(status_code)));
                 }
             }
         };
@@ -7813,7 +7888,7 @@ impl LLMManager {
             config,
             user_prompt,
             None,
-            RawPromptOptions { force_json: false },
+            RawPromptOptions { force_json: false, ..Default::default() },
             crate::llm_usage::CallerType::ChatV2,
             "compaction",
         )
@@ -7908,7 +7983,7 @@ impl LLMManager {
             config,
             user_prompt,
             Some(image_payloads),
-            RawPromptOptions { force_json: false },
+            RawPromptOptions { force_json: false, ..Default::default() },
             caller_type,
             routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK,
         )
@@ -7937,10 +8012,14 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(
+        self.call_raw_prompt_with_config_opts(
             config,
             user_prompt,
             None,
+            RawPromptOptions {
+                force_json: true,
+                disable_thinking: true,
+            },
             crate::llm_usage::CallerType::ChatV2,
             "chat_title",
         )
@@ -7961,7 +8040,7 @@ impl LLMManager {
             config,
             user_prompt,
             image_payloads,
-            RawPromptOptions { force_json: true },
+            RawPromptOptions { force_json: true, ..Default::default() },
             caller_type,
             task,
         )
@@ -8077,7 +8156,9 @@ impl LLMManager {
             "temperature": config.temperature
         });
 
-        Self::apply_reasoning_config(&mut request_body, &config, None);
+        // 标题等后台任务显式关闭思考；其余调用沿用模型/配置既有解析链。
+        let thinking_override = opts.thinking_override();
+        Self::apply_reasoning_config(&mut request_body, &config, thinking_override);
         apply_generation_params(&mut request_body, &config, &quirks);
         if let Some(max_tokens) = request_body
             .get("max_completion_tokens")
@@ -8200,15 +8281,25 @@ impl LLMManager {
                 // 6. 检查响应状态
                 if !response.status().is_success() {
                     let status = response.status();
-                    let error_text = response.text().await.unwrap_or_default();
-                    // 🆕 打标 HTTP 状态码供 Failover 分类
-                    return Err(routing::tag_establish_failure(
-                        AppError::llm(format!(
-                            "RAW_PROMPT API请求失败: {} - {}",
-                            status, error_text
-                        )),
-                        Some(status.as_u16()),
+                    let error_text = crate::debug_log_service::redact_sensitive_text(
+                        &response.text().await.unwrap_or_default(),
+                    );
+                    // 🆕 打标 HTTP 状态码供 Failover 分类；上下文超限附加稳定错误码
+                    let err = AppError::llm(format!(
+                        "RAW_PROMPT API请求失败: {} - {}",
+                        status, error_text
                     ));
+                    let err = if matches!(status.as_u16(), 400 | 413 | 422)
+                        && routing::provider_body_indicates_context_window(&error_text)
+                    {
+                        routing::attach_llm_error_code(
+                            err,
+                            routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+                        )
+                    } else {
+                        err
+                    };
+                    return Err(routing::tag_establish_failure(err, Some(status.as_u16())));
                 }
 
                 // 7. 解析响应
