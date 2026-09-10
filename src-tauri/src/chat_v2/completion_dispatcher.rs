@@ -48,9 +48,7 @@ use futures::future::BoxFuture;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 
-use super::completion_outbox::{
-    completion_message_exists, CompletionDelivery, CompletionOutbox,
-};
+use super::completion_outbox::{completion_message_exists, CompletionDelivery, CompletionOutbox};
 use super::database::ChatV2Database;
 use super::headless::{run_headless_agent_turn, HeadlessSessionTurn};
 use super::repo::ChatV2Repo;
@@ -106,7 +104,8 @@ pub struct WakeTurnRequest {
 /// 唤醒轮执行器：生产为 headless runner（`run_headless_agent_turn`），
 /// 测试注入内存替身。返回 `Err` 不触发重投——inbox Result 消息已权威持久化，
 /// 唤醒轮只是加速器。
-type WakeRunner = Arc<dyn Fn(WakeTurnRequest) -> BoxFuture<'static, Result<(), String>> + Send + Sync>;
+type WakeRunner =
+    Arc<dyn Fn(WakeTurnRequest) -> BoxFuture<'static, Result<(), String>> + Send + Sync>;
 
 /// 窗口存在性探针（可测试接缝；生产 = app 的 webview 窗口非空）。
 type WindowProbe = Arc<dyn Fn() -> bool + Send + Sync>;
@@ -134,7 +133,11 @@ impl HeadlessWakeScheduler {
 
     /// 取位并执行一个唤醒轮（schedule 的工作主体；测试直接 await 它以避免
     /// 后台 spawn 的时序依赖）。
-    async fn run_with_permit(permits: Arc<tokio::sync::Semaphore>, runner: WakeRunner, req: WakeTurnRequest) {
+    async fn run_with_permit(
+        permits: Arc<tokio::sync::Semaphore>,
+        runner: WakeRunner,
+        req: WakeTurnRequest,
+    ) {
         // 信号量从不关闭，acquire 只会排队等位
         let Ok(_permit) = permits.acquire_owned().await else {
             return;
@@ -180,8 +183,8 @@ impl HeadlessWakeScheduler {
 /// 等前端桥工具缺席），指引文案相应收窄。payload 损坏时退化为最小通知
 /// （inbox 里的原始信封仍是权威内容，唤醒轮只负责"推一把"）。
 fn wake_prompt_from_delivery(delivery: &CompletionDelivery) -> String {
-    let payload: serde_json::Value = serde_json::from_str(&delivery.payload_json)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let payload: serde_json::Value =
+        serde_json::from_str(&delivery.payload_json).unwrap_or_else(|_| serde_json::json!({}));
     let status = payload
         .get("status")
         .and_then(|s| s.as_str())
@@ -192,7 +195,10 @@ fn wake_prompt_from_delivery(delivery: &CompletionDelivery) -> String {
         .and_then(|s| s.as_str())
         .unwrap_or("");
     let summary = if summary_source.chars().count() > WAKE_SUMMARY_MAX_CHARS {
-        let truncated: String = summary_source.chars().take(WAKE_SUMMARY_MAX_CHARS).collect();
+        let truncated: String = summary_source
+            .chars()
+            .take(WAKE_SUMMARY_MAX_CHARS)
+            .collect();
         format!("{truncated}…（已截断）")
     } else {
         summary_source.to_string()
@@ -210,8 +216,7 @@ fn wake_prompt_from_delivery(delivery: &CompletionDelivery) -> String {
         },
         "请基于该结果继续处理原任务。若该子代理结果已在之前的回合处理过，无需重复处理。"
             .to_string(),
-        "如还有其他后台子代理未完成，其结果会在完成后另行注入，不要重复派发相同任务。"
-            .to_string(),
+        "如还有其他后台子代理未完成，其结果会在完成后另行注入，不要重复派发相同任务。".to_string(),
     ]
     .join("\n\n")
 }
@@ -331,9 +336,8 @@ impl CompletionDispatcher {
 
         let lease_expiry = (chrono::Utc::now() + chrono::Duration::seconds(LEASE_SECS))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let not_before = (chrono::Utc::now()
-            - chrono::Duration::seconds(SELF_DELIVERY_GRACE_SECS))
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let not_before = (chrono::Utc::now() - chrono::Duration::seconds(SELF_DELIVERY_GRACE_SECS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         let claimed =
             self.outbox
@@ -438,7 +442,10 @@ impl DeliveryWorker {
                 let _ = self
                     .outbox
                     .release_claim(&delivery.delivery_id, &self.owner);
-                return Err(format!("emit {} failed: {}", WORKSPACE_AGENT_COMPLETION_EVENT, e));
+                return Err(format!(
+                    "emit {} failed: {}",
+                    WORKSPACE_AGENT_COMPLETION_EVENT, e
+                ));
             }
             self.outbox
                 .mark_delivered(&delivery.delivery_id, &self.owner)?;
@@ -552,8 +559,7 @@ impl DeliveryWorker {
     }
 
     fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        self.workspaces_dir
-            .join(format!("ws_{}.db", workspace_id))
+        self.workspaces_dir.join(format!("ws_{}.db", workspace_id))
     }
 
     fn workspace_db_exists(&self, workspace_id: &str) -> bool {
@@ -583,7 +589,8 @@ enum ProcessOutcome {
     Delivered,
     Released,
     Expired,
-}/// 从 envelope payload 解析终态（completed/failed/cancelled → task 终态）。
+}
+/// 从 envelope payload 解析终态（completed/failed/cancelled → task 终态）。
 fn envelope_terminal_status(delivery: &CompletionDelivery) -> Option<SubagentTaskStatus> {
     let value: serde_json::Value = serde_json::from_str(&delivery.payload_json).ok()?;
     match value.get("status").and_then(|s| s.as_str()) {
@@ -664,8 +671,8 @@ impl CompletionDispatcher {
 
 #[cfg(test)]
 mod tests {
-    use crate::chat_v2::completion_outbox::{CompletionDeliveryState, NewCompletionDelivery};
     use super::*;
+    use crate::chat_v2::completion_outbox::{CompletionDeliveryState, NewCompletionDelivery};
     use crate::data_governance::migration::coordinator::MigrationCoordinator;
     use crate::data_governance::schema_registry::DatabaseId;
     use rusqlite::params;
@@ -687,10 +694,9 @@ mod tests {
     /// 只读查询路径只触碰这两张表）。
     fn setup_workspace_db(workspaces_dir: &std::path::Path, workspace_id: &str) {
         std::fs::create_dir_all(workspaces_dir).expect("workspaces dir");
-        let conn = rusqlite::Connection::open(
-            workspaces_dir.join(format!("ws_{}.db", workspace_id)),
-        )
-        .expect("workspace db");
+        let conn =
+            rusqlite::Connection::open(workspaces_dir.join(format!("ws_{}.db", workspace_id)))
+                .expect("workspace db");
         conn.execute_batch(
             "CREATE TABLE message (
                 id TEXT PRIMARY KEY,
@@ -893,18 +899,17 @@ mod tests {
 
         // workspace db 不存在 → expired
         let d1 = claim_one(&outbox, "test-owner", "run-gone-ws", past_grace_timestamp());
-        assert!(matches!(
-            dispatcher.converge(&d1),
-            ConvergeOutcome::Expired
-        ));
+        assert!(matches!(dispatcher.converge(&d1), ConvergeOutcome::Expired));
 
         // workspace 存在但父会话不存在 → expired
         setup_workspace_db(&ws_dir, "ws_1");
-        let d2 = claim_one(&outbox, "test-owner", "run-gone-parent", past_grace_timestamp());
-        assert!(matches!(
-            dispatcher.converge(&d2),
-            ConvergeOutcome::Expired
-        ));
+        let d2 = claim_one(
+            &outbox,
+            "test-owner",
+            "run-gone-parent",
+            past_grace_timestamp(),
+        );
+        assert!(matches!(dispatcher.converge(&d2), ConvergeOutcome::Expired));
 
         // 父会话软删 → expired
         insert_parent_session(&db, "parent_1");
@@ -916,11 +921,13 @@ mod tests {
             )
             .unwrap();
         }
-        let d3 = claim_one(&outbox, "test-owner", "run-deleted-parent", past_grace_timestamp());
-        assert!(matches!(
-            dispatcher.converge(&d3),
-            ConvergeOutcome::Expired
-        ));
+        let d3 = claim_one(
+            &outbox,
+            "test-owner",
+            "run-deleted-parent",
+            past_grace_timestamp(),
+        );
+        assert!(matches!(dispatcher.converge(&d3), ConvergeOutcome::Expired));
 
         // expired 终态不再被认领
         let lease = (chrono::Utc::now() + chrono::Duration::seconds(60))
@@ -989,9 +996,8 @@ mod tests {
     }
 
     fn past_grace_timestamp() -> String {
-        (chrono::Utc::now()
-            - chrono::Duration::seconds(SELF_DELIVERY_GRACE_SECS + 60))
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        (chrono::Utc::now() - chrono::Duration::seconds(SELF_DELIVERY_GRACE_SECS + 60))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     }
 
     #[test]

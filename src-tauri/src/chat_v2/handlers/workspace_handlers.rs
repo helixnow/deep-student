@@ -1693,9 +1693,7 @@ pub async fn run_workspace_agent_backend(
         let child_task_id = coordinator
             .get_task_manager(workspace_id)
             .ok()
-            .and_then(|task_manager| {
-                task_manager.get_agent_task(agent_session_id).ok().flatten()
-            })
+            .and_then(|task_manager| task_manager.get_agent_task(agent_session_id).ok().flatten())
             .map(|task| task.id)
             .unwrap_or_else(|| agent_session_id.clone());
         let profile_hash = AgentProfileResolver::resolve_for_agent(agent)
@@ -1711,11 +1709,8 @@ pub async fn run_workspace_agent_backend(
         // 声明待 G08-P2 settings 可配，现恒 None → 子上限 = 父剩余快照），
         // 快照填入 grant.budget。绑定守卫随管线 drop 解绑；旧账本耗尽且树枯
         // （无活跃绑定）时 attach 内部轮换新账本。
-        let budget_attachment = crate::chat_v2::budget::attach_child_to_tree(
-            &parent_task_id,
-            agent_session_id,
-            None,
-        );
+        let budget_attachment =
+            crate::chat_v2::budget::attach_child_to_tree(&parent_task_id, agent_session_id, None);
         let grant_registration = crate::chat_v2::grants::issue_worker_grant(
             agent_session_id.clone(),
             parent_task_id,
@@ -2474,7 +2469,10 @@ pub async fn workspace_restore_executions(
     let unknown_tasks: Vec<UnknownSubagentTaskInfo> = task_manager
         .get_unknown_tasks()
         .unwrap_or_else(|e| {
-            log::warn!("[Workspace::handlers] Failed to list unknown tasks: {:?}", e);
+            log::warn!(
+                "[Workspace::handlers] Failed to list unknown tasks: {:?}",
+                e
+            );
             Vec::new()
         })
         .into_iter()

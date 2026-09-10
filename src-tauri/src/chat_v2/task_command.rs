@@ -124,11 +124,20 @@ pub enum TaskCommand {
     /// 推进既有任务（同会话追加一轮输入）
     Steer { task_id: String, text: String },
     /// 停止任务（task_id 缺省 = 当前路由键下正在运行的任务）
-    Stop { #[serde(default)] task_id: Option<String> },
+    Stop {
+        #[serde(default)]
+        task_id: Option<String>,
+    },
     /// 查询任务状态（task_id 缺省 = 当前路由键下运行中/最近的任务）
-    Inspect { #[serde(default)] task_id: Option<String> },
+    Inspect {
+        #[serde(default)]
+        task_id: Option<String>,
+    },
     /// 远程审批（P1 只返回桌面端确认指引）
-    Approve { approval_id: String, decision: ApprovalDecision },
+    Approve {
+        approval_id: String,
+        decision: ApprovalDecision,
+    },
 }
 
 /// 入站文本的解析结果
@@ -405,9 +414,14 @@ impl RemoteTaskManager {
             ParsedInbound::Command(TaskCommand::Create { goal }) => {
                 Self::create_task(&mut inner, &route, &inbound.binding, generation, goal)
             }
-            ParsedInbound::Command(TaskCommand::Steer { task_id, text }) => {
-                Self::steer_explicit(&mut inner, &route, &inbound.binding, generation, &task_id, text)
-            }
+            ParsedInbound::Command(TaskCommand::Steer { task_id, text }) => Self::steer_explicit(
+                &mut inner,
+                &route,
+                &inbound.binding,
+                generation,
+                &task_id,
+                text,
+            ),
             ParsedInbound::Command(TaskCommand::Stop { task_id }) => {
                 Self::stop_task(&mut inner, &route, task_id)
             }
@@ -453,9 +467,10 @@ impl RemoteTaskManager {
             .get(route)
             .and_then(|rs| rs.latest_task.clone())
         {
-            let steerable = inner.tasks.get(&latest_id).is_some_and(|r| {
-                r.status.is_terminal() && r.binding.conversation_id.is_some()
-            });
+            let steerable = inner
+                .tasks
+                .get(&latest_id)
+                .is_some_and(|r| r.status.is_terminal() && r.binding.conversation_id.is_some());
             if steerable {
                 return Self::steer_existing(inner, route, binding, generation, &latest_id, text);
             }
@@ -645,9 +660,10 @@ impl RemoteTaskManager {
                 Some(rec) if RouteKey::from_binding(&rec.binding) == *route => Some(id),
                 _ => return DispatchOutcome::Reply(format!("未找到任务 {}。", id)),
             },
-            None => inner.routes.get(route).and_then(|rs| {
-                rs.active_task.clone().or_else(|| rs.latest_task.clone())
-            }),
+            None => inner
+                .routes
+                .get(route)
+                .and_then(|rs| rs.active_task.clone().or_else(|| rs.latest_task.clone())),
         };
         let id = match resolved {
             Some(id) => id,
@@ -679,7 +695,11 @@ impl RemoteTaskManager {
             out.push_str(&format!("\n错误：{}", truncate_chars(err, 200)));
         }
         let updated = chrono::DateTime::from_timestamp_millis(rec.updated_at_ms)
-            .map(|dt| dt.with_timezone(&chrono::Local).format("%m-%d %H:%M").to_string())
+            .map(|dt| {
+                dt.with_timezone(&chrono::Local)
+                    .format("%m-%d %H:%M")
+                    .to_string()
+            })
             .unwrap_or_default();
         if !updated.is_empty() {
             out.push_str(&format!("\n更新于：{}", updated));
@@ -1102,7 +1122,8 @@ mod tests {
         let (task_id, _) = expect_launch(mgr.dispatch(inbound("th-1", "m1", "任务A")));
 
         // 其他 thread 按 id Stop / Inspect：一律"未找到"，任务不受影响
-        let reply = expect_reply(mgr.dispatch(inbound("th-2", "x1", &format!("/stop {}", task_id))));
+        let reply =
+            expect_reply(mgr.dispatch(inbound("th-2", "x1", &format!("/stop {}", task_id))));
         assert!(reply.contains("未找到"));
         let reply =
             expect_reply(mgr.dispatch(inbound("th-2", "x2", &format!("/status {}", task_id))));

@@ -375,7 +375,9 @@ impl OfficeFidelityExecutor {
                     &parts,
                     "embedded_ole",
                     "critical",
-                    |name| name.starts_with("word/embeddings/") || name.starts_with("word/activeX/"),
+                    |name| {
+                        name.starts_with("word/embeddings/") || name.starts_with("word/activeX/")
+                    },
                     &[b"oleObject"],
                 ),
                 Self::matching_feature(
@@ -395,27 +397,16 @@ impl OfficeFidelityExecutor {
                 // 批注/脚注按"真实内容"判定而非部件存在性：docx-rs 默认包恒带
                 // 空 comments.xml/footnotes.xml（无 <w:comment> 条目、仅 separator
                 // 样板脚注），按部件名匹配会让全部自产文档都背 fidelity warning。
-                Self::matching_feature_if(
-                    &parts,
-                    "comments",
-                    "high",
-                    |part| {
-                        part.name == "word/comments.xml"
-                            && contains_bytes(&part.bytes, b"<w:comment ")
-                    },
-                ),
+                Self::matching_feature_if(&parts, "comments", "high", |part| {
+                    part.name == "word/comments.xml" && contains_bytes(&part.bytes, b"<w:comment ")
+                }),
                 // 文本重建会整体丢弃脚注/尾注（真实内容丢失）——由 medium 升为 high，
                 // 使编辑交付结果附 fidelity warning。
-                Self::matching_feature_if(
-                    &parts,
-                    "footnotes_endnotes",
-                    "high",
-                    |part| {
-                        part.name == "word/footnotes.xml" && has_real_note(&part.bytes, b"<w:footnote ")
-                            || part.name == "word/endnotes.xml"
-                                && has_real_note(&part.bytes, b"<w:endnote ")
-                    },
-                ),
+                Self::matching_feature_if(&parts, "footnotes_endnotes", "high", |part| {
+                    part.name == "word/footnotes.xml" && has_real_note(&part.bytes, b"<w:footnote ")
+                        || part.name == "word/endnotes.xml"
+                            && has_real_note(&part.bytes, b"<w:endnote ")
+                }),
                 Self::matching_feature(
                     &parts,
                     "fields",
@@ -1047,10 +1038,7 @@ mod tests {
         assert_eq!(preflight.format, "xlsx");
         assert_eq!(preflight.risk, "critical");
         assert!(preflight.has_critical());
-        assert!(preflight
-            .critical_features
-            .iter()
-            .any(|f| f == "macros"));
+        assert!(preflight.critical_features.iter().any(|f| f == "macros"));
         assert!(preflight
             .critical_features
             .iter()
@@ -1242,10 +1230,7 @@ mod tests {
             ("ppt/notesSlides/notesSlide1.xml", b"<p:notes/>"),
             ("ppt/charts/chart1.xml", b"<c:chart/>"),
             ("ppt/diagrams/data1.xml", b"<dgm/>"),
-            (
-                "ppt/slides/slide1.xml",
-                b"<p:sld><p:timing/></p:sld>",
-            ),
+            ("ppt/slides/slide1.xml", b"<p:sld><p:timing/></p:sld>"),
         ]);
         let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
         // 母版/版式无法词法区分默认与自定义 → 保守放行 + warning
@@ -1272,7 +1257,12 @@ mod tests {
     fn preflight_fixture(critical: &[&str], high: &[&str]) -> EditPreflight {
         EditPreflight {
             format: "docx".to_string(),
-            risk: if critical.is_empty() { "high" } else { "critical" }.to_string(),
+            risk: if critical.is_empty() {
+                "high"
+            } else {
+                "critical"
+            }
+            .to_string(),
             source_sha256: "a".repeat(64),
             feature_set_hash: "b".repeat(64),
             critical_features: critical.iter().map(|f| f.to_string()).collect(),
@@ -1316,18 +1306,17 @@ mod tests {
             office_apps: "PowerPoint/WPS",
             high_features_dropped: true,
         };
-        let warning =
-            build_edit_fidelity_warning(&preflight, &rebuild_wording, &[]).unwrap();
-        assert_eq!(
-            warning["preserved_at_risk_features"],
-            json!(["comments"])
-        );
+        let warning = build_edit_fidelity_warning(&preflight, &rebuild_wording, &[]).unwrap();
+        assert_eq!(warning["preserved_at_risk_features"], json!(["comments"]));
         assert_eq!(warning["post_edit_comparison"], "not_performed");
         assert_eq!(
             warning["write_path_semantics"],
             "text_only_rebuild_drops_listed_features"
         );
-        assert!(warning["message"].as_str().unwrap().contains("PowerPoint/WPS"));
+        assert!(warning["message"]
+            .as_str()
+            .unwrap()
+            .contains("PowerPoint/WPS"));
         // round-trip 语义（xlsx）：无 write_path_semantics 键，message 保持 P0 原文
         let roundtrip_wording = EditGateWording {
             write_path: "umya-spreadsheet round-trip 编辑",

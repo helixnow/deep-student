@@ -1660,9 +1660,9 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                         .get("receiptId")
                         .or_else(|| receipt.get("receipt_id"))?
                         .as_str()?;
-                    let serialized = serde_json::to_string(&canonical_scope_value(
-                        &Value::Object(receipt.clone()),
-                    ))
+                    let serialized = serde_json::to_string(&canonical_scope_value(&Value::Object(
+                        receipt.clone(),
+                    )))
                     .ok()?;
                     Some(format!("{}:{}:{}", root, receipt_id, raw_hash(&serialized)))
                 })

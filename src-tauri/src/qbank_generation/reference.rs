@@ -94,15 +94,25 @@ pub async fn collect_references(
             break;
         }
         processed += 1;
-        collect_from_upload(vfs_db, &upload.name, &upload.base64, &mut bundle, model_is_multimodal)
-            .await;
+        collect_from_upload(
+            vfs_db,
+            &upload.name,
+            &upload.base64,
+            &mut bundle,
+            model_is_multimodal,
+        )
+        .await;
     }
 
     // C4：注入前可审计日志（RULES.txt 第 5 条）
     log::info!(
         "[QbankGeneration] 参考资料收集完成：文本 {} 份（{} 字符），图片 {} 页，跳过 {} 份",
         bundle.texts.len(),
-        bundle.texts.iter().map(|t| t.text.chars().count()).sum::<usize>(),
+        bundle
+            .texts
+            .iter()
+            .map(|t| t.text.chars().count())
+            .sum::<usize>(),
         bundle.images.len(),
         bundle.skipped.len()
     );
@@ -216,7 +226,11 @@ async fn collect_from_library(
                 log::warn!("[QbankGeneration] 资源库文件 {} 无可用页面图", name);
             }
             Err(e) => {
-                log::warn!("[QbankGeneration] 资源库文件 {} 页面图读取失败: {}", name, e);
+                log::warn!(
+                    "[QbankGeneration] 资源库文件 {} 页面图读取失败: {}",
+                    name,
+                    e
+                );
             }
         }
     }
@@ -475,7 +489,8 @@ mod tests {
 
     #[test]
     fn skipped_reference_serializes_reason_code() {
-        let skipped = SkippedReference::with_detail("扫描件.pdf", "model_not_multimodal", "不支持读图");
+        let skipped =
+            SkippedReference::with_detail("扫描件.pdf", "model_not_multimodal", "不支持读图");
         let json = serde_json::to_value(&skipped).expect("serialize");
         assert_eq!(json["name"], "扫描件.pdf");
         assert_eq!(json["reason"], "model_not_multimodal");

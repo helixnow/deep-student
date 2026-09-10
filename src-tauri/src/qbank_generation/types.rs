@@ -682,9 +682,7 @@ pub fn parse_generation_output(
                 }
                 match validate_draft(&draft) {
                     Ok(()) => drafts.push(draft),
-                    Err(reason) => {
-                        reasons.push(format!("第 {} 题被剔除：{}", index + 1, reason))
-                    }
+                    Err(reason) => reasons.push(format!("第 {} 题被剔除：{}", index + 1, reason)),
                 }
             }
             Err(e) => reasons.push(format!("第 {} 题结构不符合契约：{}", index + 1, e)),

@@ -176,7 +176,10 @@ impl InsightRecallService {
         if kw.is_empty() {
             return Ok(Vec::new());
         }
-        let escaped = kw.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
+        let escaped = kw
+            .replace('\\', r"\\")
+            .replace('%', r"\%")
+            .replace('_', r"\_");
         let pattern = format!("%{escaped}%");
 
         let mut stmt = conn
@@ -241,8 +244,7 @@ impl InsightRecallService {
                 .vfs_db
                 .get_conn_safe()
                 .map_err(|e| AppError::database(e.to_string()))?;
-            let indirect =
-                Self::expand_via_relations_with_conn(&conn, &candidates, 2)?;
+            let indirect = Self::expand_via_relations_with_conn(&conn, &candidates, 2)?;
             candidates.extend(indirect);
         }
 
@@ -394,23 +396,24 @@ impl InsightRecallService {
             DisclosureLevel::Hidden => "none",
             other => other.as_str(),
         };
-        let inserted = conn.execute(
-            "INSERT OR IGNORE INTO insight_events
+        let inserted = conn
+            .execute(
+                "INSERT OR IGNORE INTO insight_events
              (id, insight_id, session_id, message_id, event_type, help_level,
               quality_signal, need_signal, benefit_signal, payload_json, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, NULL, ?7, ?8, ?8)",
-            params![
-                id,
-                insight_id,
-                session_id,
-                message_id,
-                event_type.as_str(),
-                help_level_str,
-                payload_json,
-                repo::now_iso(),
-            ],
-        )
-        .map_err(|e| AppError::database(format!("写入灵感事件失败: {e}")))?;
+                params![
+                    id,
+                    insight_id,
+                    session_id,
+                    message_id,
+                    event_type.as_str(),
+                    help_level_str,
+                    payload_json,
+                    repo::now_iso(),
+                ],
+            )
+            .map_err(|e| AppError::database(format!("写入灵感事件失败: {e}")))?;
         Ok(inserted > 0)
     }
 
@@ -427,10 +430,7 @@ impl InsightRecallService {
         success: bool,
     ) -> Result<(), AppError> {
         let outcome = if success { "correct" } else { "wrong" };
-        let id = format!(
-            "me_insight_{}_{}_{}",
-            insight_id, session_id, outcome
-        );
+        let id = format!("me_insight_{}_{}_{}", insight_id, session_id, outcome);
         conn.execute(
             "INSERT OR IGNORE INTO mastery_events
              (id, created_at, source, concept_key, item_id, outcome, weight, signal, updated_at)

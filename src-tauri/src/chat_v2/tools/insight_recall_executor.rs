@@ -61,11 +61,7 @@ impl InsightRecallExecutor {
     }
 
     /// query 模式：召回 → 披露门控 → 存在级源列表
-    async fn execute_recall(
-        &self,
-        query: &str,
-        ctx: &ExecutionContext,
-    ) -> Result<Value, String> {
+    async fn execute_recall(&self, query: &str, ctx: &ExecutionContext) -> Result<Value, String> {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
         let policy = Self::load_policy(ctx);
         let recall = InsightRecallService::new(std::sync::Arc::clone(vfs_db));
@@ -78,7 +74,9 @@ impl InsightRecallExecutor {
         // 披露门控
         let scored: Vec<disclosure::ScoredRef> = candidates
             .iter()
-            .map(|c| disclosure::ScoredRef { confidence: c.confidence })
+            .map(|c| disclosure::ScoredRef {
+                confidence: c.confidence,
+            })
             .collect();
         let outcomes = disclosure::decide_passive(&policy, &scored);
 
@@ -129,7 +127,8 @@ impl InsightRecallExecutor {
                     .map_err(|e| e.to_string())?;
                     // 计数器只在事件真正插入时累加（重试/变体幂等一致）
                     if inserted {
-                        let _ = crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
+                        let _ =
+                            crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
                     }
                     sources.push(SourceInfo {
                         title: Some(format!("[灵感] {title}")),
@@ -162,7 +161,8 @@ impl InsightRecallExecutor {
         }
 
         // 引用编号（[灵感-N]，CitationLedger 进程级注册表按回复键控）
-        let ledger = citation_ledger_for_reply(&ctx.session_id, &ctx.message_id, ctx.variant_id.as_deref());
+        let ledger =
+            citation_ledger_for_reply(&ctx.session_id, &ctx.message_id, ctx.variant_id.as_deref());
         let numbered = {
             let mut guard = ledger.lock().map_err(|e| e.to_string())?;
             build_numbered_sources(&sources, &mut guard)
@@ -380,12 +380,8 @@ impl ToolExecutor for InsightRecallExecutor {
                 ))
             }
             Err(e) => {
-                ctx.emitter.emit_error(
-                    event_types::INSIGHT_RECALL,
-                    &ctx.block_id,
-                    &e,
-                    None,
-                );
+                ctx.emitter
+                    .emit_error(event_types::INSIGHT_RECALL, &ctx.block_id, &e, None);
                 Ok(ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),

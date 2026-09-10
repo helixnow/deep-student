@@ -315,7 +315,10 @@ impl EnvironmentManifest {
             "tool_schema={}({})",
             self.tool_schema_hash, self.tool_count
         ));
-        lines.push(format!("model_id={}", opt_display(self.model_id.as_deref())));
+        lines.push(format!(
+            "model_id={}",
+            opt_display(self.model_id.as_deref())
+        ));
         for pin in &self.skills_loaded {
             lines.push(format!(
                 "skill={}@{}#{}",
@@ -325,7 +328,10 @@ impl EnvironmentManifest {
             ));
         }
         if let Some(role_pack) = &self.role_pack {
-            lines.push(format!("role_pack={}@{}", role_pack.pack_id, role_pack.version));
+            lines.push(format!(
+                "role_pack={}@{}",
+                role_pack.pack_id, role_pack.version
+            ));
         }
         for host in &self.network_allowlist {
             lines.push(format!("network_allow={host}"));
@@ -347,10 +353,7 @@ impl EnvironmentManifest {
         if self.schema_version != baseline.schema_version {
             drifts.push(EnvDrift {
                 field: EnvDriftField::SchemaVersion,
-                detail: format!(
-                    "'{}' -> '{}'",
-                    baseline.schema_version, self.schema_version
-                ),
+                detail: format!("'{}' -> '{}'", baseline.schema_version, self.schema_version),
             });
         }
         if self.os != baseline.os {
@@ -668,10 +671,7 @@ mod tests {
                 pack_id: "finance-core".to_string(),
                 version: "2.0.0".to_string(),
             }),
-            network_allowlist: vec![
-                "api.example.com".to_string(),
-                "arxiv.org".to_string(),
-            ],
+            network_allowlist: vec!["api.example.com".to_string(), "arxiv.org".to_string()],
             workspace_root_ids: vec!["ws:a1b2".to_string(), "auth:c3d4".to_string()],
         }
     }
@@ -693,7 +693,10 @@ mod tests {
         assert!(!manifest.runtime.tauri_version.is_empty());
         assert!(!manifest.runtime.rust_version.is_empty());
         assert_eq!(manifest.tool_schema_hash.len(), 64);
-        assert!(manifest.tool_schema_hash.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(manifest
+            .tool_schema_hash
+            .chars()
+            .all(|c| c.is_ascii_hexdigit()));
         assert_eq!(manifest.tool_count, BUILTIN_DESCRIPTORS.len());
         assert_eq!(manifest.model_id.as_deref(), Some("deepseek-chat"));
         assert_eq!(manifest.skills_loaded.len(), 2);
@@ -834,7 +837,9 @@ mod tests {
         assert_single_drift(&baseline, &current, EnvDriftField::RolePack);
 
         let mut current = baseline.clone();
-        current.network_allowlist.push("new-host.example.com".to_string());
+        current
+            .network_allowlist
+            .push("new-host.example.com".to_string());
         assert_single_drift(&baseline, &current, EnvDriftField::NetworkAllowlist);
 
         let mut current = baseline.clone();
@@ -869,11 +874,9 @@ mod tests {
         assert!(skill_drifts
             .iter()
             .any(|d| d.detail.contains("new-skill") && d.detail.contains("added")));
-        assert!(skill_drifts
-            .iter()
-            .any(|d| d.detail.contains("pdf-study")
-                && d.detail.contains("1.2.0")
-                && d.detail.contains("1.3.0")));
+        assert!(skill_drifts.iter().any(|d| d.detail.contains("pdf-study")
+            && d.detail.contains("1.2.0")
+            && d.detail.contains("1.3.0")));
     }
 
     #[test]

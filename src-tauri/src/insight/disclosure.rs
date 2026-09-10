@@ -61,11 +61,9 @@ pub fn load_policy(main_db: Option<&crate::database::Database>) -> DisclosurePol
     };
     let read = |key: &str| -> Option<String> {
         let conn = db.get_conn_safe().ok()?;
-        conn.query_row(
-            "SELECT value FROM settings WHERE key = ?1",
-            [key],
-            |row| row.get::<_, String>(0),
-        )
+        conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        })
         .ok()
     };
     DisclosurePolicy {
@@ -251,29 +249,49 @@ mod tests {
 
     #[test]
     fn passive_silence_when_disabled() {
-        let policy = DisclosurePolicy { enabled: false, ..Default::default() };
+        let policy = DisclosurePolicy {
+            enabled: false,
+            ..Default::default()
+        };
         let out = decide_passive(&policy, &[c(0.9)]);
-        assert_eq!(out, vec![DisclosureOutcome::Silence(SilenceReason::UserDisabled)]);
+        assert_eq!(
+            out,
+            vec![DisclosureOutcome::Silence(SilenceReason::UserDisabled)]
+        );
     }
 
     #[test]
     fn passive_low_confidence_silence() {
         let policy = DisclosurePolicy::default();
         let out = decide_passive(&policy, &[c(0.1)]);
-        assert_eq!(out, vec![DisclosureOutcome::Silence(SilenceReason::LowConfidence)]);
+        assert_eq!(
+            out,
+            vec![DisclosureOutcome::Silence(SilenceReason::LowConfidence)]
+        );
     }
 
     #[test]
     fn passive_budget_enforced() {
-        let policy = DisclosurePolicy { max_per_turn: 1, ..Default::default() };
+        let policy = DisclosurePolicy {
+            max_per_turn: 1,
+            ..Default::default()
+        };
         let out = decide_passive(&policy, &[c(0.9), c(0.8)]);
-        assert_eq!(out[0], DisclosureOutcome::Disclose(DisclosureLevel::Existence));
+        assert_eq!(
+            out[0],
+            DisclosureOutcome::Disclose(DisclosureLevel::Existence)
+        );
         assert_eq!(out[1], DisclosureOutcome::Silence(SilenceReason::Budget));
     }
 
     #[test]
     fn existence_never_exposes_method() {
-        let (t, s, r) = filter_content(DisclosureLevel::Existence, "换元法", "积分题", "识别导数结构");
+        let (t, s, r) = filter_content(
+            DisclosureLevel::Existence,
+            "换元法",
+            "积分题",
+            "识别导数结构",
+        );
         assert_eq!(t, "换元法");
         assert!(s.is_none());
         assert!(r.is_none(), "存在级泄露方法是红线");
@@ -292,7 +310,11 @@ mod tests {
             "不许跳级"
         );
         assert_eq!(
-            decide_escalation(&policy, DisclosureLevel::Hint, DisclosureLevel::DirectAnswer),
+            decide_escalation(
+                &policy,
+                DisclosureLevel::Hint,
+                DisclosureLevel::DirectAnswer
+            ),
             DisclosureOutcome::Disclose(DisclosureLevel::DirectAnswer),
             "direct_answer 是显式旁路"
         );

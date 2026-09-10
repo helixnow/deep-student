@@ -1159,11 +1159,11 @@ pub struct ModelAssignments {
     /// 🆕 题库 AI 出题专用模型（2026-09-09 独立槽位）：
     /// 未设置时回退 qbank_ai_grading 槽 → Model2，保证旧配置行为不变
     pub qbank_ai_generation_model_config_id: Option<String>,
-    pub embedding_model_config_id: Option<String>,       // 新增: 第五模型（嵌入模型）配置ID
-    pub reranker_model_config_id: Option<String>,        // 新增: 第六模型（重排序模型）配置ID
-    pub chat_title_model_config_id: Option<String>,      // 新增：常规聊天标题生成模型配置ID
-    pub exam_sheet_ocr_model_config_id: Option<String>,  // 新增：题目集识别OCR专用模型配置ID
-    pub translation_model_config_id: Option<String>,     // 新增：翻译专用模型配置ID
+    pub embedding_model_config_id: Option<String>, // 新增: 第五模型（嵌入模型）配置ID
+    pub reranker_model_config_id: Option<String>,  // 新增: 第六模型（重排序模型）配置ID
+    pub chat_title_model_config_id: Option<String>, // 新增：常规聊天标题生成模型配置ID
+    pub exam_sheet_ocr_model_config_id: Option<String>, // 新增：题目集识别OCR专用模型配置ID
+    pub translation_model_config_id: Option<String>, // 新增：翻译专用模型配置ID
     // ★ 多模态知识库模型配置（文档：multimodal-knowledge-base-design.md）
     pub vl_embedding_model_config_id: Option<String>, // 多模态嵌入模型（Qwen3-VL-Embedding）
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）

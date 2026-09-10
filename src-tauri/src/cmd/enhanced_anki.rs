@@ -478,7 +478,8 @@ pub async fn get_anki_library_card_content(
 pub async fn list_anki_library_cards(
     request: crate::models::ListAnkiCardsRequest,
     state: State<'_, AppState>,
-) -> Result<serde_json::Value> {    let page = request.page.unwrap_or(1).max(1);
+) -> Result<serde_json::Value> {
+    let page = request.page.unwrap_or(1).max(1);
     let page_size = request.page_size.unwrap_or(12).clamp(1, 200);
     let (items, total) = state
         .anki_database

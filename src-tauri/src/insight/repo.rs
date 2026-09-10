@@ -18,7 +18,12 @@ pub fn now_iso() -> String {
 // insights
 // ============================================================================
 
-pub fn insert_insight(conn: &Connection, id: &str, title: &str, ownership: InsightOwnership) -> Result<(), AppError> {
+pub fn insert_insight(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    ownership: InsightOwnership,
+) -> Result<(), AppError> {
     let now = now_iso();
     conn.execute(
         "INSERT INTO insights (id, title, ownership, verification_state, status, created_at, updated_at)
@@ -32,7 +37,22 @@ pub fn insert_insight(conn: &Connection, id: &str, title: &str, ownership: Insig
 pub fn get_insight_row(
     conn: &Connection,
     id: &str,
-) -> Result<Option<(String, String, String, String, i64, i64, i64, Option<String>, String, Option<String>, Option<String>)>, AppError> {
+) -> Result<
+    Option<(
+        String,
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        i64,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    )>,
+    AppError,
+> {
     conn.query_row(
         "SELECT title, ownership, verification_state, status, recall_count, shown_count,
                 useful_count, last_recalled_at, created_at, updated_at, current_revision_id
@@ -40,8 +60,17 @@ pub fn get_insight_row(
         params![id],
         |row| {
             Ok((
-                row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
-                row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?,
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get(8)?,
+                row.get(9)?,
+                row.get(10)?,
             ))
         },
     )
@@ -51,13 +80,23 @@ pub fn get_insight_row(
 
 /// 主表行 + 当前修订 组装为 InsightCard（service.get_insight 与 recall 共用）
 pub fn get_card(conn: &Connection, id: &str) -> Result<Option<InsightCard>, AppError> {
-    let Some((title, ownership, verification, status, recall_count, shown_count, useful_count, last_recalled_at, created_at, updated_at, current_rev_id)) =
-        get_insight_row(conn, id)?
+    let Some((
+        title,
+        ownership,
+        verification,
+        status,
+        recall_count,
+        shown_count,
+        useful_count,
+        last_recalled_at,
+        created_at,
+        updated_at,
+        current_rev_id,
+    )) = get_insight_row(conn, id)?
     else {
         return Ok(None);
     };
-    let current_revision = current_rev_id
-        .and_then(|rid| get_revision(conn, &rid).ok().flatten());
+    let current_revision = current_rev_id.and_then(|rid| get_revision(conn, &rid).ok().flatten());
     Ok(Some(InsightCard {
         id: id.to_string(),
         title,
@@ -74,7 +113,11 @@ pub fn get_card(conn: &Connection, id: &str) -> Result<Option<InsightCard>, AppE
     }))
 }
 
-pub fn set_current_revision(conn: &Connection, insight_id: &str, revision_id: &str) -> Result<(), AppError> {
+pub fn set_current_revision(
+    conn: &Connection,
+    insight_id: &str,
+    revision_id: &str,
+) -> Result<(), AppError> {
     conn.execute(
         "UPDATE insights SET current_revision_id = ?2, updated_at = ?3,
                 local_version = local_version + 1
@@ -85,7 +128,11 @@ pub fn set_current_revision(conn: &Connection, insight_id: &str, revision_id: &s
     Ok(())
 }
 
-pub fn set_verification_state(conn: &Connection, insight_id: &str, state: VerificationState) -> Result<(), AppError> {
+pub fn set_verification_state(
+    conn: &Connection,
+    insight_id: &str,
+    state: VerificationState,
+) -> Result<(), AppError> {
     conn.execute(
         "UPDATE insights SET verification_state = ?2, updated_at = ?3,
                 local_version = local_version + 1
@@ -96,7 +143,11 @@ pub fn set_verification_state(conn: &Connection, insight_id: &str, state: Verifi
     Ok(())
 }
 
-pub fn set_status(conn: &Connection, insight_id: &str, status: InsightStatus) -> Result<(), AppError> {
+pub fn set_status(
+    conn: &Connection,
+    insight_id: &str,
+    status: InsightStatus,
+) -> Result<(), AppError> {
     conn.execute(
         "UPDATE insights SET status = ?2, updated_at = ?3, local_version = local_version + 1
          WHERE id = ?1 AND deleted_at IS NULL",
@@ -142,7 +193,8 @@ pub fn bump_stat(conn: &Connection, insight_id: &str, column: &str) -> Result<()
     let sql = format!(
         "UPDATE insights SET {column} = {column} + 1, updated_at = ?2 WHERE id = ?1 AND deleted_at IS NULL"
     );
-    conn.execute(&sql, params![insight_id, now_iso()]).map_err(db_err)?;
+    conn.execute(&sql, params![insight_id, now_iso()])
+        .map_err(db_err)?;
     Ok(())
 }
 
@@ -211,15 +263,27 @@ pub fn insert_revision(conn: &Connection, rev: &InsightRevision) -> Result<(), A
           validity_conditions, hypothetical_queries, edit_note, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         params![
-            rev.id, rev.insight_id, rev.resource_id, rev.situation, rev.stuck_point,
-            rev.turning_point, rev.rule, rev.validity_conditions, hq, rev.edit_note, rev.created_at,
+            rev.id,
+            rev.insight_id,
+            rev.resource_id,
+            rev.situation,
+            rev.stuck_point,
+            rev.turning_point,
+            rev.rule,
+            rev.validity_conditions,
+            hq,
+            rev.edit_note,
+            rev.created_at,
         ],
     )
     .map_err(db_err)?;
     Ok(())
 }
 
-pub fn get_revision(conn: &Connection, revision_id: &str) -> Result<Option<InsightRevision>, AppError> {
+pub fn get_revision(
+    conn: &Connection,
+    revision_id: &str,
+) -> Result<Option<InsightRevision>, AppError> {
     conn.query_row(
         "SELECT id, insight_id, resource_id, situation, stuck_point, turning_point, rule,
                 validity_conditions, hypothetical_queries, edit_note, created_at
@@ -248,7 +312,10 @@ pub fn get_revision(conn: &Connection, revision_id: &str) -> Result<Option<Insig
     .map_err(db_err)
 }
 
-pub fn list_revisions(conn: &Connection, insight_id: &str) -> Result<Vec<InsightRevision>, AppError> {
+pub fn list_revisions(
+    conn: &Connection,
+    insight_id: &str,
+) -> Result<Vec<InsightRevision>, AppError> {
     let mut stmt = conn
         .prepare(
             "SELECT id FROM insight_revisions
@@ -281,16 +348,30 @@ pub fn insert_evidence(conn: &Connection, ev: &InsightEvidence) -> Result<(), Ap
           text_start, text_end, speaker, resource_id, quote_snapshot, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
         params![
-            ev.id, ev.insight_id, ev.revision_id, ev.kind.as_str(), ev.session_id,
-            ev.message_id, ev.variant_id, ev.block_id, ev.text_start, ev.text_end,
-            ev.speaker, ev.resource_id, ev.quote_snapshot, ev.created_at,
+            ev.id,
+            ev.insight_id,
+            ev.revision_id,
+            ev.kind.as_str(),
+            ev.session_id,
+            ev.message_id,
+            ev.variant_id,
+            ev.block_id,
+            ev.text_start,
+            ev.text_end,
+            ev.speaker,
+            ev.resource_id,
+            ev.quote_snapshot,
+            ev.created_at,
         ],
     )
     .map_err(db_err)?;
     Ok(())
 }
 
-pub fn list_evidence(conn: &Connection, insight_id: &str) -> Result<Vec<InsightEvidence>, AppError> {
+pub fn list_evidence(
+    conn: &Connection,
+    insight_id: &str,
+) -> Result<Vec<InsightEvidence>, AppError> {
     let mut stmt = conn
         .prepare(
             "SELECT id, insight_id, revision_id, kind, session_id, message_id, variant_id,
@@ -363,7 +444,10 @@ pub fn upsert_relation(
     Ok(real_id)
 }
 
-pub fn list_relations(conn: &Connection, insight_id: &str) -> Result<Vec<InsightRelation>, AppError> {
+pub fn list_relations(
+    conn: &Connection,
+    insight_id: &str,
+) -> Result<Vec<InsightRelation>, AppError> {
     let mut stmt = conn
         .prepare(
             "SELECT id, from_id, to_id, relation_type, scope, evidence, status, created_by, created_at
@@ -456,8 +540,17 @@ pub fn insert_event(
           quality_signal, need_signal, benefit_signal, payload_json, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         params![
-            id, insight_id, session_id, message_id, event_type.as_str(), help_level_str,
-            quality_signal, need_signal, benefit_signal, payload_json, now_iso(),
+            id,
+            insight_id,
+            session_id,
+            message_id,
+            event_type.as_str(),
+            help_level_str,
+            quality_signal,
+            need_signal,
+            benefit_signal,
+            payload_json,
+            now_iso(),
         ],
     )
     .map_err(db_err)?;

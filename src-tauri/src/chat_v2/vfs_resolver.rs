@@ -166,7 +166,10 @@ fn resolve_insight_card(conn: &Connection, vfs_ref: &VfsResourceRef) -> Vec<Cont
             }]
         }
         _ => {
-            log::debug!("[VfsResolver] Insight card not found: {}", vfs_ref.source_id);
+            log::debug!(
+                "[VfsResolver] Insight card not found: {}",
+                vfs_ref.source_id
+            );
             vec![]
         }
     }

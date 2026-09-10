@@ -88,7 +88,10 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 }
 
 fn signature_header_value(secret: &str, body: &[u8]) -> String {
-    format!("sha256={}", hex::encode(hmac_sha256(secret.as_bytes(), body)))
+    format!(
+        "sha256={}",
+        hex::encode(hmac_sha256(secret.as_bytes(), body))
+    )
 }
 
 /// host 是否为本地回环（开发/测试例外的唯一情形）。
@@ -214,9 +217,7 @@ impl WebhookProvider {
                 ))
             })?
             .ok_or_else(|| {
-                ProviderError::permanent(
-                    "webhook secret is not configured (fail-closed)",
-                )
+                ProviderError::permanent("webhook secret is not configured (fail-closed)")
             })?;
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(WEBHOOK_TIMEOUT_SECS))
@@ -397,10 +398,7 @@ impl ConnectorProvider for WebhookProvider {
             })
             .await?;
         let parsed: Value = serde_json::from_slice(&body).map_err(|e| {
-            ProviderError::unknown(format!(
-                "webhook lookup returned a non-JSON body: {}",
-                e
-            ))
+            ProviderError::unknown(format!("webhook lookup returned a non-JSON body: {}", e))
         })?;
         let found = parsed
             .get("found")
@@ -686,13 +684,11 @@ mod tests {
 
     #[tokio::test]
     async fn g04_submit_classifies_status_codes() {
-        let (endpoint, _log) = spawn_mock_receiver(Arc::new(|_req, idx| {
-            match idx {
-                0 => (500, r#"{"error":"boom"}"#.to_string()),
-                1 => (429, r#"{"error":"slow down"}"#.to_string()),
-                2 => (400, r#"{"error":"bad request"}"#.to_string()),
-                _ => (401, r#"{"error":"bad signature"}"#.to_string()),
-            }
+        let (endpoint, _log) = spawn_mock_receiver(Arc::new(|_req, idx| match idx {
+            0 => (500, r#"{"error":"boom"}"#.to_string()),
+            1 => (429, r#"{"error":"slow down"}"#.to_string()),
+            2 => (400, r#"{"error":"bad request"}"#.to_string()),
+            _ => (401, r#"{"error":"bad signature"}"#.to_string()),
         }))
         .await;
         let (_dir, db) = test_db();
@@ -717,7 +713,10 @@ mod tests {
         .await;
         let (_dir, db) = test_db();
         let provider = provider_for(&endpoint, &db).unwrap();
-        let receipt = provider.submit(&test_op("key-dup")).await.expect("409 = deduped");
+        let receipt = provider
+            .submit(&test_op("key-dup"))
+            .await
+            .expect("409 = deduped");
         assert_eq!(receipt.external_operation_id.as_deref(), Some("msg-dup"));
         assert_eq!(receipt.result["deduped"], json!(true));
     }
