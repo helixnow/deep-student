@@ -91,6 +91,7 @@ import {
   getLoadedSkills,
   getSessionAvailableSkillsPrompt,
   hydrateSessionAvailableSkillsSnapshot,
+  preloadAutoLoadSkillsForSession,
 } from '../skills/progressiveDisclosure';
 import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
@@ -5264,6 +5265,25 @@ export class ChatV2TauriAdapter {
       chatParams.contextLimit
     );
     const testModeConfig = getTestModeConfig();
+
+    // A2 会话首轮定型：本会话还没有任何技能进入工具面时，先把「设为默认」的技能
+    // 加载进来，使工具面从第 1 个请求就完整——任务中途 load_skills 追加工具会让
+    // provider 的前缀缓存整段失效（首次出现新工具面实测 cached=0）。
+    // 已有技能面的会话（新建会话已激活默认技能、或中途加载过技能）跳过，不改动
+    // 既有前缀。
+    if (
+      getLoadedSkills(this.sessionId).length === 0 &&
+      (!Array.isArray(currentState.activeSkillIds) || currentState.activeSkillIds.length === 0)
+    ) {
+      const preloadedDefaultSkills = preloadAutoLoadSkillsForSession(this.sessionId);
+      if (preloadedDefaultSkills.length > 0) {
+        console.log(
+          LOG_PREFIX,
+          '[ProgressiveDisclosure] Preloaded default skills for first-turn tool face:',
+          preloadedDefaultSkills
+        );
+      }
+    }
 
     const structuredSkillState = this.getStructuredSkillStateFromStore();
     // Runtime-active skills must pass the same trust/enable/requires admission
