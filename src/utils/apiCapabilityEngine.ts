@@ -585,7 +585,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isDeepSeekV4 = DEEPSEEK_V4_REGEX.test(id) || (name ? DEEPSEEK_V4_REGEX.test(name) : false);
   const isDeepSeekLegacyAlias = DEEPSEEK_LEGACY_ALIAS_REGEX.test(id);
-  // DeepSeek V4 exposes high/max effort semantics across official DeepSeek and
+  // DeepSeek V4 exposes low/high/max effort semantics across official DeepSeek and
   // SiliconFlow-hosted V4 ids; V3.2 remains thinking-budget based.
   const isDeepSeekV4EffortCapable = isDeepSeekV4 || isDeepSeekLegacyAlias;
 
