@@ -274,7 +274,7 @@
         "enable_thinking_hint": "启用后模型会输出 reasoning_content 思考过程",
         "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式",
         "v32_depth_hint": "DeepSeek V3.2 会将深度预设映射为 SiliconFlow thinking_budget。",
-        "reasoning_effort_hint": "DeepSeek V4 支持 high 或 max 推理强度。",
+        "reasoning_effort_hint": "DeepSeek V4 支持 low、high 或 max 推理强度。",
         "depth": {
           "low": "低",
           "medium": "中",
