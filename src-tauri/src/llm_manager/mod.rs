@@ -4010,6 +4010,13 @@ impl LLMManager {
         AppError::llm(format!("{}: {}", context, err))
     }
 
+    /// 请求前校验推理配置（例如官方 DeepSeek V4 家族的推理强度契约）。
+    ///
+    /// 校验失败在网络 I/O 前返回，避免静默丢弃用户显式给出的值。
+    pub(crate) fn validate_reasoning_config(config: &ApiConfig) -> Result<()> {
+        request_adapter_for_config(config).validate_reasoning_config(config)
+    }
+
     /// 应用推理相关配置到请求体
     ///
     /// 使用子适配器系统处理不同供应商的参数差异：
