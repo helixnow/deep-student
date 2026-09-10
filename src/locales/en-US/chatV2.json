@@ -1151,6 +1151,7 @@
     "groupNamePlaceholder": "Describe the task in one sentence",
     "groupIcon": "Group icon",
     "groupIconPlaceholder": "e.g. 📁 or folder",
+    "groupColor": "Group color",
     "groupDescription": "Description",
     "groupDescriptionPlaceholder": "Optional, describe this group",
     "groupSystemPrompt": "Group system prompt",

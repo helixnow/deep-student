@@ -70,6 +70,24 @@ export const PRESET_ICONS = [
   { name: 'file-text', Icon: FileText },
   { name: 'bookmark', Icon: BookmarkSimple },
 ];
+
+// 预设颜色列表（十六进制，持久化到 group.color）
+export const PRESET_COLORS = [
+  { name: 'slate', value: '#64748b' },
+  { name: 'gray', value: '#6b7280' },
+  { name: 'red', value: '#ef4444' },
+  { name: 'rose', value: '#f43f5e' },
+  { name: 'pink', value: '#ec4899' },
+  { name: 'orange', value: '#f97316' },
+  { name: 'amber', value: '#f59e0b' },
+  { name: 'green', value: '#22c55e' },
+  { name: 'emerald', value: '#10b981' },
+  { name: 'teal', value: '#14b8a6' },
+  { name: 'blue', value: '#3b82f6' },
+  { name: 'indigo', value: '#6366f1' },
+  { name: 'violet', value: '#8b5cf6' },
+  { name: 'purple', value: '#a855f7' },
+];
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -141,6 +159,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('');
+  const [color, setColor] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [defaultSkillIds, setDefaultSkillIds] = useState<string[]>([]);
   const [pinnedResourceIds, setPinnedResourceIds] = useState<string[]>([]);
@@ -177,6 +196,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setName(initial.name);
       setDescription(initial.description ?? '');
       setIcon(initial.icon ?? '');
+      setColor(initial.color ?? '');
       setSystemPrompt(initial.systemPrompt ?? '');
       setDefaultSkillIds(initial.defaultSkillIds ?? []);
       setPinnedResourceIds(initial.pinnedResourceIds ?? []);
@@ -186,6 +206,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setName('');
       setDescription('');
       setIcon('');
+      setColor('');
       setSystemPrompt('');
       setDefaultSkillIds([]);
       setPinnedResourceIds([]);
@@ -350,6 +371,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           name: initial.name,
           description: initial.description ?? '',
           icon: initial.icon ?? '',
+          color: initial.color ?? '',
           systemPrompt: initial.systemPrompt ?? '',
           defaultSkillIds: initial.defaultSkillIds ?? [],
           pinnedResourceIds: initial.pinnedResourceIds ?? [],
@@ -360,6 +382,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           name: '',
           description: '',
           icon: '',
+          color: '',
           systemPrompt: '',
           defaultSkillIds: [] as string[],
           pinnedResourceIds: [] as string[],
@@ -376,6 +399,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     return name !== baseline.name
       || description !== baseline.description
       || icon !== baseline.icon
+      || color !== baseline.color
       || systemPrompt !== baseline.systemPrompt
       || !sameIds(defaultSkillIds, baseline.defaultSkillIds)
       || !sameIds(pinnedResourceIds, baseline.pinnedResourceIds)
@@ -386,6 +410,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     defaultSkillIds,
     description,
     icon,
+    color,
     initial,
     mode,
     name,
@@ -411,6 +436,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           name: name.trim(),
           description: description.trim() || undefined,
           icon: icon.trim() || undefined,
+          color: color.trim() || undefined,
           systemPrompt: systemPrompt.trim() || undefined,
           defaultSkillIds,
           pinnedResourceIds,
@@ -424,6 +450,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           name: name.trim(),
           description: description.trim(),
           icon: icon.trim(),
+          color: color.trim(),
           systemPrompt: systemPrompt.trim(),
           defaultSkillIds,
           pinnedResourceIds,
@@ -444,6 +471,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     pinnedResourceIds,
     description,
     icon,
+    color,
     mode,
     name,
     onSubmit,
@@ -491,12 +519,12 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           <div className="space-y-4">
              {/* Icon Preview if available */}
              {icon && (
-                <div className="text-4xl mb-4">
+                <div className="text-4xl mb-4" style={color ? { color } : undefined}>
                   {(() => {
                     const presetIcon = PRESET_ICONS.find(p => p.name === icon);
                     if (presetIcon) {
                       const IconComp = presetIcon.Icon;
-                      return <IconComp size={40} className="text-primary" />;
+                      return <IconComp size={40} className={color ? '' : 'text-primary'} />;
                     }
                     return icon;
                   })()}
@@ -554,6 +582,56 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   placeholder={t('page.groupIconPlaceholder')}
                   className="h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-[16px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
                 />
+              </div>
+            </PropertyRow>
+
+            <PropertyRow icon={Palette} label={t('page.groupColor')} mobileStacked>
+              <div className="flex flex-wrap items-center gap-2 pt-1 px-0 md:px-2">
+                {PRESET_COLORS.map(({ name: colorName, value }) => {
+                  const selected = color === value;
+                  return (
+                    <div
+                      key={colorName}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setColor(selected ? '' : value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setColor(selected ? '' : value);
+                        }
+                      }}
+                      title={colorName}
+                      aria-label={colorName}
+                      aria-pressed={selected}
+                      className="w-7 h-7 max-md:w-9 max-md:h-9 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 rounded-full cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      style={{
+                        backgroundColor: value,
+                        boxShadow: selected
+                          ? `0 0 0 2px var(--background), 0 0 0 4px ${value}`
+                          : undefined,
+                      }}
+                    />
+                  );
+                })}
+                {color && (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setColor('')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setColor('');
+                      }
+                    }}
+                    title={t('common:clear')}
+                    aria-label={t('common:clear')}
+                    className="w-7 h-7 max-md:w-9 max-md:h-9 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 flex items-center justify-center rounded-full cursor-pointer text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X size={16} />
+                  </div>
+                )}
               </div>
             </PropertyRow>
 

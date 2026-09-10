@@ -1032,6 +1032,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               // 分组标题带图标/emoji
               const displayIcon = sessionGroup.icon;
               const isEmoji = displayIcon && !/^[a-zA-Z]/.test(displayIcon);
+              const groupColor = sessionGroup.color;
 
               const isCollapsed = collapsedGroups.has(sessionGroup.id);
 
@@ -1046,9 +1047,9 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                       isCollapsed && '-rotate-90'
                     )} />
                     {isEmoji ? (
-                      <span className="text-sm">{displayIcon}</span>
+                      <span className="text-sm" style={groupColor ? { color: groupColor } : undefined}>{displayIcon}</span>
                     ) : (
-                      <Folder size={16} className="text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                      <Folder size={16} className="text-muted-foreground/60 group-hover/header:text-foreground transition-colors" style={groupColor ? { color: groupColor } : undefined} />
                     )}
                     <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {sessionGroup.name}
