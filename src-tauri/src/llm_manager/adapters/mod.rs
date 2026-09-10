@@ -50,6 +50,7 @@ pub use qwen::QwenAdapter;
 pub use zhipu::ZhipuAdapter;
 
 use crate::llm_manager::ApiConfig;
+use crate::models::AppError;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -111,6 +112,15 @@ pub trait RequestAdapter: Send + Sync {
     /// 某些推理模型（如 OpenAI o 系列）不支持这些参数
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
         config.is_reasoning || config.supports_reasoning
+    }
+
+    /// 请求前校验推理配置。
+    ///
+    /// 默认放行。适配器可在网络 I/O 之前拒绝不支持的配置（例如官方 DeepSeek V4
+    /// 家族的推理强度契约），避免静默丢弃用户显式给出的值——对齐 DSH 的
+    /// `UNSUPPORTED_REASONING_EFFORT` 语义。
+    fn validate_reasoning_config(&self, _config: &ApiConfig) -> Result<(), AppError> {
+        Ok(())
     }
 
     /// 使用工具调用时是否应该禁用 thinking
