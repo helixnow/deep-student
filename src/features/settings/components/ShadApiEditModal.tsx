@@ -1810,7 +1810,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               <p className="text-2xs text-muted-foreground/60 ml-1">
                                 {deepSeekReasoningControl.kind === 'v32-budget-effort'
                                   ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
-                                  : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports high or max reasoning effort.')}
+                                  : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports low, high, or max reasoning effort.')}
                               </p>
                             </div>
                           )}
