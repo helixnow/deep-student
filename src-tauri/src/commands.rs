@@ -1954,7 +1954,8 @@ fn build_chat_probe_body(config: &ApiConfig) -> serde_json::Value {
 
 /// 把 HTTP 失败状态码归类为失败类别 + 用户可读摘要（响应体已截断脱敏）。
 fn classify_probe_http_failure(status: reqwest::StatusCode, body: &str) -> (&'static str, String) {
-    let detail = truncate_provider_error_detail(crate::debug_log_service::redact_sensitive_text(body));
+    let detail =
+        truncate_provider_error_detail(crate::debug_log_service::redact_sensitive_text(body));
     let (category, summary) = match status.as_u16() {
         401 | 403 => ("auth", "认证失败：API 密钥无效、已过期或权限不足"),
         402 => ("billing", "账户余额不足或需要订阅"),
@@ -2388,9 +2389,11 @@ fn probe_u32_field(item: &serde_json::Value, keys: &[&str]) -> Option<u32> {
             .split('.')
             .fold(Some(item), |acc, segment| acc.and_then(|v| v.get(segment)));
         let Some(value) = raw else { continue };
-        let number = value
-            .as_u64()
-            .or_else(|| value.as_str().and_then(|text| text.trim().parse::<u64>().ok()));
+        let number = value.as_u64().or_else(|| {
+            value
+                .as_str()
+                .and_then(|text| text.trim().parse::<u64>().ok())
+        });
         if let Some(number) = number.and_then(|n| u32::try_from(n).ok()) {
             if number > 0 {
                 return Some(number);
@@ -5189,16 +5192,25 @@ mod tests {
             Some(8_192)
         );
         assert_eq!(
-            probe_u32_field(&serde_json::json!({"inputTokenLimit": 1000000}), &["inputTokenLimit"]),
+            probe_u32_field(
+                &serde_json::json!({"inputTokenLimit": 1000000}),
+                &["inputTokenLimit"]
+            ),
             Some(1_000_000)
         );
         // max_tokens 在不同网关含义不定，不得当作上下文窗口
         assert_eq!(
-            probe_u32_field(&serde_json::json!({"max_tokens": 4096}), PROBE_CONTEXT_WINDOW_KEYS),
+            probe_u32_field(
+                &serde_json::json!({"max_tokens": 4096}),
+                PROBE_CONTEXT_WINDOW_KEYS
+            ),
             None
         );
         assert_eq!(
-            probe_u32_field(&serde_json::json!({"context_length": 0}), PROBE_CONTEXT_WINDOW_KEYS),
+            probe_u32_field(
+                &serde_json::json!({"context_length": 0}),
+                PROBE_CONTEXT_WINDOW_KEYS
+            ),
             None
         );
         assert_eq!(
