@@ -86,6 +86,7 @@ import {
   parsePersistedWallpaper,
   type PersistedTileMargins,
 } from '../core/persistedSettings';
+import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -319,7 +320,9 @@ export const WorkbenchDesktop: React.FC = () => {
           ? (tier as MaterialTierSetting)
           : 'auto',
       );
-      setWallpaper(parsePersistedWallpaper(wallpaperVal, DEFAULT_WALLPAPER));
+      const parsedWallpaper = parsePersistedWallpaper(wallpaperVal, DEFAULT_WALLPAPER);
+      logWallpaperDiag('desktop:init', { raw: wallpaperVal, parsed: parsedWallpaper });
+      setWallpaper(parsedWallpaper);
       setTileMargins(parsePersistedTileMargins(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
@@ -336,9 +339,15 @@ export const WorkbenchDesktop: React.FC = () => {
     const onSettingsChanged = (e: Event) => {
       const { key, value } = (e as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
       switch (key) {
-        case SETTING_KEYS.wallpaper:
-          setWallpaper(parsePersistedWallpaper(value, DEFAULT_WALLPAPER));
+        case SETTING_KEYS.wallpaper: {
+          const parsedWallpaper = parsePersistedWallpaper(value, DEFAULT_WALLPAPER);
+          logWallpaperDiag('desktop:settings-changed', {
+            raw: value,
+            parsed: parsedWallpaper,
+          });
+          setWallpaper(parsedWallpaper);
           break;
+        }
         case SETTING_KEYS.tileMargins:
           setTileMargins(parsePersistedTileMargins(value, DEFAULT_TILE_MARGINS));
           break;

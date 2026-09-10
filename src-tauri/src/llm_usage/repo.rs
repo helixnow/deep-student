@@ -79,7 +79,42 @@ impl LlmUsageRepo {
             ],
         )?;
 
+        Self::log_cache_debug_usage(record);
+
         Ok(())
+    }
+
+    /// CHAT_V2_CACHE_DEBUG=1 时输出本次请求的缓存命中率，与请求侧
+    /// [PromptCache] 指纹关联：指纹在请求前打、命中率在响应后才有，两者对上
+    /// 才能区分「前缀没变但没命中」与「前缀变了所以没命中」。
+    ///
+    /// 注意：生产写库路径是 `UsageCollector::insert_records`（自拼 SQL），
+    /// 本模块的 insert_usage* 只被测试调用——collector 侧必须同样调用本函数。
+    pub(crate) fn log_cache_debug_usage(record: &UsageRecord) {
+        if !crate::llm_manager::model2_pipeline::cache_debug_enabled() {
+            return;
+        }
+        tracing::info!("{}", Self::cache_debug_usage_line(record));
+    }
+
+    /// 命中率日志正文（纯函数，便于单测锁定格式）
+    pub(crate) fn cache_debug_usage_line(record: &UsageRecord) -> String {
+        let cached = record.cached_tokens.unwrap_or(0);
+        let hit = if record.prompt_tokens > 0 {
+            cached as f64 / record.prompt_tokens as f64 * 100.0
+        } else {
+            0.0
+        };
+        format!(
+            "[PromptCache] usage: scope={}::{}, model={}, prompt={}, cached={}, cache_write={}, hit={:.1}%",
+            record.caller_id.as_deref().unwrap_or("-"),
+            record.variant_id.as_deref().unwrap_or("-"),
+            record.model_id,
+            record.prompt_tokens,
+            cached,
+            record.cache_write_tokens.unwrap_or(0),
+            hit
+        )
     }
 
     /// 从 model_id 推断供应商名称
@@ -184,6 +219,8 @@ impl LlmUsageRepo {
                 record.estimated_cost_usd,
             ],
         )?;
+
+        Self::log_cache_debug_usage(record);
 
         Ok(())
     }
@@ -743,6 +780,22 @@ mod tests {
         let recent = LlmUsageRepo::get_recent_usage(&conn, 10).unwrap();
         assert_eq!(recent[0].adapter, Some("anthropic_messages".to_string()));
         assert_eq!(recent[0].token_source, Some("heuristic".to_string()));
+    }
+
+    #[test]
+    fn test_cache_debug_usage_line_reports_hit_ratio() {
+        let record = UsageRecord::new(CallerType::ChatV2, "glm-5.3-flash".to_string(), 1000, 50)
+            .with_cached_tokens(750);
+        let line = LlmUsageRepo::cache_debug_usage_line(&record);
+        assert!(line.starts_with("[PromptCache] usage:"), "{line}");
+        assert!(line.contains("prompt=1000"), "{line}");
+        assert!(line.contains("cached=750"), "{line}");
+        assert!(line.contains("hit=75.0%"), "{line}");
+
+        // prompt=0 不得除零，命中率按 0 计
+        let empty = UsageRecord::new(CallerType::ChatV2, "gpt-4o".to_string(), 0, 0);
+        let line = LlmUsageRepo::cache_debug_usage_line(&empty);
+        assert!(line.contains("hit=0.0%"), "{line}");
     }
 
     #[test]

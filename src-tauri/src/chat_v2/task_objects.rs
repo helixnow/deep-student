@@ -1770,6 +1770,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn write_page_rejects_symlink_escape() {
         let dir = tempfile::TempDir::new().expect("temp dir");

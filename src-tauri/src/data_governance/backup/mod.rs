@@ -3813,6 +3813,18 @@ impl BackupManager {
                     e
                 ))
             })?;
+            // 密码加密备份里的种子是明文（内层载荷已由用户密码保护）：恢复到
+            // Windows 时必须重新做 DPAPI 封装，避免明文种子直接留在磁盘上。
+            // 非 Windows 平台明文即目标形态，函数返回 false。
+            crate::secure_store::SecureStore::reseal_seed_file_for_current_platform(
+                &staged_secure.join(".key_seed"),
+            )
+            .map_err(|e| {
+                BackupError::RestoreFailed(format!(
+                    "备份密钥种子按当前平台重新封装失败，目标密钥保持不变: {}",
+                    e
+                ))
+            })?;
         }
         if !has_master && !has_secure {
             after_publish(0)?;

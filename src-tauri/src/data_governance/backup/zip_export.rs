@@ -47,6 +47,9 @@ use super::{assets, BackupFile, BackupKeyPolicy, BackupManager, BackupManifest};
 /// 载荷是一个内层 ZIP（原始 manifest.json + 全部便携排除文件），
 /// 经 `crate::crypto::backup_crypto`（Argon2id + AES-256-GCM 分块）加密。
 pub const ENCRYPTED_SECRETS_ENTRY: &str = "portable_secrets.dsbk";
+/// 密钥种子在备份归档中的相对路径。内层载荷里它以明文写入，因此清单条目与
+/// coverage 账本必须同步为明文的大小/哈希，否则导入端逐文件校验会失败。
+const KEY_SEED_RELATIVE_PATH: &str = "crypto/.secure/.key_seed";
 
 /// 加密全保真 ZIP 缺少导入密码时的稳定错误码。
 pub const SEALED_BACKUP_PASSWORD_REQUIRED_CODE: &str = "E_BACKUP_SEALED_PASSWORD_REQUIRED";
@@ -208,8 +211,6 @@ fn build_sealed_secrets_payload(
                 .to_string(),
         ));
     }
-    let original_manifest_bytes = std::fs::read(&manifest_path)?;
-
     // 收集全部便携排除文件（crypto/ 密钥、审计库、导出隔离域等）。
     let mut sealed_files: Vec<(PathBuf, String)> = Vec::new();
     let mut sealed_bytes: u64 = 0;
@@ -254,16 +255,80 @@ fn build_sealed_secrets_payload(
     }
 
     // 内层 ZIP：原始 manifest + 敏感文件（相对路径保持不变）。
+    //
+    // 密钥种子在内层载荷中写为明文（内层随后整体由用户密码加密），因此原始
+    // 清单里该条目必须同步为明文的 size/sha256，否则导入端逐文件校验会报
+    // 「文件大小不匹配 crypto/.secure/.key_seed」；coverage 账本中该域的
+    // total_size 也要同步，否则紧接着报「持久域覆盖大小不一致」。
+    let mut inner_manifest = original_manifest.clone();
+    let mut seed_plaintext = None;
+    for (path, normalized) in &sealed_files {
+        if normalized.as_str() == KEY_SEED_RELATIVE_PATH {
+            seed_plaintext = Some(
+                crate::secure_store::SecureStore::resolve_seed_file_plaintext(path).map_err(
+                    |error| {
+                        ZipExportError::ExportFailed(format!(
+                            "解析密钥种子以写入加密备份失败: {}",
+                            error
+                        ))
+                    },
+                )?,
+            );
+            break;
+        }
+    }
+    if let Some(plain) = seed_plaintext.as_ref() {
+        let new_size = plain.len() as u64;
+        let new_sha256 = sha256_hex(plain.as_bytes());
+        let previous_size = inner_manifest
+            .files
+            .iter_mut()
+            .find(|file| file.path == KEY_SEED_RELATIVE_PATH)
+            .map(|file| {
+                let previous = file.size;
+                file.size = new_size;
+                file.sha256 = new_sha256;
+                previous
+            });
+        if let (Some(previous_size), Some(coverage)) =
+            (previous_size, inner_manifest.coverage.as_mut())
+        {
+            for evidence in coverage.domains.values_mut() {
+                if evidence
+                    .paths
+                    .iter()
+                    .any(|path| path.as_str() == KEY_SEED_RELATIVE_PATH)
+                {
+                    evidence.total_size = evidence
+                        .total_size
+                        .saturating_sub(previous_size)
+                        .saturating_add(new_size);
+                }
+            }
+        }
+    }
+    let inner_manifest_bytes = serde_json::to_vec(&inner_manifest)
+        .map_err(|error| ZipExportError::ExportFailed(format!("序列化密封清单失败: {}", error)))?;
+
     let inner_zip = tempfile::NamedTempFile::new()?;
     let mut inner_writer = ZipWriter::new(inner_zip.reopen()?);
     let inner_options = FileOptions::default().compression_method(CompressionMethod::Deflated);
     inner_writer.start_file("manifest.json", inner_options)?;
-    inner_writer.write_all(&original_manifest_bytes)?;
+    inner_writer.write_all(&inner_manifest_bytes)?;
     for (path, normalized) in &sealed_files {
         if cancel_check() {
             return Err(export_cancelled());
         }
         inner_writer.start_file(normalized, inner_options)?;
+        if normalized.as_str() == KEY_SEED_RELATIVE_PATH {
+            if let Some(plain) = seed_plaintext.as_ref() {
+                // 内层载荷整体由用户密码加密（Argon2id + AES-256-GCM），明文不会
+                // 外泄；保留 DPAPI 封装则会让备份在非 Windows 设备上永远无法恢复
+                // 种子（跨平台导入必然失败）。
+                inner_writer.write_all(plain.as_bytes())?;
+                continue;
+            }
+        }
         let mut file = File::open(path)?;
         std::io::copy(&mut file, &mut inner_writer)?;
     }
@@ -1423,6 +1488,13 @@ fn calculate_file_sha256(path: &Path) -> Result<String, ZipExportError> {
 
     let result = hasher.finalize();
     Ok(hex::encode(result))
+}
+
+/// 字节内容的 SHA-256（与 `calculate_file_sha256` 同编码），用于同步密封清单条目
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
 }
 
 fn validate_import_archive(
@@ -2611,6 +2683,109 @@ mod tests {
         )
         .unwrap();
         (output_dir, output_path)
+    }
+
+    /// 跨平台导入契约：加密全保真导出的密封载荷内 `.key_seed` 必须是明文。
+    /// 若沿用 DPAPI 封装，非 Windows 端解出载荷后永远无法恢复密钥种子，
+    /// 跨设备导入必然失败（本仓库真实缺陷的回归测试）。
+    #[test]
+    fn test_sealed_payload_stores_key_seed_as_plaintext() {
+        let backup_dir = create_test_backup_dir();
+        std::fs::create_dir_all(backup_dir.path().join("crypto/.secure")).unwrap();
+        let seed = "ab".repeat(32);
+        std::fs::write(backup_dir.path().join("crypto/.secure/.key_seed"), &seed).unwrap();
+
+        let (zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        // 外层 ZIP → 密封载荷
+        let payload_path = zip_guard.path().join("portable_secrets.dsbk");
+        {
+            let outer = File::open(&zip_path).unwrap();
+            let mut archive = zip::ZipArchive::new(outer).unwrap();
+            let mut entry = archive
+                .by_name(ENCRYPTED_SECRETS_ENTRY)
+                .expect("加密导出必须生成密封载荷");
+            let mut payload = File::create(&payload_path).unwrap();
+            std::io::copy(&mut entry, &mut payload).unwrap();
+        }
+
+        // 解密 → 内层 ZIP
+        let inner_path = zip_guard.path().join("inner.zip");
+        crate::crypto::backup_crypto::decrypt_backup_file(
+            &payload_path,
+            &inner_path,
+            TEST_BACKUP_PASSWORD,
+        )
+        .expect("解密密封载荷");
+
+        let inner = File::open(&inner_path).unwrap();
+        let mut archive = zip::ZipArchive::new(inner).unwrap();
+        let mut entry = archive
+            .by_name("crypto/.secure/.key_seed")
+            .expect("密钥种子必须进入密封载荷");
+        let mut sealed = String::new();
+        std::io::Read::read_to_string(&mut entry, &mut sealed).unwrap();
+        assert_eq!(
+            sealed, seed,
+            "密封载荷内种子必须是明文（导入端需按当前平台重新封装）"
+        );
+    }
+
+    /// 加密全保真导出必须能原样导入：归档清单里种子条目的大小/哈希若与写入
+    /// 载荷的明文不一致，导入端会报「文件大小不匹配 crypto/.secure/.key_seed」。
+    /// 这里用「清单记录 399 / 实际明文 64」复现该场景，断言导出侧已同步清单。
+    #[test]
+    fn test_encrypted_export_imports_after_seed_manifest_sync() {
+        let backup_dir = create_test_backup_dir();
+        let seed = "ab".repeat(32);
+        let seed_path = backup_dir.path().join("crypto/.secure/.key_seed");
+        std::fs::create_dir_all(seed_path.parent().unwrap()).unwrap();
+        std::fs::write(&seed_path, &seed).unwrap();
+
+        // 模拟 Windows 上种子以 DPAPI 封装归档（大小与明文不同）：
+        // 清单条目记录封装后的大小/哈希，而载荷里写的是明文。
+        {
+            let manifest_path = backup_dir.path().join("manifest.json");
+            let mut manifest = BackupManifest::load_from_file(&manifest_path).unwrap();
+            manifest.add_file(BackupFile {
+                path: "crypto/.secure/.key_seed".to_string(),
+                size: seed.len() as u64 + 335,
+                sha256: "0".repeat(64),
+                database_id: None,
+            });
+            manifest
+                .record_coverage(
+                    "crypto",
+                    CoverageStatus::Complete,
+                    vec!["crypto/.secure/.key_seed".to_string()],
+                    None,
+                )
+                .unwrap();
+            // crypto 域 Complete 时 key_policy 不得为 not_present；本机完整备份
+            // 的密钥材料随包携带，故取 included_local（included_encrypted 属于
+            // 已密封的外层形态，会让导出侧校验直接拒绝）。
+            manifest.key_policy = BackupKeyPolicy::IncludedLocal;
+            manifest.mark_full().unwrap();
+            manifest.save_to_file(&manifest_path).unwrap();
+        }
+
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |_| {},
+            || false,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .expect("清单与明文种子同步后，加密备份必须能导入");
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("crypto/.secure/.key_seed")).unwrap(),
+            seed
+        );
     }
 
     #[test]
