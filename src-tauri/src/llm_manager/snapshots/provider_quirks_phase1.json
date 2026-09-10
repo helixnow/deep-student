@@ -9,7 +9,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -26,7 +25,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "deep_seek_style",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -43,7 +41,6 @@
       "strip_tool_choice_on_tool_result": true,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -60,7 +57,6 @@
       "strip_tool_choice_on_tool_result": true,
       "force_json_response_format": false,
       "reasoning_passback": "deep_seek_style",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -77,7 +73,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": true,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": "none"
@@ -94,7 +89,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": true,
       "reasoning_passback": "deep_seek_style",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": "none"
@@ -111,7 +105,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": "none"
@@ -128,7 +121,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "deep_seek_style",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": "none"
@@ -145,7 +137,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -162,7 +153,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -179,7 +169,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -196,7 +185,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -213,7 +201,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "reasoning_details",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -230,7 +217,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "reasoning_details",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -247,7 +233,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "no_passback",
-      "passback_plain_assistant_reasoning": false,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null
@@ -264,7 +249,6 @@
       "strip_tool_choice_on_tool_result": false,
       "force_json_response_format": false,
       "reasoning_passback": "deep_seek_style",
-      "passback_plain_assistant_reasoning": true,
       "runtime_reasoning": {
         "force_enabled": false,
         "disabled_effort": null

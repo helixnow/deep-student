@@ -9,7 +9,8 @@
 //! | 模型/Provider | 格式 | 需要回传 | 新问题清理 | 签名 |
 //! |--------------|------|---------|-----------|------|
 //! | DeepSeek R1/Reasoner | `reasoning_content` | ✅ | ✅ | ❌ |
-//! | DeepSeek V3.x/V4 | `reasoning_content` | ✅ | ✅ | ❌ |
+//! | DeepSeek V3.x | `reasoning_content` | ✅ | ✅ | ❌ |
+//! | DeepSeek V4（官方） | `reasoning_content` | ✅ | 工具请求全程回传；无工具请求剥离 | ❌ |
 //! | Perplexity Sonar Reasoning | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | xAI Grok | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | GLM-4-Thinking (SiliconFlow) | `reasoning_content` | ✅ | ✅ | ❌ |
@@ -238,16 +239,33 @@ fn is_official_deepseek_v4_family(config: &ApiConfig) -> bool {
     is_deepseek_host && is_v4_family
 }
 
-/// 普通历史 assistant 消息是否应继续回传思维链
+/// 普通历史 assistant 消息是否应继续回传思维链（基础策略，未考虑请求是否带 tools）
 ///
-/// DeepSeek 官方 Thinking Mode 文档要求区分两类场景：
-/// - 同一个用户问题里的 tool loop：必须回传 reasoning_content
-/// - 进入下一次用户提问时：应删除上一轮普通 assistant 的 reasoning_content
-///
-/// 因此，DeepSeek 官方 V4 / 兼容别名的普通历史 assistant 消息不应继续携带
-/// reasoning_content；只有工具调用链路中的 assistant tool_calls 消息仍需回传。
+/// - 非官方 DeepSeek V4 供应商：维持通用规则，需要回传的推理模型一律回传。
+/// - DeepSeek 官方 V4 / 兼容别名：无 tools 请求中回传也会被 API 忽略，
+///   由 [`should_passback_plain_assistant_reasoning_for_request`] 按请求是否带 tools 决定。
 pub fn should_passback_plain_assistant_reasoning(config: &ApiConfig) -> bool {
     requires_reasoning_passback(config) && !is_official_deepseek_v4_family(config)
+}
+
+/// 普通历史 assistant 消息是否应继续回传思维链（按本次请求是否携带 tools 分流）
+///
+/// DeepSeek 官方 V4 Thinking Mode 文档（guides/thinking_mode）：
+/// - 请求携带 `tools`：所有历史轮次的 `reasoning_content` 都应回传并会被拼进上下文，
+///   即使该轮未发生工具调用；缺失可能触发 400。
+/// - 请求不携带 `tools`：`reasoning_content` 会被 API 忽略、不拼进上下文，
+///   客户端直接剥离以节省请求体积。
+pub fn should_passback_plain_assistant_reasoning_for_request(
+    config: &ApiConfig,
+    request_has_tools: bool,
+) -> bool {
+    if !requires_reasoning_passback(config) {
+        return false;
+    }
+    if is_official_deepseek_v4_family(config) {
+        return request_has_tools;
+    }
+    true
 }
 
 /// 是否使用 reasoning_details 格式
@@ -259,20 +277,6 @@ pub fn uses_reasoning_details_format(config: &ApiConfig) -> bool {
         get_passback_policy(config),
         ReasoningPassbackPolicy::ReasoningDetails
     )
-}
-
-/// 新问题是否应清理历史思维链
-///
-/// ## 用途
-/// 某些模型要求在新问题开始时清理之前的思维链历史。
-/// DeepSeek 官方 V4 / 兼容别名是已确认需要清理的场景：
-/// 同一问题内工具调用要回传 reasoning_content，但进入下一个用户问题时要删除。
-///
-/// ## 返回
-/// - `true`: 应该清理
-/// - `false`: 不需要清理或当前无官方要求
-pub fn should_clear_reasoning_on_new_question(config: &ApiConfig) -> bool {
-    is_official_deepseek_v4_family(config)
 }
 
 /// 是否需要回传 thoughtSignature（Gemini 2.5+/3.x 工具调用专用）
@@ -371,13 +375,20 @@ mod tests {
         assert!(requires_reasoning_passback(&config));
         assert!(!uses_reasoning_details_format(&config));
         assert!(!should_passback_plain_assistant_reasoning(&config));
-        assert!(should_clear_reasoning_on_new_question(&config));
+        // 官方 V4：带 tools 的请求必须全量回传历史 reasoning（官方文档要求，
+        // 缺失可能 400）；无 tools 请求回传会被忽略，直接剥离。
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &config, true
+        ));
+        assert!(!should_passback_plain_assistant_reasoning_for_request(
+            &config, false
+        ));
     }
 
     #[test]
     fn test_deepseek_v41_flash_official() {
         // 2026-09-10 V4.1 Flash（deepseek-flash）沿用官方 V4 家族回传策略：
-        // 工具轮完整回传，新问题清除历史 reasoning_content
+        // 带 tools 的请求全量回传历史 reasoning，无 tools 请求剥离
         let config = make_config(Some("deepseek"), "deepseek-flash", true);
         assert_eq!(
             get_passback_policy(&config),
@@ -386,7 +397,12 @@ mod tests {
         assert!(requires_reasoning_passback(&config));
         assert!(!uses_reasoning_details_format(&config));
         assert!(!should_passback_plain_assistant_reasoning(&config));
-        assert!(should_clear_reasoning_on_new_question(&config));
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &config, true
+        ));
+        assert!(!should_passback_plain_assistant_reasoning_for_request(
+            &config, false
+        ));
     }
 
     #[test]
@@ -430,14 +446,19 @@ mod tests {
     }
 
     #[test]
-    fn test_deepseek_alias_new_turn_clears_plain_reasoning_history() {
+    fn test_deepseek_alias_tools_request_keeps_plain_reasoning_history() {
         let config = make_config(Some("deepseek"), "deepseek-reasoner", true);
         assert_eq!(
             get_passback_policy(&config),
             ReasoningPassbackPolicy::DeepSeekStyle
         );
         assert!(!should_passback_plain_assistant_reasoning(&config));
-        assert!(should_clear_reasoning_on_new_question(&config));
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &config, true
+        ));
+        assert!(!should_passback_plain_assistant_reasoning_for_request(
+            &config, false
+        ));
     }
 
     #[test]
@@ -445,7 +466,9 @@ mod tests {
         let config = make_config(Some("moonshot"), "kimi-k2-thinking", true);
         assert!(requires_reasoning_passback(&config));
         assert!(should_passback_plain_assistant_reasoning(&config));
-        assert!(!should_clear_reasoning_on_new_question(&config));
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &config, false
+        ));
     }
 
     #[test]
@@ -535,16 +558,36 @@ mod tests {
     }
 
     #[test]
-    fn test_should_clear_reasoning() {
+    fn test_should_passback_reasoning_for_request_routing() {
         let legacy_reasoning_config = make_config(Some("deepseek"), "deepseek-r1", true);
         let v4_reasoning_config = make_config(Some("deepseek"), "deepseek-v4", true);
+        let third_party_v4_config =
+            make_config(Some("siliconflow"), "deepseek-ai/DeepSeek-V4-Pro", true);
         let normal_config = make_config(Some("openai"), "gpt-4o", false);
 
-        assert!(!should_clear_reasoning_on_new_question(
-            &legacy_reasoning_config
+        // 非官方 V4 家族：不区分 tools，照常回传
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &legacy_reasoning_config,
+            false
         ));
-        assert!(should_clear_reasoning_on_new_question(&v4_reasoning_config));
-        assert!(!should_clear_reasoning_on_new_question(&normal_config));
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &third_party_v4_config,
+            false
+        ));
+        // 官方 V4 家族：仅带 tools 请求回传
+        assert!(!should_passback_plain_assistant_reasoning_for_request(
+            &v4_reasoning_config,
+            false
+        ));
+        assert!(should_passback_plain_assistant_reasoning_for_request(
+            &v4_reasoning_config,
+            true
+        ));
+        // 非推理模型不回传
+        assert!(!should_passback_plain_assistant_reasoning_for_request(
+            &normal_config,
+            true
+        ));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deepSeekV32EffortToBudget,
+  normalizeDeepSeekV4Effort,
   resolveDeepSeekReasoningControl,
 } from '../deepseekReasoningControls';
 
@@ -17,10 +18,21 @@ describe('DeepSeek reasoning control mapping', () => {
     expect(resolveDeepSeekReasoningControl('deepseek-ai/DeepSeek-V4-Pro', true).kind).toBe('v4-effort');
   });
 
-  it('uses high/max effort for DeepSeek V4.1 Flash (deepseek-flash)', () => {
+  it('uses low/high/max effort for DeepSeek V4.1 Flash (deepseek-flash)', () => {
     const control = resolveDeepSeekReasoningControl('deepseek-flash', true);
     expect(control.kind).toBe('v4-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['high', 'max']);
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'high', 'max']);
+  });
+
+  it('normalizes V4 effort per official mapping (low stays low, ultra to max)', () => {
+    expect(normalizeDeepSeekV4Effort('minimal')).toBe('low');
+    expect(normalizeDeepSeekV4Effort('low')).toBe('low');
+    expect(normalizeDeepSeekV4Effort('medium')).toBe('high');
+    expect(normalizeDeepSeekV4Effort('high')).toBe('high');
+    expect(normalizeDeepSeekV4Effort('xhigh')).toBe('max');
+    expect(normalizeDeepSeekV4Effort('max')).toBe('max');
+    expect(normalizeDeepSeekV4Effort('ultra')).toBe('max');
+    expect(normalizeDeepSeekV4Effort(undefined)).toBe('high');
   });
 
   it('uses low/medium/high/xhigh budget presets for V3.2 models', () => {

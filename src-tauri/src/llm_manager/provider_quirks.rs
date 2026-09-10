@@ -3,9 +3,7 @@
 //! Phase 1 deliberately preserves the legacy heuristics. Later phases can replace
 //! those heuristics with registry capabilities without touching request assembly.
 
-use crate::reasoning_policy::{
-    get_passback_policy, should_passback_plain_assistant_reasoning, ReasoningPassbackPolicy,
-};
+use crate::reasoning_policy::{get_passback_policy, ReasoningPassbackPolicy};
 use serde::Serialize;
 
 use super::ApiConfig;
@@ -41,8 +39,6 @@ pub(crate) struct ProviderQuirks {
     pub force_json_response_format: bool,
     /// B4/B9: provider-specific reasoning history representation.
     pub reasoning_passback: ReasoningPassbackPolicy,
-    /// B9: whether plain assistant history should retain reasoning.
-    pub passback_plain_assistant_reasoning: bool,
     /// S7: runtime reasoning-disable policy.
     pub runtime_reasoning: RuntimeReasoningOverride,
 }
@@ -162,7 +158,6 @@ pub(crate) fn resolve_quirks(config: &ApiConfig) -> ProviderQuirks {
         // Preserve B13's case-sensitive prefix behavior exactly.
         force_json_response_format: config.model.starts_with("gpt-"),
         reasoning_passback,
-        passback_plain_assistant_reasoning: should_passback_plain_assistant_reasoning(config),
         runtime_reasoning: runtime_reasoning_override(config),
     }
 }

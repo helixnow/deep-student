@@ -34,6 +34,7 @@ mod streaming_harness;
 pub use anthropic::{
     claude_generation, map_budget_tokens_to_effort, AnthropicAdapter, ClaudeGeneration,
 };
+pub(crate) use deepseek::v4_max_effort_output_token_floor;
 pub use deepseek::DeepSeekAdapter;
 pub use doubao::DoubaoAdapter;
 pub use ernie::ErnieAdapter;

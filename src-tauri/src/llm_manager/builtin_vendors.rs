@@ -238,7 +238,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32_768,
+        max_output_tokens: 65_536,
         temperature: 0.6,
     },
     BuiltinModel {
@@ -249,7 +249,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32_768,
+        max_output_tokens: 65_536,
         temperature: 0.6,
     },
     BuiltinModel {
@@ -260,7 +260,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32_768,
+        max_output_tokens: 65_536,
         temperature: 0.6,
     },
     // 注：兼容别名 deepseek-chat / deepseek-reasoner 已于 2026-07-24 15:59 UTC 停用，不再内置。
@@ -1482,7 +1482,7 @@ mod tests {
         assert_eq!(v4_flash.max_tokens_limit, Some(393_216));
         assert_eq!(v4_flash.context_window, Some(1_000_000));
         assert_eq!(v4_pro.context_window, Some(1_000_000));
-        assert_eq!(v4_flash.max_output_tokens, 32_768);
+        assert_eq!(v4_flash.max_output_tokens, 65_536);
         assert_eq!(v4_flash.reasoning_effort.as_deref(), Some("high"));
 
         // 兼容别名 2026-07-24 停用，不再内置
