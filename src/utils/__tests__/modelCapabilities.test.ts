@@ -13,10 +13,10 @@ describe('modelCapabilities DeepSeek version defaults', () => {
     expect(caps.isReasoning).toBe(true);
     expect(caps.supportsReasoning).toBe(true);
     expect(caps.supportsTools).toBe(true);
-    expect(getModelDefaultParameters('deepseek-flash')).toMatchObject({
+    expect(getModelDefaultParameters('deepseek-flash', { providerScope: 'deepseek' })).toMatchObject({
       enableThinking: true,
       reasoningEffort: 'high',
-      maxOutputTokens: 32_768,
+      maxOutputTokens: 65_536,
     });
   });
 
@@ -28,18 +28,18 @@ describe('modelCapabilities DeepSeek version defaults', () => {
     expect(caps.supportsTools).toBe(true);
   });
 
-  it('uses official DeepSeek V4 defaults with reasoning effort and 32K request default', () => {
-    const defaults = getModelDefaultParameters('deepseek-v4-pro');
+  it('uses official DeepSeek V4 defaults with reasoning effort and 64K request default', () => {
+    const defaults = getModelDefaultParameters('deepseek-v4-pro', { providerScope: 'deepseek' });
 
     expect(defaults).toMatchObject({
       enableThinking: true,
       includeThoughts: true,
       reasoningEffort: 'high',
-      maxOutputTokens: 32_768,
+      maxOutputTokens: 65_536,
       temperature: 0.6,
     });
     expect(defaults).not.toHaveProperty('thinkingBudget');
-    expect(defaults.maxOutputTokens).toBe(32_768);
+    expect(defaults.maxOutputTokens).toBe(65_536);
   });
 
   it('keeps SiliconFlow DeepSeek V3.2 defaults unchanged', () => {
