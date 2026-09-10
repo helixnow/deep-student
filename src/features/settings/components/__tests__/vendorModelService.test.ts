@@ -111,6 +111,27 @@ describe('vendorModelService request headers', () => {
     });
   });
 
+  it('backfills context window and max output tokens from provider metadata', async () => {
+    tauriFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: 'model-a', context_length: 128000, max_completion_tokens: 8192 },
+            { id: 'model-b', max_model_len: '32768', top_provider: { max_completion_tokens: 4096 } },
+            { id: 'model-c' },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    await expect(fetchModelsFromVendor(vendor, 'live-key')).resolves.toEqual([
+      { id: 'model-a', label: 'model-a', contextWindow: 128000, maxOutputTokens: 8192 },
+      { id: 'model-b', label: 'model-b', contextWindow: 32768, maxOutputTokens: 4096 },
+      { id: 'model-c', label: 'model-c' },
+    ]);
+  });
+
   it('lets Anthropic transport headers replace custom values without losing tenant headers', () => {
     expect(
       mergeVendorModelRequestHeaders(
