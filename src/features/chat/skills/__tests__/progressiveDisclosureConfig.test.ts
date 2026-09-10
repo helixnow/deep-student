@@ -12,8 +12,12 @@ import {
   handleLoadSkillsToolCall,
   hasSessionAvailableSkillsSnapshot,
   hydrateSessionAvailableSkillsSnapshot,
+  LOAD_SKILLS_TOOL_SCHEMA,
+  preloadAutoLoadSkillsForSession,
+  setAutoLoadSkills,
 } from '../progressiveDisclosure';
 import { setSkillDisabled } from '../skillEnableStorage';
+import { skillDefaults } from '../skillDefaults';
 import { __setRequiresGateForTest } from '../requiresGating';
 import type { SkillDefinition } from '../types';
 
@@ -325,5 +329,99 @@ describe('progressive disclosure defaults', () => {
       }),
     ]);
     expect(getLoadedSkills('legacy-load-test-session')).toEqual([]);
+  });
+});
+
+describe('first-turn tool face (prompt cache A1/A2)', () => {
+  const SESSION = 'first-turn-preload-session';
+  const SKILL_A = 'preload-skill-a';
+  const SKILL_B = 'preload-skill-b';
+  const SKILL_REJECTED = 'preload-skill-untrusted';
+
+  function registerBuiltin(id: string, toolName?: string): void {
+    skillRegistry.register({
+      id,
+      name: `Preload Skill ${id}`,
+      description: `First-turn preload regression: ${id}`,
+      location: 'builtin',
+      sourcePath: `builtin://${id}`,
+      trustStatus: 'builtin',
+      content: '# preload',
+      embeddedTools: toolName
+        ? [{
+            name: toolName,
+            description: 'Preload test tool',
+            inputSchema: { type: 'object', properties: {} },
+          }]
+        : [],
+    });
+  }
+
+  afterEach(() => {
+    for (const id of [SKILL_A, SKILL_B, SKILL_REJECTED]) {
+      skillRegistry.unregister(id);
+    }
+    clearSessionSkills(SESSION);
+    skillDefaults.clear();
+  });
+
+  it('advertises the one-shot first-turn load constraint in the tool description', () => {
+    // A1：工具描述是模型最常读的指令位，必须明确「第一次工具调用中一次性加载完」，
+    // 否则模型会中途逐个 load_skills，每次新增工具面都让 provider 前缀缓存整段失效。
+    expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('第一次工具调用中一次性加载完');
+    expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('不要在任务进行到一半时逐个追加加载');
+  });
+
+  it('advertises the same constraint in the available_skills catalog footer', () => {
+    registerBuiltin(SKILL_A);
+    const catalog = generateAvailableSkillsPrompt();
+    expect(catalog).toContain('在第一次工具调用中一次性加载完');
+  });
+
+  it('preloads configured default skills once and reports only newly loaded ids', () => {
+    registerBuiltin(SKILL_A, 'builtin-preload_a');
+    registerBuiltin(SKILL_B, 'builtin-preload_b');
+    setAutoLoadSkills([SKILL_A, SKILL_B]);
+
+    expect(preloadAutoLoadSkillsForSession(SESSION).sort()).toEqual([SKILL_A, SKILL_B].sort());
+    expect(getLoadedSkills(SESSION).map((skill) => skill.id).sort()).toEqual([SKILL_A, SKILL_B].sort());
+
+    // 幂等：第二次调用不再重复加载，也不改变工具面
+    expect(preloadAutoLoadSkillsForSession(SESSION)).toEqual([]);
+    expect(getLoadedSkills(SESSION)).toHaveLength(2);
+  });
+
+  it('keeps admission-rejected default skills out of the tool face', () => {
+    skillRegistry.register({
+      id: SKILL_REJECTED,
+      name: 'Untrusted Preload Skill',
+      description: 'First-turn preload regression: rejected',
+      location: 'global',
+      sourcePath: '/tmp/preload/SKILL.md',
+      trustStatus: 'untrusted',
+      content: '# untrusted',
+      embeddedTools: [{
+        name: 'builtin-preload_untrusted',
+        description: 'must not enter the tool face',
+        inputSchema: { type: 'object', properties: {} },
+      }],
+    });
+    setAutoLoadSkills([SKILL_REJECTED]);
+
+    expect(preloadAutoLoadSkillsForSession(SESSION)).toEqual([]);
+    expect(getLoadedSkills(SESSION)).toEqual([]);
+  });
+
+  it('keeps getProgressiveDisclosureConfig().autoLoadSkills in sync with skillDefaults', () => {
+    expect(getProgressiveDisclosureConfig().autoLoadSkills).toEqual([]);
+
+    setAutoLoadSkills([SKILL_A, SKILL_B]);
+    expect(getProgressiveDisclosureConfig().autoLoadSkills.sort()).toEqual([SKILL_A, SKILL_B].sort());
+
+    setAutoLoadSkills([SKILL_B]);
+    expect(getProgressiveDisclosureConfig().autoLoadSkills).toEqual([SKILL_B]);
+
+    setAutoLoadSkills([]);
+    expect(getProgressiveDisclosureConfig().autoLoadSkills).toEqual([]);
   });
 });

@@ -158,6 +158,8 @@ export {
   AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
   clearSessionAvailableSkillsSnapshot,
   getProgressiveDisclosureConfig,
+  setAutoLoadSkills,
+  preloadAutoLoadSkillsForSession,
   DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG,
   subscribeToLoadedSkills,
 } from './progressiveDisclosure';
