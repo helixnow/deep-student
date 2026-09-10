@@ -11,6 +11,7 @@
 
 import type { ToolSchema } from './types';
 import { skillRegistry } from './registry';
+import { skillDefaults } from './skillDefaults';
 import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
 import {
   getSkillRuntimeAdmission,
@@ -96,6 +97,9 @@ export const LOAD_SKILLS_TOOL_SCHEMA: {
 
 当你需要执行某项任务但没有合适的工具时，请先查看 <available_skills> 列表，选择相关的技能并加载。
 加载技能后，你将获得该技能提供的工具，可以用来完成任务。
+
+【重要】在开始任务前，先判断本任务需要的全部技能，并在第一次工具调用中一次性加载完；
+不要在任务进行到一半时逐个追加加载——中途新增工具会打断上下文复用，显著增加延迟与成本。
 
 可以一次加载多个技能。加载后的技能在整个会话中保持有效。`,
   inputSchema: {
@@ -615,6 +619,7 @@ export function generateAvailableSkillsPrompt(): string {
   lines.push('</available_skills>');
   lines.push('');
   lines.push('当你需要使用某种能力但没有对应工具时，请先通过 load_skills 工具加载相关技能。');
+  lines.push('【重要】开始任务前先判断本任务需要的全部技能，在第一次工具调用中一次性加载完；避免中途逐个追加加载。');
   lines.push('');
   lines.push('<tool_calling_rules>');
   lines.push('【重要】所有技能组中包含的工具必须通过正常的工具调用方式使用，不要直接输出 JSON 文本。调用时请严格遵循技能文档中的参数格式示例。');
@@ -851,18 +856,70 @@ export interface ProgressiveDisclosureConfig {
  * 默认配置
  *
  * 渐进披露模式始终启用，完全替代 builtinMcpServer.ts
- * 所有内置工具通过 Skills 按需加载
+ * 所有内置工具通过 Skills 按需加载。
+ *
+ * `autoLoadSkills` 的单一真源是 `skillDefaults`（技能管理页「设为默认」的持久化
+ * 存储，见 skillDefaults.ts）；本字段仅作默认值占位，运行时以
+ * `getProgressiveDisclosureConfig()` 的返回为准。
  */
 export const DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG: ProgressiveDisclosureConfig = {
   autoLoadSkills: [],
   preloadAllTools: false,
 };
 
-const currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG };
-
 /**
  * 获取当前配置
+ *
+ * `autoLoadSkills` 实时读 `skillDefaults`，避免出现第二份互相矛盾的配置。
  */
 export function getProgressiveDisclosureConfig(): ProgressiveDisclosureConfig {
-  return { ...currentConfig };
+  return {
+    autoLoadSkills: skillDefaults.getAll(),
+    preloadAllTools: DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG.preloadAllTools,
+  };
+}
+
+/**
+ * 写入「默认技能」配置（A2：会话首轮预加载）。
+ *
+ * 单一真源是 `skillDefaults`；本函数只做差集同步，便于设置入口统一调用。
+ */
+export function setAutoLoadSkills(skillIds: string[]): void {
+  const next = new Set(
+    skillIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+  );
+  for (const id of skillDefaults.getAll()) {
+    if (!next.has(id)) {
+      skillDefaults.remove(id);
+    }
+  }
+  for (const id of next) {
+    if (!skillDefaults.isDefault(id)) {
+      skillDefaults.add(id);
+    }
+  }
+}
+
+/**
+ * 会话首轮预加载（A2）：把「设为默认」的技能加载进本会话，使工具面从第 1 个
+ * 请求就完整。
+ *
+ * 动机（实测，见 docs/dev/prompt-cache-observation-2026-09-10.md）：任务中途
+ * 通过 load_skills 追加工具会让 provider 的前缀缓存整段失效——首次出现新工具面
+ * 时 `cached=0`，一次全量重算约 14–16 万 token；把工具面变化提前到会话最早、
+ * 且只发生一次，是代价最低的定型方式。
+ *
+ * 幂等：已加载技能走 `loadSkillsToSession` 的 alreadyLoaded 分支；未通过
+ * admission（未信任/已禁用/requires 未满足）的技能由该函数内部过滤，不进入工具面。
+ *
+ * @returns 本次新加载（此前不在本会话内）的技能 ID
+ */
+export function preloadAutoLoadSkillsForSession(sessionId: string): string[] {
+  const configured = skillDefaults.getAll();
+  if (configured.length === 0) {
+    return [];
+  }
+  const before = new Set(getLoadedSkills(sessionId).map((skill) => skill.id));
+  const result = loadSkillsToSession(sessionId, configured);
+  return result.loaded.map((skill) => skill.id).filter((id) => !before.has(id));
 }
