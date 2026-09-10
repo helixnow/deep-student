@@ -59,11 +59,29 @@ jobs:
     # 跨镜像缓存 E0463 双重考虑），保持共享缓存名空间一致
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: 0
+      # OOM 缓解（R07）：与 ci.yml rust-test-build / migration-gate 同口径，
+      # 3 路并行压内存峰值。
+      CARGO_BUILD_JOBS: '3'
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
+      # OOM 缓解（R07）：16GB runner 上并行编译巨型 crate 会连 runner agent
+      # 一起被 OOM 杀掉（exit 143 + "runner has received a shutdown signal"）。
+      # 完整动机与实现见 ci.yml backend job 同名步骤注释。
+      - name: Expand swap to survive linker memory peaks
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h /mnt
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -182,11 +200,26 @@ jobs:
     # 钉 22.04：同 full-fixture-gate
     runs-on: ubuntu-22.04
     timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: 0
+      # OOM 缓解（R07）：与 full-fixture-gate 同口径。
+      CARGO_BUILD_JOBS: '3'
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
+      # OOM 缓解（R07）：动机与完整实现见 ci.yml backend job 同名步骤注释。
+      - name: Expand swap to survive linker memory peaks
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h /mnt
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
