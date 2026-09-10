@@ -8212,7 +8212,10 @@ mod proxy_env_tests {
         let accept = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.expect("accept proxied request");
             let mut buffer = vec![0u8; 8192];
-            let read = socket.read(&mut buffer).await.expect("read proxied request");
+            let read = socket
+                .read(&mut buffer)
+                .await
+                .expect("read proxied request");
             let head = String::from_utf8_lossy(&buffer[..read]).to_string();
             let _ = socket
                 .write_all(

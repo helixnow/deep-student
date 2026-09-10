@@ -886,7 +886,10 @@ mod tests {
             AppError::llm("模型返回空响应，请重试"),
             LLM_ERROR_CODE_EMPTY_RESPONSE,
         );
-        assert_eq!(classify_llm_error(&empty), LlmErrorClass::RetryableTransient);
+        assert_eq!(
+            classify_llm_error(&empty),
+            LlmErrorClass::RetryableTransient
+        );
 
         // 上下文超限：参数类错误，重试无用；显式分类供上层提示/裁剪
         let exceeded = attach_llm_error_code(
