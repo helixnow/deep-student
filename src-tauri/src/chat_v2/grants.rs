@@ -257,7 +257,10 @@ impl DelegatedGrant {
             if entry.is_empty() {
                 continue;
             }
-            if self.tool_scopes.iter().any(|scope| scope.allows(entry, &empty_args))
+            if self
+                .tool_scopes
+                .iter()
+                .any(|scope| scope.allows(entry, &empty_args))
                 && !effective.iter().any(|seen| seen == entry)
             {
                 effective.push(entry.to_string());
@@ -420,8 +423,8 @@ pub fn persist_revocation_epoch(
     task_id: &str,
     epoch: u64,
 ) -> Result<(), String> {
-    let epoch_i64 = i64::try_from(epoch)
-        .map_err(|_| format!("epoch {epoch} exceeds SQLite INTEGER range"))?;
+    let epoch_i64 =
+        i64::try_from(epoch).map_err(|_| format!("epoch {epoch} exceeds SQLite INTEGER range"))?;
     let conn = db
         .get_conn()
         .map_err(|e| format!("revocation_epochs: get conn failed: {e}"))?;
@@ -747,7 +750,10 @@ mod tests {
             ] {
                 if !profile.allowed_tools.iter().any(|t| t == foreign) {
                     assert!(
-                        !grant.tool_scopes.iter().any(|s| s.allows(foreign, &json!({}))),
+                        !grant
+                            .tool_scopes
+                            .iter()
+                            .any(|s| s.allows(foreign, &json!({}))),
                         "profile {profile_id}: scope set must NOT allow foreign tool {foreign}"
                     );
                 }
@@ -949,14 +955,8 @@ mod tests {
         let _serial = TEST_EPOCH_LOCK.lock().unwrap();
         let (_dir, db) = grants_test_db();
         let suffix = ulid::Ulid::new().to_string();
-        let (session_a, child_a) = (
-            format!("sess_a_{suffix}"),
-            format!("child_a_{suffix}"),
-        );
-        let (session_b, child_b) = (
-            format!("sess_b_{suffix}"),
-            format!("child_b_{suffix}"),
-        );
+        let (session_a, child_a) = (format!("sess_a_{suffix}"), format!("child_a_{suffix}"));
+        let (session_b, child_b) = (format!("sess_b_{suffix}"), format!("child_b_{suffix}"));
         let tools = vec!["builtin-web_search".to_string()];
 
         let guard_a = issue_worker_grant(
@@ -987,9 +987,7 @@ mod tests {
         // per-task 撤权：A 失效，B 与新签发的 A2 不受影响
         let revoked_epoch_a = revoke_grants_for(&db, &child_a).expect("persisted revoke");
         assert_eq!(
-            lookup_grant_for_session(&session_a)
-                .unwrap()
-                .ensure_live(),
+            lookup_grant_for_session(&session_a).unwrap().ensure_live(),
             Err(GrantDenial::Revoked),
             "epoch bump 后旧 grant 必须被拒"
         );
@@ -1022,15 +1020,11 @@ mod tests {
         // 全局撤权：B、A2 全部失效；之后签发的 D 存活
         let global_epoch = revoke_all_grants(&db).expect("persisted revoke all");
         assert_eq!(
-            lookup_grant_for_session(&session_b)
-                .unwrap()
-                .ensure_live(),
+            lookup_grant_for_session(&session_b).unwrap().ensure_live(),
             Err(GrantDenial::Revoked)
         );
         assert_eq!(
-            lookup_grant_for_session(&session_a2)
-                .unwrap()
-                .ensure_live(),
+            lookup_grant_for_session(&session_a2).unwrap().ensure_live(),
             Err(GrantDenial::Revoked)
         );
         let session_d = format!("sess_d_{suffix}");
@@ -1110,7 +1104,11 @@ mod tests {
         );
         // per-task 轴语义 = max(global, task)
         assert_eq!(loaded.current_epoch_for("child-x"), 9);
-        assert_eq!(loaded.current_epoch_for("child-y"), 7, "max(global=7, task=4)");
+        assert_eq!(
+            loaded.current_epoch_for("child-y"),
+            7,
+            "max(global=7, task=4)"
+        );
         // 未撤权的任务回落到全局轴
         assert_eq!(loaded.current_epoch_for("child-unknown"), 7);
     }

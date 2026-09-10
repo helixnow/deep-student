@@ -319,7 +319,9 @@ impl BudgetLedger {
         created_at_unix: i64,
     ) -> Self {
         let elapsed_secs = u64::try_from(
-            chrono::Utc::now().timestamp().saturating_sub(created_at_unix),
+            chrono::Utc::now()
+                .timestamp()
+                .saturating_sub(created_at_unix),
         )
         .unwrap_or(0);
         Self {
@@ -452,10 +454,12 @@ impl BudgetLedger {
     // ── G08-P2 快照辅助 ──────────────────────────────────────────────
 
     fn lock_snapshot_fingerprint(&self) -> MutexGuard<'_, Option<(u64, u64, u64)>> {
-        self.last_snapshot_fingerprint.lock().unwrap_or_else(|poisoned| {
-            log::error!("[Budget] snapshot fingerprint Mutex poisoned; recovering");
-            poisoned.into_inner()
-        })
+        self.last_snapshot_fingerprint
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[Budget] snapshot fingerprint Mutex poisoned; recovering");
+                poisoned.into_inner()
+            })
     }
 
     /// 快照去重指纹（三维计数；wall_clock 由 created_at_unix 锚点推算，
@@ -590,11 +594,7 @@ pub(crate) fn read_setting_from_main_db(db_path: &Path, key: &str) -> Option<Str
     {
         Ok(value) => value,
         Err(e) => {
-            log::warn!(
-                "[Budget] 读取 settings key '{}' 失败，回退默认: {}",
-                key,
-                e
-            );
+            log::warn!("[Budget] 读取 settings key '{}' 失败，回退默认: {}", key, e);
             None
         }
     }
@@ -636,10 +636,7 @@ fn now_rfc3339() -> String {
 }
 
 /// 连接级快照 upsert（pool 路径与显式 db 路径共用）。
-fn persist_snapshot_conn(
-    conn: &rusqlite::Connection,
-    ledger: &BudgetLedger,
-) -> Result<(), String> {
+fn persist_snapshot_conn(conn: &rusqlite::Connection, ledger: &BudgetLedger) -> Result<(), String> {
     let limits_json = serde_json::to_string(&ledger.limits_snapshot())
         .map_err(|e| format!("limits snapshot serialize failed: {e}"))?;
     let usage_json = serde_json::to_string(&ledger.usage_snapshot())
@@ -653,7 +650,12 @@ fn persist_snapshot_conn(
            updated_at = excluded.updated_at",
         rusqlite::params![ledger.root_id(), limits_json, usage_json, now_rfc3339()],
     )
-    .map_err(|e| format!("budget_snapshots upsert failed (root={}): {e}", ledger.root_id()))?;
+    .map_err(|e| {
+        format!(
+            "budget_snapshots upsert failed (root={}): {e}",
+            ledger.root_id()
+        )
+    })?;
     Ok(())
 }
 
@@ -764,11 +766,7 @@ pub fn restore_budget_ledgers_from_db(db: &ChatV2Database) {
         let (limits, usage, created_at_unix) = match parsed {
             Ok(parsed) => parsed,
             Err(e) => {
-                log::warn!(
-                    "[Budget] 跳过损坏的预算快照行（root={}）: {}",
-                    root_id,
-                    e
-                );
+                log::warn!("[Budget] 跳过损坏的预算快照行（root={}）: {}", root_id, e);
                 continue;
             }
         };
@@ -865,10 +863,7 @@ pub fn get_or_ensure_ledger(key: &BudgetKey) -> Arc<BudgetLedger> {
 
 /// 自由函数版扣减（hooks 门调用形态：`try_consume(&tree_key, delta)`）。
 /// 账本缺失时按 settings 生效的默认上限懒建（防御；正常路径 attach 已建账）。
-pub fn try_consume(
-    key: &BudgetKey,
-    delta: BudgetDelta,
-) -> Result<BudgetRemaining, BudgetExceeded> {
+pub fn try_consume(key: &BudgetKey, delta: BudgetDelta) -> Result<BudgetRemaining, BudgetExceeded> {
     let ledger = get_or_ensure_ledger(key);
     let result = ledger.try_consume(delta);
     if result.is_err() {
@@ -920,27 +915,22 @@ pub fn attach_child_to_tree(
     declared: Option<&BudgetSpec>,
 ) -> ChildBudgetAttachment {
     // 1. 解析根 key（父绑定优先；否则以父会话为根）。
-    let tree_key = tree_key_for_session(parent_session_id)
-        .unwrap_or_else(|| parent_session_id.to_string());
+    let tree_key =
+        tree_key_for_session(parent_session_id).unwrap_or_else(|| parent_session_id.to_string());
 
     // 2. 取/建/轮换根账本（单写锁内完成判定，防并发双建）。
     let (ledger, created_new) = {
         let mut registry = write_lock(ledgers());
         let reuse = registry
             .get(&tree_key)
-            .filter(|existing| {
-                !(existing.is_exhausted() && existing.active_bindings() == 0)
-            })
+            .filter(|existing| !(existing.is_exhausted() && existing.active_bindings() == 0))
             .cloned();
         match reuse {
             Some(existing) => (existing, false),
             None => {
                 let fresh = Arc::new(BudgetLedger::new(tree_key.clone(), effective_limits()));
                 if registry.insert(tree_key.clone(), fresh.clone()).is_some() {
-                    log::info!(
-                        "[Budget] Rotated exhausted tree ledger: root={}",
-                        tree_key
-                    );
+                    log::info!("[Budget] Rotated exhausted tree ledger: root={}", tree_key);
                 } else {
                     log::debug!(
                         "[Budget] Created tree ledger: root={} (limits: {} calls / {} tokens / {}s)",
@@ -1050,7 +1040,11 @@ mod tests {
         (dir, db)
     }
 
-    fn small_limits(max_tool_calls: u64, max_tokens: u64, max_wall_clock: Duration) -> BudgetLimits {
+    fn small_limits(
+        max_tool_calls: u64,
+        max_tokens: u64,
+        max_wall_clock: Duration,
+    ) -> BudgetLimits {
         BudgetLimits {
             max_tool_calls,
             max_tokens,
@@ -1144,7 +1138,10 @@ mod tests {
         let limits = resolve_limits(&|key| read_setting_from_main_db(&main_db_path, key));
         assert_eq!(limits.max_tool_calls, 55);
         assert_eq!(limits.max_tokens, DEFAULT_MAX_TOKENS, "非法值回退默认");
-        assert_eq!(limits.max_wall_clock, Duration::from_secs(DEFAULT_MAX_WALL_CLOCK_SECS));
+        assert_eq!(
+            limits.max_wall_clock,
+            Duration::from_secs(DEFAULT_MAX_WALL_CLOCK_SECS)
+        );
     }
 
     /// G08-P2 快照 roundtrip：persist → restore → 全局注册表中的账本
@@ -1253,8 +1250,13 @@ mod tests {
         assert!(timeout_ledger.usage().wall_clock_secs >= 7200);
 
         let usedup_ledger = ledger_for_tree(&root_usedup).expect("used-up tree restored");
-        assert!(usedup_ledger.is_exhausted(), "用量到顶的树恢复后必须保持 exhausted");
-        assert!(usedup_ledger.try_consume(BudgetDelta::ONE_TOOL_CALL).is_err());
+        assert!(
+            usedup_ledger.is_exhausted(),
+            "用量到顶的树恢复后必须保持 exhausted"
+        );
+        assert!(usedup_ledger
+            .try_consume(BudgetDelta::ONE_TOOL_CALL)
+            .is_err());
     }
 
     /// G08-P2 恢复容错：表缺失 → 空操作；坏行跳过好行恢复。
@@ -1306,7 +1308,6 @@ mod tests {
         assert_eq!(good.limits().max_tool_calls, 9);
     }
 
-
     fn fresh_key(tag: &str) -> BudgetKey {
         format!("tree_{tag}_{}", ulid::Ulid::new())
     }
@@ -1325,8 +1326,14 @@ mod tests {
         // 两子同根（根 key = 父会话 id）
         assert_eq!(attach_a.tree_key, parent);
         assert_eq!(attach_b.tree_key, parent);
-        assert_eq!(tree_key_for_session(&child_a).as_deref(), Some(parent.as_str()));
-        assert_eq!(tree_key_for_session(&child_b).as_deref(), Some(parent.as_str()));
+        assert_eq!(
+            tree_key_for_session(&child_a).as_deref(),
+            Some(parent.as_str())
+        );
+        assert_eq!(
+            tree_key_for_session(&child_b).as_deref(),
+            Some(parent.as_str())
+        );
 
         // 父侧直接消耗 1 次（父作为树成员记账）+ 两子各 1 次 → 同账本该看到 3
         try_consume(&attach_a.tree_key, BudgetDelta::ONE_TOOL_CALL).unwrap();
@@ -1358,13 +1365,22 @@ mod tests {
         assert_eq!(attach_g.tree_key, attach_w.tree_key);
         let key = tree_key_for_session(&grandchild).unwrap();
         try_consume(&key, BudgetDelta::ONE_TOOL_CALL).unwrap();
-        assert_eq!(ledger_for_tree(&attach_w.tree_key).unwrap().usage().tool_calls, 1);
+        assert_eq!(
+            ledger_for_tree(&attach_w.tree_key)
+                .unwrap()
+                .usage()
+                .tool_calls,
+            1
+        );
     }
 
     /// 超额 Block 且不扣成负（失败后已用量不变）。
     #[test]
     fn exceed_blocks_without_going_negative() {
-        let ledger = BudgetLedger::new(fresh_key("cap"), small_limits(2, 10, Duration::from_secs(60)));
+        let ledger = BudgetLedger::new(
+            fresh_key("cap"),
+            small_limits(2, 10, Duration::from_secs(60)),
+        );
         assert!(ledger.try_consume(BudgetDelta::ONE_TOOL_CALL).is_ok());
         assert!(ledger.try_consume(BudgetDelta::ONE_TOOL_CALL).is_ok());
         let err = ledger
@@ -1378,7 +1394,10 @@ mod tests {
         assert_eq!(ledger.remaining().tool_calls, 0);
 
         // tokens 维度同样失败不扣
-        let ledger = BudgetLedger::new(fresh_key("tok"), small_limits(100, 10, Duration::from_secs(60)));
+        let ledger = BudgetLedger::new(
+            fresh_key("tok"),
+            small_limits(100, 10, Duration::from_secs(60)),
+        );
         let err = ledger
             .try_consume(BudgetDelta::tokens(8, 8))
             .expect_err("16 > 10 必须被拒");
@@ -1417,9 +1436,17 @@ mod tests {
             max_wall_clock_seconds: Some(300),
         };
         let effective = reserve_child_spec(Some(&declared), &remaining);
-        assert_eq!(effective.max_tool_calls, Some(50), "声明 80 > 父剩 50 → 收缩");
+        assert_eq!(
+            effective.max_tool_calls,
+            Some(50),
+            "声明 80 > 父剩 50 → 收缩"
+        );
         assert_eq!(effective.max_tokens, Some(100_000));
-        assert_eq!(effective.max_wall_clock_seconds, Some(300), "声明 300 < 父剩 600 → 保留声明");
+        assert_eq!(
+            effective.max_wall_clock_seconds,
+            Some(300),
+            "声明 300 < 父剩 600 → 保留声明"
+        );
 
         // 未声明 → 全部 = 父剩余快照
         let effective = reserve_child_spec(None, &remaining);

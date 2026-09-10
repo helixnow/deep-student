@@ -729,13 +729,13 @@ impl FetchExecutor {
         .server(final_url.host_str().map(str::to_string))
         .tool(Some("web_fetch"))
         .derived_edge(
-            DerivedEdge::new(original_url, "fetch.binary").with_params_hash(
-                hash_transform_params(&json!({
+            DerivedEdge::new(original_url, "fetch.binary").with_params_hash(hash_transform_params(
+                &json!({
                     "url": &original_url,
                     "final_url": final_url.as_str(),
                     "requested_name": &original_name,
-                })),
-            ),
+                }),
+            )),
         )
         .media_type(Some(kind.mime))
         .size_bytes(Some(size_bytes))

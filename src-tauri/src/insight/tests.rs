@@ -81,7 +81,9 @@ fn test_create_confirm_correct_delete_lifecycle() {
                 stuck_point: None,
                 turning_point: None,
                 rule: None,
-                validity_conditions: Some("内层导数与外因子成比例；三角函数外层同样适用".to_string()),
+                validity_conditions: Some(
+                    "内层导数与外因子成比例；三角函数外层同样适用".to_string(),
+                ),
                 edit_note: Some("补充边界".to_string()),
             },
         )
@@ -99,7 +101,10 @@ fn test_create_confirm_correct_delete_lifecycle() {
 
     // 删除：墓碑传播，读路径不可见
     svc.delete(&card.id).expect("delete");
-    assert!(svc.get_insight(&card.id).expect("get").is_none(), "删除后不可见");
+    assert!(
+        svc.get_insight(&card.id).expect("get").is_none(),
+        "删除后不可见"
+    );
     assert!(svc.list_insights(None, 100, 0).expect("list").is_empty());
 }
 
@@ -129,8 +134,10 @@ fn test_validation_and_feedback() {
     assert!(svc.create_draft(bad).is_err());
 
     let card = svc.create_draft(sample_input()).expect("create");
-    svc.record_feedback(&card.id, "useful", Some("sess_test")).expect("feedback");
-    svc.record_feedback(&card.id, "not_applicable", None).expect("feedback2");
+    svc.record_feedback(&card.id, "useful", Some("sess_test"))
+        .expect("feedback");
+    svc.record_feedback(&card.id, "not_applicable", None)
+        .expect("feedback2");
     assert!(svc.record_feedback(&card.id, "bogus", None).is_err());
 
     let after = svc.get_insight(&card.id).expect("get").expect("exists");
@@ -198,7 +205,9 @@ fn test_recall_fts_and_like_fallback() {
     assert_eq!(hits[0].matched_via, "fts");
 
     // 无匹配 → 空（沉默分支由披露控制器记账）
-    let none = recall.recall_fts("完全无关的量子引力", 10).expect("fts none");
+    let none = recall
+        .recall_fts("完全无关的量子引力", 10)
+        .expect("fts none");
     assert!(none.is_empty());
 
     // LIKE 回退：<3 字符查询
@@ -219,7 +228,10 @@ fn test_recall_skips_cold_and_deleted() {
 
     // 删除（墓碑）后不再召回
     svc.delete(&card.id).expect("delete");
-    assert!(recall.recall_fts("被积函数次数太高", 10).unwrap().is_empty());
+    assert!(recall
+        .recall_fts("被积函数次数太高", 10)
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -292,7 +304,10 @@ fn setup_mistakes_db() -> (tempfile::TempDir, std::sync::Arc<crate::database::Da
     let report = coordinator
         .migrate_single(DatabaseId::Mistakes)
         .expect("migrate mistakes");
-    assert_eq!(report.to_version, MISTAKES_MIGRATIONS.latest_version() as u32);
+    assert_eq!(
+        report.to_version,
+        MISTAKES_MIGRATIONS.latest_version() as u32
+    );
     let db = std::sync::Arc::new(
         crate::database::Database::new(&root.join("mistakes.db")).expect("open mistakes db"),
     );
@@ -305,8 +320,8 @@ fn test_job_queue_enqueue_dedupe_and_lease_recovery() {
     let conn = db.get_conn_safe().expect("conn");
 
     // 幂等入队：同 dedupe_key 只排一次
-    let first = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
-        .expect("enqueue");
+    let first =
+        super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}").expect("enqueue");
     assert!(first.is_some());
     let dup = super::jobs::enqueue_with_conn(&conn, "srs_projection", "srs:ic_x", "{}")
         .expect("dup enqueue");
@@ -373,7 +388,10 @@ fn test_srs_projection_materialize_and_regenerate() {
 
     let worker = super::jobs::InsightJobWorker::new(db.clone(), Some(mistakes.clone()));
     let processed = worker.run_once(10, &|| true).expect("run");
-    assert_eq!(processed, 2, "confirm 入队 srs_projection + merge_proposal 两个任务");
+    assert_eq!(
+        processed, 2,
+        "confirm 入队 srs_projection + merge_proposal 两个任务"
+    );
 
     // 物化卡存在且带回链（注意：mconn 是用例级互斥锁守卫，用完立即 drop——
     // 持锁跨 run_once 会与 worker 内部的 get_conn_safe 死锁）
@@ -525,7 +543,10 @@ fn test_merge_proposal_creates_deduped_todo() {
             |r| r.get(0),
         )
         .expect("attachments");
-    assert!(att.contains("res_") || att.contains("\"r"), "附件应回链资源: {att}");
+    assert!(
+        att.contains("res_") || att.contains("\"r"),
+        "附件应回链资源: {att}"
+    );
 }
 
 #[test]
@@ -539,7 +560,8 @@ fn test_principle_synthesis_requires_cases_and_counterexample() {
     let c = make_card(&svc, "换元法反例卡", "规则三");
 
     // 只有 same_method、无反例 → 不合成
-    svc.add_relation(&a.id, &b.id, "same_method", None, None).expect("rel ab");
+    svc.add_relation(&a.id, &b.id, "same_method", None, None)
+        .expect("rel ab");
     let worker = super::jobs::InsightJobWorker::new(db.clone(), None);
     worker.run_once(20, &|| true).expect("run1");
     let conn = db.get_conn_safe().expect("conn");
@@ -556,9 +578,14 @@ fn test_principle_synthesis_requires_cases_and_counterexample() {
     assert_eq!(principle_todos(&conn), 0, "缺反例不得合成原则提案");
 
     // 补上反例边 → 合成
-    svc.add_relation(&a.id, &c.id, "counterexample", None, None).expect("rel ac");
+    svc.add_relation(&a.id, &c.id, "counterexample", None, None)
+        .expect("rel ac");
     worker.run_once(20, &|| true).expect("run2");
-    assert_eq!(principle_todos(&conn), 1, "≥2 案例 + 1 反例 → 一条原则化提案");
+    assert_eq!(
+        principle_todos(&conn),
+        1,
+        "≥2 案例 + 1 反例 → 一条原则化提案"
+    );
 
     // 幂等：重跑不重复
     super::jobs::enqueue(

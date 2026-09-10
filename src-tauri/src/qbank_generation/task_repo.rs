@@ -263,7 +263,11 @@ pub fn mark_failed(db: &VfsDatabase, task_id: &str, error: &str) -> Result<(), V
         params![task_id, error, now],
     )
     .map_err(map_db_err)?;
-    log::warn!("[QbankGeneration] 任务失败: id={}, error={}", task_id, error);
+    log::warn!(
+        "[QbankGeneration] 任务失败: id={}, error={}",
+        task_id,
+        error
+    );
     Ok(())
 }
 

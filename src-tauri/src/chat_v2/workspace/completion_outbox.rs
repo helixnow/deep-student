@@ -88,7 +88,11 @@ impl CompletionDelivery {
         let state_raw: String = row.get("state")?;
         let state = CompletionDeliveryState::parse(&state_raw).ok_or_else(|| {
             let index = row.as_ref().column_index("state").unwrap_or(usize::MAX);
-            rusqlite::Error::InvalidColumnType(index, state_raw.clone(), rusqlite::types::Type::Text)
+            rusqlite::Error::InvalidColumnType(
+                index,
+                state_raw.clone(),
+                rusqlite::types::Type::Text,
+            )
         })?;
         Ok(Self {
             delivery_id: row.get("delivery_id")?,
@@ -465,7 +469,12 @@ mod tests {
 
         // not_before 取当前时刻：刚创建的行（created_at <= now 恒真）可被认领……
         let claimed = outbox
-            .claim_pending("owner-a", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-a",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert_eq!(claimed.len(), 1);
 
@@ -484,7 +493,12 @@ mod tests {
 
         // 宽限期过后（not_before 覆盖其 created_at）该行可被认领
         let claimed = outbox
-            .claim_pending("owner-a", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-a",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert!(
             claimed.iter().any(|d| d.delivery_id == "d-2"),
@@ -514,7 +528,12 @@ mod tests {
         // delivered 终态不再被认领
         assert!(outbox.mark_delivered("d-1", "owner-a").unwrap());
         let claimed_a2 = outbox
-            .claim_pending("owner-a", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-a",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert!(claimed_a2.iter().all(|d| d.delivery_id != "d-1"));
     }
@@ -543,16 +562,18 @@ mod tests {
         assert_eq!(row.state, CompletionDeliveryState::Pending);
         assert!(row.claim_owner.is_none());
         // 有效租约不受影响
-        let alive = outbox
-            .get(&claimed_alive[0].delivery_id)
-            .unwrap()
-            .unwrap();
+        let alive = outbox.get(&claimed_alive[0].delivery_id).unwrap().unwrap();
         assert_eq!(alive.state, CompletionDeliveryState::Claimed);
         assert_eq!(alive.claim_owner.as_deref(), Some("owner-alive"));
 
         // 回收后可被重新认领
         let reclaimed_claim = outbox
-            .claim_pending("owner-b", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-b",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert_eq!(reclaimed_claim.len(), 1);
         assert_eq!(reclaimed_claim[0].delivery_id, claimed[0].delivery_id);
@@ -567,7 +588,12 @@ mod tests {
         outbox.enqueue(&new_delivery("d-1", "run-1")).unwrap();
 
         let claimed = outbox
-            .claim_pending("owner-a", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-a",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert_eq!(claimed.len(), 1);
 
@@ -587,7 +613,12 @@ mod tests {
             CompletionDeliveryState::Pending
         );
         let reclaimed = outbox
-            .claim_pending("owner-b", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-b",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert_eq!(reclaimed.len(), 1);
         assert!(outbox.mark_delivered("d-1", "owner-b").unwrap());
@@ -617,7 +648,12 @@ mod tests {
         assert!(!outbox.mark_expired("d-2", None).unwrap());
         assert!(!outbox.mark_delivered_by_delivery_id("d-2").unwrap());
         let claimed = outbox
-            .claim_pending("owner-a", &future_expiry(), &NewCompletionDelivery::now_timestamp(), 10)
+            .claim_pending(
+                "owner-a",
+                &future_expiry(),
+                &NewCompletionDelivery::now_timestamp(),
+                10,
+            )
             .unwrap();
         assert!(claimed.is_empty(), "终态行不得被认领");
     }

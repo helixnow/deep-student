@@ -35,13 +35,12 @@ impl InsightService {
         }
         // AI 草稿不得伪装成用户自述（认知所有权契约）
         if input.ownership == InsightOwnership::SelfReported {
-            let has_user_evidence = input.evidence.iter().any(|e| {
-                e.speaker.as_deref() == Some("user") || e.kind == EvidenceKind::Manual
-            });
+            let has_user_evidence = input
+                .evidence
+                .iter()
+                .any(|e| e.speaker.as_deref() == Some("user") || e.kind == EvidenceKind::Manual);
             if !has_user_evidence {
-                tracing::warn!(
-                    "[Insight] self_reported 草稿缺少用户发言证据，降级为 guided"
-                );
+                tracing::warn!("[Insight] self_reported 草稿缺少用户发言证据，降级为 guided");
             }
         }
         Ok(())
@@ -52,9 +51,10 @@ impl InsightService {
         Self::validate_draft(&input)?;
         // self_reported 但无用户发言证据 → 强制降级（不得伪装来源）
         if input.ownership == InsightOwnership::SelfReported
-            && !input.evidence.iter().any(|e| {
-                e.speaker.as_deref() == Some("user") || e.kind == EvidenceKind::Manual
-            })
+            && !input
+                .evidence
+                .iter()
+                .any(|e| e.speaker.as_deref() == Some("user") || e.kind == EvidenceKind::Manual)
         {
             input.ownership = InsightOwnership::Guided;
         }
@@ -204,7 +204,11 @@ impl InsightService {
     }
 
     /// 纠正：产生新 revision，current 前移；派生原则进复审队列（阶段三消费）。
-    pub fn correct(&self, insight_id: &str, input: InsightCorrectInput) -> Result<InsightCard, AppError> {
+    pub fn correct(
+        &self,
+        insight_id: &str,
+        input: InsightCorrectInput,
+    ) -> Result<InsightCard, AppError> {
         let mut conn = self
             .vfs_db
             .get_conn_safe()

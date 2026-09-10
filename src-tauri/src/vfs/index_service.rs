@@ -493,7 +493,11 @@ mod tests {
         unit_id
     }
 
-    fn states(service: &VfsIndexService, resource_id: &str, unit_id: &str) -> (String, String, String, String) {
+    fn states(
+        service: &VfsIndexService,
+        resource_id: &str,
+        unit_id: &str,
+    ) -> (String, String, String, String) {
         let conn = service.db.get_conn().unwrap();
         let (text_state, mm_state): (String, String) = conn
             .query_row(

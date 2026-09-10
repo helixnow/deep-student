@@ -979,9 +979,7 @@ pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
     "insight_jobs",
     include_str!("../../../migrations/vfs/V20260910__insight_jobs.sql"),
 )
-.with_expected_tables(&[
-    "insight_jobs",
-])
+.with_expected_tables(&["insight_jobs"])
 .with_expected_columns(&[
     ("insight_jobs", "dedupe_key"),
     ("insight_jobs", "lease_owner"),

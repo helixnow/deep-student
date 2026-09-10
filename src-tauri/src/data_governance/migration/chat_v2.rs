@@ -555,10 +555,7 @@ pub const V20260908_COMPLETION_OUTBOX: MigrationDef = MigrationDef::new(
     ("completion_outbox", "target_session_id"),
     ("completion_outbox", "state"),
 ])
-.with_expected_indexes(&[
-    "idx_completion_outbox_run",
-    "idx_completion_outbox_state",
-])
+.with_expected_indexes(&["idx_completion_outbox_run", "idx_completion_outbox_state"])
 .idempotent();
 
 /// V20260909: 技能使用账目与经验候选库（G09-P0）

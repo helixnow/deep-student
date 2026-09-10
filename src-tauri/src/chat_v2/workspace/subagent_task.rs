@@ -346,9 +346,7 @@ impl SubagentTaskManager {
             .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
 
         let mut stmt = conn
-            .prepare(
-                "SELECT id FROM subagent_task WHERE status = 'running' ORDER BY created_at",
-            )
+            .prepare("SELECT id FROM subagent_task WHERE status = 'running' ORDER BY created_at")
             .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
         let running_ids: Vec<String> = stmt
             .query_map([], |row| row.get(0))

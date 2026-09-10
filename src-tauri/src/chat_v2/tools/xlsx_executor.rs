@@ -763,10 +763,7 @@ mod tests {
         // 但交付结果必须附 fidelity warning（源文件含 formulas 高风险特征）
         let warning = build_fidelity_warning(&preflight, &overwritten)
             .expect("formula workbook must carry fidelity warning");
-        assert_eq!(
-            warning["preserved_at_risk_features"],
-            json!(["formulas"])
-        );
+        assert_eq!(warning["preserved_at_risk_features"], json!(["formulas"]));
         assert_eq!(warning["post_edit_comparison"], "not_performed");
     }
 
@@ -797,10 +794,7 @@ mod tests {
         assert_eq!(overwritten, vec!["Sheet1!B1".to_string()]);
         let preflight = OfficeFidelityExecutor::preflight_for_edit(&bytes).unwrap();
         let warning = build_fidelity_warning(&preflight, &overwritten).unwrap();
-        assert_eq!(
-            warning["overwritten_formula_cells"],
-            json!(["Sheet1!B1"])
-        );
+        assert_eq!(warning["overwritten_formula_cells"], json!(["Sheet1!B1"]));
     }
 
     #[test]

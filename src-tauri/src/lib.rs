@@ -70,6 +70,7 @@ pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod injection_budget;
+pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 pub mod json_validator;
 #[allow(dead_code)]
 pub mod lance_vector_store;
@@ -78,7 +79,6 @@ pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
-pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 #[cfg(feature = "mcp")]
 pub mod mcp;
 #[allow(dead_code)]

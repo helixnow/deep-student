@@ -299,7 +299,11 @@ impl SkillUsageRepo {
     }
 
     /// P1 回放器接口预留：取回某技能的最近账目（按创建时间倒序）。
-    pub fn list_by_skill(&self, skill_id: &str, limit: usize) -> Result<Vec<SkillUsageRow>, String> {
+    pub fn list_by_skill(
+        &self,
+        skill_id: &str,
+        limit: usize,
+    ) -> Result<Vec<SkillUsageRow>, String> {
         let conn = self.db.get_conn().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
@@ -713,13 +717,13 @@ fn detect_correction_hint(options: &SendOptions) -> bool {
 
 /// 提取单个工具结果的最小 trace；对成功的 load_skills 解析实际加载的技能。
 fn tool_trace(tr: &ToolResultInfo) -> ToolCallTrace {
-    let loaded_skill_ids =
-        if tr.success && crate::chat_v2::tools::SkillsExecutor::is_load_skills_tool(&tr.tool_name)
-        {
-            parse_load_skills_loaded(tr)
-        } else {
-            Vec::new()
-        };
+    let loaded_skill_ids = if tr.success
+        && crate::chat_v2::tools::SkillsExecutor::is_load_skills_tool(&tr.tool_name)
+    {
+        parse_load_skills_loaded(tr)
+    } else {
+        Vec::new()
+    };
     ToolCallTrace {
         name: tr.tool_name.clone(),
         success: tr.success,
@@ -788,10 +792,7 @@ pub(crate) fn on_turn_committed(db: &Arc<ChatV2Database>, ctx: &PipelineContext)
 ///
 /// 顺序不变量：**纠错处理必须先于本轮 usage 行写入**——retry 复用被推翻
 /// run 的 run_id，先完成标记/取证再写新行，新行才不会被误标。
-fn process_turn(
-    db: &Arc<ChatV2Database>,
-    summary: &TurnUsageSummary,
-) -> Result<(), String> {
+fn process_turn(db: &Arc<ChatV2Database>, summary: &TurnUsageSummary) -> Result<(), String> {
     let usage_repo = SkillUsageRepo::new(db.clone());
     let candidate_repo = SkillCandidateRepo::new(db.clone());
 
@@ -870,11 +871,7 @@ fn process_turn(
             .filter(|name| seen.insert(name.clone()))
             .collect();
         if tool_sequence.len() >= TRAJECTORY_MIN_DISTINCT_TOOLS {
-            let succeeded = summary
-                .tools
-                .iter()
-                .filter(|tool| tool.success)
-                .count() as i64;
+            let succeeded = summary.tools.iter().filter(|tool| tool.success).count() as i64;
             let failed = summary.tools.len() as i64 - succeeded;
             let draft_payload = serde_json::json!({
                 "kind": "trajectory",
@@ -1413,11 +1410,18 @@ mod tests {
         let repo = SkillCandidateRepo::new(db.clone());
         let candidate = trajectory_candidate("sess-1", &["a", "b", "c"]);
         repo.insert_if_new(&candidate).unwrap();
-        let stored = repo.get_by_trace_hash(&candidate.trace_hash).unwrap().unwrap();
+        let stored = repo
+            .get_by_trace_hash(&candidate.trace_hash)
+            .unwrap()
+            .unwrap();
 
         // 合法链：new → screened → replaying → passed → published → rolled_back
         assert!(repo
-            .update_status(&stored.candidate_id, CandidateStatus::New, CandidateStatus::Screened)
+            .update_status(
+                &stored.candidate_id,
+                CandidateStatus::New,
+                CandidateStatus::Screened
+            )
             .unwrap());
         assert!(repo
             .update_status(
@@ -1428,7 +1432,11 @@ mod tests {
             .unwrap());
         // 非法迁移被拒绝（new 不能直达 passed；状态不是期望前驱也被拒）
         assert!(!repo
-            .update_status(&stored.candidate_id, CandidateStatus::New, CandidateStatus::Passed)
+            .update_status(
+                &stored.candidate_id,
+                CandidateStatus::New,
+                CandidateStatus::Passed
+            )
             .unwrap());
         assert!(!repo
             .update_status(
@@ -1467,9 +1475,14 @@ mod tests {
             )
             .unwrap());
 
-        let listed = repo.list_by_status(CandidateStatus::RolledBack, 10).unwrap();
+        let listed = repo
+            .list_by_status(CandidateStatus::RolledBack, 10)
+            .unwrap();
         assert_eq!(listed.len(), 1);
-        assert!(repo.list_by_status(CandidateStatus::New, 10).unwrap().is_empty());
+        assert!(repo
+            .list_by_status(CandidateStatus::New, 10)
+            .unwrap()
+            .is_empty());
     }
 
     // ------------------------------------------------------------------------
@@ -1485,7 +1498,7 @@ mod tests {
             tool_result("vfs_search", true),
             tool_result("note_read", true),
             tool_result("anki_add_cards", true),
-            tool_result("note_read", true), // 重复工具只计一次
+            tool_result("note_read", true),    // 重复工具只计一次
             tool_result("broken_tool", false), // 失败工具不进序列
         ];
         let summary = summary_for("sess-1", "msg_run_1", "msg_u1", false, traces(&results));
@@ -1528,7 +1541,10 @@ mod tests {
         insert_session(&db, "sess-1");
 
         // 只有 2 个不同成功工具 → 不写 trajectory 候选
-        let results = vec![tool_result("vfs_search", true), tool_result("note_read", true)];
+        let results = vec![
+            tool_result("vfs_search", true),
+            tool_result("note_read", true),
+        ];
         let summary = summary_for("sess-1", "msg_run_1", "msg_u1", false, traces(&results));
         process_turn(&db, &summary).unwrap();
         assert!(list_all_candidates(&db).is_empty());
@@ -1676,7 +1692,10 @@ mod tests {
 
         let candidates = list_all_candidates(&db);
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].source_kind, CandidateSourceKind::UserCorrection);
+        assert_eq!(
+            candidates[0].source_kind,
+            CandidateSourceKind::UserCorrection
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -2033,7 +2052,10 @@ mod tests {
         let rows = usage_repo.list_by_run("msg_run_retry").unwrap();
         assert_eq!(rows.len(), 2);
         let old = rows.iter().find(|r| r.tokens == Some(7)).expect("old row");
-        let new = rows.iter().find(|r| r.tokens == Some(3456)).expect("new row");
+        let new = rows
+            .iter()
+            .find(|r| r.tokens == Some(3456))
+            .expect("new row");
         assert_eq!(old.outcome, SkillOutcome::UserCorrected);
         assert_eq!(new.outcome, SkillOutcome::Failed);
 
@@ -2115,7 +2137,12 @@ mod tests {
         );
 
         // 行尚不存在（常规首轮：usage 行在轮末才落账）：标记 0 行，不报错
-        on_task_finalized_inner(&db, "msg_run_e", &[completion_tool_result("blocked")], false);
+        on_task_finalized_inner(
+            &db,
+            "msg_run_e",
+            &[completion_tool_result("blocked")],
+            false,
+        );
         assert!(usage_repo.list_by_run("msg_run_e").unwrap().is_empty());
     }
 }

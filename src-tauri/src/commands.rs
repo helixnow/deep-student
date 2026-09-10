@@ -1958,7 +1958,10 @@ fn classify_probe_http_failure(status: reqwest::StatusCode, body: &str) -> (&'st
     let (category, summary) = match status.as_u16() {
         401 | 403 => ("auth", "认证失败：API 密钥无效、已过期或权限不足"),
         402 => ("billing", "账户余额不足或需要订阅"),
-        404 => ("model_not_found", "未找到该模型（模型名错误或端点路径不正确）"),
+        404 => (
+            "model_not_found",
+            "未找到该模型（模型名错误或端点路径不正确）",
+        ),
         408 | 504 => ("timeout", "供应商网关超时"),
         429 => ("rate_limit", "触发供应商速率限制，请稍后重试"),
         400 => ("bad_request", "请求被拒绝（模型名或参数与该供应商不兼容）"),
@@ -2017,7 +2020,10 @@ fn judge_sse_payload(payload: &str) -> Option<ProbeVerdict> {
             .unwrap_or_else(|| error.to_string());
         return Some(ProbeVerdict::Failure(
             "provider_error",
-            format!("供应商返回错误：{}", truncate_provider_error_detail(message)),
+            format!(
+                "供应商返回错误：{}",
+                truncate_provider_error_detail(message)
+            ),
         ));
     }
     // 任何形态的有效事件（choices delta / response.created / message_start /
@@ -2049,12 +2055,15 @@ fn inspect_probe_buffer(buffer: &[u8], eof: bool) -> ProbeVerdict {
                         .unwrap_or_else(|| error.to_string());
                     ProbeVerdict::Failure(
                         "provider_error",
-                        format!("供应商返回错误：{}", truncate_provider_error_detail(message)),
+                        format!(
+                            "供应商返回错误：{}",
+                            truncate_provider_error_detail(message)
+                        ),
                     )
                 } else {
                     ProbeVerdict::Success
                 }
-            },
+            }
             // JSON 未收全时继续等；EOF 还解析不了就是格式错误。
             Err(_) if !eof => ProbeVerdict::Pending,
             Err(_) => ProbeVerdict::Failure(
@@ -2143,10 +2152,7 @@ async fn run_chat_probe(
                     match inspect_probe_buffer(&buffer, false) {
                         ProbeVerdict::Pending => {
                             if buffer.len() > 64 * 1024 {
-                                return Err((
-                                    "format",
-                                    "响应过长且无可解析的数据事件".to_string(),
-                                ));
+                                return Err(("format", "响应过长且无可解析的数据事件".to_string()));
                             }
                         }
                         ProbeVerdict::Success => return Ok(()),
@@ -2160,10 +2166,9 @@ async fn run_chat_probe(
                     return match inspect_probe_buffer(&buffer, true) {
                         ProbeVerdict::Success => Ok(()),
                         ProbeVerdict::Failure(category, message) => Err((category, message)),
-                        ProbeVerdict::Pending => Err((
-                            "format",
-                            "流式响应结束但未收到有效事件".to_string(),
-                        )),
+                        ProbeVerdict::Pending => {
+                            Err(("format", "流式响应结束但未收到有效事件".to_string()))
+                        }
                     };
                 }
             }
@@ -2213,10 +2218,17 @@ async fn run_json_probe(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
             return Err((
                 "format",
-                format!("响应不是有效 JSON：{}", truncate_provider_error_detail(text)),
+                format!(
+                    "响应不是有效 JSON：{}",
+                    truncate_provider_error_detail(text)
+                ),
             ));
         };
-        if value.get("error").filter(|error| !error.is_null()).is_some() {
+        if value
+            .get("error")
+            .filter(|error| !error.is_null())
+            .is_some()
+        {
             return Err((
                 "provider_error",
                 format!("供应商返回错误：{}", truncate_provider_error_detail(text)),
@@ -2258,8 +2270,8 @@ async fn run_catalog_probe(
         config.api_protocol.as_deref(),
     )
     .map_err(|error| ("config", error.to_string()))?;
-    let headers = vendor_model_headers(&vendor_shim, kind)
-        .map_err(|error| ("config", error.to_string()))?;
+    let headers =
+        vendor_model_headers(&vendor_shim, kind).map_err(|error| ("config", error.to_string()))?;
 
     let probe = async {
         let response = client
@@ -2964,7 +2976,10 @@ pub async fn test_api_connection(
             return Ok(ConnectionTestOutcome::success(latency_ms(), None));
         }
         let error_text = response.text().await.unwrap_or_default();
-        error!("[API测试] Codex OAuth 连接失败: {} - {}", status, error_text);
+        error!(
+            "[API测试] Codex OAuth 连接失败: {} - {}",
+            status, error_text
+        );
         let (category, message) = classify_probe_http_failure(status, &error_text);
         return Ok(ConnectionTestOutcome::failure(
             category,
@@ -2985,11 +3000,15 @@ pub async fn test_api_connection(
         .and_then(|vendor| vendor.default_timeout_ms);
 
     let kind = resolve_test_model_kind(&config);
-    info!("[API测试] 模型类型分支: {:?} (model={})", kind, config.model);
+    info!(
+        "[API测试] 模型类型分支: {:?} (model={})",
+        kind, config.model
+    );
 
     let probe_result: std::result::Result<Option<String>, (&'static str, String)> = match kind {
         TestModelKind::Chat => {
-            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(45_000).clamp(5_000, 120_000));
+            let timeout =
+                Duration::from_millis(vendor_timeout.unwrap_or(45_000).clamp(5_000, 120_000));
             let probe_body = build_chat_probe_body(&config);
             let adapter = build_provider_adapter(&config);
             let prepared = state
@@ -3014,7 +3033,8 @@ pub async fn test_api_connection(
             .map(|_| None)
         }
         TestModelKind::Embedding => {
-            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
+            let timeout =
+                Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
             let url = format!("{}/embeddings", config.base_url.trim_end_matches('/'));
             let body = serde_json::json!({
                 "model": config.model,
@@ -3026,7 +3046,8 @@ pub async fn test_api_connection(
                 .map(|_| None)
         }
         TestModelKind::Reranker => {
-            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
+            let timeout =
+                Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
             let url = format!("{}/rerank", config.base_url.trim_end_matches('/'));
             let body = serde_json::json!({
                 "model": config.model,
@@ -3040,7 +3061,8 @@ pub async fn test_api_connection(
                 .map(|_| None)
         }
         TestModelKind::ImageGeneration => {
-            let timeout = Duration::from_millis(vendor_timeout.unwrap_or(10_000).clamp(5_000, 60_000));
+            let timeout =
+                Duration::from_millis(vendor_timeout.unwrap_or(10_000).clamp(5_000, 60_000));
             run_catalog_probe(&client, &config, timeout).await
         }
     };
@@ -3052,7 +3074,11 @@ pub async fn test_api_connection(
         }
         Err((category, message)) => {
             error!("[API测试] 连接失败 [{}]: {}", category, message);
-            Ok(ConnectionTestOutcome::failure(category, message, latency_ms()))
+            Ok(ConnectionTestOutcome::failure(
+                category,
+                message,
+                latency_ms(),
+            ))
         }
     }
 }
@@ -5037,7 +5063,11 @@ mod tests {
             .expect("Responses probe request should build");
         assert!(request.url.ends_with("/responses"), "url={}", request.url);
         assert_eq!(request.body["max_output_tokens"], json!(32));
-        assert!(request.body.get("max_tokens").is_none(), "body={:?}", request.body);
+        assert!(
+            request.body.get("max_tokens").is_none(),
+            "body={:?}",
+            request.body
+        );
         assert_eq!(request.body["stream"], json!(true));
     }
 
@@ -5050,13 +5080,11 @@ mod tests {
         assert_eq!(category, "auth");
         assert!(message.contains("401"), "message={message}");
 
-        let (category, _) =
-            classify_probe_http_failure(reqwest::StatusCode::TOO_MANY_REQUESTS, "");
+        let (category, _) = classify_probe_http_failure(reqwest::StatusCode::TOO_MANY_REQUESTS, "");
         assert_eq!(category, "rate_limit");
         let (category, _) = classify_probe_http_failure(reqwest::StatusCode::NOT_FOUND, "");
         assert_eq!(category, "model_not_found");
-        let (category, _) =
-            classify_probe_http_failure(reqwest::StatusCode::PAYMENT_REQUIRED, "");
+        let (category, _) = classify_probe_http_failure(reqwest::StatusCode::PAYMENT_REQUIRED, "");
         assert_eq!(category, "billing");
         let (category, _) = classify_probe_http_failure(reqwest::StatusCode::BAD_REQUEST, "");
         assert_eq!(category, "bad_request");

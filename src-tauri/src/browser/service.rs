@@ -1364,9 +1364,8 @@ impl BrowserService {
         .source_uri(Some(url.clone()))
         .tool(Some("browser_downloads"))
         .derived_edge(
-            DerivedEdge::new(url.clone(), "browser.download").with_params_hash(
-                hash_transform_params(&serde_json::json!({ "url": &url })),
-            ),
+            DerivedEdge::new(url.clone(), "browser.download")
+                .with_params_hash(hash_transform_params(&serde_json::json!({ "url": &url }))),
         )
         .locator(ManagedLocator::new("artifacts", relative_path.clone()).ok())
         .capabilities(ObjectCapabilities {
