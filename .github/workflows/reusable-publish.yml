@@ -68,7 +68,7 @@ jobs:
       # checkout 工作流自身 ref（默认分支）：提供 scripts/ci/*。
       # 不 checkout 发布 tag —— 旧 tag 可能没有这些脚本；tag 上唯一需要
       # 的文件 .release-channel 单独用 git show 读取。
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Print release tool manifest
         run: |
