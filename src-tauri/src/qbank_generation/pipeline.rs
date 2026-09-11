@@ -9,6 +9,7 @@
 use futures_util::StreamExt;
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
@@ -247,6 +248,18 @@ async fn stream_generate<F>(
 where
     F: FnMut(String),
 {
+    // 出题流式调用阶段计时基线，配合 [QbankGeneration] 各阶段日志定位阻塞点
+    // （安卓曾现 tokio 饿死 + connection aborted，需精确阶段耗时）。
+    let t0 = Instant::now();
+    let _stage = |t: &Instant, stage: &str, extra: &str| {
+        log::info!(
+            "[QbankGeneration][stream-g] {}: {:.1}s{}",
+            stage,
+            t.elapsed().as_secs_f32(),
+            extra
+        );
+    };
+
     let result = async {
         let messages = vec![
             json!({ "role": "system", "content": system_prompt }),
@@ -268,6 +281,15 @@ where
         crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
+        _stage(
+            &t0,
+            "prompt+body",
+            &format!(
+                " body_bytes={} ref_images={}",
+                request_body.to_string().len(),
+                images.len()
+            ),
+        );
 
         let mut preq = llm
             .prepare_provider_request(
@@ -279,6 +301,11 @@ where
                 "出题请求构建失败",
             )
             .await?;
+        _stage(
+            &t0,
+            "prepare_provider_request",
+            &format!(" url={}", preq.url),
+        );
 
         let client = llm.get_http_client();
 
@@ -304,8 +331,14 @@ where
                 }
             }
 
+            log::info!(
+                "[QbankGeneration][stream-g] sending POST {} body_bytes={}",
+                preq.url,
+                preq.body.to_string().len()
+            );
+
             // 建连/首包超时：send() 在响应头返回时完成，不会截断后续流式 body
-            tokio::time::timeout(
+            let send_result = tokio::time::timeout(
                 REQUEST_HEADER_TIMEOUT,
                 client
                     .post(&preq.url)
@@ -320,7 +353,9 @@ where
                     REQUEST_HEADER_TIMEOUT.as_secs()
                 ))
             })?
-            .map_err(|e| AppError::llm(format!("出题请求失败: {}", e)))?
+            .map_err(|e| AppError::llm(format!("出题请求失败: {}", e)))?;
+            _stage(&t0, "headers_received", "");
+            send_result
         };
 
         if !response.status().is_success() {
@@ -331,12 +366,20 @@ where
                 status, error_text
             )));
         }
+        _stage(&t0, "status_ok", &format!(" http={}", response.status()));
 
         let mut stream = response.bytes_stream();
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
         let mut finish_observed = false;
+
+        // SSE 收流：按 10s 递增栅栏记录数据块进度，定位流中途停摆点
+        // （安卓曾现流读到一半后 tokio 饿死 → connection aborted）。
+        let mut first_chunk = true;
+        let mut chunk_count: u64 = 0;
+        let mut last_chunk_at = Instant::now();
+        let mut stall_bucket = 0u32;
 
         // 处理单个 SSE 块：返回 true 表示流已结束
         let handle_sse_block =
@@ -395,7 +438,26 @@ where
                 chunk_result = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
                     match chunk_result {
                         Ok(Some(chunk)) => {
+                            // 数据块进度栅栏：首块 + 每累计 10s 一记，覆盖大响应慢速流
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
+                            chunk_count += 1;
+                            let now = Instant::now();
+                            if first_chunk {
+                                first_chunk = false;
+                                _stage(&t0, "first_chunk", &format!(" bytes={}", bytes.len()));
+                                last_chunk_at = now;
+                            } else {
+                                let bucket = (now.duration_since(last_chunk_at).as_secs() / 10) as u32;
+                                if bucket > stall_bucket {
+                                    stall_bucket = bucket;
+                                    log::info!(
+                                        "[QbankGeneration][stream-g] chunk#{}: {:.1}s since last chunk, elapsed {:.1}s",
+                                        chunk_count,
+                                        now.duration_since(last_chunk_at).as_secs_f32(),
+                                        now.duration_since(t0).as_secs_f32()
+                                    );
+                                }
+                            }
                             for line in sse_buffer.process_bytes(&bytes) {
                                 if handle_sse_block(&line, &mut on_chunk, &mut finish_observed) {
                                     stream_ended = true;
@@ -404,10 +466,17 @@ where
                             }
                         }
                         Ok(None) => {
+                            _stage(&t0, "stream_eof", &format!(" total_chunks={}", chunk_count));
                             break;
                         }
                         Err(_) => {
                             // 空闲超时：服务端长时间不发数据，视为网络故障而非无限等待
+                            log::error!(
+                                "[QbankGeneration][stream-g] stream idle timeout after {:.1}s idle / {:.1}s total; chunks={}; this maps to 'connection aborted' style loss",
+                                STREAM_IDLE_TIMEOUT.as_secs_f32(),
+                                t0.elapsed().as_secs_f32(),
+                                chunk_count
+                            );
                             return Err(AppError::llm(format!(
                                 "AI 出题流式响应超时（{} 秒无数据），请检查网络后重试",
                                 STREAM_IDLE_TIMEOUT.as_secs()
@@ -432,10 +501,16 @@ where
             }
         }
 
+        _stage(
+            &t0,
+            "stream_done",
+            &format!(" status={:?} chunks={}", stream_ended, chunk_count),
+        );
+
         if stream_ended || finish_observed {
             Ok(StreamStatus::Completed)
         } else {
-            log::warn!("[QbankGeneration] SSE 流未收到 DONE 标记或 finish_reason 就结束，结果可能不完整");
+            log::warn!("[QbankGeneration] SSE 流未收到 DONE 标记或 finish_reason 就结束，结果可能不完整；total={:.1}s", t0.elapsed().as_secs_f32());
             Ok(StreamStatus::Incomplete)
         }
     }
@@ -443,6 +518,7 @@ where
 
     llm.clear_cancel_stream(stream_event).await;
 
+    _stage(&t0, "stream_generate_done", "");
     result
 }
 
