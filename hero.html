@@ -330,6 +330,37 @@
           0 30px 70px -36px hsl(220 18% 10% / 0.52),
           0 1px 1px hsl(0 0% 0% / 0.08);
       }
+      .scene-brief {
+        display: grid;
+        grid-template-columns: 1fr 1.25fr 1fr;
+        gap: 28px;
+        margin: 0 0 24px;
+        padding: 20px 0;
+        border-top: 1px solid var(--hairline);
+      }
+      .scene-brief dt {
+        margin-bottom: 9px;
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+      }
+      .scene-brief dd {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 13px;
+        line-height: 1.8;
+      }
+      .scene-invitation {
+        margin: 20px 0 0;
+        color: var(--ink-2);
+        font-size: 13px;
+        line-height: 1.8;
+      }
+      .scene-invitation strong {
+        margin-right: 12px;
+        color: var(--ink);
+        font-weight: 600;
+      }
       .demo-screen {
         position: absolute;
         top: 0;
@@ -673,6 +704,19 @@
           height: min(82svh, 760px);
           border-radius: 14px;
         }
+        .scene-brief {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        .scene-brief > div {
+          display: grid;
+          grid-template-columns: 64px 1fr;
+          gap: 14px;
+        }
+        .scene-brief dt {
+          margin: 0;
+          line-height: 2;
+        }
         .demo-screen {
           width: 100%;
           height: 100%;
@@ -815,10 +859,10 @@
           <div class="section-header">
             <div>
               <p class="eyebrow">实时工作台</p>
-              <h2>一份资料，四种深入方式</h2>
+              <h2>从眼前的问题，走到手中的成果</h2>
             </div>
             <p class="section-intro">
-              这里呈现 Deep Student 的真实工作台。挑选一项眼前的任务，跟着提问、阅读、整理与产物生成的节奏，看见一份资料如何逐步变成自己的理解。
+              带着一章教材、几张错题照片，或一个值得追究的问题开始。跟随工作台阅读材料、查找来源、组织知识，再打开生成的导图、卡片与学习看板，亲手查看每一份成果。
             </p>
           </div>
           <div class="scene-tabs" role="tablist" aria-label="演示场景">
@@ -856,6 +900,11 @@
               周度学习看板
             </button>
           </div>
+          <dl class="scene-brief" aria-label="当前场景的任务与成果">
+            <div><dt>带入材料</dt><dd id="scene-input"></dd></div>
+            <div><dt>展开工作</dt><dd id="scene-process"></dd></div>
+            <div><dt>留下成果</dt><dd id="scene-output"></dd></div>
+          </dl>
           <div class="demo-window" id="demo-window">
             <div class="demo-screen" id="demo-screen">
               <iframe
@@ -867,9 +916,10 @@
               <span class="pulse-dot"></span><span>正在加载实时工作台</span>
             </div>
           </div>
+          <p class="scene-invitation"><strong>亲手试一试</strong><span id="scene-action"></span></p>
           <div class="experience-caption">
             <span
-              ><strong id="scene-caption">PDF 精读</strong> · 桌面工作台实况，场景之间自然切换，思路沿着会话继续展开</span
+              ><strong id="scene-caption">PDF 精读</strong> · 点击上方场景切换任务，已生成的内容保留在本次体验中</span
             ><span>图 1 / Live workspace</span>
           </div>
         </div>
@@ -928,7 +978,7 @@
               </div>
               <p>沿着具体页码阅读一篇关于数据并行训练的材料，把概念、方法与关键转折整理成清楚的知识框架。</p>
               <div class="scenario-output">
-                思维导图、页码引用徽章与挖空卡片，一起留在会话里
+                章节导图、原文页码、挖空卡片与自测题，让阅读接上练习
               </div>
             </article>
             <article class="scenario">
@@ -947,16 +997,16 @@
                 <h3>研究综述</h3>
               </div>
               <p>结合已有记忆、网络资料与学术检索，把一组分散的观点编排成一份带有来源脉络的研究综述。</p>
-              <div class="scenario-output">来源列表、综述正文与下一步待办，组成一份可继续更新的记录</div>
+              <div class="scenario-output">带来源的综述、研究路径对照表与阅读清单，方便回看与继续查证</div>
             </article>
             <article class="scenario">
               <div>
                 <span class="scenario-kicker">04 / WEEKLY</span>
                 <h3>周度学习看板</h3>
               </div>
-              <p>把一周里的掌握度、待复习卡片与反复出现的薄弱点放在同一张看板上，回望节奏，也安排下一步。</p>
+              <p>把本周整理的错题、读过的章节和准备复习的卡片放在同一张看板上，逐项回顾学习材料，为下一次学习安排具体内容。</p>
               <div class="scenario-output">
-                结构化看板产物，收在会话底部，随时回看
+                材料清单、卡片数量与复习安排，展开会话底部的产物即可回看
               </div>
             </article>
           </div>
@@ -1062,6 +1112,32 @@
           "demo-spaced-repetition": "研究综述",
           "demo-weekly-report": "周度学习看板",
         };
+        var briefs = {
+          "demo-pdf-deepread": {
+            input: "《机器学习系统》的数据并行训练章节，连同具体页码一起带进会话。",
+            process: "定位正文中的关键段落，梳理概念关系，再围绕章节重点准备卡片和自测题。",
+            output: "一张可缩放的章节导图、三张挖空卡片，以及带答案解析的自测题。",
+            action: "点击回答中的页码回到 PDF 原文，拖动导图查看分支，再翻开一张卡片检验自己的记忆。"
+          },
+          "demo-anki-cards": {
+            input: "三张高数错题照片，涉及极限、定积分与中值定理。",
+            process: "结合教材与错题笔记定位解题要点，把每个需要主动回忆的知识点单独成卡。",
+            output: "五张问答卡，保留题目标签与知识库来源，方便逐张预览和调整。",
+            action: "打开消息里的错题照片对照原题，点击卡片翻面，尝试编辑卡片里的提问方式。"
+          },
+          "demo-spaced-repetition": {
+            input: "一个关于间隔重复的研究问题，以及每天九十分钟的学习时间安排。",
+            process: "结合学习偏好、开源项目与学术文献，梳理研究方法，再整理适合继续阅读的线索。",
+            output: "带来源的综述、研究路径对照表，以及一份可以逐项回看的阅读清单。",
+            action: "点击来源查看文献线索，展开会话底部的产物阅读对照表，再查看安排好的阅读步骤。"
+          },
+          "demo-weekly-report": {
+            input: "一份周度材料记录：三道高数错题、一章教材，以及两组共八张卡片。",
+            process: "按学科归拢材料，将卡片数量与后续复习内容放在一起，形成一份清楚的学习安排。",
+            output: "包含材料清单、卡片概览与复习步骤的学习看板，方便在会话中反复查阅。",
+            action: "展开会话底部的「产物」查看学习看板，切到其他场景，再回来继续查看这份记录。"
+          }
+        };
         var scene =
           scenes.indexOf(params.get("scene")) >= 0
             ? params.get("scene")
@@ -1086,7 +1162,7 @@
               location.origin,
             );
         }
-        function selectScene(next) {
+        function selectScene(next, fromFrame) {
           if (scenes.indexOf(next) < 0) return;
           scene = next;
           sceneButtons.forEach(function (button) {
@@ -1096,7 +1172,10 @@
             );
           });
           captionEl.textContent = labels[scene];
-          send("demo:set-scene", { sessionId: scene });
+          ["input", "process", "output", "action"].forEach(function (key) {
+            document.getElementById("scene-" + key).textContent = briefs[scene][key];
+          });
+          if (!fromFrame) send("demo:set-scene", { sessionId: scene });
         }
         sceneButtons.forEach(function (button) {
           button.addEventListener("click", function () {
@@ -1108,7 +1187,10 @@
           if (active) send("demo:activate");
         });
         window.addEventListener("message", function (event) {
-          if (event.origin !== location.origin || !event.data) return;
+          if (event.origin !== location.origin || event.source !== frame.contentWindow || !event.data) return;
+          if (event.data.type === "demo:scene-changed") {
+            selectScene(event.data.sessionId, true);
+          }
           if (event.data.type === "demo-shell-ready") {
             loadingEl.classList.add("done");
             send("demo:set-scene", { sessionId: scene });

@@ -89,7 +89,7 @@ export function installDemoAutoPlay(
   let activated = !options.waitForActivation;
   /** 单调递增令牌：切换<|sep|>时使等待中/打字中的播放作废 */
   let ticket = 0;
-  /** 上一个当前<|sep|>：离开时销毁其缓存 store（见下） */
+  /** 上一个当前会话：离开时保存快照，保留缓存 store */
   let previousId: string | null = null;
 
   /** 逐字打字 → 点击真实发送按钮；任何时刻切走都会作废并清理残字 */
@@ -216,6 +216,12 @@ export function installDemoAutoPlay(
 
     if (event.sessionId) {
       if (isDemoSession(event.sessionId)) {
+        if (window.parent !== window) {
+          window.parent.postMessage(
+            { type: 'demo:scene-changed', sessionId: event.sessionId },
+            window.location.origin,
+          );
+        }
         void sweepDraftSessions(event.sessionId);
       }
       maybePlay(event.sessionId);
