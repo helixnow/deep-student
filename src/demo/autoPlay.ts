@@ -79,7 +79,14 @@ const sweepDraftSessions = async (currentId: string): Promise<void> => {
   }
 };
 
-export function installDemoAutoPlay(): void {
+export interface DemoAutoPlayController {
+  activate: () => void;
+}
+
+export function installDemoAutoPlay(
+  options: { waitForActivation?: boolean } = {},
+): DemoAutoPlayController {
+  let activated = !options.waitForActivation;
   /** 单调递增令牌：切换<|sep|>时使等待中/打字中的播放作废 */
   let ticket = 0;
   /** 上一个当前<|sep|>：离开时销毁其缓存 store（见下） */
@@ -143,6 +150,7 @@ export function installDemoAutoPlay(): void {
   };
 
   const maybePlay = (sessionId: string) => {
+    if (!activated) return;
     const fixture = DEMO_SESSIONS.find((s) => s.meta.id === sessionId);
     if (!fixture?.autoPrompt) return;
 
@@ -213,4 +221,13 @@ export function installDemoAutoPlay(): void {
       maybePlay(event.sessionId);
     }
   });
+
+  const activate = () => {
+    if (activated) return;
+    activated = true;
+    const currentId = sessionManager.getCurrentSessionId();
+    if (currentId && isDemoSession(currentId)) maybePlay(currentId);
+  };
+
+  return { activate };
 }

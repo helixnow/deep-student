@@ -82,6 +82,12 @@ async function main() {
     import('./fixtures'),
   ]);
 
+  const validSceneIds = new Set(DEMO_SESSIONS.map((session) => session.meta.id));
+  const requestedScene = params.get('scene');
+  const initialScene = requestedScene && validSceneIds.has(requestedScene)
+    ? requestedScene
+    : DEMO_SESSIONS[0]?.meta.id;
+
   const { createRoot } = await import('react-dom/client');
   createRoot(document.getElementById('root')!).render(
     <ErrorBoundary
@@ -108,8 +114,22 @@ async function main() {
     }, 0);
   }
 
-  // ⑤.5 自动播放：点进剧本会话即自动发问并流式播放回复（含初次自动导航）
-  installDemoAutoPlay();
+  // ⑤.5 自动播放：直接打开 demo 时立即播放；被 hero iframe 嵌入时等待父页
+  // 进入视口后发 demo:activate，避免用户尚未看到体验区就开始消耗剧本。
+  const autoPlay = installDemoAutoPlay({ waitForActivation: window.parent !== window });
+
+  // hero 与 demo 同源时才接受控制消息，避免任意嵌入页面驱动会话。
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin || !event.data) return;
+    const data = event.data as { type?: string; sessionId?: unknown };
+    if (data.type === 'demo:activate') {
+      autoPlay.activate();
+      return;
+    }
+    if (data.type !== 'demo:set-scene' || typeof data.sessionId !== 'string') return;
+    if (!validSceneIds.has(data.sessionId)) return;
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: data.sessionId });
+  });
 
   // ⑥ ChatV2Page 完成首轮会话加载后，自动导航到第一个剧本会话。
   // sessions-updated 发出时 draft 会话的 setCurrentSessionId 尚未执行，
@@ -118,7 +138,9 @@ async function main() {
   const navigateToDemo = () => {
     if (navigated) return;
     navigated = true;
-    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: DEMO_SESSIONS[0].meta.id });
+    if (initialScene) {
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: initialScene });
+    }
   };
   window.addEventListener(
     'chat-v2:sessions-updated',
