@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
+import { DEMO_SESSIONS } from '@/demo/fixtures';
 import type { StoreApi } from 'zustand';
 
 const { invokeMock, showGlobalNotificationMock, dstuCreateMock } = vi.hoisted(() => ({
@@ -24,6 +25,9 @@ vi.mock('@/dstu/api', () => ({
 }));
 
 import { AgentTaskPanel } from '../AgentTaskPanel';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+
+vi.mock('@/utils/clipboardUtils', () => ({ copyTextToClipboard: vi.fn().mockResolvedValue(true) }));
 
 interface MockChatStore {
   blocks: Map<string, unknown>;
@@ -971,6 +975,29 @@ describe('AgentTaskPanel', () => {
       cursor: undefined,
       limit: 40,
     });
+  });
+
+  it('copies the bilingual table from the expanded artifact shelf', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_list_runtime_directory') {
+        return { rootId: 'workspace', relativePath: '', entries: [], nextCursor: null, truncated: false, scanned: 0 };
+      }
+      if (cmd === 'browser_list_task_downloads') return [];
+      return {};
+    });
+    const fixture = DEMO_SESSIONS.find((item) => item.meta.id === 'demo-bilingual')!;
+    const intentBlock = fixture.followUp.find((block) => block.type === 'generative_ui')!;
+    const store = createMockStore({
+      sessionId: 'sess-bilingual-export',
+      blocks: new Map([['bilingual', { ...intentBlock, id: 'bilingual', messageId: 'msg-1', startedAt: 1, endedAt: 2 }]]),
+      activeBlockIds: new Set(),
+    });
+    render(<AgentTaskPanel store={store as unknown as StoreApi<any>} chatStore={store as unknown as StoreApi<any>} />);
+    fireEvent.click(await screen.findByRole('button', { name: /产物 1/i }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /数据并行训练 · 双语阅读笔记/ }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: /复制为 Markdown/ }));
+    await waitFor(() => expect(copyTextToClipboard).toHaveBeenCalledWith(expect.stringContaining('| 英文原文 | 中文译文 |')));
+    expect(copyTextToClipboard).toHaveBeenCalledWith(expect.stringContaining('Gradients are aggregated'));
   });
 
   it('shows a session artifact shelf without todo/runtime and opens note in the preview panel', async () => {

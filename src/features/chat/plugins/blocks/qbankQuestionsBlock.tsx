@@ -88,11 +88,11 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
     () => task?.drafts ?? output.drafts ?? [],
     [task?.drafts, output.drafts],
   );
-  const status = task?.status ?? (drafts.length > 0 ? 'completed' : 'running');
+  const status = task?.status ?? (block.status === 'error' ? 'failed' : drafts.length > 0 ? 'completed' : 'running');
   const skipped = task?.skippedReferences ?? output.skippedReferences ?? [];
   const rejectedCount = task?.rejectedCount ?? output.rejectedCount ?? 0;
   const usedReferenceCount = task?.usedReferenceCount ?? output.usedReferenceCount ?? 0;
-  const errorMessage = task?.error ?? undefined;
+  const errorMessage = task?.error ?? block.error;
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);

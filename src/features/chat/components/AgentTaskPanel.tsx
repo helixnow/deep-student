@@ -84,6 +84,7 @@ import {
 import { useArtifactRegistrySync } from './artifacts/useArtifactRegistrySync';
 import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatBlockBridge';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
+import { resolveGenerativeUIChatActionHandlers } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { AnkiCardsBlock } from '../plugins/blocks/ankiCardsBlock';
 
 // 兼容既有消费方/测试的提取函数出口（实现已迁移到 agent-task/extractors）
@@ -306,7 +307,17 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
           </div>
         );
       }
-      return <GenerativeUIPanel intent={intent} forceCompact />;
+      return (
+        <GenerativeUIPanel
+          intent={intent}
+          forceCompact
+          actionHandlers={typeof intent === 'string' ? undefined : resolveGenerativeUIChatActionHandlers({
+            intent,
+            toolInput: block.toolInput,
+            toolOutput: block.toolOutput,
+          })}
+        />
+      );
     }
     if (!chatStore) {
       return (
