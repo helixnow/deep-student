@@ -24,6 +24,7 @@ import type {
 import type { ContextRef } from '@/features/chat/context/types';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
+import type { GeneratedQuestionDraft } from '@/types/qbankGeneration';
 import {
   DEMO_IMAGE_ASSETS,
   DEMO_PDF_NAME,
@@ -47,6 +48,13 @@ export type DemoBlockDef = AutoReplyScenario['blocks'][number] & {
 
 export type DemoBlocks = DemoBlockDef[];
 
+export interface DemoFollowUp {
+  id: string;
+  label: string;
+  prompt: string;
+  reply: DemoBlocks;
+}
+
 export interface DemoSessionFixture {
   /** 会话元数据（chat_v2_list_sessions / chat_v2_get_session 返回） */
   meta: SessionInfo & { groupId?: string | null };
@@ -63,6 +71,7 @@ export interface DemoSessionFixture {
    * 缩略图/文件 chip/点击预览全走真实链路）
    */
   attachmentRefs?: ContextRef[];
+  continuations?: DemoFollowUp[];
 }
 
 // ============================================================================
@@ -80,13 +89,14 @@ function makeFixture(opts: {
   attachmentRefs?: ContextRef[];
   /** 自动播放的回复剧本（思维链 + 流式输出 + 工具块） */
   reply: DemoBlocks;
+  continuations?: DemoFollowUp[];
 }): DemoSessionFixture {
   const updatedAt = new Date(Date.now() - opts.minutesAgo * 60_000);
   const createdAt = new Date(updatedAt.getTime() - 10 * 60_000);
   return {
     meta: {
       id: opts.id,
-      mode: 'default',
+      mode: 'chat',
       title: opts.title,
       description: opts.description,
       persistStatus: 'active',
@@ -100,6 +110,7 @@ function makeFixture(opts: {
     followUp: opts.reply,
     autoPrompt: opts.autoPrompt,
     attachmentRefs: opts.attachmentRefs,
+    continuations: opts.continuations,
   };
 }
 
@@ -360,7 +371,7 @@ const ANKI_REPLY: DemoBlocks = [
       syncStatus: 'pending',
       finalStatus: 'completed',
       deliveryStatus: 'ready',
-      ankiConnect: { available: true, checkedAt: new Date().toISOString() },
+      ankiConnect: { available: false, checkedAt: new Date().toISOString() },
       progress: { stage: 'completed', cardsGenerated: 5, completedRatio: 1 },
       options: { deck_name: '高等数学 · 错题本' },
     },
@@ -491,7 +502,7 @@ const PDF_REPLY: DemoBlocks = [
       syncStatus: 'pending',
       finalStatus: 'completed',
       deliveryStatus: 'ready',
-      ankiConnect: { available: true, checkedAt: new Date().toISOString() },
+      ankiConnect: { available: false, checkedAt: new Date().toISOString() },
       progress: { stage: 'completed', cardsGenerated: 3, completedRatio: 1 },
       options: { deck_name: '机器学习系统 · 第 3 章' },
     },
@@ -540,6 +551,9 @@ const RESEARCH_COMPARISON: GenerativeUIIntent = {
   }, {
     type: 'markdown',
     props: { body: '[HLR 论文](https://aclanthology.org/P16-1174/) · [PNAS 论文](https://www.pnas.org/doi/10.1073/pnas.1815156116) · [FSRS 项目](https://github.com/open-spaced-repetition/fsrs4anki)' },
+  }, {
+    type: 'action-bar',
+    props: { actions: [{ id: 'export-intent', label: '复制为 Markdown', riskLevel: 'low' }] },
   }],
 };
 
@@ -678,6 +692,55 @@ const WEEKLY_REPORT_REPLY: DemoBlocks = [
 // 导出
 // ============================================================================
 
+export const DEMO_QBANK_ID = 'exam_demo_parallel';
+export const DEMO_QUESTIONS: GeneratedQuestionDraft[] = [
+  {
+    question_type: 'single_choice', difficulty: 'easy', tags: ['数据并行', '模型副本'],
+    content: '采用数据并行训练时，各 worker 通常分别持有什么？',
+    options: [{ key: 'A', content: '完整模型副本与一部分 mini-batch 数据' }, { key: 'B', content: '模型的一层与全部训练数据' }, { key: 'C', content: '梯度汇总结果与全部模型层的唯一副本' }],
+    answer: 'A', explanation: '数据并行按数据切分工作，各 worker 在完整模型副本上计算自己分到的数据。',
+  },
+  {
+    question_type: 'single_choice', difficulty: 'medium', tags: ['同步 SGD', '通信优化'],
+    content: '评估梯度压缩方案时，哪组指标能更完整地反映训练效果？',
+    options: [{ key: 'A', content: '通信耗时、训练吞吐量与收敛情况' }, { key: 'B', content: '压缩后的字节数' }, { key: 'C', content: 'worker 数量' }],
+    answer: 'A', explanation: '压缩改变传输量与梯度表示，评估时需要把通信代价、计算效率和模型收敛放在一起。',
+  },
+];
+
+const QBANK_REPLY: DemoBlocks = [
+  { type: 'thinking', status: 'success', streaming: true, content: '根据给定材料提取数据切分、模型副本和梯度压缩三个知识点，在已有题目集中准备两道选择题草稿，供学习者逐题检查后收录。' },
+  {
+    type: 'tool_call', status: 'success', toolName: 'builtin-qbank_generate_questions', dwellMs: 1000,
+    toolInput: { exam_id: DEMO_QBANK_ID, max_questions: 2, specs: [{ question_type: 'single_choice', count: 2 }], knowledge_points: ['数据并行', '梯度压缩'], topic_hint: '各 worker 持有完整模型副本，处理部分 mini-batch。评估梯度压缩时同时观察通信、吞吐量与收敛。', language: 'zh-CN' },
+    toolOutput: { action: 'generate_questions', examId: DEMO_QBANK_ID, drafts: DEMO_QUESTIONS, rejectedCount: 0, rejectionReasons: [], skippedReferences: [], usedReferenceCount: 0 },
+  },
+  { type: 'content', status: 'success', streaming: true, content: '两道选择题草稿已经列出，每道题带有选项、参考答案和知识点标签。勾选希望保留的题目，再点击「加入所选」。你还可以继续提问，查看已收录的题目与解析。' },
+];
+
+export const DEMO_TRANSLATION_SOURCE = 'In synchronous data-parallel training, each worker holds a complete replica of the model and processes a subset of the mini-batch. Gradients are aggregated before the next update. Gradient compression reduces communication volume; its impact should be evaluated together with training throughput and convergence.';
+const TRANSLATION_INTENT: GenerativeUIIntent = {
+  version: '1.1', layout: { mode: 'stack' }, meta: { title: '数据并行训练 · 双语阅读笔记' },
+  blocks: [
+    { type: 'table', props: { title: '逐句对照阅读', columns: [{ key: 'en', label: '英文原文' }, { key: 'zh', label: '中文译文' }], rows: [
+      { en: 'In synchronous data-parallel training, each worker holds a complete replica of the model and processes a subset of the mini-batch.', zh: '在同步数据并行训练中，每个工作节点持有完整的模型副本，并处理小批量数据中的一个子集。' },
+      { en: 'Gradients are aggregated before the next update.', zh: '梯度在下一次更新前完成聚合。' },
+      { en: 'Gradient compression reduces communication volume; its impact should be evaluated together with training throughput and convergence.', zh: '梯度压缩减少通信量；评估其影响时，应同时考察训练吞吐量与收敛情况。' },
+    ] } },
+    { type: 'table', props: { title: '本段术语', columns: [{ key: 'en', label: '术语' }, { key: 'zh', label: '译法与含义' }], rows: [
+      { en: 'worker', zh: '工作节点：执行当前数据子集的计算' }, { en: 'model replica', zh: '模型副本：一个完整模型的实例' }, { en: 'convergence', zh: '收敛：训练过程中优化目标的变化情况' },
+    ] } },
+    { type: 'action-bar', props: { actions: [{ id: 'export-intent', label: '复制双语阅读笔记', riskLevel: 'low' }] } },
+  ],
+};
+const TRANSLATION_REPLY: DemoBlocks = [
+  { type: 'content', status: 'success', streaming: true, content: '这段材料介绍同步数据并行的计算分工与梯度聚合。我将 worker 统一译为「工作节点」，model replica 译为「模型副本」，逐句整理译文，并补充术语说明。' },
+  { type: 'generative_ui', status: 'success', streaming: true, toolName: 'builtin-render_generative_ui', content: JSON.stringify(TRANSLATION_INTENT), toolInput: { intent: TRANSLATION_INTENT }, toolOutput: { intent: TRANSLATION_INTENT, isStreaming: false } },
+  { type: 'content', status: 'success', streaming: true, content: '双语阅读笔记已放在会话底部的「产物」中。展开后可以逐句对照，也可以点击「复制为 Markdown」，粘贴到自己的笔记中继续整理。' },
+];
+
+const textReply = (content: string): DemoBlocks => [{ type: 'content', status: 'success', streaming: true, content }];
+
 export const DEMO_SESSIONS: DemoSessionFixture[] = [
   makeFixture({
     id: 'demo-anki-cards',
@@ -692,6 +755,7 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
       displayName: img.name,
     })),
     reply: ANKI_REPLY,
+    continuations: [{ id: 'integral', label: '继续推导积分换元', prompt: '请把第二道题的换元过程展开，说明上下限和微分怎样一起变化。', reply: textReply('令 u = cos x，则 du = −sin x dx。在 x ∈ [0, π] 上，sin x = √(1 − u²)。\n\n因此 sin²x dx = −√(1 − u²) du，上下限由 x = 0、π 变为 u = 1、−1。调整积分方向后，得到 ∫₋₁¹ √(1 − u²) du。它表示单位圆的上半圆面积，结果为 π/2。\n\n也可以用 sin²x = (1 − cos 2x)/2 交叉核对。') }],
   }),
   makeFixture({
     id: 'demo-pdf-deepread',
@@ -708,6 +772,7 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
       },
     ],
     reply: PDF_REPLY,
+    continuations: [{ id: 'compare', label: '比较两种梯度聚合方式', prompt: '请进一步比较参数服务器和 AllReduce，说明它们怎样汇合梯度。', reply: textReply('**参数服务器**：worker 将梯度发送给参数服务器，由服务器完成聚合与参数更新，再向 worker 分发更新后的参数。\n\n**AllReduce**：参与节点通过集合通信共同完成梯度归约，各节点获得相同的聚合结果，再更新各自的模型副本。\n\n两种方式都服务于数据并行训练。选择时可以结合网络拓扑、节点规模、参数分片方式与故障处理需求，比较通信负载和运行效率。教材第 45 页使用参数服务器解释基本流程。') }],
   }),
   makeFixture({
     id: 'demo-spaced-repetition',
@@ -716,6 +781,7 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 47,
     autoPrompt: '我每天有九十分钟复习，请结合学习偏好，查阅间隔重复的研究与开源实现，整理来源对照表和阅读清单',
     reply: RESEARCH_REPLY,
+    continuations: [{ id: 'reading', label: '展开论文阅读顺序', prompt: '请把这份综述展开成一个具体的论文阅读顺序，说明每篇要记录什么。', reply: textReply('先阅读 [HLR 论文](https://aclanthology.org/P16-1174/)，记录模型输入、半衰期的含义与预测目标。\n\n接着阅读 [PNAS 2019](https://www.pnas.org/doi/10.1073/pnas.1815156116)，整理复习安排的建模假设、优化目标与实验设置。\n\n最后对照 [FSRS 项目文档](https://github.com/open-spaced-repetition/fsrs4anki)，查看记忆状态怎样更新、复习间隔怎样计算。每篇都保留原始链接，并用一段自己的话概括它解决的问题。') }],
   }),
   makeFixture({
     id: 'demo-weekly-report',
@@ -724,6 +790,15 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     minutesAgo: 1,
     autoPrompt: '本周整理了三道高数错题、五张问答卡，也读了数据并行训练章节，准备了导图、三张挖空卡和自测题。请据此生成学习看板，列出材料与下一轮复习安排',
     reply: WEEKLY_REPORT_REPLY,
+    continuations: [{ id: 'plan', label: '细化下一次复习安排', prompt: '请根据这份材料清单，把下一次复习安排成三个具体步骤。', reply: textReply('**先做高数主动回忆。** 看卡片正面写出关键步骤，再翻面核对展开阶数、变量替换和辅助函数。\n\n**再复述章节导图。** 沿着数据分配、梯度聚合、同步等待三个分支讲清训练流程，并记录需要回看的页码。\n\n**最后完成章节自测。** 独立回答三个问题，再对照参考思路，把新增疑问带到下一轮阅读。') }],
+  }),
+  makeFixture({ id: 'demo-qbank', title: '数据并行训练 · 知识点出题', minutesAgo: 5,
+    autoPrompt: '请在「数据并行训练」题目集中准备两道单选题。材料：每个 worker 持有完整模型副本并处理部分 mini-batch；梯度压缩应同时评估通信、吞吐量与收敛。请生成带答案解析的草稿，供我勾选收录。', reply: QBANK_REPLY,
+    continuations: [{ id: 'saved', label: '查看已收录题目与解析', prompt: '请列出我刚才收录的题目，并展示对应解析。', reply: [] }],
+  }),
+  makeFixture({ id: 'demo-bilingual', title: '数据并行训练 · 双语阅读', minutesAgo: 6,
+    autoPrompt: `请把下面这段技术材料逐句译成中文，worker 统一译为工作节点，model replica 译为模型副本。生成可复制的双语对照表，并解释关键术语。\n\n${DEMO_TRANSLATION_SOURCE}`, reply: TRANSLATION_REPLY,
+    continuations: [{ id: 'terms', label: '继续理解吞吐量与收敛', prompt: '请结合这段材料解释 throughput 和 convergence 的区别。', reply: textReply('**Throughput（吞吐量）**描述单位时间内处理的数据量，例如每秒处理多少训练样本。\n\n**Convergence（收敛）**描述优化过程是否逐渐达到目标，通常结合损失曲线、验证指标和所需训练步数观察。\n\n梯度压缩可能缩短通信时间。评估时应把每步用时与达到目标指标所需的步数一起记录，才能理解一次训练的整体成本。') }],
   }),
 ];
 
