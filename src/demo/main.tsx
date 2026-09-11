@@ -122,9 +122,19 @@ async function main() {
   // hero 与 demo 同源时才接受控制消息，避免任意嵌入页面驱动会话。
   window.addEventListener('message', (event) => {
     if (event.origin !== window.location.origin || event.source !== window.parent || !event.data) return;
-    const data = event.data as { type?: string; sessionId?: unknown };
+    const data = event.data as { type?: string; sessionId?: unknown; continuationId?: unknown };
     if (data.type === 'demo:activate') {
       autoPlay.activate();
+      return;
+    }
+    if (data.type === 'demo:download-materials') {
+      void import('./materials').then(({ downloadDemoMaterials }) => downloadDemoMaterials())
+        .then(() => window.parent.postMessage({ type: 'demo:materials-result', ok: true }, window.location.origin))
+        .catch(() => window.parent.postMessage({ type: 'demo:materials-result', ok: false }, window.location.origin));
+      return;
+    }
+    if (data.type === 'demo:continue' && typeof data.sessionId === 'string' && typeof data.continuationId === 'string') {
+      autoPlay.continueScene(data.sessionId, data.continuationId);
       return;
     }
     if (data.type !== 'demo:set-scene' || typeof data.sessionId !== 'string') return;

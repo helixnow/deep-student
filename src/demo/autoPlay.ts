@@ -81,6 +81,7 @@ const sweepDraftSessions = async (currentId: string): Promise<void> => {
 
 export interface DemoAutoPlayController {
   activate: () => void;
+  continueScene: (sessionId: string, continuationId: string) => void;
 }
 
 export function installDemoAutoPlay(
@@ -91,6 +92,18 @@ export function installDemoAutoPlay(
   let ticket = 0;
   /** 上一个当前会话：离开时保存快照，保留缓存 store */
   let previousId: string | null = null;
+  let unsubscribeCurrent: (() => void) | undefined;
+  let composing = false;
+  const publishContinuations = (sessionId: string) => {
+    const fixture = DEMO_SESSIONS.find((f) => f.meta.id === sessionId);
+    const state = sessionManager.peek(sessionId)?.getState();
+    const ready = !!state?.isDataLoaded && state.sessionStatus === 'idle' && !composing &&
+      [...state.messageMap.values()].some((m) => m.role === 'assistant' && m.blockIds.some((id) => state.blocks.get(id)?.status === 'success'));
+    if (window.parent !== window) window.parent.postMessage({
+      type: 'demo:continuations', sessionId, ready,
+      items: fixture?.continuations?.map(({ id, label }) => ({ id, label })) ?? [],
+    }, window.location.origin);
+  };
 
   /** 逐字打字 → 点击真实发送按钮；任何时刻切走都会作废并清理残字 */
   const typeAndSend = async (
@@ -99,6 +112,13 @@ export function installDemoAutoPlay(
     isStale: () => boolean,
   ): Promise<void> => {
     const store = sessionManager.peek(sessionId);
+    let typedValue = '';
+    const clearTypedDraft = () => {
+      // 切走后只清理原会话中由本次打字留下的草稿，保留新会话的输入。
+      if (typedValue && store?.getState().inputValue === typedValue) {
+        store.getState().setInputValue('');
+      }
+    };
     const directSend = () => {
       clearComposer();
       store?.getState().sendMessage(prompt, []).catch((e) => {
@@ -124,15 +144,16 @@ export function installDemoAutoPlay(
     }
     for (let i = 1; i <= prompt.length; i += 1) {
       if (isStale()) {
-        clearComposer();
+        clearTypedDraft();
         return;
       }
-      setComposerValue(ta, prompt.slice(0, i));
+      typedValue = prompt.slice(0, i);
+      setComposerValue(ta, typedValue);
       await sleep(typeCharMs());
     }
     await sleep(POST_TYPE_PAUSE_MS);
     if (isStale()) {
-      clearComposer();
+      clearTypedDraft();
       return;
     }
 
@@ -213,15 +234,22 @@ export function installDemoAutoPlay(
       });
     }
     previousId = event.sessionId || null;
+    unsubscribeCurrent?.();
 
     if (event.sessionId) {
       if (isDemoSession(event.sessionId)) {
+        const id = event.sessionId;
+        const store = sessionManager.peek(id);
+        unsubscribeCurrent = store?.subscribe((state, previous) => {
+          if (state.sessionStatus !== previous.sessionStatus || state.isDataLoaded !== previous.isDataLoaded) publishContinuations(id);
+        });
         if (window.parent !== window) {
           window.parent.postMessage(
             { type: 'demo:scene-changed', sessionId: event.sessionId },
             window.location.origin,
           );
         }
+        publishContinuations(id);
         void sweepDraftSessions(event.sessionId);
       }
       maybePlay(event.sessionId);
@@ -235,5 +263,23 @@ export function installDemoAutoPlay(
     if (currentId && isDemoSession(currentId)) maybePlay(currentId);
   };
 
-  return { activate };
+  const continueScene = (sessionId: string, continuationId: string) => {
+    if (sessionManager.getCurrentSessionId() !== sessionId || composing) return;
+    const continuation = DEMO_SESSIONS.find((f) => f.meta.id === sessionId)?.continuations?.find((c) => c.id === continuationId);
+    const state = sessionManager.peek(sessionId)?.getState();
+    if (!continuation || !state?.isDataLoaded || state.sessionStatus !== 'idle' || state.messageOrder.length === 0) return;
+    const composer = findComposer();
+    // 用户已经开始输入时保留草稿。
+    if (composer?.value.trim()) return;
+    composing = true;
+    const myTicket = ++ticket;
+    publishContinuations(sessionId);
+    void typeAndSend(sessionId, continuation.prompt, () => myTicket !== ticket || sessionManager.getCurrentSessionId() !== sessionId)
+      .finally(() => {
+        composing = false;
+        const currentId = sessionManager.getCurrentSessionId();
+        if (currentId) publishContinuations(currentId);
+      });
+  };
+  return { activate, continueScene };
 }

@@ -361,6 +361,9 @@
         color: var(--ink);
         font-weight: 600;
       }
+      .scene-followups { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+      .scene-followups button, .materials-button { font: inherit; font-size: 13px; color: var(--accent); background: transparent; border: 0; border-bottom: 1px solid var(--hairline); padding: 8px 0; cursor: pointer; }
+      .scene-followups button:disabled { color: var(--ink-3); cursor: wait; }
       .demo-screen {
         position: absolute;
         top: 0;
@@ -899,6 +902,8 @@
             >
               周度学习看板
             </button>
+            <button class="scene-tab" type="button" role="tab" aria-selected="false" data-scene="demo-qbank">知识点出题</button>
+            <button class="scene-tab" type="button" role="tab" aria-selected="false" data-scene="demo-bilingual">双语阅读</button>
           </div>
           <dl class="scene-brief" aria-label="当前场景的任务与成果">
             <div><dt>带入材料</dt><dd id="scene-input"></dd></div>
@@ -909,6 +914,7 @@
             <div class="demo-screen" id="demo-screen">
               <iframe
                 id="demo-frame"
+                allow="clipboard-write"
                 title="Deep Student 真实交互演示"
               ></iframe>
             </div>
@@ -917,6 +923,8 @@
             </div>
           </div>
           <p class="scene-invitation"><strong>亲手试一试</strong><span id="scene-action"></span></p>
+          <div class="scene-followups" id="scene-followups" aria-label="继续这个学习任务"></div>
+          <p><button type="button" class="materials-button" id="download-materials" disabled>获取学习材料与完整提问</button> <span id="materials-status" role="status"></span></p>
           <div class="experience-caption">
             <span
               ><strong id="scene-caption">PDF 精读</strong> · 点击上方场景切换任务，已生成的内容保留在本次体验中</span
@@ -976,7 +984,7 @@
                 <span class="scenario-kicker">01 / PDF</span>
                 <h3>PDF 精读</h3>
               </div>
-              <p>沿着具体页码阅读一篇关于数据并行训练的材料，把概念、方法与关键转折整理成清楚的知识框架。</p>
+              <p>沿着具体页码阅读一篇关于数据并行训练的材料，把概念、方法与推导过程整理成清楚的知识框架。</p>
               <div class="scenario-output">
                 章节导图、原文页码、挖空卡片与自测题，让阅读接上练习
               </div>
@@ -1008,6 +1016,22 @@
               <div class="scenario-output">
                 材料清单、卡片数量与复习安排，展开会话底部的产物即可回看
               </div>
+            </article>
+            <article class="scenario">
+              <div>
+                <span class="scenario-kicker">05 / PRACTICE</span>
+                <h3>知识点出题</h3>
+              </div>
+              <p>围绕刚读过的材料准备选择题，逐题查看选项和参考答案，将适合自己的题目收进题目集，再带着解析继续巩固知识。</p>
+              <div class="scenario-output">可以勾选收录的题目草稿，以及随题保存的答案、解析和知识点标签</div>
+            </article>
+            <article class="scenario">
+              <div>
+                <span class="scenario-kicker">06 / READING</span>
+                <h3>双语阅读</h3>
+              </div>
+              <p>从一段英文专业材料开始，统一术语译法，逐句对照原文与译文，再用进一步的提问理解相近概念之间的关系。</p>
+              <div class="scenario-output">可复制的双语对照表与术语说明，方便整理进自己的阅读笔记</div>
             </article>
           </div>
         </div>
@@ -1105,14 +1129,30 @@
           "demo-anki-cards",
           "demo-spaced-repetition",
           "demo-weekly-report",
+          "demo-qbank",
+          "demo-bilingual",
         ];
         var labels = {
           "demo-pdf-deepread": "PDF 精读",
           "demo-anki-cards": "错题制卡",
           "demo-spaced-repetition": "研究综述",
           "demo-weekly-report": "周度学习看板",
+          "demo-qbank": "知识点出题",
+          "demo-bilingual": "双语阅读",
         };
         var briefs = {
+          "demo-qbank": {
+            input: "一段关于模型副本、梯度聚合和通信优化的材料，以及一个准备收录题目的题目集。",
+            process: "围绕材料中的知识点生成选择题草稿，为每道题准备选项、答案与解析。",
+            output: "可以逐题勾选的选择题，收录后通过后续提问查看题目与解析。",
+            action: "勾选希望保留的题目并点击「加入所选」，再点击下方提问查看这次收录的结果。"
+          },
+          "demo-bilingual": {
+            input: "一段英文技术材料，以及工作节点、模型副本等术语的指定译法。",
+            process: "逐句理解原文，统一关键术语，将译文与原句并排整理，再解释概念之间的关系。",
+            output: "一份双语阅读笔记，包含逐句对照表与术语说明，可以复制到自己的笔记中。",
+            action: "展开会话底部的双语阅读产物，点击「复制为 Markdown」，或继续追问吞吐量与收敛的区别。"
+          },
           "demo-pdf-deepread": {
             input: "《机器学习系统》的数据并行训练章节，连同具体页码一起带进会话。",
             process: "定位正文中的关键段落，梳理概念关系，再围绕章节重点准备卡片和自测题。",
@@ -1164,6 +1204,7 @@
         }
         function selectScene(next, fromFrame) {
           if (scenes.indexOf(next) < 0) return;
+          if (scene !== next) document.getElementById("scene-followups").replaceChildren();
           scene = next;
           sceneButtons.forEach(function (button) {
             button.setAttribute(
@@ -1186,12 +1227,38 @@
           send("demo:set-scene", { sessionId: scene });
           if (active) send("demo:activate");
         });
+        var materialsButton = document.getElementById("download-materials");
+        materialsButton.addEventListener("click", function () {
+          materialsButton.disabled = true;
+          document.getElementById("materials-status").textContent = "正在整理材料…";
+          send("demo:download-materials");
+        });
         window.addEventListener("message", function (event) {
           if (event.origin !== location.origin || event.source !== frame.contentWindow || !event.data) return;
+          if (event.data.type === "demo:materials-result") {
+            materialsButton.disabled = false;
+            document.getElementById("materials-status").textContent = event.data.ok ? "材料已准备好，请查看浏览器下载列表。" : "请再次点击，重新获取材料。";
+          }
+          if (event.data.type === "demo:continuations" && event.data.sessionId === scene && Array.isArray(event.data.items)) {
+            var followups = document.getElementById("scene-followups");
+            followups.replaceChildren();
+            event.data.items.forEach(function (item) {
+              if (typeof item.id !== "string" || typeof item.label !== "string") return;
+              var button = document.createElement("button");
+              button.type = "button";
+              button.textContent = item.label;
+              button.disabled = !event.data.ready;
+              button.addEventListener("click", function () {
+                send("demo:continue", { sessionId: scene, continuationId: item.id });
+              });
+              followups.appendChild(button);
+            });
+          }
           if (event.data.type === "demo:scene-changed") {
             selectScene(event.data.sessionId, true);
           }
           if (event.data.type === "demo-shell-ready") {
+            materialsButton.disabled = false;
             loadingEl.classList.add("done");
             send("demo:set-scene", { sessionId: scene });
             if (active) send("demo:activate");

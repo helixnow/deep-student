@@ -23,6 +23,7 @@ import {
   DEMO_MINDMAP_CONTENT,
   DEMO_MINDMAP_ID,
   DEMO_MINDMAP_META,
+  DEMO_QBANK_ID,
 } from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
 import { getPlayedHistory } from './playedHistory';
@@ -55,6 +56,8 @@ let demoRuntimeResourceSeq = 1;
  * 不再重置 playedOnce、不重播第一答（页面刷新才全部重来）。
  */
 const playedOnce = new Set<string>();
+const demoQuestions = new Map<string, Record<string, unknown>>();
+const demoSavedCards = new Map<string, Record<string, unknown>>();
 
 // ============================================================================
 // 内存会话库
@@ -152,14 +155,14 @@ export function installDemoIpcMocks(): void {
         case 'get_default_template_id':
           return DEMO_ANKI_TEMPLATES[0]?.id ?? null;
 
-        // ---------- Anki 卡片写库 / 导出 / 同步（anki_cards 块的操作按钮；
-        // 返回诚实语义成功，观众点按钮能看到真实成功反馈而非报错） ----------
+        // 卡片保存在本次访问的内存中；桌面文件导出和 Anki 连接保留明确边界。
         case 'save_anki_cards': {
-          const request = (args.request ?? {}) as { cards?: Array<{ id?: string | null }> };
+          const request = (args.request ?? {}) as { cards?: Array<Record<string, unknown> & { id?: string | null }> };
           const cards = Array.isArray(request.cards) ? request.cards : [];
           const persistedIds = cards.map(
             (_, i) => `demo-saved-${Date.now().toString(36)}-${i}`,
           );
+          cards.forEach((card, index) => demoSavedCards.set(persistedIds[index], { ...card, id: persistedIds[index] }));
           return {
             savedIds: persistedIds,
             taskId: `demo-task-${Date.now().toString(36)}`,
@@ -174,16 +177,24 @@ export function installDemoIpcMocks(): void {
           };
         }
         case 'export_multi_template_apkg':
-          return `/tmp/deep-student-demo/${String(args.deckName ?? 'demo-cards')}.apkg`;
+          throw new Error('请在桌面版中导出 APKG 文件。');
         case 'add_cards_to_anki_connect': {
-          const syncCards = (args.selectedCards as unknown[] | undefined) ?? [];
-          return {
-            noteIds: syncCards.map((_, i) => 1700000000000 + i),
-            added: syncCards.length,
-            duplicates: 0,
-            failed: 0,
-            createdModels: [],
-          };
+          throw new Error('请在桌面版中连接 Anki，完成卡片同步。');
+        }
+
+        case 'plugin:clipboard-manager|write_text':
+          // 交给浏览器剪贴板回退路径，实际写入文本。
+          throw new Error('Use browser clipboard');
+        case 'qbank_get_generation_task':
+          return null;
+        case 'qbank_batch_create_questions': {
+          const params = Array.isArray(args.paramsList) ? args.paramsList as Array<Record<string, unknown>> : [];
+          if (params.some((p) => p.exam_id !== DEMO_QBANK_ID)) throw new Error('请选择当前示例题目集。');
+          return params.map((p) => {
+            const question = { ...p, id: `q_demo_${demoQuestions.size + 1}` };
+            demoQuestions.set(question.id, question);
+            return question;
+          });
         }
 
         // ---------- 思维导图（正文 [思维导图:mm_demo_...] 内嵌预览） ----------
@@ -427,7 +438,7 @@ export function installDemoIpcMocks(): void {
           const now = new Date();
           const meta: DemoSessionRecord['meta'] = {
             id: `demo-draft-${Date.now().toString(36)}-${createSeq++}`,
-            mode: String(args.mode ?? 'default'),
+            mode: String(args.mode ?? 'chat'),
             persistStatus: 'active',
             createdAt: now.toISOString(),
             updatedAt: now.toISOString(),
@@ -487,9 +498,17 @@ export function installDemoIpcMocks(): void {
           // 首轮播放专属剧本（自动播放的第一答）；之后自由输入走兜底罐头回复
           const firstPlay = !playedOnce.has(request.sessionId);
           playedOnce.add(request.sessionId);
-          const followUp = firstPlay && rec?.followUp?.length
+          const continuation = DEMO_SESSIONS.find((f) => f.meta.id === request.sessionId)
+            ?.continuations?.find((c) => c.prompt === request.content);
+          let followUp = firstPlay && rec?.followUp?.length
             ? rec.followUp
-            : DEFAULT_FOLLOW_UP;
+            : continuation?.reply ?? DEFAULT_FOLLOW_UP;
+          if (!firstPlay && request.sessionId === 'demo-qbank' && continuation?.id === 'saved') {
+            const saved = [...demoQuestions.values()];
+            followUp = [{ type: 'content', status: 'success', streaming: true, content: saved.length
+              ? saved.map((q, i) => `### ${i + 1}. ${q.content}\n\n参考答案：${q.answer}\n\n${q.explanation}`).join('\n\n')
+              : '先在上方题目草稿中勾选题目，点击「加入所选」，再通过这条提问查看收录结果。' }];
+          }
           // 异步播放，立即返回 assistantMessageId（与真实后端一致）
           void playReplyScript({
             sessionId: request.sessionId,
