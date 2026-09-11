@@ -131,8 +131,11 @@ impl CompactionSkipReason {
 /// （会话过短/锁占用/LLM 失败/取消/lineage 失效）拆开。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompactionOutcome {
-    /// 落盘了一条压缩记录
-    Compacted,
+    /// 落盘了一条压缩记录（携带压缩前后上下文占用估算，供事件上报/前端刷新）
+    Compacted {
+        tokens_before: Option<u32>,
+        tokens_after: Option<u32>,
+    },
     /// 无需压缩（会话本身不满足压缩条件，非异常）
     NotNeeded(CompactionSkipReason),
     /// 条件不满足而跳过（锁占用/预算过小/无模型/被取消）
@@ -145,7 +148,7 @@ impl CompactionOutcome {
     /// 与前端约定的 status 契约："compacted" | "notNeeded" | "skipped" | "failed"
     pub fn status_code(&self) -> &'static str {
         match self {
-            Self::Compacted => "compacted",
+            Self::Compacted { .. } => "compacted",
             Self::NotNeeded(_) => "notNeeded",
             Self::Skipped(_) => "skipped",
             Self::Failed(_) => "failed",
@@ -154,13 +157,24 @@ impl CompactionOutcome {
 
     pub fn reason_code(&self) -> Option<&'static str> {
         match self {
-            Self::Compacted => None,
+            Self::Compacted { .. } => None,
             Self::NotNeeded(r) | Self::Skipped(r) | Self::Failed(r) => Some(r.as_code()),
         }
     }
 
     pub fn did_compact(&self) -> bool {
-        matches!(self, Self::Compacted)
+        matches!(self, Self::Compacted { .. })
+    }
+
+    /// 压缩前后上下文占用估算（仅 Compacted 变体携带）
+    pub fn token_estimates(&self) -> (Option<u32>, Option<u32>) {
+        match self {
+            Self::Compacted {
+                tokens_before,
+                tokens_after,
+            } => (*tokens_before, *tokens_after),
+            _ => (None, None),
+        }
     }
 
     pub fn is_failed(&self) -> bool {
@@ -184,11 +198,14 @@ struct PreparedCompaction {
 /// 🆕 2026-09 防抖动冷却时长决策（纯函数，便于回归测试）：
 /// - 压缩失败 → 120s（摘要链路/DB 故障通常不会秒级恢复）
 /// - 无可压缩区间 → 60s（区间形状在下一条用户消息前通常不变，重复准备是浪费）
+/// - SessionTooShort → 60s（修复 2026-09：旧逻辑对"少条数"短会话不冷却，
+///   触发→加载全量历史→空转到跳过，曾 1 分钟内空转 8 次）
 /// - 成功 / 其它跳过 → 不冷却（并清除既有冷却）
 fn cooldown_duration_for_outcome(outcome: &CompactionOutcome) -> Option<std::time::Duration> {
     match outcome {
         CompactionOutcome::Failed(_) => Some(std::time::Duration::from_secs(120)),
-        CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange) => {
+        CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange)
+        | CompactionOutcome::NotNeeded(CompactionSkipReason::SessionTooShort) => {
             Some(std::time::Duration::from_secs(60))
         }
         _ => None,
@@ -485,26 +502,8 @@ impl ChatV2Pipeline {
                 })
             })
             .collect();
-        if messages.len() < HEAD_USER_TURNS * 2 + 2 {
-            info!(
-                "[compaction] session too short ({} source msgs); skip",
-                messages.len()
-            );
-            return Ok(CompactionOutcome::NotNeeded(
-                CompactionSkipReason::SessionTooShort,
-            ));
-        }
-
-        // 2. 构建 turn 列表
-        let turns = split_into_turns(&messages);
-        if turns.len() < HEAD_USER_TURNS + 2 {
-            info!("[compaction] not enough turns ({}); skip", turns.len());
-            return Ok(CompactionOutcome::NotNeeded(
-                CompactionSkipReason::SessionTooShort,
-            ));
-        }
-
-        // 3. 解析 ApiConfig（基于 model_id）
+        // 3. 解析 ApiConfig（基于 model_id）—— 提前到条数/字节守卫之前，
+        // sparse-session 守卫需要真实 usable 与 token 估算模型。
         let api_config = self
             .resolve_api_config_by_id(Some(effective_model_id))
             .await;
@@ -522,6 +521,39 @@ impl ChatV2Pipeline {
                 CompactionSkipReason::UsableTooSmall,
             ));
         }
+
+        // 2. 构建 turn 列表
+        let turns = split_into_turns(&messages);
+        if turns.len() < HEAD_USER_TURNS + 2 && messages.len() < HEAD_USER_TURNS * 2 + 2 {
+            // 条数与轮数都少：此时若 token 确凿很小（未到 usable 触发位）才判定
+            // "会话太短"；若消息/轮数少但 token 已巨大（少条数多工具重型会话），
+            // 交由 select_tail 决策——它可能把超大单轮切进 tail 或放弃（NoCompactibleRange），
+            // 但绝不能误报 SessionTooShort 让压缩彻底失效。
+            let msg_count = messages.len();
+            let compact_est: usize = messages
+                .iter()
+                .map(|m| estimate_message_tokens(m, &blocks_by_msg, model_id_for_tokens))
+                .sum();
+            let small_session = usable > 0 && compact_est.saturating_mul(100) / usable <= 70;
+            info!(
+                "[compaction] sparse-session guard: msgs={} turns={} est_tokens={} usable={} -> {}",
+                msg_count,
+                turns.len(),
+                compact_est,
+                usable,
+                if small_session {
+                    "skip (small)"
+                } else {
+                    "proceed (large)"
+                }
+            );
+            if small_session {
+                return Ok(CompactionOutcome::NotNeeded(
+                    CompactionSkipReason::SessionTooShort,
+                ));
+            }
+        }
+
         let tail_budget_raw = (usable as f64 * TAIL_PRESERVE_RATIO) as usize;
         let tail_budget = tail_budget_raw.clamp(MIN_TAIL_TOKENS, MAX_TAIL_TOKENS);
 
@@ -1093,7 +1125,10 @@ impl ChatV2Pipeline {
             prepared.record.tokens_after
         );
 
-        Ok(CompactionOutcome::Compacted)
+        Ok(CompactionOutcome::Compacted {
+            tokens_before: Some(tokens_before_estimate),
+            tokens_after: prepared.record.tokens_after,
+        })
     }
 
     fn persist_prepared_compaction(&self, prepared: &PreparedCompaction) -> ChatV2Result<bool> {
@@ -1441,9 +1476,27 @@ mod tests {
     /// 🆕 结构化结果：status / reason 码是与前端约定死的契约，逐字校验
     #[test]
     fn compaction_outcome_status_and_reason_codes() {
-        assert_eq!(CompactionOutcome::Compacted.status_code(), "compacted");
-        assert_eq!(CompactionOutcome::Compacted.reason_code(), None);
-        assert!(CompactionOutcome::Compacted.did_compact());
+        assert_eq!(
+            CompactionOutcome::Compacted {
+                tokens_before: Some(100),
+                tokens_after: Some(40),
+            }
+            .status_code(),
+            "compacted"
+        );
+        assert_eq!(
+            CompactionOutcome::Compacted {
+                tokens_before: None,
+                tokens_after: None,
+            }
+            .reason_code(),
+            None
+        );
+        assert!(CompactionOutcome::Compacted {
+            tokens_before: None,
+            tokens_after: None,
+        }
+        .did_compact());
 
         let not_needed = CompactionOutcome::NotNeeded(CompactionSkipReason::SessionTooShort);
         assert_eq!(not_needed.status_code(), "notNeeded");
@@ -1495,7 +1548,10 @@ mod tests {
             Some(Duration::from_secs(60))
         );
         assert_eq!(
-            cooldown_duration_for_outcome(&CompactionOutcome::Compacted),
+            cooldown_duration_for_outcome(&CompactionOutcome::Compacted {
+                tokens_before: None,
+                tokens_after: None,
+            }),
             None
         );
         assert_eq!(
@@ -1508,7 +1564,218 @@ mod tests {
             cooldown_duration_for_outcome(&CompactionOutcome::NotNeeded(
                 CompactionSkipReason::SessionTooShort
             )),
-            None
+            Some(Duration::from_secs(60))
+        );
+    }
+
+    /// 回归：少条数但 token 已巨大的「多工具重型会话」不再被条数门槛挡住，
+    /// 应继续走压缩而不是 session too short（修复 2026-09：旧逻辑只数消息条数）。
+    #[tokio::test]
+    async fn sparse_session_guard_allows_large_few_message_session() {
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some("http://127.0.0.1:9"), "sk-dead", "dead-model").await;
+
+        // 只造 2 条消息（user + assistant），assistant 挂一个 ~40K 字符的巨型工具输出块。
+        // 消息条数 < HEAD_USER_TURNS*2+2，但估算 token（按 4 字符/token 计 ~10K）远超 usable 的 30%。
+        let user_msg = crate::chat_v2::types::ChatMessage {
+            id: "msg_sp_u1".to_string(),
+            session_id: session_id.clone(),
+            role: MessageRole::User,
+            block_ids: vec!["blk_sp_u1".to_string()],
+            timestamp: 1_700_000_000_000,
+            persistent_stable_id: None,
+            parent_id: None,
+            supersedes: None,
+            meta: None,
+            attachments: None,
+            active_variant_id: None,
+            variants: None,
+            shared_context: None,
+        };
+        let user_block = MessageBlock {
+            id: "blk_sp_u1".to_string(),
+            message_id: "msg_sp_u1".to_string(),
+            block_type: block_types::CONTENT.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: Some("把 big.rs 内容总结成题目".to_string()),
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        };
+        let assistant_msg = crate::chat_v2::types::ChatMessage {
+            id: "msg_sp_a1".to_string(),
+            session_id: session_id.clone(),
+            role: MessageRole::Assistant,
+            block_ids: vec!["blk_sp_a1".to_string()],
+            timestamp: 1_700_000_001_000,
+            persistent_stable_id: None,
+            parent_id: None,
+            supersedes: None,
+            meta: None,
+            attachments: None,
+            active_variant_id: None,
+            variants: None,
+            shared_context: None,
+        };
+        // 只造 2 条消息（user + assistant），assistant 挂一个约 1M 字符的巨型工具输出块。
+        // 消息条数 < HEAD_USER_TURNS*2+2，但估算 token 远超 usable，必须继续压缩
+        // （真实故障即 290K token vs usable 208K 的少条数重型会话）。
+        let big_varied: String =
+            "fn process_frame(idx: usize) -> Result<Frame, RenderError> { /* 渲染管线第N阶段 */ }"
+                .chars()
+                .cycle()
+                .take(1_000_000)
+                .collect();
+        let assistant_block = MessageBlock {
+            id: "blk_sp_a1".to_string(),
+            message_id: "msg_sp_a1".to_string(),
+            block_type: block_types::MCP_TOOL.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: None,
+            tool_name: Some("workspace_file_read".to_string()),
+            tool_input: Some(serde_json::json!({"path": "/repo/src/big.rs"})),
+            tool_output: Some(serde_json::json!({"content": big_varied})),
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        };
+        ChatV2Repo::create_message_v2(&pipeline.db, &user_msg).expect("create user msg");
+        ChatV2Repo::create_block_v2(&pipeline.db, &user_block).expect("create user block");
+        ChatV2Repo::create_message_v2(&pipeline.db, &assistant_msg).expect("create assistant msg");
+        ChatV2Repo::create_block_v2(&pipeline.db, &assistant_block)
+            .expect("create assistant block");
+
+        // 条数不足会触发 sparse-guard，但修复点在于：不能因为「条数少」就误报
+        // SessionTooShort。单轮会话本就没有"增量中间区"可压缩，走 NoCompactibleRange
+        // 是正确结局；真正的故障（少条数巨 token）是被挡在 SessionTooShort 之外。
+        let outcome = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .expect("compaction run");
+        assert!(
+            !matches!(
+                outcome,
+                CompactionOutcome::NotNeeded(CompactionSkipReason::SessionTooShort)
+            ),
+            "少条数大 token 会话不得被挡成 SessionTooShort，实际是 {:?}",
+            outcome
+        );
+        assert!(
+            matches!(
+                outcome,
+                CompactionOutcome::Compacted { .. }
+                    | CompactionOutcome::NotNeeded(CompactionSkipReason::NoCompactibleRange)
+            ),
+            "单轮无增量区间走 NoCompactibleRange（或在多轮下提交压缩），实际是 {:?}",
+            outcome
+        );
+    }
+
+    /// 回归：少量条数 + token 确凿很小的小会话仍应被跳过（不浪费摘要调用）。
+    /// 2 条超短消息估算 token 远低于 usable 的 30%，应命中 SessionTooShort。
+    #[tokio::test]
+    async fn sparse_session_guard_skips_small_few_message_session() {
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some("http://127.0.0.1:9"), "sk-dead", "dead-model").await;
+
+        let make_msg =
+            |id: &str, role: MessageRole, ts: i64, blk: &str| crate::chat_v2::types::ChatMessage {
+                id: id.to_string(),
+                session_id: session_id.clone(),
+                role,
+                block_ids: vec![blk.to_string()],
+                timestamp: ts,
+                persistent_stable_id: None,
+                parent_id: None,
+                supersedes: None,
+                meta: None,
+                attachments: None,
+                active_variant_id: None,
+                variants: None,
+                shared_context: None,
+            };
+        let make_block = |id: &str, msg_id: &str, content: Option<String>| MessageBlock {
+            id: id.to_string(),
+            message_id: msg_id.to_string(),
+            block_type: block_types::CONTENT.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content,
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        };
+
+        ChatV2Repo::create_message_v2(
+            &pipeline.db,
+            &make_msg(
+                "msg_sm_u1",
+                MessageRole::User,
+                1_700_000_000_000,
+                "blk_sm_u1",
+            ),
+        )
+        .expect("create user msg");
+        ChatV2Repo::create_block_v2(
+            &pipeline.db,
+            &make_block("blk_sm_u1", "msg_sm_u1", Some("你好".to_string())),
+        )
+        .expect("create user block");
+        ChatV2Repo::create_message_v2(
+            &pipeline.db,
+            &make_msg(
+                "msg_sm_a1",
+                MessageRole::Assistant,
+                1_700_000_001_000,
+                "blk_sm_a1",
+            ),
+        )
+        .expect("create assistant msg");
+        ChatV2Repo::create_block_v2(
+            &pipeline.db,
+            &make_block("blk_sm_a1", "msg_sm_a1", Some("好的".to_string())),
+        )
+        .expect("create assistant block");
+
+        let outcome = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .expect("compaction run");
+        assert_eq!(
+            outcome,
+            CompactionOutcome::NotNeeded(CompactionSkipReason::SessionTooShort),
+            "小会话应被稀疏守卫跳过，实际是 {:?}",
+            outcome
         );
     }
 
@@ -1754,10 +2021,9 @@ mod tests {
             )
             .await
             .expect("compaction run");
-        assert_eq!(
-            outcome,
-            CompactionOutcome::Compacted,
-            "真实 k3 摘要必须提交压缩"
+        assert!(
+            matches!(outcome, CompactionOutcome::Compacted { .. }),
+            "真实 k3 摘要必须提交压缩，实际是 {outcome:?}"
         );
 
         // 验证落盘：compaction 记录 + 摘要块
@@ -1816,10 +2082,9 @@ mod tests {
             .await
             .expect("compaction run");
         eprintln!("[e2e] first compaction outcome: {:?}", outcome);
-        assert_eq!(
-            outcome,
-            CompactionOutcome::Compacted,
-            "摘要失败也必须通过静态降级提交压缩，不得退化为 FIFO"
+        assert!(
+            matches!(outcome, CompactionOutcome::Compacted { .. }),
+            "摘要失败也必须通过静态降级提交压缩，不得退化为 FIFO，实际是 {outcome:?}"
         );
 
         let conn = pipeline.db.get_conn_safe().expect("conn");
@@ -1959,10 +2224,9 @@ mod tests {
             )
             .await
             .expect("compaction run");
-        assert_eq!(
-            outcome,
-            CompactionOutcome::Compacted,
-            "含 HashMap meta 的真实消息形状下压缩必须能提交（曾因指纹误丢 100% 失败）"
+        assert!(
+            matches!(outcome, CompactionOutcome::Compacted { .. }),
+            "含 HashMap meta 的真实消息形状下压缩必须能提交（曾因指纹误丢 100% 失败），实际是 {outcome:?}"
         );
 
         // 压缩视图必须生效：激活记录存在且摘要消息可读
