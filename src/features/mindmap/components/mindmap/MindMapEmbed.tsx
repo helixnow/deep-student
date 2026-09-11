@@ -55,7 +55,8 @@ export interface MindMapEmbedProps {
   /** 自定义类名 */
   className?: string;
   /** 点击打开回调 */
-  onOpen?: () => void;
+  onOpen?: (mindmapId: string) => void;
+  openLabel?: string;
   /** 是否显示打开按钮 */
   showOpenButton?: boolean;
   /** 外部传入的显示标题（加载期间 fallback 显示） */
@@ -331,6 +332,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
   height = 280,
   className,
   onOpen,
+  openLabel,
   showOpenButton = true,
   displayTitle,
 }) => {
@@ -472,15 +474,14 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
 
   // 打开思维导图
   const handleOpen = useCallback(() => {
-    if (onOpen) {
-      onOpen();
-      return;
-    }
-
     // ★ 2026-02-13 修复：版本引用时跳转到父导图，而不是跳过
     // 优先使用父导图 ID（版本引用），否则使用当前 targetId（mm_xxx 引用）
     const openId = state.parentMindmapId || (targetId?.startsWith('mv_') ? null : targetId);
     if (!openId) return;
+    if (onOpen) {
+      onOpen(openId);
+      return;
+    }
     const dstuPath = openId.startsWith('/') ? openId : `/${openId}`;
     
     const navEvent = new CustomEvent('NAVIGATE_TO_VIEW', {
@@ -597,11 +598,11 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
       {/* 打开按钮 */}
       {showOpenButton && (
         <div className="absolute top-2 right-2">
-          <CommonTooltip content={t('embed.openInNewWindow')} position="left">
+          <CommonTooltip content={openLabel ?? t('embed.openInNewWindow')} position="left">
             <DsButton variant="ghost"
               onClick={handleOpen}
               className={EMBED_CONTROL_BUTTON_CLASS}
-              aria-label={t('embed.openInNewWindow')}
+              aria-label={openLabel ?? t('embed.openInNewWindow')}
             >
               <ArrowsOut size={16} />
             </DsButton>
