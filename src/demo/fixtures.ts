@@ -23,6 +23,7 @@ import type {
 } from '@/features/chat/adapters/types';
 import type { ContextRef } from '@/features/chat/context/types';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
+import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 import {
   DEMO_IMAGE_ASSETS,
   DEMO_PDF_NAME,
@@ -198,16 +199,16 @@ export const DEMO_MINDMAP_CONTENT = JSON.stringify({
   root: mmNode('root', '数据并行训练', [
     mmNode('n1', '基本范式', [
       mmNode('n1-1', 'mini-batch 切分到 K 个 worker'),
-      mmNode('n1-2', '参数服务器聚合梯度'),
+      mmNode('n1-2', '参数服务器 / AllReduce 聚合梯度'),
       mmNode('n1-3', '更新值广播回各 worker'),
     ]),
     mmNode('n2', '同步的代价', [
       mmNode('n2-1', 'straggler 效应'),
       mmNode('n2-2', '加速比偏离线性'),
     ]),
-    mmNode('n3', '破局方向', [
+    mmNode('n3', '优化方向', [
       mmNode('n3-1', '梯度压缩（量化 / 稀疏化）'),
-      mmNode('n3-2', '流水线并行'),
+      mmNode('n3-2', '计算与通信重叠'),
       mmNode('n3-3', '异步 SGD（陈旧梯度）'),
     ]),
   ]),
@@ -224,11 +225,9 @@ export const DEFAULT_FOLLOW_UP: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 350,
-    content: `这是 **Deep Student 演示环境** 的模拟回复。
+    content: `这里的交互内容来自预设学习材料。你可以打开 PDF 页码引用、查看章节导图、翻阅卡片，以及展开会话底部的学习产物。
 
-当前页面运行的是与桌面版完全一致的前端界面与事件链路，但数据来自内置剧本，不会连接真实模型。
-
-下载桌面客户端，即可用你的学习内容（教材、题库、笔记）与 AI 深度对话。`,
+下载 Deep Student 桌面版并连接所选模型后，就可以带入自己的教材、照片与笔记，继续提问、整理资料和准备练习。`,
   },
 ];
 
@@ -241,16 +240,16 @@ export const DEFAULT_FOLLOW_UP: DemoBlocks = [
 const ANKI_CARDS: AnkiCard[] = [
   {
     id: 'chat-batch-demo-1',
-    front: '求 lim(x→0) (sin x − x) / x³ 时，直接把 sin x 换成 x 为什么错？',
-    back: '等价无穷小替换只能用于乘除因子，不能用于相减的项。\n正确做法：泰勒展开 sin x = x − x³/6 + o(x³)，得极限 −1/6。',
+    front: '求 lim(x→0) (sin x − x) / x³ 时，泰勒展开应保留到哪一阶？',
+    back: '保留到三阶。\n展开 sin x = x − x³/6 + o(x³)，相减后首个非零项是 −x³/6，除以 x³ 得极限 −1/6。',
     tags: ['高数', '极限', '等价无穷小'],
     images: [],
     template_id: 'tpl_demo_basic',
   },
   {
     id: 'chat-batch-demo-2',
-    front: '∫₀^π sin²x dx 用换元 u = cos x 时最容易漏掉什么？',
-    back: '换元必须同时换上下限：x = 0 → u = 1，x = π → u = −1；漏换会得到错误符号。',
+    front: '∫₀^π sin²x dx 用换元 u = cos x 时，上下限和微分怎样变化？',
+    back: 'x = 0 对应 u = 1，x = π 对应 u = −1，du = −sin x dx。\n在 [0, π] 上 sin x ≥ 0，原式转为 ∫₋₁¹ √(1 − u²) du = π/2。',
     tags: ['高数', '定积分', '换元法'],
     images: [],
     template_id: 'tpl_demo_basic',
@@ -273,8 +272,8 @@ const ANKI_CARDS: AnkiCard[] = [
   },
   {
     id: 'chat-batch-demo-5',
-    front: '拉格朗日中值定理的两个前提条件是什么？缺一会怎样？',
-    back: '闭区间 [a, b] 上连续 + 开区间 (a, b) 内可导。缺连续性结论不成立，如 f(x) = 1/x 在 [−1, 1] 上。',
+    front: '应用拉格朗日中值定理前，需要逐项核对哪些条件？',
+    back: '核对 f 在闭区间 [a, b] 上连续，并在开区间 (a, b) 内可导。\n满足这两个条件后，可找到 ξ ∈ (a, b)，使 f′(ξ) 等于端点连线的斜率。',
     tags: ['高数', '中值定理'],
     images: [],
     template_id: 'tpl_demo_basic',
@@ -287,17 +286,9 @@ const ANKI_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 200,
-    content: `用户拍了三道高数错题照片。先识别照片里的题目，再去他的知识库看看错题本和教材里有没有相关记录，然后定制制卡策略。
+    content: `先从三张照片中提取题目与解题步骤，再对照教材、错题笔记，分别整理极限展开、积分换元和辅助函数构造。
 
-三道题的核心错因：
-1. 极限计算：等价无穷小误用于相减项
-2. 定积分换元：换元后忘记换上下限
-3. 中值定理证明：辅助函数构造方向错误
-
-制卡策略：
-- 每张卡只考一个易错点，正反面分离「错因识别」和「正确做法」
-- 用问答卡而非挖空卡——这里练的是主动回忆
-- 打上章节标签，FSRS 按知识点调度`,
+每张问答卡围绕一个知识点提问，背面保留推导要点，标签标明对应章节，方便后续整理。`,
   },
   {
     type: 'rag',
@@ -320,7 +311,7 @@ const ANKI_REPLY: DemoBlocks = [
           title: '高数错题本（8 月）.md',
           url: '/笔记/高数错题本（8 月）.md',
           snippet:
-            '……∫₀^π sin²x dx 换元 u = cos x 时又忘了换限，结果算出 0——这个月第二次犯，必须单独成卡……',
+            '……积分换元需要同步写出变量、上下限与微分的变化；∫₀^π sin²x dx 也可用降幂公式求得 π/2……',
           score: 0.86,
           metadata: { resourceId: 'note_demo_errorbook', resourceType: 'note' },
         },
@@ -340,19 +331,15 @@ const ANKI_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 250,
-    content: `三张错题照片都识别出来了。检索到你的教材和错题笔记——错题 2 的「换元不换限」在你的错题本里**这个月已经出现过一次** [知识库-2]，这类错误必须单独成卡。
+    content: `三道题分别对应**极限的展开阶数、积分换元的完整步骤、中值定理的辅助函数**。我对照了教材与错题笔记，将这三个主题拆成五张问答卡。
 
-## 错因定位
+### 从解题步骤找到复习重点
 
-**第 1 题**：把 $\\sin x$ 直接换成 $x$，是**等价无穷小的误用**——替换只对乘除因子成立，相减的项必须保留到足够阶 [知识库-1]。正确路径是泰勒展开：
+- **极限**：展开 sin x 到三阶，保留相减后的首个非零项，再除以 x³ 得到 −1/6。[知识库-1]
+- **定积分**：令 u = cos x，同时写出上下限和 du；也可以用 sin²x = (1 − cos 2x)/2 求得 π/2。[知识库-2]
+- **中值定理**：先把目标整理为 F′(ξ) = 0，再构造 F(x) = f(x) − k(x − a)，核对端点值与可导条件。[知识库-3]
 
-$$\\sin x = x - \\frac{x^3}{6} + o(x^3) \\;\\Rightarrow\\; \\lim_{x \\to 0} \\frac{\\sin x - x}{x^3} = -\\frac{1}{6}$$
-
-**第 2 题**：$u = \\cos x$ 换元本身可行，但**上下限没跟着换**：$x=0 \\to u=1$，$x=\\pi \\to u=-1$，漏换直接丢符号。这题其实还有更快的路子（区间再现，见卡片 3）。
-
-**第 3 题**：辅助函数的构造方向反了。固定套路是**先把结论改写成 $F'(\\xi) = 0$** 再倒推 $F$ [知识库-3]。
-
-已按「一张卡只考一个易错点」生成 **5 张卡片**（第 2 题拆出了两个独立坑点），正在逐张写入 ↓`,
+接下来逐张生成卡片。你可以先看正面尝试回忆，再翻面核对推导。`,
   },
   {
     type: 'anki_cards',
@@ -383,13 +370,9 @@ $$\\sin x = x - \\frac{x^3}{6} + o(x^3) \\;\\Rightarrow\\; \\lim_{x \\to 0} \\fr
     status: 'success',
     streaming: true,
     delay: 300,
-    content: `已生成完毕，写入牌组 **「高等数学 · 错题本」**，FSRS 调度已开启：
+    content: `五张卡片已准备好，牌组名称预填为 **「高等数学 · 错题本」**。
 
-- 5 张都是新卡，**今晚**安排首次学习
-- 错题 2 拆出的两张卡标了「换元法」标签，明早复习队列会优先出现
-- 上面那叠卡片可以直接**点击翻面预览**、**进入编辑改字**，然后「加入卡片库」或「同步到 Anki」
-
-要不要我把「区间再现」再展开讲两种常见变形？`,
+点击卡片可以翻面预览，也可以进入编辑调整题目与答案。检查内容后，点击「加入卡片库」完成收录。桌面版中的复习安排会依据卡片状态与实际作答记录生成。`,
   },
 ];
 
@@ -402,7 +385,7 @@ const MLSYS_CARDS: AnkiCard[] = [
     id: 'chat-batch-demo-6',
     front: '',
     back: '',
-    text: '数据并行中，各 worker 的梯度由 {{c1::参数服务器（Parameter Server）}} 聚合后再广播回所有 worker。',
+    text: '采用参数服务器架构时，各 worker 的梯度由 {{c1::参数服务器（Parameter Server）}} 聚合；采用集合通信时，可通过 {{c2::AllReduce}} 完成梯度归约。',
     tags: ['机器学习系统', '数据并行'],
     images: [],
     template_id: 'tpl_demo_cloze',
@@ -420,7 +403,7 @@ const MLSYS_CARDS: AnkiCard[] = [
     id: 'chat-batch-demo-8',
     front: '',
     back: '',
-    text: '通信受限场景下，可用 {{c1::梯度压缩（量化 / 稀疏化）}} 或改用 {{c2::流水线并行}} 来降低同步开销。',
+    text: '数据并行的通信优化包括 {{c1::梯度压缩}} 与 {{c2::计算通信重叠}}；分析效果时需要同时观察吞吐量和收敛情况。',
     tags: ['机器学习系统', '并行策略'],
     images: [],
     template_id: 'tpl_demo_cloze',
@@ -433,11 +416,7 @@ const PDF_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 200,
-    content: `用户上传了《机器学习系统》PDF，问第 3 章「数据并行」。
-
-先去知识库定位这一章的正文片段。注意两点：
-1. 引用要标到具体页码，方便他回去翻书
-2. 他要的是"知识框架"——除了文字梳理，直接给他一张可交互导图 + 一叠挖空卡更合适`,
+    content: `先定位教材中的数据并行、同步等待和通信优化段落，为每条结论保留页码。随后整理概念之间的关系，生成章节导图和挖空卡片，最后准备几道自测题，帮助读者检查理解。`,
   },
   {
     type: 'rag',
@@ -480,21 +459,21 @@ const PDF_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 250,
-    content: `第 3 章读完了。这一章的主线其实只有一句话：**计算可以无限切分，通信才是瓶颈**。
+    content: `这一章可以沿着三个问题来读：**训练数据怎样分配、梯度怎样汇合、同步时间怎样影响训练效率**。
 
-## 知识框架
+### 沿着页码理解章节
 
-**① 基本范式**：mini-batch 切到 $K$ 个 worker，各自在完整模型副本上算梯度，参数服务器聚合后再广播 [PDF@file_demo_mlsys:45]
+**数据与模型副本**：mini-batch 分配给多个 worker，各自在模型副本上计算梯度。教材用参数服务器说明梯度聚合与参数更新的过程。[PDF@file_demo_mlsys:45]
 
-**② 同步的代价**：同步 SGD 里所有人要等最慢的那个 worker（straggler 效应），worker 越多加速比越偏离线性 [PDF@file_demo_mlsys:47]
+**同步等待**：同步 SGD 需要各 worker 完成当前步骤，计算较慢的节点会拉长等待时间。分析加速效果时，应同时观察计算时间与通信时间。[PDF@file_demo_mlsys:47]
 
-**③ 破局方向**：通信受限时做梯度压缩（量化 / 稀疏化），或者干脆换流水线并行的切分方式 [PDF@file_demo_mlsys:52]
+**通信优化**：教材介绍了梯度压缩等思路。阅读时可以结合通信量、吞吐量与收敛情况，理解每种方法的适用条件。[PDF@file_demo_mlsys:52]
 
-整章的概念依赖我整理成了导图，可以直接缩放、拖动着看 ↓
+下面的导图把基本范式、同步开销与优化方向连接起来。你可以缩放画布、拖动查看各个分支。
 
 [思维导图:mm_demo_mlsys_ch3:第 3 章 · 数据并行训练]
 
-卡片也出好了——这章是概念密集型，用了**填空模板**直接挖空核心名词 ↓`,
+再用三张挖空卡回忆关键概念。`,
   },
   {
     type: 'anki_cards',
@@ -522,11 +501,15 @@ const PDF_REPLY: DemoBlocks = [
     status: 'success',
     streaming: true,
     delay: 300,
-    content: `3 张挖空卡已入牌组 **「机器学习系统 · 第 3 章」**。
+    content: `三张挖空卡已生成，牌组名称预填为 **「机器学习系统 · 第 3 章」**。翻面检查内容后，可以通过「加入卡片库」收录。
 
-建议的节奏：今晚先对着导图回忆一遍主线（卡壳的地方就是没读懂的地方），明早 FSRS 会把这 3 张卡排进队列。
+### 读完后，用三个问题检查理解
 
-需要的话，我可以把第 4 章「模型并行」也梳理出来，和这一章做一张对比表。`,
+1. 采用参数服务器时，worker 的梯度经过哪些步骤参与参数更新？
+2. 一个 worker 明显较慢时，同步 SGD 的每轮训练时间会怎样变化？
+3. 梯度压缩减少了传输量，评估训练效果时还需要记录哪些指标？
+
+**参考思路**：第一题沿着计算、聚合、更新、分发描述数据流；第二题结合最慢节点与同步等待解释；第三题同时观察通信耗时、吞吐量与收敛情况。你可以回到第 45、47、52 页核对自己的回答。`,
   },
 ];
 
@@ -534,266 +517,139 @@ const PDF_REPLY: DemoBlocks = [
 // 剧本 ③：间隔重复研究综述（记忆 + 网络检索 + 学术搜索 + 待办面板）
 // ============================================================================
 
+const RESEARCH_COMPARISON: GenerativeUIIntent = {
+  version: '1.1',
+  layout: { mode: 'stack' },
+  meta: { title: '间隔重复 · 研究路径对照', description: '从记忆建模到复习安排，整理继续阅读的线索' },
+  blocks: [{
+    type: 'table',
+    props: {
+      title: '带着问题读文献',
+      columns: [
+        { key: 'source', label: '阅读材料' },
+        { key: 'question', label: '关注的问题' },
+        { key: 'use', label: '阅读后可以整理什么' },
+      ],
+      rows: [
+        { source: 'HLR · ACL 2016', question: '怎样用练习记录预测回忆概率？', use: '输入特征、半衰期与预测目标' },
+        { source: 'Spaced Repetition Optimization · PNAS 2019', question: '怎样把复习时间安排写成优化问题？', use: '建模假设、目标函数与求解思路' },
+        { source: 'FSRS 开源项目', question: '记忆模型怎样用于实际调度？', use: '状态更新、参数训练与复习间隔' },
+      ],
+      caption: '结合下方原始来源，逐项核对研究假设与适用条件。',
+    },
+  }, {
+    type: 'markdown',
+    props: { body: '[HLR 论文](https://aclanthology.org/P16-1174/) · [PNAS 论文](https://www.pnas.org/doi/10.1073/pnas.1815156116) · [FSRS 项目](https://github.com/open-spaced-repetition/fsrs4anki)' },
+  }],
+};
+
 const RESEARCH_REPLY: DemoBlocks = [
   {
-    type: 'memory',
-    status: 'success',
-    dwellMs: 500,
-    toolOutput: {
-      query: '用户学习目标 复习偏好',
-      totalResults: 2,
-      durationMs: 318,
-      sources: [
-        {
-          title: '学习档案',
-          snippet: '用户正在备考研究生（12 月底考试），每天可用于复习的时间约 90 分钟。',
-          score: 0.95,
-          metadata: { note_id: 'note_demo_profile' },
-        },
-        {
-          title: '复习偏好 · 2026-08-14',
-          snippet: '用户反馈：看着卡片认答案总觉得会了，合上书写不出来——更适合"生成式回忆"式的复习。',
-          score: 0.88,
-          metadata: { note_id: 'note_demo_preference' },
-        },
-      ],
-    },
+    type: 'thinking', status: 'success', streaming: true,
+    content: '先结合学习档案确认每天可用的复习时间，再分别查阅开源项目和学术文献。整理时区分模型的预测目标、调度方法与阅读者自己的练习安排，为每条研究线索保留来源。',
   },
   {
-    type: 'web_search',
-    status: 'success',
-    dwellMs: 850,
+    type: 'memory', status: 'success', dwellMs: 500,
+    toolOutput: { sources: [
+      { title: '学习档案', snippet: '每天计划安排 90 分钟复习。', metadata: { note_id: 'note_demo_profile' } },
+      { title: '复习偏好', snippet: '喜欢先合上材料写出答案，再核对原文和推导过程。', metadata: { note_id: 'note_demo_preference' } },
+    ] },
+  },
+  {
+    type: 'web_search', status: 'success', dwellMs: 850,
     toolName: 'web_search',
-    toolInput: { query: 'FSRS spaced repetition algorithm latest progress 2026' },
+    toolInput: { query: 'FSRS spaced repetition memory model documentation' },
+    toolOutput: { sources: [
+      { title: 'FSRS 开源项目', url: 'https://github.com/open-spaced-repetition/fsrs4anki', snippet: '记忆状态建模、参数优化与间隔重复调度的开源实现。' },
+      { title: 'FSRS Rust 实现', url: 'https://github.com/open-spaced-repetition/fsrs-rs', snippet: '用于参数训练与复习调度的 Rust 实现。' },
+    ] },
+  },
+  {
+    type: 'academic_search', status: 'success', dwellMs: 950,
+    toolName: 'scholar_search',
+    toolInput: { query: 'spaced repetition memory model optimal scheduling', limit: 2 },
+    toolOutput: { sources: [
+      { title: 'A Trainable Spaced Repetition Model for Language Learning · ACL 2016', url: 'https://aclanthology.org/P16-1174/', snippet: 'Settles 与 Meeder 使用半衰期回归建模语言学习中的回忆概率。', metadata: { source_type: 'academic' } },
+      { title: 'Enhancing Human Learning via Spaced Repetition Optimization · PNAS 2019', url: 'https://www.pnas.org/doi/10.1073/pnas.1815156116', snippet: 'Tabibian 等人将复习安排形式化为随机最优控制问题。', metadata: { source_type: 'academic' } },
+    ] },
+  },
+  {
+    type: 'content', status: 'success', streaming: true,
+    content: `## 间隔重复：从记忆预测到复习安排
+
+可以沿着**记忆模型、调度目标、日常应用**三条线理解这个领域。
+
+**记忆模型**关注练习记录怎样帮助估计回忆概率。HLR 论文以语言学习为背景，把学习行为特征与记忆半衰期联系起来。[搜索-3]
+
+**调度方法**关注复习时间如何安排。PNAS 2019 的研究把这一问题写成随机最优控制模型，适合进一步阅读它的建模假设与优化目标。[搜索-4]
+
+**开源实现**帮助我们理解模型如何进入实际复习流程。FSRS 项目及其 Rust 实现提供了记忆状态更新、参数训练和调度相关代码，可以结合项目文档继续查阅。[搜索-1] [搜索-2]
+
+### 怎样接到自己的学习中
+
+学习档案里记录了每天九十分钟的复习安排 [记忆-1]，以及先默写、再核对的偏好 [记忆-2]。可以先按这套方式复习一组卡片，记录用时和回忆情况，再结合实际记录调整新卡数量。
+
+下面整理成一份研究路径对照表，方便打开原始材料，逐项补充自己的阅读笔记。`,
+  },
+  {
+    type: 'generative_ui', status: 'success', streaming: true,
+    toolName: 'builtin-render_generative_ui',
+    toolInput: { intent: RESEARCH_COMPARISON },
+    content: JSON.stringify(RESEARCH_COMPARISON),
+    toolOutput: { intent: RESEARCH_COMPARISON, isStreaming: false },
+  },
+  {
+    type: 'tool_call', status: 'success', toolName: 'todo_init', dwellMs: 600,
+    toolInput: { title: '间隔重复 · 阅读与实践', steps: ['阅读 HLR 的特征与预测目标', '整理 PNAS 论文的建模假设', '对照 FSRS 文档复习一组卡片'] },
     toolOutput: {
-      query: 'FSRS spaced repetition algorithm latest progress 2026',
-      searchEngine: 'Google',
-      totalResults: 3,
-      durationMs: 1204,
-      sources: [
-        {
-          title: 'open-spaced-repetition/fsrs4anki: 现代间隔重复调度器',
-          url: 'https://github.com/open-spaced-repetition/fsrs4anki',
-          snippet:
-            'FSRS 是基于三组件记忆模型的现代间隔重复调度器，最新版本引入同卡组卡片间的个性化难度衰减建模……',
-          score: 0.94,
-        },
-        {
-          title: 'open-spaced-repetition/fsrs-rs: Rust 实现的 FSRS 调度核心',
-          url: 'https://github.com/open-spaced-repetition/fsrs-rs',
-          snippet:
-            'Rust 重写的 FSRS 调度核心，万级卡组的调度计算可在毫秒级完成，被 Anki 25 系及多个第三方客户端内置……',
-          score: 0.89,
-        },
-        {
-          title: 'Spaced repetition - Wikipedia',
-          url: 'https://en.wikipedia.org/wiki/Spaced_repetition',
-          snippet:
-            'Spaced repetition is an evidence-based learning technique… 间隔效应自 Ebbinghaus 遗忘曲线以来被反复验证……',
-          score: 0.81,
-        },
-      ],
-    },
-  },
-  {
-    type: 'academic_search',
-    status: 'success',
-    dwellMs: 950,
-    toolName: 'arxiv_search',
-    toolInput: { query: 'spaced repetition scheduling optimization memory model', limit: 3 },
-    toolOutput: {
-      query: 'spaced repetition scheduling optimization memory model',
-      source: 'openalex',
-      total_results: 3,
-      sources: [
-        {
-          title: 'Enhancing Human Learning via Spaced Repetition Optimization (PNAS, 2019)',
-          url: 'https://www.pnas.org/doi/10.1073/pnas.1815156116',
-          snippet:
-            'Tabibian et al. 把复习调度形式化为随机最优控制问题，证明存在最优调度策略并给出高效求解框架。',
-          score: 0.96,
-          metadata: { source_type: 'academic' },
-        },
-        {
-          title: 'A Stochastic Shortest Path Algorithm for Optimizing Spaced Repetition (KDD, 2022)',
-          url: 'https://dl.acm.org/doi/10.1145/3534678.3539091',
-          snippet:
-            'Ye et al. 提出随机最短路径算法求解复习调度，即 FSRS 调度器的算法内核，在真实背诵数据上显著优于 SM-2。',
-          score: 0.93,
-          metadata: { source_type: 'academic' },
-        },
-        {
-          title: 'A Trainable Spaced Repetition Model for Language Learning (ACL, 2016)',
-          url: 'https://aclanthology.org/P16-1174/',
-          snippet:
-            'Settles & Meeder 提出半衰期回归（HLR），用特征化记忆模型预测回忆概率，是 Duolingo 复习系统的起点。',
-          score: 0.87,
-          metadata: { source_type: 'academic' },
-        },
-      ],
-    },
-  },
-  {
-    type: 'thinking',
-    status: 'success',
-    streaming: true,
-    delay: 200,
-    content: `三个来源齐了：
-- 记忆：他在备考研究生，每天 90 分钟，偏好生成式回忆
-- 网络：FSRS 最新迭代 + Rust 调度核心
-- 学术：PNAS 2019（最优控制框架）→ KDD 2022（FSRS 内核）→ ACL 2016（HLR 起点）
-
-组织方式：先讲算法进展，再串理论谱系，最后落到他的备考场景给可执行建议，并排成待办。`,
-  },
-  {
-    type: 'content',
-    status: 'success',
-    streaming: true,
-    delay: 250,
-    content: `## 间隔重复 · 值得关注的进展
-
-**算法侧**：FSRS 调度器持续迭代，最新版本引入了**同卡组卡片间的个性化难度衰减建模**——同一门课里你总错的那类卡会被识别出来，新卡前几次复习的安排明显更稳 [搜索-1]。配套的 fsrs-rs 用 Rust 重写了调度核心，万级卡组也能毫秒级出排期 [搜索-2]。
-
-**理论谱系**（学术搜索帮你把源头串起来了）：
-
-1. **HLR 半衰期回归**（Settles & Meeder, ACL 2016）——第一个可训练的记忆模型，Duolingo 复习系统的起点
-2. **随机最优控制框架**（Tabibian et al., PNAS 2019）——首次证明复习调度存在最优策略
-3. **随机最短路径算法**（Ye et al., KDD 2022）——FSRS 的算法内核，真实数据上显著优于 SM-2
-
-间隔效应本身是心理学最稳健的现象之一，自艾宾浩斯以来被反复验证 [搜索-3]。
-
-## 落到你的备考上
-
-记得你偏好**默写式回忆** [记忆-2]，结合上面的结论给两条可执行的：
-
-1. **错题卡按「最小可回忆单元」拆细**——一张卡塞多个考点会干扰调度器的难度估计，这也是你错题本里「换元不换限」反复错的原因之一
-2. 每天 90 分钟预算下 [记忆-1]，**70% 给到期复习、30% 开新卡**，避免新卡挤占到期的遗忘临界点
-
-我把这周的处理动作排成了待办清单 ↓`,
-  },
-  {
-    type: 'tool_call',
-    status: 'success',
-    delay: 350,
-    dwellMs: 600,
-    toolName: 'todo_init',
-    toolInput: {
-      title: '间隔重复复习体系 · 本周行动',
+      success: true, todoListId: 'todo_demo_srs', title: '间隔重复 · 阅读与实践',
+      progress: '0/3 completed', completedCount: 0, totalCount: 3, isAllDone: false,
+      continue_execution: false, currentRunning: null,
       steps: [
-        '把高数错题本按「最小可回忆单元」拆卡（一卡一考点）',
-        '合并重复牌组，统一到「考研复习」主牌组',
-        '把每日复习节奏调整为 70% 到期卡 + 30% 新卡',
-        '为「换元法」「中值定理」两个薄弱标签做专项默写',
-        '周日晚上回顾本周 FSRS 留存曲线，微调新卡上限',
+        { id: 'todo_demo_1', description: '阅读 HLR 的特征与预测目标', status: 'pending', createdAt: 1788739200000 },
+        { id: 'todo_demo_2', description: '整理 PNAS 论文的建模假设', status: 'pending', createdAt: 1788739200000 },
+        { id: 'todo_demo_3', description: '对照 FSRS 文档复习一组卡片', status: 'pending', createdAt: 1788739200000 },
       ],
-    },
-    toolOutput: {
-      success: true,
-      todoListId: 'todo_demo_srs',
-      title: '间隔重复复习体系 · 本周行动',
-      progress: '1/5 completed',
-      completedCount: 1,
-      totalCount: 5,
-      isAllDone: false,
-      continue_execution: true,
-      currentRunning: {
-        id: 'todo_demo_2',
-        description: '合并重复牌组，统一到「考研复习」主牌组',
-        status: 'running',
-        createdAt: 1756800000000,
-        updatedAt: 1756800060000,
-      },
-      nextStep: {
-        id: 'todo_demo_3',
-        description: '把每日复习节奏调整为 70% 到期卡 + 30% 新卡',
-        status: 'pending',
-        createdAt: 1756800000000,
-      },
-      steps: [
-        {
-          id: 'todo_demo_1',
-          description: '把高数错题本按「最小可回忆单元」拆卡（一卡一考点）',
-          status: 'completed',
-          result: '已在「高数错题 → Anki 卡片」会话中示范拆分（3 道错题 → 5 张单点卡）',
-          createdAt: 1756800000000,
-          updatedAt: 1756800050000,
-        },
-        {
-          id: 'todo_demo_2',
-          description: '合并重复牌组，统一到「考研复习」主牌组',
-          status: 'running',
-          createdAt: 1756800000000,
-          updatedAt: 1756800060000,
-        },
-        {
-          id: 'todo_demo_3',
-          description: '把每日复习节奏调整为 70% 到期卡 + 30% 新卡',
-          status: 'pending',
-          createdAt: 1756800000000,
-        },
-        {
-          id: 'todo_demo_4',
-          description: '为「换元法」「中值定理」两个薄弱标签做专项默写',
-          status: 'pending',
-          createdAt: 1756800000000,
-        },
-        {
-          id: 'todo_demo_5',
-          description: '周日晚上回顾本周 FSRS 留存曲线，微调新卡上限',
-          status: 'pending',
-          createdAt: 1756800000000,
-        },
-      ],
-      message: '还剩 4 项，我会继续执行。',
+      message: '阅读清单已整理，可按自己的时间逐项开展。',
     },
   },
   {
-    type: 'content',
-    status: 'success',
-    streaming: true,
-    delay: 300,
-    content: `清单建好了，第 1 项其实在上面两个会话里已经帮你做完了。后续几项我会持续推进，完成后提醒你。
-
-想调整优先级，或者把某一步展开细讲，直接说。`,
+    type: 'content', status: 'success', streaming: true,
+    content: '研究路径对照表已经留在会话底部的「产物」中，原始文献链接随表附上。阅读清单按三个主题排列，方便你从感兴趣的部分开始，逐步补充自己的理解。',
   },
 ];
 
 // ============================================================================
-// 会话④：周度学习看板（P1 产物面板 + P3 产物模板）
-//
-// generative_ui 块流式输出 intent JSON，终态经 toolOutput 落成权威 intent——
-// 播完后产物进会话产物索引（artifactRegistry），右侧浮动「产物面板」入口
-// 可重开/刷新；切走再切回经 playedHistory 快照（含 toolInput/toolOutput）
-// 直接展示完成态，演示"产物一等公民"闭环。
+// 会话④：周度学习看板（材料记录 → 结构化产物 → 后续复习安排）
 // ============================================================================
 
-const DEMO_WEEKLY_REPORT_INTENT = {
+const DEMO_WEEKLY_REPORT_INTENT: GenerativeUIIntent = {
   version: '1.1',
   layout: { mode: 'grid', columns: 2 },
-  meta: { title: '本周学习看板', description: '9 月第 1 周 · 掌握度与复习进度总览' },
+  meta: { title: '本周学习看板', description: '依据本次提供的材料记录整理' },
   blocks: [
+    { type: 'stat-card', props: { title: '高数错题卡', value: ANKI_CARDS.length, subtitle: '三道错题，拆成五个回忆要点' } },
+    { type: 'stat-card', props: { title: '章节挖空卡', value: MLSYS_CARDS.length, subtitle: '数据并行训练的关键概念' } },
     {
-      type: 'stat-card',
-      props: { title: '整体掌握度', value: '78%', trend: 'up', trendLabel: '较上周 +6%' },
-    },
-    {
-      type: 'stat-card',
-      props: { title: '待复习卡片', value: 23, subtitle: '今日到期 8 张', trend: 'neutral' },
-    },
-    {
-      type: 'progress',
-      span: 2,
-      props: { title: '高数错题复习进度', current: 12, total: 15, label: '12 / 15 题' },
-    },
-    {
-      type: 'list',
-      span: 2,
+      type: 'table', span: 2,
       props: {
-        title: '本周薄弱点',
-        items: [
-          { label: '泰勒展开余项估计', description: '错题 3 道集中在拉格朗日余项符号判断', badge: '高数' },
-          { label: '数据并行中的梯度同步', description: 'AllReduce 与 Parameter Server 的适用边界', badge: 'MLSys' },
-          { label: '间隔重复调度参数', description: 'FSRS 与 SM-2 的差异还没完全吃透', badge: '方法论' },
+        title: '本周材料与复习重点',
+        columns: [{ key: 'material', label: '材料' }, { key: 'focus', label: '复习重点' }, { key: 'output', label: '准备的内容' }],
+        rows: [
+          { material: '三道高数错题', focus: '展开阶数、积分换元、辅助函数', output: '五张问答卡' },
+          { material: '数据并行训练章节', focus: '梯度聚合、同步等待、通信优化', output: '导图、三张挖空卡与自测题' },
+        ],
+        caption: '卡片数量来自本次材料记录；练习表现由实际作答逐步积累。',
+      },
+    },
+    {
+      type: 'steps', span: 2,
+      props: {
+        title: '下一轮学习安排',
+        steps: [
+          { label: '先回忆，再翻面核对', description: '从五张高数卡开始，写出关键步骤，对照背面的推导。', status: 'pending' },
+          { label: '沿着导图复述章节', description: '解释数据分配、梯度聚合与同步等待的关系，再回到原文核对。', status: 'pending' },
+          { label: '完成章节自测并记录问题', description: '保留需要继续查阅的页码，把新的问题带进下一次阅读。', status: 'pending' },
         ],
       },
     },
@@ -802,29 +658,19 @@ const DEMO_WEEKLY_REPORT_INTENT = {
 
 const WEEKLY_REPORT_REPLY: DemoBlocks = [
   {
-    type: 'thinking',
-    status: 'success',
-    streaming: true,
-    content: `用户要本周的学习看板。我从复习统计里取几个关键数：整体掌握度 78%（较上周 +6%）、待复习卡片 23 张（今日到期 8 张）、高数错题 15 题已复习 12 题。薄弱点集中在泰勒余项、梯度同步、FSRS 参数三块。用 grid 双栏布局：两个 stat-card 打头，progress 与 list 通栏跟上。`,
+    type: 'thinking', status: 'success', streaming: true,
+    content: '根据这次提供的周度材料记录，分别整理高数与机器学习系统两组内容。卡片数量按记录汇总，复习步骤围绕主动回忆、原文核对与自测展开。',
   },
   {
-    type: 'generative_ui',
-    status: 'success',
-    streaming: true,
-    delay: 200,
+    type: 'generative_ui', status: 'success', streaming: true, delay: 200,
     toolName: 'builtin-render_generative_ui',
     toolInput: { intent: DEMO_WEEKLY_REPORT_INTENT },
-    content: JSON.stringify(DEMO_WEEKLY_REPORT_INTENT, null, 2),
+    content: JSON.stringify(DEMO_WEEKLY_REPORT_INTENT),
     toolOutput: { intent: DEMO_WEEKLY_REPORT_INTENT, isStreaming: false },
   },
   {
-    type: 'content',
-    status: 'success',
-    streaming: true,
-    delay: 300,
-    content: `看板已生成。这类结构化产物会留在本会话的**产物面板**里——点右侧的「产物面板」入口可以随时重开，切去别的会话再回来也还在；数据变化后还能以当前快照刷新一版。
-
-想换个布局（比如改成单列），或者把某块展开成详细分析，直接说。`,
+    type: 'content', status: 'success', streaming: true, delay: 300,
+    content: '学习看板已整理好。展开会话底部的 **「产物」**，点击「本周学习看板」，即可查看两组卡片、材料清单与复习安排。切换到其他会话后，再回来可以继续查看这份记录。',
   },
 ];
 
@@ -852,7 +698,7 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     title: '《机器学习系统》第 3 章精读',
     description: 'PDF 页码引用 + 内嵌思维导图 + 挖空卡片',
     minutesAgo: 18,
-    autoPrompt: '我上传的《机器学习系统》第 3 章讲的是数据并行训练，帮我梳理这章的知识框架，再出几张卡片',
+    autoPrompt: '请精读上传的《机器学习系统》第 3 章，标出原文页码，整理章节导图和挖空卡，再准备三道带参考思路的自测题',
     attachmentRefs: [
       {
         resourceId: DEMO_PDF_RESOURCE_ID,
@@ -868,15 +714,15 @@ export const DEMO_SESSIONS: DemoSessionFixture[] = [
     title: '间隔重复研究综述',
     description: '用户记忆 + 网络检索 + 学术搜索，综述落成待办清单',
     minutesAgo: 47,
-    autoPrompt: '帮我查一下间隔重复（spaced repetition）领域最近有什么值得关注的进展',
+    autoPrompt: '我每天有九十分钟复习，请结合学习偏好，查阅间隔重复的研究与开源实现，整理来源对照表和阅读清单',
     reply: RESEARCH_REPLY,
   }),
   makeFixture({
     id: 'demo-weekly-report',
     title: '周度学习看板',
-    description: 'generative-ui 结构化产物，产物面板随时重开',
+    description: '材料清单、卡片概览与复习安排，收进会话底部的学习看板',
     minutesAgo: 1,
-    autoPrompt: '帮我生成本周的学习看板，看看掌握度和复习进度',
+    autoPrompt: '本周整理了三道高数错题、五张问答卡，也读了数据并行训练章节，准备了导图、三张挖空卡和自测题。请据此生成学习看板，列出材料与下一轮复习安排',
     reply: WEEKLY_REPORT_REPLY,
   }),
 ];

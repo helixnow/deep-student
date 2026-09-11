@@ -87,6 +87,7 @@ async function main() {
   const initialScene = requestedScene && validSceneIds.has(requestedScene)
     ? requestedScene
     : DEMO_SESSIONS[0]?.meta.id;
+  let selectedScene = initialScene;
 
   const { createRoot } = await import('react-dom/client');
   createRoot(document.getElementById('root')!).render(
@@ -120,7 +121,7 @@ async function main() {
 
   // hero 与 demo 同源时才接受控制消息，避免任意嵌入页面驱动会话。
   window.addEventListener('message', (event) => {
-    if (event.origin !== window.location.origin || !event.data) return;
+    if (event.origin !== window.location.origin || event.source !== window.parent || !event.data) return;
     const data = event.data as { type?: string; sessionId?: unknown };
     if (data.type === 'demo:activate') {
       autoPlay.activate();
@@ -128,6 +129,7 @@ async function main() {
     }
     if (data.type !== 'demo:set-scene' || typeof data.sessionId !== 'string') return;
     if (!validSceneIds.has(data.sessionId)) return;
+    selectedScene = data.sessionId;
     dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: data.sessionId });
   });
 
@@ -138,8 +140,8 @@ async function main() {
   const navigateToDemo = () => {
     if (navigated) return;
     navigated = true;
-    if (initialScene) {
-      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: initialScene });
+    if (selectedScene) {
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: selectedScene });
     }
   };
   window.addEventListener(
