@@ -3,9 +3,12 @@
  *
  * 契约（与后端 chat_v2 对齐）：
  * - 手动压缩命令 `chat_v2_compact_session` 返回
- *   `{ status: 'compacted' | 'notNeeded' | 'skipped' | 'failed', reason?: string }`；
+ *   `{ status: 'compacted' | 'notNeeded' | 'skipped' | 'failed', reason?: string,
+ *      tokensBefore?: number, tokensAfter?: number }`（token 估算仅 compacted 携带）；
  *   联调期间可能仍返回旧的 boolean，需降级兼容。
  * - 会话事件 `compaction_failed` payload：`{ reason: string }`
+ * - 会话事件 `compaction_completed` payload：
+ *   `{ tokensBefore: number | null, tokensAfter: number | null }`
  * - 会话事件 `context_trimmed` payload：
  *   `{ droppedMessages: number, estimatedDroppedTokens?: number }`
  */
@@ -19,6 +22,10 @@ export type CompactSessionStatus = 'compacted' | 'notNeeded' | 'skipped' | 'fail
 export interface CompactSessionResponse {
   status: CompactSessionStatus;
   reason?: string;
+  /** 🆕 压缩前上下文占用估算（仅 compacted；不可得时缺省） */
+  tokensBefore?: number;
+  /** 🆕 压缩后上下文占用估算（仅 compacted；不可得时缺省） */
+  tokensAfter?: number;
 }
 
 const COMPACT_STATUSES: readonly CompactSessionStatus[] = [
@@ -43,12 +50,49 @@ export function normalizeCompactSessionResponse(raw: unknown): CompactSessionRes
     const status = record.status;
     if (typeof status === 'string' && (COMPACT_STATUSES as readonly string[]).includes(status)) {
       const reason = typeof record.reason === 'string' && record.reason ? record.reason : undefined;
-      return reason
-        ? { status: status as CompactSessionStatus, reason }
-        : { status: status as CompactSessionStatus };
+      const tokensBefore =
+        typeof record.tokensBefore === 'number' && Number.isFinite(record.tokensBefore)
+          ? record.tokensBefore
+          : undefined;
+      const tokensAfter =
+        typeof record.tokensAfter === 'number' && Number.isFinite(record.tokensAfter)
+          ? record.tokensAfter
+          : undefined;
+      const base: CompactSessionResponse = { status: status as CompactSessionStatus };
+      const withReason = reason ? { ...base, reason } : base;
+      // token 估算仅 compacted 有意义；其他 status 下即便带了也忽略
+      if (status === 'compacted') {
+        return {
+          ...withReason,
+          ...(tokensBefore !== undefined ? { tokensBefore } : {}),
+          ...(tokensAfter !== undefined ? { tokensAfter } : {}),
+        };
+      }
+      return withReason;
     }
   }
   return { status: 'failed', reason: 'invalidResponse' };
+}
+
+// ============================================================================
+// compaction_completed 事件 payload 解析
+// ============================================================================
+
+export interface CompactionCompletedPayload {
+  tokensBefore: number | null;
+  tokensAfter: number | null;
+}
+
+/** 解析 compaction_completed 事件 payload；形状不合法时返回 null */
+export function parseCompactionCompletedPayload(raw: unknown): CompactionCompletedPayload | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const normalize = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+  return {
+    tokensBefore: normalize(record.tokensBefore),
+    tokensAfter: normalize(record.tokensAfter),
+  };
 }
 
 // ============================================================================

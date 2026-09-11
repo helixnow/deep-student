@@ -1005,5 +1005,13 @@ export function createVariantStoreActions(
           set({ modelRetryTarget: messageId });
           console.log('[ChatStore] ModelRetryTarget', messageId ? `set: ${messageId}` : 'cleared');
         },
+
+        // ========== 🆕 压缩后上下文水位覆盖 ==========
+
+        setContextUsageOverride: (
+          override: { sessionId: string; tokensAfter: number } | null,
+        ): void => {
+          set({ contextUsageOverride: override });
+        },
   };
 }

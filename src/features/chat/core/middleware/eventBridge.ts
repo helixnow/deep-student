@@ -1390,6 +1390,8 @@ export async function handleStreamComplete(
       'source=', options.usage.source
     );
     store.updateMessageMeta(options.messageId, { usage: options.usage });
+    // 🆕 真实 usage 到达：清除压缩后的水位覆盖值，水位环回到精确数据源
+    store.setContextUsageOverride(null);
   }
 
   // 🔧 P1: 流式终点先冲刷孤儿终止事件（等待中的 end/error 立即走 late-block 兜底），
