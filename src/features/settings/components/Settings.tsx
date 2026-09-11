@@ -460,6 +460,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     }
   }, [activeTab]);
 
+  // 🆕 学习桌面（Workbench）为桌面端专属：移动端隐藏设置入口后，
+  // 把持久化/历史遗留指向 workbench 的 activeTab 重定向回默认页，避免空 Tab。
+  useEffect(() => {
+    if (activeTab === 'workbench' && isMobilePlatform()) {
+      setActiveTab('apis');
+    }
+  }, [activeTab, setActiveTab]);
+
   // 标签页指示器状态
   const [indicatorStyle, setIndicatorStyle] = useState({ transform: 'translateX(0)', width: 0 });
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -1635,7 +1643,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <VoiceInputTab voiceInputAssignedModel={voiceInputAssignedModel} />
         )}
         {activeTab === 'memory' && <MemoryTab />}
-        {activeTab === 'workbench' && <WorkbenchTab />}
+        {activeTab === 'workbench' && !isMobilePlatform() && <WorkbenchTab />}
         {activeTab === 'document-processing' && <DocumentProcessingTab />}
         {/* MCP 工具编辑模态 */}
         {renderMcpToolEditor()}
