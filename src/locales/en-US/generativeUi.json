@@ -357,7 +357,7 @@
     "actions": {
       "copy_report": "Copy report",
       "export_plan": "Export plan",
-      "export_intent": "Export all intents"
+      "export_intent": "Copy as Markdown"
     }
   },
   "demo": {

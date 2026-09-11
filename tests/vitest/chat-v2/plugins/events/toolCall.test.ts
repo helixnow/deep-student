@@ -240,6 +240,19 @@ describe('ToolCallEventHandler', () => {
   });
 
   describe('onStart', () => {
+    it('renders qbank generation as selectable questions, including a preparing block', () => {
+      const store = createStatefulToolCallStore();
+      const handler = eventRegistry.get('tool_call')!;
+      const preparing = eventRegistry.get('tool_call_preparing')!;
+      preparing.onStart!(store, 'msg-1', { toolName: 'builtin-qbank_generate_questions', toolCallId: 'qbank-call' });
+      const id = handler.onStart!(store, 'msg-1', {
+        toolName: 'builtin-qbank_generate_questions', toolCallId: 'qbank-call',
+        toolInput: { exam_id: 'exam-test' },
+      }, 'qbank-result');
+      expect(store.blocks.get(id)).toMatchObject({ type: 'qbank_questions', status: 'running', isPreparing: false });
+      expect(store.messageMap.get('msg-1')?.blockIds).toEqual(['qbank-result']);
+    });
+
     it('should create mcp_tool block with toolName and toolInput', () => {
       const handler = eventRegistry.get('tool_call');
       expect(handler).toBeDefined();

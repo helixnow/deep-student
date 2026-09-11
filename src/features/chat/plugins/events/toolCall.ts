@@ -183,6 +183,8 @@ const toolCallEventHandler: EventHandler = {
     const isSubagentCallTool = strippedToolName === 'subagent_call';
     // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块
     const isWorkspaceSendTool = strippedToolName === 'workspace_send';
+    // 与后端持久化的 QBANK_QUESTIONS 映射一致，实时展示可勾选的题目草稿。
+    const isQbankGenerationTool = strippedToolName === 'qbank_generate_questions';
     // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops（撤销入口）
     const blockType = isSleepTool
       ? 'sleep'
@@ -194,7 +196,9 @@ const toolCallEventHandler: EventHandler = {
             ? 'workspace_send'
             : isWorkbenchOpsToolName(toolName)
               ? 'workbench_ops'
-              : 'mcp_tool';
+              : isQbankGenerationTool
+                ? 'qbank_questions'
+                : 'mcp_tool';
 
     // 🆕 2026-01-16: 尝试复用已存在的 preparing 块
     let preparingBlockId: string | undefined;
@@ -250,6 +254,7 @@ const toolCallEventHandler: EventHandler = {
     // 撤销经 resolveWorkbenchRunId(hasRun) 选账本实际键。流式仍写 LLM toolCallId。
     // 设置完整的工具信息，清空 preparing 阶段积累的 args 预览 content
     store.updateBlock(blockId, {
+      type: blockType,
       toolName,
       toolInput,
       toolCallId,

@@ -357,7 +357,7 @@
     "actions": {
       "copy_report": "复制报告",
       "export_plan": "导出计划",
-      "export_intent": "导出全部意图"
+      "export_intent": "复制为 Markdown"
     }
   },
   "demo": {
