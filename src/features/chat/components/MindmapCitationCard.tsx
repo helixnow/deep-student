@@ -4,7 +4,7 @@
  * 在消息正文中渲染思维导图引用的预览卡片
  * 支持：
  * - 内联完整 ReactFlow 预览（MindMapEmbed）
- * - 点击跳转到学习资源管理器
+ * - 在会话右侧打开完整导图
  */
 
 import React, { useCallback } from 'react';
@@ -41,7 +41,7 @@ export interface MindmapCitationCardProps {
  * 功能：
  * 1. 使用 MindMapEmbed 渲染完整的 ReactFlow 预览
  * 2. 支持缩放、平移交互
- * 3. 点击打开按钮跳转到学习资源管理器
+ * 3. 点击打开按钮在会话右侧展开完整导图
  */
 export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
   mindmapId,
@@ -50,6 +50,13 @@ export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
   className,
   embedHeight = 280,
 }) => {
+  const { t } = useTranslation('common');
+  const handleOpen = useCallback((id: string) => {
+    window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+      detail: { id, type: 'mindmap', title: displayTitle },
+    }));
+  }, [displayTitle]);
+
   return (
     <div className={cn('my-3 w-full', className)}>
       <MindMapEmbed
@@ -59,6 +66,8 @@ export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
         // ★ 2026-02-13 修复：版本引用也显示打开按钮
         // MindMapEmbed 内部会自动从版本元数据获取父导图 ID 进行导航
         showOpenButton
+        onOpen={handleOpen}
+        openLabel={t('actions.open')}
         displayTitle={displayTitle}
       />
     </div>

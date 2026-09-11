@@ -715,7 +715,7 @@ const QBANK_REPLY: DemoBlocks = [
     toolInput: { exam_id: DEMO_QBANK_ID, max_questions: 2, specs: [{ question_type: 'single_choice', count: 2 }], knowledge_points: ['数据并行', '梯度压缩'], topic_hint: '各 worker 持有完整模型副本，处理部分 mini-batch。评估梯度压缩时同时观察通信、吞吐量与收敛。', language: 'zh-CN' },
     toolOutput: { action: 'generate_questions', examId: DEMO_QBANK_ID, drafts: DEMO_QUESTIONS, rejectedCount: 0, rejectionReasons: [], skippedReferences: [], usedReferenceCount: 0 },
   },
-  { type: 'content', status: 'success', streaming: true, content: '两道选择题草稿已经列出，每道题带有选项、参考答案和知识点标签。勾选希望保留的题目，再点击「加入所选」。你还可以继续提问，查看已收录的题目与解析。' },
+  { type: 'content', status: 'success', streaming: true, content: `两道选择题草稿已经列出，每道题带有选项、参考答案和知识点标签。勾选希望保留的题目，再点击「加入所选」。\n\n收录完成后，打开[题目集:${DEMO_QBANK_ID}:数据并行训练]，在右侧选择「开始做题」，提交自己的答案并结合解析回顾知识点。题目集会保留本次作答的结果，方便继续练习。` },
 ];
 
 export const DEMO_TRANSLATION_SOURCE = 'In synchronous data-parallel training, each worker holds a complete replica of the model and processes a subset of the mini-batch. Gradients are aggregated before the next update. Gradient compression reduces communication volume; its impact should be evaluated together with training throughput and convergence.';

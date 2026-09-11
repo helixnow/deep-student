@@ -27,6 +27,7 @@ import {
 } from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
 import { getPlayedHistory } from './playedHistory';
+import { getDemoQuestions, handleDemoQuestionBank } from './questionBank';
 import {
   getDemoAttachmentContent,
   getDemoAttachmentResource,
@@ -56,7 +57,8 @@ let demoRuntimeResourceSeq = 1;
  * 不再重置 playedOnce、不重播第一答（页面刷新才全部重来）。
  */
 const playedOnce = new Set<string>();
-const demoQuestions = new Map<string, Record<string, unknown>>();
+let demoMindmap = { ...DEMO_MINDMAP_META };
+let demoMindmapContent = DEMO_MINDMAP_CONTENT;
 const demoSavedCards = new Map<string, Record<string, unknown>>();
 
 // ============================================================================
@@ -187,25 +189,35 @@ export function installDemoIpcMocks(): void {
           throw new Error('Use browser clipboard');
         case 'qbank_get_generation_task':
           return null;
-        case 'qbank_batch_create_questions': {
-          const params = Array.isArray(args.paramsList) ? args.paramsList as Array<Record<string, unknown>> : [];
-          if (params.some((p) => p.exam_id !== DEMO_QBANK_ID)) throw new Error('请选择当前示例题目集。');
-          return params.map((p) => {
-            const question = { ...p, id: `q_demo_${demoQuestions.size + 1}` };
-            demoQuestions.set(question.id, question);
-            return question;
-          });
-        }
+        case 'qbank_batch_create_questions':
+        case 'qbank_list_questions':
+        case 'qbank_get_question':
+        case 'qbank_get_stats':
+        case 'qbank_refresh_stats':
+        case 'qbank_submit_answer':
+        case 'qbank_toggle_favorite':
+        case 'get_exam_sheet_session_detail':
+          return handleDemoQuestionBank(cmd, args);
 
         // ---------- 思维导图（正文 [思维导图:mm_demo_...] 内嵌预览） ----------
         case 'vfs_get_mindmap': {
           const mindmapId = String(args.mindmapId ?? '');
-          return mindmapId === DEMO_MINDMAP_ID ? DEMO_MINDMAP_META : null;
+          return mindmapId === DEMO_MINDMAP_ID ? demoMindmap : null;
         }
         case 'vfs_get_mindmap_content': {
           const mindmapId = String(args.mindmapId ?? '');
-          return mindmapId === DEMO_MINDMAP_ID ? DEMO_MINDMAP_CONTENT : null;
+          return mindmapId === DEMO_MINDMAP_ID ? demoMindmapContent : null;
         }
+        case 'vfs_update_mindmap': {
+          if (args.mindmapId !== DEMO_MINDMAP_ID) throw new Error('请选择当前章节导图。');
+          const { content, expectedUpdatedAt, ...metadata } = (args.params ?? {}) as Record<string, unknown>;
+          if (expectedUpdatedAt && expectedUpdatedAt !== demoMindmap.updatedAt) throw new Error('MINDMAP_UPDATE_CONFLICT');
+          if (typeof content === 'string') demoMindmapContent = content;
+          demoMindmap = { ...demoMindmap, ...metadata, updatedAt: new Date().toISOString() };
+          return demoMindmap;
+        }
+        case 'vfs_get_mindmap_versions':
+          return [];
 
         // ---------- 附件能力（错题照片 / 上传 PDF，见 attachmentAssets.ts） ----------
         // 发送前校验（validateAndCleanupContextRefs）：演示资源一律存在，
@@ -287,6 +299,12 @@ export function installDemoIpcMocks(): void {
         // 右侧附件预览面板的节点信息
         case 'dstu_get': {
           const path = String(args.path ?? '');
+          const id = path.replace(/^\//, '');
+          if (id === DEMO_QBANK_ID || id === DEMO_MINDMAP_ID) {
+            return { id, path: `/${id}`, name: id === DEMO_QBANK_ID ? '数据并行训练' : demoMindmap.title,
+              type: id === DEMO_QBANK_ID ? 'exam' : 'mindmap', sourceId: id,
+              createdAt: Date.parse(DEMO_MINDMAP_META.createdAt), updatedAt: Date.now(), metadata: {} };
+          }
           return getDemoDstuNode(path);
         }
         // 发送前附件暂存（生产会把二进制材料化到任务对象存储；演示直通，
@@ -504,7 +522,7 @@ export function installDemoIpcMocks(): void {
             ? rec.followUp
             : continuation?.reply ?? DEFAULT_FOLLOW_UP;
           if (!firstPlay && request.sessionId === 'demo-qbank' && continuation?.id === 'saved') {
-            const saved = [...demoQuestions.values()];
+            const saved = getDemoQuestions();
             followUp = [{ type: 'content', status: 'success', streaming: true, content: saved.length
               ? saved.map((q, i) => `### ${i + 1}. ${q.content}\n\n参考答案：${q.answer}\n\n${q.explanation}`).join('\n\n')
               : '先在上方题目草稿中勾选题目，点击「加入所选」，再通过这条提问查看收录结果。' }];
@@ -587,6 +605,7 @@ export function installDemoIpcMocks(): void {
           return null;
 
         default:
+          if (cmd.startsWith('qbank_')) return handleDemoQuestionBank(cmd, args);
           console.warn(`${LOG} unmocked cmd:`, cmd, args);
           return null;
       }
