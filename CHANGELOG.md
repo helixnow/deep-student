@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.61](https://github.com/helixnow/deep-student/compare/v0.9.60...v0.9.61) (2026-09-12)
+
+
+### Features
+
+* **chatv2:** 压缩落盘即广播 compaction_completed，水位环立即刷新 ([1ff07ca](https://github.com/helixnow/deep-student/commit/1ff07cae79edded9d8aaf645a285bc322bf50e82))
+* connect live demos to question practice and full mindmaps ([addf44a](https://github.com/helixnow/deep-student/commit/addf44ad9b8d5bb3da2a72467b572322e9e514a6))
+* expand live learning demos with follow-ups and materials ([a3d5c68](https://github.com/helixnow/deep-student/commit/a3d5c68b11a148e6f61660e7416b9a209a7159ac))
+* **llm:** 官方 DeepSeek V4 sampling 分档锁定与 top_p/penalty 精细化 ([691dc65](https://github.com/helixnow/deep-student/commit/691dc65590d99cc6258f22389bde06eb7e6baa3b))
+* **notes:** refine block drag feedback ([a8bfd3a](https://github.com/helixnow/deep-student/commit/a8bfd3ab9f3121f74e057e41c3306ae3d71c71e3))
+* **qbank:** 单题型上限放宽，组卷数字输入不设上限并校验题库余量 ([c35cca3](https://github.com/helixnow/deep-student/commit/c35cca3dd46d84f0be9aa4e344f8eff89b3e77ae))
+* **qbank:** 单题型上限放宽与组卷余量校验；填空题改走 AI 评判并回写判定结果 ([7fe0999](https://github.com/helixnow/deep-student/commit/7fe09990b0dbce7da792401d946a774ac03a90b5))
+* redesign DeepStudent landing page around live demo ([cf76e68](https://github.com/helixnow/deep-student/commit/cf76e68bca3bdc49e601a99edd57cca123bd09b9))
+* **settings:** 移动端隐藏学习桌面设置入口 ([b18c958](https://github.com/helixnow/deep-student/commit/b18c958e70afdabf8211fc73cf13660a0d7b5cf9))
+* showcase learning workflows in live demo ([ffe2f67](https://github.com/helixnow/deep-student/commit/ffe2f67f9f1c08aff20de642ffa7ad4fd21e3b02))
+
+
+### Bug Fixes
+
+* **chatv2:** 压缩会话守卫改 token 体量判定，修复多工具重型会话永不压缩 ([2733db1](https://github.com/helixnow/deep-student/commit/2733db1324910021008aad8452c25198744bfc92))
+* enable question previews and artifact exports in chat ([94724c5](https://github.com/helixnow/deep-student/commit/94724c57b1a98debe1813cd7b6e8be8c0c6d6abf))
+* isolate DeepSeek harness optimizations by provider ([4a804b5](https://github.com/helixnow/deep-student/commit/4a804b59ca0ecfd5f1cc073922d03b3e5d6a160f))
+* **notes:** improve editor layout and save lifecycle ([def7b32](https://github.com/helixnow/deep-student/commit/def7b32fd786af7e055e07698b9282c9b9729e79))
+* **notes:** stabilize block handles and mobile title layout ([11f38ab](https://github.com/helixnow/deep-student/commit/11f38ab7670980234a1a2df7cac3386d9cd42467))
+* **qbank:** SSE 缓冲 O(n²)→O(n) 线性扫描，修复安卓大题量出题流中断 ([b1397c5](https://github.com/helixnow/deep-student/commit/b1397c5d615683539d0e7e492678901326aeaed8))
+* **qbank:** 填空题改走 AI 评判，判定结果回写练习进度与模拟考成绩 ([6dbf42c](https://github.com/helixnow/deep-student/commit/6dbf42cf9486c9a7fb117e4228328a126b87e1f2))
+* **qbank:** 组卷余量校验在统计失败时跳过而非误报库存不足 ([19ff679](https://github.com/helixnow/deep-student/commit/19ff67987dc6273254ac24fb5223d16be816a700))
+* **rag:** repair dangling embedding defaults ([8143ad7](https://github.com/helixnow/deep-student/commit/8143ad77ebf044aa791c65c02caf780a19729e8f))
+* **rag:** 多模态嵌入默认设置悬空引用自愈（VL 轨道同款修复） ([077d494](https://github.com/helixnow/deep-student/commit/077d49406d60cc9194ca8ecac42734e6474dcb1c))
+* **rag:** 嵌入默认设置悬空引用自愈，修复全量索引「找不到嵌入模型配置」 ([9277368](https://github.com/helixnow/deep-student/commit/9277368e9506e2f3867d2bbd905442029866016a))
+
 ## [0.9.60](https://github.com/helixnow/deep-student/compare/v0.9.59...v0.9.60) (2026-09-10)
 
 
