@@ -479,7 +479,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                   label={t(`questionType.${key}`)}
                   value={typeDistribution[key] || 0}
                   onChange={(value) => handleTypeChange(key, value)}
-                  max={20}
+                  max={100}
 />
               ))}
             </div>
@@ -500,7 +500,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                   labelClassName={color}
                   value={difficultyDistribution[key] || 0}
                   onChange={(value) => handleDifficultyChange(key, value)}
-                  max={20}
+                  max={100}
 />
               ))}
             </div>

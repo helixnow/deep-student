@@ -596,6 +596,7 @@ commands.allow = [
   "qbank_batch_update_questions",
   "qbank_cancel_generation_task",
   "qbank_cancel_grading",
+  "qbank_count_by_type",
   "qbank_create_question",
   "qbank_crop_source_image",
   "qbank_delete_question",

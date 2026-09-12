@@ -2567,6 +2567,7 @@ pub fn run() {
             ,crate::commands::qbank_submit_answer
             ,crate::commands::qbank_toggle_favorite
             ,crate::commands::qbank_get_stats
+            ,crate::commands::qbank_count_by_type
             ,crate::commands::qbank_refresh_stats
             ,crate::commands::qbank_get_history
             ,crate::commands::qbank_get_submissions

@@ -626,7 +626,7 @@
     "topicHintLabel": "知识点范围（可选）",
     "topicHintPlaceholder": "例如：二次函数的图像与性质、顶点式与一般式的互化…",
     "basedOnExisting": "参考题目集现有题目出变式题",
-    "tooManyQuestions": "总题量不能超过 50 题",
+    "tooManyQuestions": "总题量不能超过 100 题",
     "start": "开始生成",
     "generating": "AI 正在出题…",
     "rejectedSummary": "{{count}} 道题未通过校验已自动剔除：",

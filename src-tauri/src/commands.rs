@@ -7189,6 +7189,20 @@ pub async fn qbank_get_stats(
     service.get_stats(&exam_id)
 }
 
+/// 按题型统计题目数量（组卷配置的前端余量校验）
+#[tauri::command]
+pub async fn qbank_count_by_type(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, u32>> {
+    let service = state
+        .question_bank_service
+        .as_ref()
+        .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
+
+    service.count_by_type(&exam_id)
+}
+
 /// 刷新统计
 #[tauri::command]
 pub async fn qbank_refresh_stats(

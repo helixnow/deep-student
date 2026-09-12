@@ -205,6 +205,7 @@
     "answer": "答案",
     "explanation": "解析",
     "generateFailed": "生成试卷失败：{{error}}",
+    "insufficientQuestions": "题库题目数量不足，请调整后重试：{{details}}",
     "exportComingSoon": "PDF / Word 导出即将推出，可先用 Markdown 导出或预览",
     "exportTitle": "导出试卷",
     "exportSuccess": "试卷已导出",
