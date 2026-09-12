@@ -29,6 +29,8 @@ describe('DeepSeek reasoning control mapping', () => {
     expect(normalizeDeepSeekV4Effort('low')).toBe('low');
     expect(normalizeDeepSeekV4Effort('medium')).toBe('high');
     expect(normalizeDeepSeekV4Effort('high')).toBe('high');
+    expect(normalizeDeepSeekV4Effort('xhigh', true)).toBe('high');
+    expect(normalizeDeepSeekV4Effort('xhigh', false)).toBe('max');
     expect(normalizeDeepSeekV4Effort('xhigh')).toBe('max');
     expect(normalizeDeepSeekV4Effort('max')).toBe('max');
     expect(normalizeDeepSeekV4Effort('ultra')).toBe('max');

@@ -26,6 +26,7 @@ export interface DeepSeekReasoningControl {
   canDisable: boolean;
   /** Provider/model default when no runtime override is selected. */
   defaultValue?: DeepSeekReasoningOptionValue;
+  isOfficialDeepSeek?: boolean;
 }
 
 export interface DeepSeekRuntimeReasoningControlInput {
@@ -131,6 +132,18 @@ const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 ];
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+export function isOfficialDeepSeekEndpoint(input: DeepSeekRuntimeReasoningControlInput): boolean {
+  const baseUrl = normalize(input.baseUrl);
+  if (baseUrl) {
+    try {
+      return new URL(baseUrl).hostname === 'api.deepseek.com';
+    } catch {
+      return false;
+    }
+  }
+  return normalize(input.providerType) === 'deepseek' || normalize(input.providerScope) === 'deepseek';
+}
 
 /**
  * DeepSeek legacy 别名：`deepseek-chat` / `deepseek-reasoner` 已于 2026-07-24 15:59 UTC 停用
@@ -408,11 +421,15 @@ export function deepSeekV32BudgetToEffort(budget: number | undefined | null): 'l
   return 'xhigh';
 }
 
-export function normalizeDeepSeekV4Effort(effort: string | undefined | null): 'low' | 'high' | 'max' {
+export function normalizeDeepSeekV4Effort(
+  effort: string | undefined | null,
+  isOfficial = false,
+): 'low' | 'high' | 'max' {
   const normalized = normalize(effort);
-  // 官方映射表：minimal/low → low；max/ultra → max（xhigh 为存量最高档别名）
+  // The official xhigh alias is high; hosted deployments keep their existing max alias.
   if (normalized === 'minimal' || normalized === 'low') return 'low';
-  if (normalized === 'max' || normalized === 'xhigh' || normalized === 'ultra') return 'max';
+  if (normalized === 'xhigh') return isOfficial ? 'high' : 'max';
+  if (normalized === 'max' || normalized === 'ultra') return 'max';
   return 'high';
 }
 
@@ -446,7 +463,10 @@ export function resolveDeepSeekRuntimeReasoningControl(
     baseUrl.includes('siliconflow.cn') ||
     baseUrl.includes('siliconflow.com');
   if (isDeepSeekV4ModelId(model)) {
-    return { kind: 'v4-effort', options: V4_EFFORT_OPTIONS, canDisable: true };
+    return {
+      kind: 'v4-effort', options: V4_EFFORT_OPTIONS, canDisable: true,
+      isOfficialDeepSeek: isOfficialDeepSeekEndpoint(input),
+    };
   }
   if (isSiliconFlow) {
     return {
@@ -524,7 +544,10 @@ export function resolveDeepSeekRuntimeReasoningSelection(
   if (input.control.kind === 'v4-effort') {
     return {
       enableThinking,
-      reasoningEffort: normalizeDeepSeekV4Effort(input.reasoningEffort ?? deepSeekV32BudgetToEffort(input.thinkingBudget)),
+      reasoningEffort: normalizeDeepSeekV4Effort(
+        input.reasoningEffort ?? deepSeekV32BudgetToEffort(input.thinkingBudget),
+        input.control.isOfficialDeepSeek,
+      ),
       thinkingBudget: undefined,
     };
   }

@@ -2,6 +2,20 @@
 
 日期：2026-09-12。对象：deep-student 当前工作区。本文区分官方源码事实、本地代码状态和未完成的运行验证；不代表已上线或已完成模型效果验收。
 
+## 后续优化：供应商兼容边界
+
+本节记录同日后续实现，覆盖下文初次审阅中对应的旧状态。
+
+- Chat Completions 的新增异常 finish 处理仅在真实 host 为 `api.deepseek.com` 时启用。OpenAI、OpenRouter、SiliconFlow 和自定义网关保留原有结束行为，伪装子域名不会触发官方路径。
+- 官方 DeepSeek 异常 finish 延迟到 `[DONE]` 或 EOF 上报，保留后续 usage，并且不再同时发成功 Done。`length` 保留独立 reason 和输出预算耗尽说明，但仍经既有 provider_error 通道传递，尚未新增完整的截断 UI 状态。
+- Responses 新增的 top_p 透传只对官方 DeepSeek 生效，其他供应商维持此前序列化行为。
+- xhigh 的官方映射为 high；第三方继续映射为 max。后端、设置显示/保存和聊天运行时选择都带供应商上下文，避免前端提前改写第三方强度。
+- 图片投影缩小至官方 `deepseek-flash` 与 `deepseek-v4-flash-vision-exp`。旧 text-only Flash、Pro 和第三方托管保持原预算方式。计量通过图片头获取尺寸，不再为预算分配完整解码像素；算法不收敛时按完整的 1024 token 上限预留，避免低估。
+
+验证：`cargo check --lib`、TypeScript `tsc --noEmit` 通过；供应商相关 136 项、适配器 253 项、请求管线 77 项 Rust 测试通过，共 466 项；前端四个相关文件共 102 项测试通过。前端原有一项官方 xhigh 迁移断言仍为旧 max 语义，现拆为官方 high 与第三方 max 两个场景，并在修改后通过。
+
+新增本地 HTTP 测试通过真实 reqwest 请求、本地 SSE 服务与生产 SseEventBuffer/OpenAIAdapter，观察到“部分内容 → 含缓存命中数的 usage → length 失败”，同时覆盖 EOF 和跨供应商复用的状态隔离。该测试不调用供应商服务，不证明真实模型识别质量或线上 API 接受情况。图片规范化、累计字节预算、Files API 和真实桌面多图验收仍未完成。
+
 ## 结论
 
 项目已经具备接入 V4.1 Flash 的主要协议基础，本轮补充了推理参数、输出预算、跨协议推理历史回放和图片 token 计量的适配。但目前不足以宣称充分吸收 Harness 的优化：最大的实现缺口是图片规范化、请求累计传输预算和 Files API 传输复用；最大的证据缺口是真实模型的多轮、多图和长推理运行验证。
