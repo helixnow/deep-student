@@ -301,13 +301,34 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     }
   }, []);
 
+  /** 松手时短暂收缩淡出，给用户明确的“已放置”反馈；取消路径仍立即清理。 */
+  const settleDragGhost = useCallback(() => {
+    const ghost = ghostElementRef.current;
+    if (!ghost) return;
+    const currentTransform = ghost.style.transform;
+    try {
+      const animation = ghost.animate(
+        [
+          { transform: currentTransform, opacity: 0.85 },
+          { transform: `${currentTransform} scale(0.97)`, opacity: 0 },
+        ],
+        { duration: 120, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' },
+      );
+      animation.finished.finally(() => {
+        if (ghostElementRef.current === ghost) removeDragGhost();
+      });
+    } catch {
+      removeDragGhost();
+    }
+  }, [removeDragGhost]);
+
   /**
    * 创建 简洁风格的半透明块幽灵预览：克隆被拖块内容、限制宽高、
    * 底部渐隐裁剪。克隆容器借用 milkdown / ProseMirror 类名以复用既有
    * 排版样式，纯 cloneNode 成本低（不做逐属性 computed style 拷贝）。
    */
   const createDragGhost = useCallback((element: HTMLElement, clientX: number, clientY: number) => {
-    removeDragGhost();
+    settleDragGhost();
 
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -579,7 +600,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       dragStateRef.current.draggedElement.style.opacity = '';
     }
     hideDropIndicator();
-    removeDragGhost();
+    settleDragGhost();
 
     const wrapper = wrapperRef.current;
     if (wrapper) {
@@ -592,7 +613,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     releasePointerCaptureIfAny,
     restoreBodyCursor,
     hideDropIndicator,
-    removeDragGhost,
+    settleDragGhost,
     wrapperRef,
     resetInteractionRefs,
   ]);
@@ -699,7 +720,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     restoreBodyCursor,
     hideDropIndicator,
     executeBlockMove,
-    removeDragGhost,
+    settleDragGhost,
     wrapperRef,
     resetInteractionRefs,
   ]);
