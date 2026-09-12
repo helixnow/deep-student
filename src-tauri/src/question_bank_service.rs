@@ -1116,10 +1116,10 @@ impl QuestionBankService {
             }
             // 匹配题：配对集合相等
             QuestionType::Matching => Self::grade_matching(user_answer, structured_data),
-            // 填空题：优先按 structured_data.blanks 逐空判分，否则旧逻辑单串比对
-            QuestionType::FillBlank => {
-                Self::grade_fill_blank(user_answer, trimmed_answer, structured_data)
-            }
+            // 填空题：学生答案可能意思对而字面不同（同义表述/单位/格式差异），
+            // 字符串比对易误判——一律交由 AI 评判（needs_manual_grading →
+            // 前端自动触发 qbank_ai_grade，回传题干/参考答案/解析/学生答案）。
+            QuestionType::FillBlank => (false, true),
             // 主观题：需要手动批改
             QuestionType::ShortAnswer
             | QuestionType::Essay
@@ -1523,90 +1523,6 @@ impl QuestionBankService {
         (is_correct, false)
     }
 
-    /// 填空题判分
-    ///
-    /// 有 structured_data.blanks 时逐空判分：
-    /// {"blanks":[{"answers":["答案1","答案一"],"case_sensitive":false,"trim":true}]}
-    /// user_answer 为 JSON 数组字符串 ["ans1","ans2"]；单空兼容旧的裸字符串。
-    /// 无 structured_data 时回退旧逻辑（忽略空白/大小写/全半角的单串比对）。
-    fn grade_fill_blank(
-        user_answer: &str,
-        correct_answer: Option<&str>,
-        structured_data: Option<&serde_json::Value>,
-    ) -> (bool, bool) {
-        let blanks = structured_data
-            .and_then(|sd| sd.get("blanks"))
-            .and_then(|v| v.as_array())
-            .filter(|arr| !arr.is_empty());
-
-        if let Some(blanks) = blanks {
-            // 解析用户答案：JSON 数组，或（单空时）裸字符串兼容
-            let user_values: Vec<String> =
-                match serde_json::from_str::<serde_json::Value>(user_answer.trim()) {
-                    Ok(serde_json::Value::Array(items)) => items
-                        .into_iter()
-                        .map(|v| match v {
-                            serde_json::Value::String(s) => s,
-                            other => other.to_string(),
-                        })
-                        .collect(),
-                    _ => vec![user_answer.to_string()],
-                };
-            if user_values.len() != blanks.len() {
-                return (false, false);
-            }
-
-            let normalize = |s: &str, case_sensitive: bool, trim: bool| -> String {
-                let mut value: String = s.chars().map(Self::normalize_fullwidth_char).collect();
-                if trim {
-                    value = value.trim().to_string();
-                }
-                if !case_sensitive {
-                    value = value.to_lowercase();
-                }
-                value
-            };
-
-            for (blank, user_value) in blanks.iter().zip(user_values.iter()) {
-                let Some(answers) = blank.get("answers").and_then(|v| v.as_array()) else {
-                    // 空位缺少可接受答案 → 数据问题，走手动批改
-                    return (false, true);
-                };
-                if answers.is_empty() {
-                    return (false, true);
-                }
-                let case_sensitive = blank
-                    .get("case_sensitive")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let trim = blank.get("trim").and_then(|v| v.as_bool()).unwrap_or(true);
-
-                let normalized_user = normalize(user_value, case_sensitive, trim);
-                let matched = answers
-                    .iter()
-                    .filter_map(|a| a.as_str())
-                    .any(|accepted| normalize(accepted, case_sensitive, trim) == normalized_user);
-                if !matched {
-                    return (false, false);
-                }
-            }
-            return (true, false);
-        }
-
-        // 旧逻辑：单串模糊匹配（忽略空白、大小写与全半角差异）
-        let Some(correct_answer) = correct_answer else {
-            return (false, true);
-        };
-        let normalize = |s: &str| -> String {
-            s.chars()
-                .map(Self::normalize_fullwidth_char)
-                .filter(|c| !c.is_whitespace())
-                .collect::<String>()
-                .to_lowercase()
-        };
-        (normalize(user_answer) == normalize(correct_answer), false)
-    }
-
     /// 切换收藏状态
     pub fn toggle_favorite(&self, question_id: &str) -> Result<Question, AppError> {
         let question = self
@@ -1642,6 +1558,15 @@ impl QuestionBankService {
     /// 获取统计（优先读缓存）
     pub fn get_stats(&self, exam_id: &str) -> Result<Option<QuestionBankStats>, AppError> {
         VfsQuestionRepo::get_stats(&self.vfs_db, exam_id)
+            .map_err(|e| AppError::database(e.to_string()))
+    }
+
+    /// 按题型统计题目数量（组卷配置的前端余量校验用）
+    pub fn count_by_type(
+        &self,
+        exam_id: &str,
+    ) -> Result<std::collections::HashMap<String, u32>, AppError> {
+        VfsQuestionRepo::count_by_type(&self.vfs_db, exam_id)
             .map_err(|e| AppError::database(e.to_string()))
     }
 
@@ -3805,19 +3730,22 @@ mod tests {
     }
 
     #[test]
-    fn test_fill_blank_whitespace_and_case() {
+    fn test_fill_blank_always_ai_graded() {
+        // 填空题不再字符串比对（学生答案可能意思对而字面不同）：
+        // 任意作答一律 needs_manual_grading，交由 AI 评判
         assert_eq!(
             check(" Newton ", Some("newton"), QuestionType::FillBlank),
-            (true, false)
+            (false, true)
         );
         assert_eq!(
             check("能量 守恒", Some("能量守恒"), QuestionType::FillBlank),
-            (true, false)
+            (false, true)
         );
         assert_eq!(
             check("动量守恒", Some("能量守恒"), QuestionType::FillBlank),
-            (false, false)
+            (false, true)
         );
+        assert_eq!(check("2", None, QuestionType::FillBlank), (false, true));
     }
 
     #[test]
@@ -3877,23 +3805,22 @@ mod tests {
             check("ＢＡ", Some("AB"), QuestionType::MultipleChoice),
             (true, false)
         );
-        // 填空：全角数字/字母等价于半角
+        // 填空：一律交由 AI 评判，全角归一化不再参与其判分
         assert_eq!(
             check("１２３", Some("123"), QuestionType::FillBlank),
-            (true, false)
+            (false, true)
         );
         assert_eq!(
             check("ｎｅｗｔｏｎ", Some("Newton"), QuestionType::FillBlank),
-            (true, false)
+            (false, true)
         );
-        // 全角空格视为空白被忽略
         assert_eq!(
             check(
                 "能量\u{3000}守恒",
                 Some("能量守恒"),
                 QuestionType::FillBlank
             ),
-            (true, false)
+            (false, true)
         );
         // 全角归一化不应引入误判
         assert_eq!(
@@ -4098,7 +4025,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fill_blank_structured_multi_blank() {
+    fn test_fill_blank_structured_multi_blank_always_ai_graded() {
+        // 填空题不再逐空比对：structured blanks 仅供编辑与 AI 评判参考，
+        // 任意作答（全对/部分对/空数不符/裸字符串）一律 needs_manual_grading
         let sd = serde_json::json!({
             "blanks": [
                 {"answers": ["牛顿", "Newton"], "case_sensitive": false, "trim": true},
@@ -4112,18 +4041,8 @@ mod tests {
                 QuestionType::FillBlank,
                 sd.clone()
             ),
-            (true, false)
+            (false, true)
         );
-        assert_eq!(
-            check_structured(
-                r#"["牛顿"," 1687 "]"#,
-                None,
-                QuestionType::FillBlank,
-                sd.clone()
-            ),
-            (true, false)
-        );
-        // 第二空错误
         assert_eq!(
             check_structured(
                 r#"["牛顿","1688"]"#,
@@ -4131,24 +4050,20 @@ mod tests {
                 QuestionType::FillBlank,
                 sd.clone()
             ),
-            (false, false)
+            (false, true)
         );
         // 空数不符
         assert_eq!(
             check_structured(r#"["牛顿"]"#, None, QuestionType::FillBlank, sd.clone()),
-            (false, false)
+            (false, true)
         );
-        // case_sensitive = true
+        // case_sensitive 变体
         let cs = serde_json::json!({
             "blanks": [{"answers": ["pH"], "case_sensitive": true, "trim": true}]
         });
         assert_eq!(
             check_structured("pH", None, QuestionType::FillBlank, cs.clone()),
-            (true, false)
-        );
-        assert_eq!(
-            check_structured("ph", None, QuestionType::FillBlank, cs),
-            (false, false)
+            (false, true)
         );
         // 单空兼容裸字符串
         let single = serde_json::json!({
@@ -4156,7 +4071,7 @@ mod tests {
         });
         assert_eq!(
             check_structured("能量守恒", None, QuestionType::FillBlank, single),
-            (true, false)
+            (false, true)
         );
     }
 
