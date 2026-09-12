@@ -151,14 +151,17 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // 生成试卷
   const handleGenerate = useCallback(async () => {
     // 题库余量校验：请求数 > 题库实际数量时，后端随机抽取会静默少抽，
-    // 这里先拦下并提示用户调整后重试。统计失败不阻断（保持旧行为兜底）。
-    let availableByType: Record<string, number> = {};
+    // 这里先拦下并提示用户调整后重试。统计失败时 availableByType 保持
+    // null，跳过校验放行（保持旧行为兜底），避免误报“库存不足”阻断组卷。
+    let availableByType: Record<string, number> | null = null;
     try {
       availableByType = await invoke<Record<string, number>>('qbank_count_by_type', { examId });
     } catch (err) {
-      console.error('Failed to count questions by type:', err);
+      console.error('Failed to count questions by type, skip availability check:', err);
     }
-    const shortages = findTypeShortages(typeSelection, availableByType);
+    const shortages = availableByType
+      ? findTypeShortages(typeSelection, availableByType)
+      : [];
     if (shortages.length > 0) {
       const details = shortages
         .map(
@@ -166,8 +169,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             `${t(`questionType.${questionType}`)} ${requested} > ${available}`,
         )
         .join(', ');
-      setGenerationError(t('paper.insufficientQuestions', { details }));
-      showGlobalNotification('warning', t('paper.insufficientQuestions', { details }));
+      const message = t('paper.insufficientQuestions', { details });
+      setGenerationError(message);
+      showGlobalNotification('warning', message);
       return;
     }
 
