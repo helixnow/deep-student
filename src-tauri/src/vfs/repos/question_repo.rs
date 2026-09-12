@@ -17,6 +17,8 @@
 //! - 搜索词长度限制（最大 200 字符）
 //! - 特殊字符自动转义
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
@@ -2284,6 +2286,23 @@ impl VfsQuestionRepo {
     // ========================================================================
     // 统计
     // ========================================================================
+
+    /// 按题型统计题目数量（组卷配置的前端余量校验用）
+    pub fn count_by_type(db: &VfsDatabase, exam_id: &str) -> VfsResult<HashMap<String, u32>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            "SELECT question_type, COUNT(*) FROM questions WHERE exam_id = ?1 GROUP BY question_type",
+        )?;
+        let rows = stmt.query_map(params![exam_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut counts = HashMap::new();
+        for row in rows {
+            let (question_type, n) = row?;
+            counts.insert(question_type, n.max(0) as u32);
+        }
+        Ok(counts)
+    }
 
     /// 获取统计（优先读缓存）
     pub fn get_stats(db: &VfsDatabase, exam_id: &str) -> VfsResult<Option<QuestionBankStats>> {

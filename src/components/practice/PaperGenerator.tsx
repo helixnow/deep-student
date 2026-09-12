@@ -44,7 +44,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { CountStepperRow } from './CountStepperRow';
+import { findTypeShortages } from './paperValidation';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 interface PaperGeneratorProps {
@@ -150,6 +150,27 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   
   // 生成试卷
   const handleGenerate = useCallback(async () => {
+    // 题库余量校验：请求数 > 题库实际数量时，后端随机抽取会静默少抽，
+    // 这里先拦下并提示用户调整后重试。统计失败不阻断（保持旧行为兜底）。
+    let availableByType: Record<string, number> = {};
+    try {
+      availableByType = await invoke<Record<string, number>>('qbank_count_by_type', { examId });
+    } catch (err) {
+      console.error('Failed to count questions by type:', err);
+    }
+    const shortages = findTypeShortages(typeSelection, availableByType);
+    if (shortages.length > 0) {
+      const details = shortages
+        .map(
+          ({ questionType, requested, available }) =>
+            `${t(`questionType.${questionType}`)} ${requested} > ${available}`,
+        )
+        .join(', ');
+      setGenerationError(t('paper.insufficientQuestions', { details }));
+      showGlobalNotification('warning', t('paper.insufficientQuestions', { details }));
+      return;
+    }
+
     const config: PaperConfig = {
       title,
       type_selection: typeSelection,
@@ -363,13 +384,26 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           </Label>
           <div className="space-y-1.5">
             {QUESTION_TYPE_KEYS.map((key) => (
-              <CountStepperRow
-                key={key}
-                label={t(`questionType.${key}`)}
-                value={typeSelection[key] || 0}
-                onChange={(value) => handleTypeChange(key, value)}
-                max={20}
-/>
+              <div key={key} className="flex items-center gap-2 sm:gap-3">
+                <span
+                  className="w-16 shrink-0 truncate text-sm sm:w-20"
+                  title={t(`questionType.${key}`)}
+                >
+                  {t(`questionType.${key}`)}
+                </span>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={typeSelection[key] ?? 0}
+                  onChange={(e) =>
+                    handleTypeChange(key, Math.max(0, Math.floor(Number(e.target.value) || 0)))
+                  }
+                  aria-label={t(`questionType.${key}`)}
+                  className="w-20"
+                />
+              </div>
             ))}
           </div>
           <div className="text-sm text-muted-foreground">

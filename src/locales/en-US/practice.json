@@ -205,6 +205,7 @@
     "answer": "Answer",
     "explanation": "Explanation",
     "generateFailed": "Failed to generate paper: {{error}}",
+    "insufficientQuestions": "Not enough questions in the bank, please adjust and retry: {{details}}",
     "exportComingSoon": "PDF / Word export is coming soon. Use Markdown export or preview for now.",
     "exportTitle": "Export Paper",
     "exportSuccess": "Paper exported",
