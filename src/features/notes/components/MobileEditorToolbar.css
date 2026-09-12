@@ -137,7 +137,8 @@
 .mobile-editor-toolbar[data-expanded='true'] .mobile-editor-toolbar__scroller,
 .mobile-editor-toolbar[data-expanded='true'] .mobile-editor-toolbar__insert-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 按可用宽度自动填充：窄屏 4~5 列，宽屏可放 6 列，减少空白和总高度。 */
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
   gap: 2px;
   max-height: min(280px, 38svh);
   overflow-y: auto;
@@ -153,7 +154,7 @@
   width: 100%;
   min-width: 44px;
   min-height: 44px;
-  height: 64px;
+  height: 54px;
   flex-direction: column;
   gap: 3px;
   font-size: 11px;

@@ -412,6 +412,10 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
 
 SessionCard.displayName = 'SessionCard';
 
+const sessionGridClass = (embeddedMode: boolean) => embeddedMode
+  ? 'grid grid-cols-1 gap-2'
+  : 'grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4';
+
 // ============================================================================
 // 骨架屏组件
 // ============================================================================
@@ -898,7 +902,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           />
         ) : isLoading ? (
           // 加载状态骨架屏
-          <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+          <div className={sessionGridClass(embeddedMode)}>
             {Array.from({ length: 9 }).map((_, i) => (
               <SessionCardSkeleton key={i} />
             ))}
@@ -950,7 +954,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     </div>
 
                     {/* 会话卡片网格 */}
-                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                    <div className={sessionGridClass(embeddedMode)}>
                       {timeSessions.map((session) => (
                         <SessionCard
                           key={session.id}
@@ -1000,7 +1004,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     ))}
                     <div className="h-px min-w-8 flex-1 bg-border/40" />
                   </div>
-                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                  <div className={sessionGridClass(embeddedMode)}>
                     {workspaceSessions.map((session) => (
                       <SessionCard
                         key={session.id}
@@ -1061,7 +1065,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   </div>
 
                   {!isCollapsed && (
-                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                    <div className={sessionGridClass(embeddedMode)}>
                       {groupSessions.map((session) => (
                         <SessionCard
                           key={session.id}
@@ -1109,7 +1113,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   </div>
 
                   {!isUngroupedCollapsed && (
-                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                    <div className={sessionGridClass(embeddedMode)}>
                       {sessionGroupedByGroup.ungrouped.map((session) => (
                         <SessionCard
                           key={session.id}

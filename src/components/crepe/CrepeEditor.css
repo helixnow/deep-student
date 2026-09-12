@@ -1093,6 +1093,9 @@
   .crepe-editor-wrapper .milkdown .milkdown-block-handle {
     visibility: hidden;
     pointer-events: none;
+    /* BlockProvider 的内联 left 在窄屏上可能以错误的内容宽度为基准，
+       造成加号/拖拽句柄跑到右边或被裁切；移动端块操作由底部工具条承接。 */
+    left: 0 !important;
   }
 }
 
