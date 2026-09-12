@@ -223,6 +223,15 @@ export interface ChatStoreState extends StoreCallbacks {
   /** 待重试的消息 ID（用于底部面板模型选择重试） */
   modelRetryTarget: string | null;
 
+  // ========== 🆕 压缩后上下文水位覆盖（✔️ 运行时状态） ==========
+
+  /**
+   * 压缩落盘后的上下文占用覆盖值（compaction_completed 事件 / 手动压缩命令写入）。
+   * 水位环优先用它渲染，让压缩完成瞬间即刷新；下一轮真实 usage 到达时清除
+   * （见 eventBridge stream_complete）。sessionId 匹配才生效，切会话天然失效。
+   */
+  contextUsageOverride: { sessionId: string; tokensAfter: number } | null;
+
   // ========== 🆕 消息操作锁（✔️ 运行时状态） ==========
 
   /** 当前进行中的消息操作（防止重复操作） */
@@ -334,6 +343,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     streamingVariantIds: new Set(),
     pendingParallelModelIds: null,
     modelRetryTarget: null,
+    contextUsageOverride: null, // 🆕 压缩后水位覆盖初始为 null
     messageOperationLock: null, // 🆕 消息操作锁初始为 null
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
     pendingContextRefsDirty: false,

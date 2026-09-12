@@ -1222,6 +1222,20 @@ export interface ChatStore {
 
   /** 设置待重试的消息 ID（点击消息模型名时调用，重试完成后清空） */
   setModelRetryTarget(messageId: string | null): void;
+
+  // ========== 🆕 压缩后上下文水位覆盖（✔️ 运行时状态） ==========
+
+  /**
+   * 压缩落盘后的上下文占用覆盖值（compaction_completed 事件 / 手动压缩命令写入）。
+   * 水位环优先用它渲染，压缩完成瞬间即刷新；下一轮真实 usage 到达时清除。
+   * sessionId 匹配才生效，切会话天然失效。
+   */
+  contextUsageOverride: { sessionId: string; tokensAfter: number } | null;
+
+  /** 设置/清除压缩后水位覆盖值（tokensAfter 传 null 表示清除） */
+  setContextUsageOverride(
+    override: { sessionId: string; tokensAfter: number } | null,
+  ): void;
 }
 
 // 默认值工厂函数从 common.ts 导入

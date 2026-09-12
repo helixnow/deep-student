@@ -104,8 +104,16 @@ async fn execute_generation_task(
     llm: Arc<LLMManager>,
     task_id: String,
     request: QbankGenerationRequest,
-    stream_event: String,
+    _stream_event: String,
 ) {
+    // 阶段计时：区分后台任务是否被调度、以及每段耗时
+    // （安卓曾现后台任务提交后长时间无进度 → tokio 饿死 connection aborted）。
+    let task_start = std::time::Instant::now();
+    log::info!(
+        "[QbankGeneration][task-exec] task body started: id={}",
+        task_id
+    );
+
     if let Err(e) = task_repo::mark_running(&vfs_db, &task_id) {
         log::warn!(
             "[QbankGeneration] 标记任务运行中失败: id={}, {}",
@@ -121,6 +129,13 @@ async fn execute_generation_task(
         vfs_db: vfs_db.clone(),
     };
     let result = pipeline::run_qbank_generation(request, deps).await;
+    let pipeline_elapsed = task_start.elapsed();
+    log::info!(
+        "[QbankGeneration][task-exec] pipeline returned: id={} after {:.1}s, ok={}",
+        task_id,
+        pipeline_elapsed.as_secs_f32(),
+        result.is_ok()
+    );
 
     match result {
         Ok(Some(response)) => {
@@ -160,9 +175,10 @@ async fn execute_generation_task(
     // 收尾事件：前端据此刷新任务卡片 / 弹出完成提示
     emit_current_task(&app, &vfs_db, &task_id);
     log::info!(
-        "[QbankGeneration] 后台任务结束: id={}, exam={}",
+        "[QbankGeneration] 后台任务结束: id={}, exam={}, total={:.1}s",
         task_id,
-        exam_id
+        exam_id,
+        task_start.elapsed().as_secs_f32()
     );
 }
 

@@ -133,6 +133,11 @@ pub struct SseEventBuffer {
     decoder: Utf8StreamDecoder,
     /// 已解码、但尚未凑满一整行的文本
     text_buffer: String,
+    /// 从 `text_buffer` 末尾起上次已扫描到「无未处理换行」的位置。
+    /// 下一次 `process_bytes` 追加字节后只从它续扫，避免对一条跨多个 chunk
+    /// 累积的未完成巨行反复从 0 全扫——大输出流曾因此退化为 O(n²)，
+    /// 在弱 CPU（安卓）上饿死 tokio 并触发 connection aborted。
+    scan_from: usize,
     pending_lines: Vec<String>,
     max_buffer_size: usize,
 }
@@ -142,6 +147,7 @@ impl SseEventBuffer {
         Self {
             decoder: Utf8StreamDecoder::new(),
             text_buffer: String::new(),
+            scan_from: 0,
             pending_lines: Vec::new(),
             max_buffer_size: DEFAULT_MAX_BUFFER_SIZE,
         }
@@ -152,6 +158,7 @@ impl SseEventBuffer {
         Self {
             decoder: Utf8StreamDecoder::new(),
             text_buffer: String::new(),
+            scan_from: 0,
             pending_lines: Vec::new(),
             max_buffer_size,
         }
@@ -184,16 +191,36 @@ impl SseEventBuffer {
 
         // 增量解码：跨 chunk 被切断的多字节字符保留在 decoder 内部，
         // 待下一个 chunk 补齐后再输出，保证行内容永远是完整字符。
+        let old_len = self.text_buffer.len();
         self.text_buffer.push_str(&self.decoder.decode(chunk));
-        let mut events = Vec::new();
+        // 追加前的字节已扫描过无未处理换行；scan_from 不得越过旧缓冲末尾。
+        self.scan_from = self.scan_from.min(old_len);
 
-        while let Some(newline) = self.text_buffer.find('\n') {
-            let mut line: String = self.text_buffer.drain(..=newline).collect();
-            line.pop();
-            if line.ends_with('\r') {
-                line.pop();
+        let mut events = Vec::new();
+        let mut handled = 0usize;
+        loop {
+            match self.text_buffer[self.scan_from..].find('\n') {
+                Some(rel) => {
+                    let abs = self.scan_from + rel;
+                    let mut line: String = self.text_buffer[handled..abs].to_string();
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
+                    self.push_line(line, &mut events);
+                    self.scan_from = abs + 1;
+                    handled = abs + 1;
+                }
+                None => {
+                    self.scan_from = self.text_buffer.len();
+                    break;
+                }
             }
-            self.push_line(line, &mut events);
+        }
+
+        if handled > 0 {
+            // 移除已处理行前缀，仅保留未完成的尾部行；scan_from 对齐到新缓冲。
+            self.text_buffer.drain(..handled);
+            self.scan_from = self.scan_from.saturating_sub(handled);
         }
 
         events
@@ -237,6 +264,7 @@ impl SseEventBuffer {
     pub fn clear(&mut self) {
         let _ = self.decoder.flush();
         self.text_buffer.clear();
+        self.scan_from = 0;
         self.pending_lines.clear();
     }
 
@@ -603,5 +631,39 @@ mod tests {
             .process_bytes(b"data: {\"too\":\"large\"}")
             .is_empty());
         assert!(buffer.flush().is_empty());
+    }
+
+    #[test]
+    fn event_buffer_long_single_line_split_across_many_chunks_is_linear() {
+        // 回归：单条超长 `data:` 行（思考模型把整段大 JSON 作为一行输出）
+        // 拆成大量小 chunk 喂入。旧 `find('\n')` 每 chunk 都从头全扫累计的
+        // 不完整巨行 → O(n²)；修复用 scan_from 只扫新增段 → 线性。
+        // 此用例只验证功能正确（重组结果与一次性输入一致），
+        // 不设脆弱的耗时断言；O(n²)→O(n) 由 scan_from 续扫逻辑本身保证。
+        let mut buffer = SseEventBuffer::new();
+        let body: String = format!(
+            "data: {{\"delta\":\"{}\"}}\n",
+            "这是超长思考内容与题目输出，用来模拟题量大时模型把整段结果塞进一条 data 行。"
+                .repeat(2000)
+        );
+        let chunk = 17usize; // 小分片，制造大量跨 chunk 累积
+        let mut fed = vec![];
+        let bytes = body.as_bytes();
+        for (i, part) in bytes.chunks(chunk).enumerate() {
+            // 最后一段若含完整换行则照常；中途任意分片都可能切在多字节字符中间
+            let evs = buffer.process_bytes(part);
+            if i < bytes.chunks(chunk).count() - 1 {
+                assert!(
+                    evs.is_empty(),
+                    "尚未收全整行（含换行前一字符）前不应产出事件"
+                );
+            }
+            fed.extend(evs);
+        }
+        // flush 残留（若最后一段没带末尾换行）
+        fed.extend(buffer.flush());
+        assert_eq!(fed.len(), 1, "应重组为一条完整事件：{:?}", &fed);
+        assert_eq!(fed[0], body.trim(), "重组内容须与一次投喂一致");
+        assert!(!fed[0].contains('\u{fffd}'), "不得出现 UTF-8 断码");
     }
 }

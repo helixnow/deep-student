@@ -65,6 +65,9 @@ export function useSettingsNavigation() {
   const hidePlugins = isMobile;
   // Mobile platforms have no physical keyboard, so keep shortcut settings out of the mobile navigation.
   const hideShortcuts = isMobile;
+  // 学习桌面（Workbench）为桌面端专属（App.tsx workbenchActive 的平台护栏）：
+  // 移动端该功能不可用，设置入口一并隐藏，避免「开关存在但无作用」的困惑。
+  const hideWorkbench = isMobile;
 
   const sidebarNavGroups = useMemo<SettingsSidebarNavItem[][]>(() => ([
     [
@@ -107,13 +110,17 @@ export function useSettingsNavigation() {
         mobileDescription: t('settings:mobile_descriptions.memory'),
         mobileAccent: SETTINGS_NAV_ACCENT.teal,
       },
-      {
-        value: 'workbench',
-        icon: SquaresFour,
-        label: t('settings:tabs.workbench'),
-        mobileDescription: t('settings:mobile_descriptions.workbench'),
-        mobileAccent: SETTINGS_NAV_ACCENT.indigo,
-      },
+      ...(!hideWorkbench
+        ? [
+            {
+              value: 'workbench',
+              icon: SquaresFour,
+              label: t('settings:tabs.workbench'),
+              mobileDescription: t('settings:mobile_descriptions.workbench'),
+              mobileAccent: SETTINGS_NAV_ACCENT.indigo,
+            },
+          ]
+        : []),
       {
         value: 'appearance',
         icon: Palette,
@@ -202,7 +209,7 @@ export function useSettingsNavigation() {
         mobileAccent: SETTINGS_NAV_ACCENT.pink,
       },
     ],
-  ]), [t, hidePlugins, hideShortcuts]);
+  ]), [t, hidePlugins, hideShortcuts, hideWorkbench]);
 
   const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
 
@@ -243,7 +250,9 @@ export function useSettingsNavigation() {
       keywords: ['history', 'recent dictation', 'transcript recovery', '历史记录', '转写记录'],
     },
     { tab: 'memory', label: t('settings:memory.title'), keywords: ['memory', '记忆', '本地记忆'] },
-    { tab: 'workbench', label: t('workbench:settings.sectionTitle'), keywords: ['workbench', '工作台', '工作区', 'workspace'] },
+    ...(!hideWorkbench
+      ? [{ tab: 'workbench', label: t('workbench:settings.sectionTitle'), keywords: ['workbench', '工作台', '工作区', 'workspace'] }]
+      : []),
     { tab: 'document-processing', label: t('settings:pdf.title', { defaultValue: 'PDF 设置' }), keywords: ['pdf', 'PDF'] },
     { tab: 'document-processing', label: t('settings:ocr.title', { defaultValue: 'OCR 设置' }), keywords: ['ocr', 'OCR', '文字识别'] },
     { tab: 'apis', label: t('settings:api.add_api_config'), keywords: ['API', 'add', 'config'] },
@@ -278,7 +287,7 @@ export function useSettingsNavigation() {
       ? [{ tab: 'shortcuts', label: t('settings:tabs.shortcuts'), keywords: ['shortcuts', 'keyboard', 'hotkey'] }]
       : []),
     { tab: 'about', label: t('settings:tabs.about'), keywords: ['about', 'version', 'acknowledgements'] },
-  ], [t, hidePlugins, hideShortcuts]);
+  ], [t, hidePlugins, hideShortcuts, hideWorkbench]);
 
   return {
     sidebarNavGroups,
