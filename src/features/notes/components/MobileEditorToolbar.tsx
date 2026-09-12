@@ -38,6 +38,8 @@ import {
   Cards,
   ArrowCounterClockwise,
   ArrowClockwise,
+  CaretUp,
+  CaretDown,
 } from '@phosphor-icons/react';
 
 import './MobileEditorToolbar.css';
@@ -157,6 +159,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   const { t } = useTranslation(['notes']);
   const [bottomOffset, setBottomOffset] = useState(0);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const tr = useCallback(
@@ -201,7 +204,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       rootStyle.removeProperty('--mobile-toolbar-keyboard-offset');
       rootStyle.removeProperty('--mobile-toolbar-height');
     };
-  }, [visible, bottomOffset, insertOpen]);
+  }, [visible, bottomOffset, insertOpen, expanded]);
 
   if (!visible) return null;
 
@@ -437,6 +440,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         {...extraProps}
       >
         {item.icon}
+        {expanded && <span>{label}</span>}
       </button>
     );
   };
@@ -457,6 +461,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       aria-label={toolbarLabel}
       data-testid="mobile-editor-toolbar"
       data-collapsed={isCollapsed ? 'true' : undefined}
+      data-expanded={expanded ? 'true' : undefined}
+      data-inserting={insertOpen ? 'true' : undefined}
       style={
         {
           '--mobile-toolbar-keyboard-offset': `${bottomOffset}px`,
@@ -489,7 +495,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           data-active={insertOpen ? 'true' : undefined}
           onMouseDown={preventFocusSteal}
           onPointerDown={preventFocusSteal}
-          onClick={() => setInsertOpen((open) => !open)}
+          onClick={() => { setInsertOpen((open) => !open); setExpanded(true); }}
         >
           <Plus size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />
         </button>
@@ -506,6 +512,13 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
             </React.Fragment>
           ))}
         </div>
+        <button type="button" className="mobile-editor-toolbar__btn mobile-editor-toolbar__expand"
+          aria-label={expanded ? tr('notes:mobileToolbar.collapse', '收起工具栏') : tr('notes:mobileToolbar.expand', '展开全部工具')}
+          aria-expanded={expanded}
+          onMouseDown={preventFocusSteal}
+          onClick={() => { setExpanded((value) => !value); setInsertOpen(false); }}>
+          {expanded ? <CaretDown size={ICON_SIZE} aria-hidden /> : <CaretUp size={ICON_SIZE} aria-hidden />}
+        </button>
       </div>
     </div>,
     document.body,

@@ -326,8 +326,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       aria-label={panelLabel}
       data-state={isClosing ? 'closing' : 'open'}
       className={cn(
-        // 贴编辑区顶部的紧凑内联条形面板（VS Code / Typora 风格），挂载点为编辑区 relative 容器
-        'absolute inset-x-0 top-0 z-40 flex flex-col overflow-hidden',
+        'relative z-40 flex w-full flex-shrink-0 flex-col overflow-hidden',
         'border-b border-border/60 bg-background',
         'shadow-[0_2px_8px_hsl(var(--shadow-base)/0.06)]',
         // 入场：token 驱动 drop-in（150ms，--dropdown-ease；ui-motion 已内置 reduced-motion 降级）。

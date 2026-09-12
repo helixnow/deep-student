@@ -1305,6 +1305,8 @@
     "slashDescription": "可折叠的标题与内容"
   },
   "mobileToolbar": {
+    "expand": "展开全部工具",
+    "collapse": "收起工具栏",
     "label": "移动端编辑工具条",
     "slash": "块菜单",
     "outdent": "减少缩进",
