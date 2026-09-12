@@ -43,7 +43,7 @@ function byAction(id: string): HTMLButtonElement {
 }
 
 function actionOrder(): string[] {
-  return Array.from(document.querySelectorAll('.mobile-editor-toolbar__btn')).map(
+  return Array.from(document.querySelectorAll('.mobile-editor-toolbar__btn[data-action]')).map(
     (el) => (el as HTMLElement).dataset.action ?? '',
   );
 }
@@ -130,6 +130,29 @@ describe('MobileEditorToolbar', () => {
 
     fireEvent.click(byAction('task'));
     expect(commands.toggleTaskList).toHaveBeenCalledTimes(1);
+  });
+
+  it('展开后保留全部命令并显示文字，末尾命令可执行且可收起', () => {
+    const commands = { ...mockCommands(), openFind: vi.fn(), generateCards: vi.fn() };
+    render(<MobileEditorToolbar commands={commands} visible />);
+    const originalActions = actionOrder();
+    fireEvent.click(screen.getByRole('button', { name: '展开全部工具' }));
+    expect(screen.getByTestId('mobile-editor-toolbar')).toHaveAttribute('data-expanded', 'true');
+    expect(actionOrder()).toEqual(originalActions);
+    expect(byAction('generateCards')).toHaveTextContent('生成卡片');
+    fireEvent.click(byAction('generateCards'));
+    expect(commands.generateCards).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '收起工具栏' }));
+    expect(screen.getByTestId('mobile-editor-toolbar')).not.toHaveAttribute('data-expanded');
+  });
+
+  it('插入面板有文字标签，收起时一并关闭', () => {
+    render(<MobileEditorToolbar commands={mockCommands()} visible />);
+    fireEvent.click(byAction('insert-toggle'));
+    expect(byAction('image')).toHaveTextContent('图片');
+    expect(screen.getByTestId('mobile-editor-toolbar')).toHaveAttribute('data-inserting', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '收起工具栏' }));
+    expect(screen.queryByTestId('mobile-editor-toolbar-insert-row')).not.toBeInTheDocument();
   });
 
   it('插入条：展开后含 image/slash，点击后触发回调并收起', () => {

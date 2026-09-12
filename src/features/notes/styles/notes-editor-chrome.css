@@ -207,6 +207,8 @@
   padding: 0 12px;
 }
 .notes-page-actions button span { font-size: 13px; }
+.notes-editor-header-section[data-mobile-hosted='true'] { min-height: 0; border-bottom: 0; }
+.notes-editor-header-section[data-mobile-hosted='true']:empty { display: none; }
 @media (max-width: 767px) {
   .notes-document-header { padding-top: 12px; }
 }

@@ -38,6 +38,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { MobileResourceMenuContext } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/openResource';
@@ -653,6 +654,11 @@ export const LearningHubPage: React.FC = () => {
   const [tabReloadKeys, setTabReloadKeys] = useState<Record<string, number>>({});
   const [isFinderRefreshing, setIsFinderRefreshing] = useState(false);
   const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
+  const [resourceMenuHost, setResourceMenuHost] = useState<HTMLDivElement | null>(null);
+  const resourceMenuContext = useMemo(() => ({
+    element: resourceMenuHost,
+    close: () => setMobileHeaderMenuOpen(false),
+  }), [resourceMenuHost]);
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -847,6 +853,9 @@ export const LearningHubPage: React.FC = () => {
             </DsButton>
           </AppMenuTrigger>
           <AppMenuContent align="end" width={188}>
+            {activeTab.type === 'note' && (
+              <div ref={setResourceMenuHost} className="notes-page-actions" />
+            )}
             <AppMenuItem icon={<ArrowClockwise size={16} />} onClick={reloadActiveTab}>
               {t('common:reload')}
             </AppMenuItem>
@@ -1353,6 +1362,7 @@ export const LearningHubPage: React.FC = () => {
       // 子屏 chrome 接管通道只在移动分支提供：桌面分栏无统一顶栏，
       // 子屏探测不到宿主时保持页内自绘顶栏（useMobileSubviewChrome 返回 false）
       <MobileSubviewChromeProvider value={subviewChromeHost}>
+      <MobileResourceMenuContext.Provider value={resourceMenuContext}>
       <div
         className="study-shell-page relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       >
@@ -1457,6 +1467,7 @@ export const LearningHubPage: React.FC = () => {
             requestContentCloseDecision 无宿主时恒返回 cancel，故本页自行挂载） */}
         <ContentCloseConfirmationHost />
       </div>
+      </MobileResourceMenuContext.Provider>
       </MobileSubviewChromeProvider>
     );
   }

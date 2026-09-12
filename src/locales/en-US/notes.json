@@ -1316,6 +1316,8 @@
     "slashDescription": "Collapsible title and body"
   },
   "mobileToolbar": {
+    "expand": "Show all tools",
+    "collapse": "Collapse toolbar",
     "label": "Mobile editor toolbar",
     "slash": "Block menu",
     "outdent": "Decrease indent",

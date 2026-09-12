@@ -11,6 +11,8 @@ import type { CrepeFormattingState } from '@/components/crepe/formattingState';
  */
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
+import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, DotsThree } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
@@ -389,6 +391,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // P0-2：仅看 (pointer: coarse) 会漏掉「窄窗桌面/模拟器」，与壳层断点对齐。
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const isSmallScreen = useIsMobile();
+  const mobileResourceMenu = useMobileResourceMenu();
+  const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
   const [pageActionsOpen, setPageActionsOpen] = useState(false);
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
   // 📱 P0 泄漏修复：编辑器壳层不可见（保活 tab display:none、三屏滑动移出
@@ -1787,6 +1791,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
                 <DsButton
                   ref={templateTriggerRef}
+                  role={hasMobileResourceMenu ? 'menuitem' : undefined}
                   variant="ghost"
                   iconOnly
                   size="sm"
@@ -1813,6 +1818,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 size="sm"
                 className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={() => { void openQuickAssistantWindow(); }}
+                role={hasMobileResourceMenu ? 'menuitem' : undefined}
                 aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
               >
                 <Robot size={16} />
@@ -1830,6 +1836,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                role={hasMobileResourceMenu ? 'menuitem' : undefined}
                 aria-label={t('notes:toolbar.find_replace')}
                 aria-pressed={isFindReplaceOpen}
               >
@@ -1864,6 +1871,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   }}
                   aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
                   aria-pressed={readingMode}
+                  role={hasMobileResourceMenu ? 'menuitem' : undefined}
                 >
                   {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
                 {isTouchEditingSurface && <span>{readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}</span>}
@@ -1880,6 +1888,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 size="sm"
                 className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={toggleFocusMode}
+                role={hasMobileResourceMenu ? 'menuitem' : undefined}
                 aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
                 aria-pressed={focusMode}
               >
@@ -1898,6 +1907,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       data-focus-mode={focusMode && focusChromePhase === 'hidden' ? 'true' : 'false'}
       data-focus-chrome={focusChromePhase}
     >
+      {hasMobileResourceMenu && mobileResourceMenu?.element && shellInViewport && !suppressMobileToolbar && createPortal(
+        <div onClick={(event) => {
+          if ((event.target as HTMLElement).closest('button')) mobileResourceMenu.close();
+        }}>{pageActions}{headerActions}</div>, mobileResourceMenu.element,
+      )}
       {/* 内容加载中遮罩 - 覆盖在编辑器上方 */}
       {!isContentLoaded && (
         <div data-wb-blur-surface className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -2093,8 +2107,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       )}
 
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
-      <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
-        <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
+      <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background"
+        data-mobile-hosted={hasMobileResourceMenu || undefined}>
+        {!hasMobileResourceMenu && <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
             <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {isTouchEditingSurface ? (
@@ -2116,7 +2131,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             ) : pageActions}
             {headerActions}
           </div>
-        </div>
+        </div>}
 
         {/* 模板内联面板：编辑器顶部随文档流展开（grid-rows 0fr→1fr），无浮层遮挡；
             方向键在卡片间移动、Enter 应用、Esc 收起（见 NotesTemplatePanel） */}
@@ -2186,7 +2201,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       )}
       
       {/* 查找替换面板 - 固定在 header 下方，不随内容滚动 */}
-      <div className="relative" ref={findReplaceContainerRef}>
+      <div className="relative shrink-0" ref={findReplaceContainerRef}>
         {isFindReplaceOpen && (
           <FindReplacePanel 
             editorApi={editorApi}

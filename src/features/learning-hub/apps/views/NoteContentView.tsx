@@ -1002,9 +1002,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   )}
                   onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
                   aria-label={t('notes:contextPanel.title')}
+                  role={isSmallScreen ? 'menuitem' : undefined}
                   aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
                 >
                   <SidebarSimple size={15} aria-hidden="true" />
+                  {isSmallScreen && <span>{t('notes:contextPanel.title')}</span>}
                 </DsButton>
               </CommonTooltip>
             )}
