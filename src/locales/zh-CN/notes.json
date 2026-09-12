@@ -359,6 +359,7 @@
     "reading_mode_on": "已进入阅读模式",
     "reading_mode_off": "已进入编辑模式",
     "find_replace": "查找替换",
+    "page_actions": "更多笔记操作",
     "note_templates": "笔记模板",
     "focus_mode": "专注模式",
     "exit_focus_mode": "退出专注模式",
@@ -638,12 +639,14 @@
     "portaled_hint": "在白板中编辑此笔记",
     "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。",
     "link": {
-      "href_required": "请先输入链接地址"
+      "href_required": "请先输入链接地址",
+      "input_placeholder": "输入或粘贴链接地址…"
     }
   },
   "crepe": {
     "link": {
-      "href_required": "请先输入链接地址"
+      "href_required": "请先输入链接地址",
+      "input_placeholder": "输入或粘贴链接地址…"
     },
     "image": {
       "load_failed": "图片加载失败"

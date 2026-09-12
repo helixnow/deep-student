@@ -197,3 +197,16 @@
     animation: none;
   }
 }
+
+/* Page actions become labelled touch targets; formatting remains by the keyboard. */
+.notes-page-actions button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 12px;
+}
+.notes-page-actions button span { font-size: 13px; }
+@media (max-width: 767px) {
+  .notes-document-header { padding-top: 12px; }
+}

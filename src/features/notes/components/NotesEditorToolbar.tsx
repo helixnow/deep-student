@@ -1,9 +1,11 @@
+import type { CrepeFormattingState } from '@/components/crepe/formattingState';
+import { insertImageFromDevice } from '../mobileEditorCommands';
 /**
  * 笔记编辑器顶部工具栏
  * 提供常用的 Markdown 格式化操作
  *
  * 溢出策略：窄容器优先横向滚动（带渐隐 mask 提示可滑），
- * 极窄容器（CSS 容器查询 ≤560px / 触屏）由样式层收起内联区，
+ * 极窄容器（CSS 容器查询 ≤640px / 触屏）由样式层收起内联区，
  * Popover 全量菜单仅作兜底并带方向键 roving tabindex。
  */
 
@@ -51,6 +53,8 @@ interface NotesEditorToolbarProps {
   editor?: CrepeEditorApi | null;
   /** 是否只读 */
   readOnly?: boolean;
+  activeStates?: CrepeFormattingState;
+  noteId?: string;
 }
 
 /**
@@ -92,6 +96,8 @@ const INLINE_SCROLL_MASK =
 export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({ 
   editor: externalEditor,
   readOnly = false,
+  activeStates = {},
+  noteId,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
 
@@ -192,8 +198,8 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   }, [editor]);
 
   const handleImage = useCallback(() => {
-    editor?.insertImage();
-  }, [editor]);
+    void insertImageFromDevice(editor, noteId);
+  }, [editor, noteId]);
 
   const handleTable = useCallback(() => {
     editor?.insertTable();
@@ -248,18 +254,18 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   // 快捷键文案对齐 Milkdown preset-commonmark / preset-gfm 真实 keymap；
   // Mod-K 由本阶段 linkKeymapPlugin 补齐（见 docs/revamp/07-shortcuts.md）
   const formatActions = [
-    { icon: <TextB />, label: tr('notes:toolbar.bold', '粗体'), shortcut: formatShortcut({ key: 'B' }, mac), action: handleBold },
-    { icon: <TextItalic />, label: tr('notes:toolbar.italic', '斜体'), shortcut: formatShortcut({ key: 'I' }, mac), action: handleItalic },
-    { icon: <TextStrikethrough />, label: tr('notes:toolbar.strikethrough', '删除线'), shortcut: formatShortcut({ alt: true, key: 'X' }, mac), action: handleStrikethrough },
-    { icon: <Code />, label: tr('notes:toolbar.code', '行内代码'), shortcut: formatShortcut({ key: 'E' }, mac), action: handleCode },
-    { icon: <TextHOne />, label: tr('notes:toolbar.heading1', '一级标题'), shortcut: formatShortcut({ alt: true, key: '1' }, mac), action: handleHeading1 },
-    { icon: <TextHTwo />, label: tr('notes:toolbar.heading2', '二级标题'), shortcut: formatShortcut({ alt: true, key: '2' }, mac), action: handleHeading2 },
-    { icon: <TextHThree />, label: tr('notes:toolbar.heading3', '三级标题'), shortcut: formatShortcut({ alt: true, key: '3' }, mac), action: handleHeading3 },
-    { icon: <List />, label: tr('notes:toolbar.bulletList', '无序列表'), shortcut: formatShortcut({ alt: true, key: '8' }, mac), action: handleBulletList },
-    { icon: <ListNumbers />, label: tr('notes:toolbar.orderedList', '有序列表'), shortcut: formatShortcut({ alt: true, key: '7' }, mac), action: handleOrderedList },
-    { icon: <CheckSquare />, label: tr('notes:toolbar.taskList', '任务列表'), action: handleTaskList },
-    { icon: <Quotes />, label: tr('notes:toolbar.quote', '引用'), shortcut: formatShortcut({ shift: true, key: 'B' }, mac), action: handleQuote },
-    { icon: <Link />, label: tr('notes:toolbar.link', '链接'), shortcut: formatShortcut({ key: 'K' }, mac), action: handleLink },
+    { active: activeStates.bold, icon: <TextB />, label: tr('notes:toolbar.bold', '粗体'), shortcut: formatShortcut({ key: 'B' }, mac), action: handleBold },
+    { active: activeStates.italic, icon: <TextItalic />, label: tr('notes:toolbar.italic', '斜体'), shortcut: formatShortcut({ key: 'I' }, mac), action: handleItalic },
+    { active: activeStates.strikethrough, icon: <TextStrikethrough />, label: tr('notes:toolbar.strikethrough', '删除线'), shortcut: formatShortcut({ alt: true, key: 'X' }, mac), action: handleStrikethrough },
+    { active: activeStates.code, icon: <Code />, label: tr('notes:toolbar.code', '行内代码'), shortcut: formatShortcut({ key: 'E' }, mac), action: handleCode },
+    { active: activeStates.h1, icon: <TextHOne />, label: tr('notes:toolbar.heading1', '一级标题'), shortcut: formatShortcut({ alt: true, key: '1' }, mac), action: handleHeading1 },
+    { active: activeStates.h2, icon: <TextHTwo />, label: tr('notes:toolbar.heading2', '二级标题'), shortcut: formatShortcut({ alt: true, key: '2' }, mac), action: handleHeading2 },
+    { active: activeStates.h3, icon: <TextHThree />, label: tr('notes:toolbar.heading3', '三级标题'), shortcut: formatShortcut({ alt: true, key: '3' }, mac), action: handleHeading3 },
+    { active: activeStates.bullet, icon: <List />, label: tr('notes:toolbar.bulletList', '无序列表'), shortcut: formatShortcut({ alt: true, key: '8' }, mac), action: handleBulletList },
+    { active: activeStates.ordered, icon: <ListNumbers />, label: tr('notes:toolbar.orderedList', '有序列表'), shortcut: formatShortcut({ alt: true, key: '7' }, mac), action: handleOrderedList },
+    { active: activeStates.task, icon: <CheckSquare />, label: tr('notes:toolbar.taskList', '任务列表'), action: handleTaskList },
+    { active: activeStates.quote, icon: <Quotes />, label: tr('notes:toolbar.quote', '引用'), shortcut: formatShortcut({ shift: true, key: 'B' }, mac), action: handleQuote },
+    { active: activeStates.link, icon: <Link />, label: tr('notes:toolbar.link', '链接'), shortcut: formatShortcut({ key: 'K' }, mac), action: handleLink },
     { icon: <BracketsSquare />, label: tr('notes:toolbar.wikilink', '双链引用'), action: handleWikilink },
     { icon: <ChatCenteredText />, label: tr('notes:toolbar.callout', '高亮块'), action: handleCallout },
     { icon: <CaretCircleDown />, label: tr('notes:toolbar.toggle', '折叠块'), action: handleToggle },
@@ -338,6 +344,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                     iconOnly
                     disabled={isDisabled}
                     aria-label={item.label}
+                    aria-pressed={item.active}
                     className="flex-none ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={item.action}
@@ -379,6 +386,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               aria-label={toolbarLabel}
               aria-haspopup="menu"
               aria-expanded={overflowOpen}
+              onMouseDown={(event) => event.preventDefault()}
             >
               <TextAa className="h-4 w-4" />
             </DsButton>
@@ -403,10 +411,11 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                 ref={(el) => { menuItemRefs.current[index] = el; }}
                 variant="ghost"
                 size="sm"
-                role="menuitem"
+                role={item.active === undefined ? "menuitem" : "menuitemcheckbox"}
                 tabIndex={index === menuActiveIndex ? 0 : -1}
                 className="notes-toolbar-overflow-item [@media(pointer:coarse)]:!min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                 aria-label={item.label}
+                aria-checked={item.active}
                 onMouseDown={(event) => event.preventDefault()}
                 onFocus={() => setMenuActiveIndex(index)}
                 onClick={() => { item.action(); setOverflowOpen(false); }}

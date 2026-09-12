@@ -386,6 +386,7 @@
     "reading_mode_on": "Entered reading mode",
     "reading_mode_off": "Entered editing mode",
     "find_replace": "Find & Replace",
+    "page_actions": "More note actions",
     "note_templates": "Note templates",
     "focus_mode": "Focus mode",
     "exit_focus_mode": "Exit focus mode",
@@ -712,12 +713,14 @@
     "portaled_hint": "Edit this note in the canvas",
     "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing.",
     "link": {
-      "href_required": "Enter a link URL first"
+      "href_required": "Enter a link URL first",
+      "input_placeholder": "Enter or paste a link…"
     }
   },
   "crepe": {
     "link": {
-      "href_required": "Enter a link URL first"
+      "href_required": "Enter a link URL first",
+      "input_placeholder": "Enter or paste a link…"
     },
     "image": {
       "load_failed": "Failed to load image"

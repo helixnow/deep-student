@@ -1,3 +1,4 @@
+import type { CrepeFormattingState } from '@/components/crepe/formattingState';
 /**
  * 笔记模块 Crepe 编辑器
  * 基于 @milkdown/crepe 的 Markdown 编辑器
@@ -11,7 +12,7 @@
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, DotsThree } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
@@ -21,12 +22,12 @@ import { useNotesOptional } from './NotesContext';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Popover';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
 import {
   MobileEditorToolbar,
-  type MobileEditorToolbarActiveStates,
 } from './components/MobileEditorToolbar';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import {
@@ -234,6 +235,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [editorApi, setEditorApi] = useState<CrepeEditorApi | null>(null);
   const lifecycleApiRef = useRef<CrepeEditorApi | null>(null);
+  const editorNoteIdRef = useRef<string | null>(null);
   const pendingSaveQueueRef = useRef<PendingSavePayload[]>([]);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
   const activeSavePayloadRef = useRef<PendingSavePayload | null>(null);
@@ -387,6 +389,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // P0-2：仅看 (pointer: coarse) 会漏掉「窄窗桌面/模拟器」，与壳层断点对齐。
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const isSmallScreen = useIsMobile();
+  const [pageActionsOpen, setPageActionsOpen] = useState(false);
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
   // 📱 P0 泄漏修复：编辑器壳层不可见（保活 tab display:none、三屏滑动移出
   // 视口、切换到其他应用视图）时必须收回 body 级工具条，否则它会悬浮在
@@ -409,7 +412,10 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
   }, [wantsMobileToolbar, mobileToolbarOwner, mobileToolbarInstanceId]);
   const showMobileToolbar = wantsMobileToolbar && mobileToolbarOwner === mobileToolbarInstanceId;
-  const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
+  const [formattingState, setFormattingState] = useState<CrepeFormattingState>({});
+  const handleFormattingChange = useCallback((next: CrepeFormattingState) => {
+    setFormattingState((current) => Object.keys(next).every((key) => current[key as keyof CrepeFormattingState] === next[key as keyof CrepeFormattingState]) ? current : next);
+  }, []);
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   // P0 选区即上下文：笔记选区 → 结构化 contextRef（与 dropZone 共用同一 relative 容器）
@@ -588,42 +594,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (mode === 'mine') action.restoreMine();
   }, []);
 
-  useEffect(() => {
-    if (!editorApi || !showMobileToolbar) return undefined;
-    const update = () => {
-      const crepe = editorApi.getCrepe();
-      if (!crepe) return;
-      crepe.editor.action((ctx) => {
-        const state = ctx.get(editorViewCtx).state;
-        const markNames = new Set(state.selection.$from.marks().map((mark) => mark.type.name));
-        const ancestorNames = new Set<string>();
-        for (let depth = state.selection.$from.depth; depth >= 0; depth -= 1) {
-          ancestorNames.add(state.selection.$from.node(depth).type.name);
-        }
-        const parent = state.selection.$from.parent;
-        const headingLevel = parent.type.name === 'heading' ? Number(parent.attrs.level) : 0;
-        setMobileActiveStates({
-          bold: markNames.has('strong'),
-          italic: markNames.has('emphasis') || markNames.has('em'),
-          strikethrough: markNames.has('strike_through') || markNames.has('strikethrough'),
-          h1: headingLevel === 1,
-          h2: headingLevel === 2,
-          h3: headingLevel === 3,
-          bullet: ancestorNames.has('bullet_list'),
-          task: ancestorNames.has('task_list') || ancestorNames.has('task_item'),
-        });
-      });
-    };
-    update();
-    document.addEventListener('selectionchange', update);
-    window.addEventListener('keyup', update, true);
-    window.addEventListener('pointerup', update, true);
-    return () => {
-      document.removeEventListener('selectionchange', update);
-      window.removeEventListener('keyup', update, true);
-      window.removeEventListener('pointerup', update, true);
-    };
-  }, [editorApi, showMobileToolbar]);
 
   // Keep each note bound to the save callback that owns its original path.
   // A queued draft may finish after the component has switched to another note.
@@ -820,7 +790,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       return Promise.resolve();
     }
     cancelDebounce();
-    const draft = draftByNoteRef.current.get(resolvedNoteId);
+    // Read the live document at lifecycle boundaries: onChange is batched by 250ms.
+    const api = lifecycleApiRef.current;
+    const draft = editorNoteIdRef.current === resolvedNoteId && api?.getCrepe()
+      ? api.getMarkdown()
+      : draftByNoteRef.current.get(resolvedNoteId);
     if (typeof draft !== 'string') {
       return Promise.resolve();
     }
@@ -1007,6 +981,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const setEditorRef = useRef(setEditor);
   flushNoteDraftRef.current = flushNoteDraft;
   setEditorRef.current = setEditor;
+
+  // Snapshot before the child editor's passive cleanup destroys its view.
+  useLayoutEffect(() => () => {
+    if (noteId) void flushNoteDraftRef.current(noteId).catch(() => {});
+  }, [noteId]);
 
   // 清理
   useEffect(() => {
@@ -1273,6 +1252,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       let hasPending =
         pendingSaveQueueRef.current.length > 0 || inFlightSaveRef.current !== null;
 
+      const liveApi = lifecycleApiRef.current;
+      const liveNoteId = editorNoteIdRef.current;
+      if (!hasPending && liveNoteId && liveApi?.getCrepe()) {
+        hasPending = liveApi.getMarkdown() !== (lastSavedMapRef.current.get(liveNoteId) ?? '');
+      }
       if (!hasPending) {
         for (const [id, draft] of draftByNoteRef.current) {
           const lastSavedSnapshot = lastSavedMapRef.current.get(id) ?? '';
@@ -1410,13 +1394,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
     setEditorApi(lifecycleApi);
     lifecycleApiRef.current = lifecycleApi;
+    editorNoteIdRef.current = noteId ?? null;
     onEditorReady?.(lifecycleApi);
     onEditorApiReady?.(lifecycleApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
       setEditor(lifecycleApi);
     }
-  }, [isDstuMode, onEditorReady, onEditorApiReady, setEditor]);
+  }, [isDstuMode, noteId, onEditorReady, onEditorApiReady, setEditor]);
 
   useEffect(() => {
     return () => {
@@ -1797,6 +1782,113 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // DSTU 模式下始终渲染，Context 模式下需要 noteId
   if (!isDstuMode && !noteId) return null;
 
+  const pageActions = (<>
+            {!readOnly && (
+              <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
+                <DsButton
+                  ref={templateTriggerRef}
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
+                  className={cn(
+                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                    templateMenuOpen
+                      ? 'bg-[var(--interactive-hover)] text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => setTemplateMenuOpen((prev) => !prev)}
+                  aria-label={t('notes:toolbar.note_templates', 'Note templates')}
+                  aria-expanded={templateMenuOpen}
+                  aria-controls={templatePanelId}
+                >
+                  <NoteBlank size={16} />
+                {isTouchEditingSurface && <span>{t('notes:toolbar.note_templates', 'Note templates')}</span>}
+                </DsButton>
+              </CommonTooltip>
+            )}
+            <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                onClick={() => { void openQuickAssistantWindow(); }}
+                aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
+              >
+                <Robot size={16} />
+              {isTouchEditingSurface && <span>{t('notes:toolbar.ask_agent', 'Ask Agent')}</span>}
+                </DsButton>
+            </CommonTooltip>
+            {/* 查找替换按钮 */}
+            <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className={cn(
+                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                  isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+                onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                aria-label={t('notes:toolbar.find_replace')}
+                aria-pressed={isFindReplaceOpen}
+              >
+                <MagnifyingGlass size={16} />
+              {isTouchEditingSurface && <span>{t('notes:toolbar.find_replace')}</span>}
+                </DsButton>
+            </CommonTooltip>
+            {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
+            {!readOnly && (
+              <CommonTooltip
+                content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                position="bottom"
+              >
+                <DsButton
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
+                  className={cn(
+                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11",
+                    readingMode
+                      ? "bg-[var(--interactive-hover)] text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  onClick={() => {
+                    const next = !readingMode;
+                    // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
+                    if (next) {
+                      void flushNoteDraft().catch(() => {});
+                    }
+                    setReadingMode(next);
+                    // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
+                  }}
+                  aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                  aria-pressed={readingMode}
+                >
+                  {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
+                {isTouchEditingSurface && <span>{readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}</span>}
+                </DsButton>
+              </CommonTooltip>
+            )}
+            <CommonTooltip
+              content={`${focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`}
+              position="bottom"
+            >
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                onClick={toggleFocusMode}
+                aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
+                aria-pressed={focusMode}
+              >
+                {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
+              {isTouchEditingSurface && <span>{focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}</span>}
+                </DsButton>
+            </CommonTooltip>
+  </>);
+
   return (
     <ErrorBoundary name="NotesEditor">
     <div
@@ -2003,107 +2095,25 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
         <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
-            <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
-          <div className="ml-auto flex items-center gap-1">
-            {!readOnly && (
-              <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
-                <DsButton
-                  ref={templateTriggerRef}
-                  variant="ghost"
-                  iconOnly
-                  size="sm"
-                  className={cn(
-                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-                    templateMenuOpen
-                      ? 'bg-[var(--interactive-hover)] text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => setTemplateMenuOpen((prev) => !prev)}
-                  aria-label={t('notes:toolbar.note_templates', 'Note templates')}
-                  aria-expanded={templateMenuOpen}
-                  aria-controls={templatePanelId}
-                >
-                  <NoteBlank size={16} />
-                </DsButton>
-              </CommonTooltip>
-            )}
-            <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                onClick={() => { void openQuickAssistantWindow(); }}
-                aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
-              >
-                <Robot size={16} />
-              </DsButton>
-            </CommonTooltip>
-            {/* 查找替换按钮 */}
-            <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className={cn(
-                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-                  isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
-                )}
-                onClick={() => setIsFindReplaceOpen((prev) => !prev)}
-                aria-label={t('notes:toolbar.find_replace')}
-                aria-pressed={isFindReplaceOpen}
-              >
-                <MagnifyingGlass size={16} />
-              </DsButton>
-            </CommonTooltip>
-            {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
-            {!readOnly && (
-              <CommonTooltip
-                content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
-                position="bottom"
-              >
-                <DsButton
-                  variant="ghost"
-                  iconOnly
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11",
-                    readingMode
-                      ? "bg-[var(--interactive-hover)] text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => {
-                    const next = !readingMode;
-                    // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
-                    if (next) {
-                      void flushNoteDraft().catch(() => {});
-                    }
-                    setReadingMode(next);
-                    // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
-                  }}
-                  aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
-                  aria-pressed={readingMode}
-                >
-                  {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
-                </DsButton>
-              </CommonTooltip>
-            )}
-            <CommonTooltip
-              content={`${focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`}
-              position="bottom"
-            >
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                onClick={toggleFocusMode}
-                aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
-                aria-pressed={focusMode}
-              >
-                {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
-              </DsButton>
-            </CommonTooltip>
+            <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {isTouchEditingSurface ? (
+              <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
+                <PopoverTrigger asChild>
+                  <DsButton variant="ghost" size="icon" iconOnly className="h-11 w-11"
+                    aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
+                    <DotsThree size={22} />
+                  </DsButton>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="notes-page-actions w-60"
+                  aria-label={t('notes:toolbar.page_actions', 'More note actions')}
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest('button')) setPageActionsOpen(false);
+                  }}>
+                  {pageActions}
+                </PopoverContent>
+              </Popover>
+            ) : pageActions}
             {headerActions}
           </div>
         </div>
@@ -2248,6 +2258,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             className="flex-1 min-h-[40vh] ui-rise-in"
             defaultValue={initialValue}
             onChange={handleChange}
+            onFormattingChange={handleFormattingChange}
             onReady={handleEditorReady}
             readonly={effectiveReadOnly}
             plugins={{
@@ -2283,7 +2294,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         visible={showMobileToolbar}
         collapsed={mobileToolbarCollapsed}
         commands={mobileCommands}
-        activeStates={mobileActiveStates}
+        activeStates={formattingState}
       />
     </div>
     </ErrorBoundary>

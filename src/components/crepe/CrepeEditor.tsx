@@ -1,3 +1,4 @@
+import { readFormattingState } from './formattingState';
 /**
  * Crepe 编辑器 React 组件
  * 基于 @milkdown/crepe 的开箱即用 Markdown 编辑器
@@ -169,6 +170,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const {
     defaultValue = '',
     onChange,
+    onFormattingChange,
     onReady,
     onDestroy,
     onFocus,
@@ -192,6 +194,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const blockMenuActiveRef = useRef(-1); // keydown 监听内读取，避免闭包过期
   const [initPhase, setInitPhase] = useState('pending'); // 🔧 调试：追踪初始化阶段
   const onChangeRef = useRef(onChange);
+  const onFormattingChangeRef = useRef(onFormattingChange);
+  onFormattingChangeRef.current = onFormattingChange;
   const onReadyRef = useRef(onReady);
   const onDestroyRef = useRef(onDestroy);
   const onFocusRef = useRef(onFocus);
@@ -1701,6 +1705,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             [CrepeFeature.Latex]: true,
           },
           featureConfigs: {
+            [CrepeFeature.LinkTooltip]: { inputPlaceholder: i18next.t('notes:crepe.link.input_placeholder', { defaultValue: 'Enter a link…' }) },
             // 代码块：自动换行（保留语言选择 / 复制按钮等默认配置）
             [CrepeFeature.CodeMirror]: {
               extensions: [EditorView.lineWrapping],
@@ -1882,6 +1887,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                     (window as any).__MILKDOWN_CTX__ = ctx;
                   }
                   viewRef.current = view; // 缓存到 ref 供 scrollToHeading 使用
+                  onFormattingChangeRef.current?.(readFormattingState(view.state));
                   if (!viewHooked) {
                     viewHooked = true;
                     try {
@@ -1902,6 +1908,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                         const oldState = view.state;
                         originalUpdateState(newState);
                         if (destroyed) return;
+
+                        if (oldState.doc !== newState.doc || !oldState.selection.eq(newState.selection) || oldState.storedMarks !== newState.storedMarks) {
+                          onFormattingChangeRef.current?.(readFormattingState(newState));
+                        }
 
                         // E1-3 快速短路：选区/装饰类事务保持同一 doc 对象，直接跳过（O(1)）
                         if (oldState?.doc === newState?.doc) return;

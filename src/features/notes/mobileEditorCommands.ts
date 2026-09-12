@@ -140,11 +140,15 @@ export async function insertImageFromDevice(
     editor.insertImage();
     return;
   }
+  const instance = editor.getCrepe();
+  const selection = editor.captureSelection?.() ?? null;
   try {
     const file = await pickImageWithTauriDialog();
     if (!file) return; // 用户取消 / 对话框失败（pick 内部已记录日志）
     const url = await createImageUploader(noteId)(file);
     if (!url) return; // 上传失败：uploader 已 toast
+    if (editor.getCrepe() !== instance || !instance || editor.isReadonly()) return;
+    editor.restoreSelection?.(selection);
     editor.insertImage(url, file.name);
     editor.focus();
   } catch (error) {
