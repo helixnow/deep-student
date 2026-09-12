@@ -130,6 +130,10 @@ pub mod session_event_type {
     /// 🆕 自动压缩失败/被放弃（payload: {"reason": "<code>"}）
     /// 仅自动触发（检查点/兜底）路径发射；手动压缩结果走命令返回值。
     pub const COMPACTION_FAILED: &str = "compaction_failed";
+    /// 🆕 压缩已落盘（payload: {"tokensBefore": N|null, "tokensAfter": M|null}）。
+    /// 自动与手动路径成功落盘后都发射；前端据此立即刷新上下文水位环，
+    /// 不必等下一轮回复的真实 usage。
+    pub const COMPACTION_COMPLETED: &str = "compaction_completed";
     /// 🆕 FIFO 截断实际丢弃了历史消息
     /// （payload: {"droppedMessages": N, "estimatedDroppedTokens": M}）
     pub const CONTEXT_TRIMMED: &str = "context_trimmed";
@@ -767,6 +771,40 @@ impl SessionEvent {
             title: None,
             description: None,
             payload: Some(serde_json::json!({ "reason": reason })),
+        }
+    }
+
+    /// 创建压缩已落盘事件
+    ///
+    /// 契约（与前端逐字约定）：eventType = "compaction_completed"，
+    /// payload = `{"tokensBefore": N|null, "tokensAfter": M|null}`
+    /// （压缩前后上下文占用估算；null 表示该值不可得）。
+    pub fn compaction_completed(
+        session_id: &str,
+        tokens_before: Option<u32>,
+        tokens_after: Option<u32>,
+    ) -> Self {
+        Self {
+            sequence_id: None,
+            session_id: session_id.to_string(),
+            event_type: session_event_type::COMPACTION_COMPLETED.to_string(),
+            message_id: None,
+            stream_generation: None,
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+            payload: Some(serde_json::json!({
+                "tokensBefore": tokens_before,
+                "tokensAfter": tokens_after,
+            })),
         }
     }
 
@@ -1684,6 +1722,13 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    /// 🆕 发射压缩已落盘事件（自动/手动路径成功落盘后调用）
+    pub fn emit_compaction_completed(&self, tokens_before: Option<u32>, tokens_after: Option<u32>) {
+        let event =
+            SessionEvent::compaction_completed(&self.session_id, tokens_before, tokens_after);
+        self.emit_session(event);
+    }
+
     /// 🆕 发射 FIFO 截断可见化事件（仅在实际丢弃消息时调用）
     pub fn emit_context_trimmed(
         &self,
@@ -2114,6 +2159,24 @@ mod tests {
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["eventType"], "compaction_failed");
         assert_eq!(json["payload"]["reason"], "summaryFailed");
+    }
+
+    /// 🆕 compaction_completed 事件：payload 键名逐字契约；token 估算缺失时为 null
+    #[test]
+    fn test_session_event_compaction_completed_contract() {
+        let event = SessionEvent::compaction_completed("sess_abc", Some(289_508), Some(92_140));
+        assert_eq!(event.event_type, "compaction_completed");
+        assert_eq!(event.session_id, "sess_abc");
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "compaction_completed");
+        assert_eq!(json["payload"]["tokensBefore"], 289_508);
+        assert_eq!(json["payload"]["tokensAfter"], 92_140);
+
+        let event = SessionEvent::compaction_completed("sess_abc", None, None);
+        let json = serde_json::to_value(&event).unwrap();
+        assert!(json["payload"]["tokensBefore"].is_null());
+        assert!(json["payload"]["tokensAfter"].is_null());
     }
 
     /// 🆕 context_trimmed 事件：payload 键名逐字契约；estimatedDroppedTokens 可选

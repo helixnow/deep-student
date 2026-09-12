@@ -121,6 +121,7 @@ import {
 import {
   compactionReasonI18nKey,
   createContextTrimThrottle,
+  parseCompactionCompletedPayload,
   parseCompactionFailedReason,
   parseContextTrimmedPayload,
 } from '../utils/compactionFeedback';
@@ -2757,6 +2758,19 @@ export class ChatV2TauriAdapter {
           // 变体删除事件 - 后端已完成删除，前端同步状态
           this.handleVariantDeleted(payload);
           break;
+
+        case 'compaction_completed': {
+          // 🆕 压缩已落盘：立即写入水位覆盖值，上下文水位环不等下一轮 usage 即刷新。
+          // 覆盖值在下一轮真实 usage 到达时由 eventBridge 清除。
+          const completed = parseCompactionCompletedPayload(payload.payload);
+          if (completed?.tokensAfter && completed.tokensAfter > 0) {
+            this.store.setContextUsageOverride({
+              sessionId: this.sessionId,
+              tokensAfter: completed.tokensAfter,
+            });
+          }
+          break;
+        }
 
         case 'compaction_failed': {
           // 自动压缩失败：仅提示（不打断输入/滚动），历史可能被 FIFO 截断兜底

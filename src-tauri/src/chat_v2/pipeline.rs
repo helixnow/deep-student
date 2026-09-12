@@ -1252,6 +1252,11 @@ impl ChatV2Pipeline {
         if ctx.needs_compaction {
             match self.run_compaction(ctx).await {
                 Ok(outcome) => {
+                    // 🆕 压缩已落盘：立即向前端广播，水位环不等下一轮 usage 即可刷新
+                    if outcome.did_compact() {
+                        let (tokens_before, tokens_after) = outcome.token_estimates();
+                        emitter.emit_compaction_completed(tokens_before, tokens_after);
+                    }
                     // 🆕 自动压缩失败可见化：向前端发 compaction_failed 事件
                     if outcome.is_failed() {
                         if let Some(reason) = outcome.reason_code() {

@@ -271,6 +271,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       reasoningEffort,
       thinkingBudget,
       lastAssistantUsage,
+      contextUsageOverride,
       modelRetryTarget,
       setChatParams,
       // ★ Skills 系统（多选模式）
@@ -317,6 +318,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           }
           return undefined;
         })(),
+        contextUsageOverride: s.contextUsageOverride,
         modelRetryTarget: s.modelRetryTarget,
         setChatParams: s.setChatParams,
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
@@ -500,9 +502,27 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       modelId,
     ]);
 
+    // 🆕 压缩完成瞬间优先用后端下发的覆盖值渲染水位环；
+    // 下一轮真实 usage 到达时 eventBridge 会清除覆盖，回到精确数据源
+    const effectiveLastAssistantUsage = useMemo(() => {
+      if (
+        contextUsageOverride &&
+        contextUsageOverride.sessionId === sessionId &&
+        contextUsageOverride.tokensAfter > 0
+      ) {
+        return {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: contextUsageOverride.tokensAfter,
+          lastRoundPromptTokens: contextUsageOverride.tokensAfter,
+          source: 'heuristic' as const,
+        };
+      }
+      return lastAssistantUsage;
+    }, [contextUsageOverride, sessionId, lastAssistantUsage]);
     const contextWindowUsage = useMemo(
-      () => deriveContextWindowUsage(lastAssistantUsage, contextUsageLimitTokens),
-      [contextUsageLimitTokens, lastAssistantUsage]
+      () => deriveContextWindowUsage(effectiveLastAssistantUsage, contextUsageLimitTokens),
+      [contextUsageLimitTokens, effectiveLastAssistantUsage]
     );
     const [isCompactingContext, setIsCompactingContext] = useState(false);
     const [compactContextStatus, setCompactContextStatus] = useState<
@@ -944,6 +964,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         switch (result.status) {
           case 'compacted':
             setCompactContextStatus('success');
+            // 🆕 手动压缩同样立即刷新水位环（命令返回值携带压缩后估算）
+            if (typeof result.tokensAfter === 'number' && result.tokensAfter > 0) {
+              store.getState().setContextUsageOverride({
+                sessionId,
+                tokensAfter: result.tokensAfter,
+              });
+            }
             try {
               await store.getState().loadSession(sessionId);
             } catch (reloadError) {

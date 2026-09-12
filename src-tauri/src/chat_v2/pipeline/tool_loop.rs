@@ -578,6 +578,9 @@ impl ChatV2Pipeline {
                 }
                 match self.run_compaction(ctx).await {
                     Ok(outcome) if outcome.did_compact() => {
+                        // 🆕 压缩已落盘：立即向前端广播，水位环不等下一轮 usage 即可刷新
+                        let (tokens_before, tokens_after) = outcome.token_estimates();
+                        emitter.emit_compaction_completed(tokens_before, tokens_after);
                         // 压缩已落盘：重新加载历史并重编译冻结上下文，让本轮 prompt
                         // 立即应用压缩视图（隐藏旧消息 + 注入锚定摘要）。
                         // ctx.tool_results（当前环内工具链）独立于 chat_history，

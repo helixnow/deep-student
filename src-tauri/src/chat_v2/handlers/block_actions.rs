@@ -46,6 +46,11 @@ pub struct UndoCompactionResponse {
 pub struct CompactSessionResponse {
     pub status: String,
     pub reason: Option<String>,
+    /// 🆕 压缩前后上下文占用估算（status=compacted 时携带；其余为 null）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_before: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<u32>,
 }
 
 #[tauri::command]
@@ -78,6 +83,8 @@ pub async fn chat_v2_compact_session(
             return Ok(CompactSessionResponse {
                 status: "skipped".to_string(),
                 reason: Some("streaming".to_string()),
+                tokens_before: None,
+                tokens_after: None,
             });
         }
     };
@@ -99,9 +106,12 @@ pub async fn chat_v2_compact_session(
         )
         .await
         .map_err(String::from)?;
+    let (tokens_before, tokens_after) = outcome.token_estimates();
     Ok(CompactSessionResponse {
         status: outcome.status_code().to_string(),
         reason: outcome.reason_code().map(str::to_string),
+        tokens_before,
+        tokens_after,
     })
 }
 
