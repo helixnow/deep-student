@@ -25,7 +25,18 @@ export function isDeepSeekFamilyEndpoint(input: DeepSeekSamplingControlInput): b
   );
 }
 
-export function shouldLockDeepSeekV4SamplingControls(input: DeepSeekSamplingControlInput): boolean {
+export function isOfficialDeepSeekV4Model(input: DeepSeekSamplingControlInput): boolean {
+  return isOfficialDeepSeekEndpoint(input) && isDeepSeekV4ModelId(normalize(input.model));
+}
+
+export function shouldLockDeepSeekV4SamplingControls(
+  input: DeepSeekSamplingControlInput,
+  parameter: 'temperature' | 'topP' | 'penalty' = 'temperature',
+): boolean {
+  if (isOfficialDeepSeekV4Model(input)) {
+    if (parameter === 'topP') return input.enableThinking === false;
+    if (parameter === 'penalty') return true;
+  }
   return Boolean(
     input.enableThinking &&
       isDeepSeekFamilyEndpoint(input) &&

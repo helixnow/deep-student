@@ -272,7 +272,7 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
   if (map[lower]) return map[lower];
 
   if (isDeepSeekV4Id(lower)) {
-    // 官方 DeepSeek V4：输出上限对齐官方默认 64K（max 档另有 128K 下限）；
+    // 官方 DeepSeek V4：新模型配置默认 64K；会话显式输出预算优先，max 档不强行抬高；
     // SiliconFlow 等第三方托管维持 32K 保守值，避免超出托管上限。
     const providerScope = options?.providerScope?.toLowerCase();
     const providerType = options?.providerType?.toLowerCase();

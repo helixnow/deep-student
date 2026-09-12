@@ -218,20 +218,7 @@ pub fn requires_reasoning_passback(config: &ApiConfig) -> bool {
 
 fn is_official_deepseek_v4_family(config: &ApiConfig) -> bool {
     let model = config.model.to_lowercase();
-    let provider = config
-        .provider_type
-        .as_deref()
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
-    let scope = config
-        .provider_scope
-        .as_deref()
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
-    let base_url = config.base_url.to_lowercase();
-
-    let is_deepseek_host =
-        provider == "deepseek" || scope == "deepseek" || base_url.contains("api.deepseek.com");
+    let is_deepseek_host = crate::llm_manager::is_official_deepseek_config(config);
     let is_v4_family = model.contains("deepseek-v4")
         || model.contains("deepseek-flash")
         || matches!(model.as_str(), "deepseek-chat" | "deepseek-reasoner");

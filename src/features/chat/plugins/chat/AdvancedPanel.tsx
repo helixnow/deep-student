@@ -20,7 +20,7 @@ import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPane
 import type { ChatStore } from '../../core/types';
 import { ensureModelsCacheLoaded, getModelInfoByConfigId } from '../../hooks/useAvailableModels';
 import { deriveInputContextBudget, inferModelContextWindow } from '@/utils/modelCapabilities';
-import { shouldLockDeepSeekV4SamplingControls } from './deepseekSamplingControls';
+import { isOfficialDeepSeekV4Model, shouldLockDeepSeekV4SamplingControls } from './deepseekSamplingControls';
 
 // ============================================================================
 // 常量
@@ -170,9 +170,8 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
     () => getModelInfoByConfigId(chatParams.modelId),
     [chatParams.modelId, modelMetaVersion]
   );
-  const deepSeekV4SamplingLocked = useMemo(
-    () =>
-      shouldLockDeepSeekV4SamplingControls({
+  const samplingControlInput = useMemo(
+    () => ({
         model: modelInfo?.model ?? chatParams.modelId,
         providerType: modelInfo?.providerType,
         providerScope: modelInfo?.providerScope,
@@ -181,7 +180,15 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
       }),
     [modelInfo?.model, modelInfo?.providerType, modelInfo?.providerScope, modelInfo?.baseUrl, chatParams.modelId, enableThinking]
   );
+  const officialDeepSeekV4 = isOfficialDeepSeekV4Model(samplingControlInput);
+  const deepSeekV4SamplingLocked = shouldLockDeepSeekV4SamplingControls(samplingControlInput);
   const samplingControlsDisabled = isStreaming || deepSeekV4SamplingLocked;
+  const topPDisabled = isStreaming || shouldLockDeepSeekV4SamplingControls(samplingControlInput, 'topP');
+  const penaltyDisabled = isStreaming || shouldLockDeepSeekV4SamplingControls(samplingControlInput, 'penalty');
+  const maxTokensSliderMax = officialDeepSeekV4 ? 393216 : MAX_TOKENS_MAX;
+  const maxTokensSnapPoints = officialDeepSeekV4
+    ? [...MAX_TOKENS_SNAP_POINTS, 256000, 393216]
+    : MAX_TOKENS_SNAP_POINTS;
   const inferredContextWindow = useMemo(
     () => {
       // 优先使用 ApiConfig 中用户配置/推断引擎写入的 contextWindow
@@ -289,22 +296,22 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </span>
           </div>
           <SnappySlider
-            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
-            values={TOP_P_SNAP_POINTS}
-            defaultValue={TOP_P_DEFAULT}
-            value={topP}
-            min={TOP_P_MIN}
+            className={cn(topPDisabled && 'pointer-events-none opacity-60')}
+            values={officialDeepSeekV4 ? [0.95, 0.97, 1] : TOP_P_SNAP_POINTS}
+            defaultValue={officialDeepSeekV4 ? 1 : TOP_P_DEFAULT}
+            value={officialDeepSeekV4 ? (enableThinking ? Math.max(0.95, topP) : 1) : topP}
+            min={officialDeepSeekV4 ? 0.95 : TOP_P_MIN}
             max={TOP_P_MAX}
-            step={TOP_P_STEP}
+            step={officialDeepSeekV4 ? 0.01 : TOP_P_STEP}
             inputId={topPId}
             onChange={(next: number) => {
-              if (!samplingControlsDisabled) updateParam('topP', next);
+              if (!topPDisabled) updateParam('topP', next);
             }}
             config={{
               snappingThreshold: 0.1,
               labelFormatter: (v: number) => v.toFixed(2),
             }}
-            disabled={samplingControlsDisabled}
+            disabled={topPDisabled}
           />
         </div>
 
@@ -336,7 +343,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </DsButton>
           </div>
           <SnappySlider
-            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
+            className={cn(isStreaming && 'pointer-events-none opacity-60')}
             values={contextSliderPoints}
             defaultValue={autoContextLimit}
             value={contextLimit}
@@ -377,11 +384,11 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
           </div>
           <SnappySlider
             className={cn(isStreaming && 'pointer-events-none opacity-60')}
-            values={MAX_TOKENS_SNAP_POINTS}
+            values={maxTokensSnapPoints}
             defaultValue={MAX_TOKENS_DEFAULT}
             value={maxTokens}
             min={MAX_TOKENS_MIN}
-            max={MAX_TOKENS_MAX}
+            max={maxTokensSliderMax}
             step={256}
             inputId={maxTokensId}
             onChange={(next: number) => {
@@ -416,13 +423,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={PENALTY_STEP}
             inputId={freqPenaltyId}
             onChange={(next: number) => {
-              if (!samplingControlsDisabled) updateParam('frequencyPenalty', next);
+              if (!penaltyDisabled) updateParam('frequencyPenalty', next);
             }}
             config={{
               snappingThreshold: 0.2,
               labelFormatter: (v: number) => v.toFixed(1),
             }}
-            disabled={samplingControlsDisabled}
+            disabled={penaltyDisabled}
           />
         </div>
 
@@ -438,7 +445,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </span>
           </div>
           <SnappySlider
-            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
+            className={cn(penaltyDisabled && 'pointer-events-none opacity-60')}
             values={PENALTY_SNAP_POINTS}
             defaultValue={PENALTY_DEFAULT}
             value={presencePenalty}
@@ -447,13 +454,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={PENALTY_STEP}
             inputId={presPenaltyId}
             onChange={(next: number) => {
-              if (!samplingControlsDisabled) updateParam('presencePenalty', next);
+              if (!penaltyDisabled) updateParam('presencePenalty', next);
             }}
             config={{
               snappingThreshold: 0.2,
               labelFormatter: (v: number) => v.toFixed(1),
             }}
-            disabled={samplingControlsDisabled}
+            disabled={penaltyDisabled}
           />
         </div>
 
