@@ -372,6 +372,8 @@
   },
   "blockMenu": {
     "label": "块操作",
+    "addAfter": "在下方添加块",
+    "dragOrMenu": "拖动块或打开块菜单",
     "turnInto": "转换为",
     "paragraph": "正文",
     "heading1": "一级标题",
@@ -1208,6 +1210,7 @@
     "placeholder": "输入问题..."
   },
   "header": {
+    "documentTitle": "笔记标题",
     "add_tags": "添加标签...",
     "manage_tags": "管理标签",
     "tags": "标签",

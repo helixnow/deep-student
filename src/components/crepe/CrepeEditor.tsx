@@ -1,4 +1,3 @@
-import { readFormattingState } from './formattingState';
 /**
  * Crepe 编辑器 React 组件
  * 基于 @milkdown/crepe 的开箱即用 Markdown 编辑器
@@ -34,6 +33,7 @@ import 'katex/contrib/mhchem';
 
 // 本地模块
 import type { CrepeEditorProps, CrepeEditorApi } from './types';
+import { readFormattingState } from './formattingState';
 import { readCssTimeMs } from '@/shared/utils/cssTime';
 import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
 import {
@@ -240,14 +240,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       const handle = getMenuHandle(event.target);
       pending = handle ? { handle, x: event.clientX, y: event.clientY, pointerId: event.pointerId } : null;
     };
-    const onPointerUp = (event: PointerEvent) => {
-      const current = pending;
-      pending = null;
-      if (!current || current.pointerId !== event.pointerId) return;
-      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) >= 8) return;
-      const target = event.target;
-      const handle = getMenuHandle(target) ?? current.handle;
-
+    const openHandleMenu = (handle: Element) => {
       const view = viewRef.current;
       if (!view) return;
       const rect = handle.getBoundingClientRect();
@@ -261,8 +254,6 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       if (!hit) return;
       const $pos = view.state.doc.resolve(Math.max(0, hit.inside >= 0 ? hit.inside : hit.pos));
       const pos = $pos.depth > 0 ? $pos.before(1) : hit.pos;
-      event.preventDefault();
-      event.stopPropagation();
       // 先按句柄位置放置；渲染后由 useLayoutEffect 按菜单实测尺寸钳入视口
       setBlockMenu({
         pos,
@@ -271,11 +262,47 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         doc: view.state.doc,
       });
     };
+    const onPointerUp = (event: PointerEvent) => {
+      const current = pending;
+      pending = null;
+      if (!current || current.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) >= 8) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openHandleMenu(getMenuHandle(event.target) ?? current.handle);
+    };
+    const onHandleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (!(event.target instanceof Element)) return;
+      const operation = event.target.closest('.milkdown-block-handle .operation-item');
+      if (!operation) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const menuHandle = getMenuHandle(operation);
+      if (menuHandle) openHandleMenu(menuHandle);
+      // Crepe 的加号仅监听 pointerup，键盘激活复用它的插入与菜单流程。
+      else operation.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    };
+    // BlockProvider 在首个 animation frame 中把操作栏挂到编辑器。
+    const accessibilityFrame = requestAnimationFrame(() => {
+      const operations = container.querySelectorAll<HTMLElement>('.milkdown-block-handle .operation-item');
+      operations.forEach((operation, index) => {
+        const label = i18next.t(index === 0 ? 'notes:blockMenu.addAfter' : 'notes:blockMenu.dragOrMenu');
+        operation.setAttribute('role', 'button');
+        operation.setAttribute('aria-label', label);
+        operation.setAttribute('aria-haspopup', 'menu');
+        operation.title = label;
+        operation.tabIndex = 0;
+      });
+    });
     container.addEventListener('pointerdown', onPointerDown, true);
     container.addEventListener('pointerup', onPointerUp, true);
+    container.addEventListener('keydown', onHandleKeyDown, true);
     return () => {
+      cancelAnimationFrame(accessibilityFrame);
       container.removeEventListener('pointerdown', onPointerDown, true);
       container.removeEventListener('pointerup', onPointerUp, true);
+      container.removeEventListener('keydown', onHandleKeyDown, true);
     };
   }, [isReady, readonly]);
 
@@ -294,7 +321,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     const top = Math.max(8, Math.min(blockMenu.y, window.innerHeight - rect.height - 8));
     if (left !== blockMenu.x) el.style.left = `${left}px`;
     if (top !== blockMenu.y) el.style.top = `${top}px`;
+    el.focus({ preventScroll: true });
   }, [blockMenu]);
+
+  useLayoutEffect(() => {
+    if (blockMenuActive < 0) return;
+    const item = blockMenuElRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[blockMenuActive];
+    item?.focus({ preventScroll: true });
+    item?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [blockMenuActive]);
 
   const setBlockMenuActiveIndex = useCallback((index: number) => {
     blockMenuActiveRef.current = index;
@@ -319,6 +354,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     if (!blockMenu) return;
     const close = (event: Event) => {
       if (event instanceof KeyboardEvent) {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+          event.preventDefault();
+          event.stopPropagation();
+          setBlockMenu(null);
+          viewRef.current?.focus();
+          return;
+        }
         // 键盘导航：↑↓ 循环、Home/End 跳首尾、Enter 执行高亮项（未高亮时按原契约关闭菜单）
         const navIndex = getNextCrepeBlockMenuIndex({
           key: event.key,
@@ -1732,6 +1774,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             
             // 斜杠命令配置（使用 i18n 国际化）
             [CrepeFeature.BlockEdit]: {
+              blockHandle: { getOffset: () => 8 },
               textGroup: {
                 label: i18next.t('notes:slashMenu.textGroup.label'),
                 text: { label: i18next.t('notes:slashMenu.textGroup.text') },
@@ -3077,6 +3120,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           ref={blockMenuElRef}
           className="crepe-block-menu"
           role="menu"
+          tabIndex={-1}
           aria-label={i18next.t('notes:blockMenu.label', 'Block actions')}
           style={{ left: blockMenu.x, top: blockMenu.y }}
         >
@@ -3088,6 +3132,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 key={action}
                 type="button"
                 role="menuitem"
+                tabIndex={isActive ? 0 : -1}
                 data-active={isActive || undefined}
                 data-destructive={action === 'delete' || undefined}
                 // 键盘高亮：无 CSS 所有权，用内联 hover token 兜底
