@@ -246,7 +246,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         vendor_id: "builtin-deepseek",
         label: "DeepSeek V4 Flash",
         model: "deepseek-v4-flash",
-        is_multimodal: false,
+        is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
         max_output_tokens: 65_536,

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "updated_at": "2026-09-10",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-10 增补：DeepSeek V4.1 Flash（deepseek-flash）正式发布，原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 下线并路由到该模型，deepseek-v4-pro 将于 2026-09-14 起被路由；Responses API 内置工具（含 web_search）被静默忽略。",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-12 核验：DeepSeek V4.1 Flash（deepseek-flash）原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 路由到该模型。官方已撤回 V4 Pro 的 9 月 14 日下线计划，继续提供服务。Responses API 内置工具（含 web_search）被静默忽略。",
   "records": [
     {
       "vendor": "OpenAI",
@@ -1236,19 +1236,19 @@
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": 384000
+            "max_output_tokens": 393216
           },
           "param_format": {
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
             "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
-            "notes": "V4 旗舰（1.6T 总参）；thinking 默认 enabled，reasoning_effort 仅 high/max（low/medium→high、xhigh→max，调研 07 §1.4）。"
+            "notes": "V4 旗舰；thinking 默认 enabled，reasoning_effort 支持 low/high/max（minimal→low、medium/xhigh→high、ultra→max）。"
           },
           "quirks": [
             "V4 为纯文本模型，无原生图像输入（调研 07 §1.2）。",
-            "reasoning_effort:max 时官方要求为推理预留 ≥384K token 预算。",
-            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。",
-            "2026-09-14 12:00（北京时间）起至 V4.1 Pro 发布前，请求会被路由到 V4.1 Flash 并按后者单价计费，计划有序下线。"
+            "max_tokens 最大 393216；未指定时非思考默认 8192、思考默认 65536、max 档默认 131072。默认值不是下限。",
+            "请求携带 tools 时，所有历史 assistant 的 reasoning_content 均应完整回传，包括未调用工具的轮次。",
+            "2026-09-12 官方价格页确认 V4 Pro 在 9 月 14 日后继续服务且计费不变，撤回此前下线计划。"
           ]
         },
         {
@@ -1265,7 +1265,7 @@
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": 384000
+            "max_output_tokens": 393216
           },
           "param_format": {
             "family": "deepseek_openai_compat",
@@ -1276,7 +1276,7 @@
           "quirks": [
             "旧名请求由服务端路由到 deepseek-flash，建议存量配置迁移到 deepseek-flash。",
             "路由后的模型原生多模态，旧解析路径需允许图片输入。",
-            "思考模式下 temperature/top_p 等采样参数被静默忽略（调研 07 §1.4）。"
+            "思考模式忽略 temperature/presence_penalty/frequency_penalty；top_p 生效且下限 0.95。"
           ]
         }
       ]
@@ -1298,7 +1298,7 @@
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": 384000
+            "max_output_tokens": 393216
           },
           "param_format": {
             "family": "deepseek_openai_compat",
@@ -1308,12 +1308,12 @@
           },
           "quirks": [
             "原生多模态：支持 JPEG/PNG/GIF/WebP，单图按尺寸折算上限 1024 tokens（官方 Vision 指南）。",
-            "旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已下线并暂时路由到本模型；deepseek-v4-pro 自 2026-09-14 12:00（北京时间）起也会被路由到本模型并按本模型单价计费。",
+            "旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 已下线并暂时路由到本模型；V4 Pro 继续独立服务。",
             "思考模式忽略 temperature/presence_penalty/frequency_penalty；top_p 下限 0.95，非思考模式固定 1.0。",
-            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。"
+            "请求携带 tools 时，所有历史 assistant 的 reasoning_content 均应完整回传，包括未调用工具的轮次。"
           ],
           "source_url": "https://api-docs.deepseek.com/updates",
-          "verified_at": "2026-09-10"
+          "verified_at": "2026-09-12"
         }
       ]
     },
@@ -1335,7 +1335,7 @@
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": 384000
+            "max_output_tokens": 393216
           },
           "param_format": {
             "family": "deepseek_openai_compat",
@@ -1362,7 +1362,7 @@
             "reasoning": true,
             "coding_agent": true,
             "max_context_tokens": 1000000,
-            "max_output_tokens": 384000
+            "max_output_tokens": 393216
           },
           "param_format": {
             "family": "deepseek_openai_compat",

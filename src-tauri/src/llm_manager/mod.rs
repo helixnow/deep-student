@@ -1976,15 +1976,10 @@ mod tests {
         let map = body
             .as_object()
             .expect("request body should stay an object");
-        for key in [
-            "temperature",
-            "top_p",
-            "presence_penalty",
-            "frequency_penalty",
-            "logprobs",
-        ] {
+        for key in ["temperature", "presence_penalty", "frequency_penalty"] {
             assert!(!map.contains_key(key), "{key} should be removed");
         }
+        assert_eq!(map.get("top_p"), Some(&json!(0.95)));
         assert_eq!(
             map.get("thinking").and_then(|value| value.get("type")),
             Some(&json!("enabled"))

@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { shouldLockDeepSeekV4SamplingControls } from '../deepseekSamplingControls';
+import { isOfficialDeepSeekV4Model, shouldLockDeepSeekV4SamplingControls } from '../deepseekSamplingControls';
 
 describe('DeepSeek V4 sampling-control UI guard', () => {
+  it('allows thinking top-p while keeping ignored penalties disabled', () => {
+    const input = { model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com/v1', enableThinking: true };
+    expect(shouldLockDeepSeekV4SamplingControls(input, 'topP')).toBe(false);
+    expect(shouldLockDeepSeekV4SamplingControls(input, 'penalty')).toBe(true);
+    expect(shouldLockDeepSeekV4SamplingControls({ ...input, enableThinking: false }, 'topP')).toBe(true);
+    expect(shouldLockDeepSeekV4SamplingControls({ ...input, enableThinking: false }, 'penalty')).toBe(true);
+  });
+
+  it('does not apply official limits to a configured gateway', () => {
+    expect(isOfficialDeepSeekV4Model({ model: 'deepseek-flash', providerType: 'deepseek', baseUrl: 'https://gateway.example/v1' })).toBe(false);
+    expect(isOfficialDeepSeekV4Model({ model: 'deepseek-flash', providerType: 'deepseek' })).toBe(true);
+  });
   it('locks official DeepSeek V4 sampling controls while thinking is active', () => {
     expect(
       shouldLockDeepSeekV4SamplingControls({
