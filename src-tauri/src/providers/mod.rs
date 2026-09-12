@@ -10,6 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+#[cfg(test)]
+mod deepseek_harness_tests;
+
 #[derive(Debug, Clone)]
 pub struct ProviderRequest {
     pub url: String,
@@ -81,6 +84,8 @@ pub struct OpenAIAdapter {
     /// chunk. Remember that marker, but do not terminate consumers until
     /// `[DONE]` or transport EOF.
     saw_finish_reason: std::sync::atomic::AtomicBool,
+    deepseek_official: std::sync::atomic::AtomicBool,
+    pending_deepseek_failure: Mutex<Option<Value>>,
 }
 
 impl Default for OpenAIAdapter {
@@ -93,6 +98,8 @@ impl OpenAIAdapter {
     pub fn new() -> Self {
         Self {
             saw_finish_reason: std::sync::atomic::AtomicBool::new(false),
+            deepseek_official: std::sync::atomic::AtomicBool::new(false),
+            pending_deepseek_failure: Mutex::new(None),
         }
     }
 }
@@ -134,6 +141,13 @@ fn is_official_openai_api_endpoint(base_url: &str) -> bool {
         .is_some_and(|host| host == "api.openai.com")
 }
 
+fn is_official_deepseek_api_endpoint(base_url: &str) -> bool {
+    url::Url::parse(base_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| host == "api.deepseek.com")
+}
+
 impl ProviderAdapter for OpenAIAdapter {
     fn requires_explicit_stream_completion(&self) -> bool {
         true
@@ -152,6 +166,11 @@ impl ProviderAdapter for OpenAIAdapter {
         let mut sanitized_body = sanitize_openai_request_body(body);
         self.saw_finish_reason
             .store(false, std::sync::atomic::Ordering::Release);
+        self.deepseek_official.store(
+            is_official_deepseek_api_endpoint(base_url),
+            std::sync::atomic::Ordering::Release,
+        );
+        *self.pending_deepseek_failure.lock().unwrap() = None;
 
         // 流式请求补 stream_options.include_usage=true：OpenAI Chat Completions
         // 默认不在流中返回 usage，缓存命中（prompt_tokens_details.cached_tokens）
@@ -199,7 +218,11 @@ impl ProviderAdapter for OpenAIAdapter {
             if data.trim() == "[DONE]" {
                 self.saw_finish_reason
                     .store(false, std::sync::atomic::Ordering::Release);
-                events.push(StreamEvent::Done);
+                if let Some(failure) = self.pending_deepseek_failure.lock().unwrap().take() {
+                    events.push(StreamEvent::SafetyBlocked(failure));
+                } else {
+                    events.push(StreamEvent::Done);
+                }
                 return events;
             }
 
@@ -294,6 +317,26 @@ impl ProviderAdapter for OpenAIAdapter {
                                 }
                             }
                         }
+                        if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
+                            if self
+                                .deepseek_official
+                                .load(std::sync::atomic::Ordering::Acquire)
+                                && !reason.trim().is_empty()
+                                && !matches!(reason, "stop" | "tool_calls" | "function_call")
+                            {
+                                // Defer termination until trailing usage has been consumed.
+                                let mut pending = self.pending_deepseek_failure.lock().unwrap();
+                                pending.get_or_insert_with(|| json!({
+                                    "type": "provider_error",
+                                    "reason": reason,
+                                    "details": { "message": if reason == "length" {
+                                        "DeepSeek output token budget exhausted (length)".to_string()
+                                    } else {
+                                        format!("DeepSeek stopped: {reason}")
+                                    } }
+                                }));
+                            }
+                        }
                     }
                 }
                 // usage 信息
@@ -315,6 +358,11 @@ impl ProviderAdapter for OpenAIAdapter {
     }
 
     fn finish_stream(&self) -> Vec<StreamEvent> {
+        if let Some(failure) = self.pending_deepseek_failure.lock().unwrap().take() {
+            self.saw_finish_reason
+                .store(false, std::sync::atomic::Ordering::Release);
+            return vec![StreamEvent::SafetyBlocked(failure)];
+        }
         if self
             .saw_finish_reason
             .swap(false, std::sync::atomic::Ordering::AcqRel)
@@ -715,7 +763,6 @@ impl OpenAIResponsesAdapter {
             || host.ends_with(".maas.aliyuncs.com")
             || host == "qianfan.baidubce.com"
             || host.ends_with(".volces.com")
-            || host == "api.deepseek.com"
     }
 
     /// GPT-5.6 起提供显式 `prompt_cache_breakpoint`。只解析完整的 GPT 型号段，
@@ -1458,6 +1505,12 @@ impl OpenAIResponsesAdapter {
         let body = sanitize_openai_request_body(body);
         let mut input_blocks: Vec<Value> = Vec::new();
         let mut instructions: Vec<String> = Vec::new();
+        let deepseek_official = is_official_deepseek_api_endpoint(base_url);
+        let deepseek_in_history_system = deepseek_official
+            && matches!(
+                model.trim().to_ascii_lowercase().as_str(),
+                "deepseek-flash" | "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp"
+            );
 
         if let Some(messages) = body.get("messages").and_then(|v| v.as_array()) {
             for message in messages {
@@ -1467,6 +1520,18 @@ impl OpenAIResponsesAdapter {
                     .unwrap_or("user");
 
                 if role == "system" {
+                    // V4.1 reads the latest system message at its history position.
+                    // Hoisting it into instructions would rewrite the cached prefix.
+                    if deepseek_in_history_system
+                        && (!instructions.is_empty() || !input_blocks.is_empty())
+                    {
+                        let mut parts = Vec::new();
+                        if let Some(content) = message.get("content") {
+                            Self::push_message_parts(&mut parts, role, content);
+                        }
+                        input_blocks.push(json!({"role": "system", "content": parts}));
+                        continue;
+                    }
                     if let Some(content) = message.get("content") {
                         match content {
                             Value::String(text) if !text.trim().is_empty() => {
@@ -1498,9 +1563,23 @@ impl OpenAIResponsesAdapter {
                 // Replay it before the assistant function call, matching the
                 // order returned by the Responses API.
                 if role == "assistant" {
-                    if let Some(item) = message.get("response_reasoning_item") {
-                        if Self::is_reasoning_item(item) {
-                            input_blocks.push(item.clone());
+                    if let Some(item) = message
+                        .get("response_reasoning_item")
+                        .filter(|item| Self::is_reasoning_item(item))
+                    {
+                        input_blocks.push(item.clone());
+                    } else if deepseek_official {
+                        // Histories created with Chat Completions have no native
+                        // Responses item. Preserve their CoT when switching protocols.
+                        if let Some(text) = message
+                            .get("reasoning_content")
+                            .and_then(Value::as_str)
+                            .filter(|text| !text.is_empty())
+                        {
+                            input_blocks.push(json!({
+                                "type": "reasoning",
+                                "content": [{"type": "reasoning_text", "text": text}]
+                            }));
                         }
                     }
                     // 服务端 web_search_call：完整 item 原样回传（DeepSeek Responses
@@ -1625,6 +1704,22 @@ impl OpenAIResponsesAdapter {
             }
         }
 
+        if deepseek_official {
+            // DeepSeek Responses ignores the Chat Completions `thinking` extension.
+            // In particular, sending thinking:disabled alone leaves reasoning ON.
+            let thinking = body.pointer("/thinking/type").and_then(Value::as_str);
+            if thinking == Some("disabled") {
+                payload["reasoning"] = json!({"effort": "none"});
+            } else if thinking == Some("enabled") {
+                let effort = body
+                    .get("reasoning_effort")
+                    .cloned()
+                    .or_else(|| body.pointer("/reasoning/effort").cloned())
+                    .unwrap_or(json!("high"));
+                payload["reasoning"] = json!({"effort": effort});
+            }
+        }
+
         if let Some(max_tokens) = body
             .get("max_completion_tokens")
             .or_else(|| body.get("max_total_tokens"))
@@ -1635,6 +1730,11 @@ impl OpenAIResponsesAdapter {
 
         if let Some(temperature) = body.get("temperature") {
             payload["temperature"] = temperature.clone();
+        }
+        if deepseek_official {
+            if let Some(top_p) = body.get("top_p") {
+                payload["top_p"] = top_p.clone();
+            }
         }
 
         if let Some(response_format) = body.get("response_format") {
@@ -5395,9 +5495,9 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_official_host_preserves_thinking_extensions() {
+    fn deepseek_responses_uses_reasoning_instead_of_chat_thinking_extensions() {
         assert!(
-            OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+            !OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
                 "https://api.deepseek.com/v1"
             )
         );

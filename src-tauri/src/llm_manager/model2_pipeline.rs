@@ -12,6 +12,7 @@ use crate::reasoning_policy::{
     should_passback_plain_assistant_reasoning_for_request, ReasoningPassbackPolicy,
 };
 use crate::utils::chat_timing;
+use base64::{engine::general_purpose, Engine as _};
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
 use rand::Rng;
@@ -220,6 +221,163 @@ fn redact_image_payloads_for_budget(value: &mut Value) -> usize {
     }
 }
 
+/// DeepSeek V4.1 Flash's published image-token projection. The API first
+/// projects an image to a 14px patch grid, downsamples three patches per token
+/// axis, and caps the resulting grid at 1024 tokens. Keeping this calculation
+/// here makes the local input guard use the same accounting as the provider.
+fn deepseek_v41_image_tokens(width: u32, height: u32) -> usize {
+    const PATCH_SIZE: usize = 14;
+    const DOWNSAMPLE_RATIO: usize = 3;
+    const MAX_IMAGE_TOKENS: usize = 1024;
+    const MIN_PIXELS: f64 = 544.0 * 544.0;
+    const CELL_SIZE: usize = PATCH_SIZE * DOWNSAMPLE_RATIO;
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    struct GridResize {
+        grid_height: usize,
+        grid_width: usize,
+        best_height: usize,
+        best_width: usize,
+        num_tokens: usize,
+    }
+
+    fn ceil_div(value: usize, divisor: usize) -> usize {
+        value.div_ceil(divisor)
+    }
+
+    fn grid_tokens(grid_height: usize, grid_width: usize) -> usize {
+        grid_height * (grid_width + 1) + 2
+    }
+
+    fn grid_cells(padded_length: usize) -> usize {
+        ceil_div(padded_length / PATCH_SIZE, DOWNSAMPLE_RATIO)
+    }
+
+    fn solve_resize_ratio(height: usize, width: usize, budget: usize) -> GridResize {
+        let aspect = height as f64 / width as f64;
+        let ideal_grid_width = ((budget - 2) as f64 / aspect + 0.25).sqrt() - 0.5;
+        let ideal_grid_height = ideal_grid_width * aspect;
+        let (best_height, best_width) = if ideal_grid_width < 1.0 {
+            let grid_width = 1;
+            let grid_height = (budget - 2) / (grid_width + 1);
+            (grid_height * CELL_SIZE, grid_width * CELL_SIZE)
+        } else if ideal_grid_height < 1.0 {
+            let grid_height = 1;
+            let grid_width = (budget - 2) / grid_height - 1;
+            (grid_height * CELL_SIZE, grid_width * CELL_SIZE)
+        } else {
+            let grid_width = ideal_grid_width as usize;
+            let grid_height = ideal_grid_height as usize;
+            let scale = (grid_width * CELL_SIZE) as f64 / width as f64;
+            let scale = scale.min((grid_height * CELL_SIZE) as f64 / height as f64);
+            (
+                ((height as f64 * scale) as usize / PATCH_SIZE) * PATCH_SIZE,
+                ((width as f64 * scale) as usize / PATCH_SIZE) * PATCH_SIZE,
+            )
+        };
+        let grid_height = grid_cells(best_height);
+        let grid_width = grid_cells(best_width);
+        GridResize {
+            grid_height,
+            grid_width,
+            best_height,
+            best_width,
+            num_tokens: grid_tokens(grid_height, grid_width),
+        }
+    }
+
+    fn resize_once(width: usize, height: usize) -> GridResize {
+        let (scaled_width, scaled_height) = if ((width * height) as f64) < MIN_PIXELS {
+            let scale = (MIN_PIXELS / (width * height) as f64).sqrt();
+            (
+                (width as f64 * scale) as usize,
+                (height as f64 * scale) as usize,
+            )
+        } else {
+            (width, height)
+        };
+        let padded_width = ceil_div(scaled_width, PATCH_SIZE) * PATCH_SIZE;
+        let padded_height = ceil_div(scaled_height, PATCH_SIZE) * PATCH_SIZE;
+        let direct = GridResize {
+            grid_height: grid_cells(padded_height),
+            grid_width: grid_cells(padded_width),
+            best_height: padded_height,
+            best_width: padded_width,
+            num_tokens: grid_tokens(grid_cells(padded_height), grid_cells(padded_width)),
+        };
+        if direct.num_tokens <= MAX_IMAGE_TOKENS {
+            direct
+        } else {
+            solve_resize_ratio(scaled_height, scaled_width, MAX_IMAGE_TOKENS)
+        }
+    }
+
+    let mut result = resize_once(width.max(1) as usize, height.max(1) as usize);
+    for _ in 1..10 {
+        let next = resize_once(result.best_width, result.best_height);
+        if next == result {
+            return result.num_tokens;
+        }
+        result = next;
+    }
+    // The published projection reaches a fixpoint after the first resize in
+    // normal geometries. Retain a bounded, conservative result if malformed
+    // dimensions somehow evade convergence.
+    MAX_IMAGE_TOKENS
+}
+
+fn encoded_image_tokens(data: &str) -> Option<usize> {
+    let bytes = general_purpose::STANDARD.decode(data).ok()?;
+    // Only the header is needed for budgeting; avoid allocating decoded pixels.
+    let (width, height) = image::io::Reader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    (width > 0 && height > 0).then(|| deepseek_v41_image_tokens(width, height))
+}
+
+fn data_url_image_tokens(value: &str) -> Option<usize> {
+    let (header, base64_data) = value.split_once(',')?;
+    if !header.trim_start().starts_with("data:image/") || !header.contains(";base64") {
+        return None;
+    }
+    encoded_image_tokens(base64_data)
+}
+
+/// Returns exact DeepSeek V4.1 vision tokens plus inline images whose geometry
+/// is unavailable. The latter retain the existing conservative reservation.
+fn inline_image_token_budget(value: &Value) -> (usize, usize) {
+    match value {
+        Value::String(text) if text.trim_start().starts_with("data:image/") => {
+            data_url_image_tokens(text).map_or((0, 1), |tokens| (tokens, 0))
+        }
+        Value::String(_) => (0, 0),
+        Value::Array(items) => items.iter().fold((0, 0), |(known, unknown), item| {
+            let (item_known, item_unknown) = inline_image_token_budget(item);
+            (known + item_known, unknown + item_unknown)
+        }),
+        Value::Object(object) => {
+            let is_inline_image = object
+                .get("media_type")
+                .or_else(|| object.get("mime_type"))
+                .or_else(|| object.get("mimeType"))
+                .and_then(Value::as_str)
+                .is_some_and(|mime| mime.starts_with("image/"));
+            if is_inline_image {
+                if let Some(Value::String(data)) = object.get("data") {
+                    return encoded_image_tokens(data).map_or((0, 1), |tokens| (tokens, 0));
+                }
+            }
+            object.values().fold((0, 0), |(known, unknown), item| {
+                let (item_known, item_unknown) = inline_image_token_budget(item);
+                (known + item_known, unknown + item_unknown)
+            })
+        }
+        _ => (0, 0),
+    }
+}
+
 /// 尾裁截断标记：附加在被输入预算截断的易变尾文本末尾。
 const BUDGET_TAIL_TRIM_MARKER: &str = "\n…[内容超出输入预算，已截断]";
 /// 单条文本载荷的截断下限（字符）：低于该长度不再继续裁，避免把当前
@@ -297,6 +455,7 @@ fn trim_latest_turn_volatile_tail(
 fn enforce_request_input_budget(
     request_body: &mut Value,
     max_input_tokens: Option<usize>,
+    config: &ApiConfig,
 ) -> Result<RequestBudgetTrim> {
     let Some(max_input_tokens) = max_input_tokens else {
         return Ok(RequestBudgetTrim::default());
@@ -312,9 +471,16 @@ fn enforce_request_input_budget(
         let serialized = text_only.to_string();
         let heuristic = crate::utils::token_budget::estimate_tokens(&serialized);
         let text_floor = serialized.len() / 4;
-        // 无统一分辨率元数据时按每张 8K token 做保守预留；关键是不能把
-        // Base64 字节逐字符当文本 token，否则普通图片会被虚高数十倍。
-        heuristic.max(text_floor) + image_count * 8_192
+        // V4.1 Flash is billed by its image projection rather than Base64 size.
+        // Unknown/corrupt payloads keep the old conservative reserve, and every
+        // other provider preserves the existing 8K-per-image estimate.
+        let image_tokens = if crate::llm_manager::adapters::uses_deepseek_v41_image_tokens(config) {
+            let (known_tokens, unknown_images) = inline_image_token_budget(body);
+            known_tokens + unknown_images * 8_192
+        } else {
+            image_count * 8_192
+        };
+        heuristic.max(text_floor) + image_tokens
     };
     let tokens_before = estimate(request_body);
     let mut stats = RequestBudgetTrim {
@@ -702,19 +868,10 @@ pub(crate) fn apply_generation_params(
     config: &ApiConfig,
     quirks: &ProviderQuirks,
 ) {
-    let mut max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-    // 官方 DeepSeek V4 max 档：官方默认输出上限为 128K，显式下发的
-    // max_tokens 若偏低会提前截断思维链，这里按官方默认抬高下限。
-    if let Some(body_map) = body.as_object() {
-        if let Some(floor) =
-            crate::llm_manager::adapters::v4_max_effort_output_token_floor(config, body_map)
-        {
-            max_tokens = max_tokens.max(floor);
-            if let Some(limit) = config.max_tokens_limit.filter(|limit| *limit > 0) {
-                max_tokens = max_tokens.min(limit);
-            }
-        }
+    if crate::llm_manager::adapters::apply_official_deepseek_generation_params(body, config) {
+        return;
     }
+    let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
     apply_generation_token_limit(body, quirks, max_tokens);
 
     if quirks.sampling_params_allowed {
@@ -1182,6 +1339,83 @@ mod tests {
             )]),
         );
         assert!(chat_messages_require_multimodal(&[interleaved]));
+    }
+
+    #[test]
+    fn deepseek_v41_image_projection_matches_published_grid_examples() {
+        // 544px is the provider's total-pixel floor. It aligns to 546px
+        // (39 patches), then projects to a 13 x 13 token-cell grid.
+        assert_eq!(deepseek_v41_image_tokens(544, 544), 184);
+        assert_eq!(deepseek_v41_image_tokens(1_000, 1_000), 602);
+        assert!(deepseek_v41_image_tokens(8_000, 6_000) <= 1_024);
+    }
+
+    #[test]
+    fn deepseek_v41_image_budget_is_scoped_to_official_vision_models() {
+        for (endpoint, model, uses_projection) in [
+            ("https://api.deepseek.com/v1", "deepseek-flash", true),
+            (
+                "https://api.deepseek.com/v1",
+                "deepseek-v4-flash-vision-exp",
+                true,
+            ),
+            ("https://api.deepseek.com/v1", "deepseek-v4-flash", false),
+            ("https://api.deepseek.com/v1", "deepseek-v4-pro", false),
+            ("https://api.siliconflow.cn/v1", "deepseek-flash", false),
+            (
+                "https://proxy.example/api.deepseek.com",
+                "deepseek-flash",
+                false,
+            ),
+            ("https://api.openai.com/v1", "gpt-4o", false),
+        ] {
+            let config = ApiConfig {
+                base_url: endpoint.into(),
+                model: model.into(),
+                provider_type: Some("deepseek".into()),
+                ..Default::default()
+            };
+            assert_eq!(
+                crate::llm_manager::adapters::uses_deepseek_v41_image_tokens(&config),
+                uses_projection,
+                "{endpoint}: {model}"
+            );
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgb8(image::RgbImage::new(544, 544))
+                .write_to(&mut bytes, image::ImageOutputFormat::Png)
+                .unwrap();
+            let url = format!(
+                "data:image/png;base64,{}",
+                general_purpose::STANDARD.encode(bytes.into_inner())
+            );
+            let mut request = json!({"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":url}}]}]});
+            let result = enforce_request_input_budget(&mut request, Some(2_000), &config);
+            assert_eq!(result.is_ok(), uses_projection, "{endpoint}: {model}");
+        }
+    }
+
+    #[test]
+    fn deepseek_v41_budget_uses_decoded_image_geometry_and_keeps_bad_data_conservative() {
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::new(1, 1));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image
+            .write_to(&mut bytes, image::ImageOutputFormat::Png)
+            .expect("encode test image");
+        let data_url = format!(
+            "data:image/png;base64,{}",
+            general_purpose::STANDARD.encode(bytes.into_inner())
+        );
+        let request = json!({
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {"url": data_url}}]
+            }]
+        });
+        assert_eq!(inline_image_token_budget(&request), (184, 0));
+        assert_eq!(
+            inline_image_token_budget(&json!("data:image/png;base64,not-base64")),
+            (0, 1)
+        );
     }
 
     #[tokio::test]
@@ -2534,7 +2768,7 @@ mod tests {
     }
 
     #[test]
-    fn official_deepseek_v4_max_effort_raises_generation_token_floor() {
+    fn official_deepseek_v4_max_effort_preserves_explicit_output_budget() {
         let config = ApiConfig {
             model: "deepseek-v4-pro".to_string(),
             provider_type: Some("deepseek".to_string()),
@@ -2558,8 +2792,9 @@ mod tests {
         apply_generation_params(&mut body, &config, &resolve_quirks(&config));
 
         assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
-        // 官方 max 档默认输出 128K，显式 max_output_tokens=32K 应被抬高
-        assert_eq!(body.get("max_completion_tokens"), Some(&json!(131_072)));
+        // Defaults must not override the caller's budget or its input reserve.
+        assert_eq!(body.get("max_tokens"), Some(&json!(32_768)));
+        assert!(body.get("max_completion_tokens").is_none());
     }
 
     #[test]
@@ -5344,7 +5579,7 @@ impl LLMManager {
 
         apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
-        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
         if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
             warn!(
                 "[model2_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
@@ -7020,7 +7255,7 @@ impl LLMManager {
 
         apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
-        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
         if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
             warn!(
                 "[model2_non_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",

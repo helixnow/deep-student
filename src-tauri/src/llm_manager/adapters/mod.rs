@@ -34,8 +34,10 @@ mod streaming_harness;
 pub use anthropic::{
     claude_generation, map_budget_tokens_to_effort, AnthropicAdapter, ClaudeGeneration,
 };
-pub(crate) use deepseek::v4_max_effort_output_token_floor;
 pub use deepseek::DeepSeekAdapter;
+pub(crate) use deepseek::{
+    apply_official_deepseek_generation_params, uses_deepseek_v41_image_tokens,
+};
 pub use doubao::DoubaoAdapter;
 pub use ernie::ErnieAdapter;
 pub use gemini::GeminiAdapter;

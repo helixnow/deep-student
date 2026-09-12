@@ -6,6 +6,20 @@ import {
 } from '../deepseekReasoningControls';
 
 describe('DeepSeek runtime reasoning controls', () => {
+  it.each([
+    ['https://api.deepseek.com/v1', 'high'],
+    ['https://api.siliconflow.cn/v1', 'max'],
+    ['https://proxy.example/v1', 'max'],
+    ['https://api.deepseek.com.proxy.example/v1', 'max'],
+  ])('preserves provider-specific xhigh mapping for %s', (baseUrl, expected) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'deepseek-flash', providerType: 'deepseek', baseUrl,
+    });
+    expect(resolveDeepSeekRuntimeReasoningSelection({
+      control, enableThinking: true, reasoningEffort: 'xhigh',
+    }).reasoningEffort).toBe(expected);
+  });
+
   it('uses modern runtime options for OpenAI GPT-5.5 and represents none as off', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'gpt-5.5',
@@ -70,7 +84,7 @@ describe('DeepSeek runtime reasoning controls', () => {
         enableThinking: true,
         reasoningEffort: 'xhigh',
       })
-    ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+    ).toEqual({ enableThinking: true, reasoningEffort: 'high', thinkingBudget: undefined });
     expect(
       resolveDeepSeekRuntimeReasoningSelection({
         control,
@@ -327,15 +341,18 @@ describe('DeepSeek runtime reasoning controls', () => {
     ).toEqual({ enableThinking: true, reasoningEffort: undefined, thinkingBudget: undefined });
   });
 
-  it('normalizes the current runtime depth when switching model versions', () => {
+  it.each([
+    ['https://api.deepseek.com/v1', 'high'],
+    ['https://proxy.example/v1', 'max'],
+  ])('normalizes depth when switching model versions on %s', (baseUrl, expected) => {
     expect(
       resolveDeepSeekRuntimeReasoningSelection({
-        control: resolveDeepSeekRuntimeReasoningControl({ model: 'deepseek-v4-pro', providerType: 'deepseek' }),
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'deepseek-v4-pro', providerType: 'deepseek', baseUrl }),
         enableThinking: true,
         reasoningEffort: 'xhigh',
         thinkingBudget: 32768,
       })
-    ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+    ).toEqual({ enableThinking: true, reasoningEffort: expected, thinkingBudget: undefined });
 
     expect(
       resolveDeepSeekRuntimeReasoningSelection({

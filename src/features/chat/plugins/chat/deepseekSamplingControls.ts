@@ -1,4 +1,6 @@
-import { isDeepSeekV4ModelId } from '@/utils/deepseekReasoningControls';
+import { isDeepSeekV4ModelId, isOfficialDeepSeekEndpoint } from '@/utils/deepseekReasoningControls';
+
+export { isOfficialDeepSeekEndpoint } from '@/utils/deepseekReasoningControls';
 
 export interface DeepSeekSamplingControlInput {
   model?: unknown;
@@ -9,14 +11,6 @@ export interface DeepSeekSamplingControlInput {
 }
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');
-
-export function isOfficialDeepSeekEndpoint(input: DeepSeekSamplingControlInput): boolean {
-  const providerType = normalize(input.providerType);
-  const providerScope = normalize(input.providerScope);
-  const baseUrl = normalize(input.baseUrl);
-
-  return providerType === 'deepseek' || providerScope === 'deepseek' || baseUrl.includes('api.deepseek.com');
-}
 
 export function isDeepSeekFamilyEndpoint(input: DeepSeekSamplingControlInput): boolean {
   const providerType = normalize(input.providerType);

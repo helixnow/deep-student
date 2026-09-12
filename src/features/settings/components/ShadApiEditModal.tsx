@@ -38,6 +38,7 @@ import {
   deepSeekV32BudgetToEffort,
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
+  isOfficialDeepSeekEndpoint,
   resolveDeepSeekReasoningControl,
   resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
@@ -245,7 +246,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const deepSeekReasoningSelectValue =
     deepSeekReasoningControl.kind === 'v32-budget-effort'
       ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
-      : normalizeDeepSeekV4Effort(formData.reasoningEffort);
+      : normalizeDeepSeekV4Effort(formData.reasoningEffort, isOfficialDeepSeekEndpoint(formData));
   const profileReasoningControl = useMemo(
     () =>
       resolveDeepSeekRuntimeReasoningControl({
@@ -486,7 +487,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           const defaultEffort =
             control.kind === 'v32-budget-effort'
               ? modelDefaults.reasoningEffort ?? 'medium'
-              : normalizeDeepSeekV4Effort(modelDefaults.reasoningEffort);
+              : normalizeDeepSeekV4Effort(modelDefaults.reasoningEffort, isOfficialDeepSeekEndpoint(next));
           const defaultBudget =
             control.kind === 'v32-budget-effort'
               ? deepSeekV32EffortToBudget(defaultEffort) ?? modelDefaults.thinkingBudget
@@ -801,7 +802,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
       const control = resolveDeepSeekReasoningControl(sanitized.model, inferredCaps.supportsReasoningEffort);
       if (control.kind === 'v4-effort') {
-        sanitized.reasoningEffort = normalizeDeepSeekV4Effort(sanitized.reasoningEffort);
+        sanitized.reasoningEffort = normalizeDeepSeekV4Effort(sanitized.reasoningEffort, isOfficialDeepSeekEndpoint(sanitized));
         sanitized.thinkingBudget = undefined;
       } else if (control.kind === 'v32-budget-effort') {
         const effort = sanitized.reasoningEffort ?? deepSeekV32BudgetToEffort(sanitized.thinkingBudget);
@@ -1794,7 +1795,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                     }
                                     return {
                                       ...prev,
-                                      reasoningEffort: normalizeDeepSeekV4Effort(v),
+                                      reasoningEffort: normalizeDeepSeekV4Effort(v, isOfficialDeepSeekEndpoint(prev)),
                                       thinkingBudget: undefined,
                                     };
                                   })
