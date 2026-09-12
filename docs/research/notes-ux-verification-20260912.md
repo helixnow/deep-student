@@ -15,6 +15,14 @@
 
 因此本项目移动端应遵循三条约束：编辑态只保留正文、标题和一条键盘上方工具条；文件树/属性/背链默认隐藏，按需以单页进入；块新增、转换、复制和删除统一从 `+` 或更多菜单进入。桌面块手柄不应在手机写作列长期占用左边距。
 
+## 第二轮：拖拽与微交互代码调研
+
+- **Bangle/Banger editor**（MIT，ProseMirror）在 `drag-handle-view.ts` 用 `WeakMap<EditorView, BlockHandleState>` 保存每个编辑器自己的 hovered block，避免多 pane 共享句柄状态；拖拽开始优先使用记录的 DOM 节点，再回退坐标命中。`drag-handle-ui.ts` 将加号和 grip 生成为真实 button，提供独立 ARIA 名称、tooltip、focus-visible 样式，并根据可用 gutter 选择横向或纵向排列。
+- **AFFiNE/BlockSuite** 在 `paragraph-drag-extension.ts` 把折叠标题和其 sibling 作为同一拖拽组，拖拽结束时恢复模型折叠状态。这说明拖拽反馈应绑定文档语义，而不是只克隆当前一行 DOM。
+- **Joplin** 的移动 `EditorToolbar` 使用横向 ScrollView，按钮顺序可配置并持久化；开源 issue 记录了键盘遮挡、工具条空隙和小屏关闭按钮溢出等回归，说明移动工具条必须有真实设备矩阵。
+
+本轮对本项目的对应改动：BlockProvider 的隐藏句柄保持可测量，消除首次定位闪跳；操作按钮补充可访问名称和键盘入口；分屏/窄窗逐 pane 验证首帧坐标、命中和无重叠；拖拽 ghost 在成功释放时增加 120ms 收缩淡出，取消时立即移除，插入条首次出现不从原点扫入。
+
 ## 已完成并实测
 
 - 桌面工具栏采用可收缩布局，窄内容区自动隐藏次要内联按钮；按钮通过 `aria-pressed`/`aria-checked` 反映当前粗体、标题、列表等格式状态。
