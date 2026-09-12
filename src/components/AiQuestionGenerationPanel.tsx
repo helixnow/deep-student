@@ -344,7 +344,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   };
 
   const handleStart = async () => {
-    if (maxQuestions <= 0 || maxQuestions > 50) return;
+    if (maxQuestions <= 0 || maxQuestions > 100) return;
     try {
       await startGeneration({
         exam_id: examId,
@@ -485,9 +485,9 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                     <input
                       type="number"
                       min={1}
-                      max={20}
+                      max={100}
                       value={spec.count}
-                      onChange={(e) => updateSpec(spec.id, { count: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })}
+                      onChange={(e) => updateSpec(spec.id, { count: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
                       className="w-16 h-8 rounded-md border border-border bg-transparent px-2 text-sm"
                       aria-label={t('exam_sheet:aiGeneration.countLabel')}
                     />
@@ -723,7 +723,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               {t('exam_sheet:aiGeneration.basedOnExisting')}
             </label>
 
-            {maxQuestions > 50 && (
+            {maxQuestions > 100 && (
               <div className="flex items-center gap-2 text-sm text-destructive">
                 <WarningCircle size={16} />
                 {t('exam_sheet:aiGeneration.tooManyQuestions')}
@@ -890,7 +890,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               <DsButton
                 variant="default"
                 size="sm"
-                disabled={maxQuestions <= 0 || maxQuestions > 50}
+                disabled={maxQuestions <= 0 || maxQuestions > 100}
                 onClick={() => void handleStart()}
               >
                 <Sparkle size={14} className="mr-1" />

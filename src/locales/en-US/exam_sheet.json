@@ -626,7 +626,7 @@
     "topicHintLabel": "Topic scope (optional)",
     "topicHintPlaceholder": "e.g. Quadratic functions: graphs & properties, vertex form conversion…",
     "basedOnExisting": "Generate variants based on existing questions",
-    "tooManyQuestions": "Total questions cannot exceed 50",
+    "tooManyQuestions": "Total questions cannot exceed 100",
     "start": "Generate",
     "generating": "AI is generating questions…",
     "rejectedSummary": "{{count}} question(s) failed validation and were dropped:",
