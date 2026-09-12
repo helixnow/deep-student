@@ -1571,6 +1571,146 @@ mod tests {
         );
     }
 
+    // ===== get_vl_embedding_model_config 多模态轨道悬空引用自愈（方案 A+）=====
+
+    fn vl_emb_test_profile(id: &str, is_multimodal: bool) -> ModelProfile {
+        ModelProfile {
+            id: id.to_string(),
+            vendor_id: "vend-emb-test".to_string(),
+            label: "VL EmbTest".to_string(),
+            model: "test-vl-embed-v1".to_string(),
+            is_embedding: true,
+            is_multimodal,
+            enabled: true,
+            status: "enabled".to_string(),
+            ..ModelProfile::default()
+        }
+    }
+
+    fn save_vl_embedding_default(manager: &LLMManager, id: &str) {
+        manager
+            .db
+            .save_setting("embedding.default_multimodal_model_config_id", id)
+            .expect("save multimodal embedding default");
+    }
+
+    fn saved_vl_embedding_default(manager: &LLMManager) -> Option<String> {
+        manager
+            .db
+            .get_setting("embedding.default_multimodal_model_config_id")
+            .expect("read multimodal embedding default")
+    }
+
+    #[tokio::test]
+    async fn dangling_vl_embedding_default_falls_back_to_assignments_and_writes_back() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        save_vl_embedding_default(&manager, "vl_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("vl-emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("dangling multimodal default must heal via assignments fallback");
+
+        assert_eq!(config.id, "vl-emb-test");
+        assert!(config.is_embedding && config.is_multimodal);
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-emb-test"),
+            "healed assignment id must be written back to the settings key"
+        );
+    }
+
+    #[tokio::test]
+    async fn dangling_vl_embedding_default_rejects_text_only_assignment() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        // 文本嵌入模型（非 multimodal）挂在 VL 槽位——正是用户设备上
+        // 一键分配写入 builtin-sf-embed 的场景，必须拒绝而非写回。
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-emb-test", true),
+                emb_test_profile("emb-test", true),
+            ],
+        );
+        save_vl_embedding_default(&manager, "vl_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let err = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect_err("text-only assignment must not satisfy the multimodal track");
+        let message = err.to_string();
+        assert!(
+            message.contains("找不到多模态嵌入模型配置"),
+            "unexpected error message: {}",
+            message
+        );
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl_dangling"),
+            "dangling value must stay untouched when the assignment is unusable"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_vl_embedding_default_errors_without_autodetect() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        // 有效多模态嵌入配置存在，但设置键缺失：必须保持报错，
+        // is_multimodal_rag_configured 依赖该 Err 关闭多模态索引批处理。
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+
+        let err = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect_err("absent key must keep the explicit-enable semantics");
+        let message = err.to_string();
+        assert!(
+            message.contains("未配置默认多模态嵌入维度"),
+            "unexpected error message: {}",
+            message
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_vl_embedding_default_is_used_as_is() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        save_vl_embedding_default(&manager, "vl-emb-test");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("valid multimodal default must resolve directly");
+
+        assert_eq!(config.id, "vl-emb-test");
+    }
+
     #[test]
     fn merge_consecutive_tool_calls_preserves_empty_reasoning_content() {
         let history = vec![tool_call_message("call_empty_reasoning", Some(""))];

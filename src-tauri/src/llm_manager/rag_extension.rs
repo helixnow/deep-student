@@ -271,20 +271,34 @@ impl LLMManager {
 
     /// 获取多模态嵌入模型配置（Qwen3-VL-Embedding）
     ///
-    /// 从维度管理的默认设置中获取多模态嵌入模型配置ID
+    /// 从维度管理的默认设置中获取多模态嵌入模型配置ID。
+    /// 设置键指向的配置若已不存在（悬空引用），回退到
+    /// `model_assignments.vl_embedding_model_config_id`（校验能力标记后写回）。
+    /// 注意：设置键**缺失**时必须保持报错——`is_multimodal_rag_configured()`
+    /// 依赖该 Err 关闭多模态索引批处理（显式启用语义），不做自动探测。
     pub async fn get_vl_embedding_model_config(&self) -> Result<ApiConfig> {
         // 从 settings 读取默认多模态嵌入模型配置ID
-        let vl_embedding_model_id = self
+        let Some(setting_id) = self
             .db
             .get_setting("embedding.default_multimodal_model_config_id")
             .map_err(|e| AppError::configuration(format!("读取多模态嵌入模型配置失败: {}", e)))?
-            .ok_or_else(|| {
-                AppError::configuration(
-                "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。"
-            )
-            })?;
+        else {
+            return Err(AppError::configuration(
+                "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
+            ));
+        };
 
         let configs = self.get_api_configs().await?;
+        let vl_embedding_model_id = if configs.iter().any(|config| config.id == setting_id) {
+            setting_id
+        } else {
+            warn!(
+                "[RAG] Dangling multimodal embedding default: setting 'embedding.default_multimodal_model_config_id' points to nonexistent config '{}'; falling back to model_assignments.vl_embedding_model_config_id",
+                setting_id
+            );
+            self.fallback_vl_embedding_model_id(&configs).await?
+        };
+
         let config = configs
             .into_iter()
             .find(|config| config.id == vl_embedding_model_id)
@@ -297,6 +311,49 @@ impl LLMManager {
             ));
         }
         Ok(config)
+    }
+
+    /// 多模态嵌入默认模型回退：settings 键悬空时尝试 assignments 的 VL 槽位。
+    ///
+    /// 仅接受能力标记完整（enabled && is_embedding && is_multimodal && 非reranker）
+    /// 的 assignments 配置，避免把文本嵌入模型或死引用写回设置键。
+    async fn fallback_vl_embedding_model_id(&self, configs: &[ApiConfig]) -> Result<String> {
+        if let Ok(assignments) = self.get_model_assignments().await {
+            if let Some(id) = assignments.vl_embedding_model_config_id {
+                match configs.iter().find(|config| config.id == id) {
+                    Some(config)
+                        if config.enabled
+                            && config.is_embedding
+                            && config.is_multimodal
+                            && !config.is_reranker =>
+                    {
+                        info!(
+                            "[RAG] Falling back to model_assignments.vl_embedding_model_config_id={}",
+                            id
+                        );
+                        let _ = self
+                            .db
+                            .save_setting("embedding.default_multimodal_model_config_id", &id);
+                        return Ok(id);
+                    }
+                    Some(_) => {
+                        warn!(
+                            "[RAG] model_assignments.vl_embedding_model_config_id={} lacks multimodal embedding capability; skipping write-back",
+                            id
+                        );
+                    }
+                    None => {
+                        warn!(
+                            "[RAG] model_assignments.vl_embedding_model_config_id={} also missing from configs; skipping write-back",
+                            id
+                        );
+                    }
+                }
+            }
+        }
+        Err(AppError::configuration(
+            "找不到多模态嵌入模型配置，请检查维度绑定的模型是否存在",
+        ))
     }
 
     /// 获取多模态重排序模型配置（Qwen3-VL-Reranker）
