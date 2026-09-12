@@ -1048,6 +1048,33 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [sessionId, markCorrect, practiceMode, setMockExamSession]);
 
+  // AI 评判完成（主观题/填空题 verdict 已在后端落库）后的回写。此前只有
+  // 自评改判（handleMarkCorrect）会回写：模拟考成绩单把 AI 已判对的主观题
+  // 按「错」统计（submit_mock_exam 对无 results 的题 unwrap_or(false)），
+  // 练习进度里首答按 null 记的基线也永不修正。
+  const handleGradingResolved = useCallback((questionId: string, isCorrect: boolean) => {
+    if (!sessionId) return;
+    // 与 handleMarkCorrect 同口径：action 内部做成员资格/首答幂等/差量修正门禁
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
+
+    if (practiceMode === 'mock_exam') {
+      const latestSession = useQuestionBankStore.getState().mockExamSession;
+      if (
+        latestSession &&
+        latestSession.exam_id === sessionId &&
+        !latestSession.is_submitted &&
+        latestSession.question_ids.includes(questionId) &&
+        questionId in latestSession.answers
+      ) {
+        setMockExamSession({
+          ...latestSession,
+          // 只回写判定，不改作答内容（改判不改答）
+          results: { ...latestSession.results, [questionId]: isCorrect },
+        });
+      }
+    }
+  }, [sessionId, practiceMode, setMockExamSession]);
+
   // 🆕 使用 Hook 的 navigate
   const handleNavigate = useCallback((index: number) => {
     navigate(index);
@@ -2532,6 +2559,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onNavigate={handlePracticeNavigate}
               onModeChange={handleModeChange}
               onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
+              onGradingResolved={readOnly ? undefined : handleGradingResolved}
               onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onUpdateUserNote={readOnly ? undefined : handleUpdateUserNote}
