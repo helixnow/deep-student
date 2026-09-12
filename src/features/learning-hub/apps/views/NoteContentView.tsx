@@ -1,3 +1,4 @@
+import { insertImageFromDevice } from '@/features/notes/mobileEditorCommands';
 /**
  * NoteContentView - 笔记内容视图
  *
@@ -8,7 +9,7 @@
  * 所有数据通过 DSTU 节点和 API 获取。
  */
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -143,10 +144,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
   const isSmallScreen = useIsMobile();
 
-  // 上下文信息按需覆盖显示，不参与正文布局。
+  const contentHostRef = useRef<HTMLDivElement>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  // 宽编辑面并排，窄编辑面切换到完整上下文页。
   const [rightPanelVisible, setRightPanelVisible] = useState(false);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const propertiesReplaceEditor = !propertiesPanelDisabled && (isSmallScreen ? mobilePanelOpen : rightPanelVisible && contentWidth < 900);
+  const editorInteractive = isActive && !propertiesReplaceEditor;
 
   // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
   // （isActive 守卫：保活隐藏的笔记 tab 不注册，避免消费当前活跃视图的返回键）
@@ -179,6 +184,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // ========== 状态 ==========
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<VfsError | null>(null);
+  useLayoutEffect(() => {
+    const host = contentHostRef.current;
+    if (!host) return;
+    const update = () => { if (host.clientWidth > 0) setContentWidth(host.clientWidth); };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [isLoading]);
   
   // 笔记内容状态
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
@@ -874,27 +888,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         }
       },
       [COMMAND_EVENTS.NOTES_INSERT_MATH]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertAtCursor('\n$$\n\n$$\n');
       },
       [COMMAND_EVENTS.NOTES_INSERT_TABLE]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertTable();
       },
       [COMMAND_EVENTS.NOTES_INSERT_CODEBLOCK]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
         editorApiRef.current?.insertCodeBlock();
       },
       [COMMAND_EVENTS.NOTES_INSERT_LINK]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
-        editorApiRef.current?.insertLink('https://', '');
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
+        editorApiRef.current?.insertLink();
       },
       [COMMAND_EVENTS.NOTES_INSERT_IMAGE]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
-        editorApiRef.current?.insertImage('https://', '');
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
+        void insertImageFromDevice(editorApiRef.current, noteId);
       },
       [COMMAND_EVENTS.AI_CONTINUE_WRITING]: () => {
-        if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
+        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
         showGlobalNotification('info', t('notes:ai.continue_not_available'));
       },
     },
@@ -937,7 +951,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   }
   
   return (
-    <div className="flex flex-col h-full bg-background relative overflow-hidden">
+    <div ref={contentHostRef} className="flex h-full min-w-0 bg-background relative overflow-hidden">
       {/* 注意：不能用 role="progressbar"，全局样式会对其强制 min-height:8px，改变此 4px 细条的视觉 */}
       {isLoading && content !== null && (
         <div
@@ -950,7 +964,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full w-2/5 bg-primary animate-[progress-indeterminate_1.5s_ease-in-out_infinite]" />
         </div>
       )}
-      <main className="flex-1 min-h-0 flex flex-col" data-note-content-area>
+      <main className={cn("flex-1 min-w-0 min-h-0 flex-col", propertiesReplaceEditor ? "hidden" : "flex")} data-note-content-area>
         {isContentReady ? (
           <NotesCrepeEditor
             initialContent={visibleContent}
@@ -973,7 +987,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             onRetryLoadMore={handleRetryLoadMore}
             // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（沿用历史 NotesHome——已下线——的用法）；
             // tab 不活跃时同样抑制（P0 泄漏修复的同步兜底，编辑器内部另有壳层可见性观察器异步兜底）
-            suppressMobileToolbar={(isSmallScreen && mobilePanelOpen) || !isActive}
+            suppressMobileToolbar={propertiesReplaceEditor || !isActive}
             headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <DsButton
@@ -1002,8 +1016,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
       {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
         <aside
-          className="notes-properties-overlay absolute bottom-3 right-3 top-12 z-30 flex flex-col overflow-hidden border border-border bg-background/98 shadow-md"
-          style={{ width: 'min(288px, calc(100% - 24px))' }}
+          className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background", propertiesReplaceEditor ? "flex-1" : "w-72 shrink-0 border-l border-border")}
           aria-label={t('notes:contextPanel.title')}
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">

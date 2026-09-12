@@ -1413,18 +1413,11 @@
   container-name: notes-chrome;
 }
 
-/* 分屏等窄 pane（非仅窄视口）下也收起外露格式按钮，避免与右侧操作区挤压 */
-@container notes-chrome (max-width: 560px) {
-  .notes-editor-toolbar-inline {
-    display: none;
-  }
-}
-
 .notes-editor-toolbar {
   display: flex;
   align-items: center;
   gap: 1px;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -1433,8 +1426,22 @@
   display: flex;
   align-items: center;
   gap: 1px;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 必须在基础 display 之后声明；按编辑面剩余宽度收起，不能按整个窗口判断。 */
+@container notes-chrome (max-width: 640px) {
+  .notes-editor-toolbar-inline {
+    display: none;
+  }
+}
+
+.notes-editor-toolbar button[aria-pressed='true'],
+.notes-toolbar-overflow-item[aria-checked='true'] {
+  color: hsl(var(--primary));
+  background: var(--interactive-selected);
 }
 
 .notes-editor-toolbar-divider {

@@ -6,6 +6,7 @@
 import type { Crepe } from '@milkdown/crepe';
 import type { AgentHighlightMeta } from './plugins/agentHighlight';
 import type { CrepePluginsOptions } from './plugins';
+import type { CrepeFormattingState } from './formattingState';
 
 export type CrepeSelectionSnapshot = {
   from: number;
@@ -209,6 +210,9 @@ export interface CrepeEditorProps {
   
   /** 内容变化回调 */
   onChange?: (markdown: string) => void;
+
+  /** Selection and stored marks, including formatting changes without document edits. */
+  onFormattingChange?: (state: CrepeFormattingState) => void;
   
   /** 编辑器就绪回调，返回 API 对象 */
   onReady?: (api: CrepeEditorApi) => void;

@@ -541,7 +541,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 relative flex items-stretch h-[38px] [@media(pointer:coarse)]:h-[44px] bg-[color:var(--shell-toolbar-surface,var(--background))] z-10"
+    <div className={cn(tabs.length === 1 && tabs[0].type === 'note' && 'max-md:hidden', "flex-shrink-0 relative flex items-stretch h-[38px] [@media(pointer:coarse)]:h-[44px] bg-[color:var(--shell-toolbar-surface,var(--background))] z-10")}
          data-no-screen-swipe
          style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}>
       {/* 左滚动按钮 */}

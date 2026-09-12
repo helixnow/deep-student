@@ -1809,9 +1809,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!backlinksOverlay) return;
+    if (sizeClass !== 'compact') return;
     if (explorerOpen && backlinksOpen) setExplorerOpen(false);
-  }, [backlinksOpen, backlinksOverlay, explorerOpen]);
+  }, [backlinksOpen, sizeClass, explorerOpen]);
 
   // 窄窗「文件」内联子屏打开时接管 Android 返回键：先关子屏，不关笔记窗口
   useEffect(() => {
@@ -2785,7 +2785,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 tabs={mainTabs}
                 activeKey={mainActiveTab?.key ?? null}
                 windowId={windowId}
-                workspaceActive={isActive && resolvedFocusedPane === 'main'}
+                workspaceActive={isActive && resolvedFocusedPane === 'main' && !(backlinksOpen && backlinksOverlay)}
                 onActivate={activateTab}
                 onTitleChange={updateTabTitle}
                 onSaveStateChange={updateTabSaveState}
@@ -2819,7 +2819,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     tabs={[splitTab]}
                     activeKey={splitTab.key}
                     windowId={windowId}
-                    workspaceActive={isActive && resolvedFocusedPane === 'right'}
+                    workspaceActive={isActive && resolvedFocusedPane === 'right' && !(backlinksOpen && backlinksOverlay)}
                     onActivate={activateTab}
                     onTitleChange={updateTabTitle}
                     onSaveStateChange={updateTabSaveState}
