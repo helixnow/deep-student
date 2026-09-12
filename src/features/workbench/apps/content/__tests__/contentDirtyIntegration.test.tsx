@@ -225,4 +225,29 @@ describe('content dirty integration', () => {
     expect(nativeConfirm).not.toHaveBeenCalled();
     unregisterBody();
   });
+
+  it('Note title keeps IME confirmation in the field and saves on a subsequent Enter', async () => {
+    const onTitleChange = vi.fn(async () => undefined);
+    render(<NotesEditorHeader lastSaved={null} initialTitle="Saved title" noteId="note_ime" onTitleChange={onTitleChange} />);
+    const title = await screen.findByDisplayValue('Saved title');
+    title.focus();
+    fireEvent.change(title, { target: { value: '中文学习笔记' } });
+    fireEvent.keyDown(title, { key: 'Enter', isComposing: true, keyCode: 229 });
+    expect(document.activeElement).toBe(title);
+    expect(onTitleChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(title, { key: 'Enter' });
+    await waitFor(() => expect(onTitleChange).toHaveBeenCalledWith('中文学习笔记'));
+    expect(document.activeElement).not.toBe(title);
+  });
+
+  it('Note title wraps visually but keeps pasted newlines out of the saved title', async () => {
+    const onTitleChange = vi.fn(async () => undefined);
+    render(<NotesEditorHeader lastSaved={null} initialTitle="Saved title" noteId="note_wrap" onTitleChange={onTitleChange} />);
+    const title = await screen.findByDisplayValue('Saved title');
+    fireEvent.change(title, { target: { value: 'First line\nSecond line' } });
+    expect(title).toHaveValue('First line Second line');
+    fireEvent.keyDown(title, { key: 'Escape' });
+    expect(title).toHaveValue('Saved title');
+    expect(onTitleChange).not.toHaveBeenCalled();
+  });
 });

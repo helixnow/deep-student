@@ -399,6 +399,8 @@
   },
   "blockMenu": {
     "label": "Block actions",
+    "addAfter": "Add block below",
+    "dragOrMenu": "Drag block or open block menu",
     "turnInto": "Turn into",
     "paragraph": "Text",
     "heading1": "Heading 1",
@@ -1219,6 +1221,7 @@
     "placeholder": "Ask a question..."
   },
   "header": {
+    "documentTitle": "Note title",
     "add_tags": "Add tags...",
     "manage_tags": "Manage tags",
     "tags": "Tags",

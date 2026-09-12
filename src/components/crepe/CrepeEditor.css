@@ -905,10 +905,12 @@
 }
 
 /* ===== 拖拽句柄（Block Handle） ===== */
-/* 隐藏态用 display:none（勿仅 opacity:0）：减少常驻布局/AX 节点，窗口拖拽每帧税更低 */
+/* BlockProvider 在显示前测量尺寸；display:none 会让首次定位少算手柄宽度，压进正文。 */
 
 .crepe-editor-wrapper .milkdown .milkdown-block-handle:not([data-show='true']) {
-  display: none !important;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-block-handle {
@@ -925,6 +927,12 @@
   padding: 0 !important;
   box-shadow: none !important;
 }
+
+/* 留出两个 26px 按钮、4px 间隔和 8px 定位间距，避免被滚动视口裁切。 */
+.notes-crepe-shell .notes-editor-content {
+  padding-left: 72px;
+}
+
 
 .dark .crepe-editor-wrapper .milkdown .milkdown-block-handle {
   background: transparent !important;
@@ -996,7 +1004,7 @@
 /* 触屏：slash 菜单项 / 块菜单项放大到 ≥44px 触控目标。
    块菜单同样加 !important：与基线（min-height: 30px）同权重时靠源序取胜，
    一旦后续出现更高权重基线（或打包顺序变化）就会回落，显式压死。 */
-@media (pointer: coarse) {
+@media (max-width: 767px), (pointer: coarse) {
   .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
     min-height: 44px !important;
     align-items: center !important;
@@ -1071,14 +1079,20 @@
   transition: background var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)), color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
-/* 触屏：block handle 加号/拖拽钮放大到 ≥44px 触控目标。
-   需 !important 同权重覆盖上方基础规则；必须位于其后（同特异性按源序取胜）。 */
-@media (pointer: coarse) {
-  .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item {
-    width: 44px !important;
-    height: 44px !important;
-    min-width: 44px !important;
-    min-height: 44px !important;
+.crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+/* 移动端由底部工具条承担块操作，编辑列保持完整宽度。 */
+@media (max-width: 767px), (pointer: coarse) {
+  .notes-crepe-shell .notes-editor-content {
+    padding-left: 20px;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-block-handle {
+    visibility: hidden;
+    pointer-events: none;
   }
 }
 

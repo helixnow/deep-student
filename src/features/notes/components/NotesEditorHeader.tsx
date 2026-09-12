@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNotesOptional } from '../NotesContext';
 import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '../notesUtils';
 import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -87,6 +86,24 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     
     // Local state for input value to allow typing before commit
     const [titleInput, setTitleInput] = useState("");
+    const titleRef = useRef<HTMLTextAreaElement>(null);
+    useLayoutEffect(() => {
+        const title = titleRef.current;
+        if (!title) return;
+        const resize = () => {
+            title.style.height = 'auto';
+            title.style.height = `${title.scrollHeight}px`;
+        };
+        resize();
+        let width = title.clientWidth;
+        const observer = new ResizeObserver(() => {
+            if (title.clientWidth === width) return;
+            width = title.clientWidth;
+            resize();
+        });
+        observer.observe(title);
+        return () => observer.disconnect();
+    }, [titleInput]);
     const [isEditing, setIsEditing] = useState(false);
     // Track pending title to prevent useEffect from reverting to old value
     const pendingTitleRef = useRef<string | null>(null);
@@ -158,7 +175,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }
     }, [displayTitle, isEditing]);
 
-    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleTitleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (readOnly) return;
         // 输入侧就地清洗（折叠换行、去控制字符、500 字符截断），
         // 与后端 note_repo validate_title 限额一致；正常输入为恒等变换
@@ -216,8 +233,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') {
+            e.preventDefault();
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
         } else if (e.key === 'Escape') {
             // Esc 还原为已保存标题并退出编辑（blur 提交由 escapeRevertRef 短路）
@@ -455,9 +474,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     return (
         <header className="notes-document-header group relative pt-7 pb-3">
-            <Input
-                className="h-auto w-full border-none bg-transparent p-0 font-semibold leading-[1.2] text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
-                style={{ fontSize: 'clamp(26px, 5.2vw, 40px)' }}
+            <textarea
+                ref={titleRef}
+                rows={1}
+                className="notes-document-title w-full border-none bg-transparent p-0 font-semibold text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                aria-label={t('notes:header.documentTitle')}
                 value={titleInput}
                 onChange={readOnly ? undefined : handleTitleChange}
                 onBlur={readOnly ? undefined : handleTitleSubmit}

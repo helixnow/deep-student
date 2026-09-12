@@ -2,6 +2,26 @@
  * 依赖 tokens：--notes-radius-popup / --notes-popover-shadow / --dropdown-ease
  * （定义于 src/styles/notes-typography.css），未定义时走 fallback。 */
 
+.notes-document-header {
+  container-type: inline-size;
+}
+
+.notes-document-title {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 32px;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+@container (max-width: 400px) {
+  .notes-document-title {
+    font-size: 28px;
+  }
+}
+
 .notes-doc-stats {
   position: relative;
 }
