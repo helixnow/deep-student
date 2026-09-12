@@ -113,6 +113,8 @@ export interface QuestionBankEditorProps {
   onModeChange?: (mode: PracticeMode, tag?: string) => void;
   onMarkCorrect?: (questionId: string, isCorrect: boolean) => Promise<void>;
   onRefreshQuestion?: (questionId: string) => Promise<void>;
+  /** 主观题/填空题 AI 评判完成（verdict 已落库）：宿主据此回写练习进度与模拟考成绩 */
+  onGradingResolved?: (questionId: string, isCorrect: boolean) => void;
   onToggleFavorite?: (questionId: string, isFavorite: boolean) => Promise<void>;
   /** 编辑模式：删除题目 */
   onDeleteQuestion?: (questionId: string) => Promise<void>;
@@ -489,6 +491,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   onModeChange,
   onMarkCorrect,
   onRefreshQuestion,
+  onGradingResolved,
   onToggleFavorite,
   onDeleteQuestion,
   onBack,
@@ -1122,6 +1125,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             if (verdict) {
               const isCorrect = verdict === 'correct';
               setSubmitResult(prev => prev ? { ...prev, isCorrect, needsManualGrading: false } : null);
+              // verdict 已由后端落库（grading_method='ai'）：通知宿主回写
+              // 练习进度（首答按 null 记的差量修正）与模拟考成绩，否则
+              // 成绩单把 AI 已判对的主观题/填空题按错统计。
+              onGradingResolved?.(questionId, isCorrect);
               if (onRefreshQuestion) {
                 onRefreshQuestion(questionId).catch((err) => {
                   debugLog.error('[QuestionBankEditor] refresh after AI grading failed:', err);
