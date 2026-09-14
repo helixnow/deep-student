@@ -1229,17 +1229,27 @@ impl QBankExecutor {
         }
     }
 
-    fn require_service<'a>(
+    fn require_service(
         &self,
-        ctx: &'a ExecutionContext,
-    ) -> Result<&'a QuestionBankService, String> {
-        ctx.question_bank_service.as_deref().ok_or_else(|| {
+        ctx: &ExecutionContext,
+    ) -> Result<std::sync::Arc<QuestionBankService>, String> {
+        if let Some(service) = &ctx.question_bank_service {
+            return Ok(service.clone());
+        }
+        // 防御性回退：宿主漏接线时（历史上 lib.rs 构建 ChatV2Pipeline 从未调用
+        // with_question_bank_service，导致全部需要服务的 qbank 工具恒报
+        // QBANK_SERVICE_UNAVAILABLE），用 ctx.vfs_db 现场构造，与
+        // ReviewToolExecutor 的做法同源。
+        let vfs_db = ctx.vfs_db.as_ref().ok_or_else(|| {
             qbank_error(
                 "QBANK_SERVICE_UNAVAILABLE",
-                "QuestionBankService 未初始化",
+                "QuestionBankService 未初始化且 VFS 数据库不可用",
                 "重新打开应用后重试",
             )
-        })
+        })?;
+        Ok(std::sync::Arc::new(QuestionBankService::new(
+            vfs_db.clone(),
+        )))
     }
 
     /// 用 question_id 或 session_id+card_id 定位一道 questions 表题目
@@ -2091,7 +2101,7 @@ impl QBankExecutor {
         let expected_updated_at = expected_qbank_revision(&call.arguments)?;
         let _write_guard = QBANK_WRITE_LOCK.lock().await;
         let service = self.require_service(ctx)?;
-        let question = self.resolve_question(service, &call.arguments)?;
+        let question = self.resolve_question(&service, &call.arguments)?;
         let previous_bookmarked = question.is_bookmarked;
         let updated = match service.update_question(
             &question.id,
@@ -2144,7 +2154,7 @@ impl QBankExecutor {
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
         let service = self.require_service(ctx)?;
-        let question = self.resolve_question(service, &call.arguments)?;
+        let question = self.resolve_question(&service, &call.arguments)?;
         let limit = read_strict_u32(&call.arguments, "limit", 10, 1, 20)?;
         let submissions = service
             .get_submissions(&question.id, limit)
@@ -2183,7 +2193,7 @@ impl QBankExecutor {
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
         let service = self.require_service(ctx)?;
-        let question = self.resolve_question(service, &call.arguments)?;
+        let question = self.resolve_question(&service, &call.arguments)?;
         let limit = read_strict_u32(&call.arguments, "limit", 10, 1, 20)?;
         let history = service
             .get_history(&question.id, Some(limit))
@@ -5578,5 +5588,68 @@ mod occ_contract_tests {
             .expect_err("missing version must fail");
         let structured: Value = serde_json::from_str(&error).expect("structured error");
         assert_eq!(structured["code"], "QBANK_OCC_REQUIRED");
+    }
+
+    #[test]
+    fn require_service_falls_back_to_vfs_db_when_unwired() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+
+        let conn = db.get_conn_safe().expect("open migrated VFS test database");
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES ('exam-fallback', 'fallback', 'completed', 'temp-fallback', '{}', '{}', \
+                       '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z')",
+            [],
+        )
+        .expect("insert exam sheet");
+        drop(conn);
+
+        let created = VfsQuestionRepo::create_question(
+            &db,
+            &CreateQuestionParams {
+                exam_id: "exam-fallback".to_string(),
+                card_id: None,
+                question_label: None,
+                content: "fallback probe".to_string(),
+                options: None,
+                answer: None,
+                explanation: None,
+                structured_data: None,
+                question_type: None,
+                difficulty: None,
+                tags: None,
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question");
+
+        // 模拟宿主漏接线：question_bank_service 为 None，仅 vfs_db 可用
+        let emitter = std::sync::Arc::new(
+            crate::chat_v2::events::ChatV2EventEmitter::new_headless("sess-fallback".to_string()),
+        );
+        let registry = std::sync::Arc::new(crate::tools::ToolRegistry::new());
+        let mut ctx = ExecutionContext::new(
+            "sess-fallback".to_string(),
+            "msg-fallback".to_string(),
+            "blk-fallback".to_string(),
+            emitter,
+            registry,
+            None,
+        );
+        assert!(ctx.question_bank_service.is_none());
+        ctx.vfs_db = Some(std::sync::Arc::new(db));
+
+        let service = QBankExecutor
+            .require_service(&ctx)
+            .expect("unwired host must still yield a service via vfs_db fallback");
+        let loaded = service
+            .get_question(&created.id)
+            .expect("fallback service read")
+            .expect("question should exist");
+        assert_eq!(loaded.content, "fallback probe");
     }
 }
