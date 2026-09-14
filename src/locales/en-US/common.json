@@ -3900,7 +3900,8 @@
     "copied": "Copied!",
     "hidePassword": "Hide password",
     "showPassword": "Show password",
-    "encryptedInSecureArea": "This key is encrypted and stored in the system secure area"
+    "encryptedInSecureArea": "This key is encrypted and stored in the system secure area",
+    "emptyNotSet": "No key set"
   },
   "summaryBox": {
     "title": "Study Summary",

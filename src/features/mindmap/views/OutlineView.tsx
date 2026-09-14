@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import { ListBullets } from '@phosphor-icons/react';
 import type { MindMapNode } from '../types';
 import { MindMapResourcePicker } from '../components/mindmap/MindMapResourcePicker';
-import { findNodeById, isDescendantOf } from '../utils/node/find';
+import { findNodeById, findParentNode, isDescendantOf } from '../utils/node/find';
 import {
   createOutlineCaretController,
   resolveGoalEntryOffset,
@@ -433,6 +433,56 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     globalThis.document.addEventListener('keydown', handleKeyDown);
     return () => globalThis.document.removeEventListener('keydown', handleKeyDown);
   }, [outlineKeyboardActive, reciteMode, setFocusedNodeId, storeApi]);
+
+  // ★ 有焦点但输入框未挂载/未聚焦时（静态展示行、Esc 退出编辑后、焦点在容器上）：
+  // Enter = 同级，Tab/Shift+Tab = 缩进/反缩进。行内 textarea 自己的 handleKeyDown 优先。
+  useEffect(() => {
+    if (!outlineKeyboardActive || reciteMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = e.key;
+      if (key !== 'Enter' && key !== 'Tab') return;
+      const state = storeApi.getState();
+      const focusedId = state.focusedNodeId;
+      if (!focusedId) return;
+      if (state.selection.length > 1) return; // 多选走批量 handler
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        // 大纲行 textarea 自行处理；其它输入（搜索）不劫持
+        return;
+      }
+
+      const root = state.document.root;
+      if (key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) state.outdentNode(focusedId);
+        else state.indentNode(focusedId);
+        return;
+      }
+
+      // Enter → 同级（根则子级）
+      if (e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (focusedId === root.id) {
+        const newId = state.addNode(focusedId, 0);
+        if (newId) state.setFocusedNodeId(newId);
+        return;
+      }
+      const parent = findParentNode(root, focusedId);
+      if (!parent) return;
+      const idx = parent.children.findIndex((c) => c.id === focusedId);
+      const newId = state.addNode(parent.id, idx + 1);
+      if (newId) state.setFocusedNodeId(newId);
+    };
+    globalThis.document.addEventListener('keydown', onKeyDown);
+    return () => globalThis.document.removeEventListener('keydown', onKeyDown);
+  }, [outlineKeyboardActive, reciteMode, storeApi]);
 
   const selectionSet = useMemo(() => new Set(selection), [selection]);
   const searchResultSet = useMemo(() => new Set(searchResults), [searchResults]);

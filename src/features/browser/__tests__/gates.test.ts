@@ -70,14 +70,14 @@ describe('evaluateBrowserSettingsGates（对齐 Rust assert_settings_gates_open�
     const g = evaluateBrowserSettingsGates('false', 'true');
     expect(g.open).toBe(false);
     expect(g.workbenchModeEnabled).toBe(false);
-    expect(g.closeMessage).toBe('browser disabled: desktop.workbenchMode is off');
+    expect(g.closeMessage).toBe('内置浏览器不可用：请先启用学习桌面');
     expect(evaluateBrowserSettingsGates('  false  ', 'true').open).toBe(false);
   });
 
   it('子闸仍 opt-in：缺失 / false → 关', () => {
     expect(evaluateBrowserSettingsGates(null, null).open).toBe(false);
     expect(evaluateBrowserSettingsGates(null, null).closeMessage).toBe(
-      'browser disabled: desktop.workbenchBrowserEnabled is off',
+      '内置浏览器不可用：请在设置中启用内置浏览器',
     );
     expect(evaluateBrowserSettingsGates('true', 'false').open).toBe(false);
     expect(interpretBrowserChildGateEnabled(null)).toBe(false);
@@ -147,7 +147,7 @@ describe('resolveBrowserGates', () => {
     expect(gates.browserEnabled).toBe(false);
     expect(gates.open).toBe(false);
     await expect(assertBrowserGatesOpen()).rejects.toMatchObject({
-      message: expect.stringContaining('desktop.workbenchBrowserEnabled'),
+      message: expect.stringContaining('内置浏览器'),
     });
   });
 });

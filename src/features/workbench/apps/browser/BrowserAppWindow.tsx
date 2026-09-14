@@ -55,6 +55,8 @@ import {
   type BrowserFocusAddressEventDetail,
 } from './browserChromeEvents';
 import './BrowserAppWindow.css';
+import { resolveBrowserLaunchability } from '@/features/browser/gates';
+import { localizeBrowserGateMessage } from '@/features/browser/browserApi';
 
 // ---------------------------------------------------------------------------
 // Subcomponents
@@ -897,6 +899,19 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
   const { ref: sizeRef } = useWbSysSize();
   const session = useBrowserSession({ launchPayload, hydrateOnMount: true });
   const closeSession = session.closeSession;
+  const [gatesDisabled, setGatesDisabled] = useState(false);
+  const [gatesDisabledMessage, setGatesDisabledMessage] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void resolveBrowserLaunchability().then((snap) => {
+      if (cancelled) return;
+      setGatesDisabled(!snap.open);
+      setGatesDisabledMessage(snap.closeMessage);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const addressRef = useRef<HTMLInputElement | null>(null);
   const pageSlotRef = useRef<HTMLDivElement | null>(null);
   const workbenchOverlayOpen = useWorkbenchOverlay(
@@ -954,13 +969,17 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
 
   const handleNavigate = useCallback(
     (url: string) => {
+      if (gatesDisabled) {
+        // Never invoke Tauri while gated — reject_closed_gate hides the native child window.
+        return;
+      }
       // loading 期允许直接改道：先停止在途导航，再发起新导航（Chrome 语义）
       if (session.loading) session.stopLoading();
       void session.navigate(url).catch(() => {
         // Store 已记录 lastError；用户路径无需制造 unhandled rejection。
       });
     },
-    [session],
+    [session, gatesDisabled],
   );
 
   const handleBack = useCallback(() => {
@@ -998,28 +1017,35 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
     >
       <div className="wb-browser-toolbar">
         <NavControls
-          canGoBack={session.canGoBack}
-          canGoForward={session.canGoForward}
-          loading={session.loading}
+          canGoBack={!gatesDisabled && session.canGoBack}
+          canGoForward={!gatesDisabled && session.canGoForward}
+          loading={session.loading || gatesDisabled}
           onBack={handleBack}
           onForward={handleForward}
-          onReload={() => void session.reload().catch(() => {})}
+          onReload={() => {
+            if (gatesDisabled) return;
+            void session.reload().catch(() => {});
+          }}
           onStop={handleStop}
         />
         <AddressBar
           draft={session.addressDraft}
-          loading={session.loading}
+          loading={session.loading || gatesDisabled}
           security={browserConnectionSecurity(session.currentUrl, Boolean(session.sessionId))}
           inputRef={addressRef}
-          onDraftChange={session.setAddressDraft}
+          onDraftChange={gatesDisabled ? () => {} : session.setAddressDraft}
           onSubmit={handleNavigate}
         />
       </div>
       <AgentBar controlMode={session.controlMode} onTakeOver={handleTakeOver} />
-      {session.lastError ? (
-        <p className="wb-browser-error" role="alert">
+      {(gatesDisabled ? gatesDisabledMessage : session.lastError) ? (
+        <p className="wb-browser-error" role="alert" data-wb-browser-gate-closed={gatesDisabled ? 'true' : undefined}>
           <WarningCircle size={14} weight="fill" aria-hidden />
-          <span className="wb-browser-error-text">{session.lastError}</span>
+          <span className="wb-browser-error-text">
+            {gatesDisabled
+              ? (gatesDisabledMessage ?? t('browser.needBrowserEnabled'))
+              : localizeBrowserGateMessage(session.lastError ?? '')}
+          </span>
         </p>
       ) : null}
       <div
@@ -1030,11 +1056,18 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
       >
         <div ref={pageSlotRef} className="wb-browser-page-slot" data-wb-browser-page-slot />
         {!session.sessionId ? (
-          <div className="wb-browser-empty" data-wb-browser-empty>
+          <div className="wb-browser-empty" data-wb-browser-empty data-wb-browser-disabled={gatesDisabled ? 'true' : undefined}>
             <Globe size={30} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
             <span className="wb-browser-empty-title">
-              {t('browser.emptyHint')}
+              {gatesDisabled
+                ? (gatesDisabledMessage ?? t('browser.needBrowserEnabled'))
+                : t('browser.emptyHint')}
             </span>
+            {gatesDisabled ? (
+              <span className="wb-browser-empty-title" style={{ opacity: 0.75, fontSize: 12 }}>
+                {t('browser.gatedHint', { defaultValue: '功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。' })}
+              </span>
+            ) : null}
           </div>
         ) : null}
         {session.sessionId && hostMode === 'detached' ? (

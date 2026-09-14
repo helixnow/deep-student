@@ -63,19 +63,20 @@ describe('FindReplacePanel accessibility', () => {
   it('renders as an inline top bar (not a floating corner card)', () => {
     render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
     const panel = screen.getByRole('search', { name: '查找和替换' });
-    expect(panel.className).toContain('inset-x-0');
-    expect(panel.className).toContain('top-0');
+    // Inline under the editor chrome (border-b), not a floating absolute card.
+    expect(panel.className).toContain('relative');
+    expect(panel.className).toContain('border-b');
     expect(panel.className).toContain('ui-drop-in');
   });
 });
 
 describe('FindReplacePanel empty state', () => {
-  it('shows friendly no-match text instead of 0/0', () => {
+  it('shows 0/0 for empty results (not a stale 1/1)', () => {
     render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
     const input = screen.getByRole('textbox', { name: '查找' });
     fireEvent.change(input, { target: { value: 'nothing' } });
-    expect(screen.getByText('无匹配结果')).toBeInTheDocument();
-    expect(screen.queryByText('0/0')).not.toBeInTheDocument();
+    expect(screen.getByText('0/0')).toBeInTheDocument();
+    expect(screen.getByTitle('无匹配结果')).toBeInTheDocument();
   });
 });
 
@@ -99,7 +100,7 @@ describe('FindReplacePanel regex mode', () => {
     // 合法正则后恢复为常规无匹配提示（editorApi 为 null 时恒为 0 匹配）
     fireEvent.change(input, { target: { value: 'a+' } });
     expect(screen.queryByText('无效正则表达式')).not.toBeInTheDocument();
-    expect(screen.getByText('无匹配结果')).toBeInTheDocument();
+    expect(screen.getByText('0/0')).toBeInTheDocument();
   });
 });
 

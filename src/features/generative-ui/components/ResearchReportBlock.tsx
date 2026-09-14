@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/features/chat/components/renderers/MarkdownRenderer';
+import { GenerativeMarkdownBody } from './GenerativeMarkdownBody';
 import {
   parseResearchReportCitations,
   RESEARCH_REPORT_CITATION_PATTERN,
@@ -127,7 +127,7 @@ export function ResearchReportBlock({ title, body, density }: ResearchReportBloc
           density === 'compact' ? 'text-xs' : 'text-sm',
         )}
       >
-        <MarkdownRenderer
+        <GenerativeMarkdownBody
           content={sanitizedBody}
           isStreaming={false}
           className={density === 'compact' ? 'text-xs' : 'text-sm'}

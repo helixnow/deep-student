@@ -6,7 +6,7 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 
-import { assertBrowserGatesOpen, BrowserGateClosedError } from './gates';
+import { assertBrowserLaunchable, BrowserGateClosedError } from './gates';
 import type {
   BrowserCommandName,
   BrowserControlMode,
@@ -31,7 +31,7 @@ export class BrowserApiError extends Error {
 
 async function ensureGatesOpen(command: BrowserCommandName): Promise<void> {
   try {
-    await assertBrowserGatesOpen();
+    await assertBrowserLaunchable();
   } catch (err) {
     if (err instanceof BrowserGateClosedError) {
       throw new BrowserApiError(command, err.message, err.code);
@@ -69,6 +69,26 @@ export function isCommandMissingError(err: unknown): boolean {
   );
 }
 
+/** Map Rust/English gate internals to user-facing zh-CN copy. */
+export function localizeBrowserGateMessage(message: string): string {
+  const raw = message.trim();
+  const stripped = raw.replace(/^GATES_CLOSED:\s*/i, '').trim();
+  const lower = stripped.toLowerCase();
+  if (lower.includes('workbenchmode') || lower.includes('workbench mode')) {
+    return '内置浏览器不可用：请先启用学习桌面';
+  }
+  if (lower.includes('workbenchbrowserenabled') || lower.includes('browserenabled')) {
+    return '内置浏览器不可用：请在设置中启用内置浏览器';
+  }
+  if (lower.includes('ui.workbench_browser') || lower.includes('feature flag')) {
+    return '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
+  }
+  if (/^GATES_CLOSED:/i.test(raw) || lower.startsWith('browser disabled')) {
+    return '内置浏览器不可用：功能未启用';
+  }
+  return raw;
+}
+
 export function toBrowserApiError(
   command: BrowserCommandName | string,
   err: unknown,
@@ -83,9 +103,10 @@ export function toBrowserApiError(
     );
   }
   const structuredCode = msg.match(/^([A-Z][A-Z0-9_]+):/)?.[1];
+  const localized = localizeBrowserGateMessage(msg);
   return new BrowserApiError(
     command,
-    msg || `浏览器命令失败：${command}`,
+    localized || `浏览器命令失败：${command}`,
     structuredCode ?? 'BROWSER_API_ERROR',
   );
 }
@@ -288,6 +309,8 @@ export async function reload(sessionId: string): Promise<BrowserSessionSnapshot>
 }
 
 export async function getState(sessionId?: string | null): Promise<BrowserSessionSnapshot> {
+  // Settings/flag closed: never hit Rust assert_gates_open (it hides the native content window).
+  await ensureGatesOpen('browser_get_state');
   const args: Record<string, unknown> = {};
   if (sessionId) args.sessionId = sessionId;
   return invokeState('browser_get_state', args);

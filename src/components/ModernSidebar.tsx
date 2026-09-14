@@ -88,6 +88,7 @@ import {
   useSessionSidebarIndicators,
 } from '@/features/chat/hooks/useSessionSidebarIndicators';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import { displayQuickLearningLabel } from '@/quick-assistant/displayName';
 import {
   WorkbenchSidebarRow as SidebarRow,
   WorkbenchSidebarRowLabel as SidebarRowLabel,
@@ -1344,7 +1345,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     const toRecentGroupSection = (group: SessionGroup): RecentSessionGroup => ({
       id: group.id,
-      label: group.name,
+      label: displayQuickLearningLabel(group.name),
       icon: group.icon,
       color: group.color,
       sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
@@ -1464,7 +1465,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             groupActions: t('chatV2:page.groupActions', 'Group Actions'),
             newSession: t('chatV2:page.newSession', 'New Session'),
             newSessionInGroup: t('chatV2:page.newSessionInGroup', {
-              groupName: sessionGroup.name,
+              groupName: displayQuickLearningLabel(sessionGroup.name),
             }),
             pinGroup: t('chatV2:page.pinGroup'),
             unpinGroup: t('chatV2:page.unpinGroup'),

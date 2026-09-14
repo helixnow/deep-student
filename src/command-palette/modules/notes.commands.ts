@@ -171,10 +171,12 @@ export const notesCommands: Command[] = [
     get name() { return i18next.t('command_palette:commands.notes.quick-switch', 'Quick switcher'); },
     get description() { return i18next.t('command_palette:descriptions.notes.quick-switch', 'Quickly open a note or mind map'); },
     category: 'notes',
-    shortcut: 'mod+o',
+    // Docs (07-笔记): Ctrl/⌘+P opens notes quick-open. Beat global.quick-search (mod+p / prio 99)
+    // when the notes workspace is focused; other apps keep their own Ctrl+P via isEnabled.
+    shortcut: 'mod+p',
     icon: MagnifyingGlass,
     get keywords() { return kw('notes.quick-switch'); },
-    priority: 99,
+    priority: 120,
     ...workbenchNotesCommandScope,
     execute: (deps) => dispatchNotesCommand(deps, '', 'quick-switch'),
   },

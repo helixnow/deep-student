@@ -457,7 +457,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
   if (sessionEmpty || !current || sessionDone) {
     const stillDue = (remainingDueAfterSession ?? 0) > 0;
-    const headline = sessionEmpty
+    // If we rated cards this session then the queue was reconciled empty,
+    // still show the completion summary (not the virgin "empty queue" empty-state).
+    const finishedWithRatings = sessionRatedCount > 0;
+    const showAsEmpty = sessionEmpty && !finishedWithRatings;
+    const headline = showAsEmpty
       ? t('session.emptyQueue')
       : stillDue
         ? t('session.batchDoneRemaining', { count: remainingDueAfterSession })
@@ -465,12 +469,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
     return (
       <SessionSummary
-        empty={sessionEmpty}
+        empty={showAsEmpty}
         headline={headline}
         ratedCount={sessionRatedCount}
         ratingCounts={sessionRatingCounts}
         bestStreak={sessionBestStreak}
-        elapsedMs={sessionEmpty ? null : sessionElapsedMs}
+        elapsedMs={showAsEmpty ? null : sessionElapsedMs}
         remainingDue={remainingDueAfterSession}
         busy={ratingBusy}
         canUndo={Boolean(lastReview)}

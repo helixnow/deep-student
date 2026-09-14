@@ -7,6 +7,7 @@
 import { useCallback, useEffect } from 'react';
 
 import { WORKBENCH_MODE_SETTING_KEY } from '@/features/settings/components/workbenchMode';
+import { resolveBrowserLaunchability } from '../gates';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { ensureBrowserControlModeSync } from '../controlModeSync';
 import { BROWSER_SETTING_KEYS } from '../navigationPolicy';
@@ -84,7 +85,23 @@ export function useBrowserSession(options?: {
 
   useEffect(() => {
     if (!hydrateOnMount) return;
-    void hydrateFromRust();
+    let cancelled = false;
+    void (async () => {
+      const snap = await resolveBrowserLaunchability();
+      if (cancelled) return;
+      if (!snap.open) {
+        useBrowserSessionStore.setState({
+          lastError: snap.closeMessage,
+          error: snap.closeMessage,
+          loading: false,
+        });
+        return;
+      }
+      await hydrateFromRust();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [hydrateFromRust, hydrateOnMount]);
 
   useEffect(() => {

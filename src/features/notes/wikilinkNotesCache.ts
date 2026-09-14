@@ -218,6 +218,13 @@ export async function refreshWikilinkNotesCache(): Promise<void> {
       truncated = didTruncate;
       lastRefreshAt = Date.now();
       invalidateIndex();
+      // Notify live NodeViews so links that rendered before the cache filled
+      // re-resolve (otherwise existing notes stay dashed / create-path forever).
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('notes:wikilink-index-updated', {
+          detail: {},
+        }));
+      }
     } catch (error: unknown) {
       console.warn('[wikilinkNotesCache] refresh failed:', error);
     } finally {

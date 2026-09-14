@@ -63,9 +63,9 @@ export function evaluateBrowserSettingsGates(
   const open = workbenchModeEnabled && browserEnabled;
   let closeMessage: string | null = null;
   if (!workbenchModeEnabled) {
-    closeMessage = 'browser disabled: desktop.workbenchMode is off';
+    closeMessage = '内置浏览器不可用：请先启用学习桌面';
   } else if (!browserEnabled) {
-    closeMessage = 'browser disabled: desktop.workbenchBrowserEnabled is off';
+    closeMessage = '内置浏览器不可用：请在设置中启用内置浏览器';
   }
   return { workbenchModeEnabled, browserEnabled, open, closeMessage };
 }
@@ -104,12 +104,72 @@ export function peekBrowserParentGateFromCache(): boolean | null {
 export async function assertBrowserGatesOpen(): Promise<BrowserGatesSnapshot> {
   const gates = await resolveBrowserGates();
   if (!gates.workbenchModeEnabled) {
-    throw new BrowserGateClosedError('browser disabled: desktop.workbenchMode is off');
+    throw new BrowserGateClosedError('内置浏览器不可用：请先启用学习桌面');
   }
   if (!gates.browserEnabled) {
-    throw new BrowserGateClosedError(
-      'browser disabled: desktop.workbenchBrowserEnabled is off',
-    );
+    throw new BrowserGateClosedError('内置浏览器不可用：请在设置中启用内置浏览器');
   }
   return gates;
+}
+
+/** Feature-flag key mirrored from Rust `FLAG_UI_WORKBENCH_BROWSER`. */
+export const WORKBENCH_BROWSER_FEATURE_FLAG = 'ui.workbench_browser';
+
+/**
+ * Full launchability: settings dual-gate AND ui.workbench_browser feature flag.
+ * Production builds ship the flag disabled; calling Tauri browser_* while closed
+ * runs reject_closed_gate and hides the native content window — never invoke
+ * when this returns closed.
+ */
+export async function resolveBrowserLaunchability(): Promise<
+  BrowserGatesSnapshot & { featureFlagEnabled: boolean; closeMessage: string | null }
+> {
+  const gates = await resolveBrowserGates();
+  let featureFlagEnabled = true;
+  try {
+    const raw = await tauriInvoke<{
+      flags?: Array<{ name?: string; enabled?: boolean; state?: string }>;
+    }>('get_feature_flags');
+    const flag = raw?.flags?.find((item) => item?.name === WORKBENCH_BROWSER_FEATURE_FLAG);
+    if (flag) {
+      const state = flag.state;
+      if (typeof state === 'string') {
+        const s = state.toLowerCase();
+        featureFlagEnabled = s === 'enabled' || s.startsWith('gradual');
+      } else if (state && typeof state === 'object') {
+        // Serde externally-tagged: { "Gradual": 0.5 } / { "UserSpecific": [...] }
+        const keys = Object.keys(state as Record<string, unknown>);
+        featureFlagEnabled = keys.some((k) => k === 'Gradual' || k === 'UserSpecific' || k === 'Enabled');
+      } else {
+        featureFlagEnabled = flag.enabled === true;
+      }
+    }
+  } catch {
+    // If flags cannot be loaded, keep settings-only result (fail open on flag read).
+    featureFlagEnabled = true;
+  }
+
+  let closeMessage: string | null = null;
+  if (!gates.workbenchModeEnabled) {
+    closeMessage = '内置浏览器不可用：请先启用学习桌面';
+  } else if (!gates.browserEnabled) {
+    closeMessage = '内置浏览器不可用：请在设置中启用内置浏览器';
+  } else if (!featureFlagEnabled) {
+    closeMessage = '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
+  }
+
+  return {
+    ...gates,
+    open: gates.open && featureFlagEnabled,
+    featureFlagEnabled,
+    closeMessage,
+  };
+}
+
+export async function assertBrowserLaunchable(): Promise<BrowserGatesSnapshot> {
+  const snap = await resolveBrowserLaunchability();
+  if (!snap.open) {
+    throw new BrowserGateClosedError(snap.closeMessage ?? '内置浏览器不可用：功能未启用');
+  }
+  return snap;
 }

@@ -726,10 +726,30 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     getSpawnOrigin,
   });
 
-  // 关联线模式下忽略框选同步；框选节点时清掉关联线选中
+  // 框选进行中：RF 选框元素挂实时计数（data-attribute，徽标由
+  // canvas-interactions.css 的 ::after 渲染，不额外插 DOM 层级）
+  const [isMarqueeActive, setIsMarqueeActive] = useState(false);
+  const isMarqueeActiveRef = useRef(false);
+  const onSelectionStart = useCallback(() => {
+    isMarqueeActiveRef.current = true;
+    setIsMarqueeActive(true);
+  }, []);
+  const onSelectionEnd = useCallback(() => {
+    // 延后关闭门闩：RF 常在 onSelectionEnd 之后再发一次最终 onSelectionChange，
+    // 若同步清掉 ref，框选结果不会写回 store（B1 无持久多选）。
+    queueMicrotask(() => {
+      isMarqueeActiveRef.current = false;
+      setIsMarqueeActive(false);
+    });
+  }, []);
+
+  // 关联线模式下忽略框选同步；仅在框选手势中把 RF selection 写回 store。
+  // 普通单击 / Shift 多选 / 关联线点选由 onNodeClick 负责——若此处也同步，
+  // controlled `selected` ↔ onSelectionChange 会在多选/加线时形成 setState 环 (#185)。
   const onMarqueeSelectionChange = useCallback(
     (params: OnSelectionChangeParams) => {
       if (associatingFromId) return;
+      if (!isMarqueeActiveRef.current) return;
       if (params.nodes.length > 0) {
         setSelectedAssociationId(null);
       }
@@ -737,12 +757,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     },
     [associatingFromId, marqueeProps],
   );
-
-  // 框选进行中：RF 选框元素挂实时计数（data-attribute，徽标由
-  // canvas-interactions.css 的 ::after 渲染，不额外插 DOM 层级）
-  const [isMarqueeActive, setIsMarqueeActive] = useState(false);
-  const onSelectionStart = useCallback(() => setIsMarqueeActive(true), []);
-  const onSelectionEnd = useCallback(() => setIsMarqueeActive(false), []);
 
   useEffect(() => {
     if (!isMarqueeActive) return;
@@ -1893,6 +1907,11 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         selectionMode={marqueeProps.selectionMode}
         panOnDrag={marqueeProps.panOnDrag}
         selectionKeyCode={associatingFromId ? null : marqueeProps.selectionKeyCode}
+        // 禁用 RF 内建键盘：方向键/Enter 由 useMindMapKeyboard 负责；
+        // multi-select 由 onNodeClick 负责。避免 a11y 吞键与 controlled selected 反馈环 (#185)。
+        disableKeyboardA11y
+        deleteKeyCode={null}
+        multiSelectionKeyCode={null}
         panActivationKeyCode={marqueeProps.panActivationKeyCode}
         onSelectionChange={onMarqueeSelectionChange}
       >

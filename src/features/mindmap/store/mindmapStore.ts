@@ -1486,8 +1486,17 @@ export function createMindMapStore(): MindMapStoreApi {
         });
       },
 
-      // 设置选中节点
+      // 设置选中节点（同集跳过，避免 RF onSelectionChange ↔ controlled selected 空转）
       setSelection: (nodeIds: string[]) => {
+        const current = get().selection;
+        if (
+          current.length === nodeIds.length &&
+          (current.length <= 1
+            ? current[0] === nodeIds[0]
+            : current.every((id) => nodeIds.includes(id)))
+        ) {
+          return;
+        }
         set((state) => {
           state.selection = nodeIds;
         });

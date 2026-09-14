@@ -2249,7 +2249,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         label: isFavorite
           ? t('notesWorkspace.context.unfavorite')
           : t('notesWorkspace.context.favorite'),
-        onSelect: () => { void favorites.toggle(item.id, resourceType); },
+        onSelect: () => {
+          void favorites.setFavorite(item.id, resourceType, !isFavorite, {
+            path: item.path,
+            name: item.name,
+          });
+        },
       });
     }
     if (item.canRename !== false) {

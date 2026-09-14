@@ -132,7 +132,10 @@
     "markdown": {
       "empty": "暂无正文",
       "error": "正文渲染失败"
-    }
+    },
+    "render_error": "内容渲染失败",
+    "render_error_unknown": "未知渲染错误",
+    "render_error_reason": "原因：{{reason}}"
   },
   "notes": {
     "summary_title": "AI 笔记摘要",

@@ -182,6 +182,23 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
           }}
           placeholder={placeholder}
           onKeyDown={(e) => {
+            // ★ Linux/GTK WebView: Ctrl/Cmd+A must select composer text and MUST NOT
+            // open the OS file picker (hidden <input type="file"> / native accelerator).
+            if (
+              !isImeComposing(e) &&
+              (e.ctrlKey || e.metaKey) &&
+              !e.altKey &&
+              !e.shiftKey &&
+              e.key.toLowerCase() === 'a'
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              const textarea = e.currentTarget;
+              textarea.select();
+              onCaretPosChange(textarea.selectionStart);
+              return;
+            }
+
             // ★ 技能斜杠命令补全优先（与 @mention 的触发上下文互斥）
             if (
               !isImeComposing(e) &&

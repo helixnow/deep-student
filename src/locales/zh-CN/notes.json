@@ -459,6 +459,8 @@
     },
     "image_upload": {
       "save_failed": "图片无法保存到当前笔记：{{error}}",
+      "invalid_image": "无法读取该图片，文件可能已损坏或格式不受支持",
+      "dialog_failed": "无法打开图片选择对话框",
       "not_persisted": "图片未能持久化保存，仅本次会话可见。请检查后重新插入图片。",
       "drop_failed": "拖拽图片处理失败：{{error}}",
       "paste_failed": "粘贴图片处理失败：{{error}}",

@@ -84,9 +84,13 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
 />
 
       {isSensitive && (
-        <div className="mt-1 flex items-center text-xs text-green-600">
+        <div className={`mt-1 flex items-center text-xs ${value.trim() ? 'text-green-600' : 'text-muted-foreground'}`}>
           <Shield size={12} className="mr-1" />
-          <span>{t('securePassword.encryptedInSecureArea')}</span>
+          <span>
+            {value.trim()
+              ? t('securePassword.encryptedInSecureArea')
+              : t('securePassword.emptyNotSet', { defaultValue: '尚未设置密钥' })}
+          </span>
         </div>
       )}
     </div>

@@ -219,7 +219,8 @@
       "invalidSuspendResponse": "复习服务返回了无效的暂停结果",
       "mismatchedSuspendResponse": "复习服务返回的暂停结果与当前卡片不匹配",
       "invalidResumeResponse": "复习服务返回了无效的恢复结果",
-      "mismatchedResumeResponse": "复习服务返回的恢复结果与当前卡片不匹配"
+      "mismatchedResumeResponse": "复习服务返回的恢复结果与当前卡片不匹配",
+      "undoStale": "撤销失败：该评分已不是本轮最近一次评分（可能已被同步或其它窗口覆盖）"
     },
     "suspend": "暂停卡片",
     "suspendFailed": "暂停失败",

@@ -2447,7 +2447,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           });
           
           // 使用 Tauri dialog 选择图片
-          const file = await pickImageWithTauriDialog();
+          let file: File | null = null;
+          try {
+            file = await pickImageWithTauriDialog();
+          } catch (error) {
+            emitImageUploadDebug('dialog_result', 'error', '打开文件对话框失败', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+            const i18next = (await import('i18next')).default;
+            showGlobalNotification(
+              'error',
+              i18next.t('notes:editor.image_upload.dialog_failed', {
+                defaultValue: '无法打开图片选择对话框',
+              }),
+            );
+            return;
+          }
 
           // 异步等待期间本实例可能已销毁（切换笔记会重建编辑器），
           // 销毁后 crepeRef.current 已指向新实例，绝不能再写入
@@ -2457,6 +2473,25 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             emitImageUploadDebug('dialog_result', 'warning', '用户取消选择或未选择文件', {
               result: null,
             });
+            return;
+          }
+
+          try {
+            const { validateImageFile } = await import('@/components/crepe/features/imageUpload');
+            await validateImageFile(file);
+          } catch {
+            emitImageUploadDebug('dialog_result', 'error', '图片文件损坏或无法解码', {
+              fileName: file.name,
+              fileSize: file.size,
+            });
+            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+            const i18next = (await import('i18next')).default;
+            showGlobalNotification(
+              'error',
+              i18next.t('notes:editor.image_upload.invalid_image', {
+                defaultValue: '无法读取该图片，文件可能已损坏或格式不受支持',
+              }),
+            );
             return;
           }
           
@@ -2706,6 +2741,25 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                   fileSize: file.size,
                   fileType: file.type,
                 });
+
+                try {
+                  const { validateImageFile } = await import('@/components/crepe/features/imageUpload');
+                  await validateImageFile(file);
+                } catch {
+                  emitImageUploadDebug('file_convert', 'error', '拖放图片损坏或无法解码', {
+                    fileName: file.name,
+                    fileSize: file.size,
+                  });
+                  const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+                  const i18next = (await import('i18next')).default;
+                  showGlobalNotification(
+                    'error',
+                    i18next.t('notes:editor.image_upload.invalid_image', {
+                      defaultValue: '无法读取该图片，文件可能已损坏或格式不受支持',
+                    }),
+                  );
+                  return;
+                }
                 
                 // 上传文件
                 const url = await uploader(file);

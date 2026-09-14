@@ -183,6 +183,10 @@ export interface SubmitResult {
   wrongOptions?: string[];
   /** 本次作答记录 ID（用于关联 AI 评判） */
   submissionId?: string;
+  /** 主观题 AI 评分 0–100（评判完成后写入，供结果卡展示） */
+  aiScore?: number;
+  /** 主观题 AI 判定：correct | partial | incorrect */
+  aiVerdict?: 'correct' | 'partial' | 'incorrect';
 }
 
 function mapQuestionType(rawType?: string): QuestionType {

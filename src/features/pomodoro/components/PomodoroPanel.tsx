@@ -600,9 +600,11 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
   // 严格模式下专注阶段隐藏暂停（store 同样拦截，双保险）
   const pauseLocked = settings.strictMode && mode === 'work' && status === 'running';
 
-  // ==== 键盘快捷键（面板挂载期间全局生效；沉浸模式有自己的处理器，避让）====
+  // ==== 键盘快捷键（仅面板自身聚焦时生效；沉浸模式有自己的处理器）====
   // Space = 开始/暂停/继续；B = 跳过休息；M = 环境音开关。
+  // 不在 document 全局抢键：待办列表 j/k 聚焦行的 Space/x 完成不能被番茄钟偷走。
   // 输入场景（可编辑元素 / 组合输入 / 修饰键）一律放行不拦截。
+  const panelRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -615,6 +617,11 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       if (e.defaultPrevented || e.isComposing || e.repeat) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isEditableTarget(e.target)) return;
+      // 焦点必须落在本面板内，才处理番茄钟快捷键（避免抢待办 Space）
+      const root = panelRootRef.current;
+      if (!root || !(e.target instanceof Node) || !root.contains(e.target)) {
+        return;
+      }
       // 焦点在按钮上时空格是原生激活语义，不重复触发；
       // 焦点在滑杆/开关等 ARIA 控件上时空格属于控件交互，同样放行
       if (
@@ -999,7 +1006,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
   return (
     // 面板是 Todo 中屏最底部元素：预留移动端安全区，避免手势条遮挡统计行（桌面端变量为 0）
-    <div className="flex-shrink-0 pb-[var(--mobile-safe-area-bottom,0px)]">
+    <div
+      ref={panelRootRef}
+      className="flex-shrink-0 pb-[var(--mobile-safe-area-bottom,0px)]"
+    >
       {/* 内联展开区（设置/统计）：面板向上「长出」，不走浮层（宿主提供子屏时按钮直开子屏，此区不会被触发） */}
       {inlineExpandArea}
       {isMobile ? (

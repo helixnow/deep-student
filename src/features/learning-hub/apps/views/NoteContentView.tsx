@@ -142,10 +142,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   isActiveRef.current = isActive;
   onSaveStateChangeRef.current = onSaveStateChange;
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
-  const isSmallScreen = useIsMobile();
-
   const contentHostRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(0);
+  const isViewportMobile = useIsMobile();
+  // A1/A2: OS min window ~980px never hits window <768; use note pane width instead.
+  const isSmallScreen = isViewportMobile || (contentWidth > 0 && contentWidth < 768);
   // 宽编辑面并排，窄编辑面切换到完整上下文页。
   const [rightPanelVisible, setRightPanelVisible] = useState(false);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）

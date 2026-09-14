@@ -164,6 +164,9 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   const handleAutoSubmit = useCallback(() => {
     if (autoSubmitTriggeredRef.current) return;
     autoSubmitTriggeredRef.current = true;
+    // 交卷一开始就停倒计时，避免成绩单出现后顶栏/本卡仍继续递减
+    const previousTargetEndTime = targetEndTime;
+    setTargetEndTime(null);
     if (activeSession) {
       const submitSession = buildSubmitSession(activeSession);
       submitMockExam(submitSession).then((scoreCard) => {
@@ -172,16 +175,27 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
         onSubmit?.(scoreCard);
       }).catch((err) => {
         autoSubmitTriggeredRef.current = false;
+        setTargetEndTime(previousTargetEndTime);
         console.error('Auto-submit failed:', err);
         showGlobalNotification('error', err instanceof Error ? err.message : String(err), t('mockExam.submitError'));
       });
     }
-  }, [activeSession, submitMockExam, onSubmit, buildSubmitSession, setMockExamSession, t]);
+  }, [activeSession, submitMockExam, onSubmit, buildSubmitSession, setMockExamSession, t, targetEndTime]);
   
-  const { remaining: examRemainingSeconds } = useCountdown(
+  const { remaining: examRemainingSeconds, reset: resetExamCountdown } = useCountdown(
     targetEndTime,
     handleAutoSubmit,
   );
+
+  useEffect(() => {
+    if (!activeSession || activeSession.is_submitted) {
+      resetExamCountdown();
+    }
+  }, [activeSession, resetExamCountdown]);
+
+  useEffect(() => () => {
+    resetExamCountdown();
+  }, [resetExamCountdown]);
 
   // 最后 60 秒：变色 + 脉动（CountdownRing 内处理）
   

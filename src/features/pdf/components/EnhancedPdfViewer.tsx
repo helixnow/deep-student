@@ -1435,10 +1435,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   
   // 同步外部书签数据
   useEffect(() => {
-    if (externalBookmarks !== undefined) {
-      setBookmarks(externalBookmarks);
-    }
-  }, [externalBookmarks]);
+    if (externalBookmarks === undefined) return;
+    // Don't clobber an in-progress rename with a stale parent snapshot.
+    if (editingBookmarkId) return;
+    setBookmarks(externalBookmarks);
+  }, [externalBookmarks, editingBookmarkId]);
   
   // 检查当前页是否有书签
   const currentPageBookmark = useMemo(() => {
@@ -1493,14 +1494,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   
   // 更新书签标题
   const updateBookmarkTitle = useCallback((id: string, newTitle: string) => {
-    const newBookmarks = bookmarks.map(b => 
-      b.id === id ? { ...b, title: newTitle.trim() || b.title } : b
-    );
-    setBookmarks(newBookmarks);
-    onBookmarksChange?.(newBookmarks);
+    setBookmarks((prev) => {
+      const next = prev.map((b) =>
+        b.id === id ? { ...b, title: newTitle.trim() || b.title } : b,
+      );
+      // Notify parent after this updater returns so persist sees the renamed title.
+      Promise.resolve().then(() => onBookmarksChange?.(next));
+      return next;
+    });
     setEditingBookmarkId(null);
     setEditingBookmarkTitle('');
-  }, [bookmarks, onBookmarksChange]);
+  }, [onBookmarksChange]);
   
   // 页面导航（提前定义，供 goToBookmark 使用）
   const goToPage = useCallback((page: number) => {
@@ -1930,13 +1934,31 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     [currentPage, viewMode, numPages, coverOffset, goToPage],
   );
 
+  const [pageJumpError, setPageJumpError] = useState<string | null>(null);
+
   const handlePageInputSubmit = useCallback(() => {
     const pageNum = parseInt(pageInputValue, 10);
-    if (!isNaN(pageNum)) {
-      goToPage(pageNum);
+    if (Number.isNaN(pageNum)) {
+      setPageJumpError(t('pdf:toolbar.pageJumpInvalid', { defaultValue: '请输入有效页码' }));
+      setPageInputValue('');
+      return;
     }
+    if (numPages > 0 && (pageNum < 1 || pageNum > numPages)) {
+      setPageJumpError(
+        t('pdf:toolbar.pageJumpOutOfRange', {
+          max: numPages,
+          defaultValue: `页码超出范围（1–${numPages}）`,
+        }),
+      );
+      // Clamp so the reader still moves to a valid page.
+      goToPage(pageNum);
+      setPageInputValue('');
+      return;
+    }
+    setPageJumpError(null);
+    goToPage(pageNum);
     setPageInputValue('');
-  }, [pageInputValue, goToPage]);
+  }, [pageInputValue, goToPage, numPages, t]);
 
   // ========== 缩放 ==========
   // applyScale：手动缩放统一入口（切到 custom 模式）。
@@ -2318,10 +2340,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [applyScale]);
 
   // 键盘快捷键（必须在 goToPage 定义之后）
-  // 作用域限定在组件容器内，避免与其他组件快捷键冲突
+  // Mod+F uses window capture while the PDF has focus-within so notes find
+  // (document/window listeners) cannot steal it when the reader is focused.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const pdfHasFocus = (target: EventTarget | null) => {
+      if (!(target instanceof Node)) {
+        return container === document.activeElement || container.contains(document.activeElement);
+      }
+      return container === target || container.contains(target);
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // 如果焦点在输入框中，忽略大部分快捷键
@@ -2329,7 +2359,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                               document.activeElement?.tagName === 'TEXTAREA';
       
       // Ctrl/Cmd + F: 搜索
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        if (!pdfHasFocus(e.target) && !pdfHasFocus(document.activeElement)) return;
         e.preventDefault();
         e.stopPropagation();
         setShowSearch(true);
@@ -2337,6 +2368,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         return;
       }
       
+      // Window-capture listener: ignore non-search shortcuts unless PDF focused.
+      if (!pdfHasFocus(e.target) && !pdfHasFocus(document.activeElement)) {
+        return;
+      }
+
       // Escape: 关闭搜索或高亮菜单
       if (e.key === 'Escape') {
         if (showSearch) {
@@ -2443,8 +2479,23 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         handleZoomModeSelect('fitWidth');
       }
     };
+    const handleModFCapture = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== 'f') return;
+      if (!pdfHasFocus(e.target) && !pdfHasFocus(document.activeElement)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setShowSearch(true);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+
+    // Capture Mod+F on window so notes find cannot steal it while PDF is focused.
+    window.addEventListener('keydown', handleModFCapture, true);
     container.addEventListener('keydown', handleKeyDown);
-    return () => container.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleModFCapture, true);
+      container.removeEventListener('keydown', handleKeyDown);
+    };
   }, [showSearch, showHighlightMenu, goToPage, abortSearchTask, handleRotate, handleRotateCcw, handleZoomIn, handleZoomOut, handleZoomModeSelect]);
 
   // ========== 壳层搜索转发 ==========
@@ -3068,12 +3119,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   onChange={(e) => setEditingBookmarkTitle(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
                       updateBookmarkTitle(bm.id, editingBookmarkTitle);
                     } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.stopPropagation();
                       cancelEditBookmark();
                     }
                   }}
-                  onBlur={() => updateBookmarkTitle(bm.id, editingBookmarkTitle)}
+                  onBlur={() => {
+                    // Enter already committed and cleared editingBookmarkId; skip empty re-commit.
+                    if (editingBookmarkId !== bm.id) return;
+                    updateBookmarkTitle(bm.id, editingBookmarkTitle);
+                  }}
                   onClick={(e) => e.stopPropagation()}
                   autoFocus
                 />
@@ -3834,11 +3893,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               inputMode="numeric"
               className="ds-input"
               value={pageInputValue || currentPage}
-              onChange={(e) => setPageInputValue(e.target.value)}
+              aria-invalid={pageJumpError ? true : undefined}
+              aria-describedby={pageJumpError ? 'ds-pdf-page-jump-error' : undefined}
+              title={pageJumpError ?? undefined}
+              onChange={(e) => {
+                setPageJumpError(null);
+                setPageInputValue(e.target.value);
+              }}
               onKeyDown={(e) => e.key === 'Enter' && handlePageInputSubmit()}
               // 失焦不提交：未经 Enter 确认的输入还原显示为当前页，
               // 避免误触（点击空白处收起键盘）触发意外跳页
-              onBlur={() => setPageInputValue('')}
+              onBlur={() => {
+                setPageInputValue('');
+                setPageJumpError(null);
+              }}
               onFocus={(e) => {
                 setPageInputValue(String(currentPage));
                 const input = e.target as HTMLInputElement;
@@ -3848,6 +3916,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             />
             <span className="ds-page-total">/ {numPages || 0}</span>
           </div>
+          {pageJumpError ? (
+            <span id="ds-pdf-page-jump-error" role="alert" className="text-xs text-destructive whitespace-nowrap">
+              {pageJumpError}
+            </span>
+          ) : null}
 
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={!canNavigateNext(currentPage, viewMode, numPages, coverOffset)} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
             <CaretRight size={16} />

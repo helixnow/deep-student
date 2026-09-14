@@ -127,7 +127,7 @@ function ChartGraphic({
 
   if (kind === 'pie') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={256} minWidth={0} minHeight={160}>
         <PieChart>
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
@@ -146,7 +146,7 @@ function ChartGraphic({
 
   if (kind === 'line') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={256} minWidth={0} minHeight={160}>
         <LineChart data={cartesian}>
           <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
           <XAxis dataKey="category" tick={AXIS_TICK} stroke="hsl(var(--border))" />
@@ -173,7 +173,7 @@ function ChartGraphic({
   }
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={256} minWidth={0} minHeight={160}>
       <BarChart data={cartesian}>
         <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
         <XAxis dataKey="category" tick={AXIS_TICK} stroke="hsl(var(--border))" />

@@ -73,6 +73,8 @@ import {
   getPracticeSessionKey,
   useQuestionBankStore,
   type PracticeSessionOwner,
+  practiceAccuracyPercent,
+  countCorrectQuestions,
 } from '@/stores/questionBankStore';
 import {
   type ExtendedQuestionType,
@@ -1121,10 +1123,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           'grade',
           undefined,
           // onComplete 回调：在事件 handler 中直接获取最新 verdict/score
-          (verdict) => {
+          (verdict, score) => {
             if (verdict) {
               const isCorrect = verdict === 'correct';
-              setSubmitResult(prev => prev ? { ...prev, isCorrect, needsManualGrading: false } : null);
+              // 保留 AI 分数/判定到 submitResult：needsManualGrading 置 false 后
+              // 会切到客观题结果分支，必须把 score 带过去，否则只剩「回答错误」无分数。
+              const resolvedScore = score != null
+                ? Math.max(0, Math.min(100, Math.round(score)))
+                : (verdict === 'correct' ? 100 : verdict === 'incorrect' ? 0 : 60);
+              setSubmitResult(prev => prev ? {
+                ...prev,
+                isCorrect,
+                needsManualGrading: false,
+                aiScore: resolvedScore,
+                aiVerdict: verdict,
+              } : null);
               // verdict 已由后端落库（grading_method='ai'）：通知宿主回写
               // 练习进度（首答按 null 记的差量修正）与模拟考成绩，否则
               // 成绩单把 AI 已判对的主观题/填空题按错统计。
@@ -1171,13 +1184,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       // 检查是否完成所有题目：基于真实已作答题目数（快速翻题只"访问"不作答，不计入）
       const totalAnswered = progress.answeredIds.length;
       if (totalAnswered >= totalQuestions && totalQuestions > 0) {
+        // 正确率用题目维度（correctQuestionCount），勿用尝试维度 totalCorrectCount（可超 100%）
+        const correctCount = progress.correctQuestionCount
+          ?? countCorrectQuestions(progress.answeredResults);
         setCompletionStats({
           totalAnswered,
-          correctCount: progress.totalCorrectCount,
+          correctCount,
           totalTime: resolvedElapsedTime
         });
         if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
-        completionTimerRef.current = setTimeout(() => setShowCompletionCelebration(true), 500);
+        completionTimerRef.current = setTimeout(() => {
+          setShowCompletionCelebration(true);
+          // 本轮完成：停掉宿主顶栏计时/倒计时，避免庆祝卡下仍继续走秒
+          setLocalTimerRunning(false);
+          onTimerRunningChange?.(false);
+        }, 500);
       }
     } catch (err) {
       debugLog.error('Submit answer failed:', err);
@@ -1186,7 +1207,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeSessionAnswer, practiceSessionOwner, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
+  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, onGradingResolved, recordPracticeSessionAnswer, practiceSessionOwner, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, onTimerRunningChange, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
@@ -1893,9 +1914,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // ========== 完成庆祝（内联卡片，随内容滚动，不使用遮罩层） ==========
   const renderCompletionCelebration = () => {
     if (!showCompletionCelebration || !completionStats) return null;
-    const correctRate = completionStats.totalAnswered > 0
-      ? Math.round((completionStats.correctCount / completionStats.totalAnswered) * 100)
-      : 0;
+    const correctRate = practiceAccuracyPercent(
+      completionStats.correctCount,
+      completionStats.totalAnswered,
+    );
 
     return (
       <div className="ui-rise-in p-4 rounded-md bg-card border border-border/50 shadow-sm text-center space-y-3">
@@ -2120,23 +2142,44 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <div className={cn(
                   'w-5 h-5 rounded-full flex items-center justify-center',
-                  submitResult.isCorrect ? 'bg-success qbank-anim-pop' : 'bg-destructive'
+                  submitResult.aiVerdict === 'partial'
+                    ? 'bg-warning'
+                    : submitResult.isCorrect
+                      ? 'bg-success qbank-anim-pop'
+                      : 'bg-destructive'
                 )}>
                   {submitResult.isCorrect ? (
                     <Check size={12} weight="bold" className="text-success-foreground" />
+                  ) : submitResult.aiVerdict === 'partial' ? (
+                    <Sparkle size={12} className="text-warning-foreground" />
                   ) : (
                     <X size={12} className="text-destructive-foreground" />
                   )}
                 </div>
                 <span className={cn(
                   'text-sm font-medium',
-                  submitResult.isCorrect ? 'text-success' : 'text-destructive'
+                  submitResult.aiVerdict === 'partial'
+                    ? 'text-warning'
+                    : submitResult.isCorrect
+                      ? 'text-success'
+                      : 'text-destructive'
                 )}>
-                  {submitResult.isCorrect ? t('editor.answerCorrect') : t('editor.answerWrong')}
+                  {submitResult.aiVerdict === 'partial'
+                    ? t('editor.verdictPartial')
+                    : submitResult.isCorrect
+                      ? t('editor.answerCorrect')
+                      : t('editor.answerWrong')}
                 </span>
+                {(submitResult.aiScore != null || aiGrading.state.score != null) && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t('editor.aiScore', {
+                      score: submitResult.aiScore ?? aiGrading.state.score,
+                    })}
+                  </span>
+                )}
                 {/* 结构化题型的标准答案由作答组件内联揭示，这里不再重复展示原始 JSON */}
                 {submitResult.correctAnswer && !submitResult.isCorrect && !structuredRevealsAnswer && (
                   <span className="text-sm text-muted-foreground">
@@ -2152,6 +2195,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </DsButton>
               )}
             </div>
+
+            {/* 主观题 AI 评判反馈：needsManualGrading 置 false 后仍保留分析正文 */}
+            {!aiGrading.state.isGrading && aiGrading.state.feedback && !aiGrading.state.error && (
+              <div className="pt-2 border-t border-foreground/[0.06] text-sm text-muted-foreground leading-relaxed">
+                <StreamingMarkdownRenderer
+                  content={aiGrading.state.feedback}
+                  isStreaming={false}
+                />
+              </div>
+            )}
 
             {/* 解析折叠（回退到题目自身解析） */}
             {effectiveExplanation && (

@@ -894,15 +894,24 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
   // 键盘快捷键
   // ★ 标签页：仅活跃标签页响应快捷键，防止多个 MindMap 标签页同时处理同一按键
-  // ★ capture：Esc 关搜索须在 document 冒泡的 useMindMapKeyboard 之前执行，否则会被 stopPropagation 吞掉
+  // ★ capture + stopPropagation：导图窗聚焦时拦截 Ctrl+F / Ctrl+Shift+[ / Esc，
+  //   防止冒泡到笔记工作区（笔记搜索、标签循环切换）或其它全局处理器。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isActive === false) return;
 
+      // 演示 / 背诵：Esc 优先退出（须 stopPropagation，避免其它层抢跑）
       if (e.key === 'Escape' && presentationMode) {
         e.preventDefault();
         e.stopPropagation();
         setPresentationMode(false);
+        return;
+      }
+
+      if (e.key === 'Escape' && reciteMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        setReciteMode(false);
         return;
       }
 
@@ -911,7 +920,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const isTextInputContext =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-      // 内联浮层 Esc 关闭次序：演示模式 > 导入确认/错误条 > 版本历史 > 快捷键面板 > 搜索 > 画布级联
+      // 内联浮层 Esc 关闭次序：演示/背诵 > 导入确认/错误条 > 版本历史 > 快捷键面板 > 搜索 > 画布级联
       if (e.key === 'Escape' && showImportConfirm) {
         e.preventDefault();
         e.stopPropagation();
@@ -954,6 +963,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       // textarea owns focus. Always suppress the browser Save Page shortcut.
       if (currentView !== 'mindmap' && isMod && e.key.toLowerCase() === 's') {
         e.preventDefault();
+        e.stopPropagation();
         if (isDirty && !isSaving) save();
         return;
       }
@@ -962,30 +972,48 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       if (currentView !== 'mindmap' && !isTextInputContext) {
         if (isMod && e.key === 'z' && !e.shiftKey) {
           e.preventDefault();
+          e.stopPropagation();
           if (canUndo()) undo();
         }
         if (isMod && (e.key === 'Z' || e.key === 'y')) {
           e.preventDefault();
+          e.stopPropagation();
           if (canRedo()) redo();
         }
       }
 
-      if (isMod && e.key === 'f' && !isTextInputContext) {
+      // Ctrl/Cmd+F → 导图搜索（须 stopPropagation，否则笔记工作区搜笔记）
+      if (isMod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
+        e.stopPropagation();
         if (showSearch) {
-          // 已打开：重新聚焦并全选查询词，直接输入即覆盖（常见 Cmd+F 习惯）
           const input = containerRef.current?.querySelector<HTMLInputElement>('.mm-search-input');
           input?.focus();
           input?.select();
         } else {
           setShowSearch(true);
         }
+        return;
+      }
+
+      // Ctrl/Cmd+Shift+[ / ] → 全部折叠 / 展开（须抢在笔记 workspace 切标签之前）
+      if (
+        isMod &&
+        e.shiftKey &&
+        !e.altKey &&
+        (e.key === '[' || e.key === ']' || e.key === '{' || e.key === '}')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === '[' || e.key === '{') collapseAll();
+        else expandAll();
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode, showImportConfirm, importError, showShortcutHelp, showVersionHistory]);
+  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode, reciteMode, setReciteMode, collapseAll, expandAll, showImportConfirm, importError, showShortcutHelp, showVersionHistory]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
   // loadMindMap 时会自动检查并恢复本地草稿

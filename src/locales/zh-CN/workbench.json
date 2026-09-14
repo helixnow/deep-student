@@ -777,7 +777,8 @@
     "approveNavigate": "允许助手打开：{{url}}",
     "approveClick": "允许助手点击页面元素",
     "approveType": "允许助手在页面中输入",
-    "nav": "导航"
+    "nav": "导航",
+    "gatedHint": "功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。"
   },
   "devPanel": {
     "title": "Workbench 诊断",
@@ -943,6 +944,7 @@
       "mentionsLimited": "仅扫描最近 {{count}} 篇候选笔记。",
       "noMentions": "没有找到未链接的提及",
       "convertMention": "在「{{title}}」中转为链接",
+      "convertMentionButton": "转为链接",
       "convertDirty": "「{{title}}」有未保存的修改，请先保存再转为链接。",
       "convertMissing": "「{{title}}」内容已变化，未找到该提及。",
       "convertFailed": "无法转为链接。",

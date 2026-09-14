@@ -777,7 +777,8 @@
     "approveNavigate": "Allow the assistant to open: {{url}}",
     "approveClick": "Allow the assistant to click a page element",
     "approveType": "Allow the assistant to type on the page",
-    "nav": "Navigation"
+    "nav": "Navigation",
+    "gatedHint": "The page window stays closed while this feature is disabled. Enable the built-in browser in Settings if your build supports it."
   },
   "devPanel": {
     "title": "Workbench Diagnostics",
@@ -943,6 +944,7 @@
       "mentionsLimited": "Only the {{count}} most recent candidate notes were scanned.",
       "noMentions": "No unlinked mentions found",
       "convertMention": "Convert the mention in \"{{title}}\" to a link",
+      "convertMentionButton": "Convert to link",
       "convertDirty": "\"{{title}}\" has unsaved changes. Save it before converting.",
       "convertMissing": "\"{{title}}\" has changed and the mention could not be found.",
       "convertFailed": "Could not convert the mention to a link.",

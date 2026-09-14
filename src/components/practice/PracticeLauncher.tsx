@@ -262,7 +262,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       summaries.timed = (
         <span className="text-muted-foreground">
           {t('practice:modeSummary.lastAccuracy', {
-            rate: Math.round((activeTimedSession.correct_count / activeTimedSession.answered_count) * 100),
+            rate: Math.max(0, Math.min(100, Math.round((activeTimedSession.correct_count / activeTimedSession.answered_count) * 100))),
           })}
         </span>
       );

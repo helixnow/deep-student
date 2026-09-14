@@ -225,14 +225,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     return undefined;
   }, [node.metadata]);
 
+  // Depend on bookmarks field only — any other metadata churn (e.g. readingProgress)
+  // used to rewrite local renames with a stale node.metadata snapshot.
+  const metadataBookmarks = (node.metadata as Record<string, unknown> | undefined)?.bookmarks;
   useEffect(() => {
-    const saved = (node.metadata as Record<string, unknown> | undefined)?.bookmarks as Bookmark[] | undefined;
-    if (saved && Array.isArray(saved)) {
-      setBookmarks(saved);
+    if (Array.isArray(metadataBookmarks)) {
+      setBookmarks(metadataBookmarks as Bookmark[]);
+    } else if (metadataBookmarks === undefined) {
+      // Keep local edits when metadata briefly omits bookmarks.
+      return;
     } else {
       setBookmarks([]);
     }
-  }, [node.metadata]);
+  }, [metadataBookmarks]);
 
   // node 切换时 flush 旧控制器再换新；unmount 时 dispose。
   // 旧控制器 dispose 用创建时快照，不读已指向新 node 的活 ref。

@@ -85,4 +85,58 @@ describe('areAttachmentInjectModesReady', () => {
 
     expect(areAttachmentInjectModesReady(attachment)).toBe(true);
   });
+
+  it('unlocks image mode while processing even if readyModes is still empty', () => {
+    const attachment = createAttachment({
+      status: 'processing',
+      injectModes: { image: ['image'] },
+      processingStatus: {
+        stage: 'image_compression',
+        readyModes: [],
+        percent: 100,
+        mediaType: 'image',
+      },
+    });
+
+    expect(areAttachmentInjectModesReady(attachment)).toBe(true);
+    expect(getMissingInjectModesForAttachment(attachment)).toEqual([]);
+  });
+
+  it('does not treat a text PDF as image-gated when injectModes are text', () => {
+    const attachment = createAttachment({
+      name: 'photosynthesis.pdf',
+      type: 'document',
+      mimeType: 'application/pdf',
+      status: 'processing',
+      injectModes: { pdf: ['text'] },
+      processingStatus: {
+        stage: 'page_compression',
+        readyModes: ['text'],
+        percent: 25,
+        mediaType: 'pdf',
+      },
+    });
+
+    expect(areAttachmentInjectModesReady(attachment)).toBe(true);
+    expect(getMissingInjectModesForAttachment(attachment)).toEqual([]);
+  });
+
+  it('keeps PDF image inject mode blocked until page images are ready', () => {
+    const attachment = createAttachment({
+      name: 'scan.pdf',
+      type: 'document',
+      mimeType: 'application/pdf',
+      status: 'processing',
+      injectModes: { pdf: ['image'] },
+      processingStatus: {
+        stage: 'page_compression',
+        readyModes: ['text'],
+        percent: 50,
+        mediaType: 'pdf',
+      },
+    });
+
+    expect(areAttachmentInjectModesReady(attachment)).toBe(false);
+    expect(getMissingInjectModesForAttachment(attachment)).toEqual(['image']);
+  });
 });

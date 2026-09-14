@@ -587,15 +587,35 @@ function structuredErrorCode(error: unknown): string | null {
   return typeof code === 'string' && code.trim() ? code.trim() : null;
 }
 
+function localizeFsrsBackendMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return trimmed;
+  // Match both legacy English and zh conflict copy from undo_last_review.
+  if (
+    /review log is stale/i.test(trimmed)
+    || trimmed.includes('已不是最近一次评分')
+    || trimmed.includes('复习记录已过期')
+  ) {
+    return i18n.t('flashcards:session.errors.undoStale');
+  }
+  return trimmed;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   if (structuredErrorCode(error) === FSRS_DIAGNOSTIC_CARD_NOT_REVIEWABLE) {
     return i18n.t('flashcards:session.errors.diagnosticCardNotReviewable');
   }
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) {
+    return localizeFsrsBackendMessage(error.message);
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return localizeFsrsBackendMessage(error);
+  }
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim()) return message;
+    if (typeof message === 'string' && message.trim()) {
+      return localizeFsrsBackendMessage(message);
+    }
   }
   return fallback;
 }
@@ -1297,10 +1317,18 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       requestFlashcardsDueRefresh();
 
+      // Domain echo deferred while ratingBusy must not empty the queue after
+      // the last card — that wiped SessionSummary (empty=true, no stats).
       const pending = get().pendingExternalRateIds;
       if (pending.length > 0) {
+        const justRatedId = get().lastReview?.cardStateId;
+        const remaining = justRatedId
+          ? pending.filter((id) => id !== justRatedId)
+          : pending;
         set({ pendingExternalRateIds: [] });
-        get().reconcileExternalRate(pending);
+        if (remaining.length > 0) {
+          get().reconcileExternalRate(remaining);
+        }
       }
 
       const afterRate = get();

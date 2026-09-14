@@ -16,8 +16,17 @@ interface GenerativeUIErrorBoundaryState {
   resetEpoch: number;
 }
 
-function GenerativeUIErrorFallback({ onReset }: { onReset: () => void }) {
+function GenerativeUIErrorFallback({
+  onReset,
+  error,
+}: {
+  onReset: () => void;
+  error: Error | null;
+}) {
   const { t } = useTranslation('generativeUi');
+  const reason =
+    (error?.message && error.message.trim())
+      || t('blocks.render_error_unknown', { defaultValue: '未知渲染错误' });
   return (
     <Alert
       variant="destructive"
@@ -27,8 +36,14 @@ function GenerativeUIErrorFallback({ onReset }: { onReset: () => void }) {
       data-testid="generative-ui-error-boundary"
       aria-label={t('a11y.block_error')}
     >
-      <AlertTitle>{t('blocks.markdown.error')}</AlertTitle>
-      <AlertDescription>
+      <AlertTitle>{t('blocks.render_error', { defaultValue: '内容渲染失败' })}</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p className="text-xs break-words opacity-90" data-generative-error-reason>
+          {t('blocks.render_error_reason', {
+            reason,
+            defaultValue: `原因：${reason}`,
+          })}
+        </p>
         <DsButton type="button" variant="outline" size="sm" onClick={onReset} aria-label={t('a11y.retry')}>
           {t('a11y.retry')}
         </DsButton>
@@ -64,7 +79,7 @@ export class GenerativeUIErrorBoundary extends React.Component<
 
   render(): React.ReactNode {
     if (this.state.error) {
-      return <GenerativeUIErrorFallback onReset={this.reset} />;
+      return <GenerativeUIErrorFallback onReset={this.reset} error={this.state.error} />;
     }
     return <React.Fragment key={this.state.resetEpoch}>{this.props.children}</React.Fragment>;
   }
