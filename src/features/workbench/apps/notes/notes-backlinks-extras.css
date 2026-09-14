@@ -369,3 +369,37 @@ div.notes-backlinks-panel-scanned-hint > p {
     transition: none;
   }
 }
+
+/* B7: unlinked-mention convert action — always visible text button (docs: 转为链接) */
+.notes-backlinks-panel-mention-row .notes-backlinks-panel-convert-button {
+  opacity: 1;
+  width: auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--border) / 80%);
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 70%);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.notes-backlinks-panel-mention-row .notes-backlinks-panel-convert-label {
+  line-height: 1;
+}
+
+.notes-backlinks-panel-mention-row .notes-backlinks-panel-convert-button:hover {
+  background: hsl(var(--accent));
+}
+
+@media (pointer: coarse) {
+  .notes-backlinks-panel-mention-row .notes-backlinks-panel-convert-button {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+}

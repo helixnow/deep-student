@@ -3895,7 +3895,8 @@
     "copied": "已复制!",
     "hidePassword": "隐藏密码",
     "showPassword": "显示密码",
-    "encryptedInSecureArea": "此密钥已加密存储在系统安全区域"
+    "encryptedInSecureArea": "此密钥已加密存储在系统安全区域",
+    "emptyNotSet": "尚未设置密钥"
   },
   "resizable": {
     "dragToResizeWidth": "拖拽调整面板宽度",

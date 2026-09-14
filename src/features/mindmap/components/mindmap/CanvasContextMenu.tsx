@@ -517,7 +517,13 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         label={node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
         shortcut="⇧Enter"
         onClick={() => exec(() => {
-          setEditingNoteNodeId(nodeId);
+          // 先关菜单再进备注编辑，避免菜单关闭后的焦点回落抢到正文 textarea
+          const id = nodeId;
+          if (!id) return;
+          setFocusedNodeId(id);
+          requestAnimationFrame(() => {
+            setEditingNoteNodeId(id);
+          });
         })}
       />
 

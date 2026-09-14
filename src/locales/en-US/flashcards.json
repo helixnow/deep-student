@@ -219,7 +219,8 @@
       "invalidSuspendResponse": "fsrs_suspend_card returned an invalid response",
       "mismatchedSuspendResponse": "fsrs_suspend_card returned a mismatched state",
       "invalidResumeResponse": "fsrs_unsuspend_card returned an invalid response",
-      "mismatchedResumeResponse": "fsrs_unsuspend_card returned a mismatched state"
+      "mismatchedResumeResponse": "fsrs_unsuspend_card returned a mismatched state",
+      "undoStale": "Undo failed: this rating is no longer the latest review in the session"
     },
     "suspend": "Suspend card",
     "suspendFailed": "Failed to suspend card",

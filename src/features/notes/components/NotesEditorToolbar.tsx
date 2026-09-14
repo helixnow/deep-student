@@ -282,6 +282,8 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
     [tr('notes:toolbar.heading1', '一级标题'), tr('notes:toolbar.heading2', '二级标题')],
     [tr('notes:toolbar.bulletList', '无序列表'), tr('notes:toolbar.orderedList', '有序列表'), tr('notes:toolbar.taskList', '任务列表')],
     [tr('notes:toolbar.quote', '引用'), tr('notes:toolbar.link', '链接')],
+    // Image is inline (not only overflow) so it cannot be mistaken for the adjacent Cards action.
+    [tr('notes:toolbar.image', '图片'), tr('notes:toolbar.table', '表格')],
     [tr('notes:toolbar.wikilink', '双链引用'), tr('notes:toolbar.callout', '高亮块'), tr('notes:toolbar.toggle', '折叠块')],
   ];
   const actionByLabel = new Map(formatActions.map((item) => [item.label, item]));

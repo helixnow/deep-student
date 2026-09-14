@@ -500,7 +500,8 @@ const UnlinkedMentionRowView: React.FC<{
   onConvert: (row: UnlinkedMentionRow) => void;
   openLabel: (title: string) => string;
   convertLabel: (title: string) => string;
-}> = ({ row, disabled, converting, contextRadius, onOpen, onConvert, openLabel, convertLabel }) => {
+  convertButtonText: string;
+}> = ({ row, disabled, converting, contextRadius, onOpen, onConvert, openLabel, convertLabel, convertButtonText }) => {
   const snippet = extractContextSnippet(
     row.content,
     row.mention.start,
@@ -526,7 +527,7 @@ const UnlinkedMentionRowView: React.FC<{
         </button>
         <button
           type="button"
-          className="notes-backlinks-panel-create-button"
+          className="notes-backlinks-panel-create-button notes-backlinks-panel-convert-button"
           disabled={disabled || converting}
           onClick={() => onConvert(row)}
           aria-label={convertLabel(row.node.name)}
@@ -535,6 +536,9 @@ const UnlinkedMentionRowView: React.FC<{
           {converting
             ? <CircleNotch className="notes-backlinks-panel-spinner" size={14} aria-hidden="true" />
             : <LinkSimple size={14} aria-hidden="true" />}
+          <span className="notes-backlinks-panel-convert-label" aria-hidden={converting || undefined}>
+            {converting ? '' : convertButtonText}
+          </span>
         </button>
       </div>
       {snippet && <ContextSnippetView snippet={snippet} />}
@@ -1131,6 +1135,9 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     defaultValue: '在「{{title}}」中转为链接',
     title,
   });
+  const convertMentionButtonText = t('notesWorkspace.backlinks.convertMentionButton', {
+    defaultValue: '转为链接',
+  });
   const canCreate = typeof onCreateFromUnresolved === 'function';
 
   const renderSectionHeader = (
@@ -1475,6 +1482,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                           onConvert={(mentionRow) => void convertMentionToLink(mentionRow)}
                           openLabel={openLinkedNoteLabel}
                           convertLabel={convertMentionLabel}
+                          convertButtonText={convertMentionButtonText}
                         />
                       ))}
                     </ul>

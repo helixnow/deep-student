@@ -598,6 +598,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         // （如 WebView / 全局命令），而不是被壳层空吞。
         if (canSearch) {
           event.preventDefault();
+          event.stopPropagation();
           openSearchPanel();
         }
       } else if (key === 'g' && searchOpen) {

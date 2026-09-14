@@ -2031,9 +2031,13 @@ impl FsrsReviewService {
             .db
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        // Do NOT bump `updated_at`: undo_last_review treats log.updated_at ==
+        // card_state.updated_at as "still the latest rating". Mastery outbox
+        // sync is bookkeeping, not a new rating — bumping here made undo fail
+        // with "review log is stale..." right after a successful rate.
         conn.execute(
             "UPDATE fsrs_review_logs
-             SET mastery_synced_at = ?2, mastery_revert_pending = 0, updated_at = ?2
+             SET mastery_synced_at = ?2, mastery_revert_pending = 0
              WHERE id = ?1",
             params![log_id, Utc::now().to_rfc3339()],
         )
@@ -2116,7 +2120,7 @@ impl FsrsReviewService {
             || log_updated_at.as_deref() != Some(current.updated_at.as_str())
         {
             return Err(AppError::conflict(
-                "review log is stale and is no longer the latest rating",
+                "复习记录已过期，已不是最近一次评分",
             ));
         }
 
@@ -4223,6 +4227,20 @@ mod tests {
     }
 
     #[test]
+    fn undo_still_works_after_mastery_outbox_mark_synced() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-undo-sync", "task-undo-sync", "card-undo-sync");
+        let service = FsrsReviewService::new(db);
+        let enqueued = service.enqueue_cards(&["card-undo-sync".to_string()]).unwrap();
+        let state_id = enqueued.states[0].id.clone();
+        let rated = service.rate(&state_id, 3, None, None).unwrap();
+        service.mark_mastery_review_synced(&rated.log_id).unwrap();
+        service
+            .undo_last_review(&rated.log_id, &state_id)
+            .expect("mastery sync must not make the latest rating look stale");
+    }
+
+    #[test]
     fn undo_of_unsynced_review_remains_a_durable_revert_pending() {
         let (_temp_dir, db) = setup_migrated_fsrs_db();
         insert_task_and_card(&db, "doc-revert", "task-revert", "card-revert");
@@ -5899,7 +5917,7 @@ mod tests {
         let error = service
             .undo_last_review(&first.log_id, &state_id)
             .expect_err("older active log must be stale");
-        assert!(error.message.contains("stale"));
+        assert!(error.message.contains("过期") || error.message.contains("stale"));
         assert_eq!(
             undo_fingerprint(&db, &state_id, &first.log_id),
             before_stale_attempt
@@ -5948,7 +5966,7 @@ mod tests {
         let error = service
             .undo_last_review(&rated.log_id, &state_id)
             .expect_err("later state mutation invalidates undo token");
-        assert!(error.message.contains("stale"));
+        assert!(error.message.contains("过期") || error.message.contains("stale"));
         assert_eq!(undo_fingerprint(&db, &state_id, &rated.log_id), before);
         assert!(service
             .get_due(None)

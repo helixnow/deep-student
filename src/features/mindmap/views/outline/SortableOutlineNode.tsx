@@ -1213,6 +1213,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         onClick={(e) => {
           if (e.shiftKey || e.metaKey || e.ctrlKey) return;
           setIsEscaped(false);
+          setIsEditing(true);
           setFocusedNodeId(node.id);
         }}
       >

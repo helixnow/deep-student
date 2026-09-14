@@ -717,6 +717,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
               uploadProgress: undefined,
               uploadStage: undefined,
+              // ★ 用 contentKind 分类后的默认模式覆盖创建时的 multimodal 占位
+              //（否则文本 PDF 会一直卡在 pdf:['image'] →「附件未就绪：（图片）」）
+              ...(explicitInjectModes ? { injectModes: explicitInjectModes } : {}),
               processingStatus: {
                 stage: stage as 'page_rendering' | 'page_compression' | 'ocr_processing' | 'vector_indexing' | 'completed' | 'completed_with_issues',
                 percent,
@@ -746,11 +749,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           } else if (isImageFile) {
             // 图片上传完成后设为 processing 状态，等待预处理流水线
             // ★ v2.1: 使用后端返回的实际处理状态（从 uploadResult 获取）
-            // ★ P0 架构改造：默认 readyModes 为空，image 需要等压缩完成
+            // ★ 原图上传成功即可注入：与后端「image 模式立即就绪」对齐，压缩不阻塞发送
             const stage = uploadResult.processingStatus || 'image_compression';
             const percent = uploadResult.processingPercent ?? 10;
             const VALID_IMG_MODES = new Set(['text', 'ocr', 'image']);
             const readyModes = (uploadResult.readyModes || []).filter(m => VALID_IMG_MODES.has(m)) as ('text' | 'image' | 'ocr')[];
+            if (!readyModes.includes('image')) {
+              readyModes.push('image');
+            }
             const isCompleted = stage === 'completed' || stage === 'completed_with_issues';
             const hasUsableMode = readyModes.length > 0;
 
@@ -761,6 +767,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               sourceId: uploadResult.sourceId, // ★ P0 修复：保存 sourceId 用于重试
               uploadProgress: undefined,
               uploadStage: undefined,
+              ...(explicitInjectModes ? { injectModes: explicitInjectModes } : {}),
               processingStatus: {
                 stage: stage as 'image_compression' | 'ocr_processing' | 'vector_indexing' | 'completed',
                 percent,
@@ -1186,7 +1193,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
       // ★ 跳过上传中的附件，避免误显示"部分模式未就绪"
       // 上传中的附件由 hasUploadingAttachments 处理
-      if (att.status === 'uploading' || att.status === 'pending') return false;
+      // error 附件也不走「未就绪」门闩（避免 PDF 失败时误报「（图片）」）
+      if (att.status === 'uploading' || att.status === 'pending' || att.status === 'error') return false;
 
       // 获取选中的注入模式和媒体类型
       const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
@@ -1201,7 +1209,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       const mediaType = getMediaTypeForAttachment(att);
       if (!mediaType) continue;
       // ★ 跳过上传中的附件，由 hasUploadingAttachments 处理
-      if (att.status === 'uploading' || att.status === 'pending') continue;
+      // error 附件不计入「未就绪」阻塞（否则 PDF 失败会显示「附件未就绪：（图片）」）
+      if (att.status === 'uploading' || att.status === 'pending' || att.status === 'error') continue;
       const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);

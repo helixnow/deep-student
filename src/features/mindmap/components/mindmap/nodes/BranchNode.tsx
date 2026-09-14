@@ -412,6 +412,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           onEndEditNote={() => setEditingNoteNodeId(null)}
           onCommitAndCreateSibling={reciteMode ? undefined : handleCommitAndCreateSibling}
           onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
+          onCommitAndEditNote={reciteMode ? undefined : () => {
+            setEditingNodeId(null);
+            setEditingNoteNodeId(data.nodeId);
+          }}
           isBold={data.style?.fontWeight === 'bold'}
           onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
           onBlanksPresented={(rangeIndices) => markBlanksPresented(data.nodeId, rangeIndices)}

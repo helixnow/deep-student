@@ -12,6 +12,7 @@ import type { EditorView } from '@milkdown/prose/view';
 import type { CrepeEditorApi } from '@/components/crepe';
 import {
   createImageUploader,
+  validateImageFile,
   pickImageWithTauriDialog,
 } from '@/components/crepe/features/imageUpload';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -144,7 +145,18 @@ export async function insertImageFromDevice(
   const selection = editor.captureSelection?.() ?? null;
   try {
     const file = await pickImageWithTauriDialog();
-    if (!file) return; // 用户取消 / 对话框失败（pick 内部已记录日志）
+    if (!file) return; // 用户取消
+    try {
+      await validateImageFile(file);
+    } catch {
+      showGlobalNotification(
+        'error',
+        i18next.t('notes:editor.image_upload.invalid_image', {
+          defaultValue: '无法读取该图片，文件可能已损坏或格式不受支持',
+        }),
+      );
+      return;
+    }
     const url = await createImageUploader(noteId)(file);
     if (!url) return; // 上传失败：uploader 已 toast
     if (editor.getCrepe() !== instance || !instance || editor.isReadonly()) return;

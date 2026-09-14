@@ -55,6 +55,7 @@ import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { CurrentView } from '@/types/navigation';
 import type { TFunction } from 'i18next';
+import { displayQuickLearningLabel } from '@/quick-assistant/displayName';
 
 const EXPANDED_FOLDERS_STORAGE_KEY = 'chat-v2-sidebar-expanded-folders';
 
@@ -521,7 +522,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             className="mx-1 flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2"
           >
             <span className="min-w-0 flex-1 text-ui leading-4 text-foreground/90">
-              {t('page.archiveGroupConfirmInline', { name: group.name })}
+              {t('page.archiveGroupConfirmInline', { name: displayQuickLearningLabel(group.name) })}
             </span>
             <div className="flex shrink-0 items-center gap-1">
               {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
@@ -656,7 +657,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             {visibleGroups.map((group) =>
               renderFolderRow(
                 group.id,
-                group.name,
+                displayQuickLearningLabel(group.name),
                 sessionsByGroup.get(group.id) ?? [],
                 activeGroupId === group.id,
                 unified,

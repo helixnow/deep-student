@@ -61,7 +61,8 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   errorBanner,
 }) => {
   const { t } = useTranslation('flashcards');
-  const showSummary = !empty && ratedCount > 0;
+  // ratedCount>0 means a real session finished even if reconcile emptied the queue.
+  const showSummary = ratedCount > 0;
   const showContinue = Boolean(onContinue) && remainingDue != null && remainingDue > 0;
   const maxCount = Math.max(1, ...DIST_ROWS.map(({ rating }) => ratingCounts[rating]));
 

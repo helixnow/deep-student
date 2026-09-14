@@ -46,11 +46,21 @@ function isFavoriteResourceType(value: unknown): value is NoteFavoriteResourceTy
   return value === 'note' || value === 'mindmap';
 }
 
+function looksLikeNoteId(value: string): boolean {
+  return /^note_[A-Za-z0-9]+$/.test(value.trim());
+}
+
 function nodeToFavorite(node: DstuNode): NoteFavoriteItem | null {
   if (!isFavoriteResourceType(node.type)) return null;
+  const metaTitle = typeof node.metadata?.title === 'string' ? node.metadata.title.trim() : '';
+  const rawName = (node.name || '').trim();
+  const name = metaTitle
+    || (rawName && !looksLikeNoteId(rawName) ? rawName : '')
+    || rawName
+    || node.id;
   return {
     id: node.id,
-    name: node.name,
+    name,
     type: node.type,
     path: node.path || `/${node.id}`,
     updatedAt: node.updatedAt,
@@ -131,6 +141,21 @@ export function useNoteFavorites(): UseNoteFavoritesResult {
       setItems(previous);
       setError(result.error.toUserMessage());
       return false;
+    }
+    // Refresh so the quick-access row shows the DSTU display title, not the
+    // optimistic id fallback used when callers omit opts.name.
+    if (isFavorite) {
+      void (async () => {
+        const listed = await dstu.list('/', { isFavorite: true });
+        if (!listed.ok) return;
+        const next = sortFavorites(
+          listed.value
+            .filter((node) => FAVORITE_TYPES.has(node.type as NoteFavoriteResourceType))
+            .map(nodeToFavorite)
+            .filter((item): item is NoteFavoriteItem => Boolean(item)),
+        );
+        setItems(next);
+      })();
     }
     return true;
   }, []);

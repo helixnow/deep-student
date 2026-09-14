@@ -132,7 +132,10 @@
     "markdown": {
       "empty": "No content yet",
       "error": "Failed to render content"
-    }
+    },
+    "render_error": "Content failed to render",
+    "render_error_unknown": "Unknown render error",
+    "render_error_reason": "Reason: {{reason}}"
   },
   "notes": {
     "summary_title": "AI note summary",

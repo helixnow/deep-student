@@ -342,6 +342,40 @@ const isTauriEnv = (): boolean => {
   return Boolean((window as any).__TAURI_INTERNALS__);
 };
 
+/** Decode-probe a File; rejects corrupt / non-image payloads with a clear Error. */
+export async function validateImageFile(file: File): Promise<void> {
+  if (!file || file.size <= 0) {
+    throw new Error('empty');
+  }
+  const type = (file.type || '').toLowerCase();
+  if (type && !type.startsWith('image/') && type !== 'application/octet-stream') {
+    throw new Error('not_image');
+  }
+  // Decode via createImageBitmap when available; fall back to HTMLImageElement.
+  try {
+    if (typeof createImageBitmap === 'function') {
+      const bitmap = await createImageBitmap(file);
+      bitmap.close?.();
+      return;
+    }
+  } catch {
+    throw new Error('corrupt');
+  }
+  await new Promise<void>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('corrupt'));
+    };
+    img.src = url;
+  });
+}
+
 /**
  * 使用 Tauri dialog 选择图片文件
  * 在 Tauri 环境下替代浏览器原生 file input
@@ -383,7 +417,7 @@ export const pickImageWithTauriDialog = async (): Promise<File | null> => {
     const response = await fetch(assetUrl);
     if (!response.ok) {
       console.error('[imageUpload] Fetch failed:', response.status, response.statusText);
-      return null;
+      throw new Error(`fetch_failed:${response.status}`);
     }
     
     const blob = await response.blob();
@@ -412,7 +446,7 @@ export const pickImageWithTauriDialog = async (): Promise<File | null> => {
     return file;
   } catch (error) {
     console.error('[imageUpload] pickImageWithTauriDialog failed:', error);
-    return null;
+    throw error instanceof Error ? error : new Error(String(error));
   }
 };
 

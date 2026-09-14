@@ -97,8 +97,11 @@ function getFileExtension(fileName: string): string {
 }
 
 function isImageAttachment(mimeType: string, fileName: string): boolean {
+  // PDF 优先：避免 application/pdf 以外的异常 MIME / 双扩展名被当成图片
+  const ext = getFileExtension(fileName);
+  if (mimeType === 'application/pdf' || ext === 'pdf') return false;
   return mimeType.startsWith('image/')
-    || ATTACHMENT_IMAGE_EXTENSIONS.includes(getFileExtension(fileName));
+    || ATTACHMENT_IMAGE_EXTENSIONS.includes(ext);
 }
 
 /**

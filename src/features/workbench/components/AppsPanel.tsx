@@ -43,6 +43,8 @@ import { closeAppsPanel, useAppsPanelOpen } from './appsPanelStore';
 import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { hasWorkbenchAppIcon, WorkbenchAppIcon } from './WorkbenchAppIcon';
 import './AppsPanel.css';
+import { resolveBrowserLaunchability } from '@/features/browser/gates';
+import { BROWSER_APP_TYPE_ID } from '@/features/workbench/apps/browser/register';
 
 /** 退场动画保留挂载时长（与 CSS --wb-apps-duration 对齐） */
 export const APPS_PANEL_EXIT_MS = 200;
@@ -150,10 +152,26 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const searching = query.trim().length > 0;
   const contentSearchReady = query.trim().length >= CONTENT_SEARCH_MIN_CHARS;
 
+  const [browserLaunchable, setBrowserLaunchable] = useState(false);
+  useEffect(() => {
+    if (!open && !rendered) return;
+    let cancelled = false;
+    void resolveBrowserLaunchability().then((snap) => {
+      if (!cancelled) setBrowserLaunchable(snap.open);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, rendered]);
+
   const launchableApps = useMemo(() => {
     void registryVersion;
-    return appRegistry.list().filter((app) => app.showInLauncher !== false);
-  }, [registryVersion]);
+    return appRegistry.list().filter((app) => {
+      if (app.showInLauncher === false) return false;
+      if (app.typeId === BROWSER_APP_TYPE_ID && !browserLaunchable) return false;
+      return true;
+    });
+  }, [registryVersion, browserLaunchable]);
 
   const host = useMemo<WorkbenchSearchHost>(
     () => ({

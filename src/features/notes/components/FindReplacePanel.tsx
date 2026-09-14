@@ -6,6 +6,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import { editorViewCtx } from '@milkdown/kit/core';
+import { undo as pmUndo, redo as pmRedo } from '@milkdown/prose/history';
 import type { EditorView } from '@milkdown/prose/view';
 import {
   searchHighlightKey,
@@ -235,6 +236,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   }, [findText, caseSensitive, wholeWord, useRegex, currentIndex, getView, syncHighlight, scrollToMatch]);
 
   // F3 / Shift+F3 全局导航；面板已开时 Cmd/Ctrl+F 重新聚焦查找框（VS Code 行为）
+  // Cmd/Ctrl+Z / Shift+Z / Y：焦点在查找框时仍把撤销/重做交给编辑器（替换必须可撤销）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F3') {
@@ -247,11 +249,37 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         const input = findInputRef.current;
         input?.focus();
         input?.select();
+        return;
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const target = e.target;
+      const inPanel =
+        target instanceof Node
+        && (findInputRef.current?.closest('[role="search"]')?.contains(target) ?? false);
+      if (!inPanel) return;
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        {
+          const view = getView();
+          if (view) pmUndo(view.state, view.dispatch);
+        }
+        return;
+      }
+      if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        e.stopPropagation();
+        {
+          const view = getView();
+          if (view) pmRedo(view.state, view.dispatch);
+        }
       }
     };
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [navigate]);
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [navigate, getView]);
 
   /** 替换当前匹配（正则模式展开 $1..$9 / $& / $$） */
   const handleReplaceCurrent = useCallback(() => {
@@ -263,7 +291,9 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     if (matches.length === 0) return;
     const idx = Math.min(currentIndex, matches.length - 1);
     const target = matches[idx];
-    view.dispatch(view.state.tr.insertText(expandReplacement(replaceText, target), target.from, target.to));
+    const replaceTr = view.state.tr.insertText(expandReplacement(replaceText, target), target.from, target.to);
+    replaceTr.setMeta('addToHistory', true);
+    view.dispatch(replaceTr);
     // 替换后重新计算，停留在同一索引（即下一个匹配）
     const remaining = collectSearchMatches(view.state.doc, findText, options);
     const nextIdx = remaining.length === 0 ? 0 : Math.min(idx, remaining.length - 1);
@@ -281,6 +311,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     const matches = collectSearchMatches(view.state.doc, findText, options);
     if (matches.length === 0) return;
     const tr = replaceAllSearchMatches(view.state.tr, matches, replaceText);
+    tr.setMeta('addToHistory', true);
     view.dispatch(tr);
     syncHighlight(findText, 0, options);
     showReplaceFeedback(matches.length);
@@ -410,8 +441,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
                 {`${currentIndex + 1}/${matchCount}`}
               </span>
             ) : (
-              <span key="no-match" className="inline-block ui-rise-in">
-                {noMatchText}
+              <span key="no-match" className="inline-block ui-rise-in" title={noMatchText}>
+                {regexInvalid ? noMatchText : '0/0'}
               </span>
             )}
           </span>

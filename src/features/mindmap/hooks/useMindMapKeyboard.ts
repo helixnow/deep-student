@@ -124,20 +124,18 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
     // 正常不会冒泡到 document；下面的 editingNodeId 分支仅是兜底
     // （编辑态残留但焦点已不在 textarea 的异常场景），不会抢跑吞掉 draft。
     if (e.key === 'Escape') {
-      // 无编辑/背诵/选中/焦点时导图对 Esc 无事可做：放行给外层
+      // 编辑态 Esc：交给 NodeContent / 备注 textarea 就地恢复 draft（capture 下
+      // 本 listener 先于 target，不得在此清 editingNodeId 抢跑）。
+      if (editingNodeId || editingNoteNodeId) return;
+      // 无背诵/选中/焦点时导图对 Esc 无事可做：放行给外层
       // （工作台窗口、命令系统等），不得 preventDefault/stopPropagation 吞掉。
+      // 背诵 Esc 优先由 MindMapContentView window capture 处理；此处作兜底。
       const hasEscapeTarget =
-        !!editingNodeId || !!editingNoteNodeId || reciteMode
-        || !!focusedNodeId || selection.length > 0;
+        reciteMode || !!focusedNodeId || selection.length > 0;
       if (!hasEscapeTarget) return;
       e.preventDefault();
       handled();
-      if (editingNodeId) {
-        setEditingNodeId(null);
-      } else if (editingNoteNodeId) {
-        setEditingNoteNodeId(null);
-      } else if (reciteMode) {
-        // ★ 背诵模式逃生舱：按 Esc 退出背诵模式
+      if (reciteMode) {
         setReciteMode(false);
       } else {
         setFocusedNodeId(null);
@@ -184,6 +182,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       switch (e.key) {
         case 'ArrowUp': {
           e.preventDefault();
+          handled();
           if (currentIndex > 0) {
             setFocusedNodeId(visibleNodes[currentIndex - 1].node.id);
           }
@@ -191,6 +190,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         }
         case 'ArrowDown': {
           e.preventDefault();
+          handled();
           if (currentIndex < visibleNodes.length - 1) {
             setFocusedNodeId(visibleNodes[currentIndex + 1].node.id);
           }
@@ -198,6 +198,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         }
         case 'ArrowLeft': {
           e.preventDefault();
+          handled();
           const node = findNodeById(root, focusedNodeId);
           if (node && node.children.length > 0 && !node.collapsed) {
             toggleCollapse(focusedNodeId);
@@ -209,6 +210,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         }
         case 'ArrowRight': {
           e.preventDefault();
+          handled();
           const node = findNodeById(root, focusedNodeId);
           if (node && node.collapsed) {
             toggleCollapse(focusedNodeId);
@@ -453,6 +455,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
     switch (e.key) {
       case 'ArrowUp': {
         e.preventDefault();
+        handled();
         if (focusSpatialNeighbor('up')) return;
         if (currentIndex > 0) {
           setFocusedNodeId(visibleNodes[currentIndex - 1].node.id);
@@ -461,6 +464,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       }
       case 'ArrowDown': {
         e.preventDefault();
+        handled();
         if (focusSpatialNeighbor('down')) return;
         if (currentIndex < visibleNodes.length - 1) {
           setFocusedNodeId(visibleNodes[currentIndex + 1].node.id);
@@ -469,6 +473,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       }
       case 'ArrowLeft': {
         e.preventDefault();
+        handled();
         if (focusSpatialNeighbor('left')) return;
         const node = findNodeById(root, focusedNodeId);
         if (node && node.children.length > 0 && !node.collapsed) {
@@ -485,6 +490,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       }
       case 'ArrowRight': {
         e.preventDefault();
+        handled();
         if (focusSpatialNeighbor('right')) return;
         const node = findNodeById(root, focusedNodeId);
         if (node && node.collapsed) {
@@ -499,10 +505,12 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       case 'Enter': {
         if (e.shiftKey) {
           e.preventDefault();
+          handled();
           setEditingNoteNodeId(focusedNodeId);
           return;
         }
         e.preventDefault();
+        handled();
         if (root.id === focusedNodeId) {
           // 根节点 → 添加子节点
           const newId = addNode(focusedNodeId, 0);
@@ -525,6 +533,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       }
       case 'Tab': {
         e.preventDefault();
+        handled();
         // Shift+Tab → 反缩进（作用于整个选中集，与大纲对齐）
         if (e.shiftKey) {
           handled();
@@ -576,9 +585,10 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
 
   useEffect(() => {
     if (!isActive) return;
-    // 注册在 document 上：handled() 中的 stopPropagation 可阻止事件到达 window 层的命令系统
-    // 注：使用 window.document 避免与组件内 MindMapDocument 变量 shadowing
-    window.document.addEventListener('keydown', handleKeyDown);
-    return () => window.document.removeEventListener('keydown', handleKeyDown);
+    // capture：抢在节点 a11y / 其它 bubble 监听之前；editing 时提前 return，
+    // 仍把 Enter/Tab 交给 NodeContent textarea。handled() stopPropagation
+    // 阻止事件继续冒泡到 window 层命令系统 / 笔记工作区。
+    window.document.addEventListener('keydown', handleKeyDown, true);
+    return () => window.document.removeEventListener('keydown', handleKeyDown, true);
   }, [handleKeyDown, isActive]);
 }

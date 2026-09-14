@@ -13,6 +13,8 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import {
   getPracticeSessionKey,
   useQuestionBankStore,
+  practiceAccuracyPercent,
+  countCorrectQuestions,
   type PracticeSessionOwner,
 } from '@/stores/questionBankStore';
 import {
@@ -45,6 +47,7 @@ describe('questionBankStore practice-session ownership', () => {
     expect(store.recordPracticeSessionAnswer(leftOwner, 'q-1', true)).toMatchObject({
       streakCount: 1,
       totalCorrectCount: 1,
+      correctQuestionCount: 1,
       answeredIds: ['q-1'],
     });
 
@@ -53,6 +56,7 @@ describe('questionBankStore practice-session ownership', () => {
     expect(useQuestionBankStore.getState().practiceSessions[rightKey]).toMatchObject({
       streakCount: 0,
       totalCorrectCount: 0,
+      correctQuestionCount: 0,
       answeredIds: [],
     });
 
@@ -60,6 +64,7 @@ describe('questionBankStore practice-session ownership', () => {
     expect(useQuestionBankStore.getState().practiceSessions[leftKey]).toMatchObject({
       streakCount: 1,
       totalCorrectCount: 1,
+      correctQuestionCount: 1,
       answeredIds: ['q-1'],
     });
     expect(useQuestionBankStore.getState().practiceSessions[rightKey].answeredIds).toEqual(['q-2']);
@@ -217,5 +222,49 @@ describe('daily target persistence helpers', () => {
     expect(readStoredDailyTarget('exam-a')).toBe(10);
     localStorage.setItem('qbank:dailyTarget:exam-a', '999');
     expect(readStoredDailyTarget('exam-a')).toBe(50);
+  });
+});
+
+
+describe('practice session accuracy (question-dimension)', () => {
+  const owner: PracticeSessionOwner = {
+    examId: 'exam-acc',
+    viewInstanceId: 'view-acc',
+  };
+
+  beforeEach(() => {
+    useQuestionBankStore.setState({ practiceSessions: {} });
+  });
+
+  it('correctQuestionCount stays ≤ answeredIds after retries (accuracy never exceeds 100%)', () => {
+    const store = useQuestionBankStore.getState();
+    store.ensurePracticeSession(owner, ['q-1', 'q-2']);
+
+    store.recordPracticeSessionAnswer(owner, 'q-1', true);
+    store.recordPracticeSessionAnswer(owner, 'q-1', true); // retry same question correct again
+    store.recordPracticeSessionAnswer(owner, 'q-2', false);
+    store.recordPracticeSessionAnswer(owner, 'q-2', true); // regrade to correct
+
+    const key = getPracticeSessionKey(owner)!;
+    const progress = useQuestionBankStore.getState().practiceSessions[key];
+    // 尝试维度可 > 题目数
+    expect(progress.totalCorrectCount).toBe(3);
+    // 题目维度：两题都最终正确
+    expect(progress.correctQuestionCount).toBe(2);
+    expect(progress.answeredIds).toEqual(['q-1', 'q-2']);
+    expect(practiceAccuracyPercent(progress.correctQuestionCount, progress.answeredIds.length)).toBe(100);
+    expect(practiceAccuracyPercent(progress.totalCorrectCount, progress.answeredIds.length)).toBe(100); // clamped
+  });
+
+  it('regrade from correct to wrong decreases correctQuestionCount', () => {
+    const store = useQuestionBankStore.getState();
+    store.ensurePracticeSession(owner, ['q-1']);
+    store.recordPracticeSessionAnswer(owner, 'q-1', true);
+    store.recordPracticeSessionAnswer(owner, 'q-1', false);
+    const key = getPracticeSessionKey(owner)!;
+    const progress = useQuestionBankStore.getState().practiceSessions[key];
+    expect(progress.correctQuestionCount).toBe(0);
+    expect(countCorrectQuestions(progress.answeredResults)).toBe(0);
+    expect(practiceAccuracyPercent(progress.correctQuestionCount, progress.answeredIds.length)).toBe(0);
   });
 });

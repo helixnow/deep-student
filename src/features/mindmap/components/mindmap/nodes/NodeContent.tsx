@@ -57,6 +57,8 @@ export interface NodeContentProps {
   onCommitAndCreateSibling?: () => void;
   /** 编辑中 Tab：提交正文后新建子节点并进入编辑 */
   onCommitAndCreateChild?: () => void;
+  /** 编辑中 Shift+Enter：提交正文后进入备注编辑（画布键位，避免把备注写进正文） */
+  onCommitAndEditNote?: () => void;
   onRevealBlank?: (rangeIndex: number) => void;
   /** 背诵会话统计：遮盖态挖空实际渲染进视口时上报（透传 BlankedText） */
   onBlanksPresented?: (rangeIndices: number[]) => void;
@@ -95,6 +97,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   onEndEditNote,
   onCommitAndCreateSibling,
   onCommitAndCreateChild,
+  onCommitAndEditNote,
   onRevealBlank,
   onBlanksPresented,
   onAddBlank,
@@ -209,6 +212,13 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
     if (e.key === 'Enter') {
       if (e.shiftKey) {
+        // 画布约定：Shift+Enter = 编辑备注（不得插入正文换行，否则备注写进标题）
+        if (onCommitAndEditNote) {
+          e.preventDefault();
+          e.stopPropagation();
+          commitText();
+          onCommitAndEditNote();
+        }
         return;
       }
       e.preventDefault();
@@ -240,7 +250,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       setEditValue(text);
       onEndEdit?.();
     }
-  }, [commitText, editValue, text, onEmptyCommit, onEndEdit, onCommitAndCreateSibling, onCommitAndCreateChild]);
+  }, [commitText, editValue, text, onEmptyCommit, onEndEdit, onCommitAndCreateSibling, onCommitAndCreateChild, onCommitAndEditNote]);
 
   const handleNoteKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isOutlineCompositionActive(e.nativeEvent)) return;

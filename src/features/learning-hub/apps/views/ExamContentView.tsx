@@ -23,6 +23,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
+  getPracticeSessionKey,
   type PracticeHandoffHydrationResult,
 } from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
@@ -382,6 +383,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
   const [manageFilters, setManageFilters] = useState<ManageFilters>({});
   const [pendingReviewExitView, setPendingReviewExitView] = useState<ViewMode | null>(null);
+  /** 离开进行中的练习/考试前的确认目标视图（与复习退出同款内联条） */
+  const [pendingPracticeExitView, setPendingPracticeExitView] = useState<ViewMode | null>(null);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [pendingSettingsOpen, setPendingSettingsOpen] = useState(false);
   const [launcherRequestedMode, setLauncherRequestedMode] = useState<LauncherRequestedMode | null>(null);
@@ -524,6 +527,55 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // Tab navigation is an explicit exit point for an in-progress SM-2 queue.
   // Keep submitted ratings, but ask before discarding the remaining local queue.
+  const hasInProgressPracticeSession = useCallback((): boolean => {
+    if (viewMode !== 'practice') return false;
+    if (
+      practiceMode === 'timed'
+      && activeTimedSession
+      && !activeTimedSession.is_submitted
+      && !activeTimedSession.is_timeout
+    ) {
+      return true;
+    }
+    if (
+      practiceMode === 'mock_exam'
+      && activeMockExamSession
+      && !activeMockExamSession.is_submitted
+    ) {
+      return true;
+    }
+    if (
+      practiceMode === 'daily'
+      && activeDailyPractice
+      && !activeDailyPractice.is_completed
+      && (activeDailyPractice.completed_count ?? 0) > 0
+    ) {
+      return true;
+    }
+    // 普通顺序/随机练习：已作答但未答完
+    const ownerKey = practiceSessionOwner
+      ? getPracticeSessionKey(practiceSessionOwner)
+      : null;
+    const progress = ownerKey
+      ? useQuestionBankStore.getState().practiceSessions[ownerKey]
+      : undefined;
+    if (
+      progress
+      && progress.answeredIds.length > 0
+      && progress.answeredIds.length < progress.questionIds.length
+    ) {
+      return true;
+    }
+    return false;
+  }, [
+    viewMode,
+    practiceMode,
+    activeTimedSession,
+    activeMockExamSession,
+    activeDailyPractice,
+    practiceSessionOwner,
+  ]);
+
   const applyViewMode = useCallback((mode: ViewMode): boolean => {
     if (mode === viewMode) return true;
 
@@ -544,9 +596,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       endReviewSession();
     }
 
+    // 离开进行中的练习/考试：内联确认，避免误触丢进度
+    if (viewMode === 'practice' && mode !== 'practice' && hasInProgressPracticeSession()) {
+      setPendingPracticeExitView(mode);
+      return false;
+    }
+
     switchViewMode(mode);
     return true;
-  }, [endReviewSession, reviewSession, sessionId, switchViewMode, viewMode]);
+  }, [
+    endReviewSession,
+    reviewSession,
+    sessionId,
+    switchViewMode,
+    viewMode,
+    hasInProgressPracticeSession,
+  ]);
 
   const requestViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void): boolean => {
     const requiresNavigation = mode !== viewMode || Boolean(afterViewChange);
@@ -733,6 +798,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setPendingUploadFiles(null);
     // 上一会话残留的「退出复习确认」与「启动台预选模式」不得带入新会话
     setPendingReviewExitView(null);
+    setPendingPracticeExitView(null);
     setLauncherRequestedMode(null);
     // CSV 导入进行中标记随面板卸载失效，防止残留 true 阻塞新会话的视图切换
     csvImportingRef.current = false;
@@ -776,6 +842,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const paused = activeTimedSession?.paused_seconds;
     return typeof paused === 'number' && Number.isFinite(paused) ? Math.max(0, paused) : 0;
   }, [practiceMode, activeTimedSession]);
+
+  // 会话完成（限时交卷/超时、模拟考交卷、每日目标达成）后停掉顶栏计时，
+  // 避免「已完成」庆祝卡下倒计时/秒表继续走。卸载时由下方 interval cleanup 清表。
+  useEffect(() => {
+    const timedDone = Boolean(
+      practiceMode === 'timed'
+      && activeTimedSession
+      && (activeTimedSession.is_submitted || activeTimedSession.is_timeout),
+    );
+    const mockDone = Boolean(
+      practiceMode === 'mock_exam'
+      && activeMockExamSession?.is_submitted,
+    );
+    const dailyDone = Boolean(
+      practiceMode === 'daily'
+      && activeDailyPractice?.is_completed,
+    );
+    if (timedDone || mockDone || dailyDone) {
+      setIsTimerRunning(false);
+    }
+  }, [
+    practiceMode,
+    activeTimedSession,
+    activeMockExamSession,
+    activeDailyPractice,
+  ]);
 
   // 计时器逻辑
   // ★ 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
@@ -2106,6 +2198,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setPendingReviewExitView(null);
     setPendingSettingsOpen(false);
   };
+  const confirmPracticeExit = () => {
+    const nextView = pendingPracticeExitView;
+    setPendingPracticeExitView(null);
+    setIsTimerRunning(false);
+    if (nextView) switchViewMode(nextView);
+  };
+  const cancelPracticeExit = () => {
+    setPendingPracticeExitView(null);
+  };
   const confirmDiscardDraft = () => {
     const pending = pendingDraftNavigation;
     setPendingDraftNavigation(null);
@@ -2419,6 +2520,29 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </DsButton>
             <DsButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
               {t('review:session.exitConfirm')}
+            </DsButton>
+          </div>
+        </div>
+      )}
+      {pendingPracticeExitView !== null && (
+        <div
+          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 ui-drop-in"
+          role="alert"
+          aria-label={t('practice:session.exitTitle')}
+        >
+          <div className="flex items-start gap-2">
+            <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">{t('practice:session.exitTitle')}</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('practice:session.exitDescription')}</p>
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <DsButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelPracticeExit}>
+              {t('common:cancel')}
+            </DsButton>
+            <DsButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmPracticeExit}>
+              {t('practice:session.exitConfirm')}
             </DsButton>
           </div>
         </div>

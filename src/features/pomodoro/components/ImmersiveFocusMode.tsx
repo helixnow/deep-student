@@ -21,7 +21,7 @@ import { RollingTime } from './RollingTime';
  * - 进入/退出由父级 AnimatePresence 驱动（根节点 motion.div 淡入淡出，
  *   中央内容微缩放上浮入场）；prefers-reduced-motion 下全部退化
  * - 影院模式：鼠标静止 3s 后控制栏淡出，移动唤醒
- * - ESC / 右上角关闭回到正常界面；严格模式下 Space no-op + 轻微 shake 反馈
+ * - ESC / 右上角关闭回到正常界面；Space 暂停/恢复（严格模式专注中 no-op + shake）；不打开统计、不退出沉浸
  * - 完成一个番茄时的一次性全屏庆祝微动效
  * - 环境音状态收敛进 store（noiseEnabled / setNoiseEnabled），与面板共享
  */
@@ -201,28 +201,51 @@ export const ImmersiveFocusMode: React.FC<{
     };
   }, []);
 
-  // ESC 退出 / Space 暂停恢复（严格模式专注中 no-op + shake 反馈）
+  // 进入沉浸后把焦点收进全屏层，避免底层「专注趋势」/关闭钮仍持焦时
+  // Space 被原生按钮语义吞掉（表现为退出沉浸或打开统计）。
   useEffect(() => {
+    containerRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  // ESC 退出 / Space 暂停恢复（严格模式专注中 no-op + shake 反馈）
+  // Space 在沉浸态一律由本层处理（capture），不要求 target === body：
+  // 否则焦点落在层内按钮或底层未失焦控件时，Space 会激活该控件而非暂停。
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable) return true;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
-      }
-      if (e.key === ' ' && e.target === document.body) {
+        if (e.defaultPrevented || e.isComposing) return;
+        if (isEditableTarget(e.target)) return;
         e.preventDefault();
-        if (mode === 'idle') return;
-        if (pauseLocked) {
-          triggerStrictNudge();
-          return;
-        }
-        if (status === 'running') {
-          pause();
-        } else {
-          resume();
-        }
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== ' ') return;
+      if (e.defaultPrevented || e.isComposing || e.repeat) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isEditableTarget(e.target)) return;
+      // 拦截 Space，避免激活层内关闭钮或底层统计入口
+      e.preventDefault();
+      e.stopPropagation();
+      if (mode === 'idle') return;
+      if (pauseLocked) {
+        triggerStrictNudge();
+        return;
+      }
+      if (status === 'running') {
+        pause();
+      } else {
+        resume();
       }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose, mode, status, pause, resume, pauseLocked, triggerStrictNudge]);
 
   // 影院模式：运行中鼠标静止 3s 后控制栏淡出，任何指针/按键活动唤醒
@@ -396,12 +419,13 @@ export const ImmersiveFocusMode: React.FC<{
   return (
     <motion.div
       ref={containerRef}
+      tabIndex={-1}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={motionSafe({ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] })}
       className={cn(
-        'fixed inset-0 z-modal flex min-h-[100dvh] flex-col items-center justify-center bg-background select-none',
+        'fixed inset-0 z-modal flex min-h-[100dvh] flex-col items-center justify-center bg-background select-none outline-none',
         !chromeVisible && 'cursor-none'
       )}
       style={{ '--focus-accent': focusAccent } as React.CSSProperties}

@@ -24,6 +24,7 @@ import {
 import { isFolderItem } from './flatten';
 import { setWorkbenchDragData } from '@/features/workbench/hooks/useDesktopDrop';
 import { formatWikiLink } from '@/components/crepe/plugins/wikilink';
+import { displayQuickLearningLabel } from '@/quick-assistant/displayName';
 import {
   NOTE_TITLE_MAX_CHARS,
   NOTE_TITLE_COUNT_WARN_THRESHOLD,
@@ -195,7 +196,7 @@ export function TreeRow({
   };
 
   const ariaLabel = folder
-    ? t('workbench:notesWorkspace.tree.folder', { name: item.name })
+    ? t('workbench:notesWorkspace.tree.folder', { name: displayQuickLearningLabel(item.name) })
     : item.kind === 'mindmap'
       ? t('workbench:notesWorkspace.tree.mindmap', { name: item.name })
       : t('workbench:notesWorkspace.tree.note', { name: item.name });
@@ -329,7 +330,7 @@ export function TreeRow({
           )}
         </span>
       ) : (
-        <span className="nwt-row-label">{item.name}</span>
+        <span className="nwt-row-label">{displayQuickLearningLabel(item.name)}</span>
       )}
       {item.favorite ? <Star className="nwt-favorite" size={12} weight="fill" aria-hidden /> : null}
       {!renaming ? (

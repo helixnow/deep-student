@@ -888,15 +888,45 @@ export interface PracticeSessionProgress extends PracticeSessionOwner {
    */
   streakCount: number;
   /**
-   * 正确**尝试**数（尝试维度）：每次判对的提交都 +1，重做同题答对会计多次；
-   * 按题去重的是 answeredIds，两者维度不同——用本字段除以
-   * answeredIds.length 得到的"正确率"重做后可超 100%。
-   * 与 DailyPracticeResult.correct_count（答对**题**数，题目维度）不是同一
-   * 口径。改名/改语义（correctQuestionCount 方案）见 R1-07 §四，本轮只定名。
+   * 正确**尝试**数（尝试维度）：每次判对的提交都 +1，重做同题答对会计多次。
+   * 完成庆祝卡正确率请用 correctQuestionCount / answeredIds.length（题目维度），
+   * 勿直接用本字段当分子——重做后可超 100%（R1-07 §四）。
    */
   totalCorrectCount: number;
+  /**
+   * 当前判定为正确的**题**数（题目维度）：按 answeredResults 中 true 的题去重计数。
+   * 与 DailyPracticeResult.correct_count 同口径；完成庆祝卡用此作分子。
+   */
+  correctQuestionCount: number;
   /** 真实作答过的题目 ID（"访问过"不计入，完成判定以此为准） */
   answeredIds: string[];
+  /**
+   * 本会话内每题最近判定（题目维度基线）。改判/重答覆盖同题旧值；
+   * correctQuestionCount = values 中 true 的个数。
+   */
+  answeredResults: Record<string, boolean | null>;
+}
+
+/** 按题去重的正确题数（answeredResults 中判定为 true 的题）。 */
+export function countCorrectQuestions(
+  answeredResults: Record<string, boolean | null> | undefined,
+): number {
+  if (!answeredResults) return 0;
+  let count = 0;
+  for (const value of Object.values(answeredResults)) {
+    if (value === true) count += 1;
+  }
+  return count;
+}
+
+/** 正确率 0–100：分子/分母同为题目维度，并钳制上限。 */
+export function practiceAccuracyPercent(
+  correctQuestionCount: number,
+  answeredQuestionCount: number,
+): number {
+  if (answeredQuestionCount <= 0) return 0;
+  const raw = Math.round((correctQuestionCount / answeredQuestionCount) * 100);
+  return Math.max(0, Math.min(100, raw));
 }
 
 export function getPracticeSessionKey(owner: PracticeSessionOwner): string | null {
@@ -921,7 +951,9 @@ function createEmptyPracticeSession(
     questionIds: Array.from(new Set(questionIds.filter((id) => typeof id === 'string' && id.length > 0))),
     streakCount: 0,
     totalCorrectCount: 0,
+    correctQuestionCount: 0,
     answeredIds: [],
+    answeredResults: {},
   };
 }
 
@@ -1189,15 +1221,24 @@ export const useQuestionBankStore = create<QuestionBankState>()(
 
         const allowedIds = new Set(normalizedQuestionIds);
         const answeredIds = previous.answeredIds.filter((id) => allowedIds.has(id));
+        const prevResults = previous.answeredResults ?? {};
+        const answeredResults: Record<string, boolean | null> = {};
+        for (const id of answeredIds) {
+          if (id in prevResults) answeredResults[id] = prevResults[id];
+        }
+        const correctQuestionCount = countCorrectQuestions(answeredResults);
         const unchanged = previous.questionIds.length === normalizedQuestionIds.length
           && previous.questionIds.every((id, index) => id === normalizedQuestionIds[index])
-          && answeredIds.length === previous.answeredIds.length;
+          && answeredIds.length === previous.answeredIds.length
+          && correctQuestionCount === (previous.correctQuestionCount ?? 0);
         if (unchanged) return previous;
 
         const next: PracticeSessionProgress = {
           ...previous,
           questionIds: normalizedQuestionIds,
           answeredIds,
+          answeredResults,
+          correctQuestionCount,
         };
         set((state) => ({
           practiceSessions: { ...state.practiceSessions, [key]: next },
@@ -1219,13 +1260,20 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           return null;
         }
 
+        const answeredResults = {
+          ...(previous.answeredResults ?? {}),
+          [questionId]: isCorrect,
+        };
         const next: PracticeSessionProgress = {
           ...previous,
           // null（主观题待判定）既不加连对也不中断
           streakCount: isCorrect === true
             ? previous.streakCount + 1
             : isCorrect === false ? 0 : previous.streakCount,
+          // 尝试维度：每次判对 +1（连对/统计用）；正确率用 correctQuestionCount
           totalCorrectCount: previous.totalCorrectCount + (isCorrect === true ? 1 : 0),
+          answeredResults,
+          correctQuestionCount: countCorrectQuestions(answeredResults),
           answeredIds: previous.answeredIds.includes(questionId)
             ? previous.answeredIds
             : [...previous.answeredIds, questionId],

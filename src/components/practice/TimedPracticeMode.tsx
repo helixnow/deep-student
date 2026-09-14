@@ -150,6 +150,17 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     targetEndTime,
     handleTimeout,
   );
+
+  // 会话完成或卸载时停表，避免庆祝卡/离开后倒计时仍递减
+  useEffect(() => {
+    if (!activeSession || activeSession.is_submitted || activeSession.is_timeout) {
+      resetCountdown();
+    }
+  }, [activeSession, resetCountdown]);
+
+  useEffect(() => () => {
+    resetCountdown();
+  }, [resetCountdown]);
   
   // 计算进度
   const progress = activeSession
@@ -300,9 +311,9 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                   total: lastFinishedSession.question_count,
                   correct: lastFinishedSession.correct_count,
                   rate: lastFinishedSession.answered_count > 0
-                    ? Math.round(
+                    ? Math.max(0, Math.min(100, Math.round(
                         (lastFinishedSession.correct_count / lastFinishedSession.answered_count) * 100,
-                      )
+                      )))
                     : 0,
                 })}
               </p>
@@ -455,7 +466,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 <div className="text-sm text-muted-foreground">{t('timed.rate')}</div>
                 <div className="text-lg font-semibold text-primary">
                   {activeSession.answered_count > 0
-                    ? Math.round((activeSession.correct_count / activeSession.answered_count) * 100)
+                    ? Math.max(0, Math.min(100, Math.round((activeSession.correct_count / activeSession.answered_count) * 100)))
                     : 0}%
                 </div>
               </div>

@@ -137,25 +137,22 @@ export function getEffectiveReadyModes(
 ): MediaInjectMode[] | undefined {
   const effectiveStatus = status || attachment.processingStatus;
 
-  // 后端图片管线上传完成后立即将 image 加入 readyModes，
-  // 不再需要前端虚拟补充。直接使用后端报告的 readyModes。
+  const fromStatus = (effectiveStatus?.readyModes || [])
+    .filter((m): m is MediaInjectMode => VALID_INJECT_MODES.has(m));
 
-  if (effectiveStatus?.readyModes?.length) {
-    const filtered = effectiveStatus.readyModes.filter(m => VALID_INJECT_MODES.has(m)) as MediaInjectMode[];
-    if (filtered.length) {
-      return filtered;
-    }
+  // 图片：上传成功后原图已可用。后端流水线也在启动时立即把 image 标为就绪；
+  // 前端门闩与之对齐，避免「进度 100% / status=ready 但 readyModes 为空」卡死发送。
+  if (mediaType === 'image' && (attachment.status === 'ready' || attachment.status === 'processing')) {
+    const modes = new Set<MediaInjectMode>(fromStatus);
+    modes.add('image');
+    return Array.from(modes);
   }
 
-  if (!effectiveStatus && mediaType === 'image' && attachment.status === 'ready') {
-    return ['image'];
+  if (fromStatus.length) {
+    return fromStatus;
   }
 
-  // 完成状态也必须以真实 readyModes 为准；空列表不可伪装为 text/image。
-
-  // ★ P1 收紧：处理中的图片不再乐观补 'image'。
-  // 后端初始 ready_modes=[]，就绪与否一律以后端报告的 readyModes 为准，
-  // 避免「UI 放行发送但后端图片压缩尚未完成」的竞态。
+  // PDF 等：完成状态也必须以真实 readyModes 为准；空列表不可伪装为 text/image。
   return undefined;
 }
 

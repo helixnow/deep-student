@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { Card, CardContent, CardHeader } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/features/chat/components/renderers/MarkdownRenderer';
+import { GenerativeMarkdownBody } from './GenerativeMarkdownBody';
 import { GenerativeUIErrorBoundary } from './GenerativeUIErrorBoundary';
 import { sanitizeGenerativeMarkdown } from '../utils/sanitizeGenerativeMarkdown';
 
@@ -81,7 +81,7 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
             </p>
           ) : (
             <GenerativeUIErrorBoundary>
-              <MarkdownRenderer content={body} isStreaming={isStreaming} className="text-sm" />
+              <GenerativeMarkdownBody content={body} isStreaming={isStreaming} className="text-sm" />
             </GenerativeUIErrorBoundary>
           )}
         </div>

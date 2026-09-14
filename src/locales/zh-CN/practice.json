@@ -550,5 +550,10 @@
     "save_bookmarks": "保存书签",
     "save_bookmarks_failed": "保存书签失败",
     "flush_unsaved": "保存未持久化的阅读进度/书签"
+  },
+  "session": {
+    "exitTitle": "离开当前练习？",
+    "exitDescription": "练习尚未完成。限时/模拟考进度可稍后从启动页恢复；普通练习的本轮连对与完成进度仅保存在当前会话中。",
+    "exitConfirm": "离开练习"
   }
 }

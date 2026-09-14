@@ -168,10 +168,20 @@ export const usePdfProcessingStore = create<PdfProcessingStore>((set, get) => ({
     set(state => {
       const newMap = new Map(state.statusMap);
       const existing = newMap.get(fileId);
+      // readyModes 只增不减：显式空数组不能抹掉已就绪模式（轮询/竞态曾导致
+      // leaf.png 进度 100% 却仍「附件未就绪」）
+      const mergedReadyModes = (() => {
+        const next = status.readyModes;
+        const prev = existing?.readyModes ?? [];
+        if (next == null) return prev;
+        if (next.length === 0) return prev;
+        if (prev.length === 0) return next;
+        return Array.from(new Set([...prev, ...next])) as PdfProcessingStatus['readyModes'];
+      })();
       const updated: PdfProcessingStatus = {
         stage: status.stage ?? existing?.stage ?? 'pending',
         percent: Math.max(status.percent ?? 0, existing?.percent ?? 0),
-        readyModes: status.readyModes ?? existing?.readyModes ?? [],
+        readyModes: mergedReadyModes,
         currentPage: status.currentPage ?? existing?.currentPage,
         totalPages: status.totalPages ?? existing?.totalPages,
         error: status.error ?? existing?.error,

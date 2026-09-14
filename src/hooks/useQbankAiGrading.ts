@@ -57,6 +57,30 @@ const INITIAL_STATE: QbankGradingState = {
 
 const TIMEOUT_MS = 120_000; // 120 秒超时
 
+/** 从反馈正文解析 <score value="N"/>；无则按 verdict 兜底 0–100。 */
+function resolveGradeScore(
+  score: number | undefined,
+  verdict: QbankVerdict | undefined,
+  feedback: string | undefined,
+): number | undefined {
+  if (typeof score === 'number' && Number.isFinite(score)) {
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+  if (feedback) {
+    const matches = [...feedback.matchAll(/<score\s+value="(\d+)"\s*\/>/gi)];
+    const last = matches.length > 0 ? matches[matches.length - 1] : null;
+    if (last) {
+      const parsed = Number.parseInt(last[1], 10);
+      if (Number.isFinite(parsed)) return Math.max(0, Math.min(100, parsed));
+    }
+  }
+  if (verdict === 'correct') return 100;
+  if (verdict === 'incorrect') return 0;
+  if (verdict === 'partial') return 60;
+  return undefined;
+}
+
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -217,12 +241,13 @@ export function useQbankAiGrading() {
             if (payload.type === 'complete') {
               cleanup();
               const finalVerdict = payload.verdict as QbankVerdict | undefined;
-              const finalScore = payload.score;
               // #56: 终态文本 = 非空 payload.feedback，否则回退到已累积的流式文本。
               // state 与 onComplete 使用同一份终态文本——此前 onComplete 在
               // payload.feedback 为空时传 ''，父组件（解析缓存等）拿到空串后
               // 已渲染的流式内容会在切题回来时整段消失。
               const finalFeedback = payload.feedback || accumulatedFeedbackRef.current;
+              // 优先契约字段 score；缺省时从反馈 XML / verdict 兜底，保证 UI 总能展示 0–100
+              const finalScore = resolveGradeScore(payload.score, finalVerdict, finalFeedback);
               setState((prev) => ({
                 ...prev,
                 isGrading: false,

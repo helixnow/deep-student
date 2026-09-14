@@ -389,8 +389,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 移动端底部工具条：小屏（与壳层 <768 断点一致）或触屏主指针，且处于编辑态。
   // P0-2：仅看 (pointer: coarse) 会漏掉「窄窗桌面/模拟器」，与壳层断点对齐。
+  // A1/A2：OS 最小窗宽约 980px 时 window.innerWidth 永远 ≥768；改用笔记壳层
+  // 实际内容宽度（分屏 / 侧栏挤压后）决定是否切移动 chrome。
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
-  const isSmallScreen = useIsMobile();
+  const isViewportMobile = useIsMobile();
+  const [shellNarrow, setShellNarrow] = useState(false);
+  const isSmallScreen = isViewportMobile || shellNarrow;
   const mobileResourceMenu = useMobileResourceMenu();
   const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
   const [pageActionsOpen, setPageActionsOpen] = useState(false);
@@ -427,6 +431,20 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
+  // A1/A2: respond to available notes chrome width, not only window.innerWidth.
+  useEffect(() => {
+    const el = notesShellRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const NARROW_PX = 768;
+    const update = () => {
+      setShellNarrow(el.getBoundingClientRect().width < NARROW_PX);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
 
   // 壳层可见性监听（P0 泄漏修复的数据源）。仅触屏编辑面需要，桌面纯鼠标不挂观察器。
   useEffect(() => {
