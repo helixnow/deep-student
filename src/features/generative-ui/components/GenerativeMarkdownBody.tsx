@@ -14,6 +14,12 @@ export interface GenerativeMarkdownBodyProps {
   isStreaming?: boolean;
   /** Optional extra remark plugins (e.g. research-report citations). */
   extraRemarkPlugins?: unknown[];
+  /**
+   * Optional rehype plugins. Required when an extra remark plugin emits `html`
+   * nodes (research-report citation spans) — without rehype-raw they are dropped.
+   * Input is already run through sanitizeGenerativeMarkdown by callers.
+   */
+  rehypePlugins?: unknown[];
 }
 
 export function GenerativeMarkdownBody({
@@ -21,6 +27,7 @@ export function GenerativeMarkdownBody({
   className,
   isStreaming = false,
   extraRemarkPlugins,
+  rehypePlugins,
 }: GenerativeMarkdownBodyProps) {
   const remarkPlugins = useMemo(
     () => [remarkGfm, ...((extraRemarkPlugins as unknown[]) ?? [])],
@@ -32,7 +39,12 @@ export function GenerativeMarkdownBody({
       data-generative-markdown-body
       data-streaming={isStreaming || undefined}
     >
-      <ReactMarkdown remarkPlugins={remarkPlugins as never}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins as never}
+        rehypePlugins={rehypePlugins as never}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }

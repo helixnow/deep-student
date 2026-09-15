@@ -74,6 +74,12 @@ describe('useNoteFavorites', () => {
     setFavorite.mockReturnValueOnce(new Promise((resolve) => {
       resolveSet = resolve;
     }));
+    // Post-success the hook re-lists favorites so the row shows the DSTU title;
+    // the mock backend must therefore already contain the new favorite.
+    list.mockResolvedValue({
+      ok: true,
+      value: [node({ id: 'note_9', sourceId: 'note_9', path: '/note_9', name: 'note_9' })],
+    });
 
     const { result } = renderHook(() => useNoteFavorites());
 

@@ -81,7 +81,7 @@ describe('preview shell ⌘F (source contract)', () => {
 
   it('only preventDefaults ⌘F when canSearch is true (no key swallowing)', () => {
     expect(shell).toMatch(
-      /if \(canSearch\) \{\s*event\.preventDefault\(\);\s*openSearchPanel\(\);/,
+      /if \(canSearch\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*openSearchPanel\(\);/,
     );
   });
 

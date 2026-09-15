@@ -14,8 +14,8 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/features/chat/components/renderers/MarkdownRenderer', () => ({
-  MarkdownRenderer: ({ content }: { content: string }) => (
+vi.mock('@/features/generative-ui/components/GenerativeMarkdownBody', () => ({
+  GenerativeMarkdownBody: ({ content }: { content: string }) => (
     <div data-testid="markdown-renderer">{content}</div>
   ),
 }));

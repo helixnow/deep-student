@@ -133,7 +133,7 @@ describe('resolveBrowserGates', () => {
 
     await expect(assertBrowserGatesOpen()).rejects.toBeInstanceOf(BrowserGateClosedError);
     await expect(assertBrowserGatesOpen()).rejects.toMatchObject({
-      message: expect.stringContaining('desktop.workbenchMode'),
+      message: expect.stringContaining('学习桌面'),
     });
   });
 
