@@ -1563,6 +1563,10 @@ impl VfsQuestionRepo {
     }
 
     /// 根据 card_id 获取题目
+    ///
+    /// card_id 允许直接传 question id：AI 生成题没有 card_id（列为 NULL），
+    /// 而 qbank_list_questions 等工具会把 question id 作为 card_id 回传给调用方，
+    /// 若严格只匹配 card_id，这类题目永远查不到（QBANK_OPERATION_FAILED: Question not found）。
     pub fn get_question_by_card_id(
         db: &VfsDatabase,
         exam_id: &str,
@@ -1587,7 +1591,7 @@ impl VfsQuestionRepo {
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
                    ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
-            WHERE exam_id = ?1 AND card_id = ?2 AND deleted_at IS NULL
+            WHERE exam_id = ?1 AND (card_id = ?2 OR id = ?2) AND deleted_at IS NULL
             "#,
         )?;
 
@@ -2830,6 +2834,56 @@ mod tests {
         VfsQuestionRepo::get_question_with_conn(&conn, &question.id)
             .expect("load question")
             .expect("question should exist")
+    }
+
+    #[test]
+    fn get_question_by_card_id_accepts_question_id_fallback() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+
+        // AI 生成题没有 card_id，工具层会把 question id 当 card_id 回传
+        let orphan = create_test_question(&db, "cardless");
+        assert!(orphan.card_id.is_none());
+        let found = VfsQuestionRepo::get_question_by_card_id(&db, &orphan.exam_id, &orphan.id)
+            .expect("query by question id")
+            .expect("card_id lookup should fall back to question id");
+        assert_eq!(found.id, orphan.id);
+
+        // 真实 card_id 查询行为保持不变
+        let conn = db.get_conn_safe().expect("open conn");
+        conn.execute(
+            "UPDATE questions SET card_id = 'card-real' WHERE id = ?1",
+            params![orphan.id],
+        )
+        .expect("assign card_id");
+        drop(conn);
+        let by_card = VfsQuestionRepo::get_question_by_card_id(&db, &orphan.exam_id, "card-real")
+            .expect("query by card id")
+            .expect("card_id lookup should still match real card_id");
+        assert_eq!(by_card.id, orphan.id);
+
+        // 跨题目集隔离：其他 exam 查不到
+        let other = create_test_question(&db, "other-exam");
+        assert!(
+            VfsQuestionRepo::get_question_by_card_id(&db, &other.exam_id, &orphan.id)
+                .expect("cross exam query")
+                .is_none(),
+            "question id from another exam must not resolve"
+        );
+
+        // 软删后不可查
+        let conn = db.get_conn_safe().expect("open conn");
+        conn.execute(
+            "UPDATE questions SET deleted_at = '2021-01-01T00:00:00Z' WHERE id = ?1",
+            params![orphan.id],
+        )
+        .expect("soft delete");
+        drop(conn);
+        assert!(
+            VfsQuestionRepo::get_question_by_card_id(&db, &orphan.exam_id, &orphan.id)
+                .expect("deleted query")
+                .is_none(),
+            "soft-deleted question must not resolve"
+        );
     }
 
     #[test]

@@ -1345,23 +1345,30 @@ pub fn run() {
                         .state::<std::sync::Arc<crate::chat_v2::ChatV2State>>()
                         .kill_switch
                         .clone();
-                    let chat_v2_pipeline = std::sync::Arc::new(
-                        crate::chat_v2::pipeline::ChatV2Pipeline::new(
-                            chat_v2_db_arc.clone(),
-                            Some(database.clone()), // 主数据库，用于工具读取用户配置
-                            Some(app_state.inner().anki_database.clone()), // Anki 数据库，用于制卡进度查询
-                            vfs_db_arc_opt.clone(), // VFS 统一资源库
-                            app_state.inner().llm_manager.clone(),
-                            std::sync::Arc::new(crate::tools::ToolRegistry::new_with(vec![
-                                std::sync::Arc::new(crate::tools::WebSearchTool) as std::sync::Arc<dyn crate::tools::Tool>,
-                            ])),
-                            Some(app_state.inner().notes_manager.clone()), // NotesManager
-                        )
-                        .with_approval_manager(approval_manager) // 🆕 关联审批管理器
-                        .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
-                        .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
-                        .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
-                    );
+                    let chat_v2_pipeline_base = crate::chat_v2::pipeline::ChatV2Pipeline::new(
+                        chat_v2_db_arc.clone(),
+                        Some(database.clone()), // 主数据库，用于工具读取用户配置
+                        Some(app_state.inner().anki_database.clone()), // Anki 数据库，用于制卡进度查询
+                        vfs_db_arc_opt.clone(), // VFS 统一资源库
+                        app_state.inner().llm_manager.clone(),
+                        std::sync::Arc::new(crate::tools::ToolRegistry::new_with(vec![
+                            std::sync::Arc::new(crate::tools::WebSearchTool) as std::sync::Arc<dyn crate::tools::Tool>,
+                        ])),
+                        Some(app_state.inner().notes_manager.clone()), // NotesManager
+                    )
+                    .with_approval_manager(approval_manager) // 🆕 关联审批管理器
+                    .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
+                    .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
+                    .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()); // 🆕 论文保存触发 Pipeline
+                    // 🆕 注入智能题目集服务：缺失时聊天侧全部 qbank_* 工具
+                    // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
+                    let chat_v2_pipeline = match app_state.inner().question_bank_service.clone() {
+                        Some(question_bank_service) => {
+                            chat_v2_pipeline_base.with_question_bank_service(question_bank_service)
+                        }
+                        None => chat_v2_pipeline_base,
+                    };
+                    let chat_v2_pipeline = std::sync::Arc::new(chat_v2_pipeline);
                     let recovery_pipeline = chat_v2_pipeline.clone();
                     tauri::async_runtime::spawn(async move {
                         recovery_pipeline.recover_pending_memory_flushes().await;
