@@ -10,6 +10,7 @@ import {
 } from '../types';
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string; name?: string }) => {
       const catalog: Record<string, string> = {

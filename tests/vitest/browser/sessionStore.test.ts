@@ -26,6 +26,18 @@ vi.mock('@/features/browser/gates', async () => {
       browserEnabled: true,
       open: true,
     })),
+    assertBrowserLaunchable: vi.fn(async () => ({
+      workbenchModeEnabled: true,
+      browserEnabled: true,
+      open: true,
+    })),
+    resolveBrowserLaunchability: vi.fn(async () => ({
+      workbenchModeEnabled: true,
+      browserEnabled: true,
+      open: true,
+      featureFlagEnabled: true,
+      closeMessage: null,
+    })),
   };
 });
 

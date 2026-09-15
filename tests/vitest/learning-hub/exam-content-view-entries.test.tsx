@@ -14,6 +14,7 @@ const storeState = vi.hoisted(() => ({
   timedSession: null,
   dailyPractice: null,
   generatedPaper: null,
+  practiceSessions: {} as Record<string, unknown>,
   setFocusMode: vi.fn(),
   setMockExamSession: vi.fn(),
 }));
@@ -96,7 +97,11 @@ vi.mock('@/hooks/useQuestionBankSession', () => ({
 }));
 
 vi.mock('@/stores/questionBankStore', () => ({
-  useQuestionBankStore: (selector: (state: typeof storeState) => unknown) => selector(storeState),
+  // zustand store 形态：可调用（selector）且带 .getState()
+  useQuestionBankStore: Object.assign(
+    (selector: (state: typeof storeState) => unknown) => selector(storeState),
+    { getState: () => storeState },
+  ),
   // 真实签名: (value: unknown, expectedExamId: string) => QbankPracticeHandoff | PracticeHandoffHydrationFailure
   // ExamContentView 顶层具名导入并在 hydratePracticeSession 分支调用；mock 默认返回校验失败
   validateQbankPracticeHandoff: vi.fn((_value: unknown, _expectedExamId: string) => ({
@@ -104,6 +109,11 @@ vi.mock('@/stores/questionBankStore', () => ({
     code: 'INVALID_PRACTICE_HANDOFF' as const,
     hint: 'mocked validator',
   })),
+  // 真实实现：owner.examId + owner.viewInstanceId 齐全时返回 JSON 元组键，否则 null
+  getPracticeSessionKey: (owner: { examId?: string; viewInstanceId?: string } | null) =>
+    owner?.examId && owner?.viewInstanceId
+      ? JSON.stringify([owner.examId, owner.viewInstanceId])
+      : null,
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({

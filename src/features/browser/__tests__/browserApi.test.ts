@@ -11,6 +11,7 @@ vi.mock('../gates', async () => {
   return {
     ...actual,
     assertBrowserGatesOpen: assertGatesMock,
+    assertBrowserLaunchable: assertGatesMock,
   };
 });
 

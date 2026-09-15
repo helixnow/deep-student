@@ -6,13 +6,15 @@ import { GenerativeUIErrorBoundary } from '@/features/generative-ui/components/G
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: { defaultValue?: string; reason?: string }) => {
       const map: Record<string, string> = {
-        'blocks.markdown.error': '正文渲染失败',
+        'blocks.render_error': '内容渲染失败',
+        'blocks.render_error_reason': `原因：${options?.reason ?? ''}`,
+        'blocks.render_error_unknown': '未知渲染错误',
         'a11y.block_error': '组件渲染失败',
         'a11y.retry': '重试',
       };
-      return map[key] ?? key;
+      return map[key] ?? options?.defaultValue ?? key;
     },
     i18n: { language: 'zh-CN' },
   }),
@@ -57,7 +59,8 @@ describe('GenerativeUIErrorBoundary', () => {
     expect(alert).toHaveAttribute('data-generative-error-boundary');
     expect(alert).toHaveAttribute('data-block-error');
     expect(alert).toHaveAttribute('aria-label', '组件渲染失败');
-    expect(alert).toHaveTextContent('正文渲染失败');
+    expect(alert).toHaveTextContent('内容渲染失败');
+    expect(alert).toHaveTextContent('原因：boom');
     expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
   });
 

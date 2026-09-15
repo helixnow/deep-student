@@ -23,8 +23,9 @@ const markdownRendererImpl = vi.hoisted(() =>
   )),
 );
 
-vi.mock('@/features/chat/components/renderers/MarkdownRenderer', () => ({
-  MarkdownRenderer: (props: { content: string; isStreaming?: boolean }) => markdownRendererImpl(props),
+vi.mock('@/features/generative-ui/components/GenerativeMarkdownBody', () => ({
+  GenerativeMarkdownBody: (props: { content: string; isStreaming?: boolean }) =>
+    markdownRendererImpl(props),
 }));
 
 function registerMarkdownBlock() {
@@ -32,7 +33,7 @@ function registerMarkdownBlock() {
     type: 'markdown',
     component: MarkdownBlock,
     propsSchema: markdownPropsSchema,
-    description: 'Markdown 正文：title + body，复用 Chat MarkdownRenderer',
+    description: 'Markdown 正文：title + body，复用 GenerativeMarkdownBody',
     allowPartialRender: true,
   });
 }
@@ -220,7 +221,7 @@ describe('MarkdownBlock', () => {
     expect(renderer).toHaveAttribute('data-streaming', 'true');
   });
 
-  it('does not pass executable script/onerror HTML to MarkdownRenderer', () => {
+  it('does not pass executable script/onerror HTML to the markdown body', () => {
     render(
       <MarkdownBlock body={'Hello <script>alert(1)</script><img src=x onerror="alert(1)">'} />,
     );
