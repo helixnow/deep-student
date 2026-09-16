@@ -140,6 +140,27 @@ export async function saveContentNow(typeId: string, instanceKey: string | null)
   return true;
 }
 
+/**
+ * C16：为需要快照一致性的批量操作（文库导出等）冲刷所有 dirty 资源。
+ * 复用 saveContentNow（含最终 dirty 屏障）；返回 true = 调用时刻全部落盘。
+ *
+ * 逐资源顺序执行而非并发，避免同一底层文件的并发写产生 OCC 冲突。
+ */
+export async function flushAllDirtyContent(): Promise<boolean> {
+  const keys = listDirtyContentKeys();
+  if (keys.length === 0) return true;
+  let allSaved = true;
+  for (const key of keys) {
+    const separator = key.indexOf('::');
+    if (separator < 0) continue;
+    const typeId = key.slice(0, separator);
+    const instanceKey = key.slice(separator + 2) || null;
+    const saved = await saveContentNow(typeId, instanceKey);
+    if (!saved) allSaved = false;
+  }
+  return allSaved;
+}
+
 /** 仅供测试：清空注册表 */
 export function __resetContentDirtyRegistry(): void {
   checkers.clear();

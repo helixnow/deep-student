@@ -4,6 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { NotesAPI } from '@/utils/notesApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { flushAllDirtyContent } from '../content/contentDirtyRegistry';
 import {
   NotesLibraryManager,
   NOTES_LIBRARY_LAST_EXPORT_PREF,
@@ -73,7 +74,16 @@ export function WorkbenchNotesLibraryDialog({
     if (!exportTargetPath) return;
     setExporting(true);
     try {
-      const result = await NotesAPI.exportNotes({ outputPath: exportTargetPath, includeVersions: true });
+      // C16：导出前等待保存屏障——用户刚输入或仍有失败草稿时，
+      // 不能导出一个不包含屏幕最新内容的归档却显示成功。
+      const flushed = await flushAllDirtyContent();
+      if (!flushed) {
+        showGlobalNotification('warning', t('export.unsaved_blocked', {
+          defaultValue: '仍有笔记未能保存，为避免导出遗漏最新内容已暂停导出。请重试。',
+        }));
+        return;
+      }
+      const result = await NotesAPI.exportNotes({ outputPath: exportTargetPath });
       // Remember when the library was last exported (shown inside the panel).
       void NotesAPI.setPref(NOTES_LIBRARY_LAST_EXPORT_PREF, String(Date.now())).catch(() => {});
       showGlobalNotification('success', t('export.success_desc', {

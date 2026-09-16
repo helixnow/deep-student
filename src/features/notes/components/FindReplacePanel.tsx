@@ -363,12 +363,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   };
 
   const replaceDisabled = readOnly || !findText || matchCount === 0;
+  // C7/R06：长文按窗口加载时，查找只覆盖可见片段；范围必须对用户可见，
+  // 不能让“前缀无匹配”被读成“全篇无匹配”。
+  const windowed = editorApi?.isDocumentWindowed?.() ?? false;
   const panelLabel = t('notes:findReplace.panelLabel');
   const findLabel = t('notes:findReplace.findLabel');
   const replaceLabel = t('notes:findReplace.replaceLabel');
   const noMatchText = regexInvalid
     ? t('notes:editorV2.find_invalid_regex', { defaultValue: '无效正则表达式' })
-    : t('notes:findReplace.noMatch', { defaultValue: '无匹配结果' });
+    : windowed
+      ? t('notes:findReplace.noMatchLoadedPortion', { defaultValue: '已加载部分无匹配（长文）' })
+      : t('notes:findReplace.noMatch', { defaultValue: '无匹配结果' });
 
   return (
     <div
