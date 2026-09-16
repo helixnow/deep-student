@@ -35,3 +35,28 @@ describe('Browser settings gate cleanup', () => {
     ).toBe(false);
   });
 });
+
+
+describe('gate change value normalization', () => {
+  it.each([null, undefined, false, 0, '0', '', 'off', 'no', ' FALSE '])(
+    'closes for a disabled child gate value: %j', (value) => {
+      expect(shouldCloseBrowserForGateChange('workbench:settings-changed', {
+        key: BROWSER_SETTING_KEYS.enabled, value,
+      })).toBe(true);
+    },
+  );
+
+  it.each([true, 1, 'true', '1', 'yes', 'on', ' YES '])(
+    'preserves the browser for an enabled child gate value: %j', (value) => {
+      expect(shouldCloseBrowserForGateChange('workbench:settings-changed', {
+        key: BROWSER_SETTING_KEYS.enabled, value,
+      })).toBe(false);
+    },
+  );
+
+  it.each([null, undefined, 'invalid'])('preserves the parent gate default for %j', (value) => {
+    expect(shouldCloseBrowserForGateChange('workbench:settings-changed', {
+      key: WORKBENCH_MODE_SETTING_KEY, value,
+    })).toBe(false);
+  });
+});

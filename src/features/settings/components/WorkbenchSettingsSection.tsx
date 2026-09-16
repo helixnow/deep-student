@@ -48,6 +48,7 @@ import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/Wa
 import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { logWallpaperDiag } from '@/features/workbench/core/wallpaperDiagnostics';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
+import { interpretBrowserChildGateEnabled } from '@/features/browser/gates';
 import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
 // 接缝三 handoff（r5 边界审阅接线）：与 workbenchMode.persistWorkbenchModeEnabled
 // 同一调用点契约——持久化成功后、setEnabled(false)/mode-changed 之前交接焦点窗。
@@ -260,7 +261,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setMenuBarAutohide(String(menuBarAutohideVal ?? '') === 'true');
       setTitleBarDoubleClick(parseTitleBarDoubleClickAction(titleBarDoubleClickVal));
       setDevPanel(String(devPanelVal ?? '') === 'true');
-      setBrowserEnabled(String(browserEnabledVal ?? '') === 'true');
+      setBrowserEnabled(interpretBrowserChildGateEnabled(browserEnabledVal));
       setBrowserNetworkMode(parseBrowserNetworkMode(browserNetworkModeVal));
       setBrowserAgentControl(String(browserAgentControlVal ?? '') === 'true');
       setBrowserCdpWindows(String(browserCdpWindowsVal ?? '') === 'true');

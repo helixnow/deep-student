@@ -125,28 +125,15 @@ export async function resolveBrowserLaunchability(): Promise<
   BrowserGatesSnapshot & { featureFlagEnabled: boolean; closeMessage: string | null }
 > {
   const gates = await resolveBrowserGates();
-  let featureFlagEnabled = true;
+  let featureFlagEnabled = false;
+  let featureFlagUnavailable = false;
   try {
-    const raw = await tauriInvoke<{
-      flags?: Array<{ name?: string; enabled?: boolean; state?: string }>;
-    }>('get_feature_flags');
-    const flag = raw?.flags?.find((item) => item?.name === WORKBENCH_BROWSER_FEATURE_FLAG);
-    if (flag) {
-      const state = flag.state;
-      if (typeof state === 'string') {
-        const s = state.toLowerCase();
-        featureFlagEnabled = s === 'enabled' || s.startsWith('gradual');
-      } else if (state && typeof state === 'object') {
-        // Serde externally-tagged: { "Gradual": 0.5 } / { "UserSpecific": [...] }
-        const keys = Object.keys(state as Record<string, unknown>);
-        featureFlagEnabled = keys.some((k) => k === 'Gradual' || k === 'UserSpecific' || k === 'Enabled');
-      } else {
-        featureFlagEnabled = flag.enabled === true;
-      }
-    }
+    featureFlagEnabled = (await tauriInvoke<boolean>('is_feature_enabled', {
+      featureName: WORKBENCH_BROWSER_FEATURE_FLAG,
+      userId: null,
+    })) === true;
   } catch {
-    // If flags cannot be loaded, keep settings-only result (fail open on flag read).
-    featureFlagEnabled = true;
+    featureFlagUnavailable = true;
   }
 
   let closeMessage: string | null = null;
@@ -155,7 +142,9 @@ export async function resolveBrowserLaunchability(): Promise<
   } else if (!gates.browserEnabled) {
     closeMessage = '内置浏览器不可用：请在设置中启用内置浏览器';
   } else if (!featureFlagEnabled) {
-    closeMessage = '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
+    closeMessage = featureFlagUnavailable
+      ? '内置浏览器不可用：无法读取功能开关，请重试'
+      : '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
   }
 
   return {

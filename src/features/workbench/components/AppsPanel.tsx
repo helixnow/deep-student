@@ -156,11 +156,25 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   useEffect(() => {
     if (!open && !rendered) return;
     let cancelled = false;
-    void resolveBrowserLaunchability().then((snap) => {
-      if (!cancelled) setBrowserLaunchable(snap.open);
-    });
+    let generation = 0;
+    const refresh = () => {
+      const request = ++generation;
+      setBrowserLaunchable(false);
+      void resolveBrowserLaunchability().then((snap) => {
+        if (!cancelled && request === generation) setBrowserLaunchable(snap.open);
+      }).catch(() => {
+        if (!cancelled && request === generation) setBrowserLaunchable(false);
+      });
+    };
+    refresh();
+    window.addEventListener('workbench:mode-changed', refresh);
+    window.addEventListener('workbench:settings-changed', refresh);
+    window.addEventListener('focus', refresh);
     return () => {
       cancelled = true;
+      window.removeEventListener('workbench:mode-changed', refresh);
+      window.removeEventListener('workbench:settings-changed', refresh);
+      window.removeEventListener('focus', refresh);
     };
   }, [open, rendered]);
 

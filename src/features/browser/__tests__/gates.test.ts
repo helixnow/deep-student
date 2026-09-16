@@ -31,6 +31,9 @@ import {
 import { BROWSER_SETTING_KEYS } from '../navigationPolicy';
 import {
   assertBrowserGatesOpen,
+  assertBrowserLaunchable,
+  resolveBrowserLaunchability,
+  WORKBENCH_BROWSER_FEATURE_FLAG,
   BrowserGateClosedError,
   evaluateBrowserSettingsGates,
   interpretBrowserChildGateEnabled,
@@ -149,5 +152,59 @@ describe('resolveBrowserGates', () => {
     await expect(assertBrowserGatesOpen()).rejects.toMatchObject({
       message: expect.stringContaining('内置浏览器'),
     });
+  });
+});
+
+
+describe('browser feature-flag launchability', () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    __resetWorkbenchModeCacheForTest();
+    mockSettingsStore({
+      [WORKBENCH_MODE_SETTING_KEY]: 'true',
+      [BROWSER_SETTING_KEYS.enabled]: 'true',
+    });
+  });
+
+  function mockFlag(result: unknown, reject = false) {
+    const settings = invokeMock.getMockImplementation();
+    if (!settings) throw new Error('settings mock missing');
+    invokeMock.mockImplementation(async (command, payload) => {
+      if (command === 'is_feature_enabled') {
+        if (reject) throw new Error('flag database unavailable');
+        return result;
+      }
+      return settings(command, payload);
+    });
+  }
+
+  it('uses the evaluated native flag instead of interpreting serialized rollout configuration', async () => {
+    mockFlag(true);
+    await expect(resolveBrowserLaunchability()).resolves.toMatchObject({
+      open: true, featureFlagEnabled: true,
+    });
+    expect(invokeMock).toHaveBeenCalledWith('is_feature_enabled', {
+      featureName: WORKBENCH_BROWSER_FEATURE_FLAG,
+      userId: null,
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith('get_feature_flags');
+  });
+
+  it.each([false, null, undefined, 'Enabled', { Gradual: 1 }])(
+    'rejects a flag result that is not explicitly true: %j', async (value) => {
+      mockFlag(value);
+      await expect(resolveBrowserLaunchability()).resolves.toMatchObject({
+        open: false, featureFlagEnabled: false,
+      });
+      await expect(assertBrowserLaunchable()).rejects.toBeInstanceOf(BrowserGateClosedError);
+    },
+  );
+
+  it('keeps native browser commands gated when the flag read fails', async () => {
+    mockFlag(undefined, true);
+    await expect(resolveBrowserLaunchability()).resolves.toMatchObject({
+      open: false, featureFlagEnabled: false, closeMessage: expect.stringContaining('重试'),
+    });
+    await expect(assertBrowserLaunchable()).rejects.toBeInstanceOf(BrowserGateClosedError);
   });
 });

@@ -28,6 +28,7 @@ import {
 import { Dock } from '../Dock';
 import { setDockPinned } from '../DockPinnedStore';
 import { useWorkbenchOverlay } from '../../core/shortcuts';
+import * as browserGates from '@/features/browser/gates';
 
 const NullApp: React.FC<AppWindowProps> = () => null;
 
@@ -562,5 +563,58 @@ describe('统一搜索（应用 + 命令）', () => {
     fireEvent.change(input, { target: { value: '任意关键词' } });
     expect(screen.queryByTestId('wb-apps-command-global.command-palette')).not.toBeInTheDocument();
     expect(screen.getByTestId('wb-apps-command-nav.goto.skills-management')).toBeInTheDocument();
+  });
+});
+
+
+describe('AppsPanel browser availability updates', () => {
+  const available = {
+    workbenchModeEnabled: true, browserEnabled: true,
+    featureFlagEnabled: true, open: true, closeMessage: null,
+  };
+  const unavailable = { ...available, open: false, featureFlagEnabled: false };
+
+  beforeEach(() => {
+    appRegistry.register(makeApp('browser'));
+    vi.spyOn(browserGates, 'resolveBrowserLaunchability').mockResolvedValue(available);
+  });
+
+  afterEach(() => {
+    vi.mocked(browserGates.resolveBrowserLaunchability).mockRestore();
+  });
+
+  it('updates the browser entry when settings change while the panel remains open', async () => {
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+    await screen.findByTestId('wb-apps-item-browser');
+    vi.mocked(browserGates.resolveBrowserLaunchability).mockResolvedValue(unavailable);
+    act(() => window.dispatchEvent(new CustomEvent('workbench:settings-changed')));
+    await waitFor(() => expect(screen.queryByTestId('wb-apps-item-browser')).toBeNull());
+    vi.mocked(browserGates.resolveBrowserLaunchability).mockResolvedValue(available);
+    act(() => window.dispatchEvent(new CustomEvent('workbench:mode-changed')));
+    await screen.findByTestId('wb-apps-item-browser');
+  });
+
+  it('ignores an older availability response after a newer gate change', async () => {
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+    await screen.findByTestId('wb-apps-item-browser');
+    let resolveOld!: (value: typeof available) => void;
+    vi.mocked(browserGates.resolveBrowserLaunchability)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce(unavailable);
+    act(() => window.dispatchEvent(new CustomEvent('workbench:settings-changed')));
+    act(() => window.dispatchEvent(new CustomEvent('workbench:settings-changed')));
+    await act(async () => { resolveOld(available); });
+    expect(screen.queryByTestId('wb-apps-item-browser')).toBeNull();
+  });
+
+  it('hides the entry when availability cannot be refreshed on focus', async () => {
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+    await screen.findByTestId('wb-apps-item-browser');
+    vi.mocked(browserGates.resolveBrowserLaunchability).mockRejectedValueOnce(new Error('offline'));
+    act(() => window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(screen.queryByTestId('wb-apps-item-browser')).toBeNull());
   });
 });
