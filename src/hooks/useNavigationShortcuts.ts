@@ -34,12 +34,14 @@ export function useNavigationShortcuts(options: UseNavigationShortcutsOptions) {
      * 此处仅保留 Alt+Arrow（与命令系统不冲突的补充快捷键）。
      */
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat) return;
       // 在输入框中禁用快捷键
-      const target = e.target as HTMLElement;
-      const isInput =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+      const target = e.target;
+      const isInput = target instanceof Element && (
+        target.matches('input, textarea, select') ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
+        target.closest('[role="textbox"], [contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]') !== null
+      );
 
       if (isInput) return;
 
@@ -59,6 +61,7 @@ export function useNavigationShortcuts(options: UseNavigationShortcutsOptions) {
      * 鼠标事件处理（侧键）
      */
     const handleMouseDown = (e: MouseEvent) => {
+      if (e.defaultPrevented) return;
       // 鼠标侧键：button 3 = 后退，button 4 = 前进
       if (e.button === 3 && canGoBack) {
         e.preventDefault();
