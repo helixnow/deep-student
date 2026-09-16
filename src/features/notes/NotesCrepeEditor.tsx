@@ -1161,10 +1161,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // force=true：强制应用（保存冲突时外部版本胜出，调用方已通知用户）。
   useEffect(() => {
     const handleExternalUpdated = (event: Event) => {
-      const { noteId: targetNoteId, content: newContent, force } =
-        (event as CustomEvent<{ noteId: string; content: string; force?: boolean }>).detail;
+      const { noteId: targetNoteId, content: newContent, force, windowId: targetWindowId } =
+        (event as CustomEvent<{ noteId: string; content: string; force?: boolean; windowId?: string }>).detail;
       const currentNoteId = noteIdRef.current;
       if (!currentNoteId || targetNoteId !== currentNoteId) {
+        return;
+      }
+      // C4：强制覆盖是“某个视图/会话解决冲突”的动作，不得按 noteId 广播到
+      // 同篇的其它编辑实例（会静默清掉另一份草稿）。静默同步（force=false）
+      // 仍传播到所有实例，让干净的视图跟上磁盘版本。
+      if (force && targetWindowId && acrWindowId && targetWindowId !== acrWindowId) {
         return;
       }
 
@@ -1207,16 +1213,20 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     return () => {
       window.removeEventListener('notes:external-updated', handleExternalUpdated);
     };
-  }, [editorApi]);
+  }, [editorApi, acrWindowId]);
 
   // ★ F1 修复：显式保存请求（冲突恢复"恢复我的版本"等场景）。
   // 绕过 queueSave 的 lastSaved 去重（恢复路径中 draft 与 lastSaved 已被
   // external-updated 同步为同一值，常规入队会被跳过）。
   useEffect(() => {
     const handleRequestSave = (event: Event) => {
-      const { noteId: targetNoteId, content } =
-        (event as CustomEvent<{ noteId: string; content: string }>).detail;
+      const { noteId: targetNoteId, content, windowId: targetWindowId } =
+        (event as CustomEvent<{ noteId: string; content: string; windowId?: string }>).detail;
       if (!targetNoteId || targetNoteId !== noteIdRef.current) {
+        return;
+      }
+      // C4：显式保存请求属于发起视图的冲突恢复动作，不写入同篇的其它实例
+      if (targetWindowId && acrWindowId && targetWindowId !== acrWindowId) {
         return;
       }
       contentRef.current = content;
@@ -1232,7 +1242,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     return () => {
       window.removeEventListener('notes:request-save', handleRequestSave);
     };
-  }, [runPendingSave]);
+  }, [runPendingSave, acrWindowId]);
 
   // 宿主 wikilink 索引：挂载时拉取；创建后由 createFromWikilink upsert
   useEffect(() => {
