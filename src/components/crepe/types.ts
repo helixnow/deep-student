@@ -83,7 +83,12 @@ export interface CrepeEditorApi {
     text: string,
     level: number,
     normalizedText?: string,
-    matchesHeading?: (docHeadingText: string) => boolean
+    matchesHeading?: (docHeadingText: string) => boolean,
+    /**
+     * C6：同级同文本标题的文档序号（0 起）。省略时取第一个精确匹配，
+     * 避免旧行为在遍历中被后续同名标题覆盖、最终落到最后一个。
+     */
+    occurrence?: number
   ) => void;
   
   /** 获取底层 Crepe 实例（高级用法） */

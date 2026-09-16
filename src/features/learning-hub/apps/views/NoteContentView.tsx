@@ -17,7 +17,7 @@ import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
 import i18n from '@/i18n';
-import { dstu } from '@/dstu';
+import { dstu, updatedAtToVersionToken } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -705,7 +705,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       throw new Error(msg);
     }
     const savedNoteId = node.id;
-    const result = await dstu.setMetadata(node.path, { title: newTitle });
+    const result = await dstu.setMetadata(
+      node.path,
+      { title: newTitle },
+      updatedAtToVersionToken(lastKnownUpdatedAtRef.current),
+    );
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update title:', result.error);
       reportError(result.error, i18n.t('backend_errors:note_content.update_title_action', { defaultValue: '更新标题' }));
@@ -714,15 +718,25 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ R4：await 期间可能已切换笔记，禁止把旧笔记标题回写进当前视图
     if (loadingNoteIdRef.current !== savedNoteId) return;
     setTitle(newTitle);
+    // C13：元数据写回也会推进 updated_at，刷新 OCC 基线避免后续正文保存误判冲突
+    void dstu.get(node.path).then((refreshed) => {
+      if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
+        updateKnownBaseline(refreshed.value.updatedAt ?? null);
+      }
+    });
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
-  }, [node.id, node.path, readOnly, onTitleChange, t]);
+  }, [node.id, node.path, readOnly, onTitleChange, t, updateKnownBaseline]);
 
   // 标签变更
   const handleTagsChange = useCallback(async (newTags: string[]) => {
     if (readOnly) return;
     const savedNoteId = node.id;
-    const result = await dstu.setMetadata(node.path, { tags: newTags });
+    const result = await dstu.setMetadata(
+      node.path,
+      { tags: newTags },
+      updatedAtToVersionToken(lastKnownUpdatedAtRef.current),
+    );
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update tags:', result.error);
       reportError(result.error, i18n.t('backend_errors:note_content.update_tags_action', { defaultValue: '更新标签' }));
@@ -730,7 +744,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     }
     if (loadingNoteIdRef.current !== savedNoteId) return;
     setTags(newTags);
-  }, [node.id, node.path, readOnly]);
+    void dstu.get(node.path).then((refreshed) => {
+      if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
+        updateKnownBaseline(refreshed.value.updatedAt ?? null);
+      }
+    });
+  }, [node.id, node.path, readOnly, updateKnownBaseline]);
 
   // ★ 关键修复：onEditorReady 必须是稳定引用。
   // NotesCrepeEditor 在该 prop 变化时会先执行 cleanup 调用 onEditorReady(null)，
@@ -1078,6 +1097,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               tags={tags}
               content={isContentReady ? (visibleContent) : ''}
               onTagsChange={readOnly ? undefined : handleTagsChange}
+              onHeadingNavigate={() => setMobilePanelOpen(false)}
             />
           </div>
         </div>

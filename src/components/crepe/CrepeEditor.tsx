@@ -577,7 +577,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         text: string,
         level: number,
         normalizedText?: string,
-        matchesHeading?: (docHeadingText: string) => boolean
+        matchesHeading?: (docHeadingText: string) => boolean,
+        occurrence?: number
       ) => {
         const crepe = crepeRef.current;
         if (!crepe) {
@@ -713,8 +714,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           // 遍历文档查找匹配的标题
           let targetPos = -1;
           let bestMatch: { pos: number; score: number } | null = null;
-          
+          // C6：occurrence 精确消歧。ProseMirror descendants 回调返回 false 只停止
+          // 进入该节点子树，不会终止兄弟节点遍历，因此必须用显式标志在命中目标后
+          // 短路，否则后出现的同名标题会覆盖 targetPos（旧行为落到最后一个）。
+          const targetOccurrence = Math.max(0, occurrence ?? 0);
+          let exactSeen = 0;
+          let exactResolved = false;
+
           doc.descendants((node, pos) => {
+            if (exactResolved) return false;
             // 检查是否是标题节点
             if (node.type.name === 'heading' && (level < 1 || node.attrs?.level === level)) {
               const rawText = node.textContent;
@@ -722,8 +730,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               
               // 精确匹配优先（调用方谓词可注入全半角/中文标点规范化）
               if (matchesHeading ? matchesHeading(rawText) : nodeText === searchText) {
-                targetPos = pos;
-                return false; // 精确匹配，立即停止
+                if (exactSeen === targetOccurrence) {
+                  targetPos = pos;
+                  exactResolved = true;
+                } else {
+                  exactSeen += 1;
+                }
+                return false;
               }
               
               // 计算匹配分数（用于模糊匹配）
