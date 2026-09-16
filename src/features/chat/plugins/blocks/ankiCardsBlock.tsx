@@ -84,6 +84,11 @@ import {
 import { AnkiQaFlagBadge, AnkiQaFlagsSummaryChip } from './components/AnkiQaFlagBadge';
 import { AnkiCriticSummaryBanner } from './components/AnkiCriticSummaryBanner';
 import { parseAnkiMediaReport } from './components/ankiMediaReport';
+import {
+  schedulePendingDelete,
+  cancelPendingDelete,
+  commitPendingDeleteNow,
+} from './pendingCardDeletes';
 import { ImageOcclusionOverlay } from '@/components/anki/ImageOcclusionOverlay';
 import {
   parseOcclusionSpec,
@@ -2388,12 +2393,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   type PendingDeleteEntry = { card: AnkiCard; index: number };
   const [pendingDelete, setPendingDelete] = useState<{ entries: PendingDeleteEntry[] } | null>(null);
   const pendingDeleteRef = useRef<{ entries: PendingDeleteEntry[] } | null>(null);
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 删除退出动画：先标记 exiting，动画结束后才真正从投影移除
   const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tAnkiRef = useRef(tAnki);
-  tAnkiRef.current = tAnki;
 
   // 把卡片恢复到 store 投影（撤销 / DB 删除失败回滚共用）
   const restoreDeletedCards = useCallback(
@@ -2422,45 +2424,22 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [store, block.id, persistToolOutput]
   );
 
-  // 提交待删除卡片的 DB 删除（撤销窗口结束 / 新删除到来时触发）
+  // 提交待删除卡片的 DB 删除（新删除到来时结算上一个窗口）。
+  // 实际的撤销计时与提交由模块级 pendingCardDeletes 管理（F19），
+  // 组件卸载不会强制提前提交或吞掉失败。
   const flushPendingDelete = useCallback(() => {
     const pending = pendingDeleteRef.current;
     if (!pending) return;
     pendingDeleteRef.current = null;
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = null;
-    }
     setPendingDelete(null);
-    pending.entries.forEach((entry) => {
-      // 无持久 ID 的卡片不存在 DB 行，无需提交
-      if (!entry.card.id) return;
-      void invoke('delete_anki_card', { cardId: entry.card.id }).catch((err: unknown) => {
-        // DB 删除失败：回滚投影并明确告知
-        console.warn('[AnkiCardsBlock] Failed to commit card delete to anki DB:', err);
-        restoreDeletedCards([entry]);
-        showGlobalNotification('warning', tAnki('chatBlock.deleteCommitFailed'));
-      });
-    });
-  }, [restoreDeletedCards, tAnki]);
+    commitPendingDeleteNow(block.id);
+  }, [block.id]);
 
-  // 组件卸载（虚拟滚动等）时若还有未提交的删除：直接提交（不再可撤销），
-  // 避免投影与 DB 漂移，并用全局 toast 告知用户撤销窗口已结束。
+  // 组件卸载（虚拟滚动等）时只清理本地动画定时器；待提交删除继续由模块级
+  // 管理器在撤销窗口结束后完成，失败会回写投影并提示，不再静默吞掉。
   useEffect(() => {
     return () => {
-      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
       if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-      const pending = pendingDeleteRef.current;
-      pendingDeleteRef.current = null;
-      if (!pending) return;
-      pending.entries.forEach((entry) => {
-        if (!entry.card.id) return;
-        void invoke('delete_anki_card', { cardId: entry.card.id }).catch(() => undefined);
-      });
-      showGlobalNotification(
-        'info',
-        tAnkiRef.current('chatBlock.deleteCommittedOnLeave', { count: pending.entries.length })
-      );
     };
   }, []);
 
@@ -2514,16 +2493,34 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       const pending = { entries };
       pendingDeleteRef.current = pending;
       setPendingDelete(pending);
-      undoTimerRef.current = setTimeout(() => {
-        flushPendingDelete();
-      }, UNDO_DELETE_WINDOW_MS);
+      // 撤销窗口与 DB 提交交给模块级管理器，脱离组件卸载生命周期（F19）
+      schedulePendingDelete(
+        block.id,
+        {
+          cardIds: entries
+            .map((entry) => entry.card.id)
+            .filter((id): id is string => Boolean(id)),
+          restore: (failedCardIds) => {
+            const failed = new Set(failedCardIds);
+            restoreDeletedCards(
+              entries.filter((entry) => entry.card.id && failed.has(entry.card.id)),
+            );
+          },
+          onResult: ({ failed }) => {
+            if (failed.length > 0) {
+              showGlobalNotification('warning', tAnki('chatBlock.deleteCommitFailed'));
+            }
+          },
+        },
+        UNDO_DELETE_WINDOW_MS,
+      );
       logChatAnkiEvent('chat_anki_card_deleted', {
         indices: entries.map((entry) => entry.index),
         count: entries.length,
         blockId: block.id,
       });
     },
-    [store, block.id, persistToolOutput, flushPendingDelete]
+    [store, block.id, persistToolOutput, flushPendingDelete, restoreDeletedCards, tAnki]
   );
 
   // 请求删除：先播放退出动画（高度塌缩+淡出），动画结束后真正提交。
@@ -2560,14 +2557,11 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [cards, requestDeleteCards]
   );
 
-  // 撤销删除：取消提交定时器并恢复投影（覆盖整个选择集）
+  // 撤销删除：取消模块级提交定时器并恢复投影（覆盖整个选择集）
   const handleUndoDelete = useCallback(() => {
     const pending = pendingDeleteRef.current;
     if (!pending) return;
-    if (undoTimerRef.current) {
-      clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = null;
-    }
+    cancelPendingDelete(block.id);
     pendingDeleteRef.current = null;
     setPendingDelete(null);
     restoreDeletedCards(pending.entries);
