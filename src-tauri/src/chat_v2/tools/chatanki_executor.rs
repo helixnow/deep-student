@@ -13457,24 +13457,6 @@ fn infer_template_id_from_goal(
     best.map(|(t, _)| t.id.clone())
 }
 
-fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
-    if segments == 0 {
-        return Vec::new();
-    }
-    if total <= 0 {
-        return vec![0; segments];
-    }
-    let total_usize = total as usize;
-    let base = total_usize / segments;
-    let remainder = total_usize % segments;
-    (0..segments)
-        .map(|idx| {
-            let extra = if idx < remainder { 1 } else { 0 };
-            (base + extra) as i32
-        })
-        .collect()
-}
-
 /// 全局卡片上限触发的取消标记（写入 document_task.error_message）。
 pub(crate) const GLOBAL_CARD_LIMIT_MARKER: &str = "GLOBAL_CARD_LIMIT_REACHED";
 
@@ -19142,12 +19124,8 @@ mod tests {
         assert_eq!(suggest_max_cards_arg(false, 0, 3000), 80);
     }
 
-    #[test]
-    fn test_distribute_global_max_cards() {
-        assert_eq!(distribute_global_max_cards(10, 2), vec![5, 5]);
-        assert_eq!(distribute_global_max_cards(10, 3), vec![4, 3, 3]);
-        assert_eq!(distribute_global_max_cards(2, 5), vec![1, 1, 0, 0, 0]);
-    }
+    // 额度分配已统一由 document_processing_service::distribute_global_max_cards
+    // 实现（F14 等距抽样），此处不再保留重复实现与测试。
 
     #[test]
     fn test_goal_prefers_choice_template() {

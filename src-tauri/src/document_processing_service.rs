@@ -884,6 +884,15 @@ fn get_overlap_suffix(text: &str, max_chars: usize) -> Option<String> {
     Some(suffix)
 }
 
+/// 把全局限额分配到各分段。
+///
+/// F14：用户要「从长材料提炼少量卡」时，额度不能只喂给前面的分段，否则排在
+/// 后面的章节（往往包含结论）会因零额度被永久跳过。这里改为**按全文等距抽样**
+/// 分配，使抽样跨越开头到结尾：
+/// - `total >= segments`：每段至少 1 张，余数按等距位置补充（不再全给前段）；
+/// - `total < segments`：按等距位置选出 `total` 个分段各 1 张（首段与末段均
+///   可能入选），其余为 0；
+/// - 总额度恒守恒（求和 == total）。
 fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
     if segments == 0 {
         return Vec::new();
@@ -892,14 +901,32 @@ fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
         return vec![0; segments];
     }
     let total_usize = total as usize;
+    let mut limits = vec![0_i32; segments];
+
+    if total_usize <= segments {
+        // 等距抽样；只有 1 张时取中段作为折中，避免永远只取开头
+        for slot in 0..total_usize {
+            let idx = if total_usize == 1 {
+                segments / 2
+            } else {
+                slot * (segments - 1) / (total_usize - 1)
+            };
+            limits[idx] += 1;
+        }
+        return limits;
+    }
+
     let base = total_usize / segments;
     let remainder = total_usize % segments;
-    (0..segments)
-        .map(|idx| {
-            let extra = if idx < remainder { 1 } else { 0 };
-            (base + extra) as i32
-        })
-        .collect()
+    for limit in limits.iter_mut() {
+        *limit = base as i32;
+    }
+    // 余数按等距位置分配（r == 0 落在首段，r == remainder-1 落在末段附近）
+    for r in 0..remainder {
+        let idx = r * segments / remainder;
+        limits[idx] += 1;
+    }
+    limits
 }
 
 // =====================================================================
@@ -1404,11 +1431,18 @@ mod tests {
     fn distribute_global_max_cards_cases() {
         assert_eq!(distribute_global_max_cards(10, 3), vec![4, 3, 3]);
         assert_eq!(distribute_global_max_cards(3, 3), vec![1, 1, 1]);
-        assert_eq!(distribute_global_max_cards(2, 4), vec![1, 1, 0, 0]);
+        // F14：2 张分给 4 段时等距抽样（首段 + 末段），不再全部堆在前段
+        assert_eq!(distribute_global_max_cards(2, 4), vec![1, 0, 0, 1]);
+        // 1 张时取中段，避免永远只取开头
+        assert_eq!(distribute_global_max_cards(1, 5), vec![0, 0, 1, 0, 0]);
         assert_eq!(distribute_global_max_cards(0, 3), vec![0, 0, 0]);
         assert_eq!(distribute_global_max_cards(-5, 2), vec![0, 0]);
         assert_eq!(distribute_global_max_cards(5, 0), Vec::<i32>::new());
-        // 总量守恒
+        // 总量守恒 + total < segments 时首尾都可能入选
+        let sparse = distribute_global_max_cards(3, 10);
+        assert_eq!(sparse.iter().sum::<i32>(), 3);
+        assert!(sparse[0] > 0, "首段应可能入选: {sparse:?}");
+        assert!(sparse[9] > 0, "末段必须参与抽样，避免结论章被永久跳过: {sparse:?}");
         let dist = distribute_global_max_cards(103, 7);
         assert_eq!(dist.iter().sum::<i32>(), 103);
     }
