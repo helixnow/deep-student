@@ -9,6 +9,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
@@ -83,14 +84,16 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   className,
 }) => {
   const { t } = useTranslation('practice');
+  const beginRequest = usePracticeRequestScope(examId);
   
   // Store
   const {
-    generatedPaper,
+    generatedPaper: storedGeneratedPaper,
     setGeneratedPaper,
     generatePaper,
     isLoadingPractice,
   } = useQuestionBankStore();
+  const generatedPaper = storedGeneratedPaper?.exam_id === examId ? storedGeneratedPaper : null;
   
   // 配置状态
   const [title, setTitle] = useState(() => t('paper.defaultTitle'));
@@ -116,6 +119,11 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [showPreview, isActive]);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  useEffect(() => {
+    setShowPreview(false);
+    setExpandedQuestions(new Set());
+    setGenerationError(null);
+  }, [examId]);
   
   // 计算总题数
   const totalQuestions = useMemo(() => {
@@ -150,6 +158,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   
   // 生成试卷
   const handleGenerate = useCallback(async () => {
+    const isCurrent = beginRequest();
     // 题库余量校验：请求数 > 题库实际数量时，后端随机抽取会静默少抽，
     // 这里先拦下并提示用户调整后重试。统计失败时 availableByType 保持
     // null，跳过校验放行（保持旧行为兜底），避免误报“库存不足”阻断组卷。
@@ -159,6 +168,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     } catch (err) {
       console.error('Failed to count questions by type, skip availability check:', err);
     }
+    if (!isCurrent()) return;
     const shortages = availableByType
       ? findTypeShortages(typeSelection, availableByType)
       : [];
@@ -189,9 +199,11 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     setGenerationError(null);
     try {
       const paper = await generatePaper(examId, config);
+      if (!isCurrent() || useQuestionBankStore.getState().generatedPaper !== paper) return;
       setShowPreview(true);
       onGenerate?.(paper);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       console.error('Failed to generate paper:', err);
       const message = getErrorMessage(err);
       setGenerationError(message);
@@ -200,7 +212,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         t('paper.generateFailed', { error: message }),
       );
     }
-  }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate, t]);
+  }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate, t, beginRequest]);
   
   // 导出试卷：Markdown 直接落盘（复用 save 对话框 + save_text_to_file 后端命令）；
   // PDF/Word 暂未实现，给出明确提示而非静默无反应（修复此前点击导出无任何反馈的缺口）。

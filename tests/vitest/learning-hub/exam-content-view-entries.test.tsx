@@ -135,8 +135,14 @@ vi.mock('@/debug-panel/plugins/ExamSheetProcessingDebugPlugin', () => ({
 }));
 
 vi.mock('@/components/QuestionBankEditor', () => ({
-  default: ({ onDraftDirtyChange }: { onDraftDirtyChange?: (dirty: boolean) => void }) => (
-    <div data-testid="question-bank-editor">
+  default: ({ onDraftDirtyChange, onModeChange, settingsPanelOpen }: {
+    onDraftDirtyChange?: (dirty: boolean) => void;
+    onModeChange?: (mode: 'timed' | 'random') => void;
+    settingsPanelOpen?: boolean;
+  }) => (
+    <div data-testid="question-bank-editor" data-settings-open={String(settingsPanelOpen)}>
+      <button type="button" onClick={() => onModeChange?.('timed')}>configure timed practice</button>
+      <button type="button" onClick={() => onModeChange?.('random')}>switch to random practice</button>
       <button type="button" onClick={() => onDraftDirtyChange?.(true)}>
         mark answer draft
       </button>
@@ -160,8 +166,8 @@ vi.mock('@/components/TagNavigationView', () => ({
 }));
 
 vi.mock('@/components/practice/PracticeLauncher', () => ({
-  default: ({ onStartPractice }: { onStartPractice?: (mode: string) => void }) => (
-    <div data-testid="practice-launcher">
+  default: ({ onStartPractice, requestedMode }: { onStartPractice?: (mode: string) => void; requestedMode?: string }) => (
+    <div data-testid="practice-launcher" data-requested-mode={requestedMode}>
       <button type="button" onClick={() => onStartPractice?.('sequential')}>
         start sequential practice
       </button>
@@ -227,6 +233,8 @@ const openSecondaryMenuItem = async (patterns: RegExp[]) => {
 describe('ExamContentView secondary entry points', () => {
   beforeEach(() => {
     storeState.focusMode = false;
+    storeState.practiceSessions = {};
+    hookState.practiceMode = 'sequential';
     storeState.mockExamSession = null;
     storeState.timedSession = null;
     storeState.dailyPractice = null;
@@ -359,5 +367,61 @@ describe('ExamContentView secondary entry points', () => {
       expect(hookState.loadQuestions).toHaveBeenCalledTimes(1);
       expect(hookState.refreshStats).toHaveBeenCalledTimes(1);
     });
+  });
+
+  const enterActivePractice = async () => {
+    render(
+      <ExamContentView node={{
+        id: 'exam_1', sourceId: 'exam_1', name: 'Exam 1', type: 'exam',
+        path: '/exam_1', createdAt: 0, updatedAt: 0,
+      }} />,
+    );
+    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'learningHub:exam.tab.practice' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'start sequential practice' }));
+    await screen.findByTestId('question-bank-editor');
+    storeState.practiceSessions[JSON.stringify(['exam-1', 'entries-test-view'])] = {
+      questionIds: ['q_1', 'q_2'], answeredIds: ['q_1'],
+    };
+    hookState.setPracticeMode.mockClear();
+  };
+
+  it.each([false, true])('preserves the requested launcher mode after confirmations (dirty=%s)', async (dirty) => {
+    await enterActivePractice();
+    if (dirty) fireEvent.click(screen.getByRole('button', { name: 'mark answer draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'configure timed practice' }));
+    if (dirty) fireEvent.click(await screen.findByRole('button', { name: '放弃', exact: true }));
+
+    const confirmation = await screen.findByRole('alert', { name: 'practice:session.exitTitle' });
+    expect(screen.queryByTestId('practice-launcher')).not.toBeInTheDocument();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'practice:session.exitConfirm' }));
+    expect(await screen.findByTestId('practice-launcher')).toHaveAttribute('data-requested-mode', 'timed');
+  });
+
+  it('guards an in-place practice mode change and applies it only after confirmation', async () => {
+    await enterActivePractice();
+    fireEvent.click(screen.getByRole('button', { name: 'switch to random practice' }));
+    let confirmation = await screen.findByRole('alert', { name: 'practice:session.exitTitle' });
+    expect(hookState.setPracticeMode).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'common:cancel' }));
+    expect(hookState.setPracticeMode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'switch to random practice' }));
+    confirmation = await screen.findByRole('alert', { name: 'practice:session.exitTitle' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'practice:session.exitConfirm' }));
+    expect(hookState.setPracticeMode).toHaveBeenCalledTimes(1);
+    expect(hookState.setPracticeMode).toHaveBeenCalledWith('random');
+    expect(screen.getByTestId('question-bank-editor')).toBeInTheDocument();
+  });
+
+  it('enables focus mode in the current practice view without discarding a draft', async () => {
+    await enterActivePractice();
+    fireEvent.click(screen.getByRole('button', { name: 'mark answer draft' }));
+    fireEvent(window, new CustomEvent('exam:setFocusMode', {
+      detail: { targetResourceId: 'exam_1', enabled: true },
+    }));
+    expect(storeState.setFocusMode).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('alert', { name: '放弃未提交的内容？' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: 'practice:session.exitTitle' })).not.toBeInTheDocument();
   });
 });

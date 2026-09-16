@@ -386,6 +386,10 @@ export function useQuestionBankSession({
     sessionEpochRef.current += 1;
     const epoch = sessionEpochRef.current;
     lastSubmissionIdsRef.current.clear();
+    submitInFlightRef.current = false;
+    setIsSubmitting(false);
+    setIsLoading(false);
+    setError(null);
     if (examId) {
       setLocalQuestions(new Map());
       setLocalOrder([]);
@@ -555,8 +559,8 @@ export function useQuestionBankSession({
       }
       throw err;
     } finally {
-      submitInFlightRef.current = false;
-      if (sessionEpochRef.current === epoch) {
+      if (sessionEpochRef.current === epoch && examIdRef.current === currentExamId) {
+        submitInFlightRef.current = false;
         setIsSubmitting(false);
       }
     }
@@ -587,9 +591,13 @@ export function useQuestionBankSession({
 
   // ========== 切换收藏 ==========
   const toggleFavorite = useCallback(async (questionId: string) => {
+    const epoch = sessionEpochRef.current;
+    const currentExamId = examIdRef.current;
     try {
       const question = await invoke<StoreQuestion>('qbank_toggle_favorite', { questionId });
+      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
       setLocalQuestions(prev => {
+        if (!prev.has(question.id)) return prev;
         const next = new Map(prev);
         next.set(question.id, question);
         return next;

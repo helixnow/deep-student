@@ -326,4 +326,108 @@ describe('useQuestionBankSession', () => {
       regrade_submission_id: 'sub-1',
     });
   });
+
+  it('releases submission state on exam changes without unlocking a newer submission', async () => {
+    const oldResponse = {
+      is_correct: true, correct_answer: 'A', needs_manual_grading: false,
+      message: 'correct', submission_id: 'sub-old',
+      updated_question: makeStoreQuestion('q-old', 'old question'), updated_stats: makeStats(),
+    };
+    const newResponse = {
+      ...oldResponse, submission_id: 'sub-new',
+      updated_question: makeStoreQuestion('q-new', 'new question'),
+    };
+    let finishOld!: (value: typeof oldResponse) => void;
+    let finishNew!: (value: typeof newResponse) => void;
+    const oldRequest = new Promise<typeof oldResponse>((resolve) => { finishOld = resolve; });
+    const newRequest = new Promise<typeof newResponse>((resolve) => { finishNew = resolve; });
+
+    mockInvoke.mockImplementation((command: string, payload?: {
+      request?: { exam_id?: string; question_id?: string };
+    }) => {
+      if (command === 'qbank_get_stats') return Promise.resolve(makeStats());
+      if (command === 'qbank_list_questions') {
+        const id = payload?.request?.exam_id === 'exam-old' ? 'q-old' : 'q-new';
+        return Promise.resolve({
+          questions: [makeStoreQuestion(id, id)], total: 1,
+          page: 1, page_size: 50, has_more: false,
+        });
+      }
+      if (command === 'qbank_submit_answer') {
+        return payload?.request?.question_id === 'q-old' ? oldRequest : newRequest;
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ examId }) => useQuestionBankSession({ examId }),
+      { initialProps: { examId: 'exam-old' } },
+    );
+    await waitFor(() => expect(result.current.questions[0]?.id).toBe('q-old'));
+    let oldCompletion = Promise.resolve('');
+    act(() => {
+      oldCompletion = result.current.submitAnswer('q-old', 'A').then(
+        () => 'unexpected success', (error: unknown) => String(error),
+      );
+    });
+    expect(result.current.isSubmitting).toBe(true);
+
+    rerender({ examId: 'exam-new' });
+    await waitFor(() => expect(result.current.questions[0]?.id).toBe('q-new'));
+    expect(result.current.isSubmitting).toBe(false);
+    let newCompletion: Promise<unknown> = Promise.resolve();
+    act(() => { newCompletion = result.current.submitAnswer('q-new', 'A'); });
+    expect(result.current.isSubmitting).toBe(true);
+
+    await act(async () => {
+      finishOld(oldResponse);
+      expect(await oldCompletion).toContain('Session changed');
+    });
+    expect(result.current.isSubmitting).toBe(true);
+    expect(result.current.questions[0]?.id).toBe('q-new');
+    await expect(result.current.submitAnswer('q-new', 'A')).rejects.toThrow('Submission already in flight');
+
+    await act(async () => { finishNew(newResponse); await newCompletion; });
+    expect(result.current.isSubmitting).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('drops a stale favorite toggle that resolves after the exam changed', async () => {
+    let finishToggle!: (value: unknown) => void;
+    const toggleRequest = new Promise((resolve) => { finishToggle = resolve; });
+
+    mockInvoke.mockImplementation((command: string, payload?: {
+      request?: { exam_id?: string };
+    }) => {
+      if (command === 'qbank_get_stats') return Promise.resolve(makeStats());
+      if (command === 'qbank_list_questions') {
+        const id = payload?.request?.exam_id === 'exam-old' ? 'q-old' : 'q-new';
+        return Promise.resolve({
+          questions: [makeStoreQuestion(id, id)], total: 1,
+          page: 1, page_size: 50, has_more: false,
+        });
+      }
+      if (command === 'qbank_toggle_favorite') return toggleRequest;
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ examId }) => useQuestionBankSession({ examId }),
+      { initialProps: { examId: 'exam-old' } },
+    );
+    await waitFor(() => expect(result.current.questions[0]?.id).toBe('q-old'));
+    let toggleCompletion: Promise<void> = Promise.resolve();
+    act(() => { toggleCompletion = result.current.toggleFavorite('q-old'); });
+
+    rerender({ examId: 'exam-new' });
+    await waitFor(() => expect(result.current.questions[0]?.id).toBe('q-new'));
+
+    await act(async () => {
+      finishToggle({ ...makeStoreQuestion('q-old', 'q-old'), is_favorite: true });
+      await toggleCompletion;
+    });
+
+    expect(result.current.questions.map((question) => question.id)).toEqual(['q-new']);
+    expect(result.current.currentQuestion?.id).toBe('q-new');
+  });
 });

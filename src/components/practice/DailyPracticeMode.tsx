@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -95,6 +96,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   className,
 }) => {
   const { t } = useTranslation('practice');
+  const beginRequest = usePracticeRequestScope(examId);
   
   // Store
   const {
@@ -112,14 +114,18 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     : null;
   
   // 配置状态（目标按题目集持久化，重开恢复上次设置）
-  const [dailyTarget, setDailyTarget] = useState(() => readStoredDailyTarget(examId));
+  const [targetConfig, setTargetConfig] = useState(() => ({ examId, value: readStoredDailyTarget(examId) }));
+  const dailyTarget = targetConfig.examId === examId ? targetConfig.value : readStoredDailyTarget(examId);
+  const setDailyTarget = useCallback((value: number) => {
+    setTargetConfig({ examId, value });
+  }, [examId]);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const calendarRequestSeqRef = useRef(0);
 
   // 题目集切换时恢复该题目集的目标；目标变化时落盘
   useEffect(() => {
     setDailyTarget(readStoredDailyTarget(examId));
-  }, [examId]);
+  }, [examId, setDailyTarget]);
   useEffect(() => {
     writeStoredDailyTarget(examId, dailyTarget);
   }, [examId, dailyTarget]);
@@ -153,14 +159,17 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   
   // 开始每日一练
   const handleStart = useCallback(async () => {
+    const isCurrent = beginRequest();
     try {
       const result = await getDailyPractice(examId, dailyTarget);
+      if (!isCurrent() || useQuestionBankStore.getState().dailyPractice !== result) return;
       onStart?.(result);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('daily.startError'));
     }
-  }, [examId, dailyTarget, getDailyPractice, onStart, t]);
+  }, [examId, dailyTarget, getDailyPractice, onStart, t, beginRequest]);
   
   // 切换月份
   const handlePrevMonth = useCallback(() => {

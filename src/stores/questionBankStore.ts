@@ -863,9 +863,7 @@ export interface CheckInCalendar {
   month_total_questions: number;
 }
 
-// 日历结果在 store 中只有一个槽位。保留最新请求的结果，避免快速切换题目集或月份时
-// 较慢的旧请求覆盖当前日历。
-let checkInCalendarRequestSeq = 0;
+type PracticeRequestKind = 'timed' | 'mock_exam' | 'mock_exam_submit' | 'daily' | 'paper' | 'calendar';
 
 // ============================================================================
 // Store 状态
@@ -1144,7 +1142,33 @@ interface QuestionBankState {
 
 export const useQuestionBankStore = create<QuestionBankState>()(
   devtools(
-    subscribeWithSelector((set, get) => ({
+    subscribeWithSelector((set, get) => {
+      const practiceRequests = new Map<PracticeRequestKind, object>();
+      const mockExamSubmissions = new Map<string, { examId: string; promise: Promise<MockExamScoreCard> }>();
+      let latestPracticeRequest: object | null = null;
+      const invalidatePracticeRequest = (kind: PracticeRequestKind) => {
+        practiceRequests.delete(kind);
+        if (kind === 'mock_exam') practiceRequests.delete('mock_exam_submit');
+        set({ isLoadingPractice: practiceRequests.size > 0 });
+      };
+      const startPracticeRequest = (kind: PracticeRequestKind) => {
+        const token = {};
+        const canReportError = kind !== 'mock_exam_submit' || !practiceRequests.has('mock_exam');
+        if (canReportError) latestPracticeRequest = token;
+        if (kind === 'mock_exam') practiceRequests.delete('mock_exam_submit');
+        practiceRequests.set(kind, token);
+        set({ isLoadingPractice: true, ...(canReportError ? { error: null } : {}) });
+        return {
+          isCurrent: () => practiceRequests.get(kind) === token
+            && (kind !== 'mock_exam_submit' || !practiceRequests.has('mock_exam')),
+          canReportError: () => practiceRequests.get(kind) === token && latestPracticeRequest === token
+            && (kind !== 'mock_exam_submit' || !practiceRequests.has('mock_exam')),
+          finish: () => {
+            if (practiceRequests.get(kind) === token) invalidatePracticeRequest(kind);
+          },
+        };
+      };
+      return ({
       // 初始状态
       questions: new Map(),
       questionOrder: [],
@@ -2051,10 +2075,27 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       // 练习模式扩展 API（2026-01 新增）
       // ========================================================================
       
-      setTimedSession: (session) => set({ timedSession: session }),
-      setMockExamSession: (session) => set({ mockExamSession: session }),
-      setDailyPractice: (result) => set({ dailyPractice: result }),
-      setGeneratedPaper: (paper) => set({ generatedPaper: paper }),
+      setTimedSession: (session) => {
+        const previous = get().timedSession;
+        if (!session || previous?.id !== session.id || previous.exam_id !== session.exam_id) {
+          invalidatePracticeRequest('timed');
+        }
+        set({ timedSession: session });
+      },
+      setMockExamSession: (session) => {
+        const previous = get().mockExamSession;
+        const changed = !session || previous?.id !== session.id || previous.exam_id !== session.exam_id;
+        if (changed) invalidatePracticeRequest('mock_exam');
+        set({ mockExamSession: session, ...(changed ? { mockExamScoreCard: null } : {}) });
+      },
+      setDailyPractice: (result) => {
+        invalidatePracticeRequest('daily');
+        set({ dailyPractice: result });
+      },
+      setGeneratedPaper: (paper) => {
+        invalidatePracticeRequest('paper');
+        set({ generatedPaper: paper });
+      },
 
       // 2026-08 修复（R1-06 B1/B5 同源）：此前限时进度回写挂在本 store 的
       // submitAnswer 上，但真实答题路径是 useQuestionBankSession（本地 hook），
@@ -2177,6 +2218,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       hydratePracticeHandoff: (value, expectedExamId) => {
         const validated = validateQbankPracticeHandoff(value, expectedExamId);
         if ('ok' in validated) return validated;
+        invalidatePracticeRequest(validated.mode);
         const common = {
           currentExamId: expectedExamId,
           practiceMode: validated.mode as PracticeMode,
@@ -2199,7 +2241,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       startTimedPractice: async (examId, durationMinutes, questionCount) => {
-        set({ isLoadingPractice: true, error: null });
+        const request = startPracticeRequest('timed');
         
         try {
           const session = await invoke<TimedPracticeSession>('qbank_start_timed_practice', {
@@ -2210,17 +2252,19 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ timedSession: session, isLoadingPractice: false });
+          if (request.isCurrent()) set({ timedSession: session });
           return session;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] startTimedPractice failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
+          if (request.canReportError()) set({ error: String(err) });
           throw err;
+        } finally {
+          request.finish();
         }
       },
 
       generateMockExam: async (examId, config) => {
-        set({ isLoadingPractice: true, error: null });
+        const request = startPracticeRequest('mock_exam');
         
         try {
           const session = await invoke<MockExamSession>('qbank_generate_mock_exam', {
@@ -2230,43 +2274,58 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ mockExamSession: session, isLoadingPractice: false });
+          if (request.isCurrent()) set({ mockExamSession: session, mockExamScoreCard: null });
           return session;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] generateMockExam failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
+          if (request.canReportError()) set({ error: String(err) });
           throw err;
+        } finally {
+          request.finish();
         }
       },
 
-      submitMockExam: async (session) => {
-        set({ isLoadingPractice: true, error: null });
-        
-        try {
-          const normalizedSession: MockExamSession = {
-            ...session,
-            ended_at: session.ended_at || new Date().toISOString(),
-            is_submitted: true,
-          };
-          const scoreCard = await invoke<MockExamScoreCard>('qbank_submit_mock_exam', {
-            request: { session: normalizedSession },
-          });
-          
-          set({
-            mockExamSession: normalizedSession,
-            mockExamScoreCard: scoreCard,
-            isLoadingPractice: false,
-          });
-          return scoreCard;
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] submitMockExam failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
-          throw err;
+      submitMockExam: (session) => {
+        const pending = mockExamSubmissions.get(session.id);
+        if (pending?.examId === session.exam_id) return pending.promise;
+        const current = get();
+        if (current.mockExamSession?.id === session.id && current.mockExamSession.exam_id === session.exam_id
+          && current.mockExamSession.is_submitted && current.mockExamScoreCard?.session_id === session.id
+          && current.mockExamScoreCard.exam_id === session.exam_id) {
+          return Promise.resolve(current.mockExamScoreCard);
         }
+        const request = startPracticeRequest('mock_exam_submit');
+        const promise: Promise<MockExamScoreCard> = (async () => {
+          try {
+            const normalizedSession: MockExamSession = {
+              ...session,
+              ended_at: session.ended_at || new Date().toISOString(),
+              is_submitted: true,
+            };
+            const scoreCard = await invoke<MockExamScoreCard>('qbank_submit_mock_exam', {
+              request: { session: normalizedSession },
+            });
+            const activeSession = get().mockExamSession;
+            if (request.isCurrent() && activeSession?.id === session.id && activeSession.exam_id === session.exam_id) {
+              set({ mockExamSession: normalizedSession, mockExamScoreCard: scoreCard });
+            }
+            return scoreCard;
+          } catch (err: unknown) {
+            debugLog.error('[QuestionBankStore] submitMockExam failed:', err);
+            if (request.canReportError()) set({ error: String(err) });
+            throw err;
+          } finally {
+            request.finish();
+          }
+        })().finally(() => {
+          if (mockExamSubmissions.get(session.id)?.promise === promise) mockExamSubmissions.delete(session.id);
+        });
+        mockExamSubmissions.set(session.id, { examId: session.exam_id, promise });
+        return promise;
       },
 
       getDailyPractice: async (examId, count) => {
-        set({ isLoadingPractice: true, error: null });
+        const request = startPracticeRequest('daily');
         
         try {
           const result = await invoke<DailyPracticeResult>('qbank_get_daily_practice', {
@@ -2276,17 +2335,19 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ dailyPractice: result, isLoadingPractice: false });
+          if (request.isCurrent()) set({ dailyPractice: result });
           return result;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getDailyPractice failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
+          if (request.canReportError()) set({ error: String(err) });
           throw err;
+        } finally {
+          request.finish();
         }
       },
 
       generatePaper: async (examId, config) => {
-        set({ isLoadingPractice: true, error: null });
+        const request = startPracticeRequest('paper');
         
         try {
           const paper = await invoke<GeneratedPaper>('qbank_generate_paper', {
@@ -2296,18 +2357,19 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ generatedPaper: paper, isLoadingPractice: false });
+          if (request.isCurrent()) set({ generatedPaper: paper });
           return paper;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] generatePaper failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
+          if (request.canReportError()) set({ error: String(err) });
           throw err;
+        } finally {
+          request.finish();
         }
       },
 
       getCheckInCalendar: async (examId, year, month, dailyTarget) => {
-        const requestId = ++checkInCalendarRequestSeq;
-        set({ isLoadingPractice: true, error: null });
+        const request = startPracticeRequest('calendar');
         
         try {
           const calendar = await invoke<CheckInCalendar>('qbank_get_check_in_calendar', {
@@ -2320,16 +2382,18 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          if (requestId === checkInCalendarRequestSeq) {
-            set({ checkInCalendar: calendar, isLoadingPractice: false });
+          if (request.isCurrent()) {
+            set({ checkInCalendar: calendar });
           }
           return calendar;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getCheckInCalendar failed:', err);
-          if (requestId === checkInCalendarRequestSeq) {
-            set({ error: String(err), isLoadingPractice: false });
+          if (request.canReportError()) {
+            set({ error: String(err) });
           }
           throw err;
+        } finally {
+          request.finish();
         }
       },
 
@@ -2385,7 +2449,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           total: questionOrder.length,
         };
       },
-    })),
+      });
+    }),
     { name: 'QuestionBankStore', enabled: import.meta.env.DEV }
   )
 );

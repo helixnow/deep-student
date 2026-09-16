@@ -10,6 +10,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -95,6 +96,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   className,
 }) => {
   const { t } = useTranslation('practice');
+  const beginStartRequest = usePracticeRequestScope(examId);
   
   // Store
   const {
@@ -144,16 +146,39 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 考试计时器 — 基于绝对时间戳
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
   const autoSubmitTriggeredRef = useRef(false);
+  const autoSubmitAttemptedRef = useRef(false);
   const activeSession = useMemo(
     () => (mockExamSession?.exam_id === examId ? mockExamSession : null),
     [mockExamSession, examId],
   );
 
+  const examScope = useMemo(() => ({ examId }), [examId]);
+  const latestExamScopeRef = useRef<typeof examScope | null>(examScope);
+  latestExamScopeRef.current = examScope;
   useEffect(() => {
-    if (activeSession?.is_submitted && mockExamScoreCard?.exam_id === examId) {
-      setShowScoreCard(true);
-    }
-  }, [activeSession, mockExamScoreCard, examId]);
+    latestExamScopeRef.current = examScope;
+    return () => { latestExamScopeRef.current = null; };
+  }, [examScope]);
+  const isCurrentSession = useCallback((session: MockExamSession) => {
+    const current = useQuestionBankStore.getState().mockExamSession;
+    return latestExamScopeRef.current === examScope
+      && current?.id === session.id && current.exam_id === session.exam_id;
+  }, [examScope]);
+
+  useEffect(() => {
+    autoSubmitTriggeredRef.current = false;
+    autoSubmitAttemptedRef.current = false;
+    setShowSubmitConfirm(false);
+  }, [examId, activeSession?.id]);
+
+  const hasCurrentScoreCard = Boolean(
+    activeSession?.is_submitted
+    && mockExamScoreCard?.exam_id === examId
+    && mockExamScoreCard?.session_id === activeSession.id,
+  );
+  useEffect(() => {
+    setShowScoreCard(hasCurrentScoreCard);
+  }, [hasCurrentScoreCard, activeSession?.id]);
 
   const buildSubmitSession = useCallback((session: MockExamSession): MockExamSession => ({
     ...session,
@@ -162,25 +187,29 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   }), []);
   
   const handleAutoSubmit = useCallback(() => {
-    if (autoSubmitTriggeredRef.current) return;
+    if (!activeSession || activeSession.is_submitted || autoSubmitTriggeredRef.current || autoSubmitAttemptedRef.current) return;
+    const deadline = Date.parse(activeSession.started_at) + activeSession.config.duration_minutes * 60 * 1000;
+    if (!Number.isFinite(deadline) || Date.now() < deadline) return;
     autoSubmitTriggeredRef.current = true;
+    autoSubmitAttemptedRef.current = true;
     // 交卷一开始就停倒计时，避免成绩单出现后顶栏/本卡仍继续递减
     const previousTargetEndTime = targetEndTime;
     setTargetEndTime(null);
     if (activeSession) {
       const submitSession = buildSubmitSession(activeSession);
       submitMockExam(submitSession).then((scoreCard) => {
-        setMockExamSession(submitSession);
+        if (!isCurrentSession(submitSession) || useQuestionBankStore.getState().mockExamScoreCard !== scoreCard) return;
         setShowScoreCard(true);
         onSubmit?.(scoreCard);
       }).catch((err) => {
+        if (!isCurrentSession(submitSession)) return;
         autoSubmitTriggeredRef.current = false;
         setTargetEndTime(previousTargetEndTime);
         console.error('Auto-submit failed:', err);
         showGlobalNotification('error', err instanceof Error ? err.message : String(err), t('mockExam.submitError'));
       });
     }
-  }, [activeSession, submitMockExam, onSubmit, buildSubmitSession, setMockExamSession, t, targetEndTime]);
+  }, [activeSession, submitMockExam, onSubmit, buildSubmitSession, isCurrentSession, t, targetEndTime]);
   
   const { remaining: examRemainingSeconds, reset: resetExamCountdown } = useCountdown(
     targetEndTime,
@@ -224,6 +253,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   
   // 开始考试
   const handleStart = useCallback(async () => {
+    const isCurrent = beginStartRequest();
     const config: MockExamConfig = {
       duration_minutes: durationMinutes,
       type_distribution: typeDistribution,
@@ -235,6 +265,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     
     try {
       const session = await generateMockExam(examId, config);
+      if (!isCurrent() || !isCurrentSession(session)) return;
       // 优先以后端 started_at 为基准，避免请求耗时挤占考试时间
       const startedMs = Date.parse(session.started_at);
       const baseMs = Number.isFinite(startedMs) ? startedMs : Date.now();
@@ -242,10 +273,11 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       autoSubmitTriggeredRef.current = false;
       onStart?.(session);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('mockExam.startError'));
     }
-  }, [examId, durationMinutes, totalCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t]);
+  }, [examId, durationMinutes, totalCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t, beginStartRequest, isCurrentSession]);
 
   useEffect(() => {
     if (!activeSession || activeSession.is_submitted) {
@@ -253,16 +285,17 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       return;
     }
     const startedMs = Date.parse(activeSession.started_at);
-    if (!Number.isFinite(startedMs)) return;
     const durationMs = (activeSession.config.duration_minutes || 0) * 60 * 1000;
-    if (durationMs <= 0) return;
-    const restoredEndTime = startedMs + durationMs;
-    setTargetEndTime((prev) => prev ?? restoredEndTime);
+    if (!Number.isFinite(startedMs) || !Number.isFinite(durationMs) || durationMs <= 0) {
+      setTargetEndTime(null);
+      return;
+    }
+    setTargetEndTime(startedMs + durationMs);
   }, [activeSession]);
   
   // 交卷（手动）
   const handleSubmit = useCallback(async () => {
-    if (!activeSession) return;
+    if (!activeSession || activeSession.is_submitted) return;
     // 倒计时自动交卷已触发时忽略手动交卷，避免双重提交
     if (autoSubmitTriggeredRef.current) {
       setShowSubmitConfirm(false);
@@ -277,19 +310,20 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     
     try {
       const scoreCard = await submitMockExam(submitSession);
-      setMockExamSession(submitSession);
+      if (!isCurrentSession(submitSession) || useQuestionBankStore.getState().mockExamScoreCard !== scoreCard) return;
       setShowScoreCard(true);
       onSubmit?.(scoreCard);
     } catch (err: unknown) {
+      if (!isCurrentSession(submitSession)) return;
       autoSubmitTriggeredRef.current = false;
       setTargetEndTime(previousTargetEndTime);
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('mockExam.submitError'));
     }
-  }, [activeSession, submitMockExam, onSubmit, t, targetEndTime, buildSubmitSession, setMockExamSession]);
+  }, [activeSession, submitMockExam, onSubmit, t, targetEndTime, buildSubmitSession, isCurrentSession]);
   
   // 成绩单界面
-  if (showScoreCard && mockExamScoreCard) {
+  if (showScoreCard && hasCurrentScoreCard && mockExamScoreCard) {
     const score = mockExamScoreCard;
     const scoreRate = Math.max(0, Math.min(100, score.correct_rate));
     const scoreTone = scoreRate >= 80 ? 'text-success' : scoreRate >= 60 ? 'text-warning' : 'text-destructive';
