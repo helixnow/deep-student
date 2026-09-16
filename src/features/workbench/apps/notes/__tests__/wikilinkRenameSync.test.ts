@@ -127,7 +127,7 @@ describe('syncWikiLinksAfterNoteRename', () => {
     const summary = await syncWikiLinksAfterNoteRename(request);
 
     expect(summary).toEqual({
-      updatedSources: 1, rewrittenLinks: 1, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+      updatedSources: 1, rewrittenLinks: 1, skippedDirtySources: 0, failedSources: 0, scanFailed: false, truncated: false,
     });
     expect(update).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledWith(
@@ -194,7 +194,7 @@ describe('syncWikiLinksAfterNoteRename', () => {
     const summary = await syncWikiLinksAfterNoteRename(request);
 
     expect(summary).toEqual({
-      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 0, failedSources: 0, scanFailed: false, truncated: false,
     });
     expect(update).not.toHaveBeenCalled();
   });

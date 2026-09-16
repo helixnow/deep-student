@@ -46,6 +46,11 @@ export interface WikilinkRenameSyncSummary {
   failedSources: number;
   /** true = 后端图与客户端搜索都不可用，完全没扫到候选 */
   scanFailed: boolean;
+  /**
+   * C14：候选来源超过有界扫描预算被截断时为 true。宿主不能把本批成功
+   * 表达为“全库引用均已同步”，应提示仍可能有未处理来源。
+   */
+  truncated: boolean;
 }
 
 export interface RewriteWikiLinkTargetsResult {
@@ -110,7 +115,7 @@ interface RenameSourceRef {
 /** 后端图 ∪ 客户端搜索，两路都抛错时返回 null（完全无法扫描）。 */
 async function findRenameSources(
   request: WikilinkRenameSyncRequest,
-): Promise<RenameSourceRef[] | null> {
+): Promise<{ refs: RenameSourceRef[]; truncated: boolean } | null> {
   const sourcesById = new Map<string, RenameSourceRef>();
   let backendOk = false;
   let clientOk = false;
@@ -151,9 +156,12 @@ async function findRenameSources(
   }
 
   if (!backendOk && !clientOk) return null;
-  return Array.from(sourcesById.values())
-    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-    .slice(0, RENAME_SYNC_SOURCE_LIMIT);
+  const sorted = Array.from(sourcesById.values())
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  return {
+    refs: sorted.slice(0, RENAME_SYNC_SOURCE_LIMIT),
+    truncated: sorted.length > RENAME_SYNC_SOURCE_LIMIT,
+  };
 }
 
 /**
@@ -169,6 +177,7 @@ export async function syncWikiLinksAfterNoteRename(
     skippedDirtySources: 0,
     failedSources: 0,
     scanFailed: false,
+    truncated: false,
   };
   const oldTitle = request.oldTitle.trim();
   const newTitle = request.newTitle.trim();
@@ -176,11 +185,13 @@ export async function syncWikiLinksAfterNoteRename(
     return summary;
   }
 
-  const sources = await findRenameSources(request);
-  if (sources === null) {
+  const found = await findRenameSources(request);
+  if (found === null) {
     summary.scanFailed = true;
     return summary;
   }
+  const { refs: sources, truncated } = found;
+  summary.truncated = truncated;
 
   for (const source of sources) {
     if (isContentDirty('note', source.id)) {

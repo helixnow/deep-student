@@ -63,7 +63,7 @@ import {
   NotesBacklinksPanel,
   type NotesBacklinksTabRequest,
 } from './NotesBacklinksPanel';
-import { syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
+import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NotesGraphTab } from './graph/NotesGraphTab';
 import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
@@ -2166,6 +2166,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           newTitle: name,
           knownNotes,
         }).then((summary) => {
+          // C14：把“无法扫描 / 扫描被截断”与“部分未同步”分别、诚实地告知，
+          // 不能把本批成功表达成“全库引用均已同步”。
+          if (summary.scanFailed) {
+            showGlobalNotification('warning', t('notesWorkspace.renameSync.scanFailed', {
+              defaultValue: '标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。',
+            }));
+            return;
+          }
           if (summary.updatedSources > 0) {
             showGlobalNotification('success', t('notesWorkspace.renameSync.updated', {
               defaultValue: '已同步更新 {{count}} 篇笔记中的双链',
@@ -2177,6 +2185,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             showGlobalNotification('warning', t('notesWorkspace.renameSync.incomplete', {
               defaultValue: '{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查',
               count: summary.skippedDirtySources + summary.failedSources,
+            }));
+          }
+          if (summary.truncated) {
+            showGlobalNotification('warning', t('notesWorkspace.renameSync.truncated', {
+              defaultValue: '引用来源超出单批上限，本批仅同步了前 {{count}} 篇，其余请稍后重新处理。',
+              count: RENAME_SYNC_SOURCE_LIMIT,
             }));
           }
         });
