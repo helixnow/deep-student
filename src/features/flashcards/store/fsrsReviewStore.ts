@@ -98,6 +98,8 @@ function pushReviewReceipt(history: ReviewReceipt[], receipt: ReviewReceipt): Re
 export interface SuspendedReviewReceipt {
   cardStateId: string;
   queueIndex: number;
+  /** 暂停来源：缺省=用户手动；'leech'=达到 lapse 阈值被后端自动暂停 */
+  reason?: 'leech';
 }
 
 export type ReviewSessionErrorKind =
@@ -1252,6 +1254,12 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const ratedState = cardState && typeof cardState === 'object'
         ? readFiniteNumber(cardState as Record<string, unknown>, 'state', 'state')
         : null;
+      // F04：leech 自动暂停发生在后端同一事务内。必须消费返回状态，否则触发
+      // leech 的 Again 仍处于 Relearning 回插窗口，会被错误地当作可复习卡再次
+      // 展示，下一次评分直接被后端以 «card is suspended» 拒绝。
+      const ratedSuspended = cardState && typeof cardState === 'object'
+        ? (cardState as Record<string, unknown>).suspended === true
+        : false;
       const now = Date.now();
       // 学习步「稍后重现」：评分后仍处于 Learning/Relearning 且 due 落在
       // ≤LEARNING_STEP_REQUEUE_WINDOW_MS 的未来窗口内的卡保留在本轮队尾
@@ -1265,7 +1273,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         && dueMs > now
         && dueMs - now <= LEARNING_STEP_REQUEUE_WINDOW_MS
         && stillLearning;
-      const shouldRequeue = (dueMs != null && dueMs <= now) || isLearningStepDue;
+      const shouldRequeue = !ratedSuspended && ((dueMs != null && dueMs <= now) || isLearningStepDue);
 
       // 队列耗尽时保持 screen=session，让 ReviewSessionScreen 展示完成态；
       // 不直接跳回 today（由用户点「返回今日」/退出）。
@@ -1276,7 +1284,21 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         let nextQueue = state.queue;
         let nextIndex: number;
 
-        if (shouldRequeue && liveIndex >= 0) {
+        if (ratedSuspended && liveIndex >= 0) {
+          // leech 自动暂停：不再回插，就地标记 suspended 使活动队列跳过，
+          // 并通过 lastSuspended 暴露「恢复学习」入口。
+          nextQueue = state.queue.map((card, index) => (
+            index === liveIndex
+              ? {
+                  ...card,
+                  suspended: true,
+                  lastReviewMs: ratedLastReviewMs ?? card.lastReviewMs,
+                  learningDueMs: null,
+                }
+              : card
+          ));
+          nextIndex = nextReviewableIndex(nextQueue, liveIndex + 1);
+        } else if (shouldRequeue && liveIndex >= 0) {
           nextQueue = [...state.queue];
           const [moved] = nextQueue.splice(liveIndex, 1);
           if (moved) {
@@ -1334,7 +1356,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           lastRated: null,
           lastReview: receipt,
           reviewHistory,
-          lastSuspended: null,
+          lastSuspended: ratedSuspended && liveIndex >= 0
+            ? { cardStateId: current.id, queueIndex: baseIndex, reason: 'leech' }
+            : null,
           lastSchedule:
             dueMs != null && scheduledDays != null
               ? { dueMs, scheduledDays }
@@ -1483,6 +1507,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           lastRated: null,
           lastReview: reviewHistory[reviewHistory.length - 1] ?? null,
           reviewHistory,
+          // 撤销会还原评分前状态（含 leech 自动暂停），清除同一张卡的恢复入口
+          lastSuspended: s.lastSuspended?.cardStateId === lastReview.cardStateId
+            ? null
+            : s.lastSuspended,
           lastSchedule: null,
           remainingDueAfterSession: null,
           ratingPreviews: null,

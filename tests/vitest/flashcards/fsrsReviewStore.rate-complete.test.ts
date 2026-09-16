@@ -339,6 +339,41 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.lastSchedule?.dueMs).toBe(dueMs);
   });
 
+  it('dequeues an auto-suspended leech instead of requeueing it (F04)', async () => {
+    const dueMs = Date.now() + 60 * 1000;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-leech',
+        dueMs,
+        scheduledDays: 0,
+        cardState: { state: 3, lastReviewMs: Date.now(), suspended: true },
+      },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [
+        { id: 'leech', front: 'Q', back: 'A' },
+        { id: 'other', front: 'Q2', back: 'A2' },
+      ],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+
+    const state = useFsrsReviewStore.getState();
+    // 后端在同一事务里已把卡置为暂停：前端不得再把它当可复习卡回插
+    expect(state.queue.find((card) => card.id === 'leech')?.suspended).toBe(true);
+    expect(state.queue[0]?.learningDueMs).toBeFalsy();
+    expect(state.queue[state.queueIndex]?.id).toBe('other');
+    expect(state.lastSuspended).toEqual({
+      cardStateId: 'leech',
+      queueIndex: 0,
+      reason: 'leech',
+    });
+  });
+
   it('invokes fsrs_rate with cardStateId (not cardId)', async () => {
     invokeMock.mockResolvedValueOnce({ logId: 'log-1' });
     useFsrsReviewStore.setState({

@@ -530,6 +530,28 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </div>
       ) : null}
 
+      {lastSuspended?.reason === 'leech' ? (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
+        >
+          <span className="flex min-w-0 items-start gap-1.5">
+            <Warning size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
+            {t('session.leechSuspended')}
+          </span>
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void resumeLastSuspended()}
+            disabled={ratingBusy}
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
+          >
+            {t('session.resume')}
+          </DsButton>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-2">
         <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:!min-h-11">
           <ArrowLeft size={14} />
