@@ -460,7 +460,7 @@ export interface MindMapStoreState {
    */
   loadMindMap: (
     mindmapId: string,
-    opts?: { preserveViewports?: boolean },
+    opts?: { preserveViewports?: boolean; preserveLocalChanges?: boolean },
   ) => Promise<void>;
   createNewMindMap: (title: string, folderId?: string) => Promise<string>;
   reset: () => void;
@@ -806,6 +806,7 @@ export function createMindMapStore(): MindMapStoreApi {
     let retrySaveTimer: ReturnType<typeof setTimeout> | null = null;
     /** save() 在保存中被调用时置位，当前保存结束后自动补一次保存（可见性 flush 不再空跑） */
     let pendingSaveRequested = false;
+    let documentGeneration = 0;
     /** 非结构性保存失败的自动重试计数（成功或用户新编辑周期后清零） */
     let saveRetryCount = 0;
     const MAX_SAVE_AUTO_RETRIES = 3;
@@ -1154,7 +1155,17 @@ export function createMindMapStore(): MindMapStoreApi {
       _reactFlowGetter: null,
 
       // 加载知识导图（修复: 完整重置所有状态字段）
-      loadMindMap: async (mindmapId: string, opts?: { preserveViewports?: boolean }) => {
+      loadMindMap: async (mindmapId: string, opts?: { preserveViewports?: boolean; preserveLocalChanges?: boolean }) => {
+        const initialState = get();
+        const hasLocalChanges = () => {
+          const current = get();
+          return current.isDirty || current.isSaving ||
+            current.editingNodeId !== null || current.editingNoteNodeId !== null ||
+            current.document !== initialState.document ||
+            current._documentVersion !== initialState._documentVersion;
+        };
+        if (opts?.preserveLocalChanges && hasLocalChanges()) return;
+
         // 清除 pending timer，防止跨文档保存/重试
         clearPendingTimers();
         pendingSaveRequested = false;
@@ -1173,6 +1184,7 @@ export function createMindMapStore(): MindMapStoreApi {
 
           // M-066: 请求返回后检查序列号，若已有更新的请求发出则丢弃旧结果
           if (get()._loadSeq !== seq!) return;
+          if (opts?.preserveLocalChanges && hasLocalChanges()) return;
 
           if (!metadata) {
             throw new Error(`MindMap not found: ${mindmapId}`);
@@ -1204,6 +1216,7 @@ export function createMindMapStore(): MindMapStoreApi {
             }
           }
 
+          documentGeneration += 1;
           set((state) => {
             state.mindmapId = mindmapId;
             state.metadata = metadata;
@@ -1214,10 +1227,13 @@ export function createMindMapStore(): MindMapStoreApi {
                 metadata.defaultView ||
                 'mindmap';
             }
-            state.focusedNodeId =
-              (recoveredDraft ? localDraft?.focusedNodeId : undefined) ||
-              document.meta?.lastFocusId ||
-              null;
+            const focusedNodeId = opts?.preserveViewports
+              ? state.focusedNodeId
+              : (recoveredDraft ? localDraft?.focusedNodeId : undefined) ||
+                document.meta?.lastFocusId || null;
+            state.focusedNodeId = focusedNodeId && findNodeById(document.root, focusedNodeId)
+              ? focusedNodeId
+              : null;
             state.editingNodeId = null; // 修复: 重置编辑状态
             state.editingNoteNodeId = null;
             state.selection = [];
@@ -1266,6 +1282,7 @@ export function createMindMapStore(): MindMapStoreApi {
             lastDraftVersionByMindmap.delete(mindmapId);
           }
         } catch (error) {
+          if (get()._loadSeq !== seq!) return;
           console.error('[MindMapStore] loadMindMap failed:', error);
           throw error;
         }
@@ -1273,6 +1290,8 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 创建新知识导图（B13：重置字段与 loadMindMap / reset 对齐）
       createNewMindMap: async (title: string, folderId?: string) => {
+        const seq = get()._loadSeq + 1;
+        set({ _loadSeq: seq });
         const doc = createDefaultDocument(title);
 
         const result = await api.createMindMap({
@@ -1281,6 +1300,9 @@ export function createMindMapStore(): MindMapStoreApi {
           defaultView: 'mindmap',
           folderId,
         });
+
+        if (get()._loadSeq !== seq) return result.id;
+        documentGeneration += 1;
 
         // 与 loadMindMap 一致：切文档前清 pending 定时器，防止旧文档的 debounce 保存串扰
         clearPendingTimers();
@@ -1330,6 +1352,8 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 清全部 pending 定时器（宿主换 store 实例前调用）；幂等，不重置状态
       destroy: () => {
+        documentGeneration += 1;
+        set({ _loadSeq: get()._loadSeq + 1 });
         pendingSaveRequested = false;
         clearPendingTimers();
       },
@@ -1344,6 +1368,8 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 重置状态（修复: 补全所有遗漏字段）
       reset: () => {
+        documentGeneration += 1;
+        set({ _loadSeq: get()._loadSeq + 1 });
         // 清除 pending timer
         clearPendingTimers();
         pendingSaveRequested = false;
@@ -2772,6 +2798,7 @@ export function createMindMapStore(): MindMapStoreApi {
         // 捕获保存开始时的版本号，防止竞态（替代 JSON.stringify 全量比较，O(1) 性能）
         const savingMindmapId = mindmapId;
         const savingVersion = _documentVersion;
+        const savingGeneration = documentGeneration;
         const expectedUpdatedAt = metadata?.updatedAt;
 
         if (saveDebounceTimer) {
@@ -2815,6 +2842,7 @@ export function createMindMapStore(): MindMapStoreApi {
             expectedUpdatedAt,
             versionSource: saveSource,
           });
+          if (documentGeneration !== savingGeneration || get().mindmapId !== savingMindmapId) return true;
 
           set((state) => {
             state.isSaving = false;
@@ -2852,6 +2880,7 @@ export function createMindMapStore(): MindMapStoreApi {
           }
           return true;
         } catch (error) {
+          if (documentGeneration !== savingGeneration || get().mindmapId !== savingMindmapId) return false;
           console.error('[MindMapStore] save failed:', error);
           // 失败路径交给重试/冲突流程处理，避免补存请求造成额外循环
           pendingSaveRequested = false;
@@ -2888,8 +2917,10 @@ export function createMindMapStore(): MindMapStoreApi {
             }
             // 自动重新加载服务端最新版本
             if (get().mindmapId === savingMindmapId) {
+              const reloadSeq = get()._loadSeq + 1;
               try {
                 await get().loadMindMap(savingMindmapId);
+                if (get()._loadSeq !== reloadSeq || get().mindmapId !== savingMindmapId) return false;
                 // ★ A6-24: 重载完成后再写入快照（避免被 loadMindMap 的状态重置覆盖）
                 if (localSnapshot && get().mindmapId === savingMindmapId) {
                   set((state) => {
@@ -2900,6 +2931,7 @@ export function createMindMapStore(): MindMapStoreApi {
                   showGlobalNotification('success', i18next.t('store.conflictResolved', { ns: 'mindmap' }));
                 }
               } catch (reloadError) {
+                if (get()._loadSeq !== reloadSeq) return false;
                 console.error('[MindMapStore] conflict auto-reload failed:', reloadError);
                 showGlobalNotification('error', i18next.t('store.conflictReloadFailed', { ns: 'mindmap' }));
               }

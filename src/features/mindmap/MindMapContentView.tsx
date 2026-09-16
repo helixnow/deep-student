@@ -323,7 +323,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         const targetId = prepareOutlineResume(state.focusedNodeId, resume);
         if (targetId) {
           window.requestAnimationFrame(() => {
-            storeApi.getState().setFocusedNodeId(targetId);
+            const current = storeApi.getState();
+            if (current.document !== state.document || current.currentView !== 'outline') return;
+            current.setFocusedNodeId(targetId);
             outlineViewRef.current?.scrollFocusedIntoView();
           });
         }
@@ -542,28 +544,33 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     }
   }, [isActive, resourceId, saveDraftSync, loadMindMap, storeApi]);
 
+  const documentLoadRequestRef = useRef(0);
   const tryLoadMindMap = useCallback(async () => {
+    const request = ++documentLoadRequestRef.current;
     if (!resourceId) return;
 
     setIsLoadingDoc(true);
     setLoadError(null);
     try {
       await loadMindMap(resourceId);
+      if (request !== documentLoadRequestRef.current) return;
       onReady?.();
     } catch (err: unknown) {
+      if (request !== documentLoadRequestRef.current) return;
       const message = err instanceof Error ? err.message : t('mindmap:loadError');
       setLoadError(message);
       onLoadError?.(message);
       showGlobalNotification('error', message, t('mindmap:loadErrorTitle'));
       console.error('[MindMapContentView] Failed to load mindmap:', err);
     } finally {
-      setIsLoadingDoc(false);
+      if (request === documentLoadRequestRef.current) setIsLoadingDoc(false);
     }
   }, [resourceId, loadMindMap, onReady, onLoadError, t]);
 
   // 加载文档
   useEffect(() => {
     void tryLoadMindMap();
+    return () => { documentLoadRequestRef.current += 1; };
   }, [tryLoadMindMap]);
 
   // ★ 监听 DSTU watch 事件：chat_v2 工具（mindmap_update/edit_nodes 等）或其他入口
@@ -592,17 +599,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
       // 静默重载，保留用户当前视图与焦点位置；
       // B-4：preserveViewports 保留大纲滚动与画布视口（W01 契约）
-      const prevView = state.currentView;
-      const prevFocusedNodeId = state.focusedNodeId;
       void state
-        .loadMindMap(resourceId, { preserveViewports: true })
-        .then(() => {
-          if (storeApi.getState().mindmapId !== resourceId) return;
-          storeApi.setState({
-            currentView: prevView,
-            focusedNodeId: prevFocusedNodeId,
-          });
-        })
+        .loadMindMap(resourceId, { preserveViewports: true, preserveLocalChanges: true })
         .catch((err) => {
           console.error('[MindMapContentView] watch-triggered reload failed:', err);
         });
@@ -623,6 +621,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
   const handleExport = useCallback(async (format: string) => {
     if (!mindmapDocument) return;
+    const loadRequest = documentLoadRequestRef.current;
     
     const filename = mindmapDocument.root.text || 'mindmap';
     
@@ -635,6 +634,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         const rendered = await new Promise<boolean>((resolve) => {
           const start = Date.now();
           const poll = () => {
+            if (loadRequest !== documentLoadRequestRef.current) {
+              resolve(false);
+              return;
+            }
             const hasNodes = containerRef.current?.querySelector('.react-flow__node');
             if (hasNodes) {
               // 再等一帧让节点尺寸测量与布局稳定
@@ -649,6 +652,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           };
           poll();
         });
+        if (loadRequest !== documentLoadRequestRef.current) return;
         if (!rendered) {
           showGlobalNotification('warning', t('mindmap:export.switchToMindMapView'));
           return;
@@ -763,7 +767,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   }, [mindmapDocument, currentView, switchView, t, currentTheme, storeApi]);
 
   // 实际执行导入（已确认或无未保存修改时调用）
+  const importRequestRef = useRef(0);
   const doImport = useCallback(async () => {
+    const request = ++importRequestRef.current;
+    const loadRequest = documentLoadRequestRef.current;
+    const document = storeApi.getState().document;
+    const isCurrent = () => request === importRequestRef.current &&
+      loadRequest === documentLoadRequestRef.current;
     setImportError(null);
     try {
       const filePath = await fileManager.pickSingleFile({
@@ -774,7 +784,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         ],
       });
 
-      if (!filePath) return;
+      if (!filePath || !isCurrent()) return;
       // 选中文件后进入忙碌态：大 .xmind/.mmap 解包与万节点解析可能耗时数秒
       setIsImporting(true);
 
@@ -786,6 +796,11 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         : lowerPath.endsWith('.mmap')
           ? await importFromMmapZip(await TauriAPI.readFileAsBytes(filePath))
           : importMindMap(await fileManager.readTextFile(filePath), 'auto');
+      if (!isCurrent()) return;
+      if (storeApi.getState().document !== document) {
+        setShowImportConfirm(true);
+        return;
+      }
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
       type CountableNode = { children?: CountableNode[] };
@@ -804,14 +819,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           : t('mindmap:import.successSummary', { nodes: nodeCount }),
       );
     } catch (error: unknown) {
+      if (!isCurrent()) return;
       // A6-16 延伸：解析/读取失败改为工具栏下方内联错误横幅（不弹窗），支持重试
       const message = error instanceof Error ? error.message : t('mindmap:import.failed');
       console.error('[MindMapContentView] Import failed:', error);
       setImportError(message);
     } finally {
-      setIsImporting(false);
+      if (request === importRequestRef.current) setIsImporting(false);
     }
-  }, [setDocument, setFocusedNodeId, t]);
+  }, [setDocument, setFocusedNodeId, storeApi, t]);
 
   // M-073 / A6-16: 导入前检查未保存修改；有修改则弹声明式确认框，否则直接导入
   const handleImport = useCallback(() => {
@@ -829,6 +845,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 
   // 内联确认条：先保存当前修改再导入（导入会整体替换文档）
   const handleSaveAndImport = useCallback(async () => {
+    const loadRequest = documentLoadRequestRef.current;
     setShowImportConfirm(false);
     let saved = false;
     try {
@@ -837,9 +854,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       saved = false;
     }
     // 保存失败已由 store 层弹出通知；不继续导入，避免覆盖未保存内容
-    if (!saved) return;
+    if (!saved || loadRequest !== documentLoadRequestRef.current) return;
+    if (storeApi.getState().isDirty) {
+      setShowImportConfirm(true);
+      return;
+    }
     void doImport();
-  }, [save, doImport]);
+  }, [save, doImport, storeApi]);
 
   const handleSave = useCallback(() => {
     save();
@@ -898,7 +919,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   //   防止冒泡到笔记工作区（笔记搜索、标签循环切换）或其它全局处理器。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isActive === false) return;
+      if (isActive === false || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
 
       // 演示 / 背诵：Esc 优先退出（须 stopPropagation，避免其它层抢跑）
       if (e.key === 'Escape' && presentationMode) {

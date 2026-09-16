@@ -73,6 +73,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
   const setViewRootId = useMindMapStore(s => s.setViewRootId);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
     const target = e.target as HTMLElement;
     const tagName = target.tagName;
     const isMod = e.metaKey || e.ctrlKey;
