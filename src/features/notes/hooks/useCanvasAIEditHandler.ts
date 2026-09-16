@@ -86,11 +86,21 @@ export function useCanvasAIEditHandler({
   const editorApiRef = useRef(editorApi);
   const onSaveRef = useRef(onSave);
   const windowIdRef = useRef(windowId);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   const { state: aiEditState, startEdit, accept, reject, clear } = useAIEditState();
   const [isApplying, setIsApplying] = useState(false);
   const isApplyingRef = useRef(false);
   const pendingRequestRef = useRef<LocalCanvasAIEditRequest | null>(null);
+  const operationGenerationRef = useRef(0);
+
+  useEffect(() => {
+    operationGenerationRef.current += 1;
+    isApplyingRef.current = false;
+    setIsApplying(false);
+    return () => { operationGenerationRef.current += 1; };
+  }, [noteId, enabled]);
 
   // ACR 4.0：建议生命周期终结（清 pending 引用 + 通知 noteDriver 清 reviewing presence）
   const settlePendingRequest = useCallback(() => {
@@ -142,7 +152,7 @@ export function useCanvasAIEditHandler({
   }, []);
 
   const handleAccept = useCallback(async () => {
-    if (isApplyingRef.current) return;
+    if (!enabledRef.current || isApplyingRef.current) return;
 
     // 保留 diff，直到编辑器应用和持久化都成功；任一步失败都允许原地重试。
     const acceptResult = accept({ clear: false });
@@ -151,6 +161,9 @@ export function useCanvasAIEditHandler({
     const { result, originalContent, request } = acceptResult;
     let { proposedContent } = acceptResult;
     const editor = editorApiRef.current;
+    const save = onSaveRef.current;
+    const targetNoteId = noteIdRef.current;
+    const generation = operationGenerationRef.current;
     isApplyingRef.current = true;
     setIsApplying(true);
 
@@ -202,11 +215,12 @@ export function useCanvasAIEditHandler({
           if (!editor.setMarkdown(proposedContent)) {
             throw new Error(i18n.t('vfs:canvas_edit.apply_rejected', { defaultValue: '编辑器拒绝应用建议' }));
           }
-          if (onSaveRef.current) {
-            await onSaveRef.current(proposedContent);
+          if (save) {
+            await save(proposedContent);
           }
         }
       } catch (err) {
+        if (operationGenerationRef.current !== generation) return;
         const contentAfterFailure = editor.getFullMarkdown?.() ?? editor.getMarkdown();
         if (contentAfterFailure === proposedContent) {
           try {
@@ -237,9 +251,10 @@ export function useCanvasAIEditHandler({
         return;
       }
 
+      if (operationGenerationRef.current !== generation) return;
       clear();
       settlePendingRequest();
-      if (noteIdRef.current) {
+      if (targetNoteId) {
         // P2：accept 时补算 diffLines（等待确认期间的用户编辑会使 startEdit 时的 diff 陈旧），
         // 随检查点入栈供回滚与核对。
         const entry: AIEditCheckpoint = {
@@ -247,7 +262,7 @@ export function useCanvasAIEditHandler({
           originalContent: contentBeforeApply,
           resultContent: proposedContent,
           appliedAt: Date.now(),
-          noteId: noteIdRef.current,
+          noteId: targetNoteId,
           diffLines: computeDiffLines(contentBeforeApply, proposedContent),
           operation: request.operation,
         };
@@ -255,35 +270,32 @@ export function useCanvasAIEditHandler({
       }
       await sendResult(result);
     } finally {
-      isApplyingRef.current = false;
-      setIsApplying(false);
+      if (operationGenerationRef.current === generation) {
+        isApplyingRef.current = false;
+        setIsApplying(false);
+      }
     }
   }, [accept, clear, sendResult, settlePendingRequest]);
 
   // ★ 2.1 回滚栈顶检查点（顺序 undo：只有栈顶可回滚；冲突标记 stale 不强行覆盖）
   const rollbackCheckpoint = useCallback(async (checkpointId?: string) => {
+    if (!enabledRef.current || isApplyingRef.current) return;
     const stack = checkpointsRef.current;
     const top = stack[stack.length - 1];
-    if (!top) return;
-    if (checkpointId && checkpointId !== top.id) {
-      console.warn('[useCanvasAIEditHandler] Rollback rejected: not the top checkpoint', checkpointId);
-      return;
-    }
+    if (!top || top.noteId !== noteIdRef.current) return;
+    if (checkpointId && checkpointId !== top.id) return;
     const editor = editorApiRef.current;
-    if (!editor || editor.isReadonly()) {
-      console.warn('[useCanvasAIEditHandler] Rollback skipped: editor not writable');
-      return;
-    }
-
-    // 冲突检测：当前内容偏离该条的 resultContent（用户中间编辑/其他写入）→
-    // 标记不可回滚，不强行覆盖（P2 冲突语义）。
+    if (!editor || editor.isReadonly()) return;
     const current = editor.getFullMarkdown?.() ?? editor.getMarkdown();
     if (current !== top.resultContent) {
-      setCheckpoints((prev) => prev.map((e) => (e.id === top.id ? { ...e, stale: true } : e)));
-      console.warn('[useCanvasAIEditHandler] Rollback rejected: content diverged, checkpoint marked stale');
+      setCheckpoints((prev) => prev.map((entry) => entry.id === top.id ? { ...entry, stale: true } : entry));
       return;
     }
 
+    const generation = operationGenerationRef.current;
+    const save = onSaveRef.current;
+    isApplyingRef.current = true;
+    setIsApplying(true);
     try {
       if (editor.replaceFullMarkdown) {
         const restored = await editor.replaceFullMarkdown(top.originalContent, {
@@ -292,23 +304,29 @@ export function useCanvasAIEditHandler({
         if (!restored) {
           throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
         }
-      } else if (!editor.setMarkdown(top.originalContent)) {
-        throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
+      } else {
+        if (!editor.setMarkdown(top.originalContent)) {
+          throw new Error(i18n.t('vfs:canvas_edit.rollback_rejected', { defaultValue: '编辑器拒绝回滚检查点' }));
+        }
+        if (save) await save(top.originalContent);
       }
+      if (operationGenerationRef.current !== generation) return;
+      const remaining = checkpointsRef.current.filter((entry) => entry.id !== top.id);
+      checkpointsRef.current = remaining;
+      setCheckpoints(remaining);
     } catch (err) {
-      console.warn('[useCanvasAIEditHandler] Rollback apply failed:', err);
-      return;
-    }
-    if (!editor.replaceFullMarkdown && onSaveRef.current) {
-      try {
-        await onSaveRef.current(top.originalContent);
-      } catch (err) {
-        console.warn('[useCanvasAIEditHandler] Rollback save failed:', err);
-        // 保留 checkpoint，允许用户稍后再次触发回滚保存；不要把未落盘状态伪装成完成。
-        return;
+      if (operationGenerationRef.current !== generation) return;
+      const content = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+      if (!editor.replaceFullMarkdown && content === top.originalContent) {
+        editor.setMarkdown(top.resultContent);
+      }
+      console.warn('[useCanvasAIEditHandler] Rollback failed:', err);
+    } finally {
+      if (operationGenerationRef.current === generation) {
+        isApplyingRef.current = false;
+        setIsApplying(false);
       }
     }
-    setCheckpoints((prev) => prev.slice(0, -1));
   }, []);
 
   const dismissCheckpoint = useCallback((checkpointId?: string) => {
@@ -349,6 +367,7 @@ export function useCanvasAIEditHandler({
 
   const handleEditRequest = useCallback(
     async (request: LocalCanvasAIEditRequest) => {
+      if (!enabledRef.current) return;
       console.log('[useCanvasAIEditHandler] Received edit request:', request.requestId, request.operation);
 
       // ★ R2 修复：非目标实例静默忽略。
@@ -482,14 +501,14 @@ export function useCanvasAIEditHandler({
   }, [enabled, handleEditRequest]);
 
   useEffect(() => {
-    if (aiEditState.isActive && aiEditState.request?.noteId !== noteIdRef.current) {
+    if (aiEditState.isActive && (!enabled || aiEditState.request?.noteId !== noteIdRef.current)) {
       const result = reject();
       if (result) {
         settlePendingRequest();
         sendResult(result);
       }
     }
-  }, [noteId, aiEditState.isActive, aiEditState.request?.noteId, reject, sendResult, settlePendingRequest]);
+  }, [noteId, enabled, aiEditState.isActive, aiEditState.request?.noteId, reject, sendResult, settlePendingRequest]);
 
   // ★ F3 修复：编辑器卸载（关闭 tab/切换笔记）时若仍有待确认的 AI 编辑，
   // 立即向后端发送拒绝结果，避免 AI 干等 30 秒超时。

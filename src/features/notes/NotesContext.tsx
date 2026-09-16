@@ -341,6 +341,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const tabsPrefLoadedRef = useRef(false);
     // ensureNoteContent 并发去重：同一 noteId 的 in-flight 加载 Promise
     const inflightContentRef = useRef<Map<string, Promise<void>>>(new Map());
+    const contentVersionRef = useRef(new Map<string, number>());
+    const pendingSavesRef = useRef(new Map<string, Promise<void>>());
+    const notesRef = useRef(notes);
+    const loadedContentIdsRef = useRef(loadedContentIds);
+    notesRef.current = notes;
+    loadedContentIdsRef.current = loadedContentIds;
 
     // Sidebar Control
     const [sidebarRevealId, setSidebarRevealId] = useState<string | null>(null);
@@ -444,7 +450,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (result.ok) {
             const items = result.value.map(node => dstuNodeToNoteItem(node));
 
-            setNotes(items || []);
+            setNotes(prev => items.map(item => {
+                const existing = prev.find(note => note.id === item.id);
+                return existing && loadedContentIdsRef.current.has(item.id)
+                    ? { ...item, content_md: existing.content_md }
+                    : item;
+            }));
             // Keep loaded mark only for existing notes to avoid stale memory
             setLoadedContentIds(prev => {
                 const next = new Set<string>();
@@ -459,6 +470,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
             // Load tabs prefs
             try {
+                if (tabsPrefLoadedRef.current) return;
                 const raw = await invoke<string | null>('notes_get_pref', { key: 'notes_tabs' });
                 const obj = JSON.parse(raw || '{}');
                 const ids: string[] = Array.isArray(obj?.openTabs) ? obj.openTabs : [];
@@ -475,6 +487,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             } finally {
                 // 无论读取成功与否，磁盘偏好加载流程已结束，允许后续回写
                 tabsPrefLoadedRef.current = true;
+                setLoading(false);
             }
         } else {
             reportError(result.error, t('notes:errors.load_notes_list'));
@@ -490,17 +503,20 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [notify, t, loadFolders]);
 
     const ensureNoteContent = useCallback(async (noteId: string) => {
-        if (loadedContentIds.has(noteId)) return;
+        if (loadedContentIdsRef.current.has(noteId)) return;
 
         // 竞态防护：同一 noteId 的并发加载复用同一个 in-flight Promise，避免双写
         const inflight = inflightContentRef.current.get(noteId);
         if (inflight) return inflight;
+        const version = (contentVersionRef.current.get(noteId) ?? 0) + 1;
+        contentVersionRef.current.set(noteId, version);
 
         const load = (async () => {
             console.log('[NotesContext] Using DSTU API to get note content:', noteId);
             const dstuPath = `/${noteId}`;
             const contentResult = await dstu.getContent(dstuPath);
             const nodeResult = await dstu.get(dstuPath);
+            if (contentVersionRef.current.get(noteId) !== version) return;
 
             if (contentResult.ok && nodeResult.ok) {
                 // 合并节点信息和内容
@@ -521,9 +537,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     next.add(noteId);
                     return next;
                 });
-                if (active?.id === noteId) {
-                    setActive(full);
-                }
+                setActive(current => current?.id === noteId ? full : current);
             } else {
                 const error = !contentResult.ok ? contentResult.error : nodeResult.error;
                 reportError(error, t('notes:errors.load_note_content'));
@@ -540,17 +554,23 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try {
             await load;
         } finally {
-            inflightContentRef.current.delete(noteId);
+            if (inflightContentRef.current.get(noteId) === load) {
+                inflightContentRef.current.delete(noteId);
+            }
         }
-    }, [active?.id, loadedContentIds, notify, t]);
+    }, [notify, t]);
 
     // 🔧 修复：强制刷新笔记内容（用于后端 Canvas 工具更新后刷新前端显示）
     const forceRefreshNoteContent = useCallback(async (noteId: string) => {
         console.log('[Canvas] Force refreshing note content:', noteId);
+        const version = (contentVersionRef.current.get(noteId) ?? 0) + 1;
+        contentVersionRef.current.set(noteId, version);
+        inflightContentRef.current.delete(noteId);
 
         const dstuPath = `/${noteId}`;
         const contentResult = await dstu.getContent(dstuPath);
         const nodeResult = await dstu.get(dstuPath);
+        if (contentVersionRef.current.get(noteId) !== version) return;
 
         if (contentResult.ok && nodeResult.ok) {
             const full: NoteItem = {
@@ -575,9 +595,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             });
 
             // 如果是当前激活的笔记，也更新 active
-            if (active?.id === noteId) {
-                setActive(full);
-            }
+            setActive(current => current?.id === noteId ? full : current);
 
             // 发送 DOM 事件通知编辑器刷新内容
             window.dispatchEvent(new CustomEvent('canvas:content-changed', {
@@ -590,21 +608,28 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             reportError(error, t('notes:errors.force_refresh_content'));
             console.error('[Canvas] Failed to refresh note content:', error.toUserMessage());
         }
-    }, [active?.id]);
+    }, [t]);
 
     // 🔧 修复：监听后端 Canvas 工具更新事件
     useEffect(() => {
         let unlisten: UnlistenFn | null = null;
+        let disposed = false;
         
         const setupListener = async () => {
             try {
-                unlisten = await listen<{ noteId: string; toolName: string }>('canvas:note-updated', (event) => {
+                const dispose = await listen<{ noteId: string; toolName: string }>('canvas:note-updated', (event) => {
+                    if (disposed) return;
                     console.log('[Canvas] Received note-updated event from backend:', event.payload);
                     const { noteId } = event.payload;
                     if (noteId) {
                         void forceRefreshNoteContent(noteId);
                     }
                 });
+                if (disposed) {
+                    dispose();
+                    return;
+                }
+                unlisten = dispose;
                 console.log('[Canvas] Listening for canvas:note-updated events');
             } catch (error) {
                 console.error('[Canvas] Failed to setup event listener:', error);
@@ -614,6 +639,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         void setupListener();
         
         return () => {
+            disposed = true;
             if (unlisten) {
                 unlisten();
                 console.log('[Canvas] Unlistening canvas:note-updated events');
@@ -968,7 +994,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return await createFolderHook(parentId, t);
     }, [createFolderHook, t]);
 
-    const saveNoteContent = useCallback(async (id: string, content: string, title?: string) => {
+    const persistNoteContent = useCallback(async (id: string, content: string, title?: string) => {
         // 🆕 维护模式检查：阻止保存笔记
         if (useSystemStatusStore.getState().maintenanceMode) {
             showGlobalNotification('warning', t('common:maintenance.blocked_note_save'));
@@ -983,7 +1009,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             notesCount: notes.length,
         });
 
-        const targetNote = notes.find(n => n.id === id);
+        const targetNote = notesRef.current.find(n => n.id === id);
         if (!targetNote) {
             console.warn('[NotesContext] ⚠️ saveNoteContent: 目标笔记不存在！', {
                 id,
@@ -997,7 +1023,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // 🔒 审计修复 + 审阅修复: 仅检查 loadedContentIds，不检查 content 是否为空
         // 原代码 !content.trim() 会将用户有意清空的内容错误拦截并从后端恢复旧内容
         // content 参数类型是 string（不可能是 undefined），所以只用 loadedContentIds 判断是否已初始化
-        if (!loadedContentIds.has(id)) {
+        if (!loadedContentIdsRef.current.has(id)) {
             console.warn('[NotesContext] ⚠️ saveNoteContent: 笔记内容尚未加载，先触发加载', { id });
             void ensureNoteContent(id);
             // ★ P1 修复：打 isNonRetryable 标记，避免编辑器对该裸错误空转指数退避重试
@@ -1005,6 +1031,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             notLoadedError.isNonRetryable = true;
             throw notLoadedError;
         }
+        contentVersionRef.current.set(id, (contentVersionRef.current.get(id) ?? 0) + 1);
 
         // Normalize image links: replace preview URLs with relative paths
         let normalizedContent = content;
@@ -1084,15 +1111,24 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             title: effectiveTitle,
         };
 
-        setNotes(prev => prev.map(n => n.id === id ? updated : n));
+        contentVersionRef.current.set(id, (contentVersionRef.current.get(id) ?? 0) + 1);
+        setNotes(prev => prev.map(n => n.id === id ? {
+            ...n,
+            content_md: updated.content_md,
+            title: updated.title,
+            updated_at: updated.updated_at,
+        } : n));
         setLoadedContentIds(prev => {
             const next = new Set(prev);
             next.add(id);
             return next;
         });
-        if (active?.id === id) {
-            setActive(updated);
-        }
+        setActive(current => current?.id === id ? {
+            ...current,
+            content_md: updated.content_md,
+            title: updated.title,
+            updated_at: updated.updated_at,
+        } : current);
 
         // Update search results if present (to keep title synced)
         if (searchResults.length > 0 && !titleFailed) {
@@ -1115,7 +1151,22 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 title: updated.title,
             }
         }));
-    }, [active, notify, t, searchResults.length, loadedContentIds, ensureNoteContent, notes]);
+    }, [notify, t, searchResults.length, ensureNoteContent, notes]);
+
+    const saveNoteContent = useCallback((id: string, content: string, title?: string) => {
+        const previous = pendingSavesRef.current.get(id);
+        const save = (previous ?? Promise.resolve())
+            .catch(() => undefined)
+            .then(() => persistNoteContent(id, content, title));
+        pendingSavesRef.current.set(id, save);
+        const cleanup = () => {
+            if (pendingSavesRef.current.get(id) === save) {
+                pendingSavesRef.current.delete(id);
+            }
+        };
+        void save.then(cleanup, cleanup);
+        return save;
+    }, [persistNoteContent]);
 
     const updateNoteTags = useCallback(async (id: string, tags: string[]) => {
         console.log('[NotesContext] Using DSTU API to update note tags:', id);
@@ -1143,18 +1194,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return;
         }
 
-        const existingNote = notes.find(n => n.id === id);
-        const updated: NoteItem = {
-            ...dstuNodeToNoteItem(nodeResult.value),
-            content_md: existingNote?.content_md || '',
-            tags,
-        };
-
-        setNotes(prev => prev.map(n => n.id === id ? updated : n));
-        if (active?.id === id) {
-            setActive(updated);
-        }
-    }, [active, notify, t, notes]);
+        setNotes(prev => prev.map(n => n.id === id ? { ...n, tags } : n));
+        setActive(current => current?.id === id ? { ...current, tags } : current);
+    }, [notify, t]);
 
     const renameTagAcrossNotes = useCallback(async (oldName: string, newName: string, skipId?: string) => {
         const normalizedOld = oldName.trim();
@@ -1230,10 +1272,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 is_favorite: newFavoriteValue,
             };
 
-            setNotes(prev => prev.map(n => n.id === id ? updated : n));
-            if (active?.id === id) {
-                setActive(updated);
-            }
+            setNotes(prev => prev.map(n => n.id === id ? { ...n, is_favorite: newFavoriteValue } : n));
+            setActive(current => current?.id === id ? { ...current, is_favorite: newFavoriteValue } : current);
             notify({
                 title: updated.is_favorite
                     ? t('notes:favorites.toast_marked')
@@ -1248,7 +1288,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 variant: "destructive"
             });
         }
-    }, [notes, active, notify, t]);
+    }, [notes, notify, t]);
 
     const deleteItems = useCallback(async (ids: string[]) => {
         const noteIds = ids.filter(id => !folders[id]);
@@ -1267,6 +1307,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Update Notes State
         if (noteIds.length > 0) {
+            noteIds.forEach(id => {
+                contentVersionRef.current.set(id, (contentVersionRef.current.get(id) ?? 0) + 1);
+                inflightContentRef.current.delete(id);
+            });
             setNotes(prev => prev.filter(n => !noteIds.includes(n.id)));
             setLoadedContentIds(prev => {
                 const next = new Set(prev);
