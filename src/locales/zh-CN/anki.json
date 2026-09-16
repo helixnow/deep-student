@@ -696,6 +696,7 @@
     "resumed": "已恢复",
     "deleted": "已删除",
     "exported": "导出成功",
+    "exportedMissingMedia": "导出成功，但 {{count}} 个媒体文件缺失，未打包进 APKG",
     "exportApkg": "导出 APKG",
     "retryFailed": "重试失败段",
     "deleteSession": "删除",

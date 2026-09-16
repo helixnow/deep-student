@@ -893,6 +893,8 @@
         "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards.",
         "exportSkippedErrorsWithNote": "Exported {{exported}} cards, skipped {{skipped}} error cards. {{note}}",
         "apkgExportedWithNote": "APKG exported. {{note}}",
+        "exportMissingMediaTitle": "APKG exported, but {{count}} media file(s) are missing",
+        "exportMissingMediaDetail": "{{count}} referenced image/audio file(s) were missing or unreadable and were not packed into the APKG; those cards will lack media when opened.",
         "paused": "Generation paused",
         "resumed": "Generation resumed",
         "cancelled": "Generation cancelled",

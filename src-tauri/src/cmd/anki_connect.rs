@@ -1103,6 +1103,15 @@ pub async fn export_cards_as_apkg_with_template(
     }
 }
 
+/// 多模板 APKG 导出结果（F16）：除文件路径外一并返回媒体完整性报告，
+/// 使直接导出按钮与 AI 工具入口具备同样的缺失媒体可见性。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportMultiTemplateApkgResult {
+    pub path: String,
+    pub report: crate::apkg_exporter_service::ApkgExportReport,
+}
+
 /// 多模板 APKG 导出（前端导出按钮直接调用）
 /// 每种 template_id 创建独立的 Anki model，每张卡片用自己的模板渲染
 #[tauri::command]
@@ -1112,7 +1121,7 @@ pub async fn export_multi_template_apkg(
     output_path: Option<String>,
     state: State<'_, AppState>,
     window: Window,
-) -> Result<String> {
+) -> Result<ExportMultiTemplateApkgResult> {
     if cards.is_empty() {
         return Err(AppError::validation("没有卡片可以导出"));
     }
@@ -1190,7 +1199,7 @@ pub async fn export_multi_template_apkg(
     let staged_output_path = output_path.clone();
     let runtime_handle = tokio::runtime::Handle::current();
     let export_result = tokio::task::spawn_blocking(move || {
-        runtime_handle.block_on(crate::apkg_exporter_service::export_multi_template_apkg(
+        runtime_handle.block_on(crate::apkg_exporter_service::export_multi_template_apkg_report(
             cards.into_iter().filter(|c| !c.is_error_card).collect(),
             deck_name,
             staged_output_path,
@@ -1200,20 +1209,23 @@ pub async fn export_multi_template_apkg(
     .await
     .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;
 
-    if let Err(e) = export_result {
-        if target_uri.is_some() {
-            if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
-                log::warn!(
-                    "[anki_export] 导出失败后清理临时 APKG 文件失败 ({}): {}",
-                    output_path.display(),
-                    cleanup_err
-                );
+    let report = match export_result {
+        Ok(report) => report,
+        Err(e) => {
+            if target_uri.is_some() {
+                if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
+                    log::warn!(
+                        "[anki_export] 导出失败后清理临时 APKG 文件失败 ({}): {}",
+                        output_path.display(),
+                        cleanup_err
+                    );
+                }
             }
+            return Err(AppError::validation(e));
         }
-        return Err(AppError::validation(e));
-    }
+    };
 
-    if let Some(target_path) = target_uri {
+    let resolved_path = if let Some(target_path) = target_uri {
         let staged = output_path.to_string_lossy().to_string();
         if let Err(err) = crate::unified_file_manager::copy_file(&window, &staged, &target_path) {
             if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
@@ -1232,10 +1244,15 @@ pub async fn export_multi_template_apkg(
                 e
             );
         }
-        Ok(target_path)
+        target_path
     } else {
-        Ok(output_path.to_string_lossy().to_string())
-    }
+        output_path.to_string_lossy().to_string()
+    };
+
+    Ok(ExportMultiTemplateApkgResult {
+        path: resolved_path,
+        report,
+    })
 }
 
 // 🔧 P0-30 修复：添加 batch_export_cards 和 save_json_file 命令

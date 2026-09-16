@@ -194,8 +194,16 @@ export const SessionRow: React.FC<{
         cards: normalizedCards,
         deckName: session.documentName || 'Export',
       });
-      if (result.success) showGlobalNotification('success', t('taskDashboard.exported'));
-      else throw new Error(t('chatV2.exportFailed'));
+      if (!result.success) throw new Error(t('chatV2.exportFailed'));
+      const missingMedia = result.missingMedia ?? [];
+      if (missingMedia.length > 0) {
+        showGlobalNotification(
+          'warning',
+          t('taskDashboard.exportedMissingMedia', { count: missingMedia.length }),
+        );
+      } else {
+        showGlobalNotification('success', t('taskDashboard.exported'));
+      }
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err));
     } finally {
