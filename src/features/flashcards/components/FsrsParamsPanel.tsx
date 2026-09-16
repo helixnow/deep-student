@@ -307,11 +307,11 @@ export const FsrsParamsPanel: React.FC = () => {
       <div className="wb-fcx-panel-head">
         <h3 className="wb-fcx-panel-title">
           <Brain size={14} weight="duotone" />
-          {t('stats.fsrsParams.title', { defaultValue: '记忆参数（到期队列）' })}
+          {t('stats.fsrsParams.title', { defaultValue: '记忆状态分布（到期样本）' })}
         </h3>
         <p className="wb-fcx-panel-sub">
           {t('stats.fsrsParams.subtitle', {
-            defaultValue: 'FSRS Stability / Difficulty 只读聚合',
+            defaultValue: '到期样本的 S / D 分布，非模型权重；样本受额度与队列策略影响',
           })}
           {' · '}
           {localNote}
