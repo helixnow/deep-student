@@ -6,7 +6,7 @@ import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '..
 import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { cn } from '@/lib/utils';
 import { springSnap, motionSafe } from '@/styles/motion-springs';
@@ -117,17 +117,55 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const displayTitle = isDstuMode ? (initialTitle || "") : (contextActive?.title || "");
 
     const titleDirtyRef = useRef(false);
+    // C15：标题已在这轮编辑中被显式提交（保存并关闭）后同步置位，
+    // 使聚合 dirty 复查在 displayTitle 尚未回流时也能立即读到“已提交”。
+    const titleCommittedRef = useRef(false);
+    // 保存挂点注册后长期存活，读取当前输入/标题需经 ref，避免闭包过期
+    const titleInputValueRef = useRef(titleInput);
+    titleInputValueRef.current = titleInput;
+    const displayTitleValueRef = useRef(displayTitle);
+    displayTitleValueRef.current = displayTitle;
     const trimmedInput = titleInput.trim();
     titleDirtyRef.current =
         !readOnly &&
         Boolean(noteId) &&
         Boolean(trimmedInput) &&
         trimmedInput !== (displayTitle || '').trim() &&
-        (isEditing || pendingTitleRef.current !== null);
+        (isEditing || pendingTitleRef.current !== null) &&
+        !titleCommittedRef.current;
 
     useEffect(() => {
         if (!isDstuMode || !noteId || readOnly) return;
         return registerContentDirtyChecker('note', noteId, () => titleDirtyRef.current);
+    }, [isDstuMode, noteId, readOnly]);
+
+    // C15：未提交标题的显式提交契约。失败时向调用方抛出，让「保存并关闭」
+    // 保持窗口与草稿；成功后同步把标题标记为已提交（不等 displayTitle 回流）。
+    useEffect(() => {
+        if (!isDstuMode || !noteId || readOnly) return;
+        return registerContentSaveHandler('note', noteId, async () => {
+            if (!titleDirtyRef.current) return;
+            const trimmed = titleInputValueRef.current.trim();
+            if (!trimmed) {
+                titleCommittedRef.current = true;
+                pendingTitleRef.current = null;
+                setIsEditing(false);
+                setTitleInput(displayTitleValueRef.current);
+                return;
+            }
+            if (trimmed === (displayTitleValueRef.current || '').trim()) {
+                titleCommittedRef.current = true;
+                pendingTitleRef.current = null;
+                return;
+            }
+            if (!dstuOnTitleChangeRef.current) return;
+            // 成功即已提交；失败抛出 → saveContentNow 不放行关闭
+            await dstuOnTitleChangeRef.current(trimmed);
+            titleCommittedRef.current = true;
+            pendingTitleRef.current = null;
+            setIsEditing(false);
+            setTitleInput(trimmed);
+        });
     }, [isDstuMode, noteId, readOnly]);
 
     // Calculate Breadcrumbs（仅 Context 模式）
@@ -177,6 +215,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     const handleTitleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (readOnly) return;
+        // 新一轮编辑：清除上一轮“已提交”标记
+        titleCommittedRef.current = false;
         // 输入侧就地清洗（折叠换行、去控制字符、500 字符截断），
         // 与后端 note_repo validate_title 限额一致；正常输入为恒等变换
         setTitleInput(sanitizeNoteTitleInput(e.target.value));
