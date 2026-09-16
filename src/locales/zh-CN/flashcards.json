@@ -179,6 +179,7 @@
     "stillDue": "仍有 {{count}} 张到期",
     "continueReview": "继续复习 {{count}} 张",
     "batchNotice": "本次为批次集中复习，评分将计入正式复习记录。",
+    "leechSuspended": "这张卡已多次遗忘，已自动暂停并移出本轮。建议先改写或拆分后再恢复学习。",
     "intervalHint": "{{interval}}",
     "backToday": "返回今日",
     "exit": "退出",

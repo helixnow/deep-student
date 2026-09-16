@@ -179,6 +179,7 @@
     "stillDue": "{{count}} still due",
     "continueReview": "Continue reviewing {{count}}",
     "batchNotice": "This is a focused batch review — ratings count toward your official review history.",
+    "leechSuspended": "This card has been forgotten many times and was auto-suspended. Rewrite or split it before resuming.",
     "intervalHint": "{{interval}}",
     "backToday": "Back to Today",
     "exit": "Exit",
