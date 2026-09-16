@@ -80,6 +80,8 @@ export interface ReviewReceipt {
   /** 评分前队列快照，供 Again 回插后 undo 还原顺序 */
   queueSnapshot?: ReviewCard[];
   rating?: FsrsRating;
+  previousStreak?: number;
+  previousBestStreak?: number;
 }
 
 /** 会话内撤销栈深度上限（Anki 为无限撤销；这里按快照内存开销取有界值） */
@@ -169,6 +171,8 @@ interface FsrsReviewState {
   pendingExternalRateIds: string[];
   /** 完成态 stats 拉取代数，防止乱序覆盖 */
   statsFetchGen: number;
+  sessionGeneration: number;
+  dueLoadGeneration: number;
 
   setScreen: (screen: FlashcardsScreen) => void;
   applyLaunchPayload: (payload: unknown) => void;
@@ -650,6 +654,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   recentLocalLogIds: [],
   pendingExternalRateIds: [],
   statsFetchGen: 0,
+  sessionGeneration: 0,
+  dueLoadGeneration: 0,
 
   setScreen: (screen) => set({ screen }),
 
@@ -678,13 +684,18 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
   loadDue: async () => {
     const previousDueTotal = get().dueTotal;
-    set({ loading: true, error: null, errorKind: null });
+    const sessionGeneration = get().sessionGeneration;
+    const dueLoadGeneration = get().dueLoadGeneration + 1;
+    const isCurrent = () => get().sessionGeneration === sessionGeneration
+      && get().dueLoadGeneration === dueLoadGeneration;
+    set({ dueLoadGeneration, loading: true, error: null, errorKind: null });
     try {
       const [fromBackend, dueTotal] = await Promise.all([
         fetchDueFromBackend(),
         fetchDueTotalFromStats(),
       ]);
       // stats 失败时：若本批打满上限，保留上次诚实总数，避免把 50 当成「刚好 50」。
+      if (!isCurrent()) return false;
       let resolvedTotal = dueTotal ?? fromBackend.length;
       if (
         dueTotal == null
@@ -700,6 +711,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       set({
         dueCards: [],
         dueTotal: 0,
@@ -714,6 +726,12 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   startDueSession: () => {
     const { dueCards, error } = get();
     if (error) return;
+    set((state) => ({
+      sessionGeneration: state.sessionGeneration + 1,
+      statsFetchGen: state.statsFetchGen + 1,
+      ratingBusy: false,
+      loading: false,
+    }));
     if (dueCards.length === 0) {
       // 无到期卡时不要进入假完成会话
       set({
@@ -771,6 +789,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   startBatchSession: async (cardIds, cards) => {
+    const sessionGeneration = get().sessionGeneration + 1;
     const ankiIds = [
       ...new Set(
         cardIds
@@ -788,6 +807,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       errorKind: null,
       screen: 'session',
       sessionMode: 'batch',
+      sessionGeneration,
+      statsFetchGen: get().statsFetchGen + 1,
+      ratingBusy: false,
       queue: [],
       queueIndex: 0,
       flipped: false,
@@ -823,6 +845,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           : undefined;
 
       const enqueued = await enqueueBatchForReview(ankiIds, contentByAnkiId);
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         queue: enqueued,
         queueIndex: nextReviewableIndex(enqueued, 0),
@@ -848,6 +871,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       return true;
     } catch (error) {
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         queue: [],
         queueIndex: 0,
@@ -1035,7 +1059,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       }
     }
     const last = get().lastReview;
-    if (last && idSet.has(last.cardStateId) && localLogIds.has(last.logId)) {
+    if (!options?.cardLogPairs?.length && !options?.logIds?.length
+      && last && idSet.has(last.cardStateId) && localLogIds.has(last.logId)) {
       idSet.delete(last.cardStateId);
     }
     if (idSet.size === 0) return;
@@ -1144,6 +1169,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   loadRatingPreviews: async () => {
+    const sessionGeneration = get().sessionGeneration;
     const { queue, queueIndex } = get();
     const current = queue[queueIndex];
     if (!current) {
@@ -1157,16 +1183,17 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const previews = parseRatingPreviews(result);
       // 若已翻回正面或切到其他卡，丢弃过期结果
       const latest = get();
-      if (!latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
+      if (latest.sessionGeneration !== sessionGeneration || !latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
       set({ ratingPreviews: previews });
     } catch {
       const latest = get();
-      if (!latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
+      if (latest.sessionGeneration !== sessionGeneration || !latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
       set({ ratingPreviews: null });
     }
   },
 
   rate: async (rating) => {
+    const sessionGeneration = get().sessionGeneration;
     const { queue, queueIndex, ratingBusy, flipped, flippedAtMs } = get();
     if (ratingBusy || !flipped) return;
     const current = queue[queueIndex];
@@ -1203,6 +1230,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         expectedLastReviewMs:
           current.lastReviewMs === undefined ? null : current.lastReviewMs,
       });
+      if (get().sessionGeneration !== sessionGeneration) {
+        requestFlashcardsDueRefresh();
+        return;
+      }
       if (!result || typeof result !== 'object') {
         throw new Error(i18n.t('flashcards:session.errors.invalidRateResponse'));
       }
@@ -1288,6 +1319,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           queueIndex: baseIndex,
           queueSnapshot,
           rating,
+          previousStreak: state.sessionStreak,
+          previousBestStreak: state.sessionBestStreak,
         };
         const reviewHistory = pushReviewReceipt(state.reviewHistory, receipt);
 
@@ -1353,6 +1386,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         });
       }
     } catch (err) {
+      if (get().sessionGeneration !== sessionGeneration) return;
       set({
         ratingBusy: false,
         error: errorMessage(err, i18n.t('flashcards:session.errors.rateFailed')),
@@ -1367,6 +1401,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   undoLastReview: async () => {
+    const sessionGeneration = get().sessionGeneration;
     const { lastReview, ratingBusy } = get();
     if (!lastReview || ratingBusy) return false;
 
@@ -1376,6 +1411,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         expectedLogId: lastReview.logId,
         cardStateId: lastReview.cardStateId,
       });
+      if (get().sessionGeneration !== sessionGeneration) {
+        requestFlashcardsDueRefresh();
+        return false;
+      }
       if (!result || typeof result !== 'object') {
         throw new Error(i18n.t('flashcards:session.errors.invalidUndoResponse'));
       }
@@ -1404,18 +1443,27 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           })()
         : undefined;
       set((s) => {
-        const snapshot = Array.isArray(lastReview.queueSnapshot)
-          && lastReview.queueSnapshot.length > 0
-          ? lastReview.queueSnapshot.map((card) => (
-              card.id === lastReview.cardStateId && restoredLastReviewMs !== undefined
-                ? { ...card, lastReviewMs: restoredLastReviewMs }
-                : { ...card }
-            ))
-          : s.queue;
-        const queueIndex = Math.min(
-          Math.max(0, lastReview.queueIndex),
-          Math.max(0, snapshot.length - 1),
-        );
+        const liveCards = new Map(s.queue.map((card) => [card.id, card]));
+        const savedQueue = lastReview.queueSnapshot ?? s.queue;
+        const savedIds = new Set(savedQueue.map((card) => card.id));
+        const snapshot = [
+          ...savedQueue.flatMap((card) => {
+            const live = liveCards.get(card.id);
+            if (!live) return [];
+            return [{
+              ...live,
+              ...(card.id === lastReview.cardStateId ? {
+                learningDueMs: card.learningDueMs,
+                ...(restoredLastReviewMs !== undefined ? { lastReviewMs: restoredLastReviewMs } : {}),
+              } : {}),
+            }];
+          }),
+          ...s.queue.filter((card) => !savedIds.has(card.id)),
+        ];
+        const restoredIndex = snapshot.findIndex((card) => card.id === lastReview.cardStateId);
+        const queueIndex = restoredIndex >= 0
+          ? restoredIndex
+          : nextReviewableIndex(snapshot, Math.min(lastReview.queueIndex, snapshot.length));
         const sessionRatingCounts = { ...s.sessionRatingCounts };
         if (lastReview.rating != null) {
           sessionRatingCounts[lastReview.rating] =
@@ -1445,7 +1493,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
               : s.sessionAgainCount,
           sessionRatingCounts,
           // 撤销打断连续性；诚实归零而非猜测之前的连击值
-          sessionStreak: 0,
+          sessionStreak: lastReview.previousStreak ?? 0,
+          sessionBestStreak: lastReview.previousBestStreak ?? s.sessionBestStreak,
           error: null,
           errorKind: null,
         };
@@ -1453,16 +1502,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       requestFlashcardsDueRefresh();
       return true;
     } catch (error) {
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         ratingBusy: false,
         error: errorMessage(error, i18n.t('flashcards:session.errors.undoFailed')),
         errorKind: 'undo',
       });
       return false;
+    } finally {
+      if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
     }
   },
 
   updateCurrentCard: async (front, back, template) => {
+    const sessionGeneration = get().sessionGeneration;
     const { queue, queueIndex, ratingBusy } = get();
     if (ratingBusy) return false;
     const current = queue[queueIndex];
@@ -1506,8 +1559,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     set({ ratingBusy: true, error: null, errorKind: null });
     try {
       await invoke('update_anki_card', { card: payload });
-      const updated: ReviewCard = {
-        ...current,
+      if (get().sessionGeneration !== sessionGeneration) {
+        requestFlashcardsDueRefresh();
+        return false;
+      }
+      const updated = {
         front: edit.front,
         back: edit.back,
         text: edit.text,
@@ -1515,9 +1571,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       };
       set((state) => ({
         // await 期间队列可能变化；按 id 定位当前卡，避免旧下标写错行
-        queue: state.queue.map((card) => (card.id === current.id ? updated : card)),
+        queue: state.queue.map((card) => (card.id === current.id ? { ...card, ...updated } : card)),
         dueCards: state.dueCards.map((card) => (
-          card.id === current.id || card.ankiCardId === current.ankiCardId ? updated : card
+          card.id === current.id || card.ankiCardId === current.ankiCardId ? { ...card, ...updated } : card
         )),
         ratingBusy: false,
         error: null,
@@ -1525,16 +1581,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       }));
       return true;
     } catch (error) {
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         ratingBusy: false,
         error: errorMessage(error, i18n.t('flashcards:session.errors.saveFailed')),
         errorKind: 'edit',
       });
       return false;
+    } finally {
+      if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
     }
   },
 
   suspendCurrent: async () => {
+    const sessionGeneration = get().sessionGeneration;
     const { queue, queueIndex, ratingBusy } = get();
     if (ratingBusy) return false;
     const current = queue[queueIndex];
@@ -1545,6 +1605,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const result = await invoke<unknown>('fsrs_suspend_card', {
         cardStateId: current.id,
       });
+      if (get().sessionGeneration !== sessionGeneration) {
+        requestFlashcardsDueRefresh();
+        return false;
+      }
       if (!result || typeof result !== 'object') {
         throw new Error(i18n.t('flashcards:session.errors.invalidSuspendResponse'));
       }
@@ -1581,16 +1645,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       requestFlashcardsDueRefresh();
       return true;
     } catch (error) {
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         ratingBusy: false,
         error: errorMessage(error, i18n.t('flashcards:session.errors.suspendFailed')),
         errorKind: 'suspend',
       });
       return false;
+    } finally {
+      if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
     }
   },
 
   resumeLastSuspended: async () => {
+    const sessionGeneration = get().sessionGeneration;
     const { lastSuspended, ratingBusy } = get();
     if (!lastSuspended || ratingBusy) return false;
 
@@ -1599,6 +1667,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const result = await invoke<unknown>('fsrs_unsuspend_card', {
         cardStateId: lastSuspended.cardStateId,
       });
+      if (get().sessionGeneration !== sessionGeneration) {
+        requestFlashcardsDueRefresh();
+        return false;
+      }
       if (!result || typeof result !== 'object') {
         throw new Error(i18n.t('flashcards:session.errors.invalidResumeResponse'));
       }
@@ -1610,27 +1682,38 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       if (stateId !== lastSuspended.cardStateId || typeof resultRow.changed !== 'boolean') {
         throw new Error(i18n.t('flashcards:session.errors.mismatchedResumeResponse'));
       }
-      set((state) => ({
-        queue: state.queue.map((card) => (
+      set((state) => {
+        const queue = state.queue.map((card) => (
           card.id === lastSuspended.cardStateId ? { ...card, suspended: false } : card
-        )),
-        queueIndex: lastSuspended.queueIndex,
+        ));
+        // await 期间队列可能被外部 reconcile 调整；按 id 定位恢复位置，找不到时钳制旧下标
+        const liveIndex = queue.findIndex((card) => card.id === lastSuspended.cardStateId);
+        const queueIndex = liveIndex >= 0
+          ? liveIndex
+          : Math.min(Math.max(lastSuspended.queueIndex, 0), Math.max(queue.length - 1, 0));
+        return {
+        queue,
+        queueIndex,
         flipped: false,
         flippedAtMs: null,
         ratingBusy: false,
         lastSuspended: null,
         error: null,
         errorKind: null,
-      }));
+        };
+      });
       requestFlashcardsDueRefresh();
       return true;
     } catch (error) {
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         ratingBusy: false,
         error: errorMessage(error, i18n.t('flashcards:session.errors.resumeFailed')),
         errorKind: 'resume',
       });
       return false;
+    } finally {
+      if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
     }
   },
 
@@ -1659,6 +1742,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
   endSession: () => {
     set({
+      sessionGeneration: get().sessionGeneration + 1,
+      statsFetchGen: get().statsFetchGen + 1,
+      pendingExternalRateIds: [],
       screen: 'today',
       sessionMode: null,
       flipped: false,
@@ -1687,3 +1773,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
   resetFlip: () => set({ flipped: false, flippedAtMs: null, ratingPreviews: null }),
 }));
+
+function flushPendingExternalRates(): void {
+  const state = useFsrsReviewStore.getState();
+  if (state.ratingBusy || state.pendingExternalRateIds.length === 0) return;
+  useFsrsReviewStore.setState({ pendingExternalRateIds: [] });
+  state.reconcileExternalRate(state.pendingExternalRateIds);
+}
