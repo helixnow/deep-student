@@ -792,6 +792,10 @@ impl FsrsReviewService {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| AppError::database(format!("开启事务失败: {}", e)))?;
 
+        // F01：新卡入队写入**当前生效**的牌组目标保持率，而非常量默认值，
+        // 使「设置页保存成功」与后续评分/预览调度口径一致。
+        let scheduler_config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+
         let document_card_ids = match &scope {
             FsrsEnqueueScope::Session {
                 session_id,
@@ -1035,7 +1039,7 @@ impl FsrsReviewService {
                     DEFAULT_DECK_ID,
                     now_ms, // 新卡立即到期
                     FSRS_PARAMS_VERSION,
-                    DEFAULT_DESIRED_RETENTION,
+                    scheduler_config.desired_retention,
                     now_rfc,
                 ],
             )
@@ -1684,7 +1688,7 @@ impl FsrsReviewService {
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
-        let mut outcome = schedule_review(&before, rating, now_ms);
+        let mut outcome = schedule_review(&before, rating, now_ms, config.desired_retention);
         if config.enable_fuzz {
             apply_deterministic_fuzz(&mut outcome, &before, now_ms);
         }
@@ -1718,6 +1722,7 @@ impl FsrsReviewService {
                 updated_at = ?11,
                 leech = ?14,
                 suspended = ?15,
+                desired_retention = ?16,
                 buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL
@@ -1741,6 +1746,7 @@ impl FsrsReviewService {
                     expected_last_review_ms,
                     if leech_flag { 1 } else { 0 },
                     if auto_suspend { 1 } else { 0 },
+                    config.desired_retention,
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -1760,6 +1766,7 @@ impl FsrsReviewService {
                 updated_at = ?11,
                 leech = ?13,
                 suspended = ?14,
+                desired_retention = ?15,
                 buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL",
@@ -1778,6 +1785,7 @@ impl FsrsReviewService {
                     card_state_id,
                     if leech_flag { 1 } else { 0 },
                     if auto_suspend { 1 } else { 0 },
+                    config.desired_retention,
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -1899,7 +1907,7 @@ impl FsrsReviewService {
         let mut intervals = Vec::with_capacity(4);
         for rating_u8 in 1u8..=4 {
             let rating = FsrsRating::from_u8(rating_u8).expect("1..=4 is valid");
-            let mut outcome = schedule_review(&before, rating, now_ms);
+            let mut outcome = schedule_review(&before, rating, now_ms, config.desired_retention);
             if config.enable_fuzz {
                 // fuzz 因子只依赖 (card_state_id, reps)，同一张卡预览与评分结果一致
                 apply_deterministic_fuzz(&mut outcome, &before, now_ms);
@@ -3115,6 +3123,11 @@ impl FsrsReviewService {
         let before = Self::load_state_by_id(&tx, card_state_id)?.ok_or_else(|| {
             AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
         })?;
+        // F01：重置后的新状态同样使用当前牌组配置，而非旧卡快照。
+        let scheduler_config = Self::load_scheduler_config(
+            &tx,
+            before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
+        )?;
 
         let cleared_logs = tx
             .execute(
@@ -3145,9 +3158,7 @@ impl FsrsReviewService {
                 before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
                 now_ms, // 重置后立即到期
                 FSRS_PARAMS_VERSION,
-                before
-                    .desired_retention
-                    .unwrap_or(DEFAULT_DESIRED_RETENTION),
+                scheduler_config.desired_retention,
                 now_rfc,
             ],
         )
@@ -3748,13 +3759,20 @@ fn to_rs_card(before: &FsrsCardState) -> RsFsrsCard {
     }
 }
 
-/// 使用 `rs-fsrs` 官方调度器计算下一次复习
-fn schedule_review(before: &FsrsCardState, rating: FsrsRating, now_ms: i64) -> ScheduleOutcome {
+/// 使用 `rs-fsrs` 官方调度器计算下一次复习。
+///
+/// `desired_retention` 由调用方传入**当前生效的牌组配置**（而非卡片入队时写入的
+/// 快照），确保用户在设置页修改目标保持率后，下一次评分与间隔预览都会按新值调度
+/// （见 F01）。卡片上的 `desired_retention` 列仅作为「当时使用的配置」审计快照。
+fn schedule_review(
+    before: &FsrsCardState,
+    rating: FsrsRating,
+    now_ms: i64,
+    desired_retention: f64,
+) -> ScheduleOutcome {
     let mut params = rs_fsrs::Parameters::default();
-    if let Some(retention) = before.desired_retention {
-        if retention > 0.0 && retention < 1.0 {
-            params.request_retention = retention;
-        }
+    if desired_retention > 0.0 && desired_retention < 1.0 {
+        params.request_retention = desired_retention;
     }
     // 复习结果需可复现，关闭 fuzz
     params.enable_fuzz = false;
@@ -3864,7 +3882,7 @@ mod tests {
         // rs-fsrs BasicScheduler: New + Good → Learning, due +10min
         let before = blank_new_card();
         let now = 1_700_000_000_000_i64;
-        let out = schedule_review(&before, FsrsRating::Good, now);
+        let out = schedule_review(&before, FsrsRating::Good, now, DEFAULT_DESIRED_RETENTION);
         assert_eq!(out.state, FsrsState::Learning);
         assert_eq!(out.scheduled_days, 0.0);
         assert_eq!(out.due_ms, now + 10 * MS_PER_MINUTE);
@@ -3884,7 +3902,7 @@ mod tests {
         before.scheduled_days = 5.0;
         before.due_ms = now;
         before.last_review_ms = Some(now - 5 * MS_PER_DAY);
-        let out = schedule_review(&before, FsrsRating::Again, now);
+        let out = schedule_review(&before, FsrsRating::Again, now, DEFAULT_DESIRED_RETENTION);
         assert_eq!(out.state, FsrsState::Relearning);
         assert_eq!(out.lapses, 1);
         assert_eq!(out.due_ms, now + 5 * MS_PER_MINUTE);
@@ -3902,11 +3920,11 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 4 * MS_PER_DAY);
 
-        let hard = schedule_review(&before, FsrsRating::Hard, now);
+        let hard = schedule_review(&before, FsrsRating::Hard, now, DEFAULT_DESIRED_RETENTION);
         assert_eq!(hard.state, FsrsState::Review);
         assert!(hard.scheduled_days >= 1.0);
 
-        let easy = schedule_review(&before, FsrsRating::Easy, now);
+        let easy = schedule_review(&before, FsrsRating::Easy, now, DEFAULT_DESIRED_RETENTION);
         assert_eq!(easy.state, FsrsState::Review);
         assert!(easy.scheduled_days > hard.scheduled_days);
     }
@@ -4103,7 +4121,7 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 10 * MS_PER_DAY);
 
-        let fsrs_out = schedule_review(&before, FsrsRating::Good, now);
+        let fsrs_out = schedule_review(&before, FsrsRating::Good, now, DEFAULT_DESIRED_RETENTION);
         let interval = fsrs_out.due_ms.saturating_sub(now);
         assert!(
             interval >= 60 * 60 * 1000,
@@ -4154,7 +4172,7 @@ mod tests {
             .expect("load")
             .expect("state");
         let rate_now = Utc::now().timestamp_millis();
-        let fsrs_only = schedule_review(&before, FsrsRating::Good, rate_now);
+        let fsrs_only = schedule_review(&before, FsrsRating::Good, rate_now, DEFAULT_DESIRED_RETENTION);
         let expected_due = apply_mastery_due_bias(0.0, rate_now, fsrs_only.due_ms);
 
         let biased = service
@@ -4196,7 +4214,7 @@ mod tests {
         }
         let before_hi = service.get_card_state(&state_hi).unwrap().unwrap();
         let rate_now_hi = Utc::now().timestamp_millis();
-        let fsrs_hi = schedule_review(&before_hi, FsrsRating::Good, rate_now_hi);
+        let fsrs_hi = schedule_review(&before_hi, FsrsRating::Good, rate_now_hi, DEFAULT_DESIRED_RETENTION);
         let high = service
             .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95), None)
             .expect("high bias");
@@ -4388,7 +4406,7 @@ mod tests {
         // Cap: huge interval + score=0 → advance ≤ 3 days on persisted due
         let before_cap = service.get_card_state(&sid_cap).unwrap().unwrap();
         let rate_now = Utc::now().timestamp_millis();
-        let fsrs_cap = schedule_review(&before_cap, FsrsRating::Good, rate_now);
+        let fsrs_cap = schedule_review(&before_cap, FsrsRating::Good, rate_now, DEFAULT_DESIRED_RETENTION);
         let capped = service
             .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0), None)
             .unwrap();
@@ -4602,6 +4620,72 @@ mod tests {
                 })
                 .is_err(),
             "unknown leech action is rejected"
+        );
+    }
+
+    #[test]
+    fn desired_retention_config_flows_into_enqueue_rating_and_preview() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-ret", "task-ret", "card-ret");
+        let service = FsrsReviewService::new(db.clone());
+
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                desired_retention: Some(0.75),
+                ..Default::default()
+            })
+            .expect("update retention");
+
+        let enq = service
+            .enqueue_cards(&["card-ret".to_string()])
+            .expect("enqueue");
+        assert_eq!(enq.enqueued, 1);
+        assert!(
+            (enq.states[0].desired_retention.unwrap_or_default() - 0.75).abs() < 1e-9,
+            "new state must snapshot the configured retention, not the 0.9 default"
+        );
+        let state_id = enq.states[0].id.clone();
+
+        // 成熟的 Review 卡便于比较长期间隔
+        let now = Utc::now().timestamp_millis();
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE fsrs_card_states SET state = 2, stability = 10.0, difficulty = 5.0,
+                    scheduled_days = 10.0, reps = 5, lapses = 0, due_ms = ?1, last_review_ms = ?2
+                 WHERE id = ?3",
+                params![now, now - 10 * MS_PER_DAY, state_id],
+            )
+            .expect("seed review state");
+        }
+
+        let low = service
+            .preview_intervals(&state_id, None)
+            .expect("preview low retention");
+        // 更高的目标保持率 → 更短的下次间隔
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                desired_retention: Some(0.97),
+                ..Default::default()
+            })
+            .expect("raise retention");
+        let high = service
+            .preview_intervals(&state_id, None)
+            .expect("preview high retention");
+
+        let low_good = low.intervals.iter().find(|i| i.rating == 3).unwrap();
+        let high_good = high.intervals.iter().find(|i| i.rating == 3).unwrap();
+        assert!(
+            high_good.interval_ms < low_good.interval_ms,
+            "higher retention must shorten the interval: low={} high={}",
+            low_good.interval_ms,
+            high_good.interval_ms
+        );
+
+        let rated = service.rate(&state_id, 3, Some(10), None).expect("rate");
+        assert!(
+            (rated.card_state.desired_retention.unwrap_or_default() - 0.97).abs() < 1e-9,
+            "rating must persist the retention actually used"
         );
     }
 
