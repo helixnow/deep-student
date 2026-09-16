@@ -1676,7 +1676,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 处理大纲滚动事件
   useEffect(() => {
-    const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number; noteId?: string }>) => {
+    const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number; occurrence?: number; noteId?: string }>) => {
       // ★ Y2 修复：事件携带 noteId 时按当前笔记过滤，
       // 防止多个可见编辑器实例（分屏/多面板）同时响应滚动
       if (e.detail.noteId && noteIdRef.current && e.detail.noteId !== noteIdRef.current) {
@@ -1719,7 +1719,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         },
       });
       if (editorApi?.scrollToHeading) {
-        editorApi.scrollToHeading(e.detail.text, e.detail.level, e.detail.normalizedText);
+        editorApi.scrollToHeading(
+          e.detail.text,
+          e.detail.level,
+          e.detail.normalizedText,
+          undefined,
+          e.detail.occurrence ?? 0,
+        );
       }
     };
 

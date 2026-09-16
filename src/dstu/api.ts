@@ -628,6 +628,20 @@ export async function getContent(path: string): Promise<Result<string | Blob>> {
 }
 
 /**
+ * 把 DstuNode.updatedAt（Unix 毫秒）转换为元数据写回的乐观锁版本 token。
+ *
+ * 后端 notes.updated_at 存 RFC3339（毫秒精度，如 `2026-09-16T12:34:56.789Z`），
+ * 而 DstuNode 读取时把它转成了毫秒数。写入 CAS 需要原始字符串，格式转换集中
+ * 在此，调用方不得自行猜测（RFC3339 ↔ 毫秒）。
+ */
+export function updatedAtToVersionToken(
+  updatedAtMs: number | null | undefined,
+): string | undefined {
+  if (typeof updatedAtMs !== 'number' || !Number.isFinite(updatedAtMs)) return undefined;
+  return new Date(updatedAtMs).toISOString();
+}
+
+/**
  * 设置资源元数据
  */
 export async function setMetadata(

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { useTranslation } from "react-i18next";
-import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check } from "@phosphor-icons/react";
+import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check, Books } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
@@ -9,7 +10,8 @@ import { cn } from "../../lib/utils";
 import { Input } from "@/components/ui/shad/Input";
 import { Badge } from "@/components/ui/shad/Badge";
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { dstu } from '@/dstu';
+import { dstu, updatedAtToVersionToken } from '@/dstu';
+import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const normalizeHeadingText = (raw: string) => {
     const withoutLinks = raw.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -45,7 +47,6 @@ import {
     NOTES_ACTIVE_HEADING_EVENT,
     type NotesActiveHeadingDetail,
 } from './components/outlineActiveHeadingBridge';
-import { NotesGenerativeSummary } from './components/NotesGenerativeSummary';
 import './NotesContextPanel.css';
 
 // ============================================================================
@@ -70,6 +71,11 @@ export interface NotesContextPanelProps {
     onTagsChange?: (tags: string[]) => Promise<void>;
     /** 大纲之前的附加区块（DSTU 模式；如工作区属性页的自定义键值编辑器） */
     beforeOutline?: React.ReactNode;
+    /**
+     * C8：大纲章节被选中后的宿主回调（窄屏时宿主据此关闭属性子页并回到正文）。
+     * 定位动作仍由编辑器消费 notes:scroll-to-heading 事件完成。
+     */
+    onHeadingNavigate?: () => void;
 }
 
 const formatPanelDate = (value: string | undefined, locale: string) => {
@@ -124,6 +130,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const [editingTag, setEditingTag] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [isRenamingTag, setIsRenamingTag] = useState(false);
+    // 明确的全库重命名待确认对象（默认局部改名不触发跨篇传播）
+    const [pendingGlobalRename, setPendingGlobalRename] = useState<{ oldName: string; newName: string } | null>(null);
     
     // 实时内容缓存（用于大纲实时更新）
     const [liveContent, setLiveContent] = useState<string | null>(null);
@@ -242,6 +250,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         setTagInput("");
         setEditingTag(null);
         setRenameValue("");
+        setPendingGlobalRename(null);
     }, [effectiveActive?.id]);
 
     // Parse headings from active note content (支持 1-6 级标题)
@@ -353,7 +362,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         return map;
     }, [headings]);
 
-    const handleHeadingClick = (heading: { id: string; text: string; searchText: string; level: number }) => {
+    const handleHeadingClick = (heading: { id: string; text: string; searchText: string; level: number; occurrence: number }) => {
         setActiveHeadingId(heading.id);
         // 平滑滚动约需 <1s；期间编辑器滚动事件不得改写点击选中的高亮
         scrollFollowSuppressedUntilRef.current = Date.now() + 1000;
@@ -386,10 +395,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 text: heading.text,
                 normalizedText: heading.searchText,
                 level: heading.level,
+                // C6：同名同级标题靠 occurrence 消歧，避免落到最后一个同名标题
+                occurrence: heading.occurrence,
                 // ★ Y2 修复：携带 noteId，编辑器侧按当前笔记过滤
                 noteId: effectiveActive?.id,
             },
         }));
+        // C8：把“已选择章节”交给宿主处理（窄屏关闭属性子页并回正文）
+        props.onHeadingNavigate?.();
     };
 
     const handleAddTag = async () => {
@@ -463,11 +476,11 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         oldName: string,
         newName: string,
         skipId: string
-    ): Promise<number> => {
+    ): Promise<{ updated: number; skipped: number; failed: number }> => {
         const pageSize = 200;
         const maxTotal = 20000;
         let offset = 0;
-        const targets: Array<{ id: string; tags: string[] }> = [];
+        const targets: Array<{ id: string; tags: string[]; version?: string }> = [];
 
         while (true) {
             const result = await dstu.list('/', { typeFilter: 'note', limit: pageSize, offset });
@@ -478,24 +491,36 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 if (node.id === skipId) continue;
                 const nodeTags = (node.metadata?.tags as string[] | undefined) || [];
                 if (!nodeTags.includes(oldName)) continue;
-                targets.push({ id: node.id, tags: nodeTags });
+                targets.push({
+                    id: node.id,
+                    tags: nodeTags,
+                    version: updatedAtToVersionToken(node.updatedAt),
+                });
             }
             if (result.value.length < pageSize) break;
             offset += pageSize;
             if (offset >= maxTotal) break;
         }
 
-        let updatedCount = 0;
+        let updated = 0;
+        let skipped = 0;
+        let failed = 0;
+        // 逐篇写回并携带各自的乐观锁版本：某篇失败不阻断其余篇（批次结果可解释）
         for (const target of targets) {
-            const nextTags = target.tags.map(tag => (tag === oldName ? newName : tag));
-            const setResult = await dstu.setMetadata(`/${target.id}`, { tags: nextTags });
-            if (!setResult.ok) {
-                throw new Error(setResult.error.toUserMessage());
+            if (isContentDirty('note', target.id)) {
+                skipped += 1;
+                continue;
             }
-            updatedCount += 1;
+            const nextTags = target.tags.map(tag => (tag === oldName ? newName : tag));
+            const setResult = await dstu.setMetadata(`/${target.id}`, { tags: nextTags }, target.version);
+            if (!setResult.ok) {
+                failed += 1;
+                continue;
+            }
+            updated += 1;
         }
 
-        return updatedCount;
+        return { updated, skipped, failed };
     }, []);
 
     const handleStartRenameTag = (tag: string) => {
@@ -503,9 +528,26 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         setRenameValue(tag);
     };
 
+    /** 打开全库重命名确认框（先校验，再做范围确认，最后才执行）。 */
+    const requestRenameAcrossLibrary = () => {
+        if (!effectiveActive) return;
+        const oldName = editingTag;
+        const normalizedNewName = renameValue.trim();
+        if (!oldName || !normalizedNewName || oldName === normalizedNewName) {
+            handleCancelRenameTag();
+            return;
+        }
+        if ((effectiveActive.tags || []).includes(normalizedNewName)) {
+            showGlobalNotification('warning', t('notes:header.tag_exists'));
+            return;
+        }
+        setPendingGlobalRename({ oldName, newName: normalizedNewName });
+    };
+
     const handleCancelRenameTag = () => {
         setEditingTag(null);
         setRenameValue("");
+        setPendingGlobalRename(null);
     };
 
     const handleRenameTag = async () => {
@@ -526,7 +568,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
         setIsRenamingTag(true);
         try {
-            // 1. 更新当前笔记的标签
+            // B04/R07：默认只改当前篇——局部标签编辑不再隐式影响整个文库。
             const newTags = currentTags.map(tag => (tag === oldName ? normalizedNewName : tag));
             if (isDstuMode) {
                 if (props.onTagsChange) {
@@ -536,22 +578,52 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 await updateNoteTags(effectiveActive.id, newTags);
             }
 
-            // 2. 跨笔记全局传播（Context 模式复用 renameTagAcrossNotes；DSTU 模式走同协议回退）
-            const updatedCount = renameTagAcrossNotes
-                ? await renameTagAcrossNotes(oldName, normalizedNewName, effectiveActive.id)
-                : await renameTagAcrossNotesDstu(oldName, normalizedNewName, effectiveActive.id);
-
-            if (updatedCount > 0) {
-                showGlobalNotification(
-                    'success',
-                    t('notes:header.rename_tag_success'),
-                    t('notes:header.rename_tag_count', { count: updatedCount })
-                );
-            }
-
+            showGlobalNotification('success', t('notes:header.rename_tag_success'));
             handleCancelRenameTag();
         } catch (error: unknown) {
             console.error("Failed to rename tag", error);
+            showGlobalNotification('error', t('notes:header.rename_failed'));
+        } finally {
+            setIsRenamingTag(false);
+        }
+    };
+
+    /** 明确的全库重命名：需用户在确认框中确认作用范围后才执行。 */
+    const handleRenameTagAcrossLibrary = async () => {
+        if (!effectiveActive) return;
+        const pending = pendingGlobalRename;
+        setPendingGlobalRename(null);
+        if (!pending) return;
+        const { oldName, newName } = pending;
+        setIsRenamingTag(true);
+        try {
+            if (renameTagAcrossNotes) {
+                const updated = await renameTagAcrossNotes(oldName, newName, effectiveActive.id);
+                showGlobalNotification(
+                    'success',
+                    t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
+                    t('notes:header.rename_tag_count', { count: updated }),
+                );
+            } else {
+                const { updated, skipped, failed } = await renameTagAcrossNotesDstu(
+                    oldName,
+                    newName,
+                    effectiveActive.id,
+                );
+                const summary = t('notes:header.rename_tag_batch_summary', {
+                    defaultValue: '已更新 {{updated}} 篇，跳过 {{skipped}} 篇（有未保存修改），失败 {{failed}} 篇',
+                    updated,
+                    skipped,
+                    failed,
+                });
+                showGlobalNotification(
+                    failed > 0 ? 'warning' : 'success',
+                    t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
+                    summary,
+                );
+            }
+        } catch (error: unknown) {
+            console.error("Failed to rename tag across library", error);
             showGlobalNotification('error', t('notes:header.rename_failed'));
         } finally {
             setIsRenamingTag(false);
@@ -574,8 +646,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
     return (
         <div className="flex h-full flex-col bg-background text-xs text-foreground">
-            {/* Metadata + Tags */}
-            <div className="space-y-4 px-3 py-3">
+            {/* Metadata + Tags：B04 元数据后置，空白不再占据大纲之前的首屏 */}
+            <div className="order-last space-y-4 px-3 py-3">
                 {/* Dates — compact, consistent formatting */}
                 <div className="space-y-1.5">
                     <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
@@ -628,7 +700,11 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             value={renameValue}
                                             onChange={e => setRenameValue(e.target.value)}
                                             onKeyDown={e => {
-                                                if (e.key === 'Enter') handleRenameTag();
+                                                if (e.key === 'Enter') {
+                                                    // C10：中文候选确认（isComposing/keyCode 229）不等于提交
+                                                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                                                    handleRenameTag();
+                                                }
                                                 if (e.key === 'Escape') handleCancelRenameTag();
                                             }}
                                             aria-label={t('notes:header.rename_tag')}
@@ -642,6 +718,16 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             aria-label={t('notes:header.confirm_rename')}
                                         >
                                             <Check className="w-3 h-3" aria-hidden="true" />
+                                        </DsButton>
+                                        <DsButton
+                                            variant="ghost" iconOnly size="sm"
+                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                            onClick={requestRenameAcrossLibrary}
+                                            disabled={isRenamingTag}
+                                            title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+                                            aria-label={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+                                        >
+                                            <Books className="w-3 h-3" aria-hidden="true" />
                                         </DsButton>
                                         <DsButton
                                             variant="ghost" iconOnly size="sm"
@@ -696,7 +782,11 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 placeholder={t('notes:context.add_tag')}
                                 onChange={e => setTagInput(e.target.value)}
                                 onKeyDown={e => {
-                                    if (e.key === 'Enter') handleAddTag();
+                                    if (e.key === 'Enter') {
+                                        // C10：候选确认不触发标签提交
+                                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                                        handleAddTag();
+                                    }
                                     if (e.key === 'Escape') {
                                         setIsAddingTag(false);
                                         setTagInput("");
@@ -729,20 +819,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
             <Separator />
 
-            {effectiveActive ? (
-                <NotesGenerativeSummary
-                    title={effectiveActive.title}
-                    tags={effectiveActive.tags}
-                    content={effectiveActive.content_md}
-                    headingLabels={headings.map((h) => h.text)}
-                    updatedAt={effectiveActive.updated_at}
-                />
-            ) : null}
-
-            <Separator />
-
-            {/* Outline Section */}
-            <div className="flex-1 flex flex-col min-h-0">
+            {/* Outline Section：B04 大纲直达——视觉顺序优先于元数据/统计 */}
+            <div className="order-first flex-1 flex flex-col min-h-0">
                 <div className="px-3 pt-3 pb-1">
                     <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                         <TextAlignLeft className="w-3.5 h-3.5" />
@@ -852,6 +930,23 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     </div>
                 </CustomScrollArea>
             </div>
+
+            <DsAlertDialog
+                open={pendingGlobalRename !== null}
+                onOpenChange={(open) => { if (!open) setPendingGlobalRename(null); }}
+                icon={<Books size={20} />}
+                title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+                description={pendingGlobalRename
+                    ? t('notes:header.rename_tag_across_confirm', {
+                        defaultValue: '将把整个文库中所有「{{oldName}}」标签重命名为「{{newName}}」，并写入其他笔记。此操作影响多篇笔记。',
+                        oldName: pendingGlobalRename.oldName,
+                        newName: pendingGlobalRename.newName,
+                    })
+                    : undefined}
+                confirmText={t('notes:header.rename_tag_across_confirm_action', { defaultValue: '全库重命名' })}
+                cancelText={t('common:cancel', { defaultValue: '取消' })}
+                onConfirm={() => { void handleRenameTagAcrossLibrary(); }}
+            />
         </div>
     );
 };

@@ -84,6 +84,7 @@ vi.mock('@/dstu', () => ({
   createEmpty: vi.fn(),
   folderApi,
   trashApi,
+  updatedAtToVersionToken: (ms: number) => new Date(ms).toISOString(),
 }));
 
 vi.mock('@/features/learning-hub/apps/UnifiedAppPanel', () => ({

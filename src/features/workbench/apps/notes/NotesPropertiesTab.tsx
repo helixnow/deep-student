@@ -12,10 +12,10 @@
  * 覆盖本地基线，让 updatedAt 展示与大纲重读跟上磁盘。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText } from '@phosphor-icons/react';
-import { dstu, type DstuNode } from '@/dstu';
+import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { NoteCustomPropsEditor } from './NoteCustomPropsEditor';
 import { getNodeProps } from './parseTagQuery';
@@ -74,6 +74,13 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
   const noteUpdatedAt = note?.updatedAt ?? 0;
   const noteMetadata = note?.metadata;
 
+  // C13：元数据乐观锁基线。写回时携带 updated_at 版本，避免两个视图从同一旧
+  // 对象出发互相覆盖（props 为整对象替换，覆盖会丢键）。
+  const versionRef = useRef<string | undefined>(updatedAtToVersionToken(note?.updatedAt));
+  useEffect(() => {
+    versionRef.current = updatedAtToVersionToken(note?.updatedAt);
+  }, [noteId, note?.updatedAt]);
+
   // 元数据基线变化（切换笔记 / watch 更新 / 宿主刷新）时同步标签与属性
   useEffect(() => {
     setTags(((noteMetadata?.tags as string[] | undefined) ?? []));
@@ -104,21 +111,26 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
 
   const handleTagsChange = useCallback(async (newTags: string[]) => {
     if (!note || readOnly) return;
-    const result = await dstu.setMetadata(note.path, { tags: newTags });
+    const result = await dstu.setMetadata(note.path, { tags: newTags }, versionRef.current);
     if (!result.ok) {
       throw new Error(result.error.toUserMessage());
     }
     setTags(newTags);
+    // 后端已推进 updated_at：读取新版本刷新基线，避免连续写回自造冲突
+    const refreshed = await dstu.get(note.path);
+    if (refreshed.ok) versionRef.current = updatedAtToVersionToken(refreshed.value.updatedAt);
     onRefresh?.();
   }, [note, readOnly, onRefresh]);
 
   const handleCustomPropsChange = useCallback(async (next: Record<string, unknown>) => {
     if (!note || readOnly) return;
-    const result = await dstu.setMetadata(note.path, { props: next });
+    const result = await dstu.setMetadata(note.path, { props: next }, versionRef.current);
     if (!result.ok) {
       throw new Error(result.error.toUserMessage());
     }
     setCustomProps(next);
+    const refreshed = await dstu.get(note.path);
+    if (refreshed.ok) versionRef.current = updatedAtToVersionToken(refreshed.value.updatedAt);
     onRefresh?.();
   }, [note, readOnly, onRefresh]);
 

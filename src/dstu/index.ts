@@ -27,7 +27,7 @@
 
 // ── 核心 API ──
 
-export { dstu } from './api';
+export { dstu, updatedAtToVersionToken } from './api';
 
 // ── 资源创建工厂 ──
 
