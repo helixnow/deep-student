@@ -2927,7 +2927,9 @@ impl FsrsReviewService {
         {
             let mut stmt = conn
                 .prepare(
-                    "SELECT l.review_ms, l.rating, l.state_before, l.stability_before
+                    // ORDER BY review_ms ASC：留存按「每张卡每天首次复习」去重时需要
+                    // 先看到当天最早的一次（F10，对齐 Anki True Retention）。
+                    "SELECT l.review_ms, l.rating, l.state_before, l.stability_before, l.card_state_id
                      FROM fsrs_review_logs l
                      INNER JOIN fsrs_card_states s ON s.id = l.card_state_id
                      INNER JOIN anki_cards a ON a.id = l.anki_card_id
@@ -2937,7 +2939,8 @@ impl FsrsReviewService {
                        AND a.deleted_at IS NULL
                        AND dt.deleted_at IS NULL
                        AND COALESCE(a.is_error_card, 0) = 0
-                       AND l.review_ms >= ?1",
+                       AND l.review_ms >= ?1
+                     ORDER BY l.review_ms ASC",
                 )
                 .map_err(|e| AppError::database(format!("准备复习日志统计查询失败: {}", e)))?;
             let rows = stmt
@@ -2947,16 +2950,20 @@ impl FsrsReviewService {
                         row.get::<_, i64>(1)?,
                         row.get::<_, Option<i64>>(2)?,
                         row.get::<_, Option<f64>>(3)?,
+                        row.get::<_, String>(4)?,
                     ))
                 })
                 .map_err(|e| AppError::database(format!("查询复习日志统计失败: {}", e)))?;
+            // (card_state_id, local date)：True Retention 每张卡每天只计首次复习
+            let mut retention_seen: HashSet<(String, String)> = HashSet::new();
             for row in rows {
-                let (review_ms, rating, state_before, stability_before) =
+                let (review_ms, rating, state_before, stability_before, card_state_id) =
                     row.map_err(|e| AppError::database(format!("读取复习日志行失败: {}", e)))?;
                 if !(1..=4).contains(&rating) {
                     continue;
                 }
                 let date = local_date_key(review_ms);
+                let retention_key = (card_state_id, date.clone());
                 let entry = daily
                     .entry(date.clone())
                     .or_insert_with(|| FsrsDailyReviewStat {
@@ -2991,7 +2998,9 @@ impl FsrsReviewService {
                 if state_before == Some(0) {
                     entry.new_introduced += 1;
                 }
-                if state_before == Some(2) {
+                // F10：True Retention 只统计每张卡当天的第一次 Review 复习，
+                // 同日重复复习不再重复计入分子/分母（与 Anki 口径一致）。
+                if state_before == Some(2) && retention_seen.insert(retention_key) {
                     let passed = rating >= 2;
                     let mature = stability_before.map(|s| s >= 21.0).unwrap_or(false);
                     if mature {
@@ -4764,6 +4773,42 @@ mod tests {
         // 15-day forecast horizon (today or tomorrow around midnight).
         let forecast_total: i64 = stats.due_forecast.iter().map(|day| day.count).sum();
         assert_eq!(forecast_total, 1);
+    }
+
+    #[test]
+    fn retention_counts_only_first_review_per_card_per_day() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-ret2", "task-ret2", "card-ret2");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-ret2".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+        let now = Utc::now().timestamp_millis();
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE fsrs_card_states SET state = 2, stability = 30.0, difficulty = 5.0,
+                    scheduled_days = 30.0, reps = 5, lapses = 0, due_ms = ?1, last_review_ms = ?2
+                 WHERE id = ?3",
+                params![now, now - 30 * MS_PER_DAY, state_id],
+            )
+            .expect("seed mature review card");
+        }
+
+        service.rate(&state_id, 3, Some(10), None).expect("first");
+        service.rate(&state_id, 1, Some(10), None).expect("second");
+
+        let stats = service.get_review_statistics(Some(7)).expect("stats");
+        assert_eq!(
+            stats.retention.mature_reviews, 1,
+            "True Retention counts only the first review per card per day"
+        );
+        assert_eq!(stats.retention.mature_passed, 1);
+        assert_eq!(
+            stats.rating_distribution.total, 2,
+            "rating distribution still counts every review"
+        );
     }
 
     #[test]
