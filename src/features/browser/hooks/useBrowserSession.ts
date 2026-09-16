@@ -6,8 +6,8 @@
  */
 import { useCallback, useEffect } from 'react';
 
-import { WORKBENCH_MODE_SETTING_KEY } from '@/features/settings/components/workbenchMode';
-import { resolveBrowserLaunchability } from '../gates';
+import { interpretWorkbenchModeEnabled, WORKBENCH_MODE_SETTING_KEY } from '@/features/settings/components/workbenchMode';
+import { interpretBrowserChildGateEnabled, resolveBrowserLaunchability } from '../gates';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { ensureBrowserControlModeSync } from '../controlModeSync';
 import { BROWSER_SETTING_KEYS } from '../navigationPolicy';
@@ -17,7 +17,7 @@ import type { BrowserLaunchPayload } from '../types';
 export function shouldCloseBrowserForGateChange(eventType: string, detail: unknown): boolean {
   if (!detail || typeof detail !== 'object') return false;
   const value = detail as { enabled?: unknown; key?: unknown; value?: unknown };
-  if (eventType === 'workbench:mode-changed') return value.enabled === false;
+  if (eventType === 'workbench:mode-changed') return !interpretWorkbenchModeEnabled(value.enabled);
   if (eventType !== 'workbench:settings-changed') return false;
   if (
     value.key !== WORKBENCH_MODE_SETTING_KEY &&
@@ -25,7 +25,9 @@ export function shouldCloseBrowserForGateChange(eventType: string, detail: unkno
   ) {
     return false;
   }
-  return value.value === false || value.value === 'false' || value.value === 0;
+  return value.key === WORKBENCH_MODE_SETTING_KEY
+    ? !interpretWorkbenchModeEnabled(value.value)
+    : !interpretBrowserChildGateEnabled(value.value);
 }
 
 export function useBrowserSession(options?: {
