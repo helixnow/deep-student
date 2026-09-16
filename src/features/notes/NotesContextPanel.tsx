@@ -67,6 +67,10 @@ export interface NotesContextPanelProps {
     tags?: string[];
     /** 内容（DSTU 模式，用于大纲解析） */
     content?: string;
+    /** C9：内容加载状态；error/loading 时大纲不可操作 */
+    contentStatus?: 'loading' | 'ready' | 'error';
+    /** C9：内容读取失败后的重试 */
+    onRetryContent?: () => void;
     /** 标签变更回调（DSTU 模式） */
     onTagsChange?: (tags: string[]) => Promise<void>;
     /** 大纲之前的附加区块（DSTU 模式；如工作区属性页的自定义键值编辑器） */
@@ -917,6 +921,23 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                     </div>
                                 );
                             })
+                        ) : props.contentStatus === 'error' ? (
+                            <div className="py-5 px-1 text-center space-y-2">
+                                <p className="text-[11px] text-muted-foreground/60">
+                                    {t('notes:context.content_load_failed', { defaultValue: '正文加载失败，大纲不可用。' })}
+                                </p>
+                                {props.onRetryContent && (
+                                    <DsButton variant="secondary" size="sm" className="h-7 px-3 text-xs" onClick={props.onRetryContent}>
+                                        {t('common:retry', { defaultValue: '重试' })}
+                                    </DsButton>
+                                )}
+                            </div>
+                        ) : props.contentStatus === 'loading' ? (
+                            <div className="py-5 px-1 text-center">
+                                <p className="text-[11px] text-muted-foreground/50">
+                                    {t('notes:context.content_loading', { defaultValue: '正在加载正文…' })}
+                                </p>
+                            </div>
                         ) : (
                             <div className="py-5 px-1 text-center space-y-1">
                                 <p className="text-[11px] text-muted-foreground/55">

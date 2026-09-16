@@ -50,7 +50,16 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
   const [customProps, setCustomProps] = useState<Record<string, unknown>>(
     () => getNodeProps(note?.metadata),
   );
-  const [content, setContent] = useState('');
+  // C9：内容身份与快照一起管理。切篇后旧内容不得作为新篇的可操作大纲；
+  // 加载中/失败就地表达，不把空串当成功。
+  const [contentState, setContentState] = useState<{
+    noteId: string | null;
+    status: 'loading' | 'ready' | 'error';
+    content: string;
+  }>({ noteId: null, status: 'loading', content: '' });
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const reloadContent = useCallback(() => setReloadToken((token) => token + 1), []);
 
   // 切换笔记时丢弃上一篇的实时基线
   useEffect(() => {
@@ -91,23 +100,43 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
   // noteUpdatedAt 变化（保存/外部修改）时重读，保证大纲基线不过期。
   useEffect(() => {
     if (!note) {
-      setContent('');
+      setContentState({ noteId: null, status: 'loading', content: '' });
       return undefined;
     }
+    const targetNoteId = note.id;
+    // 切篇立即移除上篇内容（身份绑定），失败/加载中都显示为不可操作状态
+    setContentState((current) => (
+      current.noteId === targetNoteId && current.status === 'ready'
+        ? current
+        : { noteId: targetNoteId, status: 'loading', content: '' }
+    ));
     let cancelled = false;
     void (async () => {
-      const result = await dstu.getContent(note.path);
-      if (cancelled || !result.ok) return;
-      const text = typeof result.value === 'string'
-        ? result.value
-        : await result.value.text();
-      if (!cancelled) setContent(text);
+      try {
+        const result = await dstu.getContent(note.path);
+        if (cancelled) return;
+        if (!result.ok) {
+          setContentState({ noteId: targetNoteId, status: 'error', content: '' });
+          return;
+        }
+        const text = typeof result.value === 'string'
+          ? result.value
+          : await result.value.text();
+        if (!cancelled) setContentState({ noteId: targetNoteId, status: 'ready', content: text });
+      } catch {
+        if (!cancelled) setContentState({ noteId: targetNoteId, status: 'error', content: '' });
+      }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteId, noteUpdatedAt]);
+  }, [noteId, noteUpdatedAt, reloadToken]);
+
+  const activeContent = contentState.noteId === note?.id && contentState.status === 'ready'
+    ? contentState.content
+    : '';
+  const contentStatus = contentState.noteId !== note?.id ? 'loading' : contentState.status;
 
   const handleTagsChange = useCallback(async (newTags: string[]) => {
     if (!note || readOnly) return;
@@ -152,7 +181,9 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
       createdAt={note.createdAt}
       updatedAt={note.updatedAt}
       tags={tags}
-      content={content}
+      content={activeContent}
+      contentStatus={contentStatus}
+      onRetryContent={reloadContent}
       onTagsChange={readOnly ? undefined : handleTagsChange}
       beforeOutline={(
         <NoteCustomPropsEditor

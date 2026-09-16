@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { createPortal } from 'react-dom';
 import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, DotsThree } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, DotsThree, Cards } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
@@ -28,6 +28,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Po
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
+import { generateCardsFromNote } from './generateCardsFromNote';
 import {
   MobileEditorToolbar,
 } from './components/MobileEditorToolbar';
@@ -309,6 +310,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const focusModeOwnerId = useId();
   const focusModeRef = useRef(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  // C12/B04：阅读态隐藏格式工具条后，制卡作为全文操作留在页面菜单
+  const [generatingCards, setGeneratingCards] = useState(false);
   const templatePanelId = useId();
   const templateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const effectiveReadOnly = readOnly || readingMode;
@@ -1832,6 +1835,21 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // DSTU 模式下始终渲染，Context 模式下需要 noteId
   if (!isDstuMode && !noteId) return null;
 
+  const handleGenerateCards = useCallback(() => {
+    if (!editorApi || generatingCards) return;
+    setGeneratingCards(true);
+    void generateCardsFromNote({
+      editor: editorApi,
+      noteTitle: isDstuMode ? initialTitle : contextActive?.title,
+      translate: (key: string, defaultValue: string) => {
+        const result = t(key, { defaultValue });
+        return typeof result === 'string' ? result : defaultValue;
+      },
+    }).finally(() => {
+      setGeneratingCards(false);
+    });
+  }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t]);
+
   const pageActions = (<>
             {!readOnly && (
               <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
@@ -1857,6 +1875,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 </DsButton>
               </CommonTooltip>
             )}
+            <CommonTooltip content={t('notes:toolbar.generateCards', '生成卡片')} position="bottom">
+              <DsButton
+                role={hasMobileResourceMenu ? 'menuitem' : undefined}
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                onClick={handleGenerateCards}
+                disabled={!editorApi || generatingCards}
+                aria-busy={generatingCards || undefined}
+                aria-label={t('notes:toolbar.generateCards', '生成卡片')}
+              >
+                <Cards size={16} />
+                {isTouchEditingSurface && <span>{t('notes:toolbar.generateCards', '生成卡片')}</span>}
+              </DsButton>
+            </CommonTooltip>
             <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
               <DsButton
                 variant="ghost"
@@ -2156,7 +2190,10 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background"
         data-mobile-hosted={hasMobileResourceMenu || undefined}>
         {!hasMobileResourceMenu && <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
-            <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
+            {/* C12/B04：阅读态不呈现一排灰色编辑按钮；阅读所需控件在右侧页面菜单 */}
+            {!effectiveReadOnly && (
+              <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
+            )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {isTouchEditingSurface ? (
               <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>

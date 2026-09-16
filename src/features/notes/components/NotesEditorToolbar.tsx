@@ -276,15 +276,12 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   ];
 
   // 桌面端外露的高频按钮（按 label 匹配 formatActions，分组间加分隔线）。
-  // 窄容器优先横向滚动；极窄 / 触屏由 CSS（.notes-editor-toolbar-inline）整体隐藏，回退到溢出菜单。
+  // B04：常驻只保留“文字样式 / 列表 / 插入链接”，其余（标题、公式、图表、
+  // callout、折叠块等）进入“更多”溢出菜单；选中文本的选区格式由浮条提供。
   const inlineGroups: string[][] = [
-    [tr('notes:toolbar.bold', '粗体'), tr('notes:toolbar.italic', '斜体'), tr('notes:toolbar.strikethrough', '删除线'), tr('notes:toolbar.code', '行内代码')],
-    [tr('notes:toolbar.heading1', '一级标题'), tr('notes:toolbar.heading2', '二级标题')],
+    [tr('notes:toolbar.bold', '粗体'), tr('notes:toolbar.italic', '斜体'), tr('notes:toolbar.code', '行内代码')],
     [tr('notes:toolbar.bulletList', '无序列表'), tr('notes:toolbar.orderedList', '有序列表'), tr('notes:toolbar.taskList', '任务列表')],
     [tr('notes:toolbar.quote', '引用'), tr('notes:toolbar.link', '链接')],
-    // Image is inline (not only overflow) so it cannot be mistaken for the adjacent Cards action.
-    [tr('notes:toolbar.image', '图片'), tr('notes:toolbar.table', '表格')],
-    [tr('notes:toolbar.wikilink', '双链引用'), tr('notes:toolbar.callout', '高亮块'), tr('notes:toolbar.toggle', '折叠块')],
   ];
   const actionByLabel = new Map(formatActions.map((item) => [item.label, item]));
 
