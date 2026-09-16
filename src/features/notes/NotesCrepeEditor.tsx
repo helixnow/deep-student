@@ -499,6 +499,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
   };
 
+  // C12/B04：制卡入口在阅读态由页面菜单承载（格式条已隐藏）
+  const handleGenerateCards = useCallback(() => {
+    if (!editorApi || generatingCards) return;
+    setGeneratingCards(true);
+    void generateCardsFromNote({
+      editor: editorApi,
+      noteTitle: isDstuMode ? initialTitle : contextActive?.title,
+      translate: (key: string, defaultValue: string) => {
+        const result = t(key, { defaultValue });
+        return typeof result === 'string' ? result : defaultValue;
+      },
+    }).finally(() => {
+      setGeneratingCards(false);
+    });
+  }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t]);
+
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
@@ -1844,21 +1860,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // DSTU 模式下始终渲染，Context 模式下需要 noteId
   if (!isDstuMode && !noteId) return null;
-
-  const handleGenerateCards = useCallback(() => {
-    if (!editorApi || generatingCards) return;
-    setGeneratingCards(true);
-    void generateCardsFromNote({
-      editor: editorApi,
-      noteTitle: isDstuMode ? initialTitle : contextActive?.title,
-      translate: (key: string, defaultValue: string) => {
-        const result = t(key, { defaultValue });
-        return typeof result === 'string' ? result : defaultValue;
-      },
-    }).finally(() => {
-      setGeneratingCards(false);
-    });
-  }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t]);
 
   const pageActions = (<>
             {!readOnly && (
