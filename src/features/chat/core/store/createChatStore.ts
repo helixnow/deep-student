@@ -280,7 +280,10 @@ export function createBlockInternal(
  * @param sessionId - 会话 ID
  * @returns Zustand Store API
  */
-export function createChatStore(sessionId: string): StoreApi<ChatStore> {
+export function createChatStore(
+  sessionId: string,
+  isAttachmentSourceShared?: (sourceId: string) => boolean,
+): StoreApi<ChatStore> {
   const store = createStore<ChatStore>()(
     subscribeWithSelector((set, get) => {
       // 获取状态的类型安全包装
@@ -338,7 +341,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         ...messageActions,
         ...createBlockActions(set as SetState, getState),
         ...createStreamActions(set as SetState, getState),
-        ...createSessionActions(set as SetState, getState, scheduleAutoSaveIfReady),
+        ...createSessionActions(set as SetState, getState, scheduleAutoSaveIfReady, isAttachmentSourceShared),
         ...createRestoreActions(set as SetState, getState),
 
         // ========== 队列 Actions ==========

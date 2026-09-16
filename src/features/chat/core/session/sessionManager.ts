@@ -136,7 +136,14 @@ export class SessionManagerImpl implements ISessionManager {
     }
 
     // 3. 创建新 Store
-    const store = createChatStore(sessionId);
+    const store: StoreApi<ChatStore> = createChatStore(sessionId, (sourceId) => {
+      for (const otherStore of this.sessions.values()) {
+        if (otherStore !== store && otherStore.getState().attachments.some(attachment => attachment.sourceId === sourceId)) {
+          return true;
+        }
+      }
+      return false;
+    });
     this.sessions.set(sessionId, store);
 
     // 4. 记录元数据
