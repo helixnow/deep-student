@@ -267,9 +267,15 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   // 手势逻辑与视觉反馈见 useSwipeRating / ReviewCardSurface。
   const swipeEnabled =
     flipped && !ratingBusy && !editing && !loading && !sessionDone && Boolean(current);
+  // F07：只有一张学习卡时，评分后回插的是同一张卡，cardKey 不变 → flyout 飞出
+  // 状态不会复位，下一次展示可能不可见。叠加 sessionRatedCount 作为「本轮作答」
+  // 身份，使每次评分/撤销都触发一次复位。
+  const swipeResetKey = current
+    ? `${current.id}:${current.ankiCardId ?? ''}:${sessionRatedCount}`
+    : null;
   const swipe = useSwipeRating({
     enabled: swipeEnabled,
-    resetKey: cardKey,
+    resetKey: swipeResetKey,
     onRate: handleRate,
   });
   // 评分失败（错误条出现）时把已飞出的卡片拉回原位，避免卡面空悬
