@@ -282,9 +282,38 @@ async function autoImportApkgIfEnabled(filePath: string): Promise<void> {
  * CardForge exportNormalize 的 validateCardsForExport 统一校验，
  * error 级问题卡（错误卡/空卡）被排除出导出集合。
  */
+/** 解析后端 APKG 导出响应（F16）：兼容旧的纯路径字符串与新的 { path, report }。 */
+function parseApkgExportResponse(raw: unknown): { path: string; missingMedia: string[] } {
+  if (typeof raw === 'string') {
+    return { path: raw, missingMedia: [] };
+  }
+  if (raw && typeof raw === 'object') {
+    const row = raw as Record<string, unknown>;
+    const pathValue = row.path ?? row.filePath;
+    const report = row.report && typeof row.report === 'object'
+      ? (row.report as Record<string, unknown>)
+      : undefined;
+    const missingRaw = report?.missingMedia ?? report?.missing_media;
+    const missingMedia = Array.isArray(missingRaw)
+      ? missingRaw.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      : [];
+    if (typeof pathValue === 'string' && pathValue.trim()) {
+      return { path: pathValue, missingMedia };
+    }
+  }
+  return { path: '', missingMedia: [] };
+}
+
 export async function exportCardsAsApkg(
   params: AnkiActionParams & { deckName?: string; noteType?: string }
-): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; skippedErrorCards?: number }> {
+): Promise<{
+  success: boolean;
+  filePath?: string;
+  cancelled?: boolean;
+  skippedErrorCards?: number;
+  /** 引用了但磁盘缺失、未能打包进 APKG 的媒体文件（F16） */
+  missingMedia?: string[];
+}> {
   const { cards, context } = params;
   const deckName =
     typeof params.deckName === 'string' && params.deckName.trim()
@@ -340,17 +369,29 @@ export async function exportCardsAsApkg(
     // 直接调用后端多模板导出命令
     // 后端按每张卡片的 template_id 分组，创建独立 Anki model，
     // 每个 model 有各自的字段列表、HTML/CSS card template
-    const filePath: string = await invoke('export_multi_template_apkg', {
+    const rawResult = await invoke<unknown>('export_multi_template_apkg', {
       cards: cardsForExport,
       deckName,
       outputPath: selectedPath,
     });
+    const { path: filePath, missingMedia } = parseApkgExportResponse(rawResult);
 
     if (filePath) {
       console.log('[anki] exportCardsAsApkg success:', filePath);
+      if (missingMedia.length > 0) {
+        console.warn(
+          `[anki] exportCardsAsApkg: ${missingMedia.length} media files missing from package`,
+          missingMedia,
+        );
+      }
       // 后置副作用：不阻塞导出结果返回
       void autoImportApkgIfEnabled(filePath);
-      return { success: true, filePath, skippedErrorCards: errorCardCount };
+      return {
+        success: true,
+        filePath,
+        skippedErrorCards: errorCardCount,
+        ...(missingMedia.length > 0 ? { missingMedia } : {}),
+      };
     } else {
       console.error('[anki] exportCardsAsApkg: no file path returned');
       return { success: false };

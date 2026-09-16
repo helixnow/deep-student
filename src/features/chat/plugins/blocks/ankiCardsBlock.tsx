@@ -1287,7 +1287,15 @@ const ActionButtons: React.FC<{
       logChatAnkiEvent('chat_anki_action_performed', { action: 'export', cardCount: cards.length }, context);
       setExportStatus('success');
       const exportNote = t('blocks.ankiCards.action.exportNewCardsNote');
-      if (result.skippedErrorCards && result.skippedErrorCards > 0) {
+      const missingMedia = result.missingMedia ?? [];
+      if (missingMedia.length > 0) {
+        // F16：导出成功 ≠ 媒体完整。缺失媒体必须在按钮反馈里可见，而不是只留日志。
+        showGlobalNotification(
+          'warning',
+          t('blocks.ankiCards.action.exportMissingMediaTitle', { count: missingMedia.length }),
+          t('blocks.ankiCards.action.exportMissingMediaDetail', { count: missingMedia.length }),
+        );
+      } else if (result.skippedErrorCards && result.skippedErrorCards > 0) {
         showGlobalNotification('warning', t('blocks.ankiCards.action.exportSkippedErrorsWithNote', {
           exported: cards.length - result.skippedErrorCards,
           skipped: result.skippedErrorCards,

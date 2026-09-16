@@ -684,6 +684,7 @@
     "resumed": "Resumed",
     "deleted": "Deleted",
     "exported": "Export successful",
+    "exportedMissingMedia": "Export successful, but {{count}} media file(s) are missing from the APKG",
     "exportApkg": "Export APKG",
     "retryFailed": "Retry Failed",
     "deleteSession": "Delete",
