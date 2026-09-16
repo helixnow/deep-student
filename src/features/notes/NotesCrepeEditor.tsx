@@ -1886,6 +1886,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 </DsButton>
               </CommonTooltip>
             )}
+            {/* C12：仅在阅读态（格式工具条已隐藏）把制卡放入页面菜单，避免编辑态重复入口 */}
+            {effectiveReadOnly && (
             <CommonTooltip content={t('notes:toolbar.generateCards', '生成卡片')} position="bottom">
               <DsButton
                 role={hasMobileResourceMenu ? 'menuitem' : undefined}
@@ -1902,6 +1904,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 {isTouchEditingSurface && <span>{t('notes:toolbar.generateCards', '生成卡片')}</span>}
               </DsButton>
             </CommonTooltip>
+            )}
             <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
               <DsButton
                 variant="ghost"
