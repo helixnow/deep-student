@@ -393,7 +393,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     pendingExternalUpdatedAtRef.current = null;
     // 通知编辑器原位刷新（由 NotesCrepeEditor 监听，带脏检查）
     window.dispatchEvent(new CustomEvent('notes:external-updated', {
-      detail: { noteId: currentNoteId, content: nextWindow.loadedMarkdown, force: forceApply },
+      detail: { noteId: currentNoteId, content: nextWindow.loadedMarkdown, force: forceApply, windowId: hostWindowId },
     }));
   }, [initialLineWindow, node.id, node.path, setMarkdownWindow, updateKnownBaseline]);
 
@@ -645,10 +645,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setMarkdownWindow(userWindow);
             persistedContentRef.current = userVersionFull;
             window.dispatchEvent(new CustomEvent('notes:external-updated', {
-              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
+              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true, windowId: hostWindowId },
             }));
             window.dispatchEvent(new CustomEvent('notes:request-save', {
-              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
+              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, windowId: hostWindowId },
             }));
             return;
           }
