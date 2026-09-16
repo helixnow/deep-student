@@ -211,4 +211,171 @@ describe('fsrsReviewStore answer duration + multi-level undo', () => {
       ),
     ).toBe(true);
   });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
+  }
+
+  function mockRatingsAndUndo() {
+    invokeMock.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'fsrs_preview_intervals') return {};
+      if (command === 'fsrs_get_stats') return { due: 0 };
+      const payload = args as { cardStateId: string; expectedLogId: string };
+      if (command === 'fsrs_rate') return farFutureRate(`log-${payload.cardStateId}`);
+      if (command === 'fsrs_undo_last_review') return {
+        changed: true, undoneLogId: payload.expectedLogId,
+        state: { id: payload.cardStateId, lastReviewMs: null },
+      };
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+  }
+
+  it('preserves new cards, edited content and peer removals when restoring queue order', async () => {
+    mockRatingsAndUndo();
+    useFsrsReviewStore.getState().flip();
+    await useFsrsReviewStore.getState().rate(3);
+    useFsrsReviewStore.getState().reconcileAgentCardContent([
+      { id: 'state-1', ankiCardId: 'anki-1', front: 'Edited Q1', back: 'Edited A1' },
+    ]);
+    useFsrsReviewStore.getState().appendToQueue([
+      { id: 'state-3', ankiCardId: 'anki-3', front: 'Q3', back: 'A3' },
+    ]);
+    useFsrsReviewStore.getState().reconcileExternalRate(['state-2']);
+    await expect(useFsrsReviewStore.getState().undoLastReview()).resolves.toBe(true);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['state-1', 'state-3']);
+    expect(state.queue[0]).toMatchObject({ front: 'Edited Q1', back: 'Edited A1', lastReviewMs: null });
+    expect(state.queueIndex).toBe(0);
+  });
+
+  it('restores current and best streaks across successive undos', async () => {
+    mockRatingsAndUndo();
+    useFsrsReviewStore.getState().flip();
+    await useFsrsReviewStore.getState().rate(3);
+    useFsrsReviewStore.getState().flip();
+    await useFsrsReviewStore.getState().rate(4);
+    expect(useFsrsReviewStore.getState().sessionBestStreak).toBe(2);
+    await useFsrsReviewStore.getState().undoLastReview();
+    expect(useFsrsReviewStore.getState()).toMatchObject({ sessionStreak: 1, sessionBestStreak: 1 });
+    await useFsrsReviewStore.getState().undoLastReview();
+    expect(useFsrsReviewStore.getState()).toMatchObject({ sessionStreak: 0, sessionBestStreak: 0 });
+  });
+
+  it('distinguishes a peer rating of the last local card from a local echo', async () => {
+    mockRatingsAndUndo();
+    useFsrsReviewStore.getState().flip();
+    await useFsrsReviewStore.getState().rate(3);
+    useFsrsReviewStore.getState().reconcileExternalRate(['state-1'], {
+      cardLogPairs: [{ cardStateId: 'state-1', logId: 'peer-log' }],
+    });
+    expect(useFsrsReviewStore.getState().queue.map((card) => card.id)).toEqual(['state-2']);
+    expect(useFsrsReviewStore.getState().lastReview).toBeNull();
+  });
+
+  it.each(['success', 'failure'])('ignores an old rating %s without unlocking the next session', async (outcome) => {
+    const oldRequest = deferred<unknown>();
+    const newRequest = deferred<unknown>();
+    let ratingCalls = 0;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'fsrs_preview_intervals') return {};
+      if (command === 'fsrs_get_stats') return { due: 0 };
+      if (command === 'fsrs_rate') return ++ratingCalls === 1 ? oldRequest.promise : newRequest.promise;
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+    useFsrsReviewStore.getState().flip();
+    const oldRating = useFsrsReviewStore.getState().rate(3);
+    useFsrsReviewStore.getState().endSession();
+    useFsrsReviewStore.setState({
+      dueCards: [{ id: 'next', ankiCardId: 'anki-next', front: 'Next Q', back: 'Next A' }],
+    });
+    useFsrsReviewStore.getState().startDueSession();
+    useFsrsReviewStore.getState().flip();
+    const newRating = useFsrsReviewStore.getState().rate(4);
+    if (outcome === 'success') oldRequest.resolve(farFutureRate('old-log'));
+    else oldRequest.reject(new Error('old failure'));
+    await oldRating;
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      ratingBusy: true, queueIndex: 0, sessionRatedCount: 0, error: null,
+    });
+    expect(useFsrsReviewStore.getState().queue.map((card) => card.id)).toEqual(['next']);
+    newRequest.resolve(farFutureRate('new-log'));
+    await newRating;
+    expect(useFsrsReviewStore.getState()).toMatchObject({ ratingBusy: false, sessionRatedCount: 1 });
+    expect(useFsrsReviewStore.getState().lastReview?.logId).toBe('new-log');
+  });
+
+  it('keeps the newest due load when requests finish out of order', async () => {
+    const oldRequest = deferred<unknown>();
+    const newRequest = deferred<unknown>();
+    let dueCalls = 0;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'fsrs_get_stats') return { due: 1 };
+      if (command === 'fsrs_get_due') return ++dueCalls === 1 ? oldRequest.promise : newRequest.promise;
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+    const oldLoad = useFsrsReviewStore.getState().loadDue();
+    const newLoad = useFsrsReviewStore.getState().loadDue();
+    newRequest.resolve([{ id: 'state-new', anki_card_id: 'anki-new', front: 'new', back: 'new' }]);
+    await expect(newLoad).resolves.toBe(true);
+    oldRequest.resolve([{ id: 'state-old', anki_card_id: 'anki-old', front: 'old', back: 'old' }]);
+    await expect(oldLoad).resolves.toBe(false);
+    expect(useFsrsReviewStore.getState().dueCards.map((card) => card.id)).toEqual(['state-new']);
+    expect(useFsrsReviewStore.getState().loading).toBe(false);
+  });
+
+  it('does not restore a batch after ending its session while enqueue is pending', async () => {
+    const request = deferred<unknown>();
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'fsrs_enqueue_cards') return request.promise;
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+    const start = useFsrsReviewStore.getState().startBatchSession(['anki-1'], [
+      { id: 'anki-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
+    ]);
+    useFsrsReviewStore.getState().endSession();
+    request.resolve({ states: [{ id: 'state-1', anki_card_id: 'anki-1' }] });
+    await expect(start).resolves.toBe(false);
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      screen: 'today', sessionMode: null, loading: false, queue: [], error: null,
+    });
+  });
+
+  it('keeps review-state identities and concurrent suspension when applying a content edit', async () => {
+    const request = deferred<unknown>();
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'update_anki_card') return request.promise;
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+    const cards = useFsrsReviewStore.getState().queue;
+    useFsrsReviewStore.setState({
+      dueCards: [cards[0], { ...cards[1], ankiCardId: 'anki-1' }],
+    });
+    const edit = useFsrsReviewStore.getState().updateCurrentCard('Updated Q', 'Updated A');
+    useFsrsReviewStore.setState({ queue: [{ ...cards[0], suspended: true }, cards[1]] });
+    request.resolve(undefined);
+    await expect(edit).resolves.toBe(true);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue[0]).toMatchObject({ front: 'Updated Q', suspended: true });
+    expect(state.dueCards.map((card) => card.id)).toEqual(['state-1', 'state-2']);
+    expect(state.dueCards.every((card) => card.front === 'Updated Q')).toBe(true);
+  });
+
+  it('applies peer ratings deferred during an edit once the edit settles', async () => {
+    const request = deferred<unknown>();
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'update_anki_card') return request.promise;
+      throw new Error(`unexpected invoke: ${command}`);
+    });
+    const edit = useFsrsReviewStore.getState().updateCurrentCard('Updated Q', 'Updated A');
+    useFsrsReviewStore.getState().reconcileExternalRate(['state-1']);
+    expect(useFsrsReviewStore.getState().pendingExternalRateIds).toEqual(['state-1']);
+    request.resolve(undefined);
+    await edit;
+    expect(useFsrsReviewStore.getState().pendingExternalRateIds).toEqual([]);
+    expect(useFsrsReviewStore.getState().queue.map((card) => card.id)).toEqual(['state-2']);
+    expect(useFsrsReviewStore.getState().ratingBusy).toBe(false);
+  });
 });

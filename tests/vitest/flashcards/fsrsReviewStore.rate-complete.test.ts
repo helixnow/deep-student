@@ -1182,4 +1182,34 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.sessionAgainCount).toBe(0);
   });
 
+  it('resumes a suspended card at its live position after the queue shifted', async () => {
+    let finishResume!: (value: unknown) => void;
+    invokeMock.mockImplementationOnce(() => new Promise((resolve) => { finishResume = resolve; }));
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [
+        { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1', suspended: true },
+        { id: 'state-2', ankiCardId: 'anki-2', front: 'Q2', back: 'A2' },
+        { id: 'state-3', ankiCardId: 'anki-3', front: 'Q3', back: 'A3' },
+      ],
+      queueIndex: 1,
+      lastSuspended: { cardStateId: 'state-1', queueIndex: 0 },
+    });
+
+    const resume = useFsrsReviewStore.getState().resumeLastSuspended();
+    // await 期间另一端 reconcile 把队首卡挪到了别处
+    useFsrsReviewStore.setState((state) => ({
+      queue: [state.queue[1], state.queue[2], state.queue[0]],
+      queueIndex: 0,
+    }));
+    finishResume({ state: { id: 'state-1' }, changed: true });
+    expect(await resume).toBe(true);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['state-2', 'state-3', 'state-1']);
+    expect(state.queueIndex).toBe(2);
+    expect(state.queue[2].suspended).toBe(false);
+    expect(state.lastSuspended).toBeNull();
+  });
+
 });
