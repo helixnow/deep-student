@@ -232,10 +232,15 @@
     "again": "重来",
     "hard": "困难",
     "good": "良好",
-    "easy": "简单"
+    "easy": "简单",
+    "againHint": "没回忆出正确答案",
+    "hardHint": "回忆正确，但很费力",
+    "goodHint": "正常回忆正确",
+    "easyHint": "迅速、轻松地想起"
   },
   "review": {
     "showAnswer": "显示答案",
+    "ratingGuide": "评分标准：重来 = 没想起；困难 = 想起但吃力；良好 = 正常想起；简单 = 轻松想起",
     "progressLabel": "复习进度",
     "skip": "跳过此卡",
     "streak": "连击 {{count}}",

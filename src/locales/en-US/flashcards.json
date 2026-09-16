@@ -232,10 +232,15 @@
     "again": "Again",
     "hard": "Hard",
     "good": "Good",
-    "easy": "Easy"
+    "easy": "Easy",
+    "againHint": "Did not recall the answer",
+    "hardHint": "Recalled, but with effort",
+    "goodHint": "Recalled normally",
+    "easyHint": "Recalled quickly and easily"
   },
   "review": {
     "showAnswer": "Show answer",
+    "ratingGuide": "How to rate: Again = didn't recall; Hard = recalled with effort; Good = recalled normally; Easy = recalled instantly",
     "progressLabel": "Review progress",
     "skip": "Skip this card",
     "streak": "Streak {{count}}",
