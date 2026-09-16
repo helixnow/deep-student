@@ -775,6 +775,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             onShowAnswer={handleFlip}
             onRate={handleRateClick}
           />
+          {flipped ? (
+            // F09：现场可见的评分判断标准，避免把「忘了但看答案后觉得懂」误记成 Hard
+            <p className="px-2 text-center text-[11px] leading-snug text-muted-foreground">
+              {t('review.ratingGuide')}
+            </p>
+          ) : null}
           <div className="wb-fc-shortcut-hint justify-center" aria-hidden="true">
             <span><kbd className="wb-fc-keycap">Space</kbd> {t('review.shortcutFlip')}</span>
             <span className="wb-fc-shortcut-sep">·</span>

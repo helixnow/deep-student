@@ -16,6 +16,8 @@ import {
 export interface RatingDescriptor {
   value: FsrsRating;
   labelKey: string;
+  /** 现场可读的评分判断标准（F09），避免用户凭感觉把「忘了」打成 Hard */
+  hintKey: string;
   tone: string;
 }
 
@@ -23,21 +25,25 @@ export const RATING_DESCRIPTORS: RatingDescriptor[] = [
   {
     value: 1,
     labelKey: 'session.again',
+    hintKey: 'session.againHint',
     tone: 'border-destructive/40 text-destructive hover:bg-destructive/10',
   },
   {
     value: 2,
     labelKey: 'session.hard',
+    hintKey: 'session.hardHint',
     tone: 'border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10',
   },
   {
     value: 3,
     labelKey: 'session.good',
+    hintKey: 'session.goodHint',
     tone: 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10',
   },
   {
     value: 4,
     labelKey: 'session.easy',
+    hintKey: 'session.easyHint',
     tone: 'border-sky-500/40 text-sky-700 dark:text-sky-400 hover:bg-sky-500/10',
   },
 ];
@@ -86,6 +92,8 @@ export const RatingBar: React.FC<RatingBarProps> = ({
       {RATING_DESCRIPTORS.map((rating) => {
         const preview = previews?.[rating.value];
         const intervalLabel = preview ? formatInterval(preview.intervalMs) : null;
+        const label = t(rating.labelKey);
+        const hint = t(rating.hintKey);
         return (
           <DsButton
             key={rating.value}
@@ -99,12 +107,13 @@ export const RatingBar: React.FC<RatingBarProps> = ({
               'wb-fc-rate-btn h-auto min-h-12 min-w-0 flex-col gap-0.5 px-1 py-1.5 text-xs',
               rating.tone,
             )}
-            title={`${rating.value}${intervalLabel ? ` · ${intervalLabel}` : ''}`}
+            aria-label={label}
+            title={`${label} · ${hint}${intervalLabel ? ` · ${intervalLabel}` : ''}`}
           >
             <kbd aria-hidden="true" className="wb-fc-keycap wb-fc-keycap--corner">
               {rating.value}
             </kbd>
-            <span className="wb-fc-rate-label">{t(rating.labelKey)}</span>
+            <span className="wb-fc-rate-label">{label}</span>
             {intervalLabel ? (
               <span className="wb-fc-rate-interval">
                 {t('session.intervalHint', { interval: intervalLabel })}
