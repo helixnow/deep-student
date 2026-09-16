@@ -84,6 +84,9 @@ interface AnkiSyncReport {
   duplicates: number;
   failed: number;
   createdModels: string[];
+  /** 同步过程中的非致命告警（F18：同名 note_type 冲突等） */
+  warnings?: string[];
+  modelErrors?: Array<{ model: string; error: string }>;
 }
 
 type AnkiSaveWarning =
@@ -409,7 +412,13 @@ export async function exportCardsAsApkg(
  */
 export async function importCardsViaAnkiConnect(
   params: AnkiActionParams & { deckName?: string; noteType?: string }
-): Promise<{ success: boolean; importedCount: number; warning?: AnkiSyncWarning }> {
+): Promise<{
+  success: boolean;
+  importedCount: number;
+  warning?: AnkiSyncWarning;
+  /** 后端非致命告警（如同名 note_type 冲突），需向用户可见（F18） */
+  warnings?: string[];
+}> {
   const { cards, context } = params;
   const deckName =
     typeof params.deckName === 'string' && params.deckName.trim()
@@ -475,7 +484,10 @@ export async function importCardsViaAnkiConnect(
     }
 
     const success = report.added > 0 || (report.failed === 0 && report.duplicates > 0);
-    return { success, importedCount, warning };
+    const warnings = Array.isArray(report.warnings)
+      ? report.warnings.filter((w): w is string => typeof w === 'string' && w.trim().length > 0)
+      : [];
+    return { success, importedCount, warning, ...(warnings.length > 0 ? { warnings } : {}) };
   } catch (error: unknown) {
     console.error('[anki] importCardsViaAnkiConnect error:', error);
     return { success: false, importedCount: 0 };
