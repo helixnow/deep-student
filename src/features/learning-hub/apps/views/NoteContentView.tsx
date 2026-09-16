@@ -1097,7 +1097,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             </DsButton>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? (fullContentRef.current || visibleContent) : ''} onTagsChange={readOnly ? undefined : handleTagsChange} />
+            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? visibleContent : ''} onTagsChange={readOnly ? undefined : handleTagsChange} />
           </div>
         </aside>
       )}
@@ -1130,7 +1130,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               createdAt={node.createdAt}
               updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
               tags={tags}
-              content={isContentReady ? (fullContentRef.current || visibleContent) : ''}
+              content={isContentReady ? (visibleContent) : ''}
               onTagsChange={readOnly ? undefined : handleTagsChange}
               onHeadingNavigate={() => setMobilePanelOpen(false)}
             />
