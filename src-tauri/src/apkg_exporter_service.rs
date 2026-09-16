@@ -32,6 +32,26 @@ const DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY: &str = "deepStudentCollapseClozeOrds
 /// 单文件内 decks / cards.did / model.did 均引用该 id；dconf 仍为 id 1，deck.conf 指向它。
 const APKG_EXPORT_DECK_ID: i64 = 1746000000000;
 
+/// 多模板导出的 model id 基准（F21）。模板派生 id 落在
+/// `[APKG_MODEL_ID_BASE + 1, APKG_MODEL_ID_BASE + 2^52)`，
+/// 无模板兜底 Basic model 使用 `APKG_MODEL_ID_BASE` 本身。
+const APKG_MODEL_ID_BASE: i64 = 1_425_279_200_000;
+
+/// 由 template_id 派生的**稳定** Anki model id（F21）。
+///
+/// 历史上用 `base + 分组下标` 分配 model id，而分组来自 HashMap → 迭代顺序
+/// 每次进程随机，同一模板在不同导出（或子集导出）中会得到不同 model id，导回
+/// 同一 Anki profile 时被当作不同模型，产生重复/合并歧义。改为对 template_id
+/// 做确定性 FNV-1a 哈希，使「模板 → model id」跨导出、跨子集恒定。
+fn stable_model_id_for_template(template_id: &str) -> i64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in template_id.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    APKG_MODEL_ID_BASE + 1 + (hash % (1u64 << 52)) as i64
+}
+
 /// 导出侧单媒体文件上限：与导入侧 `MAX_ENTRY_BYTES` 对齐（256 MiB）。
 /// 超限文件不阻断导出，进入 missing_media 清单并写入告警。
 pub const MAX_EXPORT_MEDIA_FILE_BYTES: u64 = 256 * 1024 * 1024;
@@ -1773,9 +1793,9 @@ pub async fn export_multi_template_apkg_report(
         let mut model_id_map: HashMap<String, i64> = HashMap::new(); // template_id → model_id
         let mut model_fields_map: HashMap<String, Vec<String>> = HashMap::new(); // template_id → field names
 
-        let base_model_id = 1425279200000i64;
-        for (idx, (tid, group_cards)) in groups.iter().enumerate() {
-            let model_id = base_model_id + idx as i64;
+        for (tid, group_cards) in groups.iter() {
+            // F21：model id 由 template_id 稳定派生，不依赖 HashMap 迭代顺序
+            let model_id = stable_model_id_for_template(tid);
             model_id_map.insert(tid.clone(), model_id);
 
             if let Some(tmpl) = template_map.get(tid) {
@@ -1841,8 +1861,8 @@ pub async fn export_multi_template_apkg_report(
             }
         }
 
-        // 无 template_id 的卡片用 Basic model
-        let fallback_model_id = base_model_id + groups.len() as i64;
+        // 无 template_id 的卡片用 Basic model（固定 id，与模板派生区间不重叠）
+        let fallback_model_id = APKG_MODEL_ID_BASE;
         if !no_template_cards.is_empty() {
             let basic = create_basic_model();
             let mut m = serde_json::to_value(&basic).map_err(|e| e.to_string())?;
@@ -2415,6 +2435,22 @@ mod tests {
         assert_eq!(report.exported_media, 0);
         assert_eq!(report.missing_media.len(), 1);
         assert!(out.exists());
+    }
+
+    #[test]
+    fn template_model_id_is_stable_and_distinct() {
+        // F21：同一 template_id 必须恒定；不同 template_id 必须不同；
+        // 且都落在模板派生区间内，不与兜底 Basic model id 冲突。
+        let a1 = stable_model_id_for_template("tpl_a");
+        let a2 = stable_model_id_for_template("tpl_a");
+        let b = stable_model_id_for_template("tpl_b");
+        let c = stable_model_id_for_template("tpl_c");
+        assert_eq!(a1, a2, "同一模板跨导出必须得到相同 model id");
+        assert_ne!(a1, b);
+        assert_ne!(b, c);
+        assert_ne!(a1, c);
+        assert!(a1 > APKG_MODEL_ID_BASE, "模板 id 不得与兜底 Basic 冲突");
+        assert_ne!(a1, APKG_MODEL_ID_BASE);
     }
 
     #[test]
