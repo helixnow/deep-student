@@ -8,7 +8,7 @@
  * 4. 统一的错误处理（错误原因经 pdfLoadErrors 分类）
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { base64ToFile, estimateBase64Size, LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -103,6 +103,17 @@ export interface UsePdfLoaderOptions {
   enabled?: boolean;
 }
 
+const EMPTY_PDF_STATE: Omit<PdfLoaderState, 'retry'> = {
+  file: null,
+  filePath: undefined,
+  loading: false,
+  error: null,
+  errorKind: null,
+  isLargeFile: false,
+  fileSize: 0,
+  loadSource: null,
+};
+
 /**
  * 统一的 PDF 文件加载 Hook
  * 
@@ -134,257 +145,133 @@ export function usePdfLoader({
   cacheKey,
   enabled = true,
 }: UsePdfLoaderOptions): PdfLoaderState {
-  const [file, setFile] = useState<File | null>(null);
-  const [resolvedFilePath, setResolvedFilePath] = useState<string | undefined>(explicitFilePath);
-  /** 无显式 filePath 时，需等待 blob 路径探测完成再决定 stream / base64 */
-  const [streamPathReady, setStreamPathReady] = useState<boolean>(Boolean(explicitFilePath));
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errorKind, setErrorKind] = useState<PdfLoadErrorKind | null>(null);
-  const [isLargeFile, setIsLargeFile] = useState(false);
-  const [fileSize, setFileSize] = useState(0);
-  const [loadSource, setLoadSource] = useState<PdfLoadSource | null>(null);
-  
-  // 追踪当前加载请求，用于取消
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const requestIdRef = useRef(0);
-  // 追踪上一次加载的 cacheKey，避免重复加载
-  const lastLoadedKeyRef = useRef<string | null>(null);
-  // ★ 用 ref 追踪当前 file，避免 useCallback 依赖循环
-  const fileRef = useRef<File | null>(null);
+  const [retryVersion, setRetryVersion] = useState(0);
+  const cacheStorageKey = `pdf_${JSON.stringify([nodeId, cacheKey ?? nodeId])}`;
+  const requestKey = JSON.stringify([nodeId, fileName, explicitFilePath, cacheKey, enabled, retryVersion]);
+  const [loaded, setLoaded] = useState<{
+    requestKey: string;
+    state: Omit<PdfLoaderState, 'retry'>;
+  } | null>(null);
 
-  const setClassifiedError = useCallback((message: string, kind: PdfLoadErrorKind) => {
-    setError(message);
-    setErrorKind(kind);
-    setLoading(false);
-  }, []);
-
-  // 解析 VFS blob 路径（file 附件 / 教材 fallback 共用）
   useEffect(() => {
-    if (!enabled) {
-      setResolvedFilePath(undefined);
-      setStreamPathReady(false);
-      return;
-    }
-    if (explicitFilePath) {
-      setResolvedFilePath(explicitFilePath);
-      setStreamPathReady(true);
-      return;
-    }
+    if (!enabled) return;
 
     let cancelled = false;
-    setStreamPathReady(false);
-    setResolvedFilePath(undefined);
-    void resolveStreamableBlobPath(nodeId).then((path) => {
-      if (cancelled) return;
-      setResolvedFilePath(path);
-      setStreamPathReady(true);
-    });
-    return () => {
-      cancelled = true;
+    const publish = (state: Partial<Omit<PdfLoaderState, 'retry'>>) => {
+      if (!cancelled) {
+        setLoaded({ requestKey, state: { ...EMPTY_PDF_STATE, ...state } });
+      }
     };
-  }, [enabled, explicitFilePath, nodeId]);
+    publish({ loading: true });
 
-  const effectiveFilePath = resolvedFilePath;
-
-  // 从缓存获取或加载
-  const loadPdf = useCallback(async () => {
-    const resolvedCacheKey = cacheKey || nodeId;
-    const requestId = ++requestIdRef.current;
-
-    // 取消之前的请求（必须在任何早返回之前执行）
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    // 如果有可流式读取的本地路径，不需要整文件 base64 过 IPC
-    if (effectiveFilePath) {
-      abortControllerRef.current = null;
-      // ★ 走 stream 分支时清掉 base64 去重标记：file state 被置 null 后，
-      // 若之后切回无 stream 路径的同一 key 且缓存已被 LRU 淘汰，
-      // 残留的 lastLoadedKeyRef+fileRef 会让去重判断误判"已加载"而
-      // 直接 early return，导致 file 永远为 null（空白预览且无错误）。
-      lastLoadedKeyRef.current = null;
-      fileRef.current = null;
-      setFile(null);
-      setLoading(false);
-      setError(null);
-      setErrorKind(null);
-      setIsLargeFile(false);
-      setLoadSource('stream');
+    const loadPdf = async () => {
       try {
-        const size = await invoke<number>('get_file_size', { path: effectiveFilePath });
-        // ★ 竞态防护：await 期间可能已切换到别的文件，丢弃过期结果
-        if (requestId !== requestIdRef.current) return;
-        setFileSize(size);
-        setIsLargeFile(size > LARGE_FILE_HINT_THRESHOLD);
-      } catch {
-        if (requestId !== requestIdRef.current) return;
-        setFileSize(0);
-        setIsLargeFile(false);
-      }
-      return;
-    }
-    
-    // 检查缓存
-    const cacheStorageKey = `pdf_${resolvedCacheKey}`;
-    const cached = pdfCache.get(cacheStorageKey);
-    if (cached) {
-      // LRU: move to end
-      pdfCache.delete(cacheStorageKey);
-      pdfCache.set(cacheStorageKey, cached);
-      debugLog.log('[usePdfLoader] Using cached file for:', resolvedCacheKey);
-      lastLoadedKeyRef.current = resolvedCacheKey;
-      fileRef.current = cached;
-      setFile(cached);
-      setLoading(false);
-      setError(null);
-      setErrorKind(null);
-      setFileSize(cached.size);
-      setIsLargeFile(cached.size > LARGE_FILE_HINT_THRESHOLD);
-      setLoadSource('memory');
-      return;
-    }
-    
-    // 避免重复加载（fileRef 仅在"当前 key 加载成功"时非空，见下方置空）
-    if (lastLoadedKeyRef.current === resolvedCacheKey && fileRef.current) {
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    setErrorKind(null);
-    setLoadSource(null);
-    lastLoadedKeyRef.current = resolvedCacheKey;
-    // ★ 换 key 开始新加载时清掉旧 file 引用：否则上面的去重判断会拿
-    // "旧 key 的成功结果"当作"本 key 已加载"，在效果重跑时先 abort 掉
-    // 在途请求又提前返回，loading 永远停不下来。
-    fileRef.current = null;
-    
-    try {
-      debugLog.log('[usePdfLoader] Loading PDF from database for:', resolvedCacheKey);
-      
-      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
-        attachmentId: nodeId,
-      });
-      
-      // 检查是否被取消
-      if (controller.signal.aborted || requestId !== requestIdRef.current) {
-        return;
-      }
-      
-      if (result?.found && result?.content) {
-        // 检查是否为大文件
-        const estimatedSize = estimateBase64Size(result.content);
-        setFileSize(estimatedSize);
-        const isLarge = estimatedSize > LARGE_FILE_HINT_THRESHOLD;
-        setIsLargeFile(isLarge);
-
-        if (isLarge) {
-          // >10MB：仅提示（isLargeFile 供 UI 显示"加载可能较慢"），不阻断
-          debugLog.warn('[usePdfLoader] Large file detected:', formatBytes(estimatedSize));
+        const filePath = explicitFilePath || await resolveStreamableBlobPath(nodeId);
+        if (cancelled) return;
+        if (filePath) {
+          publish({ filePath, loadSource: 'stream' });
+          let fileSize = 0;
+          try {
+            fileSize = await invoke<number>('get_file_size', { path: filePath });
+          } catch {
+            // Streaming can proceed when size metadata is unavailable.
+          }
+          publish({
+            filePath,
+            loadSource: 'stream',
+            fileSize,
+            isLargeFile: fileSize > LARGE_FILE_HINT_THRESHOLD,
+          });
+          return;
         }
 
-        // >100MB：在 base64->Uint8Array 转换前熔断，
-        // 避免整文件解码导致内存峰值过高（保留拒绝策略）
+        const cached = pdfCache.get(cacheStorageKey);
+        if (cached) {
+          pdfCache.delete(cacheStorageKey);
+          pdfCache.set(cacheStorageKey, cached);
+          publish({
+            file: cached.name === fileName ? cached : new File([cached], fileName, { type: cached.type }),
+            fileSize: cached.size,
+            isLargeFile: cached.size > LARGE_FILE_HINT_THRESHOLD,
+            loadSource: 'memory',
+          });
+          return;
+        }
+
+        const result = await invoke<{ content: string | null; found: boolean }>(
+          'vfs_get_attachment_content',
+          { attachmentId: nodeId },
+        );
+        if (cancelled) return;
+        if (!result?.found || !result.content) {
+          publish({
+            error: i18n.t('pdf:errors.content_not_found', {
+              defaultValue: 'Unable to load PDF file content (id: {{id}})', id: nodeId,
+            }),
+            errorKind: 'network',
+          });
+          return;
+        }
+
+        const estimatedSize = estimateBase64Size(result.content);
         if (estimatedSize > LARGE_FILE_THRESHOLD) {
-          setClassifiedError(
-            i18n.t('pdf:errors.too_large', {
+          publish({
+            error: i18n.t('pdf:errors.too_large', {
               defaultValue: 'PDF is too large to preview ({{size}})',
               size: formatBytes(estimatedSize),
             }),
-            'too-large'
-          );
+            errorKind: 'too-large',
+            fileSize: estimatedSize,
+            isLargeFile: true,
+          });
           return;
         }
-        
-        // 转换 base64 为 File
+
         const conversionResult = base64ToFile(result.content, fileName, 'application/pdf');
-        
         if (conversionResult.success && conversionResult.file) {
-          // 缓存文件（cachePut 内部处理同 key 覆盖与 LRU 淘汰的计数）
           cachePut(cacheStorageKey, conversionResult.file);
-          
-          fileRef.current = conversionResult.file;
-          setFile(conversionResult.file);
-          setLoadSource('memory');
-          setLoading(false);
+          publish({
+            file: conversionResult.file,
+            fileSize: conversionResult.file.size,
+            isLargeFile: conversionResult.file.size > LARGE_FILE_HINT_THRESHOLD,
+            loadSource: 'memory',
+          });
         } else {
-          setClassifiedError(
-            conversionResult.error || i18n.t('pdf:errors.conversion_failed', { defaultValue: 'File format conversion failed' }),
-            'invalid'
-          );
+          publish({
+            error: conversionResult.error || i18n.t('pdf:errors.conversion_failed', { defaultValue: 'File format conversion failed' }),
+            errorKind: 'invalid',
+          });
         }
-      } else {
-        // 内容取不到：按"路径/资源失效"分类，UI 可走重新关联引导
-        setClassifiedError(
-          i18n.t('pdf:errors.content_not_found', { defaultValue: 'Unable to load PDF file content (id: {{id}})', id: nodeId }),
-          'network'
-        );
-      }
-    } catch (err: unknown) {
-      // 检查是否被取消
-      if (controller.signal.aborted || requestId !== requestIdRef.current) {
-        return;
-      }
-      
-      debugLog.error('[usePdfLoader] Failed to load PDF:', err);
-      const classified = classifyPdfLoadError(err);
-      setClassifiedError(
-        err instanceof Error ? err.message : i18n.t('pdf:errors.load_pdf_failed', { defaultValue: 'Failed to load PDF' }),
-        classified.kind
-      );
-    }
-  }, [nodeId, fileName, effectiveFilePath, cacheKey, setClassifiedError]);
-
-  // 当参数变化时加载（等待 blob 路径探测完成，避免误走 base64）
-  useEffect(() => {
-    if (!enabled) {
-      setFile(null);
-      setResolvedFilePath(explicitFilePath);
-      setStreamPathReady(Boolean(explicitFilePath));
-      setLoading(false);
-      setError(null);
-      setErrorKind(null);
-      setIsLargeFile(false);
-      setFileSize(0);
-      setLoadSource(null);
-      return;
-    }
-
-    if (!streamPathReady) {
-      setLoading(true);
-      return;
-    }
-
-    void loadPdf();
-
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+      } catch (err: unknown) {
+        if (cancelled) return;
+        debugLog.error('[usePdfLoader] Failed to load PDF:', err);
+        publish({
+          error: err instanceof Error ? err.message : i18n.t('pdf:errors.load_pdf_failed', { defaultValue: 'Failed to load PDF' }),
+          errorKind: classifyPdfLoadError(err).kind,
+        });
       }
     };
-  }, [enabled, explicitFilePath, loadPdf, streamPathReady]);
 
-  // 重试：清除上一次缓存 key 以允许重新加载
-  const retry = useCallback(() => {
-    lastLoadedKeyRef.current = null;
-    fileRef.current = null;
     void loadPdf();
-  }, [loadPdf]);
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, explicitFilePath, nodeId, fileName, cacheStorageKey, requestKey]);
+
+  const retry = useCallback(() => {
+    if (!enabled) return;
+    const cached = pdfCache.get(cacheStorageKey);
+    if (cached) {
+      pdfCacheTotalSize -= cached.size;
+      pdfCache.delete(cacheStorageKey);
+    }
+    setRetryVersion(version => version + 1);
+  }, [enabled, cacheStorageKey]);
 
   return {
-    file,
-    filePath: effectiveFilePath,
-    loading,
-    error,
-    errorKind,
-    isLargeFile,
-    fileSize,
-    loadSource,
+    ...(enabled && loaded?.requestKey === requestKey
+      ? loaded.state
+      : { ...EMPTY_PDF_STATE, loading: enabled }),
     retry,
   };
 }

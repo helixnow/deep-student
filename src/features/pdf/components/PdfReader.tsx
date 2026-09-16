@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
+import { extractFileName } from '@/utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
@@ -53,6 +55,8 @@ export const PdfReader: React.FC = () => {
   const [errorHint, setErrorHint] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileOpenGenerationRef = useRef(0);
+  React.useEffect(() => () => { fileOpenGenerationRef.current += 1; }, []);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
@@ -127,8 +131,12 @@ export const PdfReader: React.FC = () => {
 
   const onFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
+    if (!selectedFile) return;
+    fileOpenGenerationRef.current += 1;
+    if (selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
+      setNumPages(null);
+      setLoadingStage('parsing');
       setFileName(selectedFile.name || 'document.pdf');
       setExternalUrl(null);
       setPageNumber(1);
@@ -149,27 +157,31 @@ export const PdfReader: React.FC = () => {
   }, []);
 
   const handleSelectFile = useCallback(async () => {
+    const generation = ++fileOpenGenerationRef.current;
     try {
-      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
       const selected = await dialogOpen({
         multiple: false,
         directory: false,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       });
+      if (generation !== fileOpenGenerationRef.current) return;
       if (selected && typeof selected === 'string') {
         // 通过后端读取文件字节
         const bytes = await TauriAPI.readFileAsBytes(selected);
+        if (generation !== fileOpenGenerationRef.current) return;
         const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/pdf' });
-        const { extractFileName } = await import('@/utils/fileManager');
         const name = extractFileName(selected) || 'document.pdf';
         const pdfFile = new File([blob], name, { type: 'application/pdf' });
         setFile(pdfFile);
+        setNumPages(null);
+        setLoadingStage('parsing');
         setFileName(name);
         setExternalUrl(null);
         setPageNumber(1);
         clearError();
       }
     } catch (err) {
+      if (generation !== fileOpenGenerationRef.current) return;
       console.warn('[PdfReader] Tauri dialog failed, falling back to file input:', err);
       fileInputRef.current?.click();
     }
@@ -177,6 +189,8 @@ export const PdfReader: React.FC = () => {
   handleSelectFileRef.current = handleSelectFile;
 
   const handleClearFile = useCallback(() => {
+    fileOpenGenerationRef.current += 1;
+    setFileName('document.pdf');
     // blob URL 由 [file] effect 的 cleanup 负责 revoke
     setFile(null);
     setExternalUrl(null);
@@ -191,15 +205,17 @@ export const PdfReader: React.FC = () => {
 
   // 支持从外部事件打开 PDF（使用 pdfstream:// 协议实现流式加载）
   React.useEffect(() => {
-    const handler = async (ev: any) => {
+    const handler = (ev: Event) => {
+      fileOpenGenerationRef.current += 1;
       try {
-        const detail = (ev && ev.detail) || {};
+        const detail = (ev as CustomEvent<{ path?: unknown; name?: unknown; data?: unknown }>).detail ?? {};
         const path: string | undefined = typeof detail.path === 'string' ? detail.path : undefined;
         const name: string | undefined = typeof detail.name === 'string' ? detail.name : undefined;
         const data: Uint8Array | undefined = detail.data instanceof Uint8Array ? detail.data : undefined;
         clearError();
         const safeName = name && /\.pdf$/i.test(name) ? name : (name ? `${name}.pdf` : 'document.pdf');
         setFileName(safeName);
+        setNumPages(null);
         setPageNumber(1);
 
         // 1) 如果事件直接给了数据，转为 blob URL

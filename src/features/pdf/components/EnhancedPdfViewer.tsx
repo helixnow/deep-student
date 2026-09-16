@@ -506,7 +506,28 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const thumbnailsContainerRef = useRef<HTMLDivElement>(null);
   
   // 批注状态
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [highlightState, setHighlightState] = useState<{
+    resourcePath: string | undefined;
+    initialHighlights: Highlight[] | undefined;
+    value: Highlight[];
+  }>({ resourcePath, initialHighlights, value: initialHighlights ?? [] });
+  const highlights = highlightState.resourcePath === resourcePath &&
+    highlightState.initialHighlights === initialHighlights
+    ? highlightState.value
+    : initialHighlights ?? [];
+  const setHighlights = useCallback((update: React.SetStateAction<Highlight[]>) => {
+    setHighlightState(previous => {
+      const current = previous.resourcePath === resourcePath &&
+        previous.initialHighlights === initialHighlights
+        ? previous.value
+        : initialHighlights ?? [];
+      return {
+        resourcePath,
+        initialHighlights,
+        value: typeof update === 'function' ? update(current) : update,
+      };
+    });
+  }, [resourcePath, initialHighlights]);
   const [showHighlightMenu, setShowHighlightMenu] = useState<boolean>(false);
   // 划词菜单锚点（选区 rect 的中点与上下边缘，viewport 坐标）；
   // 实际渲染坐标由 useClampedMenuFrame 钳位到视口内（贴顶时翻转到选区下方）
@@ -546,11 +567,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const searchDebounceRef = useRef<number | null>(null);
   
   // 高亮持久化相关 refs
-  const highlightsSaveTimerRef = useRef<number | null>(null);
-  const highlightsLoadedRef = useRef<boolean>(false);
-  const lastSavedHighlightsRef = useRef<string>('');
-  const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
-  const annotationRevisionRef = useRef<string | null>(null);
+  const annotationSession = useMemo(() => ({
+    highlightsSaveTimerRef: { current: null as number | null },
+    highlightsLoadedRef: { current: false },
+    lastSavedHighlightsRef: { current: '[]' },
+    pendingSaveRef: { current: null as (() => Promise<void>) | null },
+    annotationRevisionRef: { current: null as string | null },
+    saveQueue: Promise.resolve(),
+    readVersion: 0,
+    currentHighlights: '[]',
+    disposed: false,
+  }), [resourcePath]);
+  const {
+    highlightsSaveTimerRef, highlightsLoadedRef, lastSavedHighlightsRef,
+    pendingSaveRef, annotationRevisionRef,
+  } = annotationSession;
+  annotationSession.currentHighlights = JSON.stringify(highlights);
 
   // Cleanup PDFDocumentProxy on unmount to avoid memory leak
   useEffect(() => {
@@ -1347,7 +1379,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setShowHighlightMenu(false);
     setPendingHighlight(null);
     window.getSelection()?.removeAllRanges();
-  }, [pendingHighlight]);
+  }, [pendingHighlight, setHighlights]);
 
   // 划词动作统一收尾：关菜单 + 清选区
   const closeSelectionMenu = useCallback(() => {
@@ -1392,12 +1424,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setHighlights(prev => prev.filter(h => h.id !== id));
     setActiveHighlightId(prev => (prev === id ? null : prev));
     setActiveHighlightAnchor(null);
-  }, []);
+  }, [setHighlights]);
 
   // 修改已存在高亮的颜色（点击高亮块弹出的操作层入口）
   const updateHighlightColor = useCallback((id: string, color: string) => {
     setHighlights(prev => prev.map(h => (h.id === id ? { ...h, color } : h)));
-  }, []);
+  }, [setHighlights]);
 
   const activeHighlight = useMemo(
     () => (activeHighlightId ? highlights.find(h => h.id === activeHighlightId) ?? null : null),
@@ -1648,27 +1680,28 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     highlightsLoadedRef.current = false;
     
     let isMounted = true;
-    
+    const readVersion = ++annotationSession.readVersion;
+
     const loadHighlights = async () => {
       try {
         const result = await dstu.get(resourcePath);
-        if (!isMounted) return;
-        
-        if (result.ok && result.value.metadata) {
-          const savedHighlights = result.value.metadata.highlights as Highlight[] | undefined;
-          const revision = result.value.metadata.annotationRevision;
+        if (!isMounted || readVersion !== annotationSession.readVersion) return;
+        if (!result.ok) {
+          console.warn('[EnhancedPdfViewer] 加载高亮批注失败:', result.error);
+          return;
+        }
+        {
+          const savedHighlights = result.value.metadata?.highlights;
+          const revision = result.value.metadata?.annotationRevision;
           annotationRevisionRef.current =
             typeof revision === 'string' && revision.trim() ? revision : null;
-          if (savedHighlights && Array.isArray(savedHighlights)) {
-            console.log('[EnhancedPdfViewer] 加载已保存的高亮批注:', savedHighlights.length, '条');
-            setHighlights(savedHighlights);
-            lastSavedHighlightsRef.current = JSON.stringify(savedHighlights);
-          }
+          const normalized = Array.isArray(savedHighlights) ? savedHighlights as Highlight[] : [];
+          setHighlights(normalized);
+          lastSavedHighlightsRef.current = JSON.stringify(normalized);
         }
         highlightsLoadedRef.current = true;
       } catch (err) {
-        console.warn('[EnhancedPdfViewer] 加载高亮批注失败，降级为空列表:', err);
-        highlightsLoadedRef.current = true;
+        console.warn('[EnhancedPdfViewer] 加载高亮批注失败:', err);
       }
     };
     
@@ -1677,7 +1710,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [resourcePath, initialHighlights]);
+  }, [resourcePath, initialHighlights, annotationSession, setHighlights, highlightsLoadedRef, lastSavedHighlightsRef, annotationRevisionRef]);
 
   // Agent/DSTU writes emit a real Tauri event. Reload the shared metadata so
   // every already-open reader converges on the committed annotation revision.
@@ -1687,15 +1720,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     let unlisten: (() => void) | null = null;
 
     void subscribePdfAnnotationChanges(resourcePath, (payload) => {
-      void dstu.get(resourcePath).then((result) => {
-        if (disposed || !result.ok) return;
+      if (pendingSaveRef.current) return;
+      const readVersion = ++annotationSession.readVersion;
+      void annotationSession.saveQueue.then(() => dstu.get(resourcePath)).then((result) => {
+        if (disposed || !result.ok || pendingSaveRef.current ||
+          readVersion !== annotationSession.readVersion) return;
         const next = result.value.metadata?.highlights;
         const revision = result.value.metadata?.annotationRevision;
-        if (Array.isArray(next)) {
-          const normalized = next as Highlight[];
-          setHighlights(normalized);
-          lastSavedHighlightsRef.current = JSON.stringify(normalized);
-        }
+        const normalized = Array.isArray(next) ? next as Highlight[] : [];
+        setHighlights(normalized);
+        lastSavedHighlightsRef.current = JSON.stringify(normalized);
+        highlightsLoadedRef.current = true;
         const nextBookmarks = result.value.metadata?.bookmarks;
         if (Array.isArray(nextBookmarks)) {
           setBookmarks(nextBookmarks as Bookmark[]);
@@ -1704,6 +1739,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           typeof revision === 'string' && revision.trim()
             ? revision
             : payload.updated_at ?? null;
+      }).catch(error => {
+        console.warn('[EnhancedPdfViewer] 刷新批注失败:', error);
       });
     }).then((dispose) => {
       if (disposed) dispose();
@@ -1716,7 +1753,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       disposed = true;
       unlisten?.();
     };
-  }, [initialHighlights, resourcePath]);
+  }, [initialHighlights, resourcePath, annotationSession, setHighlights, pendingSaveRef, highlightsLoadedRef, lastSavedHighlightsRef, annotationRevisionRef]);
   
   // 防抖保存高亮数据到 DSTU
   useEffect(() => {
@@ -1743,72 +1780,101 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
     
     // 防抖保存（2秒延迟）
-    const doSave = async () => {
-      highlightsSaveTimerRef.current = null;
-      pendingSaveRef.current = null;
-      
-      try {
-        // 先获取当前元数据，保留其他字段
-        const getResult = await dstu.get(resourcePath);
-        if (!getResult.ok) {
-          console.warn('[EnhancedPdfViewer] 获取资源元数据失败，跳过保存高亮:', getResult.error);
-          showGlobalNotification('error', t('pdf:annotations.save_failed'));
-          return;
-        }
-        
-        const existingMetadata = getResult.value.metadata || {};
-        const serverRevision = existingMetadata.annotationRevision;
-        const baseline = resolvePdfAnnotationSaveBaseline<Highlight>(
-          annotationRevisionRef.current,
-          lastSavedHighlightsRef.current,
-          serverRevision,
-          existingMetadata.highlights,
-        );
-        if (baseline.status === 'missing_revision') {
-          console.warn('[EnhancedPdfViewer] 缺少批注版本，重新加载后再保存');
-          showGlobalNotification('error', t('pdf:annotations.save_failed'));
-          return;
-        }
-        if (baseline.status === 'reload') {
-          setHighlights(baseline.highlights);
-          lastSavedHighlightsRef.current = JSON.stringify(baseline.highlights);
-          annotationRevisionRef.current = baseline.revision;
-          console.warn('[EnhancedPdfViewer] 批注已在其他窗口更新，已加载最新版本');
-          // 本地修改被服务端版本覆盖 —— 必须让用户知道，而不是静默回滚
-          showGlobalNotification('warning', t('pdf:annotations.remote_updated'));
-          return;
-        }
-        const expectedRevision = baseline.expectedRevision;
-        annotationRevisionRef.current = expectedRevision;
-        const newMetadata = {
-          ...existingMetadata,
-          highlights: highlights,
-        };
-
-        const result = await dstu.setMetadata(resourcePath, newMetadata, expectedRevision);
-        if (result.ok) {
-          console.log('[EnhancedPdfViewer] 高亮批注已保存:', highlights.length, '条');
-          lastSavedHighlightsRef.current = currentHighlightsJson;
-          const refreshed = await dstu.get(resourcePath);
-          if (refreshed.ok) {
-            const revision = refreshed.value.metadata?.annotationRevision;
-            annotationRevisionRef.current =
-              typeof revision === 'string' && revision.trim() ? revision : null;
+    ++annotationSession.readVersion;
+    let enqueued = false;
+    const doSave = () => {
+      if (enqueued) return annotationSession.saveQueue;
+      enqueued = true;
+      if (pendingSaveRef.current === doSave) {
+        highlightsSaveTimerRef.current = null;
+        pendingSaveRef.current = null;
+      }
+      const save = annotationSession.saveQueue.then(async () => {
+        try {
+          // 先获取当前元数据，保留其他字段
+          const getResult = await dstu.get(resourcePath);
+          if (!getResult.ok) {
+            console.warn('[EnhancedPdfViewer] 获取资源元数据失败，跳过保存高亮:', getResult.error);
+            showGlobalNotification('error', t('pdf:annotations.save_failed'));
+            return;
           }
-        } else {
-          console.warn('[EnhancedPdfViewer] 保存高亮批注失败:', result.error);
-          // OCC conflicts and failed writes must not leave an unsaved local
-          // view masquerading as committed state. Reload the authoritative
-          // annotations and revision so the next user edit has a valid base.
-          // 回滚对用户必须可见：弹错误提示而非静默丢弃本地修改。
+          
+          const existingMetadata = getResult.value.metadata || {};
+          const serverRevision = existingMetadata.annotationRevision;
+          const baseline = resolvePdfAnnotationSaveBaseline<Highlight>(
+            annotationRevisionRef.current,
+            lastSavedHighlightsRef.current,
+            serverRevision,
+            existingMetadata.highlights,
+          );
+          if (baseline.status === 'missing_revision') {
+            console.warn('[EnhancedPdfViewer] 缺少批注版本，重新加载后再保存');
+            showGlobalNotification('error', t('pdf:annotations.save_failed'));
+            return;
+          }
+          if (baseline.status === 'reload') {
+            if (!annotationSession.disposed && annotationSession.currentHighlights === currentHighlightsJson) {
+              setHighlights(baseline.highlights);
+              lastSavedHighlightsRef.current = JSON.stringify(baseline.highlights);
+              annotationRevisionRef.current = baseline.revision;
+            }
+            console.warn('[EnhancedPdfViewer] 批注已在其他窗口更新，已加载最新版本');
+            // 本地修改被服务端版本覆盖 —— 必须让用户知道，而不是静默回滚
+            showGlobalNotification('warning', t('pdf:annotations.remote_updated'));
+            return;
+          }
+          const expectedRevision = baseline.expectedRevision;
+          annotationRevisionRef.current = expectedRevision;
+          const newMetadata = {
+            ...existingMetadata,
+            highlights: highlights,
+          };
+
+          const result = await dstu.setMetadata(resourcePath, newMetadata, expectedRevision);
+          if (result.ok) {
+            console.log('[EnhancedPdfViewer] 高亮批注已保存:', highlights.length, '条');
+            lastSavedHighlightsRef.current = currentHighlightsJson;
+            const refreshed = await dstu.get(resourcePath);
+            if (refreshed.ok &&
+              JSON.stringify(refreshed.value.metadata?.highlights ?? []) === currentHighlightsJson) {
+              const revision = refreshed.value.metadata?.annotationRevision;
+              annotationRevisionRef.current =
+                typeof revision === 'string' && revision.trim() ? revision : null;
+            }
+          } else {
+            console.warn('[EnhancedPdfViewer] 保存高亮批注失败:', result.error);
+            // OCC conflicts and failed writes must not leave an unsaved local
+            // view masquerading as committed state. Reload the authoritative
+            // annotations and revision so the next user edit has a valid base.
+            // 回滚对用户必须可见：弹错误提示而非静默丢弃本地修改。
+            showGlobalNotification('error', t('pdf:annotations.save_failed'));
+            const current = await dstu.get(resourcePath);
+            if (current.ok && !annotationSession.disposed &&
+              annotationSession.currentHighlights === currentHighlightsJson) {
+              const serverHighlights = current.value.metadata?.highlights;
+              const serverRevision = current.value.metadata?.annotationRevision;
+              if (Array.isArray(serverHighlights)) {
+                const normalized = serverHighlights as Highlight[];
+                if (!annotationSession.disposed) setHighlights(normalized);
+                lastSavedHighlightsRef.current = JSON.stringify(normalized);
+              }
+              annotationRevisionRef.current =
+                typeof serverRevision === 'string' && serverRevision.trim()
+                  ? serverRevision
+                  : null;
+            }
+          }
+        } catch (err) {
+          console.error('[EnhancedPdfViewer] 保存高亮批注异常:', err);
           showGlobalNotification('error', t('pdf:annotations.save_failed'));
-          const current = await dstu.get(resourcePath);
-          if (current.ok) {
+          const current = await dstu.get(resourcePath).catch(() => null);
+          if (current?.ok && !annotationSession.disposed &&
+            annotationSession.currentHighlights === currentHighlightsJson) {
             const serverHighlights = current.value.metadata?.highlights;
             const serverRevision = current.value.metadata?.annotationRevision;
             if (Array.isArray(serverHighlights)) {
               const normalized = serverHighlights as Highlight[];
-              setHighlights(normalized);
+              if (!annotationSession.disposed) setHighlights(normalized);
               lastSavedHighlightsRef.current = JSON.stringify(normalized);
             }
             annotationRevisionRef.current =
@@ -1817,24 +1883,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 : null;
           }
         }
-      } catch (err) {
-        console.error('[EnhancedPdfViewer] 保存高亮批注异常:', err);
-        showGlobalNotification('error', t('pdf:annotations.save_failed'));
-        const current = await dstu.get(resourcePath);
-        if (current.ok) {
-          const serverHighlights = current.value.metadata?.highlights;
-          const serverRevision = current.value.metadata?.annotationRevision;
-          if (Array.isArray(serverHighlights)) {
-            const normalized = serverHighlights as Highlight[];
-            setHighlights(normalized);
-            lastSavedHighlightsRef.current = JSON.stringify(normalized);
-          }
-          annotationRevisionRef.current =
-            typeof serverRevision === 'string' && serverRevision.trim()
-              ? serverRevision
-              : null;
-        }
-      }
+      });
+      annotationSession.saveQueue = save.catch(error => {
+        console.error('[EnhancedPdfViewer] 高亮保存队列失败:', error);
+      });
+      return annotationSession.saveQueue;
     };
     pendingSaveRef.current = doSave;
     highlightsSaveTimerRef.current = window.setTimeout(doSave, 2000); // 2秒防抖
@@ -1845,20 +1898,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         highlightsSaveTimerRef.current = null;
       }
     };
-  }, [highlights, resourcePath, onHighlightsChange, t]);
+  }, [highlights, resourcePath, onHighlightsChange, t, annotationSession, setHighlights, highlightsLoadedRef, lastSavedHighlightsRef, highlightsSaveTimerRef, pendingSaveRef, annotationRevisionRef]);
   
-  // 组件卸载时清理定时器并刷新待保存高亮
+  // 资源切换或卸载时，将待保存快照留在原资源的队列中。
   useEffect(() => {
+    annotationSession.disposed = false;
     return () => {
+      annotationSession.disposed = true;
       if (highlightsSaveTimerRef.current) {
         window.clearTimeout(highlightsSaveTimerRef.current);
         highlightsSaveTimerRef.current = null;
       }
-      // 刷新待保存的高亮，避免丢失
-      pendingSaveRef.current?.();
+      void pendingSaveRef.current?.();
       pendingSaveRef.current = null;
     };
-  }, []);
+  }, [annotationSession, highlightsSaveTimerRef, pendingSaveRef]);
 
   // 点击/触摸其他地方关闭高亮菜单（pointerdown 同时覆盖鼠标与触屏，
   // 触屏上 click 可能因选区操作被吞掉导致菜单关不掉）
