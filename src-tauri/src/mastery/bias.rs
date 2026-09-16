@@ -109,6 +109,23 @@ pub fn mastery_queue_priority_key(score: Option<f64>, due_ms: i64) -> i64 {
     due_ms.saturating_sub(boost)
 }
 
+/// 到期队列合成排序键：`(state_rank, priority)`，越小越优先。
+///
+/// F02：`state_rank` 先保证**分钟级已到期的学习 / 重学卡**（state 1/3）排在
+/// Review 与 New 之前——它们的到期时间由短学习步骤决定，被低掌握度的 New 卡
+/// 插队会直接打乱学习节奏。仅在非学习卡之间才应用掌握度薄弱优先。
+///
+/// 学习卡内部按真实 `due_ms` 排序（不叠加 mastery 提升），避免同一学习步队列
+/// 被掌握度权重再次打乱。
+pub fn queue_sort_key(state: i32, score: Option<f64>, due_ms: i64) -> (i64, i64) {
+    let is_time_sensitive_learning = state == 1 || state == 3;
+    if is_time_sensitive_learning {
+        (0, due_ms)
+    } else {
+        (1, mastery_queue_priority_key(score, due_ms))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +180,28 @@ mod tests {
     #[test]
     fn neutral_score_no_bias() {
         assert_eq!(mastery_due_bias_delta_ms(0.5, 10 * DAY), 0);
+    }
+
+    #[test]
+    fn due_learning_cards_keep_priority_over_low_mastery_new() {
+        let now = 1_700_000_000_000_i64;
+        // 已到期的学习卡：due 就在现在
+        let learning = queue_sort_key(1, Some(0.9), now);
+        // 低掌握度 New 卡：mastery 排序键被提升 2 天，但仍不得越过学习卡
+        let new_low_mastery = queue_sort_key(0, Some(0.0), now);
+        assert!(
+            learning < new_low_mastery,
+            "due learning must outrank a low-mastery new card: {learning:?} vs {new_low_mastery:?}"
+        );
+        // Relearning 同样受保护
+        assert!(queue_sort_key(3, Some(0.9), now) < new_low_mastery);
+    }
+
+    #[test]
+    fn low_mastery_priority_still_applies_within_review_cards() {
+        let now = 1_700_000_000_000_i64;
+        let weak = queue_sort_key(2, Some(0.0), now + DAY);
+        let strong = queue_sort_key(2, Some(0.9), now + DAY);
+        assert!(weak < strong, "within review, weak mastery still sorts first");
     }
 }

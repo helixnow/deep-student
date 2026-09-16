@@ -9,7 +9,7 @@ pub mod service;
 pub mod types;
 
 pub use bias::{
-    apply_mastery_due_bias, mastery_due_bias_delta_ms, mastery_queue_priority_key,
+    apply_mastery_due_bias, mastery_due_bias_delta_ms, mastery_queue_priority_key, queue_sort_key,
     MAX_ADVANCE_FRAC, MAX_ADVANCE_MS, MAX_DELAY_FRAC, MAX_DELAY_MS, MIN_BIASABLE_INTERVAL_MS,
 };
 pub use service::MasteryService;

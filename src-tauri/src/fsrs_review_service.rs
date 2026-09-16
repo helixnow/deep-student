@@ -1574,7 +1574,13 @@ impl FsrsReviewService {
                     .find(|t| !t.is_empty())
                     .map(|t| t.to_string());
                 let score = concept.and_then(|c| scores.get(&c).copied());
-                crate::mastery::mastery_queue_priority_key(score, card.state.due_ms)
+                // F02：先保护分钟级学习卡的到期时间约束，再在 Review/New 之间
+                // 应用掌握度薄弱优先，避免低掌握度 New 卡插到已到期学习卡之前。
+                crate::mastery::queue_sort_key(
+                    card.state.state,
+                    score,
+                    card.state.due_ms,
+                )
             });
             out.truncate(limit as usize);
         }
