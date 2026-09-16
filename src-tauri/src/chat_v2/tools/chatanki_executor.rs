@@ -15707,6 +15707,8 @@ mod tests {
             leech: 0,
             new_remaining_today: 0,
             reviews_remaining_today: 0,
+            backlog: 0,
+            learning_waiting: 0,
         };
         assert_eq!(
             chatanki_review_stats_output(&stats),

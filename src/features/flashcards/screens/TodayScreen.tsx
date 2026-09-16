@@ -40,13 +40,26 @@ function parseFsrsStats(raw: unknown): FsrsStats | null {
   const relearning = readCount(row, 'relearning', 'relearning');
   const suspended = readCount(row, 'suspended', 'suspended');
   const reviewsToday = readCount(row, 'reviewsToday', 'reviews_today');
+  const backlog = readCount(row, 'backlog', 'backlog');
+  const learningWaiting = readCount(row, 'learningWaiting', 'learning_waiting');
   if (
     total == null || due == null || newCount == null || learning == null
     || review == null || relearning == null || suspended == null || reviewsToday == null
   ) {
     return null;
   }
-  return { total, due, newCount, learning, review, relearning, suspended, reviewsToday };
+  return {
+    total,
+    due,
+    newCount,
+    learning,
+    review,
+    relearning,
+    suspended,
+    reviewsToday,
+    ...(backlog != null ? { backlog } : {}),
+    ...(learningWaiting != null ? { learningWaiting } : {}),
+  };
 }
 
 const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
@@ -70,6 +83,9 @@ export const TodayScreen: React.FC = () => {
 
   const displayDueCount = dueTotal > 0 ? dueTotal : dueCards.length;
   const batchCapped = dueTotal > dueCards.length && dueCards.length > 0;
+  // F08：due 可能已扣额度；backlog 是额度外的已到期积压，learningWaiting 是等待学习步
+  const backlog = stats?.backlog ?? 0;
+  const learningWaiting = stats?.learningWaiting ?? 0;
 
   const loadStats = useCallback(async () => {
     const requestId = ++statsRequestRef.current;
@@ -269,6 +285,15 @@ export const TodayScreen: React.FC = () => {
               {!loading && batchCapped ? (
                 <p className="wb-fcx-panel-sub">
                   {t('today.batchCapHint', { n: dueCards.length })}
+                </p>
+              ) : null}
+              {!loading && (backlog > 0 || learningWaiting > 0) ? (
+                <p className="wb-fcx-panel-sub">
+                  {backlog > 0 ? t('today.backlogHint', { count: backlog }) : null}
+                  {backlog > 0 && learningWaiting > 0 ? ' · ' : null}
+                  {learningWaiting > 0
+                    ? t('today.learningWaitingHint', { count: learningWaiting })
+                    : null}
                 </p>
               ) : null}
             </div>

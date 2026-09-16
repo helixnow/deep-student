@@ -365,6 +365,13 @@ pub struct FsrsStats {
     /// 今日剩余可复习的 Review 卡额度
     #[serde(default)]
     pub reviews_remaining_today: i64,
+    /// 已到期但被每日额度截断、未计入 `due` 的积压数（Review + New）。
+    /// 让「计划已完成」与「仍有积压」可以同时表达（F08）。
+    #[serde(default)]
+    pub backlog: i64,
+    /// 尚未到期的学习 / 重学卡（等待学习步），用于解释「稍后会再出现」
+    #[serde(default)]
+    pub learning_waiting: i64,
 }
 
 /// 牌组级调度配置（存于 anki_decks.config_json，snake_case 键；未知键保留）
@@ -2722,7 +2729,12 @@ impl FsrsReviewService {
                 },
             )
             .map_err(|e| AppError::database(e.to_string()))?;
-        let due = learning_due + review_due.min(review_remaining) + new_due.min(new_remaining);
+        let review_capped = review_due.min(review_remaining);
+        let new_capped = new_due.min(new_remaining);
+        let due = learning_due + review_capped + new_capped;
+        // F08：额度之外的已到期积压（Review + New），让「计划完成」不等于「没有积压」
+        let backlog = (review_due - review_capped) + (new_due - new_capped);
+        let learning_waiting = (learning + relearning - learning_due).max(0);
         let reviews_today: i64 = conn
             .query_row(
                 "SELECT COUNT(*)
@@ -2755,6 +2767,8 @@ impl FsrsReviewService {
             leech,
             new_remaining_today: new_remaining,
             reviews_remaining_today: review_remaining,
+            backlog,
+            learning_waiting,
         })
     }
 
@@ -4693,6 +4707,31 @@ mod tests {
             (rated.card_state.desired_retention.unwrap_or_default() - 0.97).abs() < 1e-9,
             "rating must persist the retention actually used"
         );
+    }
+
+    #[test]
+    fn stats_expose_quota_hidden_backlog() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-backlog", "task-backlog", "card-backlog");
+        let service = FsrsReviewService::new(db.clone());
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                new_per_day: Some(0),
+                reviews_per_day: Some(0),
+                ..Default::default()
+            })
+            .expect("set zero daily quota");
+        service
+            .enqueue_cards(&["card-backlog".to_string()])
+            .expect("enqueue");
+
+        let stats = service.get_stats().expect("stats");
+        assert_eq!(stats.due, 0, "quota-exhausted plan must show zero due");
+        assert_eq!(
+            stats.backlog, 1,
+            "the due-but-hidden card must be reported as backlog"
+        );
+        assert_eq!(stats.new_count, 1);
     }
 
     #[test]
