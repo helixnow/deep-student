@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CrepeEditorApi } from '@/components/crepe';
 import { useCanvasAIEditHandler } from '@/features/notes/hooks/useCanvasAIEditHandler';
+import { getNoteAIEditControl } from '@/features/notes/aiEditControlRegistry';
 
 const invoke = vi.fn(async () => undefined);
 
@@ -284,5 +285,88 @@ describe('useCanvasAIEditHandler lifecycle', () => {
     expect(result.current.aiEditState.isActive).toBe(false);
     expect(result.current.checkpoint).not.toBeNull();
     expect(result.current.checkpoint?.originalContent).toBe('old content');
+  });
+
+  function deferredSave() {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
+  }
+
+  it.each(['success', 'failure'])('isolates an old accept %s from another note and its apply lock', async (outcome) => {
+    const editor = makeEditor();
+    const oldSave = deferredSave();
+    const newSave = deferredSave();
+    const { result, rerender } = renderHook(
+      ({ noteId, onSave }) => useCanvasAIEditHandler({ noteId, editorApi: editor.api, onSave }),
+      { initialProps: { noteId: 'note-1', onSave: vi.fn(() => oldSave.promise) } },
+    );
+    act(() => dispatchReplace('old-request'));
+    let oldApply!: Promise<void>;
+    act(() => { oldApply = result.current.handleAccept(); });
+    rerender({ noteId: 'note-2', onSave: vi.fn(() => newSave.promise) });
+    editor.setMarkdown('old content');
+    act(() => window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', {
+      detail: { requestId: 'new-request', noteId: 'note-2', operation: 'replace', search: 'old', replace: 'new' },
+    })));
+    let newApply!: Promise<void>;
+    act(() => { newApply = result.current.handleAccept(); });
+    await act(async () => {
+      if (outcome === 'success') oldSave.resolve();
+      else oldSave.reject(new Error('old save failed'));
+      await oldApply;
+    });
+    expect(result.current.isApplying).toBe(true);
+    expect(result.current.aiEditState.request?.requestId).toBe('new-request');
+    expect(result.current.checkpoint).toBeNull();
+    expect(editor.api.getMarkdown()).toBe('new content');
+    await act(async () => { newSave.resolve(); await newApply; });
+    expect(result.current.isApplying).toBe(false);
+    expect(result.current.checkpoints).toHaveLength(1);
+    expect(result.current.checkpoint?.noteId).toBe('note-2');
+  });
+
+  it('retries a failed rollback and reports the successful undo through the control registry', async () => {
+    const editor = makeEditor();
+    const onSave = vi.fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('save failed'))
+      .mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useCanvasAIEditHandler({ noteId: 'note-1', editorApi: editor.api, onSave }));
+    act(() => dispatchReplace('rollback-retry'));
+    await act(async () => { await result.current.handleAccept(); });
+    await act(async () => { await result.current.rollbackCheckpoint(); });
+    expect(editor.api.getMarkdown()).toBe('new content');
+    expect(result.current.checkpoint?.stale).not.toBe(true);
+    let rolledBack = false;
+    await act(async () => {
+      rolledBack = await getNoteAIEditControl('note-1')!.rollbackLatestCheckpoint();
+    });
+    expect(rolledBack).toBe(true);
+    expect(result.current.checkpoint).toBeNull();
+    expect(editor.api.getMarkdown()).toBe('old content');
+    expect(onSave).toHaveBeenCalledTimes(3);
+  });
+
+  it('serializes repeated rollback attempts while saving', async () => {
+    const editor = makeEditor();
+    const saving = deferredSave();
+    const onSave = vi.fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementation(() => saving.promise);
+    const { result } = renderHook(() => useCanvasAIEditHandler({ noteId: 'note-1', editorApi: editor.api, onSave }));
+    act(() => dispatchReplace('rollback-double'));
+    await act(async () => { await result.current.handleAccept(); });
+    let first!: Promise<void>;
+    act(() => {
+      first = result.current.rollbackCheckpoint();
+      void result.current.rollbackCheckpoint();
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(result.current.isApplying).toBe(true);
+    await act(async () => { saving.resolve(); await first; });
+    expect(result.current.checkpoint).toBeNull();
+    expect(result.current.isApplying).toBe(false);
   });
 });

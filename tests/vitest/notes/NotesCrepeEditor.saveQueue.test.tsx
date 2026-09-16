@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import type { CrepeEditorApi } from '@/components/crepe';
@@ -125,12 +125,38 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+// 桌面视口：全局 matchMedia mock 对所有查询返回 false，会让 useIsMobile 判定为
+// 小屏并把页面操作折叠进 Popover；这里让 min-width 查询命中，保持操作按钮直出。
+const desktopMatchMedia = (query: string): MediaQueryList => ({
+  matches: /min-width/.test(query),
+  media: query,
+  onchange: null,
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  dispatchEvent: vi.fn(() => true),
+});
+
+let rectSpy: ReturnType<typeof vi.spyOn> | null = null;
+
 describe('NotesCrepeEditor save queue', () => {
   beforeEach(() => {
     latestOnChange = null;
     latestOnRetrySave = undefined;
     currentMarkdown = '';
     vi.clearAllMocks();
+    vi.mocked(window.matchMedia).mockImplementation(desktopMatchMedia);
+    // jsdom 不做布局，壳层宽度恒为 0 会被判成窄壳层；给出桌面宽度。
+    rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 1024, bottom: 768, width: 1024, height: 768,
+      toJSON: () => ({}),
+    } as DOMRect);
+  });
+
+  afterEach(() => {
+    rectSpy?.mockRestore();
+    rectSpy = null;
   });
 
   it('drains the latest draft after unmount while an older save is in flight', async () => {
