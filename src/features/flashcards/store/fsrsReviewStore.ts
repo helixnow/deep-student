@@ -95,6 +95,19 @@ function pushReviewReceipt(history: ReviewReceipt[], receipt: ReviewReceipt): Re
   return next.length > REVIEW_UNDO_LIMIT ? next.slice(next.length - REVIEW_UNDO_LIMIT) : next;
 }
 
+/** 生成后端幂等所需的合规 UUID（无 crypto.randomUUID 时手动构造 v4）。 */
+function createClientOpId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export interface SuspendedReviewReceipt {
   cardStateId: string;
   queueIndex: number;
@@ -171,6 +184,12 @@ interface FsrsReviewState {
   recentLocalLogIds: string[];
   /** ratingBusy 期间暂存的外部已评卡，rate 结束后再 reconcile */
   pendingExternalRateIds: string[];
+  /**
+   * F11：一次用户评分尝试的稳定 clientOpId。评分失败重试时复用同一 ID，使后端
+   * 幂等去重生效，避免「主事务已提交但补偿报错」时重试产生二次评分。评分成功或
+   * 会话切换后清空。
+   */
+  pendingRateOp: { cardStateId: string; opId: string } | null;
   /** 完成态 stats 拉取代数，防止乱序覆盖 */
   statsFetchGen: number;
   sessionGeneration: number;
@@ -655,6 +674,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   lastSchedule: null,
   recentLocalLogIds: [],
   pendingExternalRateIds: [],
+  pendingRateOp: null,
   statsFetchGen: 0,
   sessionGeneration: 0,
   dueLoadGeneration: 0,
@@ -757,6 +777,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         ratingPreviews: null,
         lastSchedule: null,
         pendingExternalRateIds: [],
+        pendingRateOp: null,
         error: null,
         errorKind: null,
         retryBatchRequest: null,
@@ -783,6 +804,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
       pendingExternalRateIds: [],
+      pendingRateOp: null,
       screen: 'session',
       error: null,
       errorKind: null,
@@ -829,6 +851,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
       pendingExternalRateIds: [],
+      pendingRateOp: null,
       retryBatchRequest: request,
     });
 
@@ -1208,21 +1231,20 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       : null;
 
     const queueSnapshot = queue.map((card) => ({ ...card }));
-    set({ ratingBusy: true, lastRated: rating, error: null, errorKind: null });
+    // 同一次用户作答的失败重试复用同一 clientOpId：后端按 log id 幂等去重，
+    // 即使主事务已提交而返回值异常，重试也不会写入第二条评分。
+    const pendingOp = get().pendingRateOp;
+    const clientOpId =
+      pendingOp && pendingOp.cardStateId === current.id ? pendingOp.opId : createClientOpId();
+    set({
+      ratingBusy: true,
+      lastRated: rating,
+      error: null,
+      errorKind: null,
+      pendingRateOp: { cardStateId: current.id, opId: clientOpId },
+    });
 
     try {
-      const clientOpId =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : (() => {
-              // 无 randomUUID 时仍生成合规 UUID，保证后端幂等生效
-              const bytes = new Uint8Array(16);
-              for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-              bytes[6] = (bytes[6] & 0x0f) | 0x40;
-              bytes[8] = (bytes[8] & 0x3f) | 0x80;
-              const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-              return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-            })();
       const result = await invoke<unknown>('fsrs_rate', {
         cardStateId: current.id,
         rating,
@@ -1370,6 +1392,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           sessionBestStreak,
           remainingDueAfterSession,
           recentLocalLogIds: pushRecentLocalLogId(state.recentLocalLogIds, logId),
+          pendingRateOp: null,
         };
       });
       requestFlashcardsDueRefresh();
@@ -1773,6 +1796,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       sessionGeneration: get().sessionGeneration + 1,
       statsFetchGen: get().statsFetchGen + 1,
       pendingExternalRateIds: [],
+      pendingRateOp: null,
       screen: 'today',
       sessionMode: null,
       flipped: false,
