@@ -92,6 +92,7 @@ export function createSessionActions(
   set: SetState,
   getState: GetState,
   scheduleAutoSaveIfReady: () => void,
+  isAttachmentSourceShared: (sourceId: string) => boolean = () => false,
 ) {
   return {
         setChatParams: (params: Partial<ChatParams>): void => {
@@ -220,6 +221,7 @@ export function createSessionActions(
           const state = getState();
           // 查找要删除的附件，获取其 resourceId
           const attachment = state.attachments.find((a) => a.id === attachmentId);
+          const remainingAttachments = state.attachments.filter((a) => a.id !== attachmentId);
 
           // ★ 调试日志：记录 Store 移除操作
           logAttachment('store', 'remove_attachment', {
@@ -231,7 +233,11 @@ export function createSessionActions(
           });
 
           // ★ remove 语义收敛：取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
-          if (attachment?.sourceId) {
+          if (
+            attachment?.sourceId &&
+            !remainingAttachments.some(a => a.sourceId === attachment.sourceId) &&
+            !isAttachmentSourceShared(attachment.sourceId)
+          ) {
             cancelAttachmentProcessing(attachmentId, attachment.sourceId);
 
             // ★ P0 修复：清理 pdfProcessingStore 中的状态，防止内存泄漏和状态污染。
@@ -251,13 +257,14 @@ export function createSessionActions(
           }));
 
           // 同步移除对应的 ContextRef（如果存在 resourceId）
-          if (attachment?.resourceId) {
+          if (attachment?.resourceId && !remainingAttachments.some(a => a.resourceId === attachment.resourceId)) {
             state.removeContextRef(attachment.resourceId);
             console.log('[ChatStore] removeAttachment: Removed ContextRef for', attachment.resourceId);
           }
 
           // 🔧 P1-25: 释放 Blob URL，避免内存泄漏
-          if (attachment?.previewUrl?.startsWith('blob:')) {
+          if (attachment?.previewUrl?.startsWith('blob:') &&
+            !remainingAttachments.some(a => a.previewUrl === attachment.previewUrl)) {
             URL.revokeObjectURL(attachment.previewUrl);
             console.log('[ChatStore] removeAttachment: Revoked Blob URL');
           }
@@ -280,16 +287,18 @@ export function createSessionActions(
           });
 
           // ★ clear 语义收敛：逐个取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
+          const sourceIds: string[] = [];
           for (const att of state.attachments) {
-            if (att.sourceId) {
+            if (att.sourceId && !sourceIds.includes(att.sourceId) && !isAttachmentSourceShared(att.sourceId)) {
+              sourceIds.push(att.sourceId);
               cancelAttachmentProcessing(att.id, att.sourceId);
             }
           }
 
           // 🔧 P1-25: 释放所有 Blob URLs，避免内存泄漏
-          const blobUrls = state.attachments
+          const blobUrls = [...new Set(state.attachments
             .filter((a) => a.previewUrl?.startsWith('blob:'))
-            .map((a) => a.previewUrl!);
+            .map((a) => a.previewUrl!))];
           for (const url of blobUrls) {
             URL.revokeObjectURL(url);
           }
@@ -298,14 +307,10 @@ export function createSessionActions(
           }
 
           // 获取所有附件的 resourceId，用于清除对应的 ContextRefs
-          const resourceIds = state.attachments
+          const resourceIds = [...new Set(state.attachments
             .filter((a) => a.resourceId)
-            .map((a) => a.resourceId!);
+            .map((a) => a.resourceId!))];
           
-          // ★ P0 修复：获取 sourceId 用于清理 pdfProcessingStore
-          const sourceIds = state.attachments
-            .filter((a) => a.sourceId)
-            .map((a) => a.sourceId!);
 
           set({ attachments: [] });
 

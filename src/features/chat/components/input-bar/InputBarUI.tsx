@@ -6,6 +6,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { useAttachmentUploadScope } from './useAttachmentUploadScope';
 import { useTranslation } from 'react-i18next';
 import {
   UploadSimple,
@@ -429,6 +430,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   //（声明提前到 processFilesToAttachments 之前：上传完成回调需读取最新注入模式）
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
+  const { beginUpload, isCurrent: isUploadScopeCurrent } = useAttachmentUploadScope(sessionId, attachments);
 
   // ★ P1（2026-09-07）：当前会话模型多模态能力 ref。
   // 上传回调是同步创建附件的，默认注入模式需要同步可读；
@@ -444,7 +446,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
   // 处理文件转换为附件元数据并上传
   const processFilesToAttachments = useCallback((files: File[]) => {
-    if (!files.length) return;
+    if (!files.length || !isUploadScopeCurrent()) return;
 
     // 🆕 维护模式检查：阻止文件上传
     if (useSystemStatusStore.getState().maintenanceMode) {
@@ -556,12 +558,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
       // 🔧 P1-25: 移动端内存优化 - 使用 Blob URL 预览，避免 DataURL 常驻内存
       // 创建 Blob URL 用于预览（内存友好，浏览器自动管理）
-      const blobPreviewUrl = URL.createObjectURL(file);
+      const upload = beginUpload(attachmentId, file);
+      const blobPreviewUrl = upload.previewUrl;
 
       // 异步读取文件内容并上传到 VFS
-      const reader = new FileReader();
+      const reader = upload.reader;
       let lastReportedPercent = 0;
       reader.onprogress = (e) => {
+        if (!upload.isActive()) return;
         if (e.lengthComputable) {
           // 统一进度条：文件读取阶段占 0-20%
           const readPercent = Math.round((e.loaded / e.total) * 20);
@@ -576,6 +580,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         }
       };
       reader.onload = async () => {
+        if (!upload.isActive()) return;
         const base64Result = reader.result as string;
 
         logAttachment('ui', 'file_read_complete', {
@@ -607,6 +612,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             base64Content: base64Result,
             type: isImage ? 'image' : 'file',
           });
+          if (!upload.isActive()) return;
 
           logAttachment('ui', 'vfs_upload_done', {
             sourceId: uploadResult.sourceId,
@@ -648,6 +654,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             },
           });
 
+          if (!upload.isActive()) return;
           logAttachment('ui', 'resource_created', {
             resourceId: result.resourceId,
             hash: result.hash,
@@ -812,6 +819,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         } catch (error) {
+          if (!upload.isActive()) return;
           const errorDetail = getErrorMessage(error);
           logAttachment('ui', 'vfs_upload_error', {
             fileName: file.name,
@@ -831,11 +839,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             uploadStage: undefined,
           });
           console.error('[InputBarUI] VFS upload failed:', errorDetail);
+        } finally {
+          upload.finish();
         }
       };
       reader.onerror = () => {
-        // 🔧 释放 Blob URL，文件读取失败时不再需要预览
-        URL.revokeObjectURL(blobPreviewUrl);
+        if (!upload.isActive()) return;
+        upload.cancel();
         console.error('[InputBarUI] Failed to read file:', file.name);
         logAttachment('ui', 'file_read_error', {
           fileName: file.name,
@@ -851,7 +861,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       reader.readAsDataURL(file);
     });
 
-  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t]);
+  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent]);
 
   // ========== 相机拍照处理 ==========
   // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或
@@ -1814,8 +1824,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   }, []);
 
   // ★ P2 优化：跟踪已同步的状态，避免重复更新
-  const syncedStatusRef = useRef<Map<string, { stage: string; percent: number; readyCount: number }>>(new Map());
-  const pollingInFlightRef = useRef(false);
+  const syncedStatusRef = useRef<Map<string, { stage: string; percent: number; readyModes: string }>>(new Map());
+  const processingAttachmentKey = JSON.stringify(attachments
+    .filter(att => att.status === 'processing' && att.sourceId && getMediaTypeForAttachment(att))
+    .map(att => [att.id, att.sourceId]));
 
   // ★ 超时保护：跟踪每个附件的累计轮询次数，防止无限轮询
   // key = sourceId, value = 累计轮询次数
@@ -1824,10 +1836,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const MAX_POLL_COUNT = 150;
 
   // 🆕 兜底轮询：避免事件丢失导致状态卡住
-  // ★ 修复：依赖 attachments.length，新增 processing 附件时重新启动轮询
   useEffect(() => {
     let timerId: number | null = null;
     let stopped = false;
+    let pollingInFlight = false;
+    const currentSourceIds = new Set(attachmentsRef.current
+      .filter(att => att.status === 'processing')
+      .map(att => att.sourceId));
+    for (const sourceId of pollingCountRef.current.keys()) {
+      if (!currentSourceIds.has(sourceId)) pollingCountRef.current.delete(sourceId);
+    }
 
     const scheduleNext = (delayMs: number) => {
       if (stopped) return;
@@ -1839,7 +1857,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
     const pollStatuses = async () => {
       if (stopped) return;
-      if (pollingInFlightRef.current) return;
+      if (pollingInFlight) return;
       const currentAttachments = attachmentsRef.current;
       const processingAttachments = currentAttachments
         .filter(att => att.status === 'processing' && !!att.sourceId)
@@ -1894,9 +1912,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         return;
       }
 
-      pollingInFlightRef.current = true;
+      pollingInFlight = true;
       try {
         const result = await getBatchPdfProcessingStatus(activeFileIds);
+        if (stopped) return;
         const statuses = result.statuses || {};
         Object.entries(statuses).forEach(([fileId, status]) => {
           usePdfProcessingStore.getState().update(fileId, {
@@ -1914,7 +1933,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       } catch {
         // 轮询失败不打断主流程
       } finally {
-        pollingInFlightRef.current = false;
+        pollingInFlight = false;
         scheduleNext(2000);
       }
     };
@@ -1935,7 +1954,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('visibilitychange', handleVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachments.length]);
+  }, [processingAttachmentKey, sessionId]);
 
   // 🆕 监听媒体处理完成事件，更新附件状态为 ready
   // ★ P1 修复：同时处理 PDF 和图片附件
@@ -1972,21 +1991,21 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       const lastSynced = syncedStatus.get(att.id);
       const currentStage = status.stage;
       const currentPercent = Math.round(status.percent || 0);
-      const currentReadyCount = status.readyModes?.length ?? 0;
+      const currentReadyModes = [...(status.readyModes ?? [])].sort().join(',');
 
       // 如果状态未变化，跳过更新（允许 5% 的进度容差，减少中间状态更新频率）
-      // ★ 修复：readyModes 数量变更必须同步，否则 UI 会持有过时的就绪状态
       if (lastSynced &&
         lastSynced.stage === currentStage &&
         Math.abs(lastSynced.percent - currentPercent) < 5 &&
-        lastSynced.readyCount === currentReadyCount &&
+        lastSynced.readyModes === currentReadyModes &&
         currentStage !== 'completed' &&
+        currentStage !== 'completed_with_issues' &&
         currentStage !== 'error') {
         return;
       }
 
       // 更新已同步状态
-      syncedStatus.set(att.id, { stage: currentStage, percent: currentPercent, readyCount: currentReadyCount });
+      syncedStatus.set(att.id, { stage: currentStage, percent: currentPercent, readyModes: currentReadyModes });
 
       const mediaTypeLabel = isPdf
         ? t('chatV2:inputBar.mediaType.pdf')
@@ -2127,8 +2146,24 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // ========== 附件面板内容（桌面 overlay 与移动端内联共用） ==========
 
   // ★ 错误态重试：附件面板与预览 chips 共用（chip 上的内联重试入口）
+  const attachmentRetries = useMemo(() => new Map<string, { sourceId: string }>(), [isUploadScopeCurrent]);
+  useEffect(() => {
+    for (const [id, retry] of attachmentRetries) {
+      if (!attachments.some(item => item.id === id && item.sourceId === retry.sourceId)) {
+        attachmentRetries.delete(id);
+      }
+    }
+  }, [attachments, attachmentRetries]);
   const handleRetryAttachment = useCallback(async (attachment: AttachmentMeta) => {
-    if (!attachment.sourceId) return;
+    const originalAttachment = attachmentsRef.current.find(
+      item => item.id === attachment.id && item.sourceId === attachment.sourceId,
+    );
+    if (!attachment.sourceId || !isUploadScopeCurrent() || originalAttachment?.status !== 'error'
+      || attachmentRetries.has(attachment.id)) return;
+    const retry = { sourceId: attachment.sourceId };
+    attachmentRetries.set(attachment.id, retry);
+    const isCurrentRetry = () => isUploadScopeCurrent() && attachmentRetries.get(attachment.id) === retry
+      && attachmentsRef.current.some(item => item.id === attachment.id && item.sourceId === retry.sourceId);
     try {
       const fileId = attachment.sourceId;
       const isPdfRetry = getMediaTypeForAttachment(attachment) === 'pdf';
@@ -2149,12 +2184,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         },
       });
       await retryPdfProcessing(fileId);
+      if (!isCurrentRetry()) return;
       logAttachment('ui', 'retry_processing_triggered', {
         attachmentId: attachment.id,
         sourceId: fileId,
       }, 'success');
       showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
     } catch (error) {
+      const currentAttachment = attachmentsRef.current.find(item => item.id === attachment.id);
+      if (!isCurrentRetry() || (currentAttachment?.status !== 'processing'
+        && !(currentAttachment === originalAttachment && currentAttachment.status === 'error'))) return;
       logAttachment('ui', 'retry_processing_failed', {
         attachmentId: attachment.id,
         error: getErrorMessage(error),
@@ -2165,8 +2204,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         error: retryErrorMsg,
       });
       showGlobalNotification('error', retryErrorMsg);
+    } finally {
+      if (attachmentRetries.get(attachment.id) === retry) attachmentRetries.delete(attachment.id);
     }
-  }, [onUpdateAttachment, t]);
+  }, [onUpdateAttachment, t, isUploadScopeCurrent, attachmentRetries]);
 
   // ★ 性能修复：memo 子组件（AttachmentPreviewChips / AttachmentInjectModeSelector）
   // 的回调用 useCallback 稳定引用，避免内联箭头每次渲染换新引用击穿 memo
