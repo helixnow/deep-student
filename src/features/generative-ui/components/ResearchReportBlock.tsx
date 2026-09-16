@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
-import rehypeRaw from 'rehype-raw';
 import { GenerativeMarkdownBody } from './GenerativeMarkdownBody';
 import {
   parseResearchReportCitations,
@@ -133,7 +132,6 @@ export function ResearchReportBlock({ title, body, density }: ResearchReportBloc
           isStreaming={false}
           className={density === 'compact' ? 'text-xs' : 'text-sm'}
           extraRemarkPlugins={citationRemarkPlugins}
-          rehypePlugins={[rehypeRaw]}
         />
       </div>
     </article>
