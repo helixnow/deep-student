@@ -118,26 +118,25 @@ export function hasContentSaveHandler(typeId: string, instanceKey: string | null
  * 立即执行某个资源实例的所有保存处理函数。
  * 全部成功返回 true；任一失败/无注册返回 false（关窗流程据此保持窗口打开）。
  *
- * C15：所有 handler resolve 后必须再做一次 dirty 复查，避免“保存期间又有新输入 /
- * 标题等编辑面未提交”被当作成功放行关闭。dirty 是文档事实，不由 handler 的
- * Promise 成功单独定义。
+ * 「保存后是否仍 dirty」的最终屏障由各保存 handler 自行保证（如 note 的
+ * handler 在 flush 后复查 isContentDirty 并抛出）。此处不做通用复查：essay /
+ * translation 等资源存在“草稿级持久化但基线有意保持 dirty”的语义，通用复查
+ * 会把它们的保存并关闭误判为失败。
  */
 export async function saveContentNow(typeId: string, instanceKey: string | null): Promise<boolean> {
-  const key = keyOf(typeId, instanceKey);
-  const registered = saveHandlers.get(key);
+  const registered = saveHandlers.get(keyOf(typeId, instanceKey));
   if (!registered || registered.size === 0) return false;
   try {
-    await Promise.all([...registered].map((save) => save()));
+    // 顺序执行（注册顺序 = 子组件优先）：标题等字段级提交先于正文 flush，
+    // 正文 handler 的“仍 dirty”复查才能看到标题已提交，避免误判关闭失败。
+    for (const save of registered) {
+      await save();
+    }
+    return true;
   } catch {
     // 保存失败不放行关闭：视图侧的保存错误 UI（重试条/toast）负责展示细节
     return false;
   }
-  // 最后屏障：保存动作可能触发了新的输入或仍有未提交的编辑面
-  const checkersForResource = checkers.get(key);
-  if (checkersForResource && anyCheckerDirty(checkersForResource)) {
-    return false;
-  }
-  return true;
 }
 
 /**
