@@ -23,6 +23,8 @@
     "startReview": "开始复习",
     "empty": "今天没有到期卡片",
     "batchCapHint": "本轮先练前 {{n}} 张",
+    "backlogHint": "另有 {{count}} 张已到期，受每日上限限制未纳入今日计划",
+    "learningWaitingHint": "{{count}} 张学习卡等待下一步",
     "goLibrary": "打开卡片库",
     "errors": {
       "invalidResponse": "复习服务返回了无效的到期卡片数据"

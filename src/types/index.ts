@@ -822,6 +822,10 @@ export interface FsrsStats {
   relearning: number;
   suspended: number;
   reviewsToday: number;
+  /** 已到期但被每日额度截断、未计入 due 的积压数（Review + New） */
+  backlog?: number;
+  /** 尚未到期的学习/重学卡（等待学习步），解释「稍后会出现」 */
+  learningWaiting?: number;
 }
 
 export interface FsrsCardMutationResult {

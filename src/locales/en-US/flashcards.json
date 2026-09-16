@@ -23,6 +23,8 @@
     "startReview": "Start review",
     "empty": "Nothing due today",
     "batchCapHint": "This round covers the first {{n}} cards",
+    "backlogHint": "{{count}} more are due but hidden by today's daily limit",
+    "learningWaitingHint": "{{count}} learning card(s) waiting for the next step",
     "goLibrary": "Open library",
     "errors": {
       "invalidResponse": "fsrs_get_due returned an invalid response"
