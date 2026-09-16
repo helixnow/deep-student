@@ -18,6 +18,8 @@ import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
 import i18n from '@/i18n';
 import { dstu, updatedAtToVersionToken } from '@/dstu';
+import { syncWikiLinksAfterNoteRename } from '@/features/workbench/apps/notes/wikilinkRenameSync';
+import { getWikilinkNotesCache } from '@/features/notes/wikilinkNotesCache';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -220,6 +222,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 初始化进新笔记的草稿（数据污染）。归属不匹配时编辑器渲染 loading。
   const [contentNoteId, setContentNoteId] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
+  const titleRef = useRef(title);
+  titleRef.current = title;
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
   const editorApiRef = useRef<CrepeEditorApi | null>(null);
   const acrApiByLifecycleRef = useRef(new WeakMap<CrepeEditorApi, CrepeEditorApi>());
@@ -705,6 +709,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       throw new Error(msg);
     }
     const savedNoteId = node.id;
+    const previousTitle = titleRef.current;
+    // C14：重命名前快照标题表（含本篇旧标题），供 [[旧标题]] 解析消歧
+    const knownNotes = getWikilinkNotesCache().map((entry) => ({ id: entry.id, title: entry.title }));
     const result = await dstu.setMetadata(
       node.path,
       { title: newTitle },
@@ -726,6 +733,34 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     });
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
+    // C14：正文标题改名与文件树改名走同一双链维护路径（此前标题入口完全不做回写）
+    const trimmedPrevious = previousTitle?.trim();
+    if (trimmedPrevious && trimmedPrevious !== newTitle) {
+      void syncWikiLinksAfterNoteRename({
+        noteId: savedNoteId,
+        oldTitle: trimmedPrevious,
+        newTitle,
+        knownNotes,
+      }).then((summary) => {
+        if (summary.scanFailed) {
+          showGlobalNotification('warning', t('notes:renameSync.scanFailed', {
+            defaultValue: '标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。',
+          }));
+          return;
+        }
+        if (summary.updatedSources > 0) {
+          showGlobalNotification('success', t('notes:renameSync.updated', {
+            defaultValue: '已同步更新 {{count}} 篇笔记中的双链',
+            count: summary.updatedSources,
+          }));
+        }
+        if (summary.skippedDirtySources > 0 || summary.failedSources > 0 || summary.truncated) {
+          showGlobalNotification('warning', t('notes:renameSync.incomplete', {
+            defaultValue: '部分笔记中的双链未同步（有未保存修改、写回失败或超出单批上限），请手动检查。',
+          }));
+        }
+      });
+    }
   }, [node.id, node.path, readOnly, onTitleChange, t, updateKnownBaseline]);
 
   // 标签变更

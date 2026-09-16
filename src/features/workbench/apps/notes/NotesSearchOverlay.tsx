@@ -561,6 +561,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       return;
     }
     if (event.key === 'Enter' && activeResult) {
+      // C10：中文候选确认不打开结果
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       event.stopPropagation();
       void openResult(activeResult);

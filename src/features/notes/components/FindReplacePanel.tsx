@@ -65,6 +65,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const [replaceFeedback, setReplaceFeedback] = useState<string | null>(null);
 
   const findInputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   /**
@@ -95,7 +96,19 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     if (readOnly) setIsReplaceMode(false);
   }, [readOnly]);
 
-  /** 带退场动画的关闭；reduced-motion 下立即关闭 */
+  /**
+   * C5：本面板是否拥有全局输入所有权。隐藏/保活的标签实例、非活动分屏
+   * 不应消费 F3 / Cmd-Ctrl+F；仅当前可见且获得焦点的 pane 响应。
+   */
+  const ownsGlobalInput = useCallback((): boolean => {
+    const el = rootRef.current;
+    if (!el) return true;
+    if (el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) return false;
+    const pane = el.closest('[data-notes-pane]');
+    if (pane && pane.getAttribute('data-focused') === 'false') return false;
+    return true;
+  }, []);
+
   const requestClose = useCallback(() => {
     if (closeTimerRef.current !== null) return;
     if (prefersReducedMotion()) {
@@ -239,6 +252,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   // Cmd/Ctrl+Z / Shift+Z / Y：焦点在查找框时仍把撤销/重做交给编辑器（替换必须可撤销）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // C5：隐藏/非活动实例不消费全局快捷键
+      if (!ownsGlobalInput()) return;
       if (e.key === 'F3') {
         e.preventDefault();
         navigate(e.shiftKey ? -1 : 1);
@@ -279,7 +294,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     };
     document.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);
-  }, [navigate, getView]);
+  }, [navigate, getView, ownsGlobalInput]);
 
   /** 替换当前匹配（正则模式展开 $1..$9 / $& / $$） */
   const handleReplaceCurrent = useCallback(() => {
@@ -319,6 +334,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      // C10：中文候选确认（isComposing/keyCode 229）不触发查找导航
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       // Enter / Shift+Enter 在匹配间正反向循环
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
@@ -331,6 +348,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   /** 替换输入框：Enter 替换当前，Cmd/Ctrl+Enter 全部替换 */
   const handleReplaceKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      // C10：候选确认不触发替换
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
         handleReplaceAll();
@@ -354,6 +373,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   return (
     <div
       role="search"
+      ref={rootRef}
       aria-label={panelLabel}
       data-state={isClosing ? 'closing' : 'open'}
       className={cn(
