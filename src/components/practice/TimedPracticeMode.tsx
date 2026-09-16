@@ -11,6 +11,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -71,6 +72,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   className,
 }) => {
   const { t } = useTranslation('practice');
+  const beginRequest = usePracticeRequestScope(examId);
   
   // Store
   const {
@@ -122,7 +124,10 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   }, [showSubmitConfirm, isActive]);
   
   // 计时器状态 — 基于绝对时间戳的高精度倒计时
-  const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
+  const [storedTargetEndTime, setTargetEndTime] = useState<number | null>(null);
+  const [timerSessionId, setTimerSessionId] = useState<string | null>(null);
+  const targetEndTime = activeSession && !activeSession.is_submitted && !activeSession.is_timeout
+    && timerSessionId === activeSession.id ? storedTargetEndTime : null;
   const isStarted = targetEndTime != null;
   // 暂停起点（用于把暂停时长累计写回会话，跨视图/重挂载不丢暂停补偿）
   const pauseStartedAtRef = useRef<number | null>(null);
@@ -130,10 +135,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   
   // 时间到：结算会话（写回 store，避免下次进入被当作"进行中"恢复）后再通知上层
   const handleTimeout = useCallback(() => {
-    if (timeoutHandledRef.current) return;
+    const session = useQuestionBankStore.getState().timedSession;
+    if (timeoutHandledRef.current || !activeSession || timerSessionId !== activeSession.id
+      || session?.id !== activeSession.id || session.exam_id !== examId
+      || session.is_submitted || session.is_timeout) return;
     timeoutHandledRef.current = true;
     setShowSubmitConfirm(false);
-    const session = useQuestionBankStore.getState().timedSession;
     if (session && session.exam_id === examId && !session.is_submitted && !session.is_timeout) {
       setTimedSession({
         ...session,
@@ -144,7 +151,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     }
     setTargetEndTime(null);
     onTimeout?.();
-  }, [examId, onTimeout, setTimedSession]);
+  }, [examId, onTimeout, setTimedSession, activeSession, timerSessionId]);
   
   const { remaining: remainingSeconds, isPaused, pause, resume, reset: resetCountdown } = useCountdown(
     targetEndTime,
@@ -184,21 +191,25 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   
   // 开始练习
   const startWithConfig = useCallback(async (duration: number, count: number) => {
+    const isCurrent = beginRequest();
     try {
       const session = await startTimedPractice(examId, duration, count);
+      if (!isCurrent() || useQuestionBankStore.getState().timedSession !== session) return;
       // 优先以后端 started_at 为基准，避免请求耗时挤占答题时间
       const startedMs = Date.parse(session.started_at);
       const baseMs = Number.isFinite(startedMs) ? startedMs : Date.now();
       timeoutHandledRef.current = false;
       pauseStartedAtRef.current = null;
       setShowSubmitConfirm(false);
+      setTimerSessionId(session.id);
       setTargetEndTime(baseMs + session.duration_minutes * 60 * 1000);
       onStart?.(session);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('timed.startError'));
     }
-  }, [examId, startTimedPractice, onStart, t]);
+  }, [examId, startTimedPractice, onStart, t, beginRequest]);
 
   const handleStart = useCallback(async () => {
     await startWithConfig(durationMinutes, questionCount);
@@ -221,16 +232,28 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   useEffect(() => {
     if (!activeSession || activeSession.is_submitted || activeSession.is_timeout) {
       setTargetEndTime(null);
+      setTimerSessionId(null);
       return;
     }
     const startedMs = Date.parse(activeSession.started_at);
-    if (!Number.isFinite(startedMs)) return;
     const durationMs = activeSession.duration_minutes * 60 * 1000;
-    if (durationMs <= 0) return;
-    // 恢复会话时补偿已累计的暂停时长
+    if (!Number.isFinite(startedMs) || !Number.isFinite(durationMs) || durationMs <= 0) {
+      setTargetEndTime(null);
+      return;
+    }
     const pausedMs = Math.max(0, activeSession.paused_seconds) * 1000;
-    setTargetEndTime((prev) => prev ?? startedMs + durationMs + pausedMs);
-  }, [activeSession]);
+    const restoredEndTime = startedMs + durationMs + pausedMs;
+    if (timerSessionId !== activeSession.id) {
+      timeoutHandledRef.current = false;
+      pauseStartedAtRef.current = null;
+      setShowSubmitConfirm(false);
+      setShowAnswerSheet(false);
+      setTimerSessionId(activeSession.id);
+      setTargetEndTime(restoredEndTime);
+    } else {
+      setTargetEndTime((prev) => prev ?? restoredEndTime);
+    }
+  }, [activeSession, timerSessionId]);
   
   // 暂停/继续：暂停时长累计写回会话，恢复计算时能补偿
   const togglePause = useCallback(() => {

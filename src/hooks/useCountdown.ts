@@ -18,19 +18,28 @@ export function useCountdown(
   }, [onTimeout]);
 
   const [pausedAt, setPausedAt] = useState<number | null>(null);
-  const [adjustedEnd, setAdjustedEnd] = useState<number | null>(targetEndTime);
+  const [clock, setClock] = useState(() => ({ target: targetEndTime, end: targetEndTime }));
+  const currentClockRef = useRef(clock);
+  currentClockRef.current = clock;
+  const targetRef = useRef(targetEndTime);
+  targetRef.current = targetEndTime;
+  const adjustedEnd = clock.target === targetEndTime ? clock.end : null;
   const [remaining, setRemaining] = useState(0);
   const firedRef = useRef(false);
   const pausedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setAdjustedEnd(targetEndTime);
+    const next = { target: targetEndTime, end: targetEndTime };
+    currentClockRef.current = next;
+    setClock(next);
+    setRemaining(0);
     setPausedAt(null);
     pausedAtRef.current = null;
     firedRef.current = false;
   }, [targetEndTime]);
 
   const pause = useCallback(() => {
+    if (pausedAtRef.current != null || currentClockRef.current.end == null || firedRef.current) return;
     const now = Date.now();
     setPausedAt(now);
     pausedAtRef.current = now;
@@ -42,11 +51,16 @@ export function useCountdown(
     const pausedDuration = Date.now() - prev;
     pausedAtRef.current = null;
     setPausedAt(null);
-    setAdjustedEnd((end) => (end != null ? end + pausedDuration : null));
+    const current = currentClockRef.current;
+    const next = { ...current, end: current.end != null ? current.end + pausedDuration : null };
+    currentClockRef.current = next;
+    setClock(next);
   }, []);
 
   const reset = useCallback(() => {
-    setAdjustedEnd(null);
+    const next = { target: targetRef.current, end: null };
+    currentClockRef.current = next;
+    setClock(next);
     setPausedAt(null);
     pausedAtRef.current = null;
     setRemaining(0);
@@ -56,7 +70,9 @@ export function useCountdown(
   useEffect(() => {
     if (adjustedEnd == null || pausedAt != null) return;
 
+    let active = true;
     const tick = () => {
+      if (!active || currentClockRef.current !== clock || targetRef.current !== clock.target || pausedAtRef.current != null) return;
       const diff = Math.max(0, Math.ceil((adjustedEnd - Date.now()) / 1000));
       setRemaining(diff);
       if (diff <= 0 && !firedRef.current) {
@@ -67,8 +83,11 @@ export function useCountdown(
 
     tick();
     const id = setInterval(tick, 250);
-    return () => clearInterval(id);
-  }, [adjustedEnd, pausedAt]);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [adjustedEnd, pausedAt, clock]);
 
   return {
     remaining,

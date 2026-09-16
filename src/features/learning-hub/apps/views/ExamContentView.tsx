@@ -69,6 +69,12 @@ type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload
 type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
 type DraftSource = 'practice' | 'inlineEditor';
 
+interface PendingViewNavigation {
+  examId: string;
+  view: ViewMode;
+  afterViewChange?: () => void;
+}
+
 interface PendingDraftNavigation {
   examId: string;
   proceed: () => void;
@@ -382,9 +388,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
   const [manageFilters, setManageFilters] = useState<ManageFilters>({});
-  const [pendingReviewExitView, setPendingReviewExitView] = useState<ViewMode | null>(null);
+  const [pendingReviewExitView, setPendingReviewExitView] = useState<PendingViewNavigation | null>(null);
   /** 离开进行中的练习/考试前的确认目标视图（与复习退出同款内联条） */
-  const [pendingPracticeExitView, setPendingPracticeExitView] = useState<ViewMode | null>(null);
+  const [pendingPracticeExitView, setPendingPracticeExitView] = useState<PendingViewNavigation | null>(null);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [pendingSettingsOpen, setPendingSettingsOpen] = useState(false);
   const [launcherRequestedMode, setLauncherRequestedMode] = useState<LauncherRequestedMode | null>(null);
@@ -576,8 +582,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     practiceSessionOwner,
   ]);
 
-  const applyViewMode = useCallback((mode: ViewMode): boolean => {
-    if (mode === viewMode) return true;
+  const applyViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void, changesPractice = false): boolean => {
+    if (mode === viewMode && !changesPractice) return true;
 
     // CSV 内嵌导入中：阻止切换视图（与模态框导入中阻止关闭的行为一致）。
     // 用全局 i18n 而非组件 t：避免 t 的引用变化打进依赖数组导致 applyViewMode 每渲染换向
@@ -590,15 +596,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (viewMode === 'sm2' && mode !== 'sm2' && ownsReviewSession) {
       const hasRemainingItems = reviewSession.currentIndex < reviewSession.queue.length;
       if (hasRemainingItems) {
-        setPendingReviewExitView(mode);
+        setPendingReviewExitView({ examId: sessionId, view: mode, afterViewChange });
         return false;
       }
       endReviewSession();
     }
 
     // 离开进行中的练习/考试：内联确认，避免误触丢进度
-    if (viewMode === 'practice' && mode !== 'practice' && hasInProgressPracticeSession()) {
-      setPendingPracticeExitView(mode);
+    if (viewMode === 'practice' && (mode !== 'practice' || changesPractice) && hasInProgressPracticeSession()) {
+      setPendingPracticeExitView({ examId: sessionId, view: mode, afterViewChange });
       return false;
     }
 
@@ -613,11 +619,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     hasInProgressPracticeSession,
   ]);
 
-  const requestViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void): boolean => {
-    const requiresNavigation = mode !== viewMode || Boolean(afterViewChange);
+  const requestViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void, changesPractice = false): boolean => {
+    setPendingDraftNavigation(null);
+    setPendingReviewExitView(null);
+    setPendingPracticeExitView(null);
+    setPendingSettingsOpen(false);
+    const requiresNavigation = mode !== viewMode || Boolean(afterViewChange) || changesPractice;
     if (!requiresNavigation) return true;
     const proceed = () => {
-      const handled = applyViewMode(mode);
+      const handled = applyViewMode(mode, afterViewChange, changesPractice);
       if (handled) afterViewChange?.();
     };
     const currentDraft = draftStateRef.current;
@@ -628,7 +638,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       });
       return false;
     }
-    const handled = applyViewMode(mode);
+    const handled = applyViewMode(mode, afterViewChange, changesPractice);
     if (handled) afterViewChange?.();
     return handled;
   }, [applyViewMode, sessionId, viewMode]);
@@ -679,6 +689,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         return;
       }
 
+      if (open === false) setPendingSettingsOpen(false);
       const next = typeof open === 'boolean' ? open : !settingsPanelOpen;
       setSettingsPanelOpen(next);
       detail?.acknowledge?.({
@@ -726,7 +737,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         });
         return;
       }
-      if (enabled && !requestViewMode('practice')) {
+      const previous = useQuestionBankStore.getState().focusMode;
+      if (enabled && viewMode !== 'practice' && !requestViewMode('practice', () => setFocusMode(true))) {
         detail?.acknowledge?.({
           handled: false,
           code: 'CONFIRMATION_REQUIRED',
@@ -734,8 +746,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         });
         return;
       }
-      const previous = useQuestionBankStore.getState().focusMode;
-      setFocusMode(enabled);
+      if (!enabled || viewMode === 'practice') setFocusMode(enabled);
       detail?.acknowledge?.({
         handled: true,
         changed: previous !== enabled,
@@ -744,7 +755,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
     window.addEventListener('exam:setFocusMode', handleFocusModeChange);
     return () => window.removeEventListener('exam:setFocusMode', handleFocusModeChange);
-  }, [hasQuestions, requestViewMode, sessionId, setFocusMode, t]);
+  }, [hasQuestions, requestViewMode, sessionId, setFocusMode, t, viewMode]);
 
   // 待开的练习设置：进入练习视图后统一兑现。settings 请求可能被「退出复习」
   // 或「丢弃草稿」两条确认路径拦下，此前只有复习路径在确认后会补开设置面板，
@@ -782,6 +793,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // ★ 会话切换：记录最新 sessionId（异步回调的过期守卫），并重置上一会话的 UI 状态，
   //   防止旧会话的详情/错误/弹窗/筛选串到新会话（快速切换场景）
   const latestSessionIdRef = useRef(sessionId);
+  const sessionScope = useMemo(() => ({ sessionId }), [sessionId]);
+  const latestSessionScopeRef = useRef<typeof sessionScope | null>(sessionScope);
+  latestSessionScopeRef.current = sessionScope;
+  useEffect(() => {
+    latestSessionScopeRef.current = sessionScope;
+    return () => { latestSessionScopeRef.current = null; };
+  }, [sessionScope]);
   useEffect(() => {
     latestSessionIdRef.current = sessionId;
     setElapsedTime(0);
@@ -863,6 +881,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       setIsTimerRunning(false);
     }
   }, [
+    viewMode,
     practiceMode,
     activeTimedSession,
     activeMockExamSession,
@@ -930,6 +949,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       viewMode !== 'practice' ||
       practiceMode !== 'timed' ||
       activeAdvancedTimerDuration == null ||
+      Date.now() < Date.parse(activeTimedSession.started_at) + (activeAdvancedTimerDuration + activeAdvancedPausedSeconds) * 1000 ||
       elapsedTime < activeAdvancedTimerDuration
     ) {
       return;
@@ -957,6 +977,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [
     activeTimedSession,
     activeAdvancedTimerDuration,
+    activeAdvancedPausedSeconds,
     elapsedTime,
     practiceMode,
     setTimedSession,
@@ -974,6 +995,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       viewMode !== 'practice' ||
       practiceMode !== 'mock_exam' ||
       activeAdvancedTimerDuration == null ||
+      Date.now() < Date.parse(activeMockExamSession.started_at) + activeAdvancedTimerDuration * 1000 ||
       elapsedTime < activeAdvancedTimerDuration
     ) {
       return;
@@ -983,6 +1005,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
     mockExamTimeoutHandledRef.current = activeMockExamSession.id;
     setIsTimerRunning(false);
+    const isCurrentSubmission = () => (
+      latestSessionScopeRef.current === sessionScope
+      && useQuestionBankStore.getState().mockExamSession?.id === activeMockExamSession.id
+      && useQuestionBankStore.getState().mockExamSession?.exam_id === activeMockExamSession.exam_id
+    );
 
     const submitSession = {
       ...activeMockExamSession,
@@ -991,7 +1018,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
 
     void submitMockExam(submitSession)
-      .then(() => {
+      .then((scoreCard) => {
+        if (!isCurrentSubmission() || useQuestionBankStore.getState().mockExamScoreCard !== scoreCard) return;
         setElapsedTime(0);
         switchViewMode('launcher');
         showGlobalNotification(
@@ -1001,8 +1029,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         );
       })
       .catch((err: unknown) => {
-        mockExamTimeoutHandledRef.current = null;
         debugLog.error('[ExamContentView] auto submit mock exam failed:', err);
+        if (!isCurrentSubmission()) return;
         showGlobalNotification(
           'error',
           t('learningHub:exam.mockExamAutoSubmitFailed'),
@@ -1013,6 +1041,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     activeAdvancedTimerDuration,
     elapsedTime,
     practiceMode,
+    sessionScope,
     submitMockExam,
     switchViewMode,
     t,
@@ -1190,8 +1219,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       if (tag) setSelectedTag(tag);
       const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
       navigate(nextIdx);
-    });
-  }, [questions, currentIndex, navigate, requestViewMode, setStorePracticeMode]);
+    }, mode !== practiceMode || (mode === 'by_tag' && tag !== selectedTag));
+  }, [questions, currentIndex, navigate, requestViewMode, setStorePracticeMode, practiceMode, selectedTag]);
 
   // 模式下拉不带 tag：launcher 必配模式的分流已由 handleModeChange 统一处理
   const handleSelectMode = useCallback((value: string) => {
@@ -2190,9 +2219,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const confirmReviewExit = () => {
     const nextView = pendingReviewExitView;
     setPendingReviewExitView(null);
+    if (!nextView || nextView.examId !== sessionId) return;
     endReviewSession();
-    // 待开的练习设置由 pendingSettingsOpen effect 在到达练习视图后统一兑现
-    if (nextView) switchViewMode(nextView);
+    switchViewMode(nextView.view);
+    nextView.afterViewChange?.();
   };
   const cancelReviewExit = () => {
     setPendingReviewExitView(null);
@@ -2201,11 +2231,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const confirmPracticeExit = () => {
     const nextView = pendingPracticeExitView;
     setPendingPracticeExitView(null);
-    setIsTimerRunning(false);
-    if (nextView) switchViewMode(nextView);
+    if (!nextView || nextView.examId !== sessionId) return;
+    setIsTimerRunning(nextView.view === 'practice');
+    switchViewMode(nextView.view);
+    nextView.afterViewChange?.();
   };
   const cancelPracticeExit = () => {
     setPendingPracticeExitView(null);
+    setPendingSettingsOpen(false);
   };
   const confirmDiscardDraft = () => {
     const pending = pendingDraftNavigation;
