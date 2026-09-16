@@ -117,17 +117,27 @@ export function hasContentSaveHandler(typeId: string, instanceKey: string | null
 /**
  * 立即执行某个资源实例的所有保存处理函数。
  * 全部成功返回 true；任一失败/无注册返回 false（关窗流程据此保持窗口打开）。
+ *
+ * C15：所有 handler resolve 后必须再做一次 dirty 复查，避免“保存期间又有新输入 /
+ * 标题等编辑面未提交”被当作成功放行关闭。dirty 是文档事实，不由 handler 的
+ * Promise 成功单独定义。
  */
 export async function saveContentNow(typeId: string, instanceKey: string | null): Promise<boolean> {
-  const registered = saveHandlers.get(keyOf(typeId, instanceKey));
+  const key = keyOf(typeId, instanceKey);
+  const registered = saveHandlers.get(key);
   if (!registered || registered.size === 0) return false;
   try {
     await Promise.all([...registered].map((save) => save()));
-    return true;
   } catch {
     // 保存失败不放行关闭：视图侧的保存错误 UI（重试条/toast）负责展示细节
     return false;
   }
+  // 最后屏障：保存动作可能触发了新的输入或仍有未提交的编辑面
+  const checkersForResource = checkers.get(key);
+  if (checkersForResource && anyCheckerDirty(checkersForResource)) {
+    return false;
+  }
+  return true;
 }
 
 /** 仅供测试：清空注册表 */

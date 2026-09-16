@@ -274,6 +274,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const prevNoteIdRef = useRef<string | null>(null);
   const isUnmountedRef = useRef(false);
   const programmaticUpdateRef = useRef(false);
+  // C1：ProseMirror 事务产生的同步“文档已变”信号。onChange 有 250ms 合并窗口，
+  // 在此之前 isCurrentNoteDirty 不能把刚输入的内容判为 clean。
+  const unsavedDocChangeRef = useRef(false);
   const loadMoreInFlightRef = useRef(false);
   const lastAppliedWindowLineCountRef = useRef<number | null>(null);
   const isComposingRef = useRef(false); // IME 合成状态追踪
@@ -820,6 +823,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (typeof draft !== 'string') {
       return Promise.resolve();
     }
+    // 已取到 live 文档快照，未序列化的即时脏标记随草稿比较接管
+    unsavedDocChangeRef.current = false;
     return queueSave(draft, resolvedNoteId);
   }, [queueSave]);
 
@@ -867,6 +872,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     const isNewNote = noteId !== lastInitializedNoteIdRef.current;
 
     cancelDebounce();
+    // 切篇后即时脏标记属于上一篇的文档事务，重置避免污染新篇判断
+    unsavedDocChangeRef.current = false;
     contentRef.current = initialValue;
     
     // 🔧 关键修复：只在以下情况重置 draftByNoteRef 和 lastSavedMapRef：
@@ -951,6 +958,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (effectiveReadOnly) {
       return;
     }
+    // 此回调即“已序列化的最新文档”，同步脏标记交由草稿/快照比较接管
+    unsavedDocChangeRef.current = false;
     if (programmaticUpdateRef.current) {
       contentRef.current = markdown;
       if (noteId) {
@@ -997,6 +1006,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }));
     }, 500);
   }, [noteId, queueSave, effectiveReadOnly]);
+
+  // C1：事务级同步通知。不序列化全文，只置标志；UI 的“未保存”指示立即反映，
+  // 关闭/外部更新判断也从此刻起视为 dirty（无需等待 250ms onChange）。
+  const handleDocumentChange = useCallback(() => {
+    if (effectiveReadOnly) {
+      return;
+    }
+    unsavedDocChangeRef.current = true;
+    if (!isUnmountedRef.current) {
+      setIsDirty(true);
+    }
+  }, [effectiveReadOnly]);
 
   // 保存 ref
   const flushNoteDraftRef = useRef(flushNoteDraft);
@@ -1482,6 +1503,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     const draft = draftByNoteRef.current.get(currentNoteId);
     const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
     return (
+      unsavedDocChangeRef.current ||
       (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
       pendingSaveQueueRef.current.some((payload) => payload.noteId === currentNoteId) ||
       inFlightSaveRef.current !== null
@@ -2291,6 +2313,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             className="flex-1 min-h-[40vh] ui-rise-in"
             defaultValue={initialValue}
             onChange={handleChange}
+            onDocumentChange={handleDocumentChange}
             onFormattingChange={handleFormattingChange}
             onReady={handleEditorReady}
             readonly={effectiveReadOnly}

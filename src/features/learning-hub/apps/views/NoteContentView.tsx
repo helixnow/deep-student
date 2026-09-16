@@ -871,6 +871,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         if (!isActive || readOnly) return;
         const editor = editorApiRef.current;
         if (!editor || editor.isReadonly()) return;
+        // C2：手动保存必须走编辑器的统一持久化协调器（flush 队列 / OCC / 状态更新），
+        // 不再直接 setMarkdown→handleSave，避免与自动保存在途请求产生两条竞争路径。
+        if (editor.flushPendingSave) {
+          void editor
+            .flushPendingSave()
+            .then(() => {
+              showGlobalNotification('success', t('notes:actions.save_success'));
+            })
+            .catch((err) => {
+              const msg = err instanceof Error ? err.message : t('notes:actions.save_failed');
+              showGlobalNotification('error', msg);
+            });
+          return;
+        }
         void handleSave(editor.getMarkdown())
           .then(() => {
             showGlobalNotification('success', t('notes:actions.save_success'));

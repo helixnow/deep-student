@@ -44,8 +44,12 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isMacOS } from '@/utils/platform';
 import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
-import { requestContentCloseConfirmation } from '../content/ContentCloseConfirmation';
-import { isContentDirty } from '../content/contentDirtyRegistry';
+import { requestContentCloseDecision } from '../content/ContentCloseConfirmation';
+import {
+  hasContentSaveHandler,
+  isContentDirty,
+  saveContentNow,
+} from '../content/contentDirtyRegistry';
 import type { AppWindowProps } from '../../core/types';
 import { setWindowDirty } from '../../core/windowCloseGuard';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
@@ -539,9 +543,22 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
     setMountedKeys((prev) => {
       const next = [activeKey, ...prev.filter((key) => key !== activeKey)];
       const living = new Set(tabs.map((tab) => tab.key));
-      return next.filter((key) => living.has(key)).slice(0, 2);
+      const livingNext = next.filter((key) => living.has(key));
+      // C3：脏/保存中的标签豁免淘汰——切到第三篇时不能以卸载换取内存下降，
+      // 未持久化草稿必须先有主人（与 Learning Hub 的 dirty 额外保活同策略）。
+      const keep = livingNext.slice(0, 2);
+      const keepSet = new Set(keep);
+      const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
+      for (const key of livingNext) {
+        if (keepSet.has(key)) continue;
+        const tab = tabByKey.get(key);
+        if (tab && getTabSaveState(tab, windowId) !== 'saved') {
+          keepSet.add(key);
+        }
+      }
+      return livingNext.filter((key) => keepSet.has(key));
     });
-  }, [activeKey, tabs]);
+  }, [activeKey, tabs, windowId]);
   return (
     <section
       className="notes-workspace-pane"
@@ -1313,7 +1330,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       if (pendingTabCloseKeysRef.current.has(key)) return false;
       pendingTabCloseKeysRef.current.add(key);
       try {
-        const confirmed = await requestContentCloseConfirmation({
+        // C15：复用与 Learning Hub 相同的三态保存关闭协议，而不是只问“是否丢弃”。
+        const offerSave = hasContentSaveHandler(currentTab.type, currentTab.id);
+        const decision = await requestContentCloseDecision({
           description: t(
             saveState === 'saving'
               ? 'notesWorkspace.confirmCloseSaving'
@@ -1322,8 +1341,19 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               ? 'This tab is still saving. Close it anyway?'
               : 'This tab has unsaved changes. Close it anyway?',
           ),
+          offerSave,
         });
-        if (!confirmed) return false;
+        if (decision === 'cancel') return false;
+        if (decision === 'save') {
+          const saved = await saveContentNow(currentTab.type, currentTab.id);
+          if (!saved) {
+            showGlobalNotification(
+              'error',
+              t('content.saveAndCloseFailed', { defaultValue: '保存失败，已保留窗口与草稿。' }),
+            );
+            return false;
+          }
+        }
       } catch {
         // A failed confirmation surface must never discard a tab implicitly.
         return false;

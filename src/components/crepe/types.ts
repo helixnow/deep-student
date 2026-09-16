@@ -211,6 +211,12 @@ export interface CrepeEditorProps {
   /** 内容变化回调 */
   onChange?: (markdown: string) => void;
 
+  /**
+   * 文档事务产生的同步通知（Markdown 序列化仍防抖）。
+   * 宿主可据此在 onChange 的 250ms 合并窗口之前立即标记“有未保存修改”。
+   */
+  onDocumentChange?: () => void;
+
   /** Selection and stored marks, including formatting changes without document edits. */
   onFormattingChange?: (state: CrepeFormattingState) => void;
   

@@ -170,6 +170,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const {
     defaultValue = '',
     onChange,
+    onDocumentChange,
     onFormattingChange,
     onReady,
     onDestroy,
@@ -194,6 +195,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const blockMenuActiveRef = useRef(-1); // keydown 监听内读取，避免闭包过期
   const [initPhase, setInitPhase] = useState('pending'); // 🔧 调试：追踪初始化阶段
   const onChangeRef = useRef(onChange);
+  const onDocumentChangeRef = useRef(onDocumentChange);
+  onDocumentChangeRef.current = onDocumentChange;
   const onFormattingChangeRef = useRef(onFormattingChange);
   onFormattingChangeRef.current = onFormattingChange;
   const onReadyRef = useRef(onReady);
@@ -1962,7 +1965,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                         if (view.composing) return;
 
                         const docChanged = !oldState?.doc?.eq?.(newState?.doc);
-                        if (docChanged) scheduleEmitChange();
+                        if (docChanged) {
+                          // 同步通知：dirty 判断不能等待 250ms 的 Markdown 序列化防抖
+                          onDocumentChangeRef.current?.();
+                          scheduleEmitChange();
+                        }
                       };
                     } else {
                       // 备用方案：监听 DOM input 事件
