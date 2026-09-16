@@ -641,11 +641,15 @@ impl StreamingAnkiService {
         );
 
         // 全局限额分配下，额度为 0 的分段直接跳过，避免“0 表示无限制”带来额外卡片。
+        //
+        // F14：这里必须留下可追踪的跳过原因，不能把「未分配额度」与「这段已
+        // 成功制卡」都记成无声的 Completed，否则任务台会把配额抽样误读成整份
+        // 材料已覆盖。error_message 用稳定 code，便于后续/日志核对。
         if options.max_cards_total.unwrap_or(0) > 0 && options.max_cards_per_mistake <= 0 {
             self.update_task_status(
                 &task_id,
                 TaskStatus::Completed,
-                None,
+                Some("segment_skipped:no_card_budget".to_string()),
                 Some(task.segment_index),
                 Some(task.document_id.as_str()),
                 &window,
