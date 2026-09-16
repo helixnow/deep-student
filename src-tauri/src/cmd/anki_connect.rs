@@ -111,6 +111,18 @@ fn write_anki_export_content_hashes(
     Ok(written)
 }
 
+/// F18：模板「学习语义 + 外观」指纹，用于判断同名 note_type 的模板是否真的相同。
+/// 只比较会影响 Anki 端呈现/字段的字段，忽略 id/时间戳等元数据。
+fn template_schema_signature(template: &crate::models::CustomAnkiTemplate) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        template.fields.join("\u{1e}"),
+        template.front_template,
+        template.back_template,
+        template.css_style
+    )
+}
+
 pub(crate) fn sanitize_filename_component(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -287,6 +299,11 @@ pub async fn add_cards_to_anki_connect(
 
     let mut card_models: HashMap<String, String> = HashMap::new();
     let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> = HashMap::new();
+    // F18：不同本地模板若共用同一个 Anki note_type 名称，Anki 端会按名称复用同一
+    // 模型，第二个模板的字段/CSS 可能完全不生效。这里检测「同名但 schema 不同」
+    // 的冲突并写入同步警告，避免用户以为样式已同步。
+    let mut model_identity: HashMap<String, (String, String, String)> = HashMap::new();
+    let mut model_collision_warnings: Vec<String> = Vec::new();
     for card in &selected_cards {
         let Some(template_id) = card
             .template_id
@@ -300,11 +317,29 @@ pub async fn add_cards_to_anki_connect(
             continue;
         }
         if let Ok(Some(template)) = state.database.get_custom_template_by_id(template_id) {
-            let model_name = template.note_type.trim();
+            let model_name = template.note_type.trim().to_string();
             if !model_name.is_empty() {
-                card_models.insert(card.id.clone(), model_name.to_string());
+                let signature = template_schema_signature(&template);
+                match model_identity.get(&model_name) {
+                    Some((prev_id, prev_sig, prev_name))
+                        if prev_id != template_id && prev_sig != &signature =>
+                    {
+                        model_collision_warnings.push(format!(
+                            "模板「{}」与「{}」共用 Anki 笔记类型「{}」，但字段或样式不同；同步会复用 Anki 中已有的同名模型，后者样式可能不生效。建议为其中一个改用不同的 note_type，或改用 APKG 导出。",
+                            prev_name, template.name, model_name
+                        ));
+                    }
+                    None => {
+                        model_identity.insert(
+                            model_name.clone(),
+                            (template_id.to_string(), signature, template.name.clone()),
+                        );
+                    }
+                    _ => {}
+                }
+                card_models.insert(card.id.clone(), model_name.clone());
                 templates_by_model
-                    .entry(model_name.to_string())
+                    .entry(model_name)
                     .or_insert(template);
             }
         }
@@ -353,7 +388,9 @@ pub async fn add_cards_to_anki_connect(
     )
     .await
     {
-        Ok(report) => {
+        Ok(mut report) => {
+            // F18：把同名 note_type 冲突等预检告警并入报告，供前端提示
+            report.warnings.extend(model_collision_warnings);
             println!(
                 "卡片添加完成: 新增 {} 张, 重复 {} 张, 失败 {} 张{}",
                 report.added,

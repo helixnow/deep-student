@@ -1445,6 +1445,14 @@ const ActionButtons: React.FC<{
       } else {
         showGlobalNotification('success', t('blocks.ankiCards.action.syncedCountWithHint', { count: result.importedCount }));
       }
+      if (result.warnings && result.warnings.length > 0) {
+        // F18：同名 note_type 冲突等后端告警必须可见，不能只留在日志
+        showGlobalNotification(
+          'warning',
+          t('blocks.ankiCards.action.syncWarningsTitle'),
+          result.warnings.join(' '),
+        );
+      }
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
       console.error('[AnkiCardsBlock] Sync failed:', msg);

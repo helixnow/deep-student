@@ -893,6 +893,7 @@
         "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。",
         "exportSkippedErrorsWithNote": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。{{note}}",
         "apkgExportedWithNote": "APKG 已导出。{{note}}",
+        "syncWarningsTitle": "同步完成，但有需要注意的问题",
         "exportMissingMediaTitle": "APKG 已导出，但 {{count}} 个媒体文件缺失",
         "exportMissingMediaDetail": "{{count}} 个引用的图片/音频在磁盘上不存在或不可读，未打包进 APKG；打开文件时这些卡片会缺少媒体。",
         "paused": "已暂停生成",
