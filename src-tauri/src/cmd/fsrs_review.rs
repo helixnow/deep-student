@@ -183,7 +183,15 @@ pub async fn fsrs_get_due(
     let service = FsrsReviewService::new(state.anki_database.clone());
     if let Some(vfs) = state.vfs_db.as_ref() {
         let mastery = crate::mastery::MasteryService::new(vfs.clone());
-        for pending in service.pending_mastery_reviews(100)? {
+        // F11：补偿是尽力而为的旁路，读取/确认失败不能让到期列表整体失败。
+        let pending_reviews = match service.pending_mastery_reviews(100) {
+            Ok(rows) => rows,
+            Err(error) => {
+                log::warn!("[fsrs_get_due] mastery outbox query failed: {}", error);
+                Vec::new()
+            }
+        };
+        for pending in pending_reviews {
             let reconciled = if pending.revert {
                 matches!(
                     mastery.revert_fsrs_rating_for_log(&pending.log_id),
@@ -216,7 +224,13 @@ pub async fn fsrs_get_due(
                 }
             };
             if reconciled {
-                service.mark_mastery_review_synced(&pending.log_id)?;
+                if let Err(error) = service.mark_mastery_review_synced(&pending.log_id) {
+                    log::warn!(
+                        "[fsrs_get_due] failed to confirm mastery row {}: {}",
+                        pending.log_id,
+                        error
+                    );
+                }
             }
         }
     }
@@ -332,10 +346,32 @@ pub async fn fsrs_rate(
         let mastery = crate::mastery::MasteryService::new(vfs.clone());
         // Every committed review is a durable outbox row until this loop marks
         // it synced. Thus a crash after rate() is repaired by the next rating.
-        for pending in service.pending_mastery_reviews(100)? {
+        //
+        // F11：主评分事务此时**已经提交**。这里任何失败都不得让命令返回错误，
+        // 否则前端会把已落库的评分当成失败并可能重试产生二次评分。补偿失败只
+        // 记录日志，outbox 行保留，由下次评分 / get_due 继续补偿。
+        let pending_reviews = match service.pending_mastery_reviews(100) {
+            Ok(rows) => rows,
+            Err(error) => {
+                log::warn!(
+                    "[fsrs_rate] mastery outbox query failed after commit; rating stays committed: {}",
+                    error
+                );
+                Vec::new()
+            }
+        };
+        for pending in pending_reviews {
             if pending.revert {
                 match mastery.revert_fsrs_rating_for_log(&pending.log_id) {
-                    Ok(Some(_)) => service.mark_mastery_review_synced(&pending.log_id)?,
+                    Ok(Some(_)) => {
+                        if let Err(error) = service.mark_mastery_review_synced(&pending.log_id) {
+                            log::warn!(
+                                "[fsrs_rate] failed to confirm mastery revert for {}: {}",
+                                pending.log_id,
+                                error
+                            );
+                        }
+                    }
                     Ok(None) => {
                         log::debug!(
                             "[fsrs_rate] mastery revert stays pending; event not present for {}",
@@ -371,7 +407,13 @@ pub async fn fsrs_rate(
                 }
             };
             if tags.is_empty() {
-                service.mark_mastery_review_synced(&pending.log_id)?;
+                if let Err(error) = service.mark_mastery_review_synced(&pending.log_id) {
+                    log::warn!(
+                        "[fsrs_rate] failed to confirm tagless mastery row {}: {}",
+                        pending.log_id,
+                        error
+                    );
+                }
                 continue;
             }
             let mut last_error = None;
@@ -383,7 +425,13 @@ pub async fn fsrs_rate(
                     pending.rating,
                 ) {
                     Ok(_) => {
-                        service.mark_mastery_review_synced(&pending.log_id)?;
+                        if let Err(error) = service.mark_mastery_review_synced(&pending.log_id) {
+                            log::warn!(
+                                "[fsrs_rate] failed to confirm mastery row {}: {}",
+                                pending.log_id,
+                                error
+                            );
+                        }
                         last_error = None;
                         break;
                     }
@@ -425,7 +473,16 @@ pub async fn fsrs_undo_last_review(
     if let Some(vfs) = state.vfs_db.as_ref() {
         let mastery = crate::mastery::MasteryService::new(vfs.clone());
         match mastery.revert_fsrs_rating_for_log(&expectedLogId) {
-            Ok(Some(_)) => service.mark_mastery_review_synced(&expectedLogId)?,
+            Ok(Some(_)) => {
+                // 撤销已提交；确认补偿失败只是 outbox 延后，不能让撤销报错
+                if let Err(error) = service.mark_mastery_review_synced(&expectedLogId) {
+                    log::warn!(
+                        "[fsrs_undo] failed to confirm mastery revert for {}: {}",
+                        expectedLogId,
+                        error
+                    );
+                }
+            }
             Ok(None) => log::debug!(
                 "[fsrs_undo] mastery revert remains pending until event {} is observed",
                 expectedLogId

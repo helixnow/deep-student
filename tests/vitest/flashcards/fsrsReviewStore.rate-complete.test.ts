@@ -374,6 +374,37 @@ describe('fsrsReviewStore rate completion', () => {
     });
   });
 
+  it('reuses the same clientOpId when retrying a failed rating (F11)', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('transient'));
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [{ id: 'state-retry', ankiCardId: 'anki-retry', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: true,
+      ratingBusy: false,
+      error: null,
+      errorKind: null,
+      pendingRateOp: null,
+    });
+
+    await useFsrsReviewStore.getState().rate(3);
+    const firstCall = invokeMock.mock.calls[0]?.[1] as { clientOpId?: string } | undefined;
+    expect(typeof firstCall?.clientOpId).toBe('string');
+    expect(useFsrsReviewStore.getState().pendingRateOp?.opId).toBe(firstCall?.clientOpId);
+
+    invokeMock.mockResolvedValueOnce({
+      logId: 'log-retry',
+      dueMs: Date.now() + 86_400_000,
+      scheduledDays: 1,
+      cardState: { state: 2, lastReviewMs: Date.now() },
+    });
+    await useFsrsReviewStore.getState().rate(3);
+
+    const secondCall = invokeMock.mock.calls[1]?.[1] as { clientOpId?: string } | undefined;
+    expect(secondCall?.clientOpId).toBe(firstCall?.clientOpId);
+    expect(useFsrsReviewStore.getState().pendingRateOp).toBeNull();
+  });
+
   it('invokes fsrs_rate with cardStateId (not cardId)', async () => {
     invokeMock.mockResolvedValueOnce({ logId: 'log-1' });
     useFsrsReviewStore.setState({
