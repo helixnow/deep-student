@@ -10,6 +10,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.62](https://github.com/helixnow/deep-student/compare/v0.9.61...v0.9.62) (2026-09-17)
+
+
+### Features
+
+* **fsrs:** 今日计划与额度外积压/等待学习卡分开呈现（F08） ([7065f6d](https://github.com/helixnow/deep-student/commit/7065f6df708f3b83a2821c2435dbe3b15c7f8d68))
+* **fsrs:** 评分现场显示判断标准（F09） ([5bdce04](https://github.com/helixnow/deep-student/commit/5bdce048214b38fbac021dbff6491503a6ecb64d))
+* **notes:** 阅读态隐藏格式条、属性内容身份与工具条减法（C9/C12/B04） ([ee6333f](https://github.com/helixnow/deep-student/commit/ee6333f76f7a2754831d47e3e0ae533c643f78bd))
+* **templates:** confirm schema impact before destructive edits ([1c7b3bd](https://github.com/helixnow/deep-student/commit/1c7b3bd598e1b7990d038a2a99f4f80d5e42344b))
+
+
+### Bug Fixes
+
+* **anki:** 全局限额按全文等距抽样分配，零额度段标记跳过原因（F14） ([75eaea6](https://github.com/helixnow/deep-student/commit/75eaea650ff9719512afd78f1abac712257f3ff7))
+* **anki:** 卡片删除撤销窗口/提交脱离组件生命周期（F19） ([0e7514b](https://github.com/helixnow/deep-student/commit/0e7514ba5d9faff048e5d05d068493ab7cb504d7))
+* **anki:** 同名 note_type 冲突同步前告警并可见（F18） ([d7aae8b](https://github.com/helixnow/deep-student/commit/d7aae8b3fb2ea3c2840d4ebac1f44fcffbade74f))
+* **anki:** 直接导出入口返回并展示媒体完整性报告（F16） ([28884c3](https://github.com/helixnow/deep-student/commit/28884c34bdbffebd389430a445f4a0bb2d00626b))
+* **apkg:** 多模板 model id 由 template_id 稳定派生（F21） ([f026deb](https://github.com/helixnow/deep-student/commit/f026debb71a7d3660bc3eedf04385acbabfcd538))
+* **browser:** 功能开关判定与入口可用性刷新 ([ab2e5e2](https://github.com/helixnow/deep-student/commit/ab2e5e23d054c4bf1a32204fb6d63474cacbbeb5))
+* **chat:** 收敛附件上传与共享资源生命周期 ([00ca3c7](https://github.com/helixnow/deep-student/commit/00ca3c7ca1da14d6642d0de13565fe1796ebc03b))
+* **flashcards:** configure learn-ahead and preserve rating retry payload ([ad47cb1](https://github.com/helixnow/deep-student/commit/ad47cb12804f5beceabe536bf3a2304e72af4810))
+* **flashcards:** FSRS 会话代际与撤销恢复 ([dbb88d2](https://github.com/helixnow/deep-student/commit/dbb88d2f30d82884c77687cf3286db8a19814546))
+* **flashcards:** isolate AnkiConnect models by template identity ([508e7fe](https://github.com/helixnow/deep-student/commit/508e7fedcf54084ab64df5817b5ff95b5fc5924a))
+* **flashcards:** measure active question-to-rating duration ([714ebad](https://github.com/helixnow/deep-student/commit/714ebad816f12efdc4433b70a662e4361795bbe1))
+* **flashcards:** preserve imported Cloze note and ordinal identity in APKG ([c78a466](https://github.com/helixnow/deep-student/commit/c78a4664401167887ff8100a6d33b1895afdcd30))
+* **flashcards:** render template math and imported cloze fallback ([681e1e1](https://github.com/helixnow/deep-student/commit/681e1e128826ac60a85f6625fef03dda7706e1a9))
+* **fsrs:** leech 自动暂停回写会话并出队（F04） ([aa968e4](https://github.com/helixnow/deep-student/commit/aa968e44adb353d6d5672170d340396527415234))
+* **fsrs:** 掌握度排序不越过分钟级到期学习卡（F02） ([1a66bd1](https://github.com/helixnow/deep-student/commit/1a66bd1456454bd82c329466c40bccfb7b538407))
+* **fsrs:** 滑动评分动画按本轮作答身份复位（F07） ([f57014c](https://github.com/helixnow/deep-student/commit/f57014c27a57a7df9f6cbd30d844f6b61681593c))
+* **fsrs:** 目标保持率配置接入入队/评分/预览/重置（F01） ([ced045e](https://github.com/helixnow/deep-student/commit/ced045eb31f99a6ef84b3e9a640b413d2da8efa4))
+* **fsrs:** 评分提交后补偿失败不再回滚命令，重试复用操作 ID（F11） ([f6d5377](https://github.com/helixnow/deep-student/commit/f6d5377cb334b2caeb5615f58dde40eff4c058d8))
+* **generative-ui:** Markdown 正文渲染自足（数学、链接与净化） ([7c4d264](https://github.com/helixnow/deep-student/commit/7c4d264aebd30786f17ce96c349c7d5c9bbee2bb))
+* **mindmap:** 为文档加载与保存加代际守卫 ([482201b](https://github.com/helixnow/deep-student/commit/482201b2e04b5033118b6881b6ff51457a3a52f9))
+* **notes:** share full-document API and preserve save error and dirty state ([35910a0](https://github.com/helixnow/deep-student/commit/35910a06a9dec683d35b3c629514199f1c73c0d9))
+* **notes:** 保存与关闭一致性（C1/C2/C3/C15） ([6e70e76](https://github.com/helixnow/deep-student/commit/6e70e7694263cafd42a10cf475852af8ed9738c4))
+* **notes:** 元数据 CAS、大纲消歧与局部标签范围（C6/C8/C13/B04） ([7f1de57](https://github.com/helixnow/deep-student/commit/7f1de5779a7393784f7f11978bed13d13b5cfd81))
+* **notes:** 导出保存屏障与全文范围提示（C7/C16） ([a530dc4](https://github.com/helixnow/deep-student/commit/a530dc48fcb255aca073d68d7ccf40697373830d))
+* **notes:** 强制外部更新与显式保存按视图归属（C4） ([3828baf](https://github.com/helixnow/deep-student/commit/3828baf3b4ccf358a5428e9f1888a81f46d647c3))
+* **notes:** 笔记异步加载与 AI 编辑代际收敛 ([7eba92e](https://github.com/helixnow/deep-student/commit/7eba92e197e924ccf90d4d1dcf1400883de54341))
+* **notes:** 统一改名双链维护、查找面板所有权与输入法守卫（C5/C10/C14） ([4c97052](https://github.com/helixnow/deep-student/commit/4c97052b86aa2ae5a4320da684f7c5d97e44f219))
+* **notes:** 补齐标题保存契约并顺序执行关闭保存（C15） ([598486a](https://github.com/helixnow/deep-student/commit/598486a1bc1795e31968e58ba17e8bf48269561b))
+* **pdf:** 批注保存串行化并加固加载生命周期 ([a31b363](https://github.com/helixnow/deep-student/commit/a31b3635af10e1c12a2c6fcda6ff08b4324ffb8f))
+* **practice:** 统一练习/考试请求与计时器归属 ([18c48f6](https://github.com/helixnow/deep-student/commit/18c48f630e25cbf4fa3724d8f735c81576138411))
+* **qbank:** 聊天管线补注 QuestionBankService 并让 card_id 查询兼容 question id ([3312364](https://github.com/helixnow/deep-student/commit/3312364975f74d83720a7d2326c96cc0d8b6272f))
+* **shortcuts:** 导航快捷键尊重输入态与 IME ([f7f6968](https://github.com/helixnow/deep-student/commit/f7f6968030d8bf966ce5118a61daeba533d6c6bd))
+* **stats:** 留存按每卡每日首次复习计，参数面板改为记忆状态分布（F10） ([bb418a4](https://github.com/helixnow/deep-student/commit/bb418a4c8140920921d7dd6114db23a226c685f5))
+* 修复 v0.9.61 交互测试确认的产品问题 ([3df6f88](https://github.com/helixnow/deep-student/commit/3df6f8878e95ed5187f24a6baa900f7c9cfe1763))
+
+
+### Reverts
+
+* **notes:** 属性大纲仍使用可见窗口内容（尊重既有 windowing 契约） ([c00f6c1](https://github.com/helixnow/deep-student/commit/c00f6c1099d62fab20a479492848804e7cb3e27c))
+
 ## [0.9.61](https://github.com/helixnow/deep-student/compare/v0.9.60...v0.9.61) (2026-09-12)
 
 
