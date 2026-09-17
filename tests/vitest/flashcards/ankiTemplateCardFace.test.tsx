@@ -35,6 +35,28 @@ const template: CustomAnkiTemplate = {
 };
 
 describe('AnkiTemplateCardFace', () => {
+  it('renders template math with native MathML and Anki card styles inside the sandbox', () => {
+    const mathTemplate = { ...template, front_template: '<div>{{Text}}</div><code>\\(raw\\)</code>', css_style: '.card { color: red; }' };
+    const mathCard = { ...card, extra_fields: { Text: 'Energy \\(E=mc^2\\) <img src="bad" onerror="alert(1)">' } };
+    const view = render(<AnkiTemplateCardFace card={mathCard} template={mathTemplate} side="front" />);
+    const doc = new DOMParser().parseFromString(view.container.querySelector('iframe')!.getAttribute('srcdoc')!, 'text/html');
+    expect(doc.body.classList.contains('card')).toBe(true);
+    expect(doc.querySelector('math')).not.toBeNull();
+    expect(doc.querySelector('msup')).not.toBeNull();
+    expect(doc.querySelector('code')?.textContent).toBe('\\(raw\\)');
+    expect(doc.querySelector('img')?.hasAttribute('onerror')).toBe(false);
+  });
+
+  it('preserves imported cloze ordinal when its template is unavailable', () => {
+    const multi = { ...card, text: '{{c1::Alpha}} and {{c2::Beta}}', extra_fields: { AnkiCardOrd: '1' } };
+    const view = render(<AnkiTemplateCardFace card={multi} side="front" />);
+    const srcdoc = view.container.querySelector('iframe')!.getAttribute('srcdoc')!;
+    expect(srcdoc).toContain('Alpha');
+    expect(srcdoc).not.toContain('Beta');
+    view.rerender(<AnkiTemplateCardFace card={multi} side="back" />);
+    expect(view.container.querySelector('iframe')!.getAttribute('srcdoc')).toContain('Beta');
+  });
+
   it('renders controlled template sides without leaking a Cloze answer on the front', () => {
     const view = render(
       <AnkiTemplateCardFace card={card} template={template} side="front" />,
