@@ -22,6 +22,7 @@
     "textbook_library": "教材库",
     "rag_query": "RAG查询",
     "anki_generation": "Anki制卡",
+    "flashcards": "闪卡",
     "sessions": "会话",
     "template_management": "模板管理",
     "notes": "笔记",
@@ -53,6 +54,7 @@
       "todo": "待办",
       "skills_management": "技能",
       "task_dashboard": "制卡",
+      "flashcards": "闪卡",
       "data_management": "数据"
     }
   },

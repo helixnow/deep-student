@@ -1296,7 +1296,7 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 - `batch_update_cards` / `delete_cards` 逐卡使用既有 `IMMEDIATE` 事务 CAS 原语，不是整批单事务原子提交：冲突卡跳过、成功卡生效（与逐卡报告语义一致）。若未来需要整批原子性，应在 database 层新增批量事务原语。
 - APKG 媒体会按清单导入本地 `anki_media/` 并在再导出时打回包内；无法安全落盘的媒体按结构化原因统计并跳过。APKG 模板当前不落入本地模板库，`importedTemplates=0`。
 - 统一失败分段重试不会自动删除旧错误诊断卡；必须在 `get_cards` 验收替代卡后显式删除，避免部分修复时误删证据。
-- FSRS 目前使用默认牌组，不提供每日新卡上限或 Agent 牌组管理工具。
+- FSRS 目前使用默认牌组。每日新卡上限 / 每日复习上限 / 目标保持率等调度设置已通过对话工具 `fsrs_get_scheduler_config`（Low 只读）与 `fsrs_update_scheduler_config`（Medium 写入，0–9999 区间）暴露给 Agent，与闪卡「统计 → 调度设置」面板读写同一份默认牌组 `config_json`；牌组级多牌组管理工具仍未提供。
 - `analyze` 与制卡管线共用路由决策函数（Round 3 #7），但引用解析是元数据轻量版（不展开 VFS 存储的完整 ref data），复合引用计数可能与 run 管线有出入；它仍不提供精确卡数预测，`recommended.maxCards` 只是与 skill 口径一致的建议上限。
 - `sync` 依赖本机 Anki 和 AnkiConnect；本工具面不改变 AnkiConnect 协议。
 - 聊天输入栏不提供模板选择 UI，模板选择由 Agent 工具参数和现有模板管理界面承担。

@@ -3,6 +3,7 @@ import type { CurrentView } from '@/types/navigation';
 import {
   StudyBlocksIcon,
   StudyBooksIcon,
+  StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
   StudySettingsIcon,
@@ -26,7 +27,8 @@ export type NavViewType =
   | 'learning-hub'
   | 'skills-management'
   | 'ui-lab'
-  | 'todo';
+  | 'todo'
+  | 'flashcards';
 
 /**
  * 导航项类型定义
@@ -76,6 +78,12 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
       view: 'task-dashboard',
       icon: StudyStackIcon,
     },
+    // ★ 闪卡复习：紧随制卡（制卡产出 → 闪卡消化）
+    {
+      name: t('sidebar:navigation.flashcards', '闪卡'),
+      view: 'flashcards',
+      icon: StudyCardsIcon,
+    },
     {
       name: t('sidebar:navigation.template_management', '模板管理'),
       view: 'template-management',
@@ -110,6 +118,7 @@ export const MOBILE_APP_LAUNCHER_VIEWS = [
   'todo',
   'skills-management',
   'task-dashboard',
+  'flashcards',
   'data-management',
 ] as const satisfies readonly CurrentView[];
 

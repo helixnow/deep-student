@@ -21,6 +21,7 @@ import { canonicalizeView } from '@/app/navigation/canonicalView';
 import { useIsUILabEnabled } from '@/utils/uiLabToggle';
 import {
   StudyBooksIcon,
+  StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
   StudyStackIcon,
@@ -54,6 +55,7 @@ const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
   todo: StudyTodoIcon,
   'skills-management': StudyMagicWandIcon,
   'task-dashboard': StudyStackIcon,
+  flashcards: StudyCardsIcon,
   'data-management': Database,
 };
 
@@ -63,6 +65,7 @@ const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallbac
   todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
   'task-dashboard': { key: 'sidebar:navigation.launcher.task_dashboard', fallback: '制卡' },
+  flashcards: { key: 'sidebar:navigation.launcher.flashcards', fallback: '闪卡' },
   'data-management': { key: 'sidebar:navigation.launcher.data_management', fallback: '数据' },
 };
 
@@ -72,6 +75,7 @@ const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback
   todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
   'task-dashboard': { key: 'sidebar:navigation.anki_generation', fallback: 'Anki制卡' },
+  flashcards: { key: 'sidebar:navigation.flashcards', fallback: '闪卡' },
   'data-management': { key: 'common:navigation.data_management', fallback: '数据管理' },
 };
 

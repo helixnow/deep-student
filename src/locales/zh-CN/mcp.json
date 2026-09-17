@@ -199,6 +199,8 @@
     "file_manager_commit": "执行文件整理",
     "file_manager_plan": "规划文件整理",
     "file_manager_restore": "还原已删除文件",
+    "fsrs_get_scheduler_config": "读取闪卡调度设置",
+    "fsrs_update_scheduler_config": "修改闪卡调度设置",
     "git_branch": "管理 Git 分支",
     "git_commit": "提交 Git 更改",
     "git_diff": "查看 Git 差异",

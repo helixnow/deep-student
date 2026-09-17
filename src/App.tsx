@@ -154,6 +154,7 @@ import {
   LazySandboxWorkbenchPage,
   LazyPdfReader,
   LazyTodoPage,
+  LazyFlashcardsPage,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
   LazyLLMOutputPlayground,
@@ -481,6 +482,7 @@ const WORKBENCH_APP_BY_CLASSIC_VIEW: Partial<Record<CurrentView, string>> = {
   'template-management': 'templates',
   'task-dashboard': 'taskDashboard',
   'sandbox-workbench': 'sandbox',
+  'flashcards': 'flashcards',
 };
 
 const BRIDGE_COMPLETION_REASONS = new Set([
@@ -2634,6 +2636,12 @@ function App() {
     <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
   ), []);
 
+  const flashcardsContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyFlashcardsPage isActive={currentView === 'flashcards'} />
+    </Suspense>
+  ), [currentView]);
+
   const styleDebugContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <MobilePageScaffold>
@@ -3063,6 +3071,9 @@ function App() {
 
               {/* 待办事项独立页面 */}
               {renderViewLayer('todo', <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>)}
+
+              {/* 闪卡复习（传统壳入口） */}
+              {renderViewLayer('flashcards', flashcardsContent)}
 
               {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><MobilePageScaffold><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></MobilePageScaffold></Suspense>)}
 
