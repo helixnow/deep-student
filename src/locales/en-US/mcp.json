@@ -199,6 +199,8 @@
     "file_manager_commit": "Apply File Organization",
     "file_manager_plan": "Plan File Organization",
     "file_manager_restore": "Restore Deleted File",
+    "fsrs_get_scheduler_config": "Read Flashcard Scheduler Settings",
+    "fsrs_update_scheduler_config": "Update Flashcard Scheduler Settings",
     "git_branch": "Manage Git Branches",
     "git_commit": "Commit Git Changes",
     "git_diff": "View Git Diff",

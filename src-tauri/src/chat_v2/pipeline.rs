@@ -38,12 +38,12 @@ pub(crate) use super::tools::{
     AcademicSearchExecutor, AdmittedToolDispatcher, AttemptCompletionExecutor, AutomationExecutor,
     BuiltinResourceExecutor, BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor,
     DataGovernanceToolExecutor, DstuToolExecutor, ExecutionContext, FetchExecutor,
-    FileManagerExecutor, GeneralToolExecutor, ImageGenerationExecutor, IndexWebpageToolExecutor,
-    KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
-    LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor,
-    OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor,
-    TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity, TranslationToolExecutor,
-    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
+    FileManagerExecutor, FsrsSettingsExecutor, GeneralToolExecutor, ImageGenerationExecutor,
+    IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor,
+    LocalShellExecuteExecutor, LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor,
+    MemoryToolExecutor, OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor,
+    TemplateDesignerExecutor, TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity,
+    TranslationToolExecutor, UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -358,6 +358,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(SettingsModelsToolExecutor::new()));
         executors.push(Arc::new(LlmUsageToolExecutor::new()));
         executors.push(Arc::new(LearningOverviewExecutor::new()));
+        executors.push(Arc::new(FsrsSettingsExecutor::new())); // 🆕 闪卡调度设置 get/update（与设置面板同源）
         executors.push(Arc::new(DataGovernanceToolExecutor::new()));
         executors.push(Arc::new(MemoryToolExecutor::new()));
         executors.push(Arc::new(UserTodoExecutor::new()));

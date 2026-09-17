@@ -374,6 +374,7 @@
     "connector-tools": "连接器与对象桥",
     "task-governance-tools": "任务治理",
     "file-manager-tools": "文件管理",
+    "fsrs-settings-tools": "闪卡调度设置",
     "web-fetch": "网页抓取",
     "subagent-worker": "子代理",
     "tutor-mode": "导师模式",

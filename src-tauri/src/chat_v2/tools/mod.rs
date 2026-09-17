@@ -64,6 +64,7 @@ pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
 pub mod file_manager_executor;
+pub mod fsrs_settings_executor; // 🆕 闪卡 FSRS 调度设置工具执行器（get/update，与设置面板同源）
 pub mod general_executor;
 pub mod generative_ui_executor; // 🆕 生成式 UI 工具执行器（render_generative_ui）
 pub mod git_executor; // 语义 Git 工具组（status/diff/log/branch/commit）
@@ -170,6 +171,7 @@ pub use executor::{AdmittedToolDispatcher, ExecutionContext, ToolExecutor, ToolS
 pub use executor_registry::{ToolExecutorRegistry, ToolRiskSnapshot};
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use file_manager_executor::FileManagerExecutor;
+pub use fsrs_settings_executor::FsrsSettingsExecutor; // 🆕 闪卡 FSRS 调度设置工具执行器
 pub use general_executor::GeneralToolExecutor;
 pub use generative_ui_executor::GenerativeUiExecutor; // 🆕 生成式 UI 工具执行器
 pub use git_executor::GitToolExecutor; // 语义 Git 工具组执行器

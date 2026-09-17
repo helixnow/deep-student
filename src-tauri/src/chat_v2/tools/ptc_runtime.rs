@@ -134,6 +134,8 @@ pub const PTC_ALLOWED_TOOLS: &[&str] = &[
     "builtin-learning_overview",
     "builtin-pomodoro_today_stats",
     "builtin-pomodoro_daily_stats",
+    // —— 闪卡调度设置（get 只读 Low；update Medium 不收录）——
+    "builtin-fsrs_get_scheduler_config",
     // —— 记忆只读面 ——
     "builtin-memory_read",
     "builtin-memory_list",
@@ -1090,7 +1092,7 @@ mod tests {
 
     #[test]
     fn whitelist_exact_membership_and_fail_closed() {
-        assert_eq!(PTC_ALLOWED_TOOLS.len(), 35);
+        assert_eq!(PTC_ALLOWED_TOOLS.len(), 36);
         // 检索 + 系统观测 + 学习数据只读面抽查
         for tool in [
             "builtin-unified_search",
