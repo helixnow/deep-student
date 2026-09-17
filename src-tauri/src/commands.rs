@@ -3947,6 +3947,18 @@ pub async fn delete_custom_template(
         "message": format!("模板「{}」已删除", template.name),
     }))
 }
+
+/// 返回模板当前仍被多少张卡片引用，供编辑器在破坏性 schema 变更前说明影响范围。
+#[tauri::command]
+pub async fn count_custom_template_references(
+    template_id: String,
+    state: State<'_, AppState>,
+) -> Result<i64> {
+    state
+        .database
+        .count_anki_cards_referencing_template(&template_id)
+        .map_err(|e| AppError::database(format!("统计模板引用卡片失败: {}", e)))
+}
 /// 导出模板
 #[tauri::command]
 pub async fn export_template(

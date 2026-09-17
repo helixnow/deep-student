@@ -28,6 +28,7 @@
     "updated_short": "Updated {{date}}",
     "preview_side_aria": "Switch preview side",
     "unsaved_changes_confirm": "This template has unsaved changes. Discard them and leave?",
+    "schema_change_confirm": "This change affects {{count}} existing card(s) ({{oldType}} → {{newType}}) and may change field mapping or rendering. Continue?",
     "delete_confirm_title": "Delete \"{{name}}\"?",
     "delete_confirm_custom_note": "This cannot be undone.",
     "delete_confirm_builtin_note": "Deleted built-in templates stay disabled and will not be restored automatically by app upgrades or by re-importing built-in templates.",
