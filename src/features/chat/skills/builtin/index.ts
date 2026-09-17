@@ -460,7 +460,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_get_cards',
       description:
-        '分页读回某次制卡任务的卡片全文，用于验收、定位和修改。单字段超过 2000 字符会截断并标记 truncated/truncatedFields（截断文本禁止作为整字段覆盖源）。返回含库中全部 live 卡（含因 maxCards 超限保留但未展示在预览块的卡），hiddenOverLimitCount 表示这类隐藏卡数量。',
+        '分页读回某次制卡任务的卡片全文，用于验收、定位和修改。仅限当前会话拥有的制卡文档；其他会话的卡请改用 list_library_cards。单字段超过 2000 字符会截断并标记 truncated/truncatedFields（截断文本禁止作为整字段覆盖源）。返回含库中全部 live 卡（含因 maxCards 超限保留但未展示在预览块的卡），hiddenOverLimitCount 表示这类隐藏卡数量。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -479,7 +479,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_update_card',
       description:
-        '按 cardId 修改一张卡。必须传 get_cards 返回的 expectedVersion；冲突时返回最新卡片供重试。截断防御：若目标字段超过 2000 字符截断限、且新值疑似基于 get_cards 的截断输出（整字段替换会毁掉超限部分），会返回 status=blocked / error=truncated_source_overwrite；只有确认要整字段覆盖时才显式传 allowTruncatedSource=true。',
+        '按 cardId 修改一张卡（仅限当前会话拥有的卡片；跨会话请改用 update_library_card）。必须传 get_cards 返回的 expectedVersion；冲突时返回最新卡片供重试。截断防御：若目标字段超过 2000 字符截断限、且新值疑似基于 get_cards 的截断输出（整字段替换会毁掉超限部分），会返回 status=blocked / error=truncated_source_overwrite；只有确认要整字段覆盖时才显式传 allowTruncatedSource=true。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1376,6 +1376,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
 - 暂停/恢复或撤销：必须先 list 读取最新 \`reviewState\`。暂停/恢复传 \`expectedReviewVersion\`；撤销仅在 \`latestReview.undoable=true\` 时传同一快照的 \`expectedReviewVersion + expectedLogId\`。只有用户明确指定目标与动作才执行，歧义时先 ask_user。
 - 删除：先 list 获取同一快照的 \`expectedVersion\` 与 \`reviewState.reviewVersion\`；未入队即 \`reviewState=null\` 时，\`expectedReviewVersion\` 必须显式传 \`null\`。一次删除超过 3 张库卡必须先 ask_user；即使单张，目标或删除意图不明确时也必须确认。冲突后重新 list，不得换用会话级删除绕过 CAS。
 - **Agent 禁止评分**：库级流程同样严禁 Agent 选择 Again/Hard/Good/Easy，工具清单没有任何 rate/score 工具。Agent 只能读取统计与状态，并在用户明确要求时入队、编辑、暂停/恢复、撤销或删除；实际评分必须由用户在复习 UI 中完成。
+- **所有权边界**：\`get_cards / update_card / delete_card / add_cards / enqueue_review / set_suspended / undo_last_review\` 等会话域工具只能触达**当前会话拥有**的制卡文档；用户要改"以前的卡 / 其他会话的卡"，或这些工具对目标返回 \`statusNotFound\` 时，不要重试同一 id，也不要猜测 documentId——直接切换到上面的库级流程（\`list_library_cards\` 定位后用对应 \`*_library_*\` 工具），或告知用户在闪卡应用的卡片库中编辑。即使原制卡会话已删除，库里的卡片依然存在且可经库级工具修改。
 
 ## 批量程序化变换（chatanki_transform）
 

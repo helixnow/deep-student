@@ -11576,7 +11576,7 @@ fn humanize_chatanki_error(error: String) -> String {
             "failed to start card generation; retry or adjust the template/settings"
         }
         "statusNotFound" => {
-            "no card task found for the given id; do not retry the same id - call chatanki_status to list current tasks"
+            "no live card task found for the given id under this session; the id may be wrong, or the content was created in a different card-making session (session-scoped tools cannot touch other sessions' documents). Do not retry the same id: for cross-session changes call chatanki_list_library_cards to locate the card (cardId + content version), then use the chatanki_*_library_card tools (update/delete/enqueue/set_suspended/undo), or ask the user to edit it in the flashcards app library"
         }
         "templateDatabaseUnavailable" => {
             "the template database is currently unavailable; retry later"
@@ -14403,9 +14403,11 @@ mod tests {
     fn humanize_chatanki_error_appends_readable_detail_after_key() {
         let humanized =
             humanize_chatanki_error("blocks.ankiCards.errors.statusNotFound".to_string());
-        // key 保留（前端按 key 本地化），可读描述在后（LLM 据此修正调用）
+        // key 保留（前端按 key 本地化），可读描述在后（LLM 据此修正调用）；
+        // statusNotFound 的修正路径是库级工具（跨会话改动不重试同一 id）
         assert!(humanized.starts_with("blocks.ankiCards.errors.statusNotFound: "));
-        assert!(humanized.contains("chatanki_status"));
+        assert!(humanized.contains("chatanki_list_library_cards"));
+        assert!(humanized.contains("chatanki_*_library_card"));
 
         let humanized =
             humanize_chatanki_error("blocks.ankiCards.errors.ankiConnectUnavailable".to_string());
