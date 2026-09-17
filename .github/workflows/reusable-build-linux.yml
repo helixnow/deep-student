@@ -104,6 +104,19 @@ jobs:
           version: ${{ env.APT_CACHE_SCOPE }}
           execute_install_scripts: true
 
+      # The apt snapshot action can restore package files while leaving the
+      # pkg-config development metadata unavailable. Verify the dependency
+      # Tauri actually consumes and repair an incomplete cache restore.
+      - name: Verify Linux development dependencies
+        run: |
+          if ! pkg-config --exists 'gdk-3.0 >= 3.22' 'webkit2gtk-4.1'; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev libgtk-3-dev \
+              libayatana-appindicator3-dev librsvg2-dev patchelf rpm
+          fi
+          pkg-config --print-errors --exists 'gdk-3.0 >= 3.22' 'webkit2gtk-4.1'
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
