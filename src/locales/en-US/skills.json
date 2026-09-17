@@ -374,6 +374,7 @@
     "connector-tools": "Connectors and Object Bridge",
     "task-governance-tools": "Task Governance",
     "file-manager-tools": "File Manager",
+    "fsrs-settings-tools": "Flashcard Scheduling",
     "web-fetch": "Web Fetch",
     "subagent-worker": "Subagent Worker",
     "tutor-mode": "Tutor Mode",

@@ -165,6 +165,7 @@
       "running": "导入中…",
       "hint": "选择本地 .apkg 文件导入卡片库",
       "success": "导入完成：共 {{count}} 张卡片",
+      "notApkg": "请选择 .apkg 格式的 Anki 牌组文件",
       "failed": "Anki 牌组导入失败"
     },
     "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。"

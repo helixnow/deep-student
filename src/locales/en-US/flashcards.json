@@ -165,6 +165,7 @@
       "running": "Importing…",
       "hint": "Pick a local .apkg file to import into the library",
       "success": "Import finished: {{count}} cards",
+      "notApkg": "Please choose an Anki deck file in .apkg format",
       "failed": "Failed to import the Anki deck"
     },
     "emptyHint": "Create a card by hand, or import a local Anki deck (.apkg)."

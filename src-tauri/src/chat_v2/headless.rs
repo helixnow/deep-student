@@ -604,6 +604,8 @@ pub(crate) const LEGACY_HEADLESS_ALLOWED_TOOLS: &[&str] = &[
     "builtin-learning_overview",
     "builtin-pomodoro_today_stats",
     "builtin-pomodoro_daily_stats",
+    // 闪卡调度设置（get 只读 Low；update Medium 必须走有人值守审批）
+    "builtin-fsrs_get_scheduler_config",
     // 记忆只读面（无人值守不得修改用户长期记忆）
     "builtin-memory_read",
     "builtin-memory_list",
@@ -2086,10 +2088,10 @@ mod tests {
     use crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy;
     use crate::chat_v2::tools::{
         AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
-        DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, IndexWebpageToolExecutor,
-        LearningOverviewExecutor, LlmUsageToolExecutor, MemoryToolExecutor, ReviewToolExecutor,
-        SettingsModelsToolExecutor, TodoListExecutor, ToolExecutor, ToolExecutorRegistry,
-        ToolSensitivity, UserTodoExecutor,
+        DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, FsrsSettingsExecutor,
+        IndexWebpageToolExecutor, LearningOverviewExecutor, LlmUsageToolExecutor,
+        MemoryToolExecutor, ReviewToolExecutor, SettingsModelsToolExecutor, TodoListExecutor,
+        ToolExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
     };
     use serde_json::json;
     use std::sync::Arc;
@@ -2106,6 +2108,7 @@ mod tests {
             Arc::new(LlmUsageToolExecutor::new()),
             Arc::new(DataGovernanceToolExecutor::new()),
             Arc::new(LearningOverviewExecutor::new()),
+            Arc::new(FsrsSettingsExecutor::new()),
             Arc::new(IndexWebpageToolExecutor::new()),
             Arc::new(TodoListExecutor::new()),
             Arc::new(crate::chat_v2::tools::qbank_executor::QBankExecutor::new()),

@@ -361,7 +361,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     importApkg: async () => {
       set({ importing: true, actionError: null });
       try {
-        const [{ fileManager }, { invoke }] = await Promise.all([
+        const [{ fileManager, isVirtualUri, extractFileName }, { invoke }] = await Promise.all([
           import('@/utils/fileManager'),
           import('@tauri-apps/api/core'),
         ]);
@@ -370,10 +370,50 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
         });
         if (!path) return { status: 'canceled' as const };
-        const result = await invoke<{ importedCards?: number }>('import_apkg_to_library', { path });
-        requestFlashcardsDueRefresh();
-        await get().refresh();
-        return { status: 'imported' as const, importedCards: result?.importedCards ?? 0 };
+
+        // Android SAF 选择器返回 content:// 等虚拟 URI（不是文件系统路径），而
+        // import_apkg_to_library 只认真实路径：先经后端 copy_file（unified 层支持
+        // 虚拟源、自动建父目录、SHA 回读校验）落盘到应用私有 tmp，再走同一条导入
+        // 命令；桌面端真实路径保持原逻辑直传。
+        let importPath = path;
+        let stagedPath: string | null = null;
+        let removeStaged: ((path: string) => Promise<void>) | null = null;
+        if (isVirtualUri(path)) {
+          // SAF document ID 解码后可能含 `:` 等文件名非法字符（如 `abc:deck.apkg`），
+          // 统一净化为 `_` 再落盘
+          const fileName = (extractFileName(path) || '').replace(/[\\/:*?<>|\x00-\x1f]/g, '_');
+          if (!fileName.toLowerCase().endsWith('.apkg')) {
+            const message = i18n.t('flashcards:library.import.notApkg');
+            set({ actionError: message });
+            return { status: 'failed' as const, error: message };
+          }
+          const [{ copyFile: copyViaBackend }, { appDataDir, join }, { mkdir, remove }] =
+            await Promise.all([
+              import('@/utils/chatApi'),
+              import('@tauri-apps/api/path'),
+              import('@tauri-apps/plugin-fs'),
+            ]);
+          const stagedDir = await join(await appDataDir(), 'tmp_apkg_import');
+          await mkdir(stagedDir, { recursive: true });
+          stagedPath = await join(stagedDir, fileName);
+          await copyViaBackend(path, stagedPath);
+          removeStaged = remove;
+          importPath = stagedPath;
+        }
+
+        try {
+          const result = await invoke<{ importedCards?: number }>('import_apkg_to_library', { path: importPath });
+          requestFlashcardsDueRefresh();
+          await get().refresh();
+          return { status: 'imported' as const, importedCards: result?.importedCards ?? 0 };
+        } finally {
+          if (stagedPath && removeStaged) {
+            // 临时落盘清理（best-effort；失败仅残留 tmp 文件，不影响导入结果）
+            try {
+              await removeStaged(stagedPath);
+            } catch { /* ignore */ }
+          }
+        }
       } catch (error) {
         const message = getErrorMessage(error) || i18n.t('flashcards:library.import.failed');
         set({ actionError: message });

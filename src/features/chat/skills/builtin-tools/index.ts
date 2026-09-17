@@ -49,6 +49,7 @@ export { llmUsageToolsSkill } from './llm-usage-tools';
 export { dataGovernanceToolsSkill } from './data-governance-tools';
 export { textbookPdfToolsSkill } from './textbook-pdf-tools';
 export { learningOverviewToolsSkill } from './learning-overview-tools';
+export { fsrsSettingsToolsSkill } from './fsrs-settings-tools';
 export { indexWebpageToolsSkill } from './index-webpage-tools';
 export { connectorToolsSkill } from './connector-tools';
 export { fileManagerToolsSkill } from './file-manager-tools';
@@ -97,6 +98,7 @@ import { llmUsageToolsSkill } from './llm-usage-tools';
 import { dataGovernanceToolsSkill } from './data-governance-tools';
 import { textbookPdfToolsSkill } from './textbook-pdf-tools';
 import { learningOverviewToolsSkill } from './learning-overview-tools';
+import { fsrsSettingsToolsSkill } from './fsrs-settings-tools';
 import { indexWebpageToolsSkill } from './index-webpage-tools';
 import { connectorToolsSkill } from './connector-tools';
 import { fileManagerToolsSkill } from './file-manager-tools';
@@ -164,6 +166,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   dataGovernanceToolsSkill,
   textbookPdfToolsSkill,
   learningOverviewToolsSkill,
+  fsrsSettingsToolsSkill,
   indexWebpageToolsSkill,
   connectorToolsSkill,
   fileManagerToolsSkill,

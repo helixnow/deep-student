@@ -477,7 +477,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       if (navigationScope === 'chat') {
         return item.view === 'chat-v2';
       }
-      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management', 'ui-lab'].includes(item.view);
+      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'flashcards', 'template-management', 'ui-lab'].includes(item.view);
     }),
     [navItems, navigationScope]
   );

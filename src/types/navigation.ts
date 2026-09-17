@@ -22,6 +22,7 @@ export type CurrentView =
   | 'learning-hub'      // Learning Hub 学习资源全屏模式
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面
+  | 'flashcards'        // 闪卡复习（传统壳入口；OS 模式仍走学习桌面应用）
   | 'chat-v2-test'      // Chat V2 集成测试页面（开发用）
   | 'llm-playground';    // LLM 输出模拟游乐场（开发用）
 
