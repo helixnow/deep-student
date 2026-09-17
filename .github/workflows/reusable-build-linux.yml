@@ -47,6 +47,9 @@ jobs:
       CARGO_PROFILE_RELEASE_LTO: 'false'
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
+      # Keep linker/compiler memory below the hosted runner limit during the
+      # full release rebuild. The Android release uses the same cap.
+      CARGO_BUILD_JOBS: '2'
       # sccache（GHA cache 后端）与 rust-cache 叠加：rust-cache 负责 registry/
       # git 依赖与 target 目录整体缓存，sccache 按编译单元缓存 rustc 输出，
       # 依赖版本或 profile 变化导致 rust-cache miss 时仍可大量命中。
