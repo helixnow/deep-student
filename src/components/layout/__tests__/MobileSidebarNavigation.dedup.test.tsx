@@ -1,7 +1,7 @@
 /**
  * 移动抽屉全局应用入口契约：
- * 1. head 之下固定二行三列六个入口，不随页内列表滚动。
- * 2. 不含搜索与命令、总览、模板管理；格子文案两字：会话 / 资源 / 待办 / 技能 / 制卡 / 数据。
+ * 1. head 之下固定启动器网格（3 列，7 个入口含闪卡后为三行），不随页内列表滚动。
+ * 2. 不含搜索与命令、总览、模板管理；格子文案两字：会话 / 资源 / 待办 / 技能 / 制卡 / 闪卡 / 数据。
  * 3. 当前视图高亮，不从网格里拿掉。
  */
 import React from 'react';
@@ -26,7 +26,7 @@ describe('MobileSidebarNavigation app launcher', () => {
     setCurrentView('chat-v2');
   });
 
-  it('renders the six launcher destinations as a 2x3 grid', () => {
+  it('renders the seven launcher destinations as a 3-column grid', () => {
     render(<MobileSidebarNavigation />);
 
     expect(MOBILE_APP_LAUNCHER_VIEWS).toEqual([
@@ -35,6 +35,7 @@ describe('MobileSidebarNavigation app launcher', () => {
       'todo',
       'skills-management',
       'task-dashboard',
+      'flashcards',
       'data-management',
     ]);
     expect(screen.getByRole('navigation').getAttribute('data-mobile-app-launcher')).toBe('');
@@ -44,6 +45,7 @@ describe('MobileSidebarNavigation app launcher', () => {
       '待办',
       '技能',
       '制卡',
+      '闪卡',
       '数据',
     ]);
   });

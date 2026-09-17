@@ -63,12 +63,15 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   templates: 'template-management',
   taskDashboard: 'task-dashboard',
   sandbox: 'sandbox-workbench',
+  // 闪卡传统壳页面（2026-09）：OS 模式之外也有独立入口，降级为导航而非 no-op
+  flashcards: 'flashcards',
 };
 
 /** 有意 no-op 的 typeId：legacy 壳没有对应页面，不做导航也不 warn。
- * pomodoro 静默（GlobalPomodoroWidget 常驻 legacy 壳）；browser / flashcards
- * 为 OS 模式专属应用，no-op 时给一条「仅桌面端可用」的全局通知。 */
-const LEGACY_NOOP_TYPE_IDS = new Set(['pomodoro', 'browser', 'flashcards']);
+ * pomodoro 静默（GlobalPomodoroWidget 常驻 legacy 壳）；browser
+ * 为 OS 模式专属应用，no-op 时给一条「仅桌面端可用」的全局通知。
+ * flashcards 曾在此列（2026-09 起映射到传统壳 flashcards 视图）。 */
+const LEGACY_NOOP_TYPE_IDS = new Set(['pomodoro', 'browser']);
 
 function dispatch(name: string, detail?: unknown): void {
   try {
