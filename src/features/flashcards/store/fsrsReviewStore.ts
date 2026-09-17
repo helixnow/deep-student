@@ -155,7 +155,7 @@ interface FsrsReviewState {
   queue: ReviewCard[];
   queueIndex: number;
   flipped: boolean;
-  /** 翻到背面的时刻（ms）；随评分上报作答用时，收面/评分后清空 */
+  /** 翻到背面的时刻（ms）；收面/评分后清空 */
   flippedAtMs: number | null;
   loading: boolean;
   ratingBusy: boolean;
@@ -236,7 +236,7 @@ interface FsrsReviewState {
   ) => void;
   flip: () => void;
   loadRatingPreviews: () => Promise<void>;
-  rate: (rating: FsrsRating) => Promise<void>;
+  rate: (rating: FsrsRating, answerDurationMs?: number) => Promise<void>;
   undoLastReview: () => Promise<boolean>;
   updateCurrentCard: (
     front: string,
@@ -1214,7 +1214,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       set({ flipped: false, flippedAtMs: null, ratingPreviews: null });
       return;
     }
-    // 记录翻面时刻：评分时上报"看到答案 → 作出评分"的真实作答用时
+    // 翻面状态独立于从题面开始的作答计时。
     set({ flipped: true, flippedAtMs: Date.now() });
     void get().loadRatingPreviews();
   },
@@ -1243,17 +1243,16 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     }
   },
 
-  rate: async (rating) => {
+  rate: async (rating, answerDurationMs) => {
     const sessionGeneration = get().sessionGeneration;
-    const { queue, queueIndex, ratingBusy, flipped, flippedAtMs } = get();
+    const { queue, queueIndex, ratingBusy, flipped } = get();
     if (ratingBusy || !flipped) return;
     const current = queue[queueIndex];
     if (!current) return;
 
-    // 作答用时 = 看到答案 → 给出评分；写入 review log 的 duration_ms，
-    // 供统计口径使用。超过上限按上限截断，避免挂机污染用时数据。
-    const durationMs = flippedAtMs != null
-      ? Math.min(Math.max(0, Date.now() - flippedAtMs), MAX_ANSWER_DURATION_MS)
+    // 卡面提供从题目展示到评分的有效用时；没有测量值时不猜测。
+    const durationMs = typeof answerDurationMs === 'number' && Number.isFinite(answerDurationMs)
+      ? Math.round(Math.min(Math.max(0, answerDurationMs), MAX_ANSWER_DURATION_MS))
       : null;
 
     const queueSnapshot = queue.map((card) => ({ ...card }));

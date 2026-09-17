@@ -45,7 +45,7 @@ import { RatingBar } from '../review/RatingBar';
 import { ReviewCardSurface } from '../review/ReviewCardSurface';
 import { SessionSummary } from '../review/SessionSummary';
 import { UndoNudge } from '../review/UndoNudge';
-import { formatDuration, useNow } from '../review/useSessionClock';
+import { formatDuration, useCardAnswerClock, useNow } from '../review/useSessionClock';
 
 /** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
 const POINTER_RATE_GUARD_MS = 280;
@@ -174,12 +174,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
   // ---- 前端计时（本卡用时 + 本轮用时） ----
   const cardKey = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
-  const clockEnabled = !loading && Boolean(current) && !sessionDone && !editing;
+  const clockEnabled = isActive && !loading && !templateLoading && Boolean(current) && !sessionDone && !editing && !ratingBusy;
   const now = useNow(clockEnabled);
-  const [cardShownAt, setCardShownAt] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    setCardShownAt(Date.now());
-  }, [cardKey, sessionRatedCount]);
+  const getAnswerDuration = useCardAnswerClock(
+    cardKey ? `${cardKey}:${sessionStartedAtMs}:${sessionRatedCount}` : null,
+    clockEnabled,
+  );
   const [doneAt, setDoneAt] = React.useState<number | null>(null);
   React.useEffect(() => {
     if (sessionDone) {
@@ -188,7 +188,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       setDoneAt(null);
     }
   }, [sessionDone]);
-  const cardElapsedMs = Math.max(0, now - cardShownAt);
+  const cardElapsedMs = getAnswerDuration();
   const cardTimerCapped = cardElapsedMs >= CARD_TIMER_DISPLAY_CAP_MS;
   const cardTimerText = cardTimerCapped
     ? `${formatDuration(CARD_TIMER_DISPLAY_CAP_MS)}+`
@@ -249,8 +249,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const handleRate = React.useCallback((rating: FsrsRating) => {
     if (ratingBusy || !flipped) return;
     flashRating(rating);
-    void rate(rating);
-  }, [flashRating, flipped, rate, ratingBusy]);
+    void rate(rating, getAnswerDuration());
+  }, [flashRating, flipped, rate, ratingBusy, getAnswerDuration]);
 
   const handleRateClick = React.useCallback((
     rating: FsrsRating,
