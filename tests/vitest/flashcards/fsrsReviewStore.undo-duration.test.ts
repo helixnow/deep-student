@@ -79,7 +79,7 @@ describe('fsrsReviewStore answer duration + multi-level undo', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports flip-to-rate duration via fsrs_rate durationMs', async () => {
+  it('reports presentation duration including time before the flip', async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'fsrs_preview_intervals') return {};
       if (command === 'fsrs_rate') return farFutureRate('log-duration');
@@ -87,11 +87,12 @@ describe('fsrsReviewStore answer duration + multi-level undo', () => {
       throw new Error(`unexpected invoke: ${command}`);
     });
 
+    nowMs = T0 + 40_000;
     useFsrsReviewStore.getState().flip();
-    expect(useFsrsReviewStore.getState().flippedAtMs).toBe(T0);
+    expect(useFsrsReviewStore.getState().flippedAtMs).toBe(T0 + 40_000);
 
     nowMs = T0 + 42_000;
-    await useFsrsReviewStore.getState().rate(3);
+    await useFsrsReviewStore.getState().rate(3, nowMs - T0);
 
     const rateCall = invokeMock.mock.calls.find(([command]) => command === 'fsrs_rate');
     expect(rateCall?.[1]).toMatchObject({ cardStateId: 'state-1', durationMs: 42_000 });
@@ -99,7 +100,7 @@ describe('fsrsReviewStore answer duration + multi-level undo', () => {
     expect(useFsrsReviewStore.getState().flippedAtMs).toBeNull();
   });
 
-  it('caps runaway durations at MAX_ANSWER_DURATION_MS and omits them without a flip timestamp', async () => {
+  it('caps runaway durations and omits them without a presentation measurement', async () => {
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'fsrs_preview_intervals') return {};
       if (command === 'fsrs_rate') return farFutureRate(`log-${nowMs}`);
@@ -110,11 +111,11 @@ describe('fsrsReviewStore answer duration + multi-level undo', () => {
     // 挂机 30 分钟后评分：按上限截断，不污染用时统计
     useFsrsReviewStore.getState().flip();
     nowMs = T0 + 30 * 60_000;
-    await useFsrsReviewStore.getState().rate(3);
+    await useFsrsReviewStore.getState().rate(3, nowMs - T0);
     let rateCall = invokeMock.mock.calls.filter(([command]) => command === 'fsrs_rate').at(-1);
     expect(rateCall?.[1]).toMatchObject({ durationMs: MAX_ANSWER_DURATION_MS });
 
-    // 无翻面时刻（外部直接置 flipped）时诚实上报 null
+    // 无卡面测量时诚实上报 null
     invokeMock.mockClear();
     useFsrsReviewStore.setState({ flipped: true, flippedAtMs: null });
     await useFsrsReviewStore.getState().rate(3);
