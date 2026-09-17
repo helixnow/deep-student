@@ -59,10 +59,11 @@ pub const MAX_EXPORT_MEDIA_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// 导入时由 apkg_importer_service 注入的元数据保留字段。
 /// 再导出时必须过滤，避免这些键污染 Anki model 字段表。
 /// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致。
-const RESERVED_IMPORT_METADATA_FIELDS: [&str; 13] = [
+const RESERVED_IMPORT_METADATA_FIELDS: [&str; 14] = [
     "AnkiNoteId",
     "AnkiCardId",
     "AnkiCardOrd",
+    "AnkiCardScope",
     "AnkiDeckId",
     "AnkiModelId",
     "AnkiModelName",
@@ -1152,7 +1153,7 @@ fn field_checksum(text: &str) -> i64 {
 }
 
 /// 将AnkiCard转换为Anki数据库记录
-/// (note_id, guid, flds, sort_field, csum, tags, card_ords, 调度回写状态)
+/// (note_id, guid, flds, sort_field, csum, tags, card_ords, 各 ord 调度状态, 单卡实例)
 type AnkiNoteRecord = (
     String,
     String,
@@ -1161,8 +1162,40 @@ type AnkiNoteRecord = (
     i64,
     String,
     Vec<i64>,
-    Option<CardSchedRestore>,
+    Vec<Option<CardSchedRestore>>,
+    bool,
 );
+
+fn is_imported_cloze_instance(card: &AnkiCard) -> bool {
+    match card.extra_fields.get("AnkiCardScope").map(String::as_str) {
+        Some("card") => true,
+        Some("note") => false,
+        // Older Deep Student packages collapsed each note; external imports did not.
+        _ => card.template_id.is_none() && card.extra_fields.contains_key("AnkiCardOrd"),
+    }
+}
+
+fn insert_anki_note_records(
+    conn: &Connection,
+    records: &[AnkiNoteRecord],
+    model_id: i64,
+    deck_id: i64,
+    now: i64,
+    next_due: &mut i64,
+) -> Result<(), String> {
+    for (note_id, guid, fields, sort_field, csum, tags, ords, schedules, instance) in records {
+        let note_id = note_id.parse::<i64>().map_err(|error| error.to_string())?;
+        let data = serde_json::json!({ "deepStudentCardScope": if *instance { "card" } else { "note" } });
+        conn.execute(
+            "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, ?)",
+            params![note_id, guid, model_id, now, tags, fields, clean_template_placeholders(sort_field), csum, data.to_string()],
+        ).map_err(|error| format!("插入笔记失败: {}", error))?;
+        for (ord, schedule) in ords.iter().zip(schedules) {
+            insert_anki_card_rows(conn, note_id, deck_id, now, &[*ord], next_due, schedule.as_ref())?;
+        }
+    }
+    Ok(())
+}
 
 fn convert_cards_to_anki_records(
     cards: Vec<AnkiCard>,
@@ -1182,15 +1215,23 @@ fn convert_cards_to_anki_records_with_fields(
     template_fields: Option<&[String]>,
     _template: Option<&CustomAnkiTemplate>, // 新增参数：完整的模板对象
 ) -> Result<Vec<AnkiNoteRecord>, String> {
-    let mut records = Vec::new();
+    let mut records: Vec<AnkiNoteRecord> = Vec::new();
     let is_cloze_model = model_name.eq_ignore_ascii_case("Cloze");
     let mut used_guids: HashSet<String> = HashSet::new();
+    let mut imported_notes: HashMap<(String, String, String), usize> = HashMap::new();
 
     for card in &cards {
         // F9（round2）：全局单调 note_id，避免同秒多次导出碰撞
         let note_id = next_apkg_note_id();
         // 确定性 guid：同一张卡重复导出再导入 Anki 时按 guid 去重，不再重复建卡
-        let guid = unique_note_guid(card, &mut used_guids);
+        let instance = is_cloze_model && is_imported_cloze_instance(card);
+        let source_note = if instance {
+            Some((
+                card.task_id.clone(),
+                card.extra_fields.get("AnkiModelId").cloned().ok_or("导入卡片缺少 AnkiModelId")?,
+                card.extra_fields.get("AnkiNoteId").cloned().ok_or("导入卡片缺少 AnkiNoteId")?,
+            ))
+        } else { None };
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
@@ -1246,14 +1287,51 @@ fn convert_cards_to_anki_records_with_fields(
             .map(|tag| clean_template_placeholders(tag))
             .filter(|tag| !tag.is_empty()) // 过滤掉空标签
             .collect();
+        let mut cleaned_tags = cleaned_tags;
+        cleaned_tags.sort();
+        cleaned_tags.dedup();
         let tags = cleaned_tags.join(" ");
         let csum = field_checksum(&sort_field);
         let card_ords = if is_cloze_model {
-            cloze_card_ords(&resolve_card_field_value(card, "Text"))
+            let all_ords = cloze_card_ords(&resolve_card_field_value(card, "Text"));
+            if instance {
+                let ord = card.extra_fields.get("AnkiCardOrd")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .filter(|ord| all_ords.contains(ord))
+                    .ok_or_else(|| format!("卡片 {} 的挖空编号与正文不一致", card.id))?;
+                vec![ord]
+            } else { all_ords }
         } else {
             vec![0]
         };
 
+        let schedule = card_sched_restore(card);
+        if let Some(index) = source_note.as_ref().and_then(|key| imported_notes.get(key)).copied() {
+            let record = &mut records[index];
+            if record.2 != fields || record.5 != tags {
+                return Err(format!("同源挖空卡片 {} 的字段或标签已分别修改，请统一内容后导出", card.id));
+            }
+            let ord = card_ords[0];
+            if let Some(position) = record.6.iter().position(|existing| *existing == ord) {
+                if record.7[position] != schedule {
+                    return Err(format!("同源挖空卡片 {} 的复习进度不一致", card.id));
+                }
+            } else {
+                record.6.push(ord);
+                record.7.push(schedule);
+            }
+            continue;
+        }
+        let guid = if let Some(key) = source_note {
+            // All selected siblings share a stable identity, including single-card exports.
+            let mut identity_card = card.clone();
+            identity_card.id = format!("apkg:{}:{}:{}:{}:{}:{}", key.0.len(), key.0, key.1.len(), key.1, key.2.len(), key.2);
+            imported_notes.insert(key, records.len());
+            unique_note_guid(&identity_card, &mut used_guids)
+        } else {
+            unique_note_guid(card, &mut used_guids)
+        };
+        let schedules = vec![schedule; card_ords.len()];
         records.push((
             note_id.to_string(),
             guid,
@@ -1262,7 +1340,8 @@ fn convert_cards_to_anki_records_with_fields(
             csum,
             tags,
             card_ords,
-            card_sched_restore(card),
+            schedules,
+            instance,
         ));
     }
 
@@ -1569,35 +1648,7 @@ pub async fn export_cards_to_apkg_with_full_template_report(
         conn.execute_batch("BEGIN IMMEDIATE;")
             .map_err(|e| format!("开始导出事务失败: {}", e))?;
         let mut next_due = 1i64;
-        for (note_id, guid, fields, sort_field, csum, tags, card_ords, sched) in &records {
-            let note_id = note_id
-                .parse::<i64>()
-                .map_err(|error| format!("无效的 note id: {}", error))?;
-            // 插入笔记
-            conn.execute(
-                "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, '')",
-                params![
-                    note_id,
-                    guid,
-                    model_id,
-                    now,
-                    tags,
-                    fields,
-                    clean_template_placeholders(sort_field),
-                    csum
-                ]
-            ).map_err(|e| format!("插入笔记失败: {}", e))?;
-
-            insert_anki_card_rows(
-                &conn,
-                note_id,
-                deck_id,
-                now,
-                card_ords,
-                &mut next_due,
-                sched.as_ref(),
-            )?;
-        }
+        insert_anki_note_records(&conn, &records, model_id, deck_id, now, &mut next_due)?;
         conn.execute_batch("COMMIT;")
             .map_err(|e| format!("提交导出事务失败: {}", e))?;
 
@@ -1780,9 +1831,12 @@ pub async fn export_multi_template_apkg_report(
         // 按 template_id 分组卡片
         let mut groups: HashMap<String, Vec<&AnkiCard>> = HashMap::new();
         let mut no_template_cards: Vec<&AnkiCard> = Vec::new();
+        let mut no_template_cloze_cards: Vec<&AnkiCard> = Vec::new();
         for card in &cards {
             if let Some(tid) = card.template_id.as_deref().filter(|s| !s.trim().is_empty()) {
                 groups.entry(tid.to_string()).or_default().push(card);
+            } else if contains_cloze_marker(&resolve_card_field_value(card, "Text")) {
+                no_template_cloze_cards.push(card);
             } else {
                 no_template_cards.push(card);
             }
@@ -1863,6 +1917,15 @@ pub async fn export_multi_template_apkg_report(
 
         // 无 template_id 的卡片用 Basic model（固定 id，与模板派生区间不重叠）
         let fallback_model_id = APKG_MODEL_ID_BASE;
+        let fallback_cloze_model_id = APKG_MODEL_ID_BASE - 1;
+        let fallback_cloze_fields = vec!["Text".to_string(), "Extra".to_string(), "Front".to_string(), "Back".to_string()];
+        if !no_template_cloze_cards.is_empty() {
+            let model = create_template_model(
+                Some(&fallback_cloze_model_id.to_string()), "Cloze", &fallback_cloze_fields,
+                "{{cloze:Text}}", "{{cloze:Text}}<br>{{Extra}}", &create_cloze_model().css, 1,
+            );
+            models_json.insert(fallback_cloze_model_id.to_string(), serde_json::to_value(model).map_err(|e| e.to_string())?);
+        }
         if !no_template_cards.is_empty() {
             let basic = create_basic_model();
             let mut m = serde_json::to_value(&basic).map_err(|e| e.to_string())?;
@@ -1899,59 +1962,6 @@ pub async fn export_multi_template_apkg_report(
 
         // 插入 notes 和 cards
         let mut next_due = 1i64;
-        let mut used_guids: HashSet<String> = HashSet::new();
-        let insert_note = |conn: &Connection,
-                           card: &AnkiCard,
-                           mid: i64,
-                           field_names: &[String],
-                           is_cloze: bool,
-                           next_due: &mut i64,
-                           used_guids: &mut HashSet<String>|
-         -> Result<(), String> {
-            let note_id = next_apkg_note_id(); // F9（round2）：全局单调 id
-            // 确定性 guid：同一张卡重复导出再导入 Anki 时按 guid 去重，不再重复建卡
-            let guid = unique_note_guid(card, used_guids);
-
-            let mut field_values: Vec<String> = Vec::new();
-            for field_name in field_names {
-                // F11（round2）：与单模板路径统一字段解析（含 text 回退 extra_fields + ALIAS_MAP）
-                // 写入前清洗 U+001F，防止字段对齐被破坏
-                let value = sanitize_apkg_field_value(resolve_card_field_value(card, field_name));
-                field_values.push(value);
-            }
-
-            let fields_str = field_values.join("\x1f");
-            let sort_field = field_values.first().cloned().unwrap_or_default();
-            let csum = field_checksum(&sort_field);
-            let tags_str = card.tags.iter()
-                .map(|t| clean_template_placeholders(t))
-                .filter(|t| !t.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            conn.execute(
-                "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, '')",
-                params![note_id, guid, mid, now, tags_str, fields_str, clean_template_placeholders(&sort_field), csum]
-            ).map_err(|e| format!("插入 note 失败: {}", e))?;
-
-            let card_ords = if is_cloze {
-                cloze_card_ords(&resolve_card_field_value(card, "Text"))
-            } else {
-                vec![0]
-            };
-            let sched = card_sched_restore(card);
-            insert_anki_card_rows(
-                conn,
-                note_id,
-                deck_id,
-                now,
-                &card_ords,
-                next_due,
-                sched.as_ref(),
-            )?;
-
-            Ok(())
-        };
 
         // 包进单个事务，避免逐条 INSERT 在 synchronous=FULL 下逐条刷盘
         conn.execute_batch("BEGIN IMMEDIATE;")
@@ -1964,32 +1974,24 @@ pub async fn export_multi_template_apkg_report(
             let is_cloze = template_map
                 .get(tid)
                 .is_some_and(|template| template.note_type.eq_ignore_ascii_case("Cloze"));
-            for card in group_cards {
-                insert_note(
-                    &conn,
-                    card,
-                    mid,
-                    &field_names,
-                    is_cloze,
-                    &mut next_due,
-                    &mut used_guids,
-                )?;
-            }
+            let records = convert_cards_to_anki_records_with_fields(
+                group_cards.iter().map(|card| (*card).clone()).collect(), deck_id, mid,
+                if is_cloze { "Cloze" } else { "Basic" }, Some(&field_names), template_map.get(tid),
+            )?;
+            insert_anki_note_records(&conn, &records, mid, deck_id, now, &mut next_due)?;
         }
 
         // 插入无 template_id 的卡片
-        for card in &no_template_cards {
-            let field_names = vec!["Front".to_string(), "Back".to_string()];
-            insert_note(
-                &conn,
-                card,
-                fallback_model_id,
-                &field_names,
-                false,
-                &mut next_due,
-                &mut used_guids,
-            )?;
-        }
+        let records = convert_cards_to_anki_records_with_fields(
+            no_template_cards.iter().map(|card| (*card).clone()).collect(), deck_id, fallback_model_id,
+            "Basic", Some(&["Front".to_string(), "Back".to_string()]), None,
+        )?;
+        insert_anki_note_records(&conn, &records, fallback_model_id, deck_id, now, &mut next_due)?;
+        let records = convert_cards_to_anki_records_with_fields(
+            no_template_cloze_cards.iter().map(|card| (*card).clone()).collect(), deck_id, fallback_cloze_model_id,
+            "Cloze", Some(&fallback_cloze_fields), None,
+        )?;
+        insert_anki_note_records(&conn, &records, fallback_cloze_model_id, deck_id, now, &mut next_due)?;
 
         conn.execute_batch("COMMIT;")
             .map_err(|e| format!("提交导出事务失败: {}", e))?;
@@ -2139,6 +2141,34 @@ mod tests {
         let input = "Start {{#each items}}<li>{{.}}</li>{{/each}} End";
         let output = clean_template_placeholders(input);
         assert_eq!(output, "Start {{#each items}}<li>{{.}}</li>{{/each}} End");
+    }
+
+    #[test]
+    fn imported_cloze_grouping_is_scoped_and_rejects_divergent_siblings() {
+        let mut first = test_card("first", "front", "back");
+        first.text = Some("{{c1::one}} {{c2::two}}".into());
+        first.extra_fields.extend([
+            ("AnkiCardScope".into(), "card".into()),
+            ("AnkiCardOrd".into(), "0".into()),
+            ("AnkiModelId".into(), "100".into()),
+            ("AnkiNoteId".into(), "200".into()),
+        ]);
+        let mut second = first.clone();
+        second.id = "second".into();
+        second.extra_fields.insert("AnkiCardOrd".into(), "1".into());
+        let fields = vec!["Text".into(), "Front".into(), "Back".into()];
+        let convert = |cards| convert_cards_to_anki_records_with_fields(cards, 1, 1, "Cloze", Some(&fields), None);
+        assert_eq!(convert(vec![first.clone(), second.clone()]).unwrap().len(), 1);
+        second.task_id.push_str("-another-import");
+        assert_eq!(convert(vec![first.clone(), second.clone()]).unwrap().len(), 2);
+        second.task_id = first.task_id.clone();
+        second.back = "edited independently".into();
+        assert!(convert(vec![first.clone(), second.clone()]).unwrap_err().contains("字段或标签"));
+        second.back = first.back.clone();
+        second.extra_fields.insert("AnkiCardOrd".into(), "2".into());
+        assert!(convert(vec![second]).unwrap_err().contains("挖空编号"));
+        first.extra_fields.insert("AnkiCardScope".into(), "note".into());
+        assert_eq!(convert(vec![first]).unwrap()[0].6, vec![0, 1]);
     }
 
     #[test]
