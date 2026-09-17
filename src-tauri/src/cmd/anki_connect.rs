@@ -111,18 +111,6 @@ fn write_anki_export_content_hashes(
     Ok(written)
 }
 
-/// F18：模板「学习语义 + 外观」指纹，用于判断同名 note_type 的模板是否真的相同。
-/// 只比较会影响 Anki 端呈现/字段的字段，忽略 id/时间戳等元数据。
-fn template_schema_signature(template: &crate::models::CustomAnkiTemplate) -> String {
-    format!(
-        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
-        template.fields.join("\u{1e}"),
-        template.front_template,
-        template.back_template,
-        template.css_style
-    )
-}
-
 pub(crate) fn sanitize_filename_component(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -262,27 +250,7 @@ pub async fn add_cards_to_anki_connect(
     let all_cloze = cloze_count == selected_cards.len();
 
     if all_cloze {
-        println!("检测到填空题，开始验证笔记类型...");
-
-        // 检查Anki中是否存在名为"Cloze"的笔记类型
-        let model_names = crate::anki_connect_service::get_model_names()
-            .await
-            .map_err(|e| AppError::validation(format!("获取Anki笔记类型失败: {}", e)))?;
-
-        if !model_names.iter().any(|name| name == "Cloze") {
-            return Err(AppError::validation(
-                "Anki中缺少标准的'Cloze'笔记类型，请在Anki中手动添加一个。".to_string(),
-            ));
-        }
-
-        // 如果用户选择的不是"Cloze"，但又是填空题，则强制使用"Cloze"
-        if note_type != "Cloze" {
-            println!(
-                "用户选择了非标准的填空题笔记类型 '{}'，将强制使用 'Cloze'。",
-                note_type
-            );
-            note_type = "Cloze".to_string();
-        }
+        note_type = "Cloze".to_string();
     }
 
     println!(
@@ -299,12 +267,10 @@ pub async fn add_cards_to_anki_connect(
 
     let mut card_models: HashMap<String, String> = HashMap::new();
     let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> = HashMap::new();
-    // F18：不同本地模板若共用同一个 Anki note_type 名称，Anki 端会按名称复用同一
-    // 模型，第二个模板的字段/CSS 可能完全不生效。这里检测「同名但 schema 不同」
-    // 的冲突并写入同步警告，避免用户以为样式已同步。
-    let mut model_identity: HashMap<String, (String, String, String)> = HashMap::new();
-    let mut model_collision_warnings: Vec<String> = Vec::new();
     for card in &selected_cards {
+        if card_has_cloze_markup(card) {
+            card_models.insert(card.id.clone(), "Cloze".to_string());
+        }
         let Some(template_id) = card
             .template_id
             .as_deref()
@@ -316,33 +282,12 @@ pub async fn add_cards_to_anki_connect(
         if card.id.trim().is_empty() {
             continue;
         }
-        if let Ok(Some(template)) = state.database.get_custom_template_by_id(template_id) {
-            let model_name = template.note_type.trim().to_string();
-            if !model_name.is_empty() {
-                let signature = template_schema_signature(&template);
-                match model_identity.get(&model_name) {
-                    Some((prev_id, prev_sig, prev_name))
-                        if prev_id != template_id && prev_sig != &signature =>
-                    {
-                        model_collision_warnings.push(format!(
-                            "模板「{}」与「{}」共用 Anki 笔记类型「{}」，但字段或样式不同；同步会复用 Anki 中已有的同名模型，后者样式可能不生效。建议为其中一个改用不同的 note_type，或改用 APKG 导出。",
-                            prev_name, template.name, model_name
-                        ));
-                    }
-                    None => {
-                        model_identity.insert(
-                            model_name.clone(),
-                            (template_id.to_string(), signature, template.name.clone()),
-                        );
-                    }
-                    _ => {}
-                }
-                card_models.insert(card.id.clone(), model_name.clone());
-                templates_by_model
-                    .entry(model_name)
-                    .or_insert(template);
-            }
-        }
+        let template = state.database.get_custom_template_by_id(template_id)
+            .map_err(|error| AppError::validation(format!("读取模板失败: {}", error)))?
+            .ok_or_else(|| AppError::validation(format!("模板 {} 不存在，请先选择可用模板", template_id)))?;
+        let model_name = crate::anki_connect_service::template_model_name(&template);
+        card_models.insert(card.id.clone(), model_name.clone());
+        templates_by_model.entry(model_name).or_insert(template);
     }
 
     // 保留卡片 id 顺序，供 Sync 成功后按位回写 anki_note_id receipt；
@@ -388,9 +333,7 @@ pub async fn add_cards_to_anki_connect(
     )
     .await
     {
-        Ok(mut report) => {
-            // F18：把同名 note_type 冲突等预检告警并入报告，供前端提示
-            report.warnings.extend(model_collision_warnings);
+        Ok(report) => {
             println!(
                 "卡片添加完成: 新增 {} 张, 重复 {} 张, 失败 {} 张{}",
                 report.added,
