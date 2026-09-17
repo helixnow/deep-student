@@ -991,7 +991,9 @@
     "saveState": {
       "saved": "Saved",
       "saving": "Saving",
-      "dirty": "Unsaved"
+      "dirty": "Unsaved",
+      "failed": "Save failed",
+      "conflict": "Save conflict"
     },
     "status": {
       "ready": "Ready",

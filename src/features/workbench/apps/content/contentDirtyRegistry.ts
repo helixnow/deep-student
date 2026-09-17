@@ -10,6 +10,8 @@
 
 import { normalizeResourceInstanceKey } from './resourceIdentity';
 
+export type ContentSaveState = 'saved' | 'saving' | 'dirty' | 'failed' | 'conflict';
+
 const checkers = new Map<string, Set<() => boolean>>();
 
 type ContentSaveHandler = () => Promise<void>;

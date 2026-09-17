@@ -20,6 +20,7 @@ import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
 import type { DstuNode } from '@/dstu/types';
 import type { ResourceType } from '../types';
+import type { ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { DsButton } from '@/components/ui/DsButton';
 import { AppContentErrorBoundary } from './AppContentErrorBoundary';
 
@@ -58,7 +59,7 @@ export interface UnifiedAppPanelProps {
   /** Workbench hosts can request focus after their internal tab becomes active. */
   focusOnActive?: boolean;
   /** Editor save state for a parent tab strip; optional outside the workbench. */
-  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, used to bind ACR to the exact editor instance. */
   hostWindowId?: string;
   /** 递增时强制重新加载资源（移动端「重载标签页」） */
@@ -93,7 +94,7 @@ export interface ContentViewProps {
   /** Request focus when this note view becomes the active workbench tab. */
   focusOnActive?: boolean;
   /** Report the current editor save state to an owning tab strip. */
-  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, absent in standalone Learning Hub views. */
   hostWindowId?: string;
   /** 宿主已提供统一属性面板时为 true，视图应隐藏自带的属性浮层入口 */
@@ -255,7 +256,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     onCloseRef.current?.();
   }, []);
 
-  const handleSaveStateChange = useCallback((state: 'saved' | 'saving' | 'dirty') => {
+  const handleSaveStateChange = useCallback((state: ContentSaveState) => {
     onSaveStateChangeRef.current?.(state);
   }, []);
 

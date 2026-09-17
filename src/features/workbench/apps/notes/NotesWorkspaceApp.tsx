@@ -49,6 +49,7 @@ import {
   hasContentSaveHandler,
   isContentDirty,
   saveContentNow,
+  type ContentSaveState,
 } from '../content/contentDirtyRegistry';
 import type { AppWindowProps } from '../../core/types';
 import { setWindowDirty } from '../../core/windowCloseGuard';
@@ -133,7 +134,7 @@ interface WorkspaceTab extends NotesWorkspaceResourceRef {
   pinned?: boolean;
 }
 
-type SaveState = 'saved' | 'saving' | 'dirty';
+type SaveState = ContentSaveState;
 type WorkspacePaneId = 'main' | 'right';
 type SplitLayout = [number, number];
 type TabDropPosition = 'before' | 'after';
@@ -871,9 +872,8 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
               />
             )}
             {saveState !== 'saved' && (
-              <i className="notes-tab-state" aria-label={saveState === 'saving'
-                ? t('notesWorkspace.saveState.saving', 'Saving')
-                : t('notesWorkspace.saveState.dirty', 'Unsaved')} />
+              <i className="notes-tab-state" aria-label={t(`notesWorkspace.saveState.${saveState}`)}
+                title={t(`notesWorkspace.saveState.${saveState}`)} />
             )}
           </button>
           <IconButton label={t('notesWorkspace.tabs.close', { defaultValue: 'Close {{title}}', title: tab.title })} onClick={() => void onClose(tab.key)}>
@@ -932,9 +932,8 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                   {overflowSaveState !== 'saved' && (
                     <i
                       className="notes-tab-state"
-                      aria-label={overflowSaveState === 'saving'
-                        ? t('notesWorkspace.saveState.saving', 'Saving')
-                        : t('notesWorkspace.saveState.dirty', 'Unsaved')}
+                      aria-label={t(`notesWorkspace.saveState.${overflowSaveState}`)}
+                      title={t(`notesWorkspace.saveState.${overflowSaveState}`)}
                     />
                   )}
                 </button>
@@ -1002,6 +1001,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [status, setStatus] = useState(() => t('notesWorkspace.status.ready', 'Ready'));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tabSaveStates, setTabSaveStates] = useState<Record<string, SaveState>>({});
+  const tabSaveStatesRef = useRef(tabSaveStates);
+  tabSaveStatesRef.current = tabSaveStates;
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenu | null>(null);
   const [resourceDialog, setResourceDialog] = useState<ResourceDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -1765,7 +1766,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       type: tab.type,
       id: tab.id,
       title: tab.title,
-      saveState: getTabSaveState(tab, windowId),
+      saveState: tabSaveStatesRef.current[tab.key] ?? getTabSaveState(tab, windowId),
     })),
   }), [windowId]);
 
@@ -2911,11 +2912,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <span>{activeTab
             ? `${activeTab.type === 'note'
               ? t('notesWorkspace.status.noteType', 'Markdown')
-              : t('notesWorkspace.status.mindmapType', 'Mind map')} · ${saveStates.get(activeTab.key) === 'saving'
-              ? t('notesWorkspace.saveState.saving', 'Saving')
-              : saveStates.get(activeTab.key) === 'dirty'
-                ? t('notesWorkspace.saveState.dirty', 'Unsaved')
-                : t('notesWorkspace.saveState.saved', 'Saved')}`
+              : t('notesWorkspace.status.mindmapType', 'Mind map')} · ${t(`notesWorkspace.saveState.${saveStates.get(activeTab.key) ?? 'saved'}`)}`
             : t('notesWorkspace.status.library', 'Local library')}</span>
         </footer>
       </main>

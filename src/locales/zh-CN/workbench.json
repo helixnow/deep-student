@@ -991,7 +991,9 @@
     "saveState": {
       "saved": "已保存",
       "saving": "正在保存",
-      "dirty": "未保存"
+      "dirty": "未保存",
+      "failed": "保存失败",
+      "conflict": "保存冲突"
     },
     "status": {
       "ready": "就绪",

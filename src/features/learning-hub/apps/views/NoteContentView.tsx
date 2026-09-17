@@ -226,7 +226,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   titleRef.current = title;
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
   const editorApiRef = useRef<CrepeEditorApi | null>(null);
-  const acrApiByLifecycleRef = useRef(new WeakMap<CrepeEditorApi, CrepeEditorApi>());
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -803,9 +802,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     if (editor) window.requestAnimationFrame(() => editor.focus());
   }, [focusOnActive, isActive, node.id]);
 
-  // ACR R1-13：向 noteDriver 注册表挂载/卸载 editorApi（供 agentInsert / probe）
-  const handleEditorApiReady = useCallback((api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => {
-    if (api) {
+  // Share full-document operations with toolbar, AI edits and the noteDriver registry.
+  const extendEditorApi = useCallback((api: CrepeEditorApi): CrepeEditorApi => {
       const getLiveFullMarkdown = () => {
         const visible = api.getMarkdown();
         const currentWindow = markdownWindowRef.current;
@@ -871,17 +869,17 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           return true;
         },
       };
-      acrApiByLifecycleRef.current.set(api, acrApi);
-      editorApiRef.current = acrApi;
-      registerNoteEditor(node.id, acrApi, hostWindowId);
+      return acrApi;
+  }, [node.id, setMarkdownWindow]);
+
+  const handleEditorApiReady = useCallback((api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => {
+    if (api) {
+      registerNoteEditor(node.id, api, hostWindowId);
     } else {
-      const registeredApi = previousApi
-        ? acrApiByLifecycleRef.current.get(previousApi)
-        : undefined;
-      if (registeredApi && editorApiRef.current === registeredApi) editorApiRef.current = null;
-      if (registeredApi) unregisterNoteEditor(node.id, registeredApi, hostWindowId);
+      if (previousApi && editorApiRef.current === previousApi) editorApiRef.current = null;
+      if (previousApi) unregisterNoteEditor(node.id, previousApi, hostWindowId);
     }
-  }, [hostWindowId, node.id, setMarkdownWindow]);
+  }, [hostWindowId, node.id]);
 
   // 「保存并关闭」挂点：把编辑器现有 flushPendingSave（自动保存队列冲刷）接到
   // contentDirtyRegistry；不新增保存路径、不动 OCC/保存队列。flush 后若仍 dirty
@@ -1044,6 +1042,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             className="flex-1 min-h-0"
             readOnly={readOnly}
             onEditorReady={handleEditorReady}
+            extendEditorApi={extendEditorApi}
             onEditorApiReady={handleEditorApiReady}
             onSaveStateChange={(state) => onSaveStateChangeRef.current?.(state)}
             tags={tags}

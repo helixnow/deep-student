@@ -214,6 +214,18 @@ describe('NoteContentView windowing', () => {
     await waitFor(() => expect(mocks.contextPanelContents.at(-1)).toBe(props.initialContent));
   });
 
+  it('provides live full markdown to internal editor actions before the tail is loaded', async () => {
+    const markdown = makeLines(1000);
+    const props = await renderWindowedNote(markdown);
+    let visible = props.initialContent;
+    const api = props.extendEditorApi({ getMarkdown: () => visible });
+    expect(api.isDocumentWindowed()).toBe(true);
+    expect(api.getFullMarkdown()).toBe(markdown);
+    visible = visible.replace('line 1\n', 'edited first line\n');
+    expect(api.getFullMarkdown()).toBe(markdown.replace('line 1\n', 'edited first line\n'));
+    expect(api.getFullMarkdown()).toContain('line 1000');
+  });
+
   it('loads more from the original suffix while preserving the edited prefix', async () => {
     const props = await renderWindowedNote();
 
