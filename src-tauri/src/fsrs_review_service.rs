@@ -380,6 +380,7 @@ pub struct FsrsStats {
 pub struct FsrsSchedulerConfig {
     pub new_per_day: u32,
     pub reviews_per_day: u32,
+    pub learn_ahead_minutes: u32,
     pub desired_retention: f64,
     pub leech_threshold: u32,
     /// "suspend"：标记 leech 并自动暂停；"mark"：仅标记
@@ -393,6 +394,7 @@ impl Default for FsrsSchedulerConfig {
         Self {
             new_per_day: DEFAULT_NEW_PER_DAY,
             reviews_per_day: DEFAULT_REVIEWS_PER_DAY,
+            learn_ahead_minutes: 15,
             desired_retention: DEFAULT_DESIRED_RETENTION,
             leech_threshold: DEFAULT_LEECH_THRESHOLD,
             leech_action: "suspend".to_string(),
@@ -405,6 +407,8 @@ impl Default for FsrsSchedulerConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsrsSchedulerConfigUpdate {
+    #[serde(default)]
+    pub learn_ahead_minutes: Option<u32>,
     #[serde(default)]
     pub new_per_day: Option<u32>,
     #[serde(default)]
@@ -2789,6 +2793,9 @@ impl FsrsReviewService {
         &self,
         update: &FsrsSchedulerConfigUpdate,
     ) -> Result<FsrsSchedulerConfig> {
+        if update.learn_ahead_minutes.is_some_and(|v| v > 60) {
+            return Err(AppError::validation("learnAheadMinutes must be within [0, 60]"));
+        }
         if let Some(v) = update.desired_retention {
             if !v.is_finite() || v <= 0.0 || v >= 1.0 {
                 return Err(AppError::validation(
@@ -2851,6 +2858,9 @@ impl FsrsReviewService {
         }
         if let Some(v) = update.new_per_day {
             set_field(obj, "new_per_day", "newPerDay", serde_json::json!(v));
+        }
+        if let Some(v) = update.learn_ahead_minutes {
+            set_field(obj, "learn_ahead_minutes", "learnAheadMinutes", serde_json::json!(v));
         }
         if let Some(v) = update.reviews_per_day {
             set_field(
@@ -3599,6 +3609,11 @@ impl FsrsReviewService {
         }
         if let Some(v) = field("reviews_per_day", "reviewsPerDay").as_u64() {
             config.reviews_per_day = v.min(u32::MAX as u64) as u32;
+        }
+        if let Some(v) = field("learn_ahead_minutes", "learnAheadMinutes").as_u64() {
+            if v <= 60 {
+                config.learn_ahead_minutes = v as u32;
+            }
         }
         if let Some(v) = field("desired_retention", "desiredRetention").as_f64() {
             if v > 0.0 && v < 1.0 {
@@ -4604,11 +4619,13 @@ mod tests {
         let updated = service
             .update_scheduler_config(&FsrsSchedulerConfigUpdate {
                 new_per_day: Some(5),
+                learn_ahead_minutes: Some(0),
                 desired_retention: Some(0.85),
                 ..Default::default()
             })
             .expect("partial update succeeds");
         assert_eq!(updated.new_per_day, 5);
+        assert_eq!(updated.learn_ahead_minutes, 0);
         assert_eq!(updated.reviews_per_day, DEFAULT_REVIEWS_PER_DAY);
         assert!((updated.desired_retention - 0.85).abs() < 1e-9);
 
@@ -4631,6 +4648,11 @@ mod tests {
 
         let reloaded = service.get_scheduler_config().expect("reload config");
         assert_eq!(reloaded, updated);
+
+        assert!(service.update_scheduler_config(&FsrsSchedulerConfigUpdate {
+            learn_ahead_minutes: Some(61),
+            ..Default::default()
+        }).is_err());
 
         assert!(
             service

@@ -15,6 +15,7 @@ interface SchedulerConfig {
   newPerDay: number;
   reviewsPerDay: number;
   desiredRetention: number;
+  learnAheadMinutes: number;
 }
 
 const LIMIT_MAX = 9999;
@@ -32,7 +33,8 @@ function parseConfig(raw: unknown): SchedulerConfig | null {
   const reviewsPerDay = readNumber('reviewsPerDay', 'reviews_per_day');
   const desiredRetention = readNumber('desiredRetention', 'desired_retention');
   if (newPerDay == null || reviewsPerDay == null || desiredRetention == null) return null;
-  return { newPerDay, reviewsPerDay, desiredRetention };
+  const learnAheadMinutes = readNumber('learnAheadMinutes', 'learn_ahead_minutes') ?? 15;
+  return { newPerDay, reviewsPerDay, desiredRetention, learnAheadMinutes };
 }
 
 function parseLimitInput(value: string): number | null {
@@ -56,6 +58,7 @@ export const SchedulerSettingsSection: React.FC = () => {
   const [draftNew, setDraftNew] = useState('');
   const [draftReviews, setDraftReviews] = useState('');
   const [draftRetention, setDraftRetention] = useState('');
+  const [draftLearnAhead, setDraftLearnAhead] = useState('');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<'saved' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +78,7 @@ export const SchedulerSettingsSection: React.FC = () => {
         setDraftNew(String(parsed.newPerDay));
         setDraftReviews(String(parsed.reviewsPerDay));
         setDraftRetention(String(parsed.desiredRetention));
+        setDraftLearnAhead(String(parsed.learnAheadMinutes));
       } catch {
         if (mountedRef.current) setUnavailable(true);
       }
@@ -87,20 +91,24 @@ export const SchedulerSettingsSection: React.FC = () => {
   const nextNew = parseLimitInput(draftNew);
   const nextReviews = parseLimitInput(draftReviews);
   const nextRetention = parseRetentionInput(draftRetention);
+  const nextLearnAhead = parseLimitInput(draftLearnAhead);
+  const learnAheadInvalid = nextLearnAhead == null || nextLearnAhead > 60;
   const limitsInvalid = nextNew == null || nextReviews == null;
   const retentionInvalid = nextRetention == null;
-  const dirty = config != null && !limitsInvalid && !retentionInvalid && (
+  const dirty = config != null && !limitsInvalid && !retentionInvalid && !learnAheadInvalid && (
     nextNew !== config.newPerDay
     || nextReviews !== config.reviewsPerDay
     || nextRetention !== config.desiredRetention
+    || nextLearnAhead !== config.learnAheadMinutes
   );
 
   const handleSave = useCallback(async () => {
-    if (!config || nextNew == null || nextReviews == null || nextRetention == null) return;
+    if (!config || nextNew == null || nextReviews == null || nextRetention == null || nextLearnAhead == null || learnAheadInvalid) return;
     const update: Record<string, number> = {};
     if (nextNew !== config.newPerDay) update.newPerDay = nextNew;
     if (nextReviews !== config.reviewsPerDay) update.reviewsPerDay = nextReviews;
     if (nextRetention !== config.desiredRetention) update.desiredRetention = nextRetention;
+    if (nextLearnAhead !== config.learnAheadMinutes) update.learnAheadMinutes = nextLearnAhead;
     if (Object.keys(update).length === 0) return;
     setSaving(true);
     setError(null);
@@ -110,12 +118,12 @@ export const SchedulerSettingsSection: React.FC = () => {
         await invoke<unknown>('fsrs_update_scheduler_config', { update }),
       );
       if (!mountedRef.current) return;
-      if (parsed) {
-        setConfig(parsed);
-        setDraftNew(String(parsed.newPerDay));
-        setDraftReviews(String(parsed.reviewsPerDay));
-        setDraftRetention(String(parsed.desiredRetention));
-      }
+      if (!parsed) throw new Error(t('settings.scheduler.saveFailed'));
+      setConfig(parsed);
+      setDraftNew(String(parsed.newPerDay));
+      setDraftReviews(String(parsed.reviewsPerDay));
+      setDraftRetention(String(parsed.desiredRetention));
+      setDraftLearnAhead(String(parsed.learnAheadMinutes));
       setNotice('saved');
       // 限额影响今日到期数：通知 Today / 统计屏刷新
       requestFlashcardsDueRefresh();
@@ -126,7 +134,7 @@ export const SchedulerSettingsSection: React.FC = () => {
     } finally {
       if (mountedRef.current) setSaving(false);
     }
-  }, [config, nextNew, nextReviews, nextRetention, t]);
+  }, [config, nextNew, nextReviews, nextRetention, nextLearnAhead, learnAheadInvalid, t]);
 
   return (
     <section className="wb-fcx-panel" data-testid="fsrs-scheduler-settings">
@@ -184,6 +192,22 @@ export const SchedulerSettingsSection: React.FC = () => {
                   className="h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                {t('settings.scheduler.learnAheadMinutes')}
+                <Input
+                  type="number"
+                  min={0}
+                  max={60}
+                  step={1}
+                  value={draftLearnAhead}
+                  disabled={saving}
+                  onChange={(event) => {
+                    setDraftLearnAhead(event.target.value);
+                    setNotice(null);
+                  }}
+                  className="h-8 w-28 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
+                />
+              </label>
               <DsButton
                 type="button"
                 variant="primary"
@@ -202,6 +226,11 @@ export const SchedulerSettingsSection: React.FC = () => {
               ) : null}
             </div>
             <p className="wb-fcx-footnote">{t('settings.scheduler.retentionHint')}</p>
+            {learnAheadInvalid ? (
+              <p role="status" className="text-xs text-destructive">
+                {t('settings.scheduler.invalidLearnAhead')}
+              </p>
+            ) : null}
             {limitsInvalid ? (
               <p role="status" className="text-xs text-destructive">
                 {t('settings.scheduler.invalidLimit', { max: LIMIT_MAX })}

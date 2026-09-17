@@ -571,6 +571,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             </span>
           ) : null}
           {learningWaitMs != null ? (
+            <>
             <span
               className="wb-fc-chip wb-fc-chip--learn"
               title={t('review.learningStepHint', { time: formatDuration(learningWaitMs) })}
@@ -578,6 +579,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               <Hourglass size={11} aria-hidden="true" />
               {t('review.learningStep')}
             </span>
+            <DsButton type="button" variant="ghost" size="sm" disabled={ratingBusy} onClick={endSession}>
+              <Hourglass size={14} aria-hidden="true" />
+              {t('review.returnWhenDue')}
+            </DsButton>
+            </>
           ) : null}
           {newCount > 0 ? (
             <span className="wb-fc-chip wb-fc-chip--new">{t('review.newCount', { count: newCount })}</span>

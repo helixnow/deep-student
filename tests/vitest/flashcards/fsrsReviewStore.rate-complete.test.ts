@@ -39,6 +39,9 @@ describe('fsrsReviewStore rate completion', () => {
     refreshDueMock.mockClear();
     useFsrsReviewStore.setState({
       screen: 'today',
+      sessionMode: null,
+      learnAheadMinutes: 15,
+      pendingRateOp: null,
       dueCards: [],
       dueTotal: 0,
       queue: [],
@@ -288,6 +291,70 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.queue[0]?.learningDueMs).toBe(dueMs);
   });
 
+  it('does not repeat future learning steps when learn-ahead is disabled', async () => {
+    mockInvokeByCommand({
+      fsrs_rate: { logId: 'disabled-step', dueMs: Date.now() + 60_000, cardState: { state: 1 } },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session', sessionMode: 'due', learnAheadMinutes: 0,
+      queue: [{ id: 'learning', front: 'Q', back: 'A' }], flipped: true,
+    });
+    await useFsrsReviewStore.getState().rate(3);
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(1);
+    expect(invokeMock).not.toHaveBeenCalledWith('fsrs_get_due', expect.anything());
+  });
+
+  it('loads the next due batch before showing an early learning step', async () => {
+    mockInvokeByCommand({
+      fsrs_rate: { logId: 'next-batch', dueMs: Date.now() + 60_000, cardState: { state: 1 } },
+      fsrs_get_due: [{ id: 'next-due', ankiCardId: 'card-next', front: 'Next', back: 'A' }],
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session', sessionMode: 'due',
+      queue: [{ id: 'learning', front: 'Q', back: 'A' }], flipped: true,
+    });
+    await useFsrsReviewStore.getState().rate(3);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['next-due', 'learning']);
+    expect(state.queue[state.queueIndex].id).toBe('next-due');
+  });
+
+  it('keeps a committed rating and finishes when due replenishment fails', async () => {
+    mockInvokeByCommand({
+      fsrs_rate: { logId: 'committed', dueMs: Date.now() + 60_000, cardState: { state: 1 } },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session', sessionMode: 'due',
+      queue: [{ id: 'learning', front: 'Q', back: 'A' }], flipped: true,
+    });
+    await useFsrsReviewStore.getState().rate(3);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queueIndex).toBe(state.queue.length);
+    expect(state.queue.length).toBe(1);
+    expect(state.lastReview?.logId).toBe('committed');
+    expect(state.error).toBeNull();
+    expect(state.pendingRateOp).toBeNull();
+  });
+
+  it('moves a previously reviewed card that has become due without duplicating its identity', async () => {
+    mockInvokeByCommand({
+      fsrs_rate: { logId: 'replenished', dueMs: Date.now() + 60_000, cardState: { state: 1 } },
+      fsrs_get_due: [{ id: 'previous', front: 'Q', back: 'A', lastReviewMs: 500 }],
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session', sessionMode: 'due',
+      queue: [{ id: 'previous', front: 'Q', back: 'A' }, { id: 'current', front: 'Q2', back: 'A2' }],
+      queueIndex: 1, flipped: true,
+    });
+    await useFsrsReviewStore.getState().rate(3);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['previous', 'current']);
+    expect(state.queueIndex).toBe(0);
+    expect(state.queue[0].lastReviewMs).toBe(500);
+  });
+
   it('dequeues a graduated card even when its due is near', async () => {
     const dueMs = Date.now() + 5 * 60 * 1000;
     mockInvokeByCommand({
@@ -392,6 +459,12 @@ describe('fsrsReviewStore rate completion', () => {
     expect(typeof firstCall?.clientOpId).toBe('string');
     expect(useFsrsReviewStore.getState().pendingRateOp?.opId).toBe(firstCall?.clientOpId);
 
+    await useFsrsReviewStore.getState().rate(4);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(useFsrsReviewStore.getState().lastRated).toBe(3);
+    expect(useFsrsReviewStore.getState().error).toContain('Retry it first');
+    useFsrsReviewStore.setState({ flippedAtMs: Date.now() - 20_000 });
+
     invokeMock.mockResolvedValueOnce({
       logId: 'log-retry',
       dueMs: Date.now() + 86_400_000,
@@ -402,6 +475,7 @@ describe('fsrsReviewStore rate completion', () => {
 
     const secondCall = invokeMock.mock.calls[1]?.[1] as { clientOpId?: string } | undefined;
     expect(secondCall?.clientOpId).toBe(firstCall?.clientOpId);
+    expect(secondCall).toEqual(firstCall);
     expect(useFsrsReviewStore.getState().pendingRateOp).toBeNull();
   });
 
