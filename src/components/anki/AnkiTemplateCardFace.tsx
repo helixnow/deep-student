@@ -6,9 +6,9 @@ import {
   TemplateRenderService,
   type DetailedCardRenderResult,
 } from '@/services/templateRenderService';
-import type { TemplateRenderIssue } from '@/services/ankiTemplateEngine';
+import { applyClozeMarkup, extractClozeOrdinals, type TemplateRenderIssue } from '@/services/ankiTemplateEngine';
 import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './utils/cardFaceStyles';
-import { renderCardFaceLatexHtml } from './utils/cardFaceLatex';
+import { renderCardFaceLatexHtml, renderCardTemplateMath } from './utils/cardFaceLatex';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 
 export type AnkiCardFace = 'front' | 'back';
@@ -38,12 +38,12 @@ function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
  */
 function resolveClozeOrdinal(
   card: AnkiCard,
-  template: CustomAnkiTemplate,
+  template?: CustomAnkiTemplate | null,
 ): number | null {
-  if ((template.note_type ?? '').trim().toLowerCase() !== 'cloze') return null;
+  if (template && (template.note_type ?? '').trim().toLowerCase() !== 'cloze') return null;
   const raw = card.extra_fields?.AnkiCardOrd ?? card.fields?.AnkiCardOrd;
   const ord = typeof raw === 'string'
-    ? Number.parseInt(raw.trim(), 10)
+    ? (/^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN)
     : typeof raw === 'number'
       ? raw
       : Number.NaN;
@@ -104,6 +104,15 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   const htmlContent = faceResult?.html?.trim() || '';
   const issues = faceResult?.issues ?? [];
   const plainText = fallbackText ?? defaultFaceText(card, side);
+  const previewHtml = useMemo(() => {
+    if (htmlContent) return renderCardTemplateMath(htmlContent);
+    if (!template && extractClozeOrdinals(plainText).length > 0) {
+      return renderCardTemplateMath(applyClozeMarkup(plainText, {
+        side, ordinal: resolveClozeOrdinal(card),
+      }));
+    }
+    return '';
+  }, [htmlContent, template, plainText, card, side]);
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
@@ -126,11 +135,11 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     <div
       className={className}
       data-anki-card-face={side}
-      data-render-mode={htmlContent ? 'template' : 'plain'}
+      data-render-mode={htmlContent ? 'template' : previewHtml ? 'cloze' : 'plain'}
     >
-      {htmlContent && template ? (
+      {previewHtml ? (
         <ShadowDomPreview
-          htmlContent={htmlContent}
+          htmlContent={previewHtml}
           cssContent={cssContent}
           compact={compact}
           fidelity="anki"

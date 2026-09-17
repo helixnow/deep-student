@@ -200,7 +200,7 @@ export function buildHtmlSandboxDocument({
 </style>
 ${resizeScript}
 </head>
-<body>
+<body${isAnkiFidelity ? ' class="card"' : ''}>
 ${bodyContent}
 </body>
 </html>`;
