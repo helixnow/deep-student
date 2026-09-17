@@ -8,6 +8,7 @@
 import type { MindMapStoreApi } from '@/features/mindmap/store/mindmapStore';
 import type { getNoteEditor } from '@/features/workbench/agent/drivers/noteDriver';
 import type { ActivationResult } from '@/features/workbench/core/types';
+import type { ContentSaveState } from '../content/contentDirtyRegistry';
 
 // ★ 重依赖刻意动态化：mindmap store / noteDriver(@milkdown) 仅在 ACR/工作区
 //   激活路径按需 import()——本模块被 command-palette builtinCommands 静态引入
@@ -22,7 +23,7 @@ export interface NotesWorkspaceResourceRef {
 
 export interface NotesWorkspaceResourceDetails extends NotesWorkspaceResourceRef {
   title?: string;
-  saveState?: 'saved' | 'saving' | 'dirty';
+  saveState?: ContentSaveState;
 }
 
 export interface NotesWorkspaceHostController {

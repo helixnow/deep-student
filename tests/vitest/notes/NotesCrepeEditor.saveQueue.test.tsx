@@ -6,6 +6,8 @@ import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import type { CrepeEditorApi } from '@/components/crepe';
 
 let latestOnChange: ((markdown: string) => void) | null = null;
+let latestOnDocumentChange: (() => void) | null = null;
+let toolbarApi: CrepeEditorApi | null = null;
 let latestOnRetrySave: (() => Promise<void>) | undefined;
 let currentMarkdown = '';
 
@@ -50,7 +52,10 @@ vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
 }));
 
 vi.mock('@/features/notes/components/NotesEditorToolbar', () => ({
-  NotesEditorToolbar: () => <div data-testid="toolbar" />,
+  NotesEditorToolbar: ({ editor }: { editor: CrepeEditorApi }) => {
+    toolbarApi = editor;
+    return <div data-testid="toolbar" />;
+  },
 }));
 
 vi.mock('@/features/notes/components/FindReplacePanel', () => ({
@@ -70,8 +75,9 @@ vi.mock('@/components/custom-scroll-area', () => ({
 }));
 
 vi.mock('@/components/crepe', () => ({
-  CrepeEditor: ({ defaultValue, onChange, onReady }: any) => {
+  CrepeEditor: ({ defaultValue, onChange, onDocumentChange, onReady }: any) => {
     latestOnChange = onChange;
+    latestOnDocumentChange = onDocumentChange;
     React.useEffect(() => {
       currentMarkdown = defaultValue;
       const api = {
@@ -143,6 +149,8 @@ let rectSpy: ReturnType<typeof vi.spyOn> | null = null;
 describe('NotesCrepeEditor save queue', () => {
   beforeEach(() => {
     latestOnChange = null;
+    latestOnDocumentChange = null;
+    toolbarApi = null;
     latestOnRetrySave = undefined;
     currentMarkdown = '';
     vi.clearAllMocks();
@@ -157,6 +165,47 @@ describe('NotesCrepeEditor save queue', () => {
   afterEach(() => {
     rectSpy?.mockRestore();
     rectSpy = null;
+  });
+
+  it('keeps new document changes dirty when an older save finishes before serialization', async () => {
+    const saved = deferred();
+    const onSaveStateChange = vi.fn();
+    const { unmount } = render(
+      <NotesCrepeEditor initialContent="V0" noteId="note-1"
+        onSave={() => saved.promise} onSaveStateChange={onSaveStateChange} />,
+    );
+    act(() => latestOnChange?.('V1'));
+    const saving = latestOnRetrySave!();
+    act(() => latestOnDocumentChange?.());
+    await act(async () => { saved.resolve(); await saving; });
+    expect(onSaveStateChange).toHaveBeenLastCalledWith('dirty');
+    unmount();
+  });
+
+  it.each(['failed', 'conflict'] as const)('reports %s to the owning workspace and clears it after retry', async (state) => {
+    const error = Object.assign(new Error(state), {
+      isNonRetryable: true, isNoteConflict: state === 'conflict',
+    });
+    const onSave = vi.fn().mockRejectedValueOnce(error).mockResolvedValue(undefined);
+    const onSaveStateChange = vi.fn();
+    render(<NotesCrepeEditor initialContent="V0" noteId="note-1"
+      onSave={onSave} onSaveStateChange={onSaveStateChange} />);
+    act(() => latestOnChange?.('V1'));
+    await act(async () => { await expect(latestOnRetrySave!()).rejects.toBe(error); });
+    expect(onSaveStateChange).toHaveBeenLastCalledWith(state);
+    await act(async () => { await latestOnRetrySave!(); });
+    expect(onSaveStateChange).toHaveBeenLastCalledWith('saved');
+  });
+
+  it('shares host full-document operations with internal toolbar and external consumers', async () => {
+    const onEditorReady = vi.fn();
+    const onEditorApiReady = vi.fn();
+    render(<NotesCrepeEditor initialContent="visible prefix" noteId="note-1"
+      extendEditorApi={(api) => ({ ...api, getFullMarkdown: () => 'visible prefix\nhidden tail' })}
+      onEditorReady={onEditorReady} onEditorApiReady={onEditorApiReady} />);
+    await waitFor(() => expect(toolbarApi?.getFullMarkdown?.()).toBe('visible prefix\nhidden tail'));
+    expect(onEditorReady).toHaveBeenLastCalledWith(toolbarApi);
+    expect(onEditorApiReady).toHaveBeenLastCalledWith(toolbarApi);
   });
 
   it('drains the latest draft after unmount while an older save is in flight', async () => {

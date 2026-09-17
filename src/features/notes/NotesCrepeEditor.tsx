@@ -46,7 +46,7 @@ import { computeDiffLines } from './hooks/useAIEditState';
 import { AIDiffPanel, DiffHunksView } from './AIDiffPanel';
 import { dstu } from '@/dstu';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { registerContentDirtyChecker, type ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { buildMobileEditorCommands } from './mobileEditorCommands';
@@ -159,13 +159,15 @@ export interface NotesCrepeEditorProps {
   headerActions?: React.ReactNode;
   /** 编辑器实例变化回调（创建/销毁） */
   onEditorReady?: (api: CrepeEditorApi | null) => void;
+  /** Add host-owned full-document operations before any editor consumer receives the API. */
+  extendEditorApi?: (api: CrepeEditorApi) => CrepeEditorApi;
   /**
    * ACR R1-13：编辑器 API 就绪/销毁回调（供 workbench noteDriver 注册表）。
    * 与 onEditorReady 并行，互不影响既有 Learning Hub / Context 路径。
    */
   onEditorApiReady?: (api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => void;
   /** Optional save-state bridge for owning tab strips. */
-  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  onSaveStateChange?: (state: ContentSaveState) => void;
   /**
    * ACR R1-13：存在时把 isCurrentNoteDirty 挂到 contentDirtyRegistry，
    * 供 probe / canClose 查询（typeId + instanceKey = 资源 id）。
@@ -200,6 +202,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   className,
   headerActions,
   onEditorReady,
+  extendEditorApi,
   onEditorApiReady,
   onSaveStateChange,
   dirtyRegistryKey,
@@ -266,8 +269,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const conflictDiffRegionId = useId();
 
   useEffect(() => {
-    onSaveStateChange?.(isSaving ? 'saving' : isDirty ? 'dirty' : 'saved');
-  }, [isDirty, isSaving, onSaveStateChange]);
+    onSaveStateChange?.(isSaving ? 'saving' : saveError ?? (isDirty ? 'dirty' : 'saved'));
+  }, [isDirty, isSaving, saveError, onSaveStateChange]);
   const draftByNoteRef = useRef<Map<string, string>>(new Map());
   const lastSavedMapRef = useRef<Map<string, string>>(new Map());
   const dstuSaveByNoteRef = useRef<Map<string, (content: string) => Promise<void>>>(new Map());
@@ -704,7 +707,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       setLastSaved(new Date());
       setSaveError(null);
       const draft = draftByNoteRef.current.get(targetNoteId);
-      setIsDirty(typeof draft === 'string' && draft !== content);
+      setIsDirty(unsavedDocChangeRef.current || (typeof draft === 'string' && draft !== content));
     }
   }, [isDstuMode, saveNoteContent, readOnly, t]);
 
@@ -809,7 +812,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     draftByNoteRef.current.set(resolvedNoteId, content);
     const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
     if (!isUnmountedRef.current && resolvedNoteId === noteIdRef.current) {
-      setIsDirty(lastSavedSnapshot !== content);
+      setIsDirty(unsavedDocChangeRef.current || lastSavedSnapshot !== content);
     }
 
     const queuedTarget = [...pendingSaveQueueRef.current]
@@ -1464,16 +1467,17 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       },
     };
 
-    setEditorApi(lifecycleApi);
-    lifecycleApiRef.current = lifecycleApi;
+    const sharedApi = extendEditorApi?.(lifecycleApi) ?? lifecycleApi;
+    setEditorApi(sharedApi);
+    lifecycleApiRef.current = sharedApi;
     editorNoteIdRef.current = noteId ?? null;
-    onEditorReady?.(lifecycleApi);
-    onEditorApiReady?.(lifecycleApi);
+    onEditorReady?.(sharedApi);
+    onEditorApiReady?.(sharedApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
-      setEditor(lifecycleApi);
+      setEditor(sharedApi);
     }
-  }, [isDstuMode, noteId, onEditorReady, onEditorApiReady, setEditor]);
+  }, [isDstuMode, noteId, extendEditorApi, onEditorReady, onEditorApiReady, setEditor]);
 
   useEffect(() => {
     return () => {
@@ -1488,14 +1492,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // DSTU / workbench：走 props.onSave（NoteContentView.handleSave）；
   // legacy Context Canvas：走 saveNoteContent。
   const handleAISave = useCallback(async (content: string) => {
-    if (isDstuMode) {
-      if (dstuOnSave) {
-        await dstuOnSave(content);
-      }
-    } else if (noteId && saveNoteContent) {
-      await saveNoteContent(noteId, content);
-    }
-  }, [isDstuMode, dstuOnSave, noteId, saveNoteContent]);
+    await queueSave(content);
+  }, [queueSave]);
 
   // ACR R1-13：DSTU 下 hasSelection/isContentLoaded 恒为 true，故 workbench note 窗
   // 同样监听 canvas:ai-edit-request → AIDiffPanel；legacy Context 条件不变。

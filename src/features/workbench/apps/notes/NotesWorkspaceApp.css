@@ -777,6 +777,11 @@
   animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
 }
 
+[data-save-state='failed'] .notes-tab-state,
+[data-save-state='conflict'] .notes-tab-state {
+  color: hsl(var(--destructive));
+}
+
 .notes-tab .notes-icon-button {
   width: 24px;
   height: 24px;
