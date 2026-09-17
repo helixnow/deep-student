@@ -1920,6 +1920,7 @@ pub fn run() {
             crate::commands::create_custom_template,
             crate::commands::update_custom_template,
             crate::commands::delete_custom_template,
+            crate::commands::count_custom_template_references,
             crate::commands::export_template,
             crate::commands::import_template,
             crate::commands::import_custom_templates_bulk,

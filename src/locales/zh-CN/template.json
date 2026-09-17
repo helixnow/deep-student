@@ -28,6 +28,7 @@
     "updated_short": "更新于 {{date}}",
     "preview_side_aria": "切换预览面",
     "unsaved_changes_confirm": "当前模板有未保存的更改，确定放弃并离开吗？",
+    "schema_change_confirm": "此修改会影响 {{count}} 张已有卡片（{{oldType}} → {{newType}}），可能改变字段映射或卡面渲染。确定继续吗？",
     "delete_confirm_title": "删除“{{name}}”？",
     "delete_confirm_custom_note": "此操作不可撤销。",
     "delete_confirm_builtin_note": "内置模板删除后将保持停用，应用升级或重新导入内置模板时都不会自动恢复。",

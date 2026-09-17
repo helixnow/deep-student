@@ -1184,6 +1184,20 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                   }
                 } else if (editingTemplate) {
                   try {
+                    const schemaChanged = editingTemplate.note_type !== templateData.note_type
+                      || JSON.stringify(editingTemplate.fields) !== JSON.stringify(templateData.fields);
+                    if (schemaChanged) {
+                      const referencingCards = await invoke<number>('count_custom_template_references', {
+                        templateId: editingTemplate.id,
+                      });
+                      if (referencingCards > 0 && !unifiedConfirm(t('templateMgmt.schema_change_confirm', {
+                        count: referencingCards,
+                        oldType: editingTemplate.note_type,
+                        newType: templateData.note_type,
+                      }))) {
+                        return;
+                      }
+                    }
                     setIsLoading(true);
                     await templateManager.updateTemplate(editingTemplate.id, templateData);
                     backToBrowse();

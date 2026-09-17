@@ -250,6 +250,7 @@ commands.allow = [
   "debug_vfs_textbook_pages",
   "delete_anki_card",
   "delete_custom_template",
+  "count_custom_template_references",
   "delete_document_session",
   "delete_document_task",
   "delete_setting",
