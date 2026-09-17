@@ -151,6 +151,7 @@ interface FsrsReviewState {
   dueCards: ReviewCard[];
   /** 后端统计的真实到期总数（可能大于本轮 dueCards.length） */
   dueTotal: number;
+  learnAheadMinutes: number;
   queue: ReviewCard[];
   queueIndex: number;
   flipped: boolean;
@@ -189,7 +190,14 @@ interface FsrsReviewState {
    * 幂等去重生效，避免「主事务已提交但补偿报错」时重试产生二次评分。评分成功或
    * 会话切换后清空。
    */
-  pendingRateOp: { cardStateId: string; opId: string } | null;
+  pendingRateOp: {
+    cardStateId: string;
+    opId: string;
+    rating: FsrsRating;
+    durationMs: number | null;
+    enforceExpectedLastReview: boolean;
+    expectedLastReviewMs: number | null;
+  } | null;
   /** 完成态 stats 拉取代数，防止乱序覆盖 */
   statsFetchGen: number;
   sessionGeneration: number;
@@ -444,6 +452,18 @@ async function fetchDueFromBackend(): Promise<ReviewCard[]> {
   return cards;
 }
 
+async function fetchLearnAheadMinutes(): Promise<number> {
+  try {
+    const result = await invoke<Record<string, unknown>>('fsrs_get_scheduler_config');
+    const minutes = result?.learnAheadMinutes ?? result?.learn_ahead_minutes;
+    if (typeof minutes === 'number' && Number.isInteger(minutes) && minutes >= 0 && minutes <= 60) {
+      return minutes;
+    }
+  } catch { /* Older backends may not expose scheduler configuration. */ }
+  // No confirmed setting: wait until learning cards are actually due.
+  return 0;
+}
+
 function parseDueTotalFromStats(result: unknown): number | null {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const row = result as Record<string, unknown>;
@@ -648,6 +668,7 @@ function errorMessage(error: unknown, fallback: string): string {
 export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   screen: 'today',
   sessionMode: null,
+  learnAheadMinutes: LEARNING_STEP_REQUEUE_WINDOW_MS / 60_000,
   dueCards: [],
   dueTotal: 0,
   queue: [],
@@ -712,9 +733,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       && get().dueLoadGeneration === dueLoadGeneration;
     set({ dueLoadGeneration, loading: true, error: null, errorKind: null });
     try {
-      const [fromBackend, dueTotal] = await Promise.all([
+      const [fromBackend, dueTotal, learnAheadMinutes] = await Promise.all([
         fetchDueFromBackend(),
         fetchDueTotalFromStats(),
+        fetchLearnAheadMinutes(),
       ]);
       // stats 失败时：若本批打满上限，保留上次诚实总数，避免把 50 当成「刚好 50」。
       if (!isCurrent()) return false;
@@ -728,6 +750,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       }
       set({
         dueCards: fromBackend,
+        learnAheadMinutes,
         dueTotal: resolvedTotal,
         loading: false,
       });
@@ -871,8 +894,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
       const enqueued = await enqueueBatchForReview(ankiIds, contentByAnkiId);
       if (get().sessionGeneration !== sessionGeneration) return false;
+      const learnAheadMinutes = await fetchLearnAheadMinutes();
+      if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         queue: enqueued,
+        learnAheadMinutes,
         queueIndex: nextReviewableIndex(enqueued, 0),
         flipped: false,
         flippedAtMs: null,
@@ -1234,25 +1260,34 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     // 同一次用户作答的失败重试复用同一 clientOpId：后端按 log id 幂等去重，
     // 即使主事务已提交而返回值异常，重试也不会写入第二条评分。
     const pendingOp = get().pendingRateOp;
-    const clientOpId =
-      pendingOp && pendingOp.cardStateId === current.id ? pendingOp.opId : createClientOpId();
+    if (pendingOp?.cardStateId === current.id && pendingOp.rating !== rating) {
+      set({ error: i18n.t('flashcards:session.errors.retryOriginalRating'), errorKind: 'rate' });
+      return;
+    }
+    const operation = pendingOp?.cardStateId === current.id ? pendingOp : {
+      cardStateId: current.id,
+      opId: createClientOpId(),
+      rating,
+      durationMs,
+      enforceExpectedLastReview: current.lastReviewMs !== undefined,
+      expectedLastReviewMs: current.lastReviewMs ?? null,
+    };
     set({
       ratingBusy: true,
       lastRated: rating,
       error: null,
       errorKind: null,
-      pendingRateOp: { cardStateId: current.id, opId: clientOpId },
+      pendingRateOp: operation,
     });
 
     try {
       const result = await invoke<unknown>('fsrs_rate', {
         cardStateId: current.id,
-        rating,
-        durationMs,
-        clientOpId,
-        enforceExpectedLastReview: current.lastReviewMs !== undefined,
-        expectedLastReviewMs:
-          current.lastReviewMs === undefined ? null : current.lastReviewMs,
+        rating: operation.rating,
+        durationMs: operation.durationMs,
+        clientOpId: operation.opId,
+        enforceExpectedLastReview: operation.enforceExpectedLastReview,
+        expectedLastReviewMs: operation.expectedLastReviewMs,
       });
       if (get().sessionGeneration !== sessionGeneration) {
         requestFlashcardsDueRefresh();
@@ -1293,15 +1328,35 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         : rating <= 2;
       const isLearningStepDue = dueMs != null
         && dueMs > now
-        && dueMs - now <= LEARNING_STEP_REQUEUE_WINDOW_MS
+        && dueMs - now <= get().learnAheadMinutes * 60_000
         && stillLearning;
       const shouldRequeue = !ratedSuspended && ((dueMs != null && dueMs <= now) || isLearningStepDue);
+
+      // Only consult the next global batch when the remaining queue is all early
+      // learning cards. Keep the committed rating even if this read fails.
+      let extraDue: ReviewCard[] = [];
+      let allowEarly = true;
+      const tail = get().queue.slice(get().queueIndex + 1).filter((card) => !card.suspended);
+      const hasEarly = isLearningStepDue || tail.some((card) => (card.learningDueMs ?? 0) > now);
+      const hasDue = tail.some((card) => (card.learningDueMs ?? 0) <= now)
+        || (shouldRequeue && !isLearningStepDue);
+      if (get().sessionMode === 'due' && hasEarly && !hasDue) {
+        try {
+          extraDue = await fetchDueFromBackend();
+        } catch {
+          allowEarly = false;
+        }
+        if (get().sessionGeneration !== sessionGeneration) {
+          requestFlashcardsDueRefresh();
+          return;
+        }
+      }
 
       // 队列耗尽时保持 screen=session，让 ReviewSessionScreen 展示完成态；
       // 不直接跳回 today（由用户点「返回今日」/退出）。
       // 不在此处 loadDue：其 loading 会盖住完成态；返回今日时 TodayScreen 会自行刷新。
       set((state) => {
-        const liveIndex = state.queue.findIndex((card) => card.id === current.id);
+        const liveIndex = state.queue.findIndex((card, index) => index >= state.queueIndex && card.id === current.id);
         const baseIndex = liveIndex >= 0 ? liveIndex : state.queueIndex;
         let nextQueue = state.queue;
         let nextIndex: number;
@@ -1343,6 +1398,21 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           ));
           nextIndex = nextReviewableIndex(nextQueue, baseIndex + 1);
         }
+
+        const remaining = nextQueue.slice(nextIndex);
+        const activeIds = new Set(remaining.map((card) => card.id));
+        const dueCards = extraDue.filter((card) => !card.suspended && !activeIds.has(card.id));
+        const replenishedIds = new Set(dueCards.map((card) => card.id));
+        const completed = nextQueue.slice(0, nextIndex).filter((card) => !replenishedIds.has(card.id));
+        const early = (card: ReviewCard) => (card.learningDueMs ?? 0) > Date.now();
+        // Stable partition also handles cards appended during an active session.
+        nextQueue = [
+          ...completed,
+          ...remaining.filter((card) => !early(card)),
+          ...dueCards,
+          ...remaining.filter(early),
+        ];
+        nextIndex = allowEarly ? nextReviewableIndex(nextQueue, completed.length) : nextQueue.length;
 
         const sessionRatedCount = state.sessionRatedCount + 1;
         const sessionAgainCount =
