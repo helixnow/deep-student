@@ -6268,23 +6268,6 @@ impl ChatAnkiToolExecutor {
             .count();
         let all_cloze = cloze_count == cards.len();
         if all_cloze {
-            let model_names = crate::anki_connect_service::get_model_names()
-                .await
-                .map_err(|e| e.to_string())?;
-            if !model_names.iter().any(|name| name == "Cloze") {
-                let error_key = "blocks.ankiCards.errors.missingClozeNoteType".to_string();
-                ctx.emit_tool_call_error(&error_key);
-                let result = ToolResultInfo::failure(
-                    Some(call.id.clone()),
-                    Some(ctx.block_id.clone()),
-                    call.name.clone(),
-                    call.arguments.clone(),
-                    error_key,
-                    start_time.elapsed().as_millis() as u64,
-                );
-                let _ = ctx.save_tool_block(&result);
-                return Ok(result);
-            }
             if note_type != "Cloze" {
                 note_type = "Cloze".to_string();
             }
@@ -6307,10 +6290,13 @@ impl ChatAnkiToolExecutor {
         let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
             HashMap::new();
 
-        if !note_type_explicit && !all_cloze {
+        if !note_type_explicit {
             let mut template_cache: HashMap<String, Option<crate::models::CustomAnkiTemplate>> =
                 HashMap::new();
             for card in &cards {
+                if card_has_cloze_markup(card) {
+                    card_note_types.insert(card.id.clone(), "Cloze".to_string());
+                }
                 let card_template_id = card
                     .template_id
                     .as_deref()
@@ -6323,17 +6309,17 @@ impl ChatAnkiToolExecutor {
                     let maybe_template = if let Some(cached) = template_cache.get(&template_id) {
                         cached.clone()
                     } else {
-                        let loaded = db.get_custom_template_by_id(&template_id).ok().flatten();
+                        let loaded = db.get_custom_template_by_id(&template_id)
+                            .map_err(|error| format!("读取模板失败: {}", error))?;
                         template_cache.insert(template_id.clone(), loaded.clone());
                         loaded
                     };
                     if let Some(template) = maybe_template {
-                        let model_name = template.note_type.trim().to_string();
-                        if !model_name.is_empty() {
-                            card_note_types.insert(card.id.clone(), model_name.clone());
-                            // D1 修复：缺失模型同步前自动 createModel 所需的模板数据
-                            templates_by_model.entry(model_name).or_insert(template);
-                        }
+                        let model_name = crate::anki_connect_service::template_model_name(&template);
+                        card_note_types.insert(card.id.clone(), model_name.clone());
+                        templates_by_model.entry(model_name).or_insert(template);
+                    } else {
+                        return Err(format!("模板 {} 不存在，请先选择可用模板", template_id));
                     }
                 }
             }

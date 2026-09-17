@@ -724,12 +724,50 @@ async fn invoke_anki_connect_action(
 
 /// 用自定义模板在 Anki 中创建模型（createModel）。
 /// 字段、正反面 HTML 模板与 CSS 都来自 custom_template。
-pub async fn create_model_from_template(
+pub fn template_model_name(template: &crate::models::CustomAnkiTemplate) -> String {
+    format!("Deep Student / {} / v{}", template.id, template.version)
+}
+
+fn model_templates(template: &crate::models::CustomAnkiTemplate) -> serde_json::Value {
+    serde_json::json!({
+        "Card 1": { "Front": template.front_template, "Back": template.back_template }
+    })
+}
+
+fn model_matches_template(
+    template: &crate::models::CustomAnkiTemplate,
+    fields: &[String],
+    templates: &serde_json::Value,
+    styling: &serde_json::Value,
+) -> bool {
+    fields == template.fields
+        && templates == &model_templates(template)
+        && styling.get("css").and_then(|value| value.as_str()) == Some(template.css_style.as_str())
+}
+
+async fn verify_existing_template_model(
+    model_name: &str,
     template: &crate::models::CustomAnkiTemplate,
 ) -> Result<(), String> {
-    let model_name = template.note_type.trim();
+    let fields = get_model_field_names(model_name).await?;
+    let params = serde_json::json!({ "modelName": model_name });
+    let templates = invoke_anki_connect_action("modelTemplates", Some(params.clone()), 15, 0).await?;
+    let styling = invoke_anki_connect_action("modelStyling", Some(params), 15, 0).await?;
+    if !model_matches_template(template, &fields, &templates, &styling) {
+        return Err(format!(
+            "Anki 模型「{}」与本地模板的字段、卡面或样式不同。请使用新模板版本或复制为新模板后发送；已有 Anki 模型未被修改。",
+            model_name
+        ));
+    }
+    Ok(())
+}
+
+pub async fn create_model_from_template(
+    model_name: &str,
+    template: &crate::models::CustomAnkiTemplate,
+) -> Result<(), String> {
     if model_name.is_empty() {
-        return Err("模板未配置笔记类型（note_type 为空）".to_string());
+        return Err("Anki 模型名称不能为空".to_string());
     }
     if template.fields.is_empty() {
         return Err("模板未配置字段，无法创建 Anki 模型".to_string());
@@ -1316,10 +1354,13 @@ pub async fn add_notes_to_anki_detailed(
             Ok(existing) => {
                 for model_name in &model_names {
                     if existing.iter().any(|m| m == model_name) {
+                        if let Some(template) = templates_by_model.get(model_name) {
+                            verify_existing_template_model(model_name, template).await?;
+                        }
                         continue;
                     }
                     if let Some(template) = templates_by_model.get(model_name) {
-                        match create_model_from_template(template).await {
+                        match create_model_from_template(model_name, template).await {
                             Ok(()) => created_models.push(model_name.clone()),
                             Err(e) => {
                                 warn!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
@@ -1342,11 +1383,20 @@ pub async fn add_notes_to_anki_detailed(
                     }
                 }
             }
-            Err(e) => {
-                warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e);
-                warnings.push(format!("获取 Anki 模型列表失败，已跳过模型预检: {}", e));
-            }
+            Err(e) => return Err(format!("无法核对 Anki 模型，发送尚未开始: {}", e)),
         }
+    }
+
+    if !model_errors.is_empty() {
+        return Ok(AnkiSyncReport {
+            note_ids: vec![None; cards.len()],
+            added: 0,
+            duplicates: 0,
+            failed: cards.len(),
+            created_models,
+            model_errors,
+            warnings,
+        });
     }
 
     for model_name in model_names {
@@ -1358,6 +1408,9 @@ pub async fn add_notes_to_anki_detailed(
                 None
             }
         };
+        if templates_by_model.contains_key(&model_name) && loaded.is_none() {
+            return Err(format!("无法读取 Anki 模型「{}」的字段，发送尚未开始", model_name));
+        }
         model_field_names_cache.insert(model_name, loaded);
     }
 
@@ -1376,10 +1429,14 @@ pub async fn add_notes_to_anki_detailed(
             .cloned()
             .unwrap_or(None);
 
+        let semantic_note_type = templates_by_model.get(&model_name)
+            .map(|template| template.note_type.as_str())
+            .unwrap_or(&model_name);
+
         let mut fields = if let Some(names) = model_field_names.as_ref() {
-            build_fields_with_model_names(&card, names, &model_name)
+            build_fields_with_model_names(&card, names, semantic_note_type)
         } else {
-            build_basic_fields(&card, &model_name)
+            build_basic_fields(&card, semantic_note_type)
         };
 
         // 遮挡卡闭环：Cloze Text 兜底 + imageRef 并入媒体输入（非遮挡卡为 no-op）
@@ -1623,6 +1680,51 @@ pub async fn import_apkg(path: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn identity_template() -> crate::models::CustomAnkiTemplate {
+        crate::models::CustomAnkiTemplate {
+            id: "template-a".into(), name: "Basic".into(), description: String::new(),
+            author: None, version: "1".into(), preview_front: String::new(), preview_back: String::new(),
+            note_type: "Basic".into(), fields: vec!["Front".into(), "Back".into()],
+            generation_prompt: String::new(), front_template: "{{Front}}".into(),
+            back_template: "{{Back}}".into(), css_style: ".card { color: red; }".into(),
+            field_extraction_rules: HashMap::new(), created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(), is_active: true, is_built_in: false,
+            preview_data_json: None,
+        }
+    }
+
+    #[test]
+    fn custom_model_identity_uses_template_id_and_version_not_note_type_or_title() {
+        let template = identity_template();
+        let name = template_model_name(&template);
+        let mut other = template.clone();
+        other.name = "Renamed".into();
+        assert_eq!(name, template_model_name(&other));
+        other.id = "template-b".into();
+        assert_ne!(name, template_model_name(&other));
+        other.id = template.id.clone();
+        other.version = "2".into();
+        assert_ne!(name, template_model_name(&other));
+        assert_ne!(name, "Basic");
+    }
+
+    #[test]
+    fn existing_models_must_match_field_order_card_faces_and_css() {
+        let template = identity_template();
+        let faces = model_templates(&template);
+        let css = serde_json::json!({"css": template.css_style});
+        assert!(model_matches_template(&template, &template.fields, &faces, &css));
+        let mut fields = template.fields.clone();
+        fields.reverse();
+        assert!(!model_matches_template(&template, &fields, &faces, &css));
+        let wrong_faces = serde_json::json!({"Card 1": {"Front": "{{Back}}", "Back": "{{Front}}"}});
+        assert!(!model_matches_template(&template, &template.fields, &wrong_faces, &css));
+        assert!(!model_matches_template(&template, &template.fields, &faces, &serde_json::json!({"css": ""})));
+        let mut extra_face = faces.clone();
+        extra_face["Card 2"] = faces["Card 1"].clone();
+        assert!(!model_matches_template(&template, &template.fields, &extra_face, &css));
+    }
 
     fn basic_note(front: &str, back: &str) -> Note {
         let mut fields = HashMap::new();
