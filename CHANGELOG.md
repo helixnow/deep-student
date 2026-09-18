@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.63](https://github.com/helixnow/deep-student/compare/v0.9.62...v0.9.63) (2026-09-18)
+
+
+### Bug Fixes
+
+* **release:** default desktop rebuilds to unsigned platform bundles ([ccd614f](https://github.com/helixnow/deep-student/commit/ccd614fb8a527513d16f325ea6539b464f24137d))
+
 ## [0.9.62](https://github.com/helixnow/deep-student/compare/v0.9.61...v0.9.62) (2026-09-17)
 
 
