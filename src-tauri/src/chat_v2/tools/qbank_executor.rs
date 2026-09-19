@@ -4501,9 +4501,11 @@ impl QBankExecutor {
             request.max_questions,
             request.specs.len()
         );
+        let debug_log_dir = llm.build_debug_persist_config().map(|c| c.log_dir);
         let deps = QbankGenerationDeps {
             llm,
             vfs_db: vfs_db.clone(),
+            debug_log_dir,
         };
         let result = run_qbank_generation(request, deps).await;
 
