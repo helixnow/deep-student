@@ -700,10 +700,13 @@ fn update_vfs_all_row_sync_bundle(conn: &Connection) {
     .expect("update vfs todo list");
     conn.execute(
         "UPDATE todo_items SET title = 'All rows todo item updated',
-            status = 'completed', priority = 'high', updated_at = ?1 WHERE id = 'ti_all'",
+            status = 'completed', priority = 'high', completed_pomodoros = 0,
+            updated_at = ?1 WHERE id = 'ti_all'",
         params![ts],
     )
     .expect("update vfs todo item");
+    // Match the local repository's derived-count update: this record is no
+    // longer completed, so it no longer contributes to completed_pomodoros.
     conn.execute(
         "UPDATE pomodoro_records SET status = 'interrupted',
             actual_duration = 900, updated_at = ?1 WHERE id = 'pd_all'",
@@ -1149,6 +1152,25 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     let ms = 1_714_000_000_000i64;
     let ts = "2024-04-24T00:00:00Z";
 
+    conn.execute_batch(
+        "INSERT INTO note_tags (note_id, tag) VALUES ('note_all', 'non-row');
+         INSERT INTO note_links (source_id, position, target_title, target_title_norm)
+             VALUES ('note_all', 0, 'Unresolved note', 'unresolved note');
+         INSERT INTO mastery_states (concept_key, score, total)
+             VALUES ('non-row-concept', 0.7, 1);
+         INSERT INTO automation_todo_deliveries (run_id, todo_item_id, created_at)
+             VALUES ('run_non_row', 'ti_all', '2024-04-24T00:00:00Z');
+         INSERT INTO qbank_generation_tasks
+             (id, exam_id, request_json, stream_event, created_at, updated_at)
+             VALUES ('qgen_non_row', 'exam_all', '{}', 'qgen_non_row', 1714000000000, 1714000000000);
+         INSERT INTO vfs_index_profiles
+             (id, model_fingerprint, dimension, modality, embedding_protocol,
+              lance_table_name, created_at, updated_at)
+             VALUES ('profile_non_row', 'model_non_row', 1536, 'text', 'openai',
+                     'index_non_row', 1714000000000, 1714000000000);",
+    )
+    .expect("insert derived indexes and local task state");
+
     conn.execute(
         "INSERT INTO path_cache (item_type, item_id, full_path, folder_path, updated_at)
          VALUES ('note', 'note_all', '/All rows folder/All rows note', '/All rows folder', ?1)",
@@ -1289,6 +1311,12 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     .expect("update vfs indexing config row");
 
     BTreeSet::from([
+        "note_tags",
+        "note_links",
+        "mastery_states",
+        "automation_todo_deliveries",
+        "qbank_generation_tasks",
+        "vfs_index_profiles",
         "path_cache",
         "question_bank_stats",
         "review_stats",
@@ -1364,30 +1392,54 @@ fn insert_chat_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
         params![ts],
     )
     .expect("insert chat subagent task row");
-    conn.execute(
-        "INSERT INTO chat_v2_compactions (
-            id, session_id, summary_message_id, tail_start_message_id,
-            tail_start_time_created, reason, is_auto, is_overflow,
-            tokens_before, tokens_after, model_id, created_at
-         ) VALUES (
-            'compact_non_row', 'sess_all', 'msg_all', 'msg_all', ?1,
-            'manual', 0, 0, 8000, 1200, 'model-a', ?1
-         )",
-        params![ms],
+    conn.execute_batch(
+        "INSERT INTO chat_v2_goals
+             (session_id, goal_id, objective, created_at_ms, updated_at_ms)
+             VALUES ('sess_all', 'goal_non_row', 'Local goal', 1714000000000, 1714000000000);
+         INSERT INTO connector_operations
+             (operation_id, session_id, provider_id, action, idempotency_key, state, created_at)
+             VALUES ('op_non_row', 'sess_all', 'provider', 'draft', 'idem_non_row', 'draft', '2024-04-24T00:00:00Z');
+         INSERT INTO completion_outbox
+             (delivery_id, run_id, workspace_id, agent_session_id, target_session_id, payload_json, created_at)
+             VALUES ('delivery_non_row', 'run_non_row', 'ws_all', 'agent_sess_non_row', 'sess_all', '{}', '2024-04-24T00:00:00Z');
+         INSERT INTO revocation_epochs (kind, task_id, epoch, updated_at)
+             VALUES ('task', 'subtask_non_row', 1, '2024-04-24T00:00:00Z');
+         INSERT INTO budget_snapshots (root_id, limits_json, usage_json, updated_at)
+             VALUES ('sess_all', '{}', '{}', '2024-04-24T00:00:00Z');
+         INSERT INTO skill_usage (usage_id, skill_id, task_session_id, created_at)
+             VALUES ('usage_non_row', 'skill_non_row', 'sess_all', '2024-04-24T00:00:00Z');
+         INSERT INTO skill_candidates
+             (candidate_id, source_kind, session_id, trace_hash, draft_payload_json, evidence_refs_json, created_at, updated_at)
+             VALUES ('candidate_non_row', 'trajectory', 'sess_all', 'trace_non_row', '{}', '[]', '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');",
     )
-    .expect("insert chat compaction row");
+    .expect("insert local chat runtime and skill draft rows");
 
     BTreeSet::from([
         "chat_v2_session_state",
         "chat_v2_todo_lists",
         "sleep_block",
         "subagent_task",
-        "chat_v2_compactions",
+        "chat_v2_goals",
+        "connector_operations",
+        "completion_outbox",
+        "revocation_epochs",
+        "budget_snapshots",
+        "skill_usage",
+        "skill_candidates",
     ])
 }
 
 fn insert_mistakes_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     let ts = "2024-04-24T00:00:00Z";
+
+    conn.execute_batch(
+        "INSERT INTO automation_definitions (id, name, schedule_json, created_at, updated_at)
+             VALUES ('auto_non_row', 'Local automation', '{}', '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');
+         INSERT INTO automation_runs
+             (id, automation_id, dedupe_key, scheduled_for, created_at, updated_at)
+             VALUES ('run_non_row', 'auto_non_row', 'dedupe_non_row', '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');",
+    )
+    .expect("insert local automation definitions and history");
 
     conn.execute(
         "INSERT INTO temp_sessions (
@@ -1477,6 +1529,8 @@ fn insert_mistakes_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str
 
     BTreeSet::from([
         "temp_sessions",
+        "automation_definitions",
+        "automation_runs",
         "document_control_states",
         "search_logs",
         "exam_sheet_sessions",

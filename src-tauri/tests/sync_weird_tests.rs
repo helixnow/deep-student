@@ -998,12 +998,12 @@ async fn w39_tombstone_for_nonexistent_blob() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mut m = tombstone::BlobTombstones::default();
     m.entries.insert(
-        "ghost_hash".into(),
+        "ab".repeat(32),
         tombstone::BlobTombstoneEntry {
             deleted_at: chrono::Utc::now().to_rfc3339(),
             device_id: "d1".into(),
             size: Some(0),
-            relative_path: Some("gh/ghost_hash.bin".into()),
+            relative_path: Some(format!("ab/{}.bin", "ab".repeat(32))),
         },
     );
     // 本地没有这个 blob，tombstone 不应报错
@@ -1043,7 +1043,7 @@ async fn w39_tombstone_for_nonexistent_blob() {
     }
     let storage = NoopStorage;
     let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs", true).await;
-    assert!(r.is_ok());
+    assert!(r.is_ok(), "{r:?}");
 }
 
 /// **W.40** DELETE 在事务中被应用，然后事务回滚 —— tombstone 不应生效
