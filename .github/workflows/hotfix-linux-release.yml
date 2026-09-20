@@ -74,13 +74,19 @@ jobs:
   # 等价（门禁一致，只是慢一些）。
   build-linux:
     needs: [verify]
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/reusable-build-linux.yml
     with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
+      tag_name: ${{ needs.verify.outputs.source_sha }}
       artifact_name: linux-hotfix-x86_64
     secrets: inherit
 
   replace-release-assets:
+    concurrency:
+      group: release-assets-${{ github.repository }}
+      cancel-in-progress: false
     needs: [resolve, verify, build-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -91,6 +97,12 @@ jobs:
     steps:
       # workflow ref 的 checkout：提供 scripts/ci/*
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Verify the hotfix still targets the resolved tag commit
+        env:
+          RELEASE_SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag_name }}
+        run: node scripts/ci/release-contracts.mjs tag-check --tag "$RELEASE_TAG"
 
       - name: Download Linux artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

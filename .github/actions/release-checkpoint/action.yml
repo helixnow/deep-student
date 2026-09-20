@@ -1,0 +1,24 @@
+name: Complete release stage
+description: Persist stage identity after all outputs have been uploaded
+inputs:
+  stage:
+    required: true
+    description: Recovery stage identifier
+  policy:
+    default: ''
+    description: Signing or migration override policy
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+        RELEASE_POLICY: ${{ inputs.policy }}
+      run: node "${{ github.action_path }}/../../../scripts/ci/release-recovery.mjs" write "$STAGE" "$RUNNER_TEMP/checkpoint-$STAGE/checkpoint.json"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-complete-${{ inputs.stage }}
+        path: ${{ runner.temp }}/checkpoint-${{ inputs.stage }}/checkpoint.json
+        retention-days: 30
+        overwrite: true
+        if-no-files-found: error

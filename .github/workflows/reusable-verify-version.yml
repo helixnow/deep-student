@@ -13,11 +13,28 @@ name: Verify Release Version (reusable)
 on:
   workflow_call:
     inputs:
+      check_release_metadata:
+        description: '校验锁文件根版本与许可证清单；主发布和完整重建必须启用'
+        required: false
+        type: boolean
+        default: false
+      check_release_secrets:
+        description: '在耗时构建前检查桌面发布所需凭据；Android 仍是可选发布目标'
+        required: false
+        type: boolean
+        default: false
+      allow_unsigned_desktop:
+        required: false
+        type: boolean
+        default: false
       tag_name:
         description: '要校验的 tag（如 v0.9.42）'
         required: true
         type: string
     outputs:
+      source_sha:
+        description: 'tag 在本轮解析得到的完整不可变 commit SHA'
+        value: ${{ jobs.verify.outputs.source_sha }}
       tag_name:
         description: '透传 tag'
         value: ${{ jobs.verify.outputs.tag_name }}
@@ -33,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
       tag_name: ${{ steps.verify.outputs.tag_name }}
       version: ${{ steps.verify.outputs.version }}
     steps:
@@ -40,10 +58,51 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # release 代码树：可能是不含 scripts/ci 的旧 tag
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+
+      - name: Preflight required release credentials
+        if: ${{ inputs.check_release_secrets }}
+        env:
+          ALLOW_UNSIGNED_DESKTOP: ${{ inputs.allow_unsigned_desktop }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/ci/release-contracts.mjs secrets
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.tag_name }}
           path: release-src
+
+      - name: Resolve immutable release source
+        id: source
+        run: |
+          SHA=$(git -C release-src rev-parse HEAD)
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Invalid source SHA'; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Release source SHA: $SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify complete release metadata
+        if: ${{ inputs.check_release_metadata }}
+        env:
+          RELEASE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: node scripts/ci/release-contracts.mjs source --root release-src
+
+      - name: Check time-sensitive release requirements before any compilation
+        if: ${{ inputs.check_release_metadata }}
+        run: node scripts/migration-ci/verify-release-requirements.mjs --manifest scripts/migration-ci/release-requirements.json --out "$RUNNER_TEMP/release-requirements-preflight.json"
 
       - name: Verify version consistency
         id: verify

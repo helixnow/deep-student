@@ -28,6 +28,18 @@ name: Build macOS (reusable)
 on:
   workflow_call:
     inputs:
+      force_rebuild:
+        default: false
+        type: boolean
+      targets:
+        description: Native target matrix (recovery can build one architecture)
+        type: string
+        default: '[{"target":"aarch64-apple-darwin","runner":"macos-15"},{"target":"x86_64-apple-darwin","runner":"macos-15-intel"}]'
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       tag_name:
         description: '构建的 tag（如 v0.9.42）'
         required: true
@@ -45,6 +57,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   # 固定工具版本（升级需显式改这里）
@@ -57,6 +70,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     env:
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
+      GH_TOKEN: ${{ github.token }}
+      CARGO_BUILD_JOBS: '2'
+      SCCACHE_IDLE_TIMEOUT: '0'
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
       # The repository release profile uses one codegen unit + ThinLTO + packed
@@ -75,11 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-15
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
+        include: ${{ fromJSON(inputs.targets) }}
     steps:
       # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
       - name: Preflight — require production signing secrets (fail-closed)
@@ -119,7 +135,16 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag_name }}
+          ref: ${{ inputs.source_sha || inputs.tag_name }}
+
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: |
+            scripts/ci
+            .github/actions
 
       - name: Overlay release pdfium tooling from workflow revision
         run: |
@@ -144,16 +169,25 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: stable
+          toolchain: '1.98.1'
           targets: ${{ matrix.target }}
 
       # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
       # sccache 二进制不存在时 cargo 会直接报错。
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        continue-on-error: true
+
+      - name: Check optional compiler cache
+        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
 
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
@@ -170,7 +204,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Legacy standalone recovery keeps its existing metadata refresh behavior.
+      # A pinned normal release must never silently mutate the candidate lockfile.
+      - name: Verify locked release dependency graph
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: |
+          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
+          node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Refresh release lock metadata and third-party notices
+        if: ${{ inputs.source_sha == '' }}
         run: |
           (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
           npm run licenses:generate
@@ -217,6 +261,11 @@ jobs:
       # ── 导入 Developer ID 证书到独立临时 keychain ──
       # 不污染 login keychain；keychain 密码为一次性随机值；构建结束
       # (无论成败) 由 post 步骤删除。
+      - name: Verify prebuilt frontend identity and contents
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
+
       - name: Import Apple signing certificate
         if: ${{ !inputs.allow_unsigned }}
         env:
@@ -287,7 +336,7 @@ jobs:
               ;;
           esac
 
-      - name: Build Tauri app (codesign + notarize + staple)
+      - name: Compile or recover native executable
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -305,19 +354,30 @@ jobs:
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
-          if [[ "$ALLOW_UNSIGNED" == "1" ]]; then
-            # Empty APPLE_* variables override tauri.conf.json and make Tauri
-            # invoke codesign with identity "". Remove them so the configured
-            # ad-hoc identity ("-") is used for unsigned recovery bundles.
-            unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-          fi
-          CONFIG_ARGS=()
-          if [[ -n "$FRONTEND_DIST_ARTIFACT" ]]; then
-            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
-            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
-            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
-          fi
-          npx tauri build --target ${{ matrix.target }} "${CONFIG_ARGS[@]}" -- --locked
+          node .release-tooling/scripts/ci/native-build.mjs compile '${{ matrix.target }}'
+
+      - name: Preserve compilation before packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/deep-student*
+            src-tauri/target/${{ matrix.target }}/release/native-build.json
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+
+      - name: Bundle with bounded retry (no Rust compilation)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
+        run: node .release-tooling/scripts/ci/native-build.mjs bundle '${{ matrix.target }}' app,dmg
 
       # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
       # 失败时也能拿到命中率，结果同时写入日志与 job summary。
@@ -448,14 +508,49 @@ jobs:
           echo "📦 Renamed updater artifacts:"
           ls -la "$BUNDLE_DIR"/
 
+      - name: Record locally built frontend identity
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-write --dir dist
+
+      - name: Record release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_ARTIFACT_DIR: src-tauri/target/${{ matrix.target }}/release/bundle
+        run: >-
+          node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
+          --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
+          --output "$RUNNER_TEMP/release-provenance.json"
+
+      - name: Upload release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-provenance.json
+          if-no-files-found: error
+          overwrite: true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          if-no-files-found: error
+          overwrite: true
           name: macos-${{ matrix.target }}
+          retention-days: 30
+          compression-level: 0
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - uses: ./.release-tooling/.github/actions/release-checkpoint
+        if: inputs.source_sha != ''
+        with:
+          stage: ${{ matrix.target == 'aarch64-apple-darwin' && 'macos-arm' || 'macos-intel' }}
+          policy: ${{ inputs.allow_unsigned }}
 
       # 无论成败都清理临时 keychain, 不让证书残留在 runner 上
       - name: Cleanup signing keychain

@@ -282,9 +282,13 @@ pub async fn add_cards_to_anki_connect(
         if card.id.trim().is_empty() {
             continue;
         }
-        let template = state.database.get_custom_template_by_id(template_id)
+        let template = state
+            .database
+            .get_custom_template_by_id(template_id)
             .map_err(|error| AppError::validation(format!("读取模板失败: {}", error)))?
-            .ok_or_else(|| AppError::validation(format!("模板 {} 不存在，请先选择可用模板", template_id)))?;
+            .ok_or_else(|| {
+                AppError::validation(format!("模板 {} 不存在，请先选择可用模板", template_id))
+            })?;
         let model_name = crate::anki_connect_service::template_model_name(&template);
         card_models.insert(card.id.clone(), model_name.clone());
         templates_by_model.entry(model_name).or_insert(template);
@@ -1179,12 +1183,14 @@ pub async fn export_multi_template_apkg(
     let staged_output_path = output_path.clone();
     let runtime_handle = tokio::runtime::Handle::current();
     let export_result = tokio::task::spawn_blocking(move || {
-        runtime_handle.block_on(crate::apkg_exporter_service::export_multi_template_apkg_report(
-            cards.into_iter().filter(|c| !c.is_error_card).collect(),
-            deck_name,
-            staged_output_path,
-            template_map,
-        ))
+        runtime_handle.block_on(
+            crate::apkg_exporter_service::export_multi_template_apkg_report(
+                cards.into_iter().filter(|c| !c.is_error_card).collect(),
+                deck_name,
+                staged_output_path,
+                template_map,
+            ),
+        )
     })
     .await
     .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;

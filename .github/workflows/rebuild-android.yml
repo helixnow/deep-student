@@ -62,7 +62,7 @@ jobs:
     outputs:
       version: ${{ steps.info.outputs.version }}
       tag_name: ${{ steps.info.outputs.tag_name }}
-      source_ref: ${{ steps.info.outputs.source_ref }}
+      source_ref: ${{ steps.source.outputs.sha }}
     steps:
       - name: Validate inputs & fetch release info
         id: info
@@ -101,6 +101,14 @@ jobs:
 
       # F6: 产物以 tag 版本命名发布，但代码来自 source_ref —— 两者版本号
       # 不一致时（例如手滑用 main 最新代码构旧 tag 的 APK）默认硬失败。
+      - name: Freeze source ref for the build job
+        id: source
+        run: |
+          SHA=$(git rev-parse HEAD)
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Android rebuild source SHA: $SHA" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify source_ref version matches tag
         run: |
           TAG_VERSION="${{ steps.info.outputs.version }}"
@@ -147,6 +155,9 @@ jobs:
   # 发布: 替换 Release 中的 APK 并更新 R2 + 刷新 CDN
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   publish:
+    concurrency:
+      group: release-assets-${{ github.repository }}
+      cancel-in-progress: false
     needs: [preflight, build-android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -231,6 +242,27 @@ jobs:
         with:
           node-version: 22
 
+      - name: Mark the GitHub release manifest Android asset available
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag_name }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          COUNT=$(gh api "repos/${GH_REPO}/releases/tags/${RELEASE_TAG}" --jq '[.assets[] | select(.name == "latest.json")] | length')
+          if [ "$COUNT" = 0 ]; then
+            echo '::notice::This historical release has no updater manifest; leaving its existing distribution contract unchanged.'
+            exit 0
+          fi
+          DIR="$RUNNER_TEMP/android-release-manifest"
+          mkdir -p "$DIR"
+          gh release download "$RELEASE_TAG" --repo "$GH_REPO" --pattern latest.json --dir "$DIR" --clobber
+          APK_FILE=$(find android-output -maxdepth 1 -name '*.apk' -type f | sort | head -1)
+          test -n "$APK_FILE"
+          APK_URL="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}/$(basename "$APK_FILE")"
+          node scripts/ci/release-contracts.mjs android-manifest --file "$DIR/latest.json" --output "$DIR/patched/latest.json" --version "$RELEASE_VERSION" --url "$APK_URL"
+          gh release upload "$RELEASE_TAG" "$DIR/patched/latest.json" --repo "$GH_REPO" --clobber
+
       - name: Upload APK to R2 & update latest.json
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -259,10 +291,13 @@ jobs:
             # 防止在更新版本已发布后重建旧 tag 时把更新版 latest.json 指向旧包。
             LATEST_VERSION=$(jq -r '.version // empty' /tmp/current-latest.json)
             TAG_VERSION="${{ needs.preflight.outputs.version }}"
-            if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$TAG_VERSION" ]; then
-              echo "::error::R2 latest.json version (${LATEST_VERSION}) != target tag version (${TAG_VERSION})."
-              echo "::error::Refusing to repoint latest.json at an older build. Publish the newer version instead, or sync this tag to a separate channel."
+            if [[ ! "$LATEST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo '::error::R2 updater manifest has an invalid version; refusing to patch it.'
               exit 1
+            fi
+            if [ "$LATEST_VERSION" != "$TAG_VERSION" ]; then
+              echo "::notice::Updated the versioned APK, but left global latest (${LATEST_VERSION}) unchanged. CDN purge will still run."
+              exit 0
             fi
             jq --arg apk "$APK_URL" \
                '.apk_url = $apk | .android = (.android // {} | .status = "available" | .url = $apk)' \

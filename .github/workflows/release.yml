@@ -1,504 +1,77 @@
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║  Deep Student 自动发布工作流 (唯一入口)                        ║
-# ╠══════════════════════════════════════════════════════════════════╣
-# ║                                                                ║
-# ║  发布流程 (唯一路径):                                          ║
-# ║    0. 修复历史遗留 autorelease: pending 标签 (防御性)          ║
-# ║    1. 开发者向 main 推送 conventional commits                  ║
-# ║    2. release-please 自动创建/更新 Release PR (版本号升级)     ║
-# ║    3. 合并 Release PR → 四路检测 release commit:               ║
-# ║       a) release-please 输出 release_created=true              ║
-# ║       b) HEAD commit 消息匹配 chore(main): release X.Y.Z      ║
-# ║       c) HEAD 为 merge commit 时扫描父提交 (v0.9.33 修复)     ║
-# ║       d) 近 10 个提交中存在未发布/仍为 draft 的 release commit ║
-# ║          (catch-up: 配合串行 concurrency, 被顶掉的排队 run     ║
-# ║           所对应的 release 由下一次 run 补建/续跑)             ║
-# ║    4. 创建 git tag + **draft** GitHub Release + 同步 PR 标签   ║
-# ║       —— Release 全程保持 draft(对外不可见), 直到 publish 阶段 ║
-# ║       所有校验/构建/签名清单全部通过后才一次性翻转为公开。     ║
-# ║       失败或 rerun 会幂等恢复同一个 draft(不会出现空公开       ║
-# ║       Release, 也不会重复建 Release)。                         ║
-# ║    5. 版本号三重校验 (tag vs 代码中 3 处版本号)                ║
-# ║    6. 迁移兼容性门禁 (fail-closed) → 并行构建全平台产物        ║
-# ║    7. publish: 校验期望产物/签名清单 (fail-closed) → 上传      ║
-# ║       draft → R2 镜像 → draft 翻转公开 → R2 latest.json →      ║
-# ║       CDN 刷新                                                 ║
-# ║                                                                ║
-# ║  Release 状态机:                                               ║
-# ║    missing ──(release commit 检测)──▶ tag + draft              ║
-# ║    draft ──(全平台构建+清单校验通过)──▶ published(一次性)      ║
-# ║    draft ──(任一环节失败/rerun)──▶ 仍是同一个 draft(幂等)      ║
-# ║    published ──(重复 run/catch-up)──▶ 跳过(不重建)             ║
-# ║                                                                ║
-# ║  构建/发布实现在 reusable-build-*.yml / reusable-publish.yml, ║
-# ║  与 rebuild-release.yml 共用同一份代码, 不再复制粘贴。         ║
-# ║                                                                ║
-# ║  标签生命周期 (v0.9.34 事故修复):                              ║
-# ║    - release-please 创建 PR 时: autorelease: pending           ║
-# ║    - 因 skip-github-release:true, RP 不会自动标记 tagged       ║
-# ║    - Resolve step 创建 release 后: pending → tagged            ║
-# ║    - 每次运行前: 扫描并修复历史遗留的 pending 标签             ║
-# ║                                                                ║
-# ║  为什么没有 workflow_dispatch / tag push 触发:                  ║
-# ║    - workflow_dispatch 允许在任意时间点触发构建, 存在           ║
-# ║      headSha 与 tag 不一致的风险 (v0.9.21 事故根因)            ║
-# ║    - GITHUB_TOKEN 创建的 tag 不会触发后续 workflow             ║
-# ║      (GitHub 的防递归机制), 所以 tag push 触发不可行            ║
-# ║                                                                ║
-# ║  重建某个版本:                                                 ║
-# ║    使用 rebuild-release.yml 手动触发, 输入已存在的 tag 名称    ║
-# ║    该 workflow 走相同的校验 + 迁移门禁 + 构建 + 发布流程       ║
-# ║                                                                ║
-# ╠══════════════════════════════════════════════════════════════════╣
-# ║  Secrets 配置 (标注为【必需】的缺失时 release 构建 fail-closed):║
-# ║  更新器签名【必需, 全平台】:                                   ║
-# ║    TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD║
-# ║  macOS 签名+公证【必需, reusable-build-macos.yml】:            ║
-# ║    APPLE_CERTIFICATE_BASE64 (Developer ID Application .p12)    ║
-# ║    APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY         ║
-# ║    APPLE_ID / APPLE_PASSWORD (app-specific) / APPLE_TEAM_ID    ║
-# ║  Windows Authenticode【必需, reusable-build-windows.yml】:     ║
-# ║    WINDOWS_CERTIFICATE_BASE64 (.pfx) / WINDOWS_CERTIFICATE_PASSWORD║
-# ║  Android 签名【必需于 Android 构建; 不阻塞桌面发布】:          ║
-# ║    ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD         ║
-# ║    ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD                    ║
-# ║  发布渠道【必需, reusable-publish.yml】:                       ║
-# ║    CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN                ║
-# ║    CLOUDFLARE_ZONE_ID (可选, CDN 自动刷新)                     ║
-# ║    VERCEL_DEPLOY_HOOK (可选)                                   ║
-# ║  观测 (可选, 缺失时显式跳过):                                  ║
-# ║    SENTRY_DSN / SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT║
-# ╚══════════════════════════════════════════════════════════════════╝
-
+# Heavy publication starts only after CI completed on the exact main commit.
+# Release PR maintenance lives in release-please.yml and never waits for builds.
 name: Release
-
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-
-# 审查 F3 修复：原 group 为 release-${{ github.sha }}，每次 push SHA 都不同，
-# 等于没有并发保护 —— 两次快速 push 会并发跑 release-please，竞争创建
-# Release / 修 label（v0.9.33 类事故的温床）。改为固定组名严格串行；
-# 排队 run 被更新 run 顶掉的场景由 Resolve 步骤的 catch-up 检测（路径 d）兜底。
 concurrency:
-  group: release-main
+  group: release-desktop-${{ github.repository }}
   cancel-in-progress: false
-
 permissions:
-  contents: read
-
+  contents: write
+  actions: write
+  pull-requests: write
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段一: release-please
-  # 每次 push to main 都运行; 仅当合并 Release PR 时输出 release_created
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  release-please:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-      pull-requests: write
+  candidate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     outputs:
-      release_created: ${{ steps.result.outputs.release_created }}
-      tag_name: ${{ steps.result.outputs.tag_name }}
+      tag: ${{ steps.resolve.outputs.tag }}
     steps:
-      # ── Step 0: 修复历史遗留的 autorelease: pending 标签 ──
-      # release-please 遇到已合并但标签仍为 pending 的 PR 会直接 abort,
-      # 所以必须在运行 release-please 之前修复这些脏数据。
-      # 根因: v0.9.34 事故 — skip-github-release:true 导致 release-please
-      # 不自行打 tag, 自定义脚本打了 tag 却没有同步标签。
-      - name: Fix stale autorelease labels
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          echo "🔍 Scanning for merged PRs with stale 'autorelease: pending' label..."
-          STALE_PRS=$(gh pr list --state merged --label "autorelease: pending" \
-            --json number,title --jq '.[] | "\(.number)\t\(.title)"' || true)
-
-          if [[ -z "$STALE_PRS" ]]; then
-            echo "✅ No stale autorelease labels found"
-            exit 0
-          fi
-
-          FIXED=0
-          while IFS=$'\t' read -r PR_NUM PR_TITLE; do
-            # Extract version from PR title: "chore(main): release X.Y.Z"
-            if [[ "$PR_TITLE" =~ release\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-              TAG="v${BASH_REMATCH[1]}"
-              # Only fix if the corresponding tag actually exists
-              if git ls-remote --tags "https://github.com/${GH_REPO}.git" "refs/tags/${TAG}" | grep -q .; then
-                echo "  🔧 PR #${PR_NUM} (${TAG}): pending → tagged"
-                gh pr edit "$PR_NUM" --remove-label "autorelease: pending" --add-label "autorelease: tagged" || true
-                FIXED=$((FIXED + 1))
-              else
-                echo "  ⚠️ PR #${PR_NUM} (${TAG}): tag not found, skipping"
-              fi
-            else
-              echo "  ⚠️ PR #${PR_NUM}: title does not match release pattern, skipping"
-            fi
-          done <<< "$STALE_PRS"
-
-          echo "✅ Fixed ${FIXED} stale autorelease label(s)"
-
-      # ── Step 1: release-please ──
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
-        id: release
-        continue-on-error: true
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          skip-github-release: true
-
-      # fetch-depth 15：路径 3 需要 merge 父提交、路径 4 需要近 10 个提交历史
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 15
-
-      # ── Step 2: 四路检测 + git tag + draft Release 创建/恢复 + 标签同步 ──
-      #
-      # Release 状态机 (draft-first, 幂等):
-      #   missing   → 创建 git tag (幂等) + draft Release → release_created=true
-      #   draft     → 上一次 run 中途失败 / rerun: 复用同一个 draft, 继续跑
-      #               构建+publish (publish 阶段用 --clobber 覆盖资产) →
-      #               release_created=true
-      #   published → 已完整发布, 跳过 → release_created=false
-      #
-      # 对外不可见性: Release 从创建到 publish 阶段全部校验通过前始终是
-      # draft; 翻转为公开由 reusable-publish.yml 在资产/清单全部就绪后
-      # 一次性执行。任何失败都只留下 draft, 不产生空的公开 Release。
-      - name: Resolve release result
-        id: result
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+      - name: Resolve verified release commit and draft
+        id: resolve
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RP_CREATED: ${{ steps.release.outputs.release_created }}
-          RP_TAG: ${{ steps.release.outputs.tag_name }}
-          RP_OUTCOME: ${{ steps.release.outcome }}
-          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
-          HEAD_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          echo "ℹ️ release-please outcome: ${RP_OUTCOME}"
-          echo "ℹ️ RP_CREATED=${RP_CREATED}, RP_TAG=${RP_TAG}"
-
-          RELEASE_PATTERN='^chore\(main\): release ([0-9]+\.[0-9]+\.[0-9]+)'
-
-          # ── Helper: 查询 Release 状态机状态: missing / draft / published ──
-          # 注意: draft Release 无法通过 releases/tags/:tag 查到, 必须列表匹配。
-          release_state() {
-            local TAG="$1"
-            local STATE
-            STATE=$(gh api --paginate "repos/${GH_REPO}/releases" \
-              --jq ".[] | select(.tag_name == \"${TAG}\") | if .draft then \"draft\" else \"published\" end" \
-              2>/dev/null | head -1 || true)
-            if [[ -z "$STATE" ]]; then
-              echo "missing"
-            else
-              echo "$STATE"
-            fi
-          }
-
-          # ── Helper: 确保 git tag 存在 (幂等) ──
-          # gh release create --draft 不会推 tag (publish 时才建), 而构建 job
-          # 需要 checkout ref=tag, 所以必须先显式创建 tag。
-          ensure_tag() {
-            local TAG="$1"
-            local TARGET_SHA="$2"
-            if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
-              # fail-close：历史 rerun / 手工标签若指向其他提交，绝不能继续构建并
-              # 发布错误源码。fetch 后用 rev-list 同时兼容轻量与 annotated tag。
-              git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
-              local ACTUAL_SHA EXPECTED_SHA
-              ACTUAL_SHA=$(git rev-list -n 1 "${TAG}")
-              EXPECTED_SHA=$(git rev-parse "${TARGET_SHA}^{commit}")
-              if [[ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]]; then
-                # 兼容合并提交：Path 3（merge 父提交检测）把 tag 打在合并提交上，
-                # 而 catch-up（Path 4）以 release 提交为基准。tag 指向包含
-                # release 提交的下游提交（如合并提交）时内容同源，允许恢复；
-                # 指向其它无关提交仍 fail-closed。
-                if git merge-base --is-ancestor "${EXPECTED_SHA}" "${ACTUAL_SHA}"; then
-                  echo "  ℹ️ Tag ${TAG} points to ${ACTUAL_SHA:0:7} (descendant of release commit ${EXPECTED_SHA:0:7}); accepted"
-                  return 0
-                fi
-                echo "❌ Existing tag ${TAG} points to ${ACTUAL_SHA}, expected ${EXPECTED_SHA}"
-                exit 1
-              fi
-              echo "  ℹ️ Tag ${TAG} already exists and points to expected commit"
-              return 0
-            fi
-            gh api "repos/${GH_REPO}/git/refs" \
-              -f ref="refs/tags/${TAG}" \
-              -f sha="${TARGET_SHA}"
-            echo "  ✅ Created tag ${TAG} → ${TARGET_SHA:0:7}"
-          }
-
-          # ── Helper: 同步 Release PR 的 autorelease 标签 ──
-          # 这是 v0.9.34 事故的根因修复: 确保每次创建/检测到 release 后
-          # 都将关联 PR 的标签从 pending 更新为 tagged, 防止 release-please
-          # 在后续运行中因 "untagged, merged release PRs" 而 abort。
-          mark_pr_as_tagged() {
-            local VERSION="$1"  # e.g. "0.9.35"
-            echo "🏷️ Syncing autorelease label for release ${VERSION}..."
-
-            # Find the merged release PR by title pattern
-            local PR_NUM
-            PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
-              --json number,title \
-              --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
-              | head -1 || true)
-
-            if [[ -z "$PR_NUM" ]]; then
-              echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
-              return 0
-            fi
-
-            echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
-            gh pr edit "$PR_NUM" \
-              --remove-label "autorelease: pending" \
-              --add-label "autorelease: tagged" || {
-              echo "  ⚠️ Failed to update label on PR #${PR_NUM} (non-fatal)"
-            }
-          }
-
-          # ── Helper: 确保 draft Release 存在 (幂等状态机入口) ──
-          # 第三个参数可指定 tag 指向的 commit（catch-up 路径用），默认 HEAD。
-          ensure_draft_release() {
-            local TAG="$1"
-            local SOURCE="$2"
-            local TARGET_SHA="${3:-${HEAD_SHA}}"
-            local VERSION="${TAG#v}"
-
-            echo "ℹ️ Detected release ${TAG} (via ${SOURCE}, target ${TARGET_SHA:0:7})"
-
-            local STATE
-            STATE=$(release_state "${TAG}")
-            echo "ℹ️ Release ${TAG} state: ${STATE}"
-
-            case "$STATE" in
-              published)
-                # 状态机终态: 不重建、不重跑构建
-                echo "release_created=false" >> "$GITHUB_OUTPUT"
-                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
-                echo "ℹ️ Release ${TAG} already published; nothing to do"
-                mark_pr_as_tagged "${VERSION}"
-                return 0
-                ;;
-              draft)
-                # 幂等恢复: 上一次 run 失败或被 rerun, 复用同一个 draft,
-                # 继续走构建 + publish (publish 用 --clobber 覆盖旧资产)
-                ensure_tag "${TAG}" "${TARGET_SHA}"
-                echo "release_created=true" >> "$GITHUB_OUTPUT"
-                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
-                echo "🔁 Resuming existing draft Release ${TAG} (idempotent recovery)"
-                mark_pr_as_tagged "${VERSION}"
-                return 0
-                ;;
-              missing)
-                ensure_tag "${TAG}" "${TARGET_SHA}"
-                gh release create "${TAG}" \
-                  --draft \
-                  --title "${TAG}" \
-                  --generate-notes
-                echo "release_created=true" >> "$GITHUB_OUTPUT"
-                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
-                echo "✅ Created draft GitHub Release ${TAG} (detected via ${SOURCE}; stays hidden until publish gate passes)"
-                mark_pr_as_tagged "${VERSION}"
-                return 0
-                ;;
-            esac
-          }
-
-          # Path 1: release-please directly reported a release
-          if [[ "${RP_CREATED}" == "true" && -n "${RP_TAG}" ]]; then
-            ensure_draft_release "${RP_TAG}" "release-please output"
-            exit 0
-          fi
-
-          # Path 2: HEAD commit is a release commit
-          HEAD_COMMIT_SUBJECT="$(printf '%s\n' "${HEAD_COMMIT_MSG}" | head -n1)"
-          echo "ℹ️ head commit subject: ${HEAD_COMMIT_SUBJECT}"
-
-          if [[ "${HEAD_COMMIT_SUBJECT}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
-            ensure_draft_release "v${BASH_REMATCH[1]}" "HEAD commit message"
-            exit 0
-          fi
-
-          # Path 3: HEAD is a merge commit whose parent is a release commit
-          # This handles the case where a concurrent push created a merge commit
-          # that buried the release commit (e.g. v0.9.33 incident)
-          PARENT_COUNT=$(git cat-file -p HEAD | grep -c '^parent ')
-          if [[ "$PARENT_COUNT" -gt 1 ]]; then
-            echo "ℹ️ HEAD is a merge commit with ${PARENT_COUNT} parents, scanning for release commits..."
-            while IFS= read -r PARENT_SHA; do
-              PARENT_SUBJECT=$(git log -1 --format='%s' "$PARENT_SHA" 2>/dev/null || true)
-              echo "  parent ${PARENT_SHA:0:7}: ${PARENT_SUBJECT}"
-              if [[ "${PARENT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
-                ensure_draft_release "v${BASH_REMATCH[1]}" "merge parent ${PARENT_SHA:0:7}"
-                exit 0
-              fi
-            done < <(git cat-file -p HEAD | grep '^parent ' | awk '{print $2}')
-          fi
-
-          # Path 4 (catch-up): 近 10 个提交中存在尚未 published 的 release
-          # commit (missing 或遗留 draft)。固定 concurrency 组下, 排队中的
-          # run 会被更新的 run 顶掉——若被顶掉的正是 release commit 的 run,
-          # 这里由后续任意一次 push 补建/续跑同一个 draft Release。
-          echo "ℹ️ Scanning last 10 commits for unpublished release commits..."
-          while IFS=$'\t' read -r COMMIT_SHA COMMIT_SUBJECT; do
-            if [[ "${COMMIT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
-              TAG="v${BASH_REMATCH[1]}"
-              if [[ "$(release_state "${TAG}")" == "published" ]]; then
-                # 扫描按从新到旧排序：遇到已发布的更新版本即停止——更早的
-                # 未发布 release commit 已被取代（superseded），补建它们只会
-                # 用过期/损坏的内容毒化后续每次 push（v0.9.55 事故）。
-                echo "ℹ️ Newer release ${TAG} already published; older unpublished release commits are superseded, stopping scan"
-                break
-              fi
-              ensure_draft_release "${TAG}" "catch-up scan (${COMMIT_SHA:0:7})" "${COMMIT_SHA}"
+          set -euo pipefail
+          VERSION=$(jq -r .version package.json)
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          TAG="v$VERSION"
+          PR=$(gh api "repos/$GH_REPO/commits/$SOURCE_SHA/pulls" --jq \
+            ".[] | select(.merged_at != null and .merge_commit_sha == \"$SOURCE_SHA\" and (.head.ref | startswith(\"release-please--\"))) | .number" | head -1)
+          SUBJECT=$(git log -1 --format=%s)
+          EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          if [ -z "$EXISTING" ]; then
+            # Ordinary green development commits do not become releases.
+            if [ -z "$PR" ] && [[ ! "$SUBJECT" =~ ^chore\(main\):\ release\ $VERSION ]]; then
+              echo 'No release commit; CI is green.'
               exit 0
             fi
-          done < <(git log --format='%H%x09%s' -n 10)
-
-          echo "release_created=false" >> "$GITHUB_OUTPUT"
-          echo "⏭️ No release created this run"
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段二: 版本号三重校验门禁 (reusable, 与 rebuild 共用)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  verify:
-    needs: [release-please]
-    if: needs.release-please.outputs.release_created == 'true'
-    uses: ./.github/workflows/reusable-verify-version.yml
-    with:
-      tag_name: ${{ needs.release-please.outputs.tag_name }}
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段二点五: 数据库迁移兼容性门禁 (fail-closed, 构建前, reusable)
-  # 仅在 release commit 上运行（挂在 verify 之后；verify 已由
-  # release_created == 'true' 条件门控，普通 main push 不会进入本 job）
-  #
-  # 2026-08-31 曾因 runner 143 驱逐波次临时摘除，2026-09-07 审阅（F9）
-  # 指出普通版本校验不能替代迁移兼容性验收后恢复。各平台构建均
-  # needs 本门禁；如再遇基础设施驱逐波次需要例外，必须是有负责人、
-  # 截止日期和迁移 checksum 白名单的机器可检查豁免，而不是注释式摘除。
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  migration-compatibility-gate:
-    needs: [verify]
-    uses: ./.github/workflows/reusable-migration-gate.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-    secrets: inherit
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段三: 构建 (通过版本校验 + 迁移兼容性门禁后并行构建全平台)
-  # WI-4: 前端 dist 只构建一次 (build-frontend), 各平台构建 job 下载
-  # frontend-dist artifact 复用, 不再在每个平台重复 npm run build。
-  # build-frontend 只依赖 verify —— 与迁移门禁并行, 不增加关键路径。
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  build-frontend:
-    needs: [verify]
-    uses: ./.github/workflows/reusable-build-frontend.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-    secrets: inherit
-
-  build-macos:
-    needs: [verify, migration-compatibility-gate, build-frontend]
-    uses: ./.github/workflows/reusable-build-macos.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-      frontend_dist_artifact: frontend-dist
-      # ⚠️ 临时启用 (2026-08-31): APPLE_* 签名 secrets 已从仓库丢失，
-      # 本次 release 出未签名包（Gatekeeper 需右键打开）。找回证书后移除。
-      allow_unsigned: true
-    secrets: inherit
-
-  build-windows:
-    needs: [verify, migration-compatibility-gate, build-frontend]
-    uses: ./.github/workflows/reusable-build-windows.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-      frontend_dist_artifact: frontend-dist
-      # ⚠️ 临时启用 (2026-08-31): WINDOWS_CERTIFICATE_* secrets 丢失，
-      # 本次 release 出未签名包（SmartScreen 警告）。找回证书后移除。
-      allow_unsigned: true
-    secrets: inherit
-
-  build-linux:
-    needs: [verify, migration-compatibility-gate, build-frontend]
-    uses: ./.github/workflows/reusable-build-linux.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-      frontend_dist_artifact: frontend-dist
-    secrets: inherit
-
-  build-android:
-    needs: [verify, migration-compatibility-gate, build-frontend]
-    uses: ./.github/workflows/reusable-build-android.yml
-    with:
-      ref: ${{ needs.verify.outputs.tag_name }}
-      version: ${{ needs.verify.outputs.version }}
-      frontend_dist_artifact: frontend-dist
-    secrets: inherit
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段四: 发布 (Android 失败不阻塞桌面端发布, 由 rebuild-android 补发)
-  # 桌面四目标是硬性要求; Android 结果透传给 publish, 由其在发布清单
-  # 中诚实表达 (成功⇒必须有 APK, 失败⇒明确标记 pending, 不产出错误元数据)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  publish:
-    needs: [verify, build-macos, build-windows, build-linux, build-android]
-    if: |
-      always() &&
-      needs.verify.result == 'success' &&
-      needs.build-macos.result == 'success' &&
-      needs.build-windows.result == 'success' &&
-      needs.build-linux.result == 'success' &&
-      !cancelled()
-    permissions:
-      contents: write
-    uses: ./.github/workflows/reusable-publish.yml
-    with:
-      tag_name: ${{ needs.verify.outputs.tag_name }}
-      version: ${{ needs.verify.outputs.version }}
-      android_result: ${{ needs.build-android.result }}
-    secrets: inherit
-
-  trigger-android-rebuild:
-    needs: [verify, build-android, publish]
-    if: |
-      always() &&
-      needs.publish.result == 'success' &&
-      needs.build-android.result == 'failure'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Dispatch Android rebuild workflow
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          TAG_NAME: ${{ needs.verify.outputs.tag_name }}
-        run: |
-          REF="${DEFAULT_BRANCH:-main}"
-          TAG="${TAG_NAME}"
-
-          if [ -z "$TAG" ]; then
-            echo "::error::Missing release tag output; cannot dispatch Android rebuild"
-            exit 1
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SOURCE_SHA"
+          else
+            git fetch --no-tags origin "refs/tags/$TAG"
+            TAG_SHA=$(git rev-parse 'FETCH_HEAD^{commit}')
+            if [ "$TAG_SHA" != "$SOURCE_SHA" ]; then
+              echo "Version $TAG belongs to $TAG_SHA; this push does not restart that candidate."
+              exit 0
+            fi
           fi
-
-          PAYLOAD=$(jq -n \
-            --arg ref "$REF" \
-            --arg tag "$TAG" \
-            '{ref: $ref, inputs: {tag_name: $tag, source_ref: $tag}}')
-
-          echo "Dispatching rebuild-android.yml for ${TAG} using workflow ref ${REF}"
-          echo "$PAYLOAD" | gh api \
-            --method POST \
-            "repos/${GH_REPO}/actions/workflows/rebuild-android.yml/dispatches" \
-            --input -
-
-          echo "Android rebuild workflow dispatched for ${TAG}"
+          STATE=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq \
+            ".[] | select(.tag_name == \"$TAG\") | if .draft then \"draft\" else \"published\" end")
+          if [ "$STATE" = published ]; then exit 0; fi
+          if [ -z "$STATE" ]; then
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes
+          fi
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+  release:
+    needs: candidate
+    if: needs.candidate.outputs.tag != ''
+    uses: ./.github/workflows/reusable-release-pipeline.yml
+    with:
+      tag_name: ${{ needs.candidate.outputs.tag }}
+    secrets: inherit

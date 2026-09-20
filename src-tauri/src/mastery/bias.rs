@@ -202,6 +202,9 @@ mod tests {
         let now = 1_700_000_000_000_i64;
         let weak = queue_sort_key(2, Some(0.0), now + DAY);
         let strong = queue_sort_key(2, Some(0.9), now + DAY);
-        assert!(weak < strong, "within review, weak mastery still sorts first");
+        assert!(
+            weak < strong,
+            "within review, weak mastery still sorts first"
+        );
     }
 }

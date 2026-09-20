@@ -1,0 +1,82 @@
+name: Build or recover release stage
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      tag_name:
+        required: true
+        type: string
+      reuse_run_id:
+        default: ''
+        type: string
+      force_rebuild:
+        default: false
+        type: boolean
+      allow_unsigned:
+        default: true
+        type: boolean
+      allow_missing_fixtures:
+        default: false
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+jobs:
+  restore:
+    if: inputs.reuse_run_id != ''
+    uses: ./.github/workflows/reusable-restore-release-stage.yml
+    with:
+      stage: ${{ inputs.stage }}
+      source_sha: ${{ inputs.source_sha }}
+      run_id: ${{ inputs.reuse_run_id }}
+      policy: ${{ inputs.stage == 'migration' && format('{0}', inputs.allow_missing_fixtures) || ((startsWith(inputs.stage, 'macos') || inputs.stage == 'windows') && format('{0}', inputs.allow_unsigned) || '') }}
+  frontend:
+    if: inputs.reuse_run_id == '' && inputs.stage == 'frontend'
+    uses: ./.github/workflows/reusable-build-frontend.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+    secrets: inherit
+  migration:
+    if: inputs.reuse_run_id == '' && inputs.stage == 'migration'
+    uses: ./.github/workflows/reusable-migration-gate.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      allow_missing_fixtures: ${{ inputs.allow_missing_fixtures }}
+    secrets: inherit
+  macos:
+    if: inputs.reuse_run_id == '' && startsWith(inputs.stage, 'macos-')
+    uses: ./.github/workflows/reusable-build-macos.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ inputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      allow_unsigned: ${{ inputs.allow_unsigned }}
+      frontend_dist_artifact: frontend-dist
+      targets: ${{ inputs.stage == 'macos-arm' && '[{"target":"aarch64-apple-darwin","runner":"macos-15"}]' || '[{"target":"x86_64-apple-darwin","runner":"macos-15-intel"}]' }}
+    secrets: inherit
+  windows:
+    if: inputs.reuse_run_id == '' && inputs.stage == 'windows'
+    uses: ./.github/workflows/reusable-build-windows.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ inputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      allow_unsigned: ${{ inputs.allow_unsigned }}
+      frontend_dist_artifact: frontend-dist
+    secrets: inherit
+  linux:
+    if: inputs.reuse_run_id == '' && inputs.stage == 'linux'
+    uses: ./.github/workflows/reusable-build-linux.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ inputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      frontend_dist_artifact: frontend-dist
+    secrets: inherit

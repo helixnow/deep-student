@@ -1,0 +1,158 @@
+name: Resumable desktop release
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+      resume_run_id:
+        default: ''
+        type: string
+      force_rebuild:
+        default: false
+        type: boolean
+      allow_unsigned_desktop:
+        default: true
+        type: boolean
+      allow_missing_migration_fixtures:
+        default: false
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    uses: ./.github/workflows/reusable-verify-version.yml
+    with:
+      tag_name: ${{ inputs.tag_name }}
+      check_release_metadata: true
+      check_release_secrets: true
+      allow_unsigned_desktop: ${{ inputs.allow_unsigned_desktop }}
+    secrets: inherit
+  source-ci:
+    needs: verify
+    uses: ./.github/workflows/reusable-release-ci-gate.yml
+    with:
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+  plan:
+    needs: [verify, source-ci]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      frontend: ${{ steps.plan.outputs.frontend }}
+      migration: ${{ steps.plan.outputs.migration }}
+      macos-arm: ${{ steps.plan.outputs.macos-arm }}
+      macos-intel: ${{ steps.plan.outputs.macos-intel }}
+      windows: ${{ steps.plan.outputs.windows }}
+      linux: ${{ steps.plan.outputs.linux }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          ALLOW_UNSIGNED_DESKTOP: ${{ inputs.allow_unsigned_desktop }}
+          ALLOW_MISSING_FIXTURES: ${{ inputs.allow_missing_migration_fixtures }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+        run: node scripts/ci/release-recovery.mjs plan
+  frontend:
+    needs: [verify, plan]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: frontend
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.frontend }}
+    secrets: inherit
+  migration:
+    needs: [verify, plan]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: migration
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.migration }}
+      allow_missing_fixtures: ${{ inputs.allow_missing_migration_fixtures }}
+    secrets: inherit
+  macos-arm:
+    needs: [verify, plan, frontend, migration]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: macos-arm
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.macos-arm }}
+      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+    secrets: inherit
+  macos-intel:
+    needs: [verify, plan, frontend, migration]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: macos-intel
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.macos-intel }}
+      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+    secrets: inherit
+  windows:
+    needs: [verify, plan, frontend, migration]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: windows
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.windows }}
+      allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
+    secrets: inherit
+  linux:
+    needs: [verify, plan, frontend, migration]
+    uses: ./.github/workflows/reusable-release-stage.yml
+    with:
+      stage: linux
+      force_rebuild: ${{ inputs.force_rebuild }}
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      reuse_run_id: ${{ needs.plan.outputs.linux }}
+    secrets: inherit
+  publish:
+    needs: [verify, macos-arm, macos-intel, windows, linux]
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/reusable-publish.yml
+    with:
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      tag_name: ${{ inputs.tag_name }}
+      version: ${{ needs.verify.outputs.version }}
+      android_result: skipped
+    secrets: inherit
+  android:
+    needs: [verify, publish]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch independent Android supplement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag_name }}
+          SOURCE: ${{ needs.verify.outputs.source_sha }}
+          WORKFLOW_REF: ${{ github.ref_name }}
+        run: |
+          APKS=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.size > 0 and (.name | endswith(".apk"))) | .name')
+          if [ -n "$APKS" ]; then
+            echo 'Android supplement already exists; no rebuild dispatched.'
+            exit 0
+          fi
+          gh workflow run rebuild-android.yml --ref "$WORKFLOW_REF" -f tag_name="$TAG" -f source_ref="$SOURCE"

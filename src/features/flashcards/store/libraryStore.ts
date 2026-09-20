@@ -381,6 +381,8 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         if (isVirtualUri(path)) {
           // SAF document ID 解码后可能含 `:` 等文件名非法字符（如 `abc:deck.apkg`），
           // 统一净化为 `_` 再落盘
+          // Control bytes are intentionally rejected in a filesystem name.
+          // eslint-disable-next-line no-control-regex
           const fileName = (extractFileName(path) || '').replace(/[\\/:*?<>|\x00-\x1f]/g, '_');
           if (!fileName.toLowerCase().endsWith('.apkg')) {
             const message = i18n.t('flashcards:library.import.notApkg');

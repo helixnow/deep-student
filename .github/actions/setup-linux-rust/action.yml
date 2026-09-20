@@ -1,0 +1,48 @@
+name: Linux Rust environment
+description: Pinned compiler, real system packages, bounded memory, optional cache
+inputs:
+  cache-key:
+    default: tests
+    description: Shared compilation namespace
+  resources:
+    default: 'true'
+    description: Prepare swap and free hosted runner disk for compilation
+  components:
+    default: ''
+    description: Additional Rust components
+runs:
+  using: composite
+  steps:
+    - name: Prepare build resources
+      if: inputs.resources == 'true'
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        bash scripts/ci/prepare-linux-release.sh
+    - shell: bash
+      run: bash scripts/ci/install-linux-deps.sh
+    - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+      with:
+        toolchain: '1.98.1'
+        components: ${{ inputs.components }}
+    - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+      if: inputs.resources == 'true'
+      continue-on-error: true
+    - shell: bash
+      if: inputs.resources == 'true'
+      run: bash scripts/ci/prepare-sccache.sh
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      if: inputs.resources == 'true'
+      with:
+        workspaces: src-tauri
+        key: ubuntu-22.04-lld-test-debug0
+        shared-key: ${{ inputs.cache-key }}
+        cache-on-failure: true
+    - name: Prepare pdfium
+      shell: bash
+      run: |
+        if [ ! -f src-tauri/resources/pdfium/libpdfium.so ]; then
+          bash scripts/download-pdfium.sh linux-x64
+        fi
+        test -s src-tauri/resources/pdfium/libpdfium.so

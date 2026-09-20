@@ -71,6 +71,7 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:i18n:strict": "node scripts/check-i18n.mjs --strict",
     "check:i18n:missing": "node scripts/check-missing-translations.mjs",
+    "release:prepare": "node scripts/ci/prepare-release-metadata.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "licenses:check": "node scripts/check-license-compliance.mjs",
     "check:licenses": "npm run licenses:check",

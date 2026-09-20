@@ -1442,7 +1442,10 @@ mod tests {
         let sparse = distribute_global_max_cards(3, 10);
         assert_eq!(sparse.iter().sum::<i32>(), 3);
         assert!(sparse[0] > 0, "首段应可能入选: {sparse:?}");
-        assert!(sparse[9] > 0, "末段必须参与抽样，避免结论章被永久跳过: {sparse:?}");
+        assert!(
+            sparse[9] > 0,
+            "末段必须参与抽样，避免结论章被永久跳过: {sparse:?}"
+        );
         let dist = distribute_global_max_cards(103, 7);
         assert_eq!(dist.iter().sum::<i32>(), 103);
     }

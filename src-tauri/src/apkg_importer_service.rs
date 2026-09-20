@@ -1293,10 +1293,13 @@ fn parse_collection_database(
     // 调度列（type/queue/due/ivl/factor/reps/lapses）在真实 Anki 包中始终存在；
     // 缺失时（如极简合成包）静默退化为不读取调度信息。
     let has_sched_columns = cards_table_has_sched_columns(&conn)?;
-    let has_note_data: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('notes') WHERE name = 'data')",
-        [], |row| row.get(0),
-    ).map_err(collection_sql_error)?;
+    let has_note_data: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('notes') WHERE name = 'data')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(collection_sql_error)?;
     let note_data_select = if has_note_data { "n.data" } else { "''" };
     let sched_select = if has_sched_columns {
         ", c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses"
@@ -1338,7 +1341,11 @@ fn parse_collection_database(
             .is_some_and(|group| group.model_id == model_id && group.note_id == note_id);
         // Deep Student Cloze 折叠：同 note 其余 card 行直接跳过
         //（与旧行为一致，不计材料化预算）。
-        if same_group && current_group.as_ref().is_some_and(|group| group.collapse_cloze_ords) {
+        if same_group
+            && current_group
+                .as_ref()
+                .is_some_and(|group| group.collapse_cloze_ords)
+        {
             continue;
         }
         if !same_group {
@@ -1355,13 +1362,19 @@ fn parse_collection_database(
             let raw_tags: String = row.get(5).map_err(collection_sql_error)?;
             let raw_fields: String = row.get(6).map_err(collection_sql_error)?;
             let note_data: String = row.get(7).map_err(collection_sql_error)?;
-            let scope = serde_json::from_str::<serde_json::Value>(&note_data).ok()
-                .and_then(|data| data.get("deepStudentCardScope").and_then(|v| v.as_str()).map(str::to_owned));
-            let collapse_cloze_ords = model.model_type == 1 && match scope.as_deref() {
-                Some("card") => false,
-                Some("note") => true,
-                _ => model.collapse_cloze_ords,
-            };
+            let scope = serde_json::from_str::<serde_json::Value>(&note_data)
+                .ok()
+                .and_then(|data| {
+                    data.get("deepStudentCardScope")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned)
+                });
+            let collapse_cloze_ords = model.model_type == 1
+                && match scope.as_deref() {
+                    Some("card") => false,
+                    Some("note") => true,
+                    _ => model.collapse_cloze_ords,
+                };
             current_group = Some(PendingNoteGroup {
                 model_id,
                 note_id,
@@ -1477,8 +1490,15 @@ fn flush_note_group(
             group.model_id,
             media_paths,
         )?;
-        card.extra_fields.insert("AnkiCardScope".to_string(),
-            if group.collapse_cloze_ords { "note" } else { "card" }.to_string());
+        card.extra_fields.insert(
+            "AnkiCardScope".to_string(),
+            if group.collapse_cloze_ords {
+                "note"
+            } else {
+                "card"
+            }
+            .to_string(),
+        );
         if swap_front_back {
             std::mem::swap(&mut card.front, &mut card.back);
         }
@@ -1818,8 +1838,10 @@ fn parse_models(
                 raw_model.name
             )));
         }
-        let collapse_cloze_ords =
-            raw_model.model_type == 1 && raw_model.collapse_cloze_ords.unwrap_or(template_id.is_some());
+        let collapse_cloze_ords = raw_model.model_type == 1
+            && raw_model
+                .collapse_cloze_ords
+                .unwrap_or(template_id.is_some());
         let mut ordered_fields = raw_model
             .fields
             .into_iter()
@@ -3179,51 +3201,114 @@ mod tests {
         let collection = make_modern_collection(
             &[(200, "Cloze", 1, &["Text", "Extra"])],
             &[(2, 200, "tag", "{{c1::one}} {{c2::two}}\u{1f}context")],
-            &[(20, 2, 0, [2, 2, 3, 7, 2500, 4, 0]), (21, 2, 1, [2, 2, 5, 20, 2300, 9, 2])],
+            &[
+                (20, 2, 0, [2, 2, 3, 7, 2500, 4, 0]),
+                (21, 2, 1, [2, 2, 5, 20, 2300, 9, 2]),
+            ],
         );
         let package = make_apkg(vec![("collection.anki21b", collection)]);
         let importer = ApkgImporterService::new(db.clone());
-        let result = importer.import_bytes(&package, Some("external.apkg"), None).expect("import");
-        let mut cards = db.get_cards_for_document(&result.document_id).expect("cards");
+        let result = importer
+            .import_bytes(&package, Some("external.apkg"), None)
+            .expect("import");
+        let mut cards = db
+            .get_cards_for_document(&result.document_id)
+            .expect("cards");
         cards.sort_by_key(|card| card.extra_fields["AnkiCardOrd"].clone());
         assert_eq!(cards.len(), 2);
         let mut full_guid = None;
         // Cover the single-template API, mixed export without a template, and explicit template routing.
         for mode in ["single", "multi", "custom"] {
             for only_second in [false, true] {
-                let mut selected = if only_second { vec![cards[1].clone()] } else { cards.clone() };
+                let mut selected = if only_second {
+                    vec![cards[1].clone()]
+                } else {
+                    cards.clone()
+                };
                 let output = outputs.path().join(format!("{mode}-{only_second}.apkg"));
                 let mut templates = HashMap::new();
                 if mode == "custom" {
-                    let template = custom_template("external-cloze-copy", "Cloze", &["Text", "Extra", "Front", "Back"]);
-                    for card in &mut selected { card.template_id = Some(template.id.clone()); }
+                    let template = custom_template(
+                        "external-cloze-copy",
+                        "Cloze",
+                        &["Text", "Extra", "Front", "Back"],
+                    );
+                    for card in &mut selected {
+                        card.template_id = Some(template.id.clone());
+                    }
                     templates.insert(template.id.clone(), template);
                 }
                 if mode == "single" {
                     crate::apkg_exporter_service::export_cards_to_apkg(
-                        selected, "Cloze test".into(), "Cloze".into(), output.clone(),
-                    ).await.expect("single export");
+                        selected,
+                        "Cloze test".into(),
+                        "Cloze".into(),
+                        output.clone(),
+                    )
+                    .await
+                    .expect("single export");
                 } else {
                     crate::apkg_exporter_service::export_multi_template_apkg(
-                        selected, "Cloze test".into(), output.clone(), templates,
-                    ).await.expect("multi export");
+                        selected,
+                        "Cloze test".into(),
+                        output.clone(),
+                        templates,
+                    )
+                    .await
+                    .expect("multi export");
                 }
-                let mut archive = ZipArchive::new(std::fs::File::open(&output).expect("apkg")).expect("zip");
+                let mut archive =
+                    ZipArchive::new(std::fs::File::open(&output).expect("apkg")).expect("zip");
                 let mut bytes = Vec::new();
-                archive.by_name("collection.anki2").expect("collection").read_to_end(&mut bytes).expect("read");
+                archive
+                    .by_name("collection.anki2")
+                    .expect("collection")
+                    .read_to_end(&mut bytes)
+                    .expect("read");
                 let sqlite = outputs.path().join(format!("{mode}-{only_second}.sqlite"));
                 std::fs::write(&sqlite, bytes).expect("sqlite");
                 let conn = Connection::open(&sqlite).expect("open collection");
-                let count: i64 = conn.query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0)).expect("notes");
+                let count: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+                    .expect("notes");
                 assert_eq!(count, 1, "{mode}: siblings must share one note");
-                let guid: String = conn.query_row("SELECT guid FROM notes", [], |row| row.get(0)).expect("guid");
-                if let Some(expected) = &full_guid { assert_eq!(&guid, expected); } else { full_guid = Some(guid); }
-                let mut stmt = conn.prepare("SELECT ord, ivl, reps, lapses FROM cards ORDER BY ord").expect("query");
-                let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, i64>(3)?)))
-                    .expect("query cards").collect::<Result<Vec<_>, _>>().expect("rows");
-                assert_eq!(rows, if only_second { vec![(1, 20, 9, 2)] } else { vec![(0, 7, 4, 0), (1, 20, 9, 2)] });
-                let restored = importer.import_path(&output, None).expect("reimport exported package");
-                let mut restored_cards = db.get_cards_for_document(&restored.document_id).expect("restored cards");
+                let guid: String = conn
+                    .query_row("SELECT guid FROM notes", [], |row| row.get(0))
+                    .expect("guid");
+                if let Some(expected) = &full_guid {
+                    assert_eq!(&guid, expected);
+                } else {
+                    full_guid = Some(guid);
+                }
+                let mut stmt = conn
+                    .prepare("SELECT ord, ivl, reps, lapses FROM cards ORDER BY ord")
+                    .expect("query");
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    })
+                    .expect("query cards")
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("rows");
+                assert_eq!(
+                    rows,
+                    if only_second {
+                        vec![(1, 20, 9, 2)]
+                    } else {
+                        vec![(0, 7, 4, 0), (1, 20, 9, 2)]
+                    }
+                );
+                let restored = importer
+                    .import_path(&output, None)
+                    .expect("reimport exported package");
+                let mut restored_cards = db
+                    .get_cards_for_document(&restored.document_id)
+                    .expect("restored cards");
                 restored_cards.sort_by_key(|card| card.extra_fields["AnkiCardOrd"].clone());
                 assert_eq!(restored_cards.len(), rows.len());
                 for (card, (ord, ivl, reps, _)) in restored_cards.iter().zip(&rows) {

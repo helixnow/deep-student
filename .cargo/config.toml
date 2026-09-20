@@ -2,7 +2,8 @@
 # 使用 sccache 作为 rustc 缓存加速器（已安装则自动生效）
 # rustc-wrapper = "sccache"
 # 并行编译任务数：建议设置为物理/性能核数（可被 -j 覆盖）
-jobs = 14
+# Cargo defaults to the available CPU count. CI sets a measured memory budget
+# through CARGO_BUILD_JOBS instead of inheriting a developer machine's 14 jobs.
 # 使用 RAM Disk 加速编译（需要先创建 R: 盘的 RAM Disk）
 # 注意：重启后 target 会清空，需要重新编译
 # target-dir = "R:/rust-target/deep-student"

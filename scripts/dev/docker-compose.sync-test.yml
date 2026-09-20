@@ -11,7 +11,7 @@ name: deep-student-sync-test
 services:
   # ============== MinIO (S3 兼容) ==============
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
     container_name: ds-minio
     ports:
       - "127.0.0.1:9000:9000"   # S3 API
@@ -31,13 +31,14 @@ services:
 
   # 自动创建 bucket
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3
     container_name: ds-minio-init
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
+      set -e;
       mc alias set local http://minio:9000 minioadmin minioadmin123;
       mc mb local/deep-student --ignore-existing;
       mc anonymous set none local/deep-student;

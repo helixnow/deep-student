@@ -2567,6 +2567,7 @@ function App() {
       'settings': t('sidebar:navigation.settings'),
       'dashboard': t('common:navigation.dashboard'),
       'task-dashboard': t('sidebar:navigation.anki_generation'),
+      'flashcards': t('sidebar:navigation.flashcards'),
       'skills-management': t('sidebar:navigation.skills_management'),
       'data-management': t('common:navigation.data_management'),
       'template-management': t('sidebar:navigation.template_management'),

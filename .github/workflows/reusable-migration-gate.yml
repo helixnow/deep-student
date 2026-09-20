@@ -15,6 +15,11 @@ name: Migration Compatibility Gate (reusable)
 on:
   workflow_call:
     inputs:
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       tag_name:
         description: '待发布的 tag（如 v0.9.42）'
         required: true
@@ -30,15 +35,22 @@ permissions:
 
 jobs:
   gate:
-    # 钉 22.04：ubuntu-latest(24.04) 长编译会把 runner agent 一起 OOM 杀掉
-    # （exit 143 + "runner has received a shutdown signal"）；与 ci.yml /
-    # migration-nightly.yml 的迁移门禁保持同一稳定镜像和缓存名空间。
-    runs-on: ubuntu-22.04
+    # Use the same Linux ABI and cache namespace as CI/nightly. Shutdown/143
+    # alone is not proof of OOM; the resource monitor records actual pressure.
+    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: 0
       # 降低巨型测试二进制并行链接峰值，避免 OOM killer 终止 runner agent。
-      CARGO_BUILD_JOBS: '3'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      RUSTFLAGS: -C link-arg=-fuse-ld=lld
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_IDLE_TIMEOUT: '0'
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
     steps:
       - name: Free disk space
         run: |
@@ -47,19 +59,9 @@ jobs:
 
       # 与 ci.yml rust-test-build 的 R07 缓解一致：链接高峰先落 swap，
       # 避免 16GB runner 在 release 长编译中被整体回收。
-      - name: Expand swap to survive linker memory peaks
-        run: |
-          sudo swapoff -a
-          sudo rm -f /mnt/swapfile
-          sudo fallocate -l 12G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
-          free -h && df -h /mnt
-
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ inputs.tag_name }}
+          ref: ${{ inputs.source_sha || inputs.tag_name }}
           fetch-depth: 0
 
       # Rebuilds intentionally execute the tagged production migration code,
@@ -67,6 +69,23 @@ jobs:
       # template synchronization, or currently reviewed release-requirements
       # waiver dates. Overlay only release-gate data/tooling from the caller
       # revision; no application or migration source comes from main.
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: |
+            scripts/ci
+            scripts/migration-ci
+            .github/actions
+
+      - name: Verify and prepare migration release resources
+        run: |
+          bash .release-tooling/scripts/ci/prepare-linux-release.sh
+          bash .release-tooling/scripts/ci/install-linux-deps.sh
+          cp .release-tooling/scripts/migration-ci/run-fixture-upgrades.sh scripts/migration-ci/run-fixture-upgrades.sh
+          cp .release-tooling/scripts/migration-ci/run-migration-tests.sh scripts/migration-ci/run-migration-tests.sh
+
       - name: Overlay release gate inputs from workflow revision
         run: |
           FIXTURE_PATH="src-tauri/tests/migration-fixtures/full"
@@ -104,30 +123,20 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: stable
+          toolchain: '1.98.1'
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+        continue-on-error: true
+      - run: bash .release-tooling/scripts/ci/prepare-sccache.sh
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
           # key 前缀随钉版镜像走；shared-key 与 ci.yml / migration-nightly.yml
           # 的迁移门禁共享 tests 缓存，避免 release 每次从零编译完整依赖图。
-          key: ubuntu-22.04
+          key: ubuntu-22.04-lld-test-debug0
           shared-key: tests
-
-      # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）。
-      # fail-closed 语义不受影响：缓存未命中/恢复失败时 action 内部
-      # 回退到真实 apt-get 安装，任何失败都会让本 step（进而让 gate）红掉。
-      # 缓存 key = 包名列表 + 镜像标识（经 GITHUB_ENV 中转，动机见
-      # ci.yml backend job 同名步骤注释），与 ci.yml/nightly 共享缓存条目。
-      - name: Resolve runner image scope for apt cache
-        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
-
-      - name: Install system dependencies (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
-          version: ${{ env.APT_CACHE_SCOPE }}
-          execute_install_scripts: true
+          cache-on-failure: true
 
       # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，
       # 与 ci.yml 的 ubuntu cargo job 保持一致，预先下载。
@@ -143,11 +152,6 @@ jobs:
       # 生产统一迁移框架测试（src/data_governance/migration*），
       # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
       # 杜绝 "0 passed; 0 failed" 假绿。
-      - name: Production migration tests (non-zero count enforced)
-        run: |
-          bash scripts/migration-ci/run-migration-tests.sh \
-            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
-
       # fail-closed：release 绝不允许在没跑 fixture 升级的情况下出包
       - name: Fetch full fixture tier (fail-closed)
         if: ${{ !inputs.allow_missing_fixtures }}
@@ -163,7 +167,16 @@ jobs:
       - name: Record manual fixture override
         if: ${{ inputs.allow_missing_fixtures }}
         run: |
-          echo "::warning::External full migration fixtures were not configured. Continuing under an explicit manual rebuild override after production migration tests passed."
+          echo "::warning::Explicit fixture override selected; production migration tests below remain required."
+
+      - name: Production migration tests (non-zero count enforced)
+        run: |
+          bash .release-tooling/scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-migration-tests.sh \
+            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
+
+      - name: Compile fixture executable once for both modes
+        if: ${{ !inputs.allow_missing_fixtures }}
+        run: bash .release-tooling/scripts/ci/with-resource-monitor.sh node .release-tooling/scripts/ci/test-binary.mjs migration_fixture_upgrade_gate MIGRATION_GATE_BINARY
 
       - name: Full fixture upgrades
         if: ${{ !inputs.allow_missing_fixtures }}
@@ -195,7 +208,7 @@ jobs:
         run: |
           ARGS=(
             --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json"
-            --candidate-commit "${{ github.sha }}"
+            --candidate-commit "$(git rev-parse HEAD)"
             --tag "${{ inputs.tag_name }}"
             --platform "linux-x86_64"
             --fixture-tier "${{ inputs.allow_missing_fixtures && 'manual-override-production-tests-only' || 'full' }}"
@@ -221,3 +234,17 @@ jobs:
           path: ${{ runner.temp }}/migration-reports/
           retention-days: 90
           if-no-files-found: warn
+          overwrite: true
+
+      - uses: ./.release-tooling/.github/actions/release-checkpoint
+        if: success() && inputs.source_sha != ''
+        with:
+          stage: migration
+          policy: ${{ inputs.allow_missing_fixtures }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: resource-diagnostics-migration
+          path: ${{ runner.temp }}/release-resource-metrics.log
+          overwrite: true

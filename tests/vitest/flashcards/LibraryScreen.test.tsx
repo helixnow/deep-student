@@ -82,6 +82,8 @@ vi.mock('@/features/flashcards/events', () => ({
 }));
 
 vi.mock('@/utils/fileManager', () => ({
+  isVirtualUri: (path: string) => path.startsWith('content://'),
+  extractFileName: (path: string) => path.split('/').pop() ?? '',
   fileManager: {
     pickSingleFile: mocks.pickSingleFile,
   },

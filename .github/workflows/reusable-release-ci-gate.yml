@@ -1,0 +1,30 @@
+# Check the same immutable source that the release builders will consume.
+name: Verify Source CI (reusable)
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-ci:
+    runs-on: ubuntu-22.04
+    # Automatic publication is CI-completion driven. Manual recovery must select
+    # an already verified commit, rather than occupy a runner polling for hours.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: scripts/ci
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+      - name: Require successful CI on the exact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_CI_WAIT_MS: '60000'
+        run: node scripts/ci/release-ci-gate.mjs

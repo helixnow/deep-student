@@ -1,0 +1,85 @@
+name: Release PR
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: release-pr-main
+  cancel-in-progress: false
+jobs:
+  release-please:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Reconcile labels for existing release tags
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr list --state merged --label 'autorelease: pending' --json number,title \
+            --jq '.[] | [.number,.title] | @tsv' | while IFS=$'\t' read -r number title; do
+            if [[ "$title" =~ release\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+              tag="v${BASH_REMATCH[1]}"
+              if [ -n "$(git ls-remote --tags "https://github.com/$GH_REPO.git" "refs/tags/$tag")" ]; then
+                gh pr edit "$number" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
+              fi
+            fi
+          done
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        id: release
+        with:
+          # Use a GitHub App/fine-grained bot token to trigger PR CI without
+          # GITHUB_TOKEN recursion/approval restrictions.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          skip-github-release: true
+
+      - name: Resolve release PR branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          BRANCH=$(gh pr list --state open --base main --head release-please--branches--main--components--deep-student --json headRefName --jq '.[0].headRefName // empty')
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        if: steps.pr.outputs.branch != ''
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        if: steps.pr.outputs.branch != ''
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        if: steps.pr.outputs.branch != ''
+        with:
+          toolchain: '1.98.1'
+      - name: Prepare versioned locks and notices before PR validation
+        if: steps.pr.outputs.branch != ''
+        env:
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
+        run: |
+          npm ci --legacy-peer-deps
+          npm run release:prepare
+          git add src-tauri/Cargo.lock legal/THIRD_PARTY_NOTICES.txt
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'chore(release): prepare locked dependency metadata'
+            git push origin "HEAD:$PR_BRANCH"
+          fi
+      - name: Validate the prepared PR even when GITHUB_TOKEN suppresses PR events
+        if: steps.pr.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
+          BOT_TOKEN_CONFIGURED: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
+        run: |
+          if [ "$BOT_TOKEN_CONFIGURED" != true ]; then
+            gh workflow run ci.yml --ref "$PR_BRANCH"
+          fi
