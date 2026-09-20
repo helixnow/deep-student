@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.63](https://github.com/helixnow/deep-student/compare/v0.9.62...v0.9.63) (2026-09-20)
+
+
+### Bug Fixes
+
+* **ci:** make release builds resumable and resource bounded ([54667f5](https://github.com/helixnow/deep-student/commit/54667f5889b5b8f8a889b40e04d8a7ff8ca68e5d))
+* **ci:** preserve Vitest coordinator heap budget ([b377d5f](https://github.com/helixnow/deep-student/commit/b377d5fbb33bc393087d176302272b1f89f9f619))
+* **ci:** provide headless runtime and align Rust contracts ([fa096a0](https://github.com/helixnow/deep-student/commit/fa096a07f16371f38d8fc8b304288de7c61f65b9))
+* **ci:** reuse existing release PR validation ([916f3eb](https://github.com/helixnow/deep-student/commit/916f3ebd50af9673e47af60f6999d2614b87dd82))
+* **notes:** read update state within one transaction snapshot ([d80b89b](https://github.com/helixnow/deep-student/commit/d80b89bb79363bf358f660e1532b5559433d7eb9))
+* **sync:** classify local state and preserve deletion timestamps ([23abd4b](https://github.com/helixnow/deep-student/commit/23abd4b26df792e1f9f9ce52a5b1a2bb5de19856))
+* **sync:** fence in-flight encryption marker claims ([753e63f](https://github.com/helixnow/deep-student/commit/753e63f4072a48de54fd7cb64e181f50355b075d))
+* **tools:** preserve cancelled pack results in headless runs ([32cea33](https://github.com/helixnow/deep-student/commit/32cea33b1e933e9f2acae15ca0cfb04b7021bebe))
+
 ## [0.9.62](https://github.com/helixnow/deep-student/compare/v0.9.61...v0.9.62) (2026-09-17)
 
 
