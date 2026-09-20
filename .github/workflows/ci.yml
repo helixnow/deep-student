@@ -103,7 +103,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
-      NODE_OPTIONS: --max-old-space-size=4096
+      # Keep the orchestrator aligned with the 6GiB worker budget; transform /
+      # result collection previously exhausted the default 4GiB main-process heap.
+      NODE_OPTIONS: '--max-old-space-size=6144'
     strategy:
       fail-fast: false
       matrix:
