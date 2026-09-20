@@ -42,7 +42,7 @@ test('provider contract is a fixed fail-closed CI job', () => {
   assert.match(job, /State\.Health\.Status.*healthy/);
 
   assert.match(job, /needs: \[changes, rust-test-build\]/);
-  assert.match(job, /cargo nextest run --archive-file/);
+  assert.match(job, /cargo nextest run --no-fail-fast --archive-file/);
   assert.match(job, /--run-ignored only --test-threads 1 --no-tests fail/);
   assert.ok(job.includes('binary(=sync_provider_contract_tests) & test(/^${{ matrix.provider }}_/)'));
   assert.doesNotMatch(job, /cargo test|cargo nextest archive/);

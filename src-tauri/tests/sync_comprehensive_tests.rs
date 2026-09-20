@@ -500,13 +500,13 @@ mod tests {
             assert!(!merged);
         }
 
-        // --- Max value (exercised via "questions"."attempt_count") ---
+        // --- Max value: only monotonic review counters, not resettable question stats ---
 
         #[test]
         fn test_max_value() {
             let (result, merged, _) = merge_field(
-                "questions",
-                "attempt_count",
+                "review_plans",
+                "total_reviews",
                 Some(&json!(10)),
                 Some(&json!(7)),
             );
@@ -520,8 +520,8 @@ mod tests {
         #[test]
         fn test_max_value_reverse() {
             let (result, merged, _) = merge_field(
-                "questions",
-                "attempt_count",
+                "review_plans",
+                "total_reviews",
                 Some(&json!(3)),
                 Some(&json!(15)),
             );
