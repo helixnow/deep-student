@@ -3032,7 +3032,7 @@ mod tests {
     #[test]
     fn test_vfs_resource_type_all() {
         let all_types = VfsResourceType::all();
-        assert_eq!(all_types.len(), 9);
+        assert_eq!(all_types.len(), 10);
         assert!(all_types.contains(&VfsResourceType::Note));
         assert!(all_types.contains(&VfsResourceType::Textbook));
         assert!(all_types.contains(&VfsResourceType::Exam));
@@ -3042,6 +3042,7 @@ mod tests {
         assert!(all_types.contains(&VfsResourceType::File));
         assert!(all_types.contains(&VfsResourceType::Retrieval));
         assert!(all_types.contains(&VfsResourceType::MindMap));
+        assert!(all_types.contains(&VfsResourceType::InsightCard));
     }
 
     #[test]

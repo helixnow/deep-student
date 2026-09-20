@@ -232,9 +232,13 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 
 - 54667f588 已上线新流水线，b377d5fbb 恢复 Vitest 主进程的 6GiB 预算；四个前端分片已在线通过。
 - 完整 Rust archive、Linux Clippy、Windows 沙箱、迁移以及 WebDAV/S3/FTP Provider 验证均已在线通过。
-- Rust 分片新增 Xvfb + D-Bus 会话，解决真实 Tauri 命令测试在无显示环境下无法初始化 GTK；nextest 使用 `--no-fail-fast` 一次收集所有失败。
+- Rust 分片新增 Xvfb + D-Bus 会话，提供桌面测试所需的显示环境；nextest 使用 `--no-fail-fast` 一次收集所有失败。后续工具执行器集成测试改用已有 headless 事件接口，避免在 Rust 测试线程创建桌面事件循环。
 - 修正环境漂移测试对 macOS/ARM 主机的隐含假设，更新出题工具 600 秒超时及单调计数字段的旧测试契约。
 - 首次完整分片还发现 E2EE 认领的迟到写入覆盖问题，经维护者确认纳入修复。新版通过独立 pending 登记保护在途写入，登记不按 TTL 强行抢占；崩溃残留的处理见用户指南「数据管理与云同步」。
 - 云存储 178 项、环境指纹 12 项、工具超时契约本地通过；同步综合测试首次补验遇本机磁盘不足，使用独立精简 profile 构建目录后 59 项通过，E2EE 认领竞态集成测试 4 项通过。
 - `69c3e1c6a` 修复应用面板测试未用 `act()` 完成打开 effect 导致搜索输入偶发被清空的问题，27 项面板测试本地通过。
 - `fa096a07f` 的 Migration Nightly（run `35508195985`）成功。发现 Release PR 未变化时会重复 dispatch 同一 SHA 的完整 CI，fallback 已增加现有运行查询，并取消重复排队的 run `35509285726`。
+- 完整 Rust 分片 run `35508262376` 执行 7,019 项，6,996 项通过、23 项失败；三个 Provider 均通过。后续候选 run `35509574016` 重现这些失败，并暴露 10,000 条写入用例在并行负载下超过 30 秒的波动。
+- 第二轮修复覆盖：新增 VFS/聊天表的同步分类、整数软删除时间戳的确定性回放、工具包取消时保留已完成结果、headless 待办通知，以及目录游标/迁移版本/资源类型和真实同步 fixture 的旧契约。搜索测试实际连接本地 SearXNG mock 并验证请求、来源与注入文本。
+- 10,000 条写入用例保留 30 秒性能断言，通过 `src-tauri/.config/nextest.toml` 独占当前 nextest 执行槽位，避免同 runner 的其他测试干扰计时。
+- 第二轮本地验证：六组集成测试 143 项、同步综合测试 59 项、目录分页 4 项、迁移集合 2 项、资源类型 1 项、同步模块 215 项均通过；`cargo check --lib`、rustfmt 与 diff 检查通过。完整线上门禁及新版本各平台发布仍待本批修复提交后的运行确认。

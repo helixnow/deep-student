@@ -1,0 +1,5 @@
+# Keep the existing 30-second batch-performance assertion meaningful on CI:
+# don't run other tests on the same runner while measuring 10,000 sync writes.
+[[profile.default.overrides]]
+filter = 'test(=w69_ten_thousand_tiny_records)'
+threads-required = "num-test-threads"
