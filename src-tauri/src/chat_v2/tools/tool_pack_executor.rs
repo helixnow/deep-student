@@ -680,6 +680,12 @@ impl ToolExecutor for ToolPackExecutor {
         ToolSensitivity::Low
     }
 
+    fn manages_cancellation(&self, _tool_name: &str) -> bool {
+        // The pack drains its children and preserves completed results. An
+        // outer registry cancellation would discard that aggregate immediately.
+        true
+    }
+
     fn name(&self) -> &'static str {
         "ToolPackExecutor"
     }
