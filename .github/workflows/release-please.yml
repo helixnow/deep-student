@@ -44,7 +44,7 @@ jobs:
         run: |
           BRANCH=$(gh pr list --state open --base main --head release-please--branches--main--components--deep-student --json headRefName --jq '.[0].headRefName // empty')
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: steps.pr.outputs.branch != ''
         with:
           ref: ${{ steps.pr.outputs.branch }}
