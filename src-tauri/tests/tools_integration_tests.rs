@@ -90,67 +90,59 @@ async fn test_web_search_tool_with_mock_server() {
     let mut server = Server::new_async().await;
     let (db, _temp_dir) = create_test_database().await;
 
-    // 设置mock搜索API响应（使用博查格式）
+    // 使用可配置端点的 SearXNG，确保请求实际到达本地 mock。
     let mock_response = json!({
-        "webPages": {
-            "value": [
-                {
-                    "name": "Test Result 1",
-                    "url": "https://example.com/1",
-                    "snippet": "This is a test search result"
-                },
-                {
-                    "name": "Test Result 2",
-                    "url": "https://example.com/2",
-                    "snippet": "Another test search result"
-                }
-            ]
-        }
+        "results": [
+            {
+                "title": "Test Result 1",
+                "url": "https://example.com/1",
+                "content": "This is a test search result"
+            },
+            {
+                "title": "Test Result 2",
+                "url": "https://example.com/2",
+                "content": "Another test search result"
+            }
+        ]
     });
 
-    let _mock = server
-        .mock("GET", "/v7.0/search")
+    let mock = server
+        .mock("GET", "/search")
+        .match_query(mockito::Matcher::Any)
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(mock_response.to_string())
         .create_async()
         .await;
 
-    // 配置测试数据库中的API密钥和端点
-    db.save_setting("web_search.api_key.bocha", "test_api_key")
+    db.save_setting("session.selected_search_engines", "searxng")
         .unwrap();
-    // 注意：在实际测试中，需要配置工具使用mock服务器的URL
+    db.save_secret("web_search.searxng.endpoint", &server.url())
+        .unwrap();
 
     let ctx = create_test_tool_context(&db);
     let web_search_tool = WebSearchTool;
 
-    // 由于我们不能轻易替换工具内部的HTTP端点，我们主要测试工具的参数验证和错误处理
     let args = json!({
         "query": "test search query",
-        "num_results": 5
+        "top_k": 5
     });
 
-    // 测试工具调用（可能会失败，因为没有真实API密钥）
     let (ok, data, error, usage, citations, inject_text) =
         web_search_tool.invoke(&args, &ctx).await;
 
-    // 验证工具至少尝试了处理
-    assert!(usage.is_some());
+    mock.assert_async().await;
+    assert!(ok, "search failed: {error:?}");
+    assert!(error.is_none());
     let usage_json = usage.unwrap();
     assert!(usage_json.get("elapsed_ms").is_some());
-
-    // 如果有错误，验证错误信息格式
-    if let Some(err) = error {
-        assert!(err.contains("API") || err.contains("网络") || err.contains("配置"));
-    }
-
-    // 如果成功，验证数据结构
-    if ok {
-        assert!(data.is_some());
-        if let Some(result_data) = data {
-            assert!(result_data.get("items").is_some());
-        }
-    }
+    let result_data = data.unwrap();
+    assert_eq!(result_data["provider"], "searxng");
+    assert_eq!(result_data["raw"], mock_response);
+    let citations = citations.unwrap();
+    assert_eq!(citations.len(), 2);
+    assert_eq!(citations[0].document_id, "https://example.com/1");
+    assert!(inject_text.unwrap().contains("Test Result 1"));
 }
 
 #[tokio::test]
