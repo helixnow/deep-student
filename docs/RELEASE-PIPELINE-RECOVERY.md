@@ -179,7 +179,8 @@ skipped 当作通过，仅允许按变更路径明确跳过的 Provider job。�
 `RELEASE_PLEASE_TOKEN` 可配置为 release bot/GitHub App token，使 bot PR 变更直接
 触发 PR CI。未配置时，Release PR workflow 使用 GITHUB_TOKEN 并显式 dispatch
 CI 到准备后的 PR 分支，避免因防递归/待批准 PR event 而没有验证信号。合并后的
-main push CI 仍然是发布的权威证据。
+main push CI 仍然是发布的权威证据。fallback 按准备后的完整 SHA 查询 CI，已有
+排队中、运行中或成功的验证时复用；失败或待批准的 PR event 不阻止重新 dispatch。
 
 ## 发布身份和渠道
 
@@ -234,4 +235,6 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - Rust 分片新增 Xvfb + D-Bus 会话，解决真实 Tauri 命令测试在无显示环境下无法初始化 GTK；nextest 使用 `--no-fail-fast` 一次收集所有失败。
 - 修正环境漂移测试对 macOS/ARM 主机的隐含假设，更新出题工具 600 秒超时及单调计数字段的旧测试契约。
 - 首次完整分片还发现 E2EE 认领的迟到写入覆盖问题，经维护者确认纳入修复。新版通过独立 pending 登记保护在途写入，登记不按 TTL 强行抢占；崩溃残留的处理见用户指南「数据管理与云同步」。
-- 云存储 178 项、环境指纹 12 项、工具超时契约本地通过；同步综合测试的首次补验遇本机磁盘不足，清理构建产物后补验。
+- 云存储 178 项、环境指纹 12 项、工具超时契约本地通过；同步综合测试首次补验遇本机磁盘不足，使用独立精简 profile 构建目录后 59 项通过，E2EE 认领竞态集成测试 4 项通过。
+- `69c3e1c6a` 修复应用面板测试未用 `act()` 完成打开 effect 导致搜索输入偶发被清空的问题，27 项面板测试本地通过。
+- `fa096a07f` 的 Migration Nightly（run `35508195985`）成功。发现 Release PR 未变化时会重复 dispatch 同一 SHA 的完整 CI，fallback 已增加现有运行查询，并取消重复排队的 run `35509285726`。
