@@ -70,11 +70,16 @@ echo "▶ migration fixture gate: mode=${MODE} root=${FIXTURE_ROOT}"
 LOG="$(mktemp)"
 run_gate() {
   cd "${REPO_ROOT}/src-tauri"
+  local command=(cargo test --locked --test migration_fixture_upgrade_gate -- --nocapture)
+  if [[ -n "${MIGRATION_GATE_BINARY:-}" ]]; then
+    test -x "$MIGRATION_GATE_BINARY"
+    command=("$MIGRATION_GATE_BINARY" --nocapture)
+  fi
   MIGRATION_FIXTURE_ROOT="$FIXTURE_ROOT" \
   MIGRATION_GATE_MODE="$MODE" \
   MIGRATION_GATE_REPORT="$REPORT" \
   MIGRATION_GATE_MAX_SECONDS="$MAX_SECONDS" \
-    cargo test --test migration_fixture_upgrade_gate -- --nocapture
+    "${command[@]}"
 }
 set +e
 ( run_gate ) 2>&1 | tee "$LOG"

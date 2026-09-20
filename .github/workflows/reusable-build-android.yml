@@ -21,6 +21,11 @@ name: Build Android (reusable)
 on:
   workflow_call:
     inputs:
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       ref:
         description: '构建代码来源（tag / branch / commit SHA）'
         required: true
@@ -47,9 +52,11 @@ jobs:
   build:
     # Pin the mature hosted image: ubuntu-latest/24.04 repeatedly terminated
     # the runner service mid-build even after the Android Rust errors were fixed.
-    runs-on: ubuntu-22.04
+    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 210
     env:
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
       # vite build 实测峰值 RSS ~4.45GB（含 demo/hero MPA 双入口），4GB 上限
       # 已在 rebuild-android 路径反复 OOM（exit 134，2026-09-01 起 6 连败中
       # 3 次）。rebuild 路径有意不传 frontend_dist_artifact（旧 tag 的 artifact
@@ -61,6 +68,8 @@ jobs:
       # 下次重跑直接命中断点续传；rust-cache 只在 job 收尾保存，回收即全损。
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_IDLE_TIMEOUT: '0'
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       CARGO_PROFILE_RELEASE_LTO: 'false'
       # WI-6 (R3): 正常发布收紧为 opt-level=z + codegen-units=16 —— .so 体积
       # 直接决定低内存设备启动时 dlopen/重定位压力（见 Sign APK 的 250MB 守卫）。
@@ -100,7 +109,14 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.source_sha || inputs.ref }}
+
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: scripts/ci
 
       - name: Free disk space
         run: |
@@ -123,38 +139,19 @@ jobs:
           echo "=== Disk usage AFTER cleanup ==="
           df -h /
 
-      - name: Add swap space
-        run: |
-          SWAPFILE=/swapfile
-
-          if swapon --show --noheadings | grep -q .; then
-            echo "Swap already enabled on runner; skipping allocation"
-          else
-            if ! sudo fallocate -l 12G "$SWAPFILE"; then
-              echo "::warning::fallocate failed; retrying swap creation with dd"
-              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=12288 status=progress
-            fi
-
-            sudo chmod 600 "$SWAPFILE"
-            sudo mkswap "$SWAPFILE"
-
-            if sudo swapon "$SWAPFILE"; then
-              echo "Swap enabled at $SWAPFILE"
-            else
-              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
-              sudo rm -f "$SWAPFILE"
-            fi
-          fi
-
-          echo "=== Memory + Swap ==="
-          free -h
-          swapon --show || true
+      - name: Verify and prepare Android release resources
+        run: bash .release-tooling/scripts/ci/prepare-linux-release.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
           cache: npm
+
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
       - name: Setup Java 17
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
@@ -165,13 +162,13 @@ jobs:
       - name: Setup Android SDK & NDK
         run: |
           yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
-            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
+            "ndk;29.0.13846066" "build-tools;36.0.0" "platforms;android-36" | tail -3
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/29.0.13846066" >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: stable
+          toolchain: '1.98.1'
           targets: aarch64-linux-android
 
       - name: Setup protoc
@@ -180,6 +177,10 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        continue-on-error: true
+
+      - name: Check optional compiler cache
+        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
 
       - name: Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -193,7 +194,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Legacy standalone recovery keeps its existing metadata refresh behavior.
+      # A pinned normal release must never silently mutate the candidate lockfile.
+      - name: Verify locked release dependency graph
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: |
+          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
+          node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Refresh release lock metadata and third-party notices
+        if: ${{ inputs.source_sha == '' }}
         run: |
           (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
           npm run licenses:generate
@@ -232,6 +243,11 @@ jobs:
         run: |
           test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
           echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+
+      - name: Verify prebuilt frontend identity and contents
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
 
       - name: Initialize Android project
         run: npx tauri android init
@@ -342,25 +358,29 @@ jobs:
       - name: Configure NDK toolchain
         run: |
           NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
-          for TOOL in aarch64-linux-android21-clang aarch64-linux-android21-clang++ llvm-ar; do
+          for TOOL in aarch64-linux-android24-clang aarch64-linux-android24-clang++ llvm-ar; do
             test -x "${NDK_PREBUILT}/bin/${TOOL}" || { echo "::error::missing NDK tool ${TOOL}"; exit 1; }
           done
 
           {
-            echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
-            echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++"
+            echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android24-clang"
+            echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android24-clang++"
             echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar"
-            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android24-clang"
           } >> "$GITHUB_ENV"
 
           echo "✅ NDK toolchain configured: ${NDK_PREBUILT}"
+
+      - name: Reuse Tauri's initial native build in the Gradle packaging phase
+        run: node .release-tooling/scripts/ci/prepare-android-gradle.mjs
 
       - name: Build Android APK
         env:
           SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
           SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-          GRADLE_OPTS: -Dorg.gradle.daemon=false
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dorg.gradle.jvmargs=-Xmx2048m
+          DS_ANDROID_PREBUILT_NATIVE: '1'
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
           set +e
@@ -387,8 +407,8 @@ jobs:
           # 编译负担最重的依赖树。lean_recovery 不再切换 feature 集
           # （此前为 android-release）：应急重建只该改 cargo profile（见 job env），
           # 不该静默产出功能集不同的 APK。
-          timeout --signal=TERM --kill-after=60s 165m \
-            npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features mobile-slim
+          bash .release-tooling/scripts/ci/with-resource-monitor.sh timeout --signal=TERM --kill-after=60s 165m \
+            npx tauri android build --target aarch64 --apk --ci --features mobile-slim "${CONFIG_ARGS[@]}" -- --locked --no-default-features
           status=$?
           set -e
 
@@ -399,6 +419,16 @@ jobs:
           fi
 
           exit "$status"
+
+      - name: Preserve unsigned APK before signing
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-unsigned-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*-unsigned.apk
+          compression-level: 0
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
 
       - name: Sign APK
         env:
@@ -421,7 +451,7 @@ jobs:
           fi
           echo "找到 APK: $UNSIGNED_APK"
 
-          BUILD_TOOLS=$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
 
           # extractNativeLibs=false 时未压缩 .so 需 16KB 页对齐（AGP 8.x 打包已满足，
           # Android 15+ 16KB 页设备强制要求）。用 -P 16 显式对齐而非旧的 -v 4，
@@ -459,8 +489,44 @@ jobs:
           echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
           ls -lh android-output/
 
+      - name: Record locally built frontend identity
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-write --dir dist
+
+      - name: Record release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        env:
+          RELEASE_TARGET: aarch64-linux-android
+          RELEASE_ARTIFACT_DIR: android-output
+        run: >-
+          node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
+          --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
+          --output "$RUNNER_TEMP/release-provenance.json"
+
+      - name: Upload release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-aarch64-linux-android
+          path: ${{ runner.temp }}/release-provenance.json
+          if-no-files-found: error
+          overwrite: true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          if-no-files-found: error
+          overwrite: true
           name: android-arm64
           path: android-output/*.apk
+
+      - name: Upload in-build resource diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: resource-diagnostics-aarch64-linux-android
+          path: ${{ runner.temp }}/release-resource-metrics.log
+          if-no-files-found: ignore
+          overwrite: true

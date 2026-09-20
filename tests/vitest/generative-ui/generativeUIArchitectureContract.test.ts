@@ -75,7 +75,16 @@ describe('generativeUIArchitectureContract', () => {
     const files = fs.readdirSync(componentsDir).filter((f) => f.endsWith('.tsx'));
     for (const file of files) {
       const src = fs.readFileSync(path.join(componentsDir, file), 'utf8');
-      expect(src).not.toMatch(/dangerouslySetInnerHTML/);
+      if (file === 'GenerativeMarkdownBody.tsx') {
+        // The sole HTML sink is KaTeX output with trusted commands disabled;
+        // user Markdown still passes through rehype-sanitize.
+        expect(src.match(/dangerouslySetInnerHTML/g)).toHaveLength(1);
+        expect(src).toContain('katex.renderToString(latex,');
+        expect(src).toContain('trust: false');
+        expect(src).toContain('[rehypeSanitize, sanitizeSchema]');
+      } else {
+        expect(src).not.toMatch(/dangerouslySetInnerHTML/);
+      }
       expect(src).not.toMatch(/eval\s*\(/);
     }
   });

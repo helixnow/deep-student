@@ -751,7 +751,8 @@ async fn verify_existing_template_model(
 ) -> Result<(), String> {
     let fields = get_model_field_names(model_name).await?;
     let params = serde_json::json!({ "modelName": model_name });
-    let templates = invoke_anki_connect_action("modelTemplates", Some(params.clone()), 15, 0).await?;
+    let templates =
+        invoke_anki_connect_action("modelTemplates", Some(params.clone()), 15, 0).await?;
     let styling = invoke_anki_connect_action("modelStyling", Some(params), 15, 0).await?;
     if !model_matches_template(template, &fields, &templates, &styling) {
         return Err(format!(
@@ -1409,7 +1410,10 @@ pub async fn add_notes_to_anki_detailed(
             }
         };
         if templates_by_model.contains_key(&model_name) && loaded.is_none() {
-            return Err(format!("无法读取 Anki 模型「{}」的字段，发送尚未开始", model_name));
+            return Err(format!(
+                "无法读取 Anki 模型「{}」的字段，发送尚未开始",
+                model_name
+            ));
         }
         model_field_names_cache.insert(model_name, loaded);
     }
@@ -1429,7 +1433,8 @@ pub async fn add_notes_to_anki_detailed(
             .cloned()
             .unwrap_or(None);
 
-        let semantic_note_type = templates_by_model.get(&model_name)
+        let semantic_note_type = templates_by_model
+            .get(&model_name)
             .map(|template| template.note_type.as_str())
             .unwrap_or(&model_name);
 
@@ -1683,13 +1688,24 @@ mod tests {
 
     fn identity_template() -> crate::models::CustomAnkiTemplate {
         crate::models::CustomAnkiTemplate {
-            id: "template-a".into(), name: "Basic".into(), description: String::new(),
-            author: None, version: "1".into(), preview_front: String::new(), preview_back: String::new(),
-            note_type: "Basic".into(), fields: vec!["Front".into(), "Back".into()],
-            generation_prompt: String::new(), front_template: "{{Front}}".into(),
-            back_template: "{{Back}}".into(), css_style: ".card { color: red; }".into(),
-            field_extraction_rules: HashMap::new(), created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(), is_active: true, is_built_in: false,
+            id: "template-a".into(),
+            name: "Basic".into(),
+            description: String::new(),
+            author: None,
+            version: "1".into(),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: "Basic".into(),
+            fields: vec!["Front".into(), "Back".into()],
+            generation_prompt: String::new(),
+            front_template: "{{Front}}".into(),
+            back_template: "{{Back}}".into(),
+            css_style: ".card { color: red; }".into(),
+            field_extraction_rules: HashMap::new(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            is_active: true,
+            is_built_in: false,
             preview_data_json: None,
         }
     }
@@ -1714,16 +1730,36 @@ mod tests {
         let template = identity_template();
         let faces = model_templates(&template);
         let css = serde_json::json!({"css": template.css_style});
-        assert!(model_matches_template(&template, &template.fields, &faces, &css));
+        assert!(model_matches_template(
+            &template,
+            &template.fields,
+            &faces,
+            &css
+        ));
         let mut fields = template.fields.clone();
         fields.reverse();
         assert!(!model_matches_template(&template, &fields, &faces, &css));
         let wrong_faces = serde_json::json!({"Card 1": {"Front": "{{Back}}", "Back": "{{Front}}"}});
-        assert!(!model_matches_template(&template, &template.fields, &wrong_faces, &css));
-        assert!(!model_matches_template(&template, &template.fields, &faces, &serde_json::json!({"css": ""})));
+        assert!(!model_matches_template(
+            &template,
+            &template.fields,
+            &wrong_faces,
+            &css
+        ));
+        assert!(!model_matches_template(
+            &template,
+            &template.fields,
+            &faces,
+            &serde_json::json!({"css": ""})
+        ));
         let mut extra_face = faces.clone();
         extra_face["Card 2"] = faces["Card 1"].clone();
-        assert!(!model_matches_template(&template, &template.fields, &extra_face, &css));
+        assert!(!model_matches_template(
+            &template,
+            &template.fields,
+            &extra_face,
+            &css
+        ));
     }
 
     fn basic_note(front: &str, back: &str) -> Note {

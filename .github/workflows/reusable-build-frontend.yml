@@ -28,6 +28,11 @@ name: Build Frontend (reusable)
 on:
   workflow_call:
     inputs:
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       tag_name:
         description: '构建的 tag（如 v0.9.42）'
         required: true
@@ -50,6 +55,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
       # vite build 实测峰值 RSS ~4.45GB（含 demo/hero MPA 双入口），4GB 已
       # 无余量（rebuild-android 路径同构建已多次 OOM）——预防性提到 6GB。
       NODE_OPTIONS: '--max-old-space-size=6144'
@@ -60,13 +67,27 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag_name }}
+          ref: ${{ inputs.source_sha || inputs.tag_name }}
+
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: |
+            scripts/ci
+            .github/actions
 
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
           cache: npm
+
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
@@ -114,11 +135,22 @@ jobs:
           fi
           echo "✅ dist ready: $(du -sh dist | cut -f1), $(find dist -type f | wc -l | tr -d ' ') files, no .map"
 
+      - name: Record frontend identity and contents
+        if: ${{ inputs.source_sha != '' }}
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-write --dir dist
+
       - name: Upload frontend dist artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.artifact_name }}
+          overwrite: true
           path: dist
           # dist 为纯构建产物、无机密；带上隐藏文件保证与就地构建完全一致
           include-hidden-files: true
           if-no-files-found: error
+          retention-days: 30
+
+      - uses: ./.release-tooling/.github/actions/release-checkpoint
+        if: inputs.source_sha != '' && inputs.artifact_name == 'frontend-dist'
+        with:
+          stage: frontend

@@ -1587,11 +1587,7 @@ impl FsrsReviewService {
                 let score = concept.and_then(|c| scores.get(&c).copied());
                 // F02：先保护分钟级学习卡的到期时间约束，再在 Review/New 之间
                 // 应用掌握度薄弱优先，避免低掌握度 New 卡插到已到期学习卡之前。
-                crate::mastery::queue_sort_key(
-                    card.state.state,
-                    score,
-                    card.state.due_ms,
-                )
+                crate::mastery::queue_sort_key(card.state.state, score, card.state.due_ms)
             });
             out.truncate(limit as usize);
         }
@@ -2144,9 +2140,7 @@ impl FsrsReviewService {
             || current.last_review_ms != Some(review_ms)
             || log_updated_at.as_deref() != Some(current.updated_at.as_str())
         {
-            return Err(AppError::conflict(
-                "复习记录已过期，已不是最近一次评分",
-            ));
+            return Err(AppError::conflict("复习记录已过期，已不是最近一次评分"));
         }
 
         let state_before_json = state_before_json.ok_or_else(|| {
@@ -2794,7 +2788,9 @@ impl FsrsReviewService {
         update: &FsrsSchedulerConfigUpdate,
     ) -> Result<FsrsSchedulerConfig> {
         if update.learn_ahead_minutes.is_some_and(|v| v > 60) {
-            return Err(AppError::validation("learnAheadMinutes must be within [0, 60]"));
+            return Err(AppError::validation(
+                "learnAheadMinutes must be within [0, 60]",
+            ));
         }
         if let Some(v) = update.desired_retention {
             if !v.is_finite() || v <= 0.0 || v >= 1.0 {
@@ -2860,7 +2856,12 @@ impl FsrsReviewService {
             set_field(obj, "new_per_day", "newPerDay", serde_json::json!(v));
         }
         if let Some(v) = update.learn_ahead_minutes {
-            set_field(obj, "learn_ahead_minutes", "learnAheadMinutes", serde_json::json!(v));
+            set_field(
+                obj,
+                "learn_ahead_minutes",
+                "learnAheadMinutes",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.reviews_per_day {
             set_field(
@@ -3163,10 +3164,8 @@ impl FsrsReviewService {
             AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
         })?;
         // F01：重置后的新状态同样使用当前牌组配置，而非旧卡快照。
-        let scheduler_config = Self::load_scheduler_config(
-            &tx,
-            before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
-        )?;
+        let scheduler_config =
+            Self::load_scheduler_config(&tx, before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID))?;
 
         let cleared_logs = tx
             .execute(
@@ -4216,7 +4215,12 @@ mod tests {
             .expect("load")
             .expect("state");
         let rate_now = Utc::now().timestamp_millis();
-        let fsrs_only = schedule_review(&before, FsrsRating::Good, rate_now, DEFAULT_DESIRED_RETENTION);
+        let fsrs_only = schedule_review(
+            &before,
+            FsrsRating::Good,
+            rate_now,
+            DEFAULT_DESIRED_RETENTION,
+        );
         let expected_due = apply_mastery_due_bias(0.0, rate_now, fsrs_only.due_ms);
 
         let biased = service
@@ -4258,7 +4262,12 @@ mod tests {
         }
         let before_hi = service.get_card_state(&state_hi).unwrap().unwrap();
         let rate_now_hi = Utc::now().timestamp_millis();
-        let fsrs_hi = schedule_review(&before_hi, FsrsRating::Good, rate_now_hi, DEFAULT_DESIRED_RETENTION);
+        let fsrs_hi = schedule_review(
+            &before_hi,
+            FsrsRating::Good,
+            rate_now_hi,
+            DEFAULT_DESIRED_RETENTION,
+        );
         let high = service
             .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95), None)
             .expect("high bias");
@@ -4293,7 +4302,9 @@ mod tests {
         let (_temp_dir, db) = setup_migrated_fsrs_db();
         insert_task_and_card(&db, "doc-undo-sync", "task-undo-sync", "card-undo-sync");
         let service = FsrsReviewService::new(db);
-        let enqueued = service.enqueue_cards(&["card-undo-sync".to_string()]).unwrap();
+        let enqueued = service
+            .enqueue_cards(&["card-undo-sync".to_string()])
+            .unwrap();
         let state_id = enqueued.states[0].id.clone();
         let rated = service.rate(&state_id, 3, None, None).unwrap();
         service.mark_mastery_review_synced(&rated.log_id).unwrap();
@@ -4450,7 +4461,12 @@ mod tests {
         // Cap: huge interval + score=0 → advance ≤ 3 days on persisted due
         let before_cap = service.get_card_state(&sid_cap).unwrap().unwrap();
         let rate_now = Utc::now().timestamp_millis();
-        let fsrs_cap = schedule_review(&before_cap, FsrsRating::Good, rate_now, DEFAULT_DESIRED_RETENTION);
+        let fsrs_cap = schedule_review(
+            &before_cap,
+            FsrsRating::Good,
+            rate_now,
+            DEFAULT_DESIRED_RETENTION,
+        );
         let capped = service
             .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0), None)
             .unwrap();
@@ -4649,10 +4665,12 @@ mod tests {
         let reloaded = service.get_scheduler_config().expect("reload config");
         assert_eq!(reloaded, updated);
 
-        assert!(service.update_scheduler_config(&FsrsSchedulerConfigUpdate {
-            learn_ahead_minutes: Some(61),
-            ..Default::default()
-        }).is_err());
+        assert!(service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                learn_ahead_minutes: Some(61),
+                ..Default::default()
+            })
+            .is_err());
 
         assert!(
             service

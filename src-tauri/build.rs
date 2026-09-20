@@ -17,7 +17,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ENV");
     println!("cargo:rerun-if-env-changed=DEEP_STUDENT_BUILD_NUMBER");
     println!("cargo:rerun-if-env-changed=SENTRY_DSN");
-    println!("cargo:rerun-if-changed=gen/android/app/src/main/AndroidManifest.xml");
+    // Watching a missing generated file makes every desktop Cargo invocation
+    // dirty (including --list followed by executing the same test target).
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+        println!("cargo:rerun-if-changed=gen/android/app/src/main/AndroidManifest.xml");
+    }
 
     configure_windows_test_runtime();
 
@@ -193,7 +197,9 @@ fn git_output(args: &[&str]) -> Result<String, String> {
 fn emit_git_rerun_paths() {
     for git_path in ["HEAD", "packed-refs"] {
         if let Ok(path) = git_output(&["rev-parse", "--git-path", git_path]) {
-            println!("cargo:rerun-if-changed={path}");
+            if std::path::Path::new(&path).exists() {
+                println!("cargo:rerun-if-changed={path}");
+            }
         }
     }
 

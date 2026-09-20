@@ -1,0 +1,68 @@
+name: Restore verified release stage
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+      run_id:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      policy:
+        default: ''
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  restore:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RELEASE_POLICY: ${{ inputs.policy }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+      - name: Verify checkpoint and recover outputs
+        env:
+          STAGE: ${{ inputs.stage }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: node scripts/ci/release-recovery.mjs restore "$STAGE" "$RUN_ID"
+      - name: Resolve output names
+        id: names
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: |
+          node --input-type=module -e 'import {STAGES} from "./scripts/ci/release-recovery.mjs"; import {appendFileSync,readFileSync} from "node:fs";const a=STAGES[process.env.STAGE];appendFileSync(process.env.GITHUB_OUTPUT,`asset=${a[0]}\nproof=${a[1]||""}\n`);const r=JSON.parse(readFileSync(`recovered/${process.env.STAGE}/receipt/checkpoint.json`));appendFileSync(process.env.GITHUB_ENV,`RELEASE_FRONTEND_SHA=${r.frontendSha256||""}\n`)'
+      - name: Recheck time-sensitive migration requirements
+        if: inputs.stage == 'migration'
+        run: node scripts/migration-ci/verify-release-requirements.mjs --manifest scripts/migration-ci/release-requirements.json --out "$RUNNER_TEMP/release-requirements-current.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.names.outputs.asset }}
+          path: recovered/${{ inputs.stage }}/${{ steps.names.outputs.asset }}
+          include-hidden-files: true
+          retention-days: 30
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: steps.names.outputs.proof != ''
+        with:
+          name: ${{ steps.names.outputs.proof }}
+          path: recovered/${{ inputs.stage }}/${{ steps.names.outputs.proof }}
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+      - uses: ./.github/actions/release-checkpoint
+        with:
+          stage: ${{ inputs.stage }}
+          policy: ${{ inputs.policy }}

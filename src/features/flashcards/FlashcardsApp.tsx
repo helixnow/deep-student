@@ -7,6 +7,7 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Books, ChartBar, Lightning } from '@phosphor-icons/react';
+import { useMobileHeader } from '@/components/layout/MobileHeaderContext';
 import { TodayScreen } from './screens/TodayScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ReviewSessionScreen } from './screens/ReviewSessionScreen';
@@ -39,6 +40,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   isActive = true,
 }) => {
   const { t } = useTranslation('flashcards');
+  useMobileHeader('flashcards', { title: t('sidebar:navigation.flashcards') }, [t]);
   const screen = useFsrsReviewStore((s) => s.screen);
   const setScreen = useFsrsReviewStore((s) => s.setScreen);
   const applyLaunchPayload = useFsrsReviewStore((s) => s.applyLaunchPayload);

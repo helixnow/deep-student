@@ -43,7 +43,7 @@ echo "▶ cargo test --lib '${FILTER}'"
 # Stream output while capturing it for the summary parse. cargo's own exit
 # code still gates failures; the count check below gates the 0-tests case.
 set +e
-cargo test --lib "$FILTER" 2>&1 | tee "$LOG"
+cargo test --locked --lib "$FILTER" 2>&1 | tee "$LOG"
 CARGO_EXIT=${PIPESTATUS[0]}
 set -e
 

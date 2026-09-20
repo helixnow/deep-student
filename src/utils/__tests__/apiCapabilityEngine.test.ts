@@ -165,7 +165,7 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(record?.capabilities.function_calling).toBe(true);
     expect(record?.capabilities.reasoning).toBe(true);
     expect(record?.capabilities.max_context_tokens).toBe(1_000_000);
-    expect(record?.capabilities.max_output_tokens).toBe(384000);
+    expect(record?.capabilities.max_output_tokens).toBe(384 * 1024);
 
     // 旧名已下线并路由到 V4.1 Flash：登记为 deprecated alias，能力随路由后的模型
     const legacyFlash = findModelRecordById('deepseek-v4-flash');

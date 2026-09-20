@@ -6309,13 +6309,15 @@ impl ChatAnkiToolExecutor {
                     let maybe_template = if let Some(cached) = template_cache.get(&template_id) {
                         cached.clone()
                     } else {
-                        let loaded = db.get_custom_template_by_id(&template_id)
+                        let loaded = db
+                            .get_custom_template_by_id(&template_id)
                             .map_err(|error| format!("读取模板失败: {}", error))?;
                         template_cache.insert(template_id.clone(), loaded.clone());
                         loaded
                     };
                     if let Some(template) = maybe_template {
-                        let model_name = crate::anki_connect_service::template_model_name(&template);
+                        let model_name =
+                            crate::anki_connect_service::template_model_name(&template);
                         card_note_types.insert(card.id.clone(), model_name.clone());
                         templates_by_model.entry(model_name).or_insert(template);
                     } else {

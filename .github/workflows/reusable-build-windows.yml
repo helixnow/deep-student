@@ -22,6 +22,14 @@ name: Build Windows (reusable)
 on:
   workflow_call:
     inputs:
+      force_rebuild:
+        default: false
+        type: boolean
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       tag_name:
         description: '构建的 tag（如 v0.9.42）'
         required: true
@@ -39,6 +47,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   # 固定工具版本（升级需显式改这里）
@@ -49,9 +58,16 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 120
     env:
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
+      GH_TOKEN: ${{ github.token }}
+      CARGO_BUILD_JOBS: '2'
+      SCCACHE_IDLE_TIMEOUT: '0'
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
       # Align with the macOS/Linux release jobs: the repository release profile
@@ -105,7 +121,16 @@ jobs:
           GIT_CONFIG_VALUE_0: "false"
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag_name }}
+          ref: ${{ inputs.source_sha || inputs.tag_name }}
+
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: |
+            scripts/ci
+            .github/actions
 
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -113,15 +138,25 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: stable
+          toolchain: '1.98.1'
 
       # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
       # sccache 二进制不存在时 cargo 会直接报错。
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        continue-on-error: true
+
+      - name: Check optional compiler cache
+        shell: bash
+        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
 
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
@@ -136,7 +171,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Legacy standalone recovery keeps its existing metadata refresh behavior.
+      # A pinned normal release must never silently mutate the candidate lockfile.
+      - name: Verify locked release dependency graph
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: |
+          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
+          node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Refresh release lock metadata and third-party notices
+        if: ${{ inputs.source_sha == '' }}
         shell: bash
         run: |
           (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
@@ -183,7 +228,12 @@ jobs:
           test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
           echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
 
-      - name: Build Tauri app
+      - name: Verify prebuilt frontend identity and contents
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
+
+      - name: Compile or recover native executable
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -195,13 +245,27 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
-          CONFIG_ARGS=()
-          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
-            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
-            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
-            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
-          fi
-          npx tauri build --target x86_64-pc-windows-msvc --bundles nsis "${CONFIG_ARGS[@]}" -- --locked
+          node .release-tooling/scripts/ci/native-build.mjs compile x86_64-pc-windows-msvc
+
+      - name: Preserve compilation before packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-x86_64-pc-windows-msvc
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/deep-student*
+            src-tauri/target/x86_64-pc-windows-msvc/release/*.pdb
+            src-tauri/target/x86_64-pc-windows-msvc/release/native-build.json
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+
+      - name: Bundle with bounded retry (no Rust compilation)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
+        run: node .release-tooling/scripts/ci/native-build.mjs bundle x86_64-pc-windows-msvc nsis
 
       # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
       # 失败时也能拿到命中率，结果同时写入日志与 job summary。shell: bash
@@ -338,10 +402,45 @@ jobs:
           fi
           echo "✅ Updater installer + signature present"
 
+      - name: Record locally built frontend identity
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-write --dir dist
+
+      - name: Record release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        env:
+          RELEASE_TARGET: x86_64-pc-windows-msvc
+          RELEASE_ARTIFACT_DIR: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis
+        run: >-
+          node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
+          --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
+          --output "$RUNNER_TEMP/release-provenance.json"
+
+      - name: Upload release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-x86_64-pc-windows-msvc
+          path: ${{ runner.temp }}/release-provenance.json
+          if-no-files-found: error
+          overwrite: true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          if-no-files-found: error
+          overwrite: true
           name: windows-x86_64
+          retention-days: 30
+          compression-level: 0
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
+
+      - uses: ./.release-tooling/.github/actions/release-checkpoint
+        if: inputs.source_sha != ''
+        with:
+          stage: windows
+          policy: ${{ inputs.allow_unsigned }}

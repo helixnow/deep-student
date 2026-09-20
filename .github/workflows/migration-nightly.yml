@@ -1,431 +1,129 @@
-# ============================================================================
-# 数据库迁移夜间全量门禁（main/nightly 层）
-#
-# 分层设计（详见 scripts/migration-ci/README.md）：
-#   PR/branch push : ci.yml migration-gate（静态 + 生产测试 + 代表性 fixture）
-#   main/nightly   : 本 workflow —— 全量 fixture 升级 + 故障注入 + 规模入口
-#   release/rebuild: reusable-migration-gate.yml（fail-closed）
-#
-# 本 workflow 里跑 cargo 的 Linux job 必须先 prepare pdfium（下载 libpdfium.so），
-# 否则 src-tauri/build.rs 的 Tauri ACL 校验会失败；与 ci.yml /
-# reusable-migration-gate.yml 的同名步骤保持一致。
-#
-# fixture 来自私有归档 secret（MIGRATION_FIXTURE_URL / _SHA256 / _TOKEN）。
-# secret 缺失时本层显式 skip（带 ::warning:: 与 job summary 记录），不视为失败；
-# release 层则 fail-closed，绝不允许无 fixture 出包。
-#
-# 失败通知（审查 F16）：定时任务红了没人盯 Actions 页 —— 任一 gate 失败时
-# 自动创建/评论 issue（label: migration-nightly-failure）。
-# ============================================================================
-
 name: Migration Nightly
-
 on:
   schedule:
-    # 每日 19:30 UTC = 次日 03:30 Asia/Shanghai
     - cron: '30 19 * * *'
   workflow_dispatch: {}
   push:
     branches: [main]
     paths:
       - 'src-tauri/migrations/**'
+      - 'src-tauri/src/data_governance/migration*'
       - 'src-tauri/src/data_governance/migration/**'
-      - 'src-tauri/src/data_governance/migration_tests.rs'
-      - 'src-tauri/src/data_governance/migration_compat_tests.rs'
-      - 'src-tauri/tests/fixtures/migrations/**'
-      - 'src-tauri/tests/migration_fixture_upgrade_gate.rs'
-      - 'scripts/check-migrations.mjs'
+      - 'src-tauri/tests/migration*'
+      - 'src-tauri/tests/migration-fixtures/**'
       - 'scripts/migration-ci/**'
+      - 'scripts/ci/**'
+      - '.github/actions/setup-linux-rust/**'
       - '.github/workflows/migration-nightly.yml'
-
 permissions:
   contents: read
-
 concurrency:
   group: migration-nightly-${{ github.ref }}
   cancel-in-progress: false
-
 env:
-  CARGO_INCREMENTAL: 0
+  CARGO_INCREMENTAL: '0'
+  CARGO_BUILD_JOBS: '2'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  RUSTFLAGS: -C link-arg=-fuse-ld=lld
+  SCCACHE_GHA_ENABLED: 'true'
+  SCCACHE_IDLE_TIMEOUT: '0'
+  SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
   DEEP_STUDENT_BUILD_NUMBER: '14639'
-
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 全量 fixture：upgrade + fault（故障注入）两种模式
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  full-fixture-gate:
-    name: Full Fixture Gate (upgrade + fault)
-    # 钉 22.04：与 ci.yml 的 tests 缓存作业同镜像（runner 回收事故 +
-    # 跨镜像缓存 E0463 双重考虑），保持共享缓存名空间一致
-    runs-on: ubuntu-22.04
-    timeout-minutes: 90
-    env:
-      CARGO_INCREMENTAL: 0
-      # OOM 缓解（R07）：与 ci.yml rust-test-build / migration-gate 同口径，
-      # 3 路并行压内存峰值。
-      CARGO_BUILD_JOBS: '3'
+  fixtures:
+    name: Migration fixtures (compile once, upgrade + fault + scale)
+    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
+    timeout-minutes: 100
+    outputs:
+      full: ${{ steps.full.outputs.fixtures_available }}
+      scale: ${{ steps.scale.outputs.fixtures_available }}
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-
-      # OOM 缓解（R07）：16GB runner 上并行编译巨型 crate 会连 runner agent
-      # 一起被 OOM 杀掉（exit 143 + "runner has received a shutdown signal"）。
-      # 完整动机与实现见 ci.yml backend job 同名步骤注释。
-      - name: Expand swap to survive linker memory peaks
-        run: |
-          sudo swapoff -a
-          sudo rm -f /mnt/swapfile
-          sudo fallocate -l 12G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
-          free -h && df -h /mnt
-
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '22'
-
-      - name: Static migration gate
-        run: node scripts/check-migrations.mjs
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: src-tauri
-          # key 前缀随钉版镜像走（见 ci.yml provider-contract 处注释）
-          key: ubuntu-22.04
-          shared-key: tests
-
-      # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）：
-      # 同包列表 + 同镜像 ⇒ 与 ci.yml Rust job 在 main 上共享同一缓存条目。
-      # ImageOS/ImageVersion 须经 GITHUB_ENV 中转、execute_install_scripts
-      # 重放 postinst 触发器的动机，见 ci.yml backend job 同名步骤注释。
-      - name: Resolve runner image scope for apt cache
-        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
-
-      - name: Install system dependencies (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
-          version: ${{ env.APT_CACHE_SCOPE }}
-          execute_install_scripts: true
-
-      # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，仓库不入库该
-      # 二进制，任何跑 cargo 的 Linux job 都必须先下载（与 ci.yml 一致）。
-      - name: Prepare target-specific pdfium
-        run: |
-          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
-          else
-            bash scripts/download-pdfium.sh linux-x64
-          fi
-          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
-
-      - name: Production migration tests (non-zero count enforced)
-        id: tests
-        run: |
-          bash scripts/migration-ci/run-migration-tests.sh \
-            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
-
+      - run: node scripts/check-migrations.mjs
       - name: Fetch full fixture tier
-        id: fixtures
+        id: full
         env:
           MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
+        run: bash scripts/migration-ci/fetch-fixtures.sh --tier full --dest "$RUNNER_TEMP/full" --mode skip
+      - name: Fetch scale fixture tier
+        id: scale
+        env:
+          MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
+          MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
+          MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
+        run: bash scripts/migration-ci/fetch-fixtures.sh --tier scale --dest "$RUNNER_TEMP/scale" --mode skip
+      - uses: ./.github/actions/setup-linux-rust
+      - name: Production migration tests
+        run: bash scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-migration-tests.sh --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
+      - name: Compile fixture executable once
+        if: steps.full.outputs.fixtures_available == 'true' || steps.scale.outputs.fixtures_available == 'true'
+        run: bash scripts/ci/with-resource-monitor.sh node scripts/ci/test-binary.mjs migration_fixture_upgrade_gate MIGRATION_GATE_BINARY
+      - name: Upgrade and fault modes (same executable)
+        if: steps.full.outputs.fixtures_available == 'true'
         run: |
-          bash scripts/migration-ci/fetch-fixtures.sh \
-            --tier full --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
-
-      - name: Record explicit skip (fixtures unavailable)
-        if: steps.fixtures.outputs.fixtures_available != 'true'
-        run: |
-          {
-            echo "## Migration nightly: full fixture gate SKIPPED"
-            echo ""
-            echo "MIGRATION_FIXTURE_URL secret 不可用且无 checked-in fixtures。"
-            echo "这是一次显式的非阻塞跳过；release 层仍会 fail-closed。"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Full fixture upgrades
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
-            --mode upgrade \
-            --report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl"
-
-      - name: Fault-injection gate (corrupted DBs must surface failure)
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
-            --mode fault \
-            --report "$RUNNER_TEMP/migration-reports/full-fault.jsonl"
-
-      - name: Generate nightly compatibility report
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        run: |
+          for mode in upgrade fault; do
+            bash scripts/migration-ci/run-fixture-upgrades.sh --fixture-root "${{ steps.full.outputs.fixture_root }}" \
+              --mode "$mode" --report "$RUNNER_TEMP/migration-reports/full-$mode.jsonl"
+          done
           node scripts/migration-ci/generate-report.mjs \
             --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json" \
-            --candidate-commit "${{ github.sha }}" \
-            --platform "linux-x86_64" \
-            --fixture-tier full \
-            --fixture-hash "${{ steps.fixtures.outputs.fixture_hash }}" \
+            --candidate-commit "$GITHUB_SHA" --platform linux-x86_64 --fixture-tier full \
+            --fixture-hash "${{ steps.full.outputs.fixture_hash }}" \
             --test-count-file "$RUNNER_TEMP/migration-test-count.json" \
             --harness-report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl" \
-            --harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl" \
-            --fail-on-empty
-
-      - name: Upload nightly report
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            --harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl" --fail-on-empty
+      - name: Scale mode (same executable)
+        if: steps.scale.outputs.fixtures_available == 'true'
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh --fixture-root "${{ steps.scale.outputs.fixture_root }}" \
+            --mode scale --max-seconds 600 --report "$RUNNER_TEMP/migration-reports/scale.jsonl"
+      - name: Report fixture coverage
+        if: always()
+        run: |
+          echo 'Full fixtures: ${{ steps.full.outputs.fixtures_available }}; scale fixtures: ${{ steps.scale.outputs.fixtures_available }}' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: migration-nightly-full-report
-          path: ${{ runner.temp }}/migration-reports/
+          name: migration-nightly-reports
+          path: |
+            ${{ runner.temp }}/migration-reports/
+            ${{ runner.temp }}/release-resource-metrics.log
           retention-days: 30
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 规模入口：大数据量 fixture + 每 case 墙钟预算
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  scale-fixture-gate:
-    name: Scale Fixture Gate (wall-clock budget)
-    # 钉 22.04：同 full-fixture-gate
+  notify:
+    name: Report nightly outcome
+    needs: fixtures
+    if: always() && !cancelled()
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    env:
-      CARGO_INCREMENTAL: 0
-      # OOM 缓解（R07）：与 full-fixture-gate 同口径。
-      CARGO_BUILD_JOBS: '3'
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-
-      # OOM 缓解（R07）：动机与完整实现见 ci.yml backend job 同名步骤注释。
-      - name: Expand swap to survive linker memory peaks
-        run: |
-          sudo swapoff -a
-          sudo rm -f /mnt/swapfile
-          sudo fallocate -l 12G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
-          free -h && df -h /mnt
-
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: src-tauri
-          # key 前缀随钉版镜像走（见 ci.yml provider-contract 处注释）
-          key: ubuntu-22.04
-          shared-key: tests
-
-      # apt 文件快照缓存；作用域与动机见 full-fixture-gate 同名步骤注释
-      - name: Resolve runner image scope for apt cache
-        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
-
-      - name: Install system dependencies (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
-          version: ${{ env.APT_CACHE_SCOPE }}
-          execute_install_scripts: true
-
-      # scale 层一旦拿到 fixture 就会走 cargo，同样需要 libpdfium.so 通过
-      # build.rs 的 Tauri ACL 校验（与 ci.yml 一致）。
-      - name: Prepare target-specific pdfium
-        run: |
-          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
-          else
-            bash scripts/download-pdfium.sh linux-x64
-          fi
-          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
-
-      - name: Fetch scale fixture tier
-        id: fixtures
-        env:
-          MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
-          MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
-          MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
-        run: |
-          bash scripts/migration-ci/fetch-fixtures.sh \
-            --tier scale --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
-
-      - name: Record explicit skip (fixtures unavailable)
-        if: steps.fixtures.outputs.fixtures_available != 'true'
-        run: |
-          {
-            echo "## Migration nightly: scale fixture gate SKIPPED"
-            echo ""
-            echo "MIGRATION_FIXTURE_URL secret 不可用（或归档缺 scale/ tier）。"
-            echo "这是一次显式的非阻塞跳过。"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Scale fixture upgrades (per-case budget 600s)
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
-            --mode scale \
-            --max-seconds 600 \
-            --report "$RUNNER_TEMP/migration-reports/scale.jsonl"
-
-      - name: Upload scale report
-        if: steps.fixtures.outputs.fixtures_available == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: migration-nightly-scale-report
-          path: ${{ runner.temp }}/migration-reports/
-          retention-days: 30
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 失败通知：nightly 红了自动开 issue（已有未关闭的则追加评论）
-  #
-  # 去重：同一失败签名（两个 gate 的 result 与正文实质一致）不再重复追评，
-  # 否则连续红灯会把同一个 issue 刷成上百条一模一样的噪音。
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  notify-failure:
-    name: Notify Failure
-    needs: [full-fixture-gate, scale-fixture-gate]
-    if: always() && (needs.full-fixture-gate.result == 'failure' || needs.scale-fixture-gate.result == 'failure')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
     steps:
-      - name: Create or comment failure issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          FULL_RESULT: ${{ needs.full-fixture-gate.result }}
-          SCALE_RESULT: ${{ needs.scale-fixture-gate.result }}
-        run: |
-          LABEL="migration-nightly-failure"
-          TITLE="Migration nightly failed"
-
-          FAILED_JOBS=""
-          if [[ "$FULL_RESULT" == "failure" ]]; then
-            FAILED_JOBS="full-fixture-gate"
-          fi
-          if [[ "$SCALE_RESULT" == "failure" ]]; then
-            FAILED_JOBS="${FAILED_JOBS:+${FAILED_JOBS}, }scale-fixture-gate"
-          fi
-          if [[ -z "$FAILED_JOBS" ]]; then
-            FAILED_JOBS="(none)"
-          fi
-
-          gh label create "$LABEL" --description "Automated migration nightly failure reports" --color D93F0B 2>/dev/null || true
-
-          EXISTING=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
-
-          # 首次失败日期取已有 issue 的创建时间，避免每次追评都把日期刷成今天。
-          if [[ -n "$EXISTING" ]]; then
-            FIRST_FAILED=$(gh issue view "$EXISTING" --json createdAt --jq '.createdAt' | cut -d'T' -f1)
-          else
-            FIRST_FAILED=$(date -u +%Y-%m-%d)
-          fi
-
-          # SIGNATURE 不含 run URL，用于判断“与上一条 bot 报告实质相同”。
-          SIGNATURE="Migration nightly run failed on \`${GITHUB_REF_NAME}\`.
-
-          - failed job(s): ${FAILED_JOBS}
-          - full-fixture-gate: ${FULL_RESULT}
-          - scale-fixture-gate: ${SCALE_RESULT}
-          - first failure (UTC): ${FIRST_FAILED}
-
-          注意：scale-fixture-gate 的 \`success\` 在 fixtures 不可用时可能只是显式 skip，
-          不代表规模层真绿（该 job 会在 job summary 里记录 SKIPPED）。"
-
-          BODY="${SIGNATURE}
-
-          - run: ${RUN_URL}"
-
-          if [[ -z "$EXISTING" ]]; then
-            echo "Creating new failure issue"
-            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
-            exit 0
-          fi
-
-          # 最近一条 bot 评论；还没有评论时退回到 issue 正文。
-          PREVIOUS=$(gh issue view "$EXISTING" --comments --json comments \
-            --jq '[.comments[] | select(.author.login | test("^github-actions"))] | last | .body // empty')
-          if [[ -z "$PREVIOUS" ]]; then
-            PREVIOUS=$(gh issue view "$EXISTING" --json body --jq '.body // empty')
-          fi
-
-          normalize() {
-            printf '%s' "$1" | tr -d '\r' | sed -e '/^[[:space:]]*- run: /d' -e 's/[[:space:]]*$//'
-          }
-
-          if [[ -n "$PREVIOUS" && "$(normalize "$PREVIOUS")" == "$(normalize "$BODY")" ]]; then
-            echo "Same failure signature as the latest report on #${EXISTING}; skipping duplicate comment."
-            echo "Duplicate failure signature — no new comment on #${EXISTING} (${RUN_URL})" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          echo "Commenting on existing issue #${EXISTING}"
-          gh issue comment "$EXISTING" --body "$BODY"
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 恢复通知：两个 gate 都绿时关闭遗留的失败 issue，
-  # 否则红灯修好后 issue 会一直挂着没人关。
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  notify-recovery:
-    name: Notify Recovery
-    needs: [full-fixture-gate, scale-fixture-gate]
-    if: always() && needs.full-fixture-gate.result == 'success' && needs.scale-fixture-gate.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Close open failure issues
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.fixtures.result }}
+          FULL: ${{ needs.fixtures.outputs.full }}
+          SCALE: ${{ needs.fixtures.outputs.scale }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          LABEL="migration-nightly-failure"
-
-          OPEN=$(gh issue list --state open --label "$LABEL" --json number --jq '.[].number')
-          if [[ -z "$OPEN" ]]; then
-            echo "No open ${LABEL} issues to close."
-            exit 0
-          fi
-
-          BODY="Migration nightly recovered on \`${GITHUB_REF_NAME}\`.
-
-          - full-fixture-gate: success
-          - scale-fixture-gate: success
-          - run: ${RUN_URL}
-
-          两个 gate 均已通过，自动关闭本 issue。
-          注意：scale-fixture-gate 的 \`success\` 在 fixtures 不可用时可能只是显式 skip，
-          不代表规模层真绿。"
-
-          while read -r NUMBER; do
-            if [[ -z "$NUMBER" ]]; then
-              continue
+          LABEL=migration-nightly-failure
+          NUMBER=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+          if [ "$RESULT" = failure ]; then
+            BODY="Migration nightly failed: $RUN_URL (full=$FULL, scale=$SCALE)"
+            if [ -n "$NUMBER" ]; then
+              gh issue comment "$NUMBER" --body "$BODY"
+            else
+              gh label create "$LABEL" --color D93F0B --force
+              gh issue create --title 'Migration nightly failed' --label "$LABEL" --body "$BODY"
             fi
-            echo "Closing recovered failure issue #${NUMBER}"
-            gh issue comment "$NUMBER" --body "$BODY"
-            gh issue close "$NUMBER" --reason completed
-          done <<< "$OPEN"
+          elif [ "$RESULT" = success ] && [ "$FULL" = true ] && [ "$SCALE" = true ] && [ -n "$NUMBER" ]; then
+            gh issue close "$NUMBER" --reason completed --comment "All fixture tiers recovered: $RUN_URL"
+          fi

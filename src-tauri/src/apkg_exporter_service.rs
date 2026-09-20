@@ -1185,13 +1185,22 @@ fn insert_anki_note_records(
 ) -> Result<(), String> {
     for (note_id, guid, fields, sort_field, csum, tags, ords, schedules, instance) in records {
         let note_id = note_id.parse::<i64>().map_err(|error| error.to_string())?;
-        let data = serde_json::json!({ "deepStudentCardScope": if *instance { "card" } else { "note" } });
+        let data =
+            serde_json::json!({ "deepStudentCardScope": if *instance { "card" } else { "note" } });
         conn.execute(
             "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, ?)",
             params![note_id, guid, model_id, now, tags, fields, clean_template_placeholders(sort_field), csum, data.to_string()],
         ).map_err(|error| format!("插入笔记失败: {}", error))?;
         for (ord, schedule) in ords.iter().zip(schedules) {
-            insert_anki_card_rows(conn, note_id, deck_id, now, &[*ord], next_due, schedule.as_ref())?;
+            insert_anki_card_rows(
+                conn,
+                note_id,
+                deck_id,
+                now,
+                &[*ord],
+                next_due,
+                schedule.as_ref(),
+            )?;
         }
     }
     Ok(())
@@ -1228,10 +1237,18 @@ fn convert_cards_to_anki_records_with_fields(
         let source_note = if instance {
             Some((
                 card.task_id.clone(),
-                card.extra_fields.get("AnkiModelId").cloned().ok_or("导入卡片缺少 AnkiModelId")?,
-                card.extra_fields.get("AnkiNoteId").cloned().ok_or("导入卡片缺少 AnkiNoteId")?,
+                card.extra_fields
+                    .get("AnkiModelId")
+                    .cloned()
+                    .ok_or("导入卡片缺少 AnkiModelId")?,
+                card.extra_fields
+                    .get("AnkiNoteId")
+                    .cloned()
+                    .ok_or("导入卡片缺少 AnkiNoteId")?,
             ))
-        } else { None };
+        } else {
+            None
+        };
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
@@ -1295,21 +1312,32 @@ fn convert_cards_to_anki_records_with_fields(
         let card_ords = if is_cloze_model {
             let all_ords = cloze_card_ords(&resolve_card_field_value(card, "Text"));
             if instance {
-                let ord = card.extra_fields.get("AnkiCardOrd")
+                let ord = card
+                    .extra_fields
+                    .get("AnkiCardOrd")
                     .and_then(|value| value.parse::<i64>().ok())
                     .filter(|ord| all_ords.contains(ord))
                     .ok_or_else(|| format!("卡片 {} 的挖空编号与正文不一致", card.id))?;
                 vec![ord]
-            } else { all_ords }
+            } else {
+                all_ords
+            }
         } else {
             vec![0]
         };
 
         let schedule = card_sched_restore(card);
-        if let Some(index) = source_note.as_ref().and_then(|key| imported_notes.get(key)).copied() {
+        if let Some(index) = source_note
+            .as_ref()
+            .and_then(|key| imported_notes.get(key))
+            .copied()
+        {
             let record = &mut records[index];
             if record.2 != fields || record.5 != tags {
-                return Err(format!("同源挖空卡片 {} 的字段或标签已分别修改，请统一内容后导出", card.id));
+                return Err(format!(
+                    "同源挖空卡片 {} 的字段或标签已分别修改，请统一内容后导出",
+                    card.id
+                ));
             }
             let ord = card_ords[0];
             if let Some(position) = record.6.iter().position(|existing| *existing == ord) {
@@ -1325,7 +1353,15 @@ fn convert_cards_to_anki_records_with_fields(
         let guid = if let Some(key) = source_note {
             // All selected siblings share a stable identity, including single-card exports.
             let mut identity_card = card.clone();
-            identity_card.id = format!("apkg:{}:{}:{}:{}:{}:{}", key.0.len(), key.0, key.1.len(), key.1, key.2.len(), key.2);
+            identity_card.id = format!(
+                "apkg:{}:{}:{}:{}:{}:{}",
+                key.0.len(),
+                key.0,
+                key.1.len(),
+                key.1,
+                key.2.len(),
+                key.2
+            );
             imported_notes.insert(key, records.len());
             unique_note_guid(&identity_card, &mut used_guids)
         } else {
@@ -2157,17 +2193,29 @@ mod tests {
         second.id = "second".into();
         second.extra_fields.insert("AnkiCardOrd".into(), "1".into());
         let fields = vec!["Text".into(), "Front".into(), "Back".into()];
-        let convert = |cards| convert_cards_to_anki_records_with_fields(cards, 1, 1, "Cloze", Some(&fields), None);
-        assert_eq!(convert(vec![first.clone(), second.clone()]).unwrap().len(), 1);
+        let convert = |cards| {
+            convert_cards_to_anki_records_with_fields(cards, 1, 1, "Cloze", Some(&fields), None)
+        };
+        assert_eq!(
+            convert(vec![first.clone(), second.clone()]).unwrap().len(),
+            1
+        );
         second.task_id.push_str("-another-import");
-        assert_eq!(convert(vec![first.clone(), second.clone()]).unwrap().len(), 2);
+        assert_eq!(
+            convert(vec![first.clone(), second.clone()]).unwrap().len(),
+            2
+        );
         second.task_id = first.task_id.clone();
         second.back = "edited independently".into();
-        assert!(convert(vec![first.clone(), second.clone()]).unwrap_err().contains("字段或标签"));
+        assert!(convert(vec![first.clone(), second.clone()])
+            .unwrap_err()
+            .contains("字段或标签"));
         second.back = first.back.clone();
         second.extra_fields.insert("AnkiCardOrd".into(), "2".into());
         assert!(convert(vec![second]).unwrap_err().contains("挖空编号"));
-        first.extra_fields.insert("AnkiCardScope".into(), "note".into());
+        first
+            .extra_fields
+            .insert("AnkiCardScope".into(), "note".into());
         assert_eq!(convert(vec![first]).unwrap()[0].6, vec![0, 1]);
     }
 

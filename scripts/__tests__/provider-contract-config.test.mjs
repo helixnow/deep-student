@@ -41,17 +41,11 @@ test('provider contract is a fixed fail-closed CI job', () => {
   assert.match(job, /for service in "\$\{SERVICES\[@\]\}"; do/);
   assert.match(job, /State\.Health\.Status.*healthy/);
 
-  assert.match(
-    job,
-    /cargo test --test sync_provider_contract_tests -- --ignored --list > "\$LIST_FILE"/,
-  );
-  // 行首前缀取子集（非子串，防 s3_xxx_webdav_ 跨界污染），计数不等即 fail-closed
-  assert.match(job, /index\(\$0, prefix\) == 1/);
-  assert.match(
-    job,
-    /cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture "\$PREFIX"/,
-  );
-  assert.match(job, /Provider contract count mismatch/);
+  assert.match(job, /needs: \[changes, rust-test-build\]/);
+  assert.match(job, /cargo nextest run --archive-file/);
+  assert.match(job, /--run-ignored only --test-threads 1 --no-tests fail/);
+  assert.ok(job.includes('binary(=sync_provider_contract_tests) & test(/^${{ matrix.provider }}_/)'));
+  assert.doesNotMatch(job, /cargo test|cargo nextest archive/);
   assert.match(job, /set -euo pipefail/);
 });
 
@@ -61,7 +55,7 @@ test('canonical provider composition pins all services with healthchecks', () =>
   const webdav = yamlTopLevelSection(compose, 'webdav');
   const ftp = yamlTopLevelSection(compose, 'ftp');
 
-  assert.match(minio, /image: minio\/minio:RELEASE\.[^\s]+/);
+  assert.match(minio, /image: quay.io\/minio\/minio:RELEASE\.[^\s]+@sha256:[a-f0-9]{64}/);
   assert.match(minio, /healthcheck:/);
   assert.match(minio, /\/minio\/health\/live/);
 

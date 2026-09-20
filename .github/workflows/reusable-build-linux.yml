@@ -13,8 +13,16 @@ name: Build Linux (reusable)
 on:
   workflow_call:
     inputs:
+      force_rebuild:
+        default: false
+        type: boolean
+      source_sha:
+        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        required: false
+        type: string
+        default: ''
       tag_name:
-        description: '构建的 tag（如 v0.9.42）'
+        description: '构建的 Git ref（tag 或历史热修预检解析出的完整 SHA）'
         required: true
         type: string
       artifact_name:
@@ -30,6 +38,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   # 固定工具版本（升级需显式改这里）
@@ -37,11 +46,17 @@ env:
 
 jobs:
   build:
-    # Ubuntu 24.04 hosted runners repeatedly received service shutdown signals
-    # during long Rust release builds. Use the mature image for release recovery.
-    runs-on: ubuntu-22.04
+    # Keep the Linux ABI/image family consistent with CI and archive consumers.
+    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 180
     env:
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
+      GH_TOKEN: ${{ github.token }}
+      RUSTFLAGS: -C link-arg=-fuse-ld=lld
+      SCCACHE_IDLE_TIMEOUT: '0'
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
       CARGO_PROFILE_RELEASE_LTO: 'false'
@@ -79,7 +94,24 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag_name }}
+          ref: ${{ inputs.source_sha || inputs.tag_name }}
+
+      - name: Checkout release tooling from workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          sparse-checkout: |
+            scripts/ci
+            .github/actions
+
+      - name: Free disk space for Linux release
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - name: Verify and prepare Linux release resources
+        run: bash .release-tooling/scripts/ci/prepare-linux-release.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -87,49 +119,29 @@ jobs:
           node-version: 22
           cache: npm
 
-      # ImageOS/ImageVersion 由 runner 镜像注入、不在 ${{ env }} 表达式上下文里
-      # （直接写 ${{ env.ImageOS }} 会静默展开为空），必须经 GITHUB_ENV 中转。
-      # 完整动机见 ci.yml backend job 同名步骤注释。
-      - name: Resolve runner image scope for apt cache
-        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
-      # 文件快照级 apt 缓存（R1 在 ci.yml、R2 在 migration nightly/gate 验证过
-      # 的同一模式）。包列表与 ci.yml 不同（release 打包额外需要 libgtk-3-dev /
-      # libayatana-appindicator3-dev / rpm），且本 job 跑在 ubuntu-22.04 ——
-      # 缓存 key = 包列表 + 镜像标识，因此拥有独立缓存条目，不会与 ci.yml
-      # 的 ubuntu-latest 快照互相污染。fail-closed：缓存未命中时 action 内部
-      # 执行真实 apt-get 安装，恢复/安装任一环节失败都会让本 step 失败，
-      # 不存在"包没装上但构建继续"的路径。
-      - name: Install Linux dependencies (cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
-          version: ${{ env.APT_CACHE_SCOPE }}
-          execute_install_scripts: true
-
-      # The apt snapshot action can restore package files while leaving the
-      # pkg-config development metadata unavailable. Verify the dependency
-      # Tauri actually consumes and repair an incomplete cache restore.
-      - name: Verify Linux development dependencies
-        run: |
-          if ! pkg-config --exists 'gdk-3.0 >= 3.22' 'webkit2gtk-4.1'; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends \
-              libwebkit2gtk-4.1-dev libgtk-3-dev \
-              libayatana-appindicator3-dev librsvg2-dev patchelf rpm
-          fi
-          pkg-config --print-errors --exists 'gdk-3.0 >= 3.22' 'webkit2gtk-4.1'
+      # Install through dpkg; cached file snapshots previously omitted gdk .pc files.
+      - name: Install Linux dependencies through dpkg
+        run: bash .release-tooling/scripts/ci/install-linux-deps.sh rpm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
-          toolchain: stable
+          toolchain: '1.98.1'
           targets: x86_64-unknown-linux-gnu
 
       # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
       # sccache 二进制不存在时 cargo 会直接报错。
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        continue-on-error: true
+
+      - name: Check optional compiler cache
+        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
 
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
@@ -146,7 +158,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Legacy standalone recovery keeps its existing metadata refresh behavior.
+      # A pinned normal release must never silently mutate the candidate lockfile.
+      - name: Verify locked release dependency graph
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: |
+          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
+          node .release-tooling/scripts/ci/release-contracts.mjs source
+
       - name: Refresh release lock metadata and third-party notices
+        if: ${{ inputs.source_sha == '' }}
         run: |
           (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
           npm run licenses:generate
@@ -192,6 +214,11 @@ jobs:
       # 2026-08-06: Linux 此前完全没有打包 libpdfium.so，PDF 预览/文本提取/OCR
       # 在 Linux 上一直不可用（老问题，随本次 OCR/pdfium 修复一并补齐）。
       # 与 macOS/Windows 一致：构建前下载 x64 pdfium 放入 resources。
+      - name: Verify prebuilt frontend identity and contents
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
+
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
@@ -201,7 +228,7 @@ jobs:
           fi
           test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
 
-      - name: Build Tauri app
+      - name: Compile or recover native executable
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -219,13 +246,25 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
-          CONFIG_ARGS=()
-          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
-            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
-            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
-            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
-          fi
-          npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage "${CONFIG_ARGS[@]}" -- --locked
+          bash .release-tooling/scripts/ci/with-resource-monitor.sh node .release-tooling/scripts/ci/native-build.mjs compile x86_64-unknown-linux-gnu
+
+      - name: Preserve compilation before packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-x86_64-unknown-linux-gnu
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/deep-student*
+            src-tauri/target/x86_64-unknown-linux-gnu/release/native-build.json
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+
+      - name: Bundle with bounded retry (no Rust compilation)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
+        run: node .release-tooling/scripts/ci/native-build.mjs bundle x86_64-unknown-linux-gnu deb,rpm,appimage
 
       # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
       # 失败时也能拿到命中率（恰是最需要缓存诊断的场景），结果同时写入
@@ -295,10 +334,39 @@ jobs:
           fi
           echo "✅ Updater artifact + signature present"
 
+      - name: Record locally built frontend identity
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-write --dir dist
+
+      - name: Record release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        env:
+          RELEASE_TARGET: x86_64-unknown-linux-gnu
+          RELEASE_ARTIFACT_DIR: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
+        run: >-
+          node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
+          --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
+          --output "$RUNNER_TEMP/release-provenance.json"
+
+      - name: Upload release asset provenance
+        if: ${{ inputs.source_sha != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-provenance-x86_64-unknown-linux-gnu
+          path: ${{ runner.temp }}/release-provenance.json
+          if-no-files-found: error
+          overwrite: true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          if-no-files-found: error
+          overwrite: true
           name: ${{ inputs.artifact_name }}
+          retention-days: 30
+          compression-level: 0
           path: |
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
@@ -306,3 +374,17 @@ jobs:
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
+
+      - uses: ./.release-tooling/.github/actions/release-checkpoint
+        if: inputs.source_sha != '' && inputs.artifact_name == 'linux-x86_64'
+        with:
+          stage: linux
+
+      - name: Upload in-build resource diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: resource-diagnostics-x86_64-unknown-linux-gnu
+          path: ${{ runner.temp }}/release-resource-metrics.log
+          if-no-files-found: ignore
+          overwrite: true

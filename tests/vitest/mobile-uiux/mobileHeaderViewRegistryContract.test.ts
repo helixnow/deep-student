@@ -48,6 +48,7 @@ const VIEW_REGISTRY_FILES: Record<string, string> = {
   'dashboard': 'src/components/SOTADashboardLite.tsx',
   'data-management': 'src/components/DataImportExport.tsx',
   'task-dashboard': 'src/features/anki-tasks/AnkiTasksApp.tsx',
+  'flashcards': 'src/features/flashcards/FlashcardsApp.tsx',
   'template-management': 'src/features/template-management/TemplateManagementApp.tsx',
   'ui-lab': 'src/components/style-lab/StyleDebugPage.tsx',
   'crepe-demo': 'src/components/dev/CrepeDemoPage.tsx',
