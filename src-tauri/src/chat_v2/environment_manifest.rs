@@ -813,7 +813,12 @@ mod tests {
         assert_single_drift(&baseline, &current, EnvDriftField::SchemaVersion);
 
         let mut current = baseline.clone();
-        current.os.arch = "x86_64".to_string();
+        current.os.arch = if baseline.os.arch == "x86_64" {
+            "aarch64"
+        } else {
+            "x86_64"
+        }
+        .to_string();
         assert_single_drift(&baseline, &current, EnvDriftField::Os);
 
         let mut current = baseline.clone();
@@ -910,7 +915,12 @@ mod tests {
         let baseline = sample_manifest();
         let mut current = baseline.clone();
         current.model_id = None;
-        current.os.os = "linux".to_string();
+        current.os.os = if baseline.os.os == "linux" {
+            "macos"
+        } else {
+            "linux"
+        }
+        .to_string();
         let err = current
             .check_replay_compatibility(&baseline)
             .expect_err("drifts must be reported");

@@ -225,4 +225,13 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - `cargo test --lib data_governance::migration --locked -j 2`：194 passed。
 - `cargo clippy --all-targets --locked -j 2 -- -D clippy::correctness` 通过，保留已有非阻塞 warnings。
 - TypeScript、ESLint errors、许可证、rustfmt、actionlint、ShellCheck、diff whitespace 检查通过。
-- 尚未部署到 GitHub；真实跨平台发布/恢复演练需在提交上线后完成。
+- 上述为部署前的本地验收；后续线上验证结果见下节。
+
+### 首次线上验收补充
+
+- 54667f588 已上线新流水线，b377d5fbb 恢复 Vitest 主进程的 6GiB 预算；四个前端分片已在线通过。
+- 完整 Rust archive、Linux Clippy、Windows 沙箱、迁移以及 WebDAV/S3/FTP Provider 验证均已在线通过。
+- Rust 分片新增 Xvfb + D-Bus 会话，解决真实 Tauri 命令测试在无显示环境下无法初始化 GTK；nextest 使用 `--no-fail-fast` 一次收集所有失败。
+- 修正环境漂移测试对 macOS/ARM 主机的隐含假设，更新出题工具 600 秒超时及单调计数字段的旧测试契约。
+- 首次完整分片还发现 E2EE 认领的迟到写入覆盖问题，经维护者确认纳入修复。新版通过独立 pending 登记保护在途写入，登记不按 TTL 强行抢占；崩溃残留的处理见用户指南「数据管理与云同步」。
+- 云存储 178 项、环境指纹 12 项、工具超时契约本地通过；同步综合测试的首次补验遇本机磁盘不足，清理构建产物后补验。

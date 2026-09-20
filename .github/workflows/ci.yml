@@ -227,7 +227,7 @@ jobs:
       - name: Run test partition
         working-directory: src-tauri
         run: |
-          cargo nextest run --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
+          xvfb-run -a dbus-run-session -- cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
             --workspace-remap "$GITHUB_WORKSPACE/src-tauri" \
             --partition "hash:${{ matrix.partition }}/8" \
             -E 'not (binary(/_e2e$/) + binary(migration_fixture_upgrade_gate) + binary(mod))'
@@ -286,7 +286,7 @@ jobs:
       - name: Execute ignored provider tests from the archive (no Cargo compilation)
         working-directory: src-tauri
         run: |
-          cargo nextest run --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
+          cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
             --workspace-remap "$GITHUB_WORKSPACE/src-tauri" \
             --run-ignored only --test-threads 1 --no-tests fail \
             -E 'binary(=sync_provider_contract_tests) & test(/^${{ matrix.provider }}_/)'
