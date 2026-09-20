@@ -496,7 +496,7 @@ describe('统一搜索（应用 + 命令）', () => {
 
   it('无 Provider 时退化为仅应用搜索', async () => {
     render(<AppsPanel />);
-    openAppsPanel();
+    act(() => openAppsPanel());
     const input = await screen.findByTestId('wb-apps-search');
     fireEvent.change(input, { target: { value: 'chat' } });
     expect(screen.queryByText('命令')).not.toBeInTheDocument();
@@ -510,7 +510,7 @@ describe('统一搜索（应用 + 命令）', () => {
       executeCommand,
     };
     render(<AppsPanel />);
-    openAppsPanel();
+    act(() => openAppsPanel());
 
     const input = await screen.findByTestId('wb-apps-search');
     fireEvent.change(input, { target: { value: '技能' } });
@@ -534,7 +534,7 @@ describe('统一搜索（应用 + 命令）', () => {
       executeCommand,
     };
     render(<AppsPanel />);
-    openAppsPanel();
+    act(() => openAppsPanel());
 
     const input = await screen.findByTestId('wb-apps-search');
     // 「chat」命中测试应用 chat，同时命令 mock 恒返回 1 条 → 扁平序列 [chat, command]
@@ -558,7 +558,7 @@ describe('统一搜索（应用 + 命令）', () => {
       executeCommand: vi.fn(async () => undefined),
     };
     render(<AppsPanel />);
-    openAppsPanel();
+    act(() => openAppsPanel());
     const input = await screen.findByTestId('wb-apps-search');
     fireEvent.change(input, { target: { value: '任意关键词' } });
     expect(screen.queryByTestId('wb-apps-command-global.command-palette')).not.toBeInTheDocument();
