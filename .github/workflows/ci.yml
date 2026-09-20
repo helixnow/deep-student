@@ -180,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/setup-linux-rust
-      - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b
+      - uses: taiki-e/install-action@76c2e6406e52637deed7160d77bded76bd83e06e
         with:
           tool: cargo-nextest@0.9.145
       - name: Build and archive all test binaries (including ignored provider tests)
@@ -215,7 +215,7 @@ jobs:
       - uses: ./.github/actions/setup-linux-rust
         with:
           resources: 'false'
-      - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b
+      - uses: taiki-e/install-action@76c2e6406e52637deed7160d77bded76bd83e06e
         with:
           tool: cargo-nextest@0.9.145
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -247,7 +247,7 @@ jobs:
       - uses: ./.github/actions/setup-linux-rust
         with:
           resources: 'false'
-      - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b
+      - uses: taiki-e/install-action@76c2e6406e52637deed7160d77bded76bd83e06e
         with:
           tool: cargo-nextest@0.9.145
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -381,7 +381,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b
+      - uses: taiki-e/install-action@76c2e6406e52637deed7160d77bded76bd83e06e
         with:
           tool: cargo-audit
       - name: Cargo audit (informational)
