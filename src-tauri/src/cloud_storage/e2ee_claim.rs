@@ -17,7 +17,20 @@
 //!    后显式声明）时，首次认领用 [`CloudStorage::put_if_absent`] 原子创建；
 //!    v1→v2 升级是"内容替换"，需要 If-Match 级 CAS，能力探测暂不覆盖，统一走
 //!    租约方案。
-//! 2. **默认（租约对象方案）**：固定键 `.encryption-marker.lease` 的单键租约
+//! 2. **写入者登记 + 租约**：每个认领者先写入独立的 `.pending/<nonce>.json`，
+//!    再读取 marker 快照。写 marker 前必须完整列举 pending，确认只有自己，并
+//!    再次核对 marker 和租约。登记仅在该次写入流程结束后删除。
+//!    单键租约只能阻止“双成功”，不能阻止已失败的慢写者覆盖已经成功的赢家：
+//!    密码 KDF 期间可能丢失租约。独立登记保证慢写者尚未退出时，其他认领者
+//!    不会发布 marker；后来才登记的认领者则必须看到已经发布的 marker。
+//!    此约束依赖 CloudStorage 的完整、新鲜列表语义；截断/看不到自己的登记时拒绝写入。
+//!    **pending 不按 TTL 抢占**：超时不能证明暂停的旧写入者已经停止。在没有
+//!    服务端 fencing 的存储上，崩溃残留须确认原设备已停止认领后人工清理，不能
+//!    用重新开放写窗口换取假成功。以下固定租约保留对旧租约的兼容与冲突诊断。
+//!    共用 root 的写入客户端须同时升级；忽略 pending 登记的旧客户端不具备
+//!    此互斥保证，客户端协议不能替代存储服务器的原子 fencing。
+//!
+//!    固定键 `.encryption-marker.lease` 的单键租约
 //!    （内容 `{device_id, nonce, created_at, expires_at}`，TTL 默认 60s）加
 //!    双寄存器交叉确认，结构上等价于 Lamport fast-mutex 的 x/y 寄存器协议
 //!    （lease = x，marker = y）：
@@ -38,7 +51,8 @@
 //!    第 3 步发生在 A 第 7 步之后；而 B 的第 5 步（marker 复核）在 B 的第 3 步
 //!    之后、即在 A 第 6 步（marker 已发布且无人删除）之后，必然读到 A 的 marker
 //!    而与 B 的快照不符 → B 失败，矛盾。∎ 两边同时失败是允许的（fail-closed，
-//!    可重试）；**至多一方成功**。
+//!    可重试）；**至多一方成功**。单靠此论证不保证失败者不会继续覆盖 marker，
+//!    因此实际写入还必须通过上述独立 pending 登记检查。
 //!
 //!    第 7 步失败时**不回滚已写入的 marker**：此时留下的 marker 是携带真实
 //!    校验子（或合法 v1 内容）的完整认领对象，删除它反而会重新打开明文上传 /
@@ -72,6 +86,51 @@ pub const SYNC_E2EE_CLAIM_CONFLICT_CODE: &str = "E_SYNC_E2EE_CLAIM_CONFLICT";
 /// marker / lease 的有界读上限：两者都是几百字节的 JSON，超过该上限的对象
 /// 一律拒绝下载并按损坏 / 冲突处理（fail-closed），防止畸形对象放大内存。
 pub const MAX_E2EE_CLAIM_OBJECT_BYTES: u64 = 64 * 1024;
+
+fn pending_prefix(marker_key: &str) -> String {
+    format!("{marker_key}.pending/")
+}
+
+/// A timed-out writer can still resume a blind PUT. Never steal its registration
+/// by age; only the writer removes its unique key after its write has completed.
+async fn check_pending_claims(
+    storage: &dyn CloudStorage,
+    marker_key: &str,
+    own_key: Option<&str>,
+) -> Result<()> {
+    let prefix = pending_prefix(marker_key);
+    let listing = storage.list_outcome(&prefix).await?;
+    if listing.truncated {
+        return Err(claim_conflict(
+            "加密认领登记列表被截断，无法确认独占写入，已中止",
+        ));
+    }
+    if let Some(own) = own_key {
+        if !listing.files.iter().any(|file| file.key == own) {
+            return Err(claim_conflict(
+                "云端列表未包含本次加密认领登记，无法确认列表新鲜度，已中止",
+            ));
+        }
+    }
+    if listing
+        .files
+        .iter()
+        .any(|file| Some(file.key.as_str()) != own_key)
+    {
+        return Err(claim_conflict(format!(
+            "云端存在尚未完成的加密认领（{prefix}）。请等待另一台设备完成后重试；\
+             若设备已崩溃，须先确认它不会继续写入，再人工清理该目录中的残留登记。"
+        )));
+    }
+    Ok(())
+}
+
+pub(super) async fn ensure_no_pending_claims(
+    storage: &dyn CloudStorage,
+    marker_key: &str,
+) -> Result<()> {
+    check_pending_claims(storage, marker_key, None).await
+}
 
 /// 认领租约内容。字段保持明文：其他设备必须在不知道 E2EE 密码时也能判断
 /// 占用 / 过期；不包含 endpoint、凭据等敏感信息，设备 ID 用短哈希。
@@ -338,6 +397,51 @@ pub async fn claim_encryption_marker<F>(
 where
     F: Fn(Option<EncryptionMarker>) -> Result<Vec<u8>>,
 {
+    let pending = EncryptionClaimLease::new(device_id_short, ttl, Utc::now())?;
+    let own_key = format!("{}{}.json", pending_prefix(marker_key), pending.nonce);
+    let pending_bytes = serde_json::to_vec_pretty(&pending)
+        .map_err(|error| AppError::internal(format!("序列化认领登记失败: {error}")))?;
+    ensure_claim_payload_bounded("认领登记", pending_bytes.len())?;
+    storage.put(&own_key, &pending_bytes).await?;
+    let result = claim_registered_marker(
+        storage,
+        marker_key,
+        device_id_short,
+        ttl,
+        expectation,
+        build_marker,
+        &own_key,
+    )
+    .await;
+    // The unique key cannot belong to another claimant. Cancellation/crash leaves
+    // it behind deliberately: removing another live writer's key is not safe.
+    let cleanup = storage.delete(&own_key).await;
+    match result {
+        Ok(data) => {
+            cleanup?;
+            Ok(data)
+        }
+        Err(error) => {
+            if let Err(cleanup_error) = cleanup {
+                tracing::warn!("[e2ee-claim] 清理认领登记失败: {cleanup_error}");
+            }
+            Err(error)
+        }
+    }
+}
+
+async fn claim_registered_marker<F>(
+    storage: &dyn CloudStorage,
+    marker_key: &str,
+    device_id_short: &str,
+    ttl: Duration,
+    expectation: ClaimExpectation,
+    build_marker: F,
+    own_key: &str,
+) -> Result<Vec<u8>>
+where
+    F: Fn(Option<EncryptionMarker>) -> Result<Vec<u8>>,
+{
     let lease_key = format!("{marker_key}{ENCRYPTION_MARKER_LEASE_SUFFIX}");
     let now = Utc::now();
 
@@ -349,6 +453,7 @@ where
     if matches!(expectation, ClaimExpectation::Absent) && storage.supports_conditional_put() {
         let data = build_marker(None)?;
         ensure_claim_payload_bounded("待发布的加密标记", data.len())?;
+        check_pending_claims(storage, marker_key, Some(own_key)).await?;
         if !storage.put_if_absent(marker_key, &data).await? {
             return Err(claim_conflict(
                 "云端加密标记已被其他设备并发创建（条件写冲突），本次认领中止；\
@@ -433,6 +538,27 @@ where
         }
     };
     if let Err(error) = ensure_claim_payload_bounded("待发布的加密标记", data.len()) {
+        let _ = delete_if_unchanged(storage, &lease_key, &lease_bytes).await;
+        return Err(error);
+    }
+    // KDF generation can be slow. Check all registered writers and revalidate
+    // both registers *after* it, before the first irreversible marker write.
+    let ready = async {
+        check_pending_claims(storage, marker_key, Some(own_key)).await?;
+        if read_bounded(storage, &lease_key).await?.as_deref() != Some(lease_bytes.as_slice()) {
+            return Err(claim_conflict(
+                "生成密码校验子期间认领租约已变化，未写入加密标记",
+            ));
+        }
+        if read_bounded(storage, marker_key).await? != marker_recheck {
+            return Err(claim_conflict(
+                "写入前加密标记已被其他设备改变，未覆盖已发布标记",
+            ));
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(error) = ready {
         let _ = delete_if_unchanged(storage, &lease_key, &lease_bytes).await;
         return Err(error);
     }
@@ -596,6 +722,121 @@ mod tests {
             key_verifier: None,
         })
         .unwrap()
+    }
+
+    struct PausedMarkerWrite {
+        inner: Arc<MemoryStorage>,
+        entered: Arc<tokio::sync::Notify>,
+        resume: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for PausedMarkerWrite {
+        fn provider_name(&self) -> &'static str {
+            "paused-marker-write"
+        }
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key == MARKER_KEY {
+                self.entered.notify_one();
+                self.resume.notified().await;
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn in_flight_writer_cannot_be_stolen_after_its_lease_expires() {
+        let storage = Arc::new(MemoryStorage::default());
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let resume = Arc::new(tokio::sync::Notify::new());
+        let slow = PausedMarkerWrite {
+            inner: storage.clone(),
+            entered: entered.clone(),
+            resume: resume.clone(),
+        };
+        let task = tokio::spawn(async move {
+            claim_encryption_marker(
+                &slow,
+                MARKER_KEY,
+                "slow",
+                DEFAULT_E2EE_CLAIM_LEASE_TTL,
+                ClaimExpectation::Absent,
+                build_fixed(b"slow-marker"),
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(5), entered.notified())
+            .await
+            .unwrap();
+        // A server request is still in flight even though the lease is expired.
+        CloudStorage::put(&storage, &lease_key(), &lease_json("slow", -1))
+            .await
+            .unwrap();
+        let contender = claim_encryption_marker(
+            &storage,
+            MARKER_KEY,
+            "contender",
+            DEFAULT_E2EE_CLAIM_LEASE_TTL,
+            ClaimExpectation::Absent,
+            build_fixed(b"contender-marker"),
+        )
+        .await;
+        resume.notify_one();
+        let _ = task.await.unwrap();
+        assert!(
+            contender.is_err(),
+            "must not declare a winner while a late PUT can overwrite it"
+        );
+        assert_eq!(
+            storage.bytes(MARKER_KEY).as_deref(),
+            Some(b"slow-marker".as_slice())
+        );
+        assert!(CloudStorage::list(&storage, &pending_prefix(MARKER_KEY))
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn abandoned_pending_writer_is_not_silently_stolen_by_ttl() {
+        let storage = Arc::new(MemoryStorage::default());
+        let pending = format!("{}abandoned.json", pending_prefix(MARKER_KEY));
+        CloudStorage::put(&storage, &pending, &lease_json("other-device", -3600))
+            .await
+            .unwrap();
+        let result = claim_encryption_marker(
+            &storage,
+            MARKER_KEY,
+            "new-device",
+            DEFAULT_E2EE_CLAIM_LEASE_TTL,
+            ClaimExpectation::Absent,
+            build_fixed(b"new-marker"),
+        )
+        .await;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains(SYNC_E2EE_CLAIM_CONFLICT_CODE));
+        assert!(storage.bytes(MARKER_KEY).is_none());
+        assert!(storage.bytes(&pending).is_some());
+        assert!(ensure_no_pending_claims(&storage, MARKER_KEY)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -1250,8 +1491,8 @@ mod tests {
     // ========================================================================
     // [0824-W2-R7] 第 5 步深交错排列：本设备读完 marker（第 1 步）、过完
     // 租约门（第 2 步）、**正要写自己的租约**（第 3 步）时，对手设备完整
-    // 跑完认领协议（含清理租约）。本设备随后写租约、第 4 步回读到自己，
-    // 但第 5 步 marker 复核必然与快照不符 → 必须失败：恰好一个成功。
+    // 尝试完整认领。虽然固定租约还未写入，本设备的 pending 已经可见，
+    // 对手不得写 marker；对手退出后，本设备完成：恰好一个成功。
     // ========================================================================
 
     /// 首次 lease PUT 前先让对手在共享底层存储上完整跑一遍认领协议。
@@ -1279,7 +1520,7 @@ mod tests {
                 // 对手直接作用在共享底层存储上（不经本包装层），
                 // 等价于另一台设备的完整认领在本设备第 2→3 步之间插入。
                 let payload = self.rival_payload.clone();
-                claim_encryption_marker(
+                let error = claim_encryption_marker(
                     &self.inner,
                     MARKER_KEY,
                     "device-rival",
@@ -1288,7 +1529,8 @@ mod tests {
                     move |_snapshot| Ok(payload.clone()),
                 )
                 .await
-                .expect("交错窗口内对手的认领没有争抢，必须成功");
+                .expect_err("本设备已登记在途写入，对手不得趁固定租约窗口宣告成功");
+                assert!(error.to_string().contains(SYNC_E2EE_CLAIM_CONFLICT_CODE));
             }
             CloudStorage::put(&self.inner, key, data).await
         }
@@ -1314,7 +1556,7 @@ mod tests {
     /// 他人**活跃**租约不在此列——那会在第 2 步就把本设备挡下、走不到本
     /// 交错窗口（该排列已由全排列矩阵与 live_foreign_lease_* 测试钉死）。
     #[tokio::test]
-    async fn interleaved_rival_full_claim_in_lease_window_exactly_one_wins() {
+    async fn registered_writer_blocks_rival_in_lease_window() {
         let marker_arms: [(Option<Vec<u8>>, ClaimExpectation, &str); 2] = [
             (None, ClaimExpectation::Absent, "空仓首次认领"),
             (
@@ -1350,7 +1592,7 @@ mod tests {
                     triggered: AtomicBool::new(false),
                 };
 
-                let error = claim_encryption_marker(
+                let published = claim_encryption_marker(
                     &storage,
                     MARKER_KEY,
                     "device-ours",
@@ -1359,27 +1601,20 @@ mod tests {
                     build_fixed(b"marker-ours"),
                 )
                 .await
-                .expect_err(&format!(
-                    "{ctx} 对手已在本设备租约窗口内完整认领，本设备必须在第 5 步复核失败"
-                ));
-                assert!(
-                    error.to_string().contains(SYNC_E2EE_CLAIM_CONFLICT_CODE),
-                    "{ctx} 交错落败必须带稳定冲突码: {error}"
-                );
+                .unwrap_or_else(|error| panic!("{ctx} 对手退出后已登记的写入者应完成: {error}"));
+                assert_eq!(published, b"marker-ours");
                 assert!(
                     storage.triggered.load(Ordering::SeqCst),
                     "{ctx} 交错必须实际发生（本设备必须走到写租约一步）"
                 );
                 assert_eq!(
                     inner.bytes(MARKER_KEY).as_deref(),
-                    Some(rival_payload.as_slice()),
-                    "{ctx} 恰好一个成功：云端标记必须是对手的认领结果，\
-                     不得被本设备覆盖"
+                    Some(b"marker-ours".as_slice()),
+                    "{ctx} 恰好一个成功：对手不得覆盖已经登记的在途写入者"
                 );
                 assert!(
                     inner.bytes(&lease_key()).is_none(),
-                    "{ctx} 第 5 步失败后本设备必须清理自己的租约（对手租约已随其\
-                     成功路径释放），云端不得残留任何租约"
+                    "{ctx} 成功后必须清理自己的租约，云端不得残留任何租约"
                 );
             }
         }
