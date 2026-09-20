@@ -919,12 +919,15 @@ mod tests {
                 .collect();
 
             let expected = vec![
+                "note_tags",
+                "note_links",
                 "path_cache",
                 "chat_v2_session_mistakes",
                 "chat_v2_session_tags",
                 "review_session_mistakes",
                 "llm_usage_daily",
                 "vfs_embedding_dims",
+                "revocation_epochs",
             ];
             for name in &expected {
                 let found = tables_with_composite_pk

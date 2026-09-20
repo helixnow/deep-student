@@ -8173,10 +8173,15 @@ impl SyncManager {
                     );
                     let upper = col_type.to_uppercase();
                     if upper.contains("INT") {
-                        // 尝试把 changed_at 解析成毫秒时间戳；失败则回落到当前时间
-                        let ts_ms = chrono::DateTime::parse_from_rfc3339(&change.changed_at)
-                            .map(|dt| dt.timestamp_millis())
-                            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
+                        // 与 LWW 门使用相同解析器，保留数字/HLC 时间戳；不能用
+                        // 本机当前时间替代，否则不同设备回放会生成不同 tombstone。
+                        let ts_ms =
+                            Self::lww_timestamp_millis(&change.changed_at).ok_or_else(|| {
+                                SyncError::Database(format!(
+                                    "软删除时间戳不可解析: {:?}",
+                                    change.changed_at
+                                ))
+                            })?;
                         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(ts_ms)];
                         for value in &pk_values {
                             params_vec.push(Box::new(value.clone()));

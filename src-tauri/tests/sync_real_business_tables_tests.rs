@@ -379,7 +379,7 @@ fn b03_resources_integer_deleted_at_tombstone() {
     let conn = new_vfs_resources_db();
     conn.execute(
         "INSERT INTO resources (id, hash, type, created_at, updated_at)
-         VALUES ('res', 'h', 'note', 1000, 1000)",
+         VALUES ('res', 'h', 'note', 1700000001000, 1700000001000)",
         [],
     )
     .unwrap();
@@ -390,7 +390,7 @@ fn b03_resources_integer_deleted_at_tombstone() {
         table_name: "resources".to_string(),
         record_id: "res".to_string(),
         operation: ChangeOperation::Delete,
-        changed_at: "2000".to_string(),
+        changed_at: "1700000002000".to_string(),
         data: None,
         database_name: None,
         suppress_change_log: None,
@@ -405,9 +405,10 @@ fn b03_resources_integer_deleted_at_tombstone() {
             r.get(0)
         })
         .unwrap();
-    assert!(
-        deleted_at.is_some(),
-        "resources.deleted_at（INTEGER ms）应被 DELETE 操作置位"
+    assert_eq!(
+        deleted_at,
+        Some(1700000002000),
+        "resources.deleted_at 应保留云端 DELETE 的毫秒时间戳"
     );
 }
 
