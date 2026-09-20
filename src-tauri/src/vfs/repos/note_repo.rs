@@ -615,29 +615,6 @@ impl VfsNoteRepo {
         note_id: &str,
         params: VfsUpdateNoteParams,
     ) -> VfsResult<VfsNote> {
-        // 1. 获取当前笔记（在 SAVEPOINT 外获取，减少事务持有时间）
-        let current_note =
-            Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
-                resource_type: "Note".to_string(),
-                id: note_id.to_string(),
-            })?;
-
-        // ★ S-002 修复：乐观锁冲突检测
-        // 如果调用方提供了 expected_updated_at，则与当前记录的 updated_at 比较。
-        // 不匹配说明记录在读取后被其他操作修改过，返回 Conflict 错误。
-        if let Some(ref expected) = params.expected_updated_at {
-            if !expected.is_empty() && *expected != current_note.updated_at {
-                warn!(
-                    "[VFS::NoteRepo] Optimistic lock conflict for note {}: expected updated_at='{}', actual='{}'",
-                    note_id, expected, current_note.updated_at
-                );
-                return Err(VfsError::Conflict {
-                    key: "notes.conflict".to_string(),
-                    message: "The note has been updated elsewhere, please refresh.".to_string(),
-                });
-            }
-        }
-
         // ★ M-011 修复 + 2026-07 防御性校验：空标题/超长/控制字符、tags 形状
         // （在 SAVEPOINT 外提前校验，避免先建新资源再回滚的无谓开销）
         if let Some(ref title) = params.title {
@@ -657,6 +634,28 @@ impl VfsNoteRepo {
         })?;
 
         let result = (|| -> VfsResult<VfsNote> {
+            // Read the note and its resource in the same SQLite snapshot. A
+            // concurrent update replaces and deletes the old resource; reading
+            // the note before this savepoint could leave a dangling resource ID.
+            let current_note =
+                Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                })?;
+
+            if let Some(ref expected) = params.expected_updated_at {
+                if !expected.is_empty() && *expected != current_note.updated_at {
+                    warn!(
+                        "[VFS::NoteRepo] Optimistic lock conflict for note {}: expected updated_at='{}', actual='{}'",
+                        note_id, expected, current_note.updated_at
+                    );
+                    return Err(VfsError::Conflict {
+                        key: "notes.conflict".to_string(),
+                        message: "The note has been updated elsewhere, please refresh.".to_string(),
+                    });
+                }
+            }
+
             // CAS tokens must advance even when two writes land in the same
             // millisecond; otherwise a stale expected_updated_at can still
             // match after the first writer commits.
