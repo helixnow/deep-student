@@ -10,6 +10,9 @@ import { sinkListItem, liftListItem } from '@milkdown/prose/schema-list';
 import type { EditorView } from '@milkdown/prose/view';
 
 import type { CrepeEditorApi } from '@/components/crepe';
+import { openCrepeBlockCommandMenu } from '@/components/crepe/blockCommandMenu';
+import { crepeBlockCommands, toggleCrepeBlockFormat, type CrepeBlockTurnInto } from '@/components/crepe/blockMenuCommands';
+import { resolveBlockSelection } from '@/components/crepe/blockTarget';
 import {
   createImageUploader,
   validateImageFile,
@@ -111,14 +114,19 @@ export function redoEditor(editor: CrepeEditorApi | null | undefined): void {
   });
 }
 
-/**
- * 打开 slash / 块菜单：在光标处插入 `/`，由 Crepe BlockEdit 输入规则弹出菜单。
- * （CrepeEditorApi 无 openSlashMenu；方案见 docs/revamp/19-mobile.md / W4 交付文档）
- */
+/** Opening/cancelling is UI-only: no document transaction or undo entry. */
 export function openSlashMenu(editor: CrepeEditorApi | null | undefined): void {
-  if (!editor) return;
-  editor.focus();
-  editor.insertAtCursor('/');
+  withEditorView(editor, (view) => { openCrepeBlockCommandMenu(view); });
+}
+
+function turnCurrentBlockInto(editor: CrepeEditorApi | null | undefined, kind: CrepeBlockTurnInto): void {
+  withEditorView(editor, (view) => {
+    const target = resolveBlockSelection(view);
+    if (!target) return;
+    if (kind === 'bullet-list' || kind === 'ordered-list' || kind === 'task-list' || kind === 'quote') {
+      toggleCrepeBlockFormat(view, target, kind);
+    } else crepeBlockCommands[kind](view, target);
+  });
 }
 
 function isTauriEnv(): boolean {
@@ -233,9 +241,9 @@ export function buildMobileEditorCommands(
     toggleBold: () => editor?.toggleBold(),
     toggleItalic: () => editor?.toggleItalic(),
     toggleStrikethrough: () => editor?.toggleStrikethrough(),
-    insertHeading: (level) => editor?.setHeading(level),
-    toggleBulletList: () => editor?.toggleBulletList(),
-    toggleTaskList: () => editor?.toggleTaskList(),
+    insertHeading: (level) => turnCurrentBlockInto(editor, `heading-${level}`),
+    toggleBulletList: () => turnCurrentBlockInto(editor, 'bullet-list'),
+    toggleTaskList: () => turnCurrentBlockInto(editor, 'task-list'),
     indent: () => indentEditor(editor),
     outdent: () => outdentEditor(editor),
     insertImage: () => { void insertImageFromDevice(editor, extras?.noteId); },
@@ -243,13 +251,13 @@ export function buildMobileEditorCommands(
     undo: () => undoEditor(editor),
     redo: () => redoEditor(editor),
     // 内联块插入条命令（MobileEditorToolbar 侧为可选，注入后按钮才渲染）
-    toggleOrderedList: () => editor?.toggleOrderedList(),
-    toggleBlockquote: () => editor?.toggleBlockquote(),
+    toggleOrderedList: () => turnCurrentBlockInto(editor, 'ordered-list'),
+    toggleBlockquote: () => turnCurrentBlockInto(editor, 'quote'),
     insertLink: () => editor?.insertLink(),
-    insertCodeBlock: () => editor?.insertCodeBlock(),
+    insertCodeBlock: () => turnCurrentBlockInto(editor, 'code-block'),
     insertTable: () => editor?.insertTable(),
     // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
-    openBlockActions: () => editor?.openBlockMenuAtSelection?.(),
+    openBlockActions: () => withEditorView(editor, (view) => { openCrepeBlockCommandMenu(view, true); }),
     // 生成卡片：走与桌面工具栏同一个共享制卡入口，不新起链路；
     // 仅笔记宿主显式开启（enableGenerateCards）后暴露，未开启时按钮不渲染
     ...(extras?.enableGenerateCards

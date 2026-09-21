@@ -66,6 +66,28 @@ describe('parseToggleMarker / formatToggleMarker', () => {
 })
 
 describe('toggle markdown roundtrip', () => {
+  it('preserves inline formatting immediately after the marker across roundtrips', async () => {
+    const source = '> [!toggle]- 标题\n> **粗体**、*斜体*、[链接](https://example.com)、`代码`、![图片](image.png)\n'
+    const first = await createToggleEditor(source)
+    try {
+      expect(first.root.querySelector('strong')?.textContent).toBe('粗体')
+      expect(first.root.querySelector('em')?.textContent).toBe('斜体')
+      expect(first.root.querySelector('a')?.getAttribute('href')).toBe('https://example.com')
+      expect(first.root.querySelector('code')?.textContent).toBe('代码')
+      expect(first.root.querySelector('img')?.getAttribute('src')).toBe('image.png')
+      const markdown = first.editor.action(getMarkdown())
+      const second = await createToggleEditor(markdown)
+      try {
+        expect(second.view.state.doc.toJSON()).toEqual(first.view.state.doc.toJSON())
+        expect(normalizeMarkdown(second.editor.action(getMarkdown()))).toBe(normalizeMarkdown(markdown))
+      } finally {
+        await second.destroy()
+      }
+    } finally {
+      await first.destroy()
+    }
+  })
+
   it('preserves collapsed open=false', async () => {
     const source = `> [!toggle]- 折叠标题
 > 内容段落

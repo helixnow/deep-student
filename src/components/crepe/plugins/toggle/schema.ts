@@ -3,7 +3,7 @@
  *
  * attrs:
  *   - title: 标题纯文本（存 attr，NodeView 内 contenteditable 编辑）
- *   - open:  是否展开；序列化到 Markdown 时用 `[!toggle]-` / `[!toggle]` 持久化
+ *   - open: 作者默认展开状态；`[!toggle]-` / `[!toggle]` 持久化，当前视图展开独立维护
  */
 
 import { expectDomTypeError } from '@milkdown/exception'

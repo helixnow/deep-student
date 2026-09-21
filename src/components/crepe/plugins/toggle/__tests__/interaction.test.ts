@@ -1,8 +1,10 @@
-import { Editor, defaultValueCtx, editorViewCtx, rootCtx } from '@milkdown/core'
+import { Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
+import { history, undo, undoDepth } from '@milkdown/prose/history'
 import { EditorState, TextSelection } from '@milkdown/prose/state'
-import { getMarkdown } from '@milkdown/utils'
-import { describe, expect, it } from 'vitest'
+import { $prose, getMarkdown } from '@milkdown/utils'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
 import { applyToggleInputRule } from '../input-rule'
 import {
@@ -12,7 +14,7 @@ import {
   tryUnwrapEmptyToggleOnBackspace,
 } from '../index'
 
-async function createToggleEditor(markdown: string) {
+async function createToggleEditor(markdown: string, readOnly = false) {
   const root = document.createElement('div')
   document.body.appendChild(root)
 
@@ -20,9 +22,15 @@ async function createToggleEditor(markdown: string) {
   editor.config((ctx) => {
     ctx.set(rootCtx, root)
     ctx.set(defaultValueCtx, markdown)
+    ctx.update(editorViewOptionsCtx, (options) => ({
+      ...options,
+      editable: () => !readOnly,
+      handleScrollToSelection: () => true, // jsdom has no Range layout API.
+    }))
   })
   editor.use(commonmark)
   editor.use(togglePlugin())
+  editor.use($prose(() => history()))
   await editor.create()
 
   return {
@@ -48,37 +56,159 @@ function findTogglePos(doc: { descendants: (f: (node: { type: { name: string }; 
 }
 
 describe('toggle interaction', () => {
-  it('clicking arrow toggles open attr and persists in markdown', async () => {
+  it.each([false, true])('arrow click/Enter/Space only change this view (readOnly=%s)', async (readOnly) => {
     const source = `> [!toggle] 可切换
 > body
 `
-    const { editor, root, view, destroy } = await createToggleEditor(source)
+    const { editor, root, view, destroy } = await createToggleEditor(source, readOnly)
+    const other = await createToggleEditor(source, readOnly)
     try {
+      const user = userEvent.setup()
+      const beforeDoc = view.state.doc
+      const beforeMarkdown = editor.action(getMarkdown())
+      const dispatch = vi.spyOn(view, 'dispatch')
       const toggleEl = root.querySelector('.milkdown-toggle') as HTMLElement | null
       expect(toggleEl).toBeTruthy()
-      expect(toggleEl!.dataset.open).toBe('true')
+      expect(toggleEl!.dataset.viewOpen).toBe('true')
 
       const arrow = toggleEl!.querySelector('.milkdown-toggle__arrow') as HTMLButtonElement
       expect(arrow).toBeTruthy()
+      expect(arrow.type).toBe('button')
+      expect(arrow.getAttribute('aria-label')).toBeTruthy()
+      expect(arrow.getAttribute('aria-expanded')).toBe('true')
 
       arrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      expect(toggleEl!.dataset.viewOpen).toBe('true')
+      await user.click(arrow)
+      expect(toggleEl!.dataset.viewOpen).toBe('false')
+      expect(arrow.getAttribute('aria-expanded')).toBe('false')
+      const body = toggleEl!.querySelector('.milkdown-toggle__body')!
+      expect(body.getAttribute('aria-hidden')).toBe('true')
+      expect(body.hasAttribute('inert')).toBe(true)
 
-      const pos = findTogglePos(view.state.doc)
-      expect(pos).not.toBeNull()
-      const node = view.state.doc.nodeAt(pos!)
-      expect(node?.attrs.open).toBe(false)
-      expect(toggleEl!.dataset.open).toBe('false')
+      await user.keyboard('{Enter}')
+      expect(toggleEl!.dataset.viewOpen).toBe('true')
+      expect(arrow.getAttribute('aria-expanded')).toBe('true')
+      expect(body.hasAttribute('inert')).toBe(false)
+      await user.keyboard(' ')
+      expect(toggleEl!.dataset.viewOpen).toBe('false')
+      // Let PM's MutationObserver process DOM changes, detecting accidental reparsing.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(view.state.doc).toBe(beforeDoc)
+      expect(undoDepth(view.state)).toBe(0)
+      expect(editor.action(getMarkdown())).toBe(beforeMarkdown)
+      expect(toggleEl!.dataset.open).toBe('true')
+      expect((other.root.querySelector('.milkdown-toggle') as HTMLElement).dataset.viewOpen).toBe('true')
+    } finally {
+      await destroy()
+      await other.destroy()
+    }
+  })
 
-      const md = editor.action(getMarkdown())
-      expect(md).toContain('[!toggle]- 可切换')
-
-      arrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      const node2 = view.state.doc.nodeAt(pos!)
-      expect(node2?.attrs.open).toBe(true)
-      expect(editor.action(getMarkdown())).toContain('[!toggle] 可切换')
+  it('keeps the local expansion across body edits, undo and author-default updates', async () => {
+    const { editor, root, view, destroy } = await createToggleEditor('> [!toggle]- 标题\n> **正文**\n')
+    try {
+      const el = root.querySelector('.milkdown-toggle') as HTMLElement
+      const pos = findTogglePos(view.state.doc)!
+      const before = editor.action(getMarkdown())
+      ;(el.querySelector('button') as HTMLButtonElement).click()
+      view.dispatch(view.state.tr.insertText('新增', pos + 2))
+      expect(el.dataset.viewOpen).toBe('true')
+      expect(undoDepth(view.state)).toBe(1)
+      expect(undo(view.state, view.dispatch)).toBe(true)
+      expect(el.dataset.viewOpen).toBe('true')
+      expect(editor.action(getMarkdown())).toBe(before)
+      expect(view.state.doc.nodeAt(pos)?.attrs.open).toBe(false)
+      expect(root.querySelector('strong')?.textContent).toBe('正文')
+      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { title: '默认已修改', open: true }))
+      ;(el.querySelector('button') as HTMLButtonElement).click()
+      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { title: '再次修改', open: true }))
+      expect(el.dataset.viewOpen).toBe('false')
+      expect(el.dataset.open).toBe('true')
     } finally {
       await destroy()
     }
+  })
+
+  it('guards IME Enter and commits title once before entering the locally expanded body', async () => {
+    const { root, view, destroy } = await createToggleEditor('> [!toggle]- 旧标题\n> 正文\n')
+    try {
+      const el = root.querySelector('.milkdown-toggle') as HTMLElement
+      const title = el.querySelector('.milkdown-toggle__title') as HTMLElement
+      title.tabIndex = 0 // jsdom does not make contentEditable properties focusable.
+      title.focus()
+      title.textContent = '输入中的标题'
+      const dispatch = vi.spyOn(view, 'dispatch')
+      for (const options of [{ isComposing: true }, { keyCode: 229 }]) {
+        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...options })
+        title.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(false)
+      }
+      title.dispatchEvent(new CompositionEvent('compositionstart'))
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(document.activeElement).toBe(title)
+      expect(el.dataset.viewOpen).toBe('false')
+      title.dispatchEvent(new CompositionEvent('compositionend'))
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      title.dispatchEvent(new FocusEvent('blur'))
+      expect(dispatch.mock.calls.filter(([tr]) => tr.docChanged)).toHaveLength(1)
+      const pos = findTogglePos(view.state.doc)!
+      expect(view.state.doc.nodeAt(pos)?.attrs).toMatchObject({ title: '输入中的标题', open: false })
+      expect(el.dataset.viewOpen).toBe('true')
+      expect(view.state.selection.from).toBe(pos + 2)
+      expect(undoDepth(view.state)).toBe(1)
+      undo(view.state, view.dispatch)
+      expect(view.state.doc.nodeAt(pos)?.attrs.title).toBe('旧标题')
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('discards a title draft when switching to readOnly and resumes editing when enabled', async () => {
+    const { root, view, destroy } = await createToggleEditor('> [!toggle]- 原标题\n> 正文\n')
+    try {
+      const title = root.querySelector('.milkdown-toggle__title') as HTMLElement
+      title.tabIndex = 0
+      title.focus()
+      title.textContent = '未提交草稿'
+      const dispatch = vi.spyOn(view, 'dispatch')
+      view.setProps({ editable: () => false })
+      expect(title.contentEditable).toBe('false')
+      expect(title.textContent).toBe('原标题')
+      title.textContent = '只读事件不能写入'
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      title.dispatchEvent(new FocusEvent('blur'))
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(view.state.doc.firstChild?.attrs.title).toBe('原标题')
+      view.setProps({ editable: () => true })
+      expect(title.contentEditable).toBe('true')
+      expect(title.textContent).toBe('原标题')
+      title.textContent = '提交标题'
+      title.dispatchEvent(new FocusEvent('blur'))
+      expect(view.state.doc.firstChild?.attrs.title).toBe('提交标题')
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('does not let a removed title blur write to its replacement or a destroyed editor', async () => {
+    const { root, view, destroy } = await createToggleEditor('> [!toggle] 原标题\n> 正文\n')
+    const title = root.querySelector('.milkdown-toggle__title') as HTMLElement
+    title.tabIndex = 0
+    title.focus()
+    title.textContent = '待提交'
+    const pos = findTogglePos(view.state.doc)!
+    const toggle = view.state.doc.nodeAt(pos)!
+    view.dispatch(view.state.tr.replaceWith(pos, pos + toggle.nodeSize, view.state.schema.nodes.paragraph.create()))
+    const dispatch = vi.spyOn(view, 'dispatch')
+    title.dispatchEvent(new FocusEvent('blur'))
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(view.state.doc.firstChild?.type.name).toBe('paragraph')
+    await destroy()
+    title.dispatchEvent(new FocusEvent('blur'))
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('Enter on trailing empty block exits toggle', async () => {
@@ -113,6 +243,9 @@ describe('toggle interaction', () => {
       )
 
       const childCountBefore = toggled!.childCount
+      view.setProps({ editable: () => false })
+      expect(tryExitToggleOnEnter(view)).toBe(false)
+      view.setProps({ editable: () => true })
       const handled = tryExitToggleOnEnter(view)
       expect(handled).toBe(true)
 
@@ -138,8 +271,31 @@ describe('toggle interaction', () => {
     try {
       const el = root.querySelector('.milkdown-toggle') as HTMLElement
       expect(el.dataset.open).toBe('false')
+      expect(el.dataset.viewOpen).toBe('false')
       expect(el.querySelector('.milkdown-toggle__body')).toBeTruthy()
       expect(document.getElementById('milkdown-toggle-styles')).toBeTruthy()
+    } finally {
+      await destroy()
+    }
+  })
+
+  it('keeps nested arrow/body styles independent of the outer expansion', async () => {
+    const { root, view, destroy } = await createToggleEditor('')
+    try {
+      const { toggle, paragraph } = view.state.schema.nodes
+      const inner = toggle.create({ title: '内层', open: false }, paragraph.create())
+      const outer = toggle.create({ title: '外层', open: true }, inner)
+      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, outer))
+      const arrows = root.querySelectorAll<HTMLButtonElement>('.milkdown-toggle__arrow')
+      const bodies = root.querySelectorAll<HTMLElement>('.milkdown-toggle__body')
+      expect(getComputedStyle(arrows[0]).transform).toBe('rotate(90deg)')
+      expect(getComputedStyle(arrows[1]).transform).toBe('rotate(0deg)')
+      expect(getComputedStyle(bodies[1]).gridTemplateRows).toBe('0fr')
+      arrows[1].click()
+      arrows[0].click()
+      expect(arrows[0].getAttribute('aria-expanded')).toBe('false')
+      expect(arrows[1].getAttribute('aria-expanded')).toBe('true')
+      expect(getComputedStyle(bodies[1]).gridTemplateRows).toBe('1fr')
     } finally {
       await destroy()
     }
@@ -168,6 +324,9 @@ describe('toggle interaction', () => {
         ),
       )
 
+      view.setProps({ editable: () => false })
+      expect(tryUnwrapEmptyToggleOnBackspace(view)).toBe(false)
+      view.setProps({ editable: () => true })
       const handled = tryUnwrapEmptyToggleOnBackspace(view)
       expect(handled).toBe(true)
 

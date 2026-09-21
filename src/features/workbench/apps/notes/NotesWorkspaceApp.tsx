@@ -66,6 +66,8 @@ import {
 } from './NotesBacklinksPanel';
 import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
+import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
+import { sameNoteLearningMetadata, type NoteLearningView } from '@/features/notes/noteLearningProps';
 import { NotesGraphTab } from './graph/NotesGraphTab';
 import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
@@ -956,7 +958,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   renderThrottleMs = 0,
   onTitleChange,
 }) => {
-  const { t } = useTranslation('workbench');
+  const { t } = useTranslation(['workbench', 'notes', 'common']);
   const persistedStateRef = useRef(readPersistedWorkspaceState());
   const persistedState = persistedStateRef.current;
   const hostRef = useRef<HTMLDivElement>(null);
@@ -970,6 +972,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   );
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [learningView, setLearningView] = useState<NoteLearningView | 'tree'>('tree');
   const [tabs, setTabs] = useState<WorkspaceTab[]>(() => persistedState.tabs);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(() => persistedState.activeTabKey);
   const [rightTabKey, setRightTabKey] = useState<string | null>(() => persistedState.rightTabKey);
@@ -1691,6 +1694,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             existing.name === changedNode.name
             && existing.path === changedNode.path
             && existing.type === changedNode.type
+            && sameNoteLearningMetadata(existing.metadata, changedNode.metadata)
           ) return current;
           const next = [...current];
           next[index] = changedNode;
@@ -2042,6 +2046,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             void exportResourceById(
               activeTabRef.current.id,
               i18next.getFixedT(i18next.language, 'learningHub'),
+              windowId,
             );
           }
           break;
@@ -2069,7 +2074,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         default:
           break;
       }
-  }, [createResource, focusExplorerSearch, openSearchOverlay, selectedFolderId]);
+  }, [createResource, focusExplorerSearch, openSearchOverlay, selectedFolderId, windowId]);
   useEventRegistry(
     isActive
       ? [{ target: 'window', type: NOTES_WORKSPACE_COMMAND_EVENT, listener: onWorkspaceCommand }]
@@ -2649,7 +2654,23 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             </div>
           </div>
         )}
+        <label className="flex items-center gap-2 px-3 py-2 text-xs">
+          <span>{t('notes:learning.view_label')}</span>
+          <select aria-label={t('notes:learning.view_selector')} className="min-w-0 flex-1 rounded border border-border bg-background p-1"
+            value={learningView} onChange={(event) => setLearningView(event.target.value as NoteLearningView | 'tree')}>
+            <option value="tree">{t('notes:learning.views.tree')}</option>
+            <option value="list">{t('notes:learning.views.list')}</option>
+            <option value="status">{t('notes:learning.views.status')}</option>
+            <option value="review">{t('notes:learning.views.review')}</option>
+          </select>
+        </label>
         <div className="notes-tree-host" aria-live="polite">
+          {learningView !== 'tree' ? (
+            loading && resources.length === 0 ? <p className="p-3 text-xs">{t('notes:editor.windowing.loading_note')}</p>
+              : loadError && resources.length === 0 ? <div className="p-3 text-xs" role="alert">{loadError}<button type="button" onClick={() => void loadResources({ blocking: true })}>{t('common:retry')}</button></div>
+                : <NoteLearningViews notes={filteredResources} view={learningView} activeId={activeTab?.id}
+                  onOpen={(node) => { void openWorkspaceSearchResult(node); }} />
+          ) : <>
           {loading && !hasTreeItems ? (
             <div
               className="notes-tree"
@@ -2763,6 +2784,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               getMenuItems={getTreeMenuItems}
             />
           )}
+          </>}
         </div>
       </WorkbenchSidebarSurface>
   );
@@ -2893,6 +2915,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             onRefresh={() => { void loadResources({ blocking: false }); }}
             propertiesContent={(
               <NotesPropertiesTab
+                key={activeResource?.id ?? 'no-note'}
                 activeResource={activeResource}
                 onRefresh={() => { void loadResources({ blocking: false }); }}
               />

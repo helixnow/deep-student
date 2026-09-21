@@ -40,6 +40,7 @@ pub mod index_segment_repo;
 pub mod index_unit_repo;
 pub mod mindmap_repo;
 pub mod note_repo;
+pub mod note_revision_repo;
 pub mod path_cache_repo;
 pub mod pdf_preview;
 pub mod pomodoro_repo;

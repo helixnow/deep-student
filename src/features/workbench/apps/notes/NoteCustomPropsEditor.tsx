@@ -9,6 +9,8 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, CircleNotch, PencilSimple, Plus, SlidersHorizontal, Trash, X } from '@phosphor-icons/react';
+import { NoteLearningPropsFields } from '@/features/notes/components/NoteLearningPropsFields';
+import { LEARNING_PROP_KEYS, isLearningPropValue, type LearningField } from '@/features/notes/noteLearningProps';
 
 /** 与 tags 数量限额同一个量级；键值均有长度限制（后端亦校验兜底） */
 export const NOTE_PROPS_MAX_COUNT = 32;
@@ -31,6 +33,7 @@ export type NotePropViolation =
   | 'value_too_long'
   | 'invalid_chars'
   | 'too_many'
+  | 'invalid_learning_value'
   | null;
 
 /** 新增/重命名属性键值的前置校验（纯函数，测试直接断言） */
@@ -46,6 +49,9 @@ export function validateNoteProp(
   if (trimmedKey.length > NOTE_PROP_KEY_MAX_CHARS) return 'key_too_long';
   if (value.length > NOTE_PROP_VALUE_MAX_CHARS) return 'value_too_long';
   if (NOTE_PROPS_RESERVED_KEYS.includes(trimmedKey.toLocaleLowerCase())) return 'reserved_key';
+  const learningField = (Object.keys(LEARNING_PROP_KEYS) as LearningField[])
+    .find((field) => LEARNING_PROP_KEYS[field].toLowerCase() === trimmedKey.toLowerCase());
+  if (learningField && (trimmedKey !== LEARNING_PROP_KEYS[learningField] || !isLearningPropValue(learningField, value))) return 'invalid_learning_value';
   const excluded = options.excludeKey?.toLocaleLowerCase();
   const clash = existingKeys.some((existing) => (
     existing.toLocaleLowerCase() === trimmedKey.toLocaleLowerCase()
@@ -60,6 +66,7 @@ export function validateNoteProp(
 }
 
 export interface NoteCustomPropsEditorProps {
+  // The owning note view should key this component (or its parent) by note ID.
   /** 当前属性对象（来自 metadata.props） */
   value: Record<string, unknown>;
   readOnly?: boolean;
@@ -72,7 +79,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
   readOnly = false,
   onChange,
 }) => {
-  const { t } = useTranslation('workbench');
+  const { t } = useTranslation(['workbench', 'notes']);
   const entries = useMemo(
     () => Object.entries(value).map(([key, raw]) => [key, raw == null ? '' : String(raw)] as const),
     [value],
@@ -99,6 +106,8 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
     switch (violation) {
       case 'empty_key':
         return t('notesWorkspace.props.emptyKey', { defaultValue: '请输入属性名。' });
+      case 'invalid_learning_value':
+        return t('notes:learning.errors.use_learning_fields');
       case 'reserved_key':
         return t('notesWorkspace.props.reservedKey', { defaultValue: '该属性名为保留字，请换一个。' });
       case 'duplicate_key':
@@ -199,6 +208,8 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
         {entries.length > 0 && <span className="notes-props-count">{entries.length}</span>}
         {saving && <CircleNotch className="notes-props-spinner" size={12} aria-hidden="true" />}
       </div>
+
+      <NoteLearningPropsFields value={value} readOnly={!canEdit} disabled={saving || adding || editingKey !== null} onSave={commit} />
 
       {entries.length === 0 && !adding && (
         <p className="notes-props-empty">

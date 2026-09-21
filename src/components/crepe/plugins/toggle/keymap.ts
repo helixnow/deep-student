@@ -26,6 +26,7 @@ function findToggleDepth($from: ResolvedPos): number {
  * 内容区末尾空块上的第二次 Enter：删除空块并在 toggle 后新建段落。
  */
 export function tryExitToggleOnEnter(view: EditorView): boolean {
+  if (!view.editable) return false
   const { state } = view
   const { selection } = state
   if (!(selection instanceof TextSelection) || !selection.empty) return false
@@ -68,6 +69,7 @@ export function tryExitToggleOnEnter(view: EditorView): boolean {
  * 标题非空时还原为含标题文本的段落（简洁 拆 toggle 手感），避免误删标题。
  */
 export function tryUnwrapEmptyToggleOnBackspace(view: EditorView): boolean {
+  if (!view.editable) return false
   const { state } = view
   const { selection } = state
   if (!(selection instanceof TextSelection) || !selection.empty) return false
@@ -104,6 +106,7 @@ export const toggleKeymap = $prose(() => {
     key: toggleKeymapKey,
     props: {
       handleKeyDown(view, event) {
+        if (event.isComposing || event.keyCode === 229) return false
         if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
           return false
         }

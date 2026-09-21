@@ -1013,6 +1013,15 @@ pub const V20260912_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+pub const V20260921_NOTE_DOCUMENT_REVISIONS: MigrationDef = MigrationDef::new(
+    20260921,
+    "note_document_revisions",
+    include_str!("../../../migrations/vfs/V20260921__note_document_revisions.sql"),
+)
+.with_expected_tables(&["note_document_revisions"])
+.with_expected_indexes(&["idx_note_revisions_timeline"])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1077,6 +1086,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260910_INSIGHT_JOBS,
     V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING,
     V20260912_QBANK_GENERATION_TASKS,
+    V20260921_NOTE_DOCUMENT_REVISIONS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1100,6 +1110,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 常规表
     "resources",
     "notes",
+    "note_document_revisions",
     "files",
     "exam_sheets",
     "translations",
@@ -1155,7 +1166,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 42;
+pub const VFS_TABLE_COUNT: usize = 43;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1228,15 +1239,15 @@ mod tests {
     }
 
     #[test]
-    fn test_qbank_generation_tasks_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260912);
+    fn test_note_history_is_registered_as_vfs_schema_head() {
+        assert_eq!(VFS_SCHEMA_VERSION, 20260921);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("qbank_generation_tasks")
+            Some("note_document_revisions")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

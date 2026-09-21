@@ -35,6 +35,8 @@ pub(crate) enum DeletionJournalError {
     InvalidState(String),
     #[error("删除意图必须在独立 SQLite 事务中准备")]
     TransactionBoundary,
+    #[error("笔记资产仍被当前笔记、回收站或历史版本引用: {0}")]
+    ReferencedNoteAsset(String),
 }
 
 type JournalResult<T> = Result<T, DeletionJournalError>;
@@ -144,6 +146,9 @@ pub(crate) fn prepare_asset_deletion_with_conn(
     key: &str,
     local_path: &Path,
 ) -> JournalResult<PreparedDeletionIntent> {
+    if note_asset_is_referenced(conn, local_path)? {
+        return Err(DeletionJournalError::ReferencedNoteAsset(local_path.display().to_string()));
+    }
     let expected_local_path = asset_local_path_from_key(key)?;
     if expected_local_path != local_path {
         return Err(DeletionJournalError::InvalidPath(format!(
@@ -432,6 +437,55 @@ fn finish_prepared_intent(
     intent: &PreparedDeletionIntent,
 ) -> JournalResult<()> {
     ensure_autocommit(conn)?;
+    if target_kind == TargetKind::Asset && intent.local_path.starts_with("notes_assets/") {
+        // Hold the SQLite writer reservation through reference check and physical
+        // deletion: a simultaneous snapshot/restore cannot slip between them.
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| {
+            if note_asset_is_referenced(conn, Path::new(&intent.local_path))? {
+                let absolute = resolve_local_path(root, Path::new(&intent.local_path))?;
+                let quarantine = deletion_quarantine_path(&absolute, &intent.operation_id)?;
+                // Recovery may resume after the old intent renamed the file but
+                // before unlink. Put retained bytes back at their stable key.
+                if !absolute.try_exists()? && quarantine.try_exists()? {
+                    ensure_regular_file(root, &quarantine)?;
+                    fs::rename(&quarantine, &absolute)?;
+                }
+                conn.execute(
+                    "UPDATE __file_deletion_journal SET state = 'cancelled', cancelled_at = ?2,
+                     last_error = 'retained by note history/current document' WHERE operation_id = ?1 AND state = 'prepared'",
+                    params![intent.operation_id, now()],
+                )?;
+                return Ok(());
+            }
+            finish_prepared_intent_uncommitted(conn, target_kind, root, intent)
+        })();
+        match result {
+            Ok(()) => { conn.execute_batch("COMMIT")?; return Ok(()); }
+            Err(error) => { let _ = conn.execute_batch("ROLLBACK"); return Err(error); }
+        }
+    }
+    finish_prepared_intent_uncommitted(conn, target_kind, root, intent)
+}
+
+fn note_asset_is_referenced(conn: &Connection, path: &Path) -> JournalResult<bool> {
+    if !path.starts_with("notes_assets") { return Ok(false); }
+    // Journal recovery also runs before schema migration on older installations.
+    let has_history: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'note_document_revisions' AND type = 'table')",
+        [], |r| r.get(0),
+    )?;
+    if !has_history { return Ok(false); }
+    crate::vfs::repos::note_revision_repo::NoteRevisionRepo::asset_is_referenced(conn, &path.to_string_lossy())
+        .map_err(|e| DeletionJournalError::InvalidState(e.to_string()))
+}
+
+fn finish_prepared_intent_uncommitted(
+    conn: &Connection,
+    target_kind: TargetKind,
+    root: &Path,
+    intent: &PreparedDeletionIntent,
+) -> JournalResult<()> {
     let local_path = Path::new(&intent.local_path);
     let absolute_path = resolve_local_path(root, local_path)?;
     let quarantine_path = deletion_quarantine_path(&absolute_path, &intent.operation_id)?;

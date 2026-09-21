@@ -16,12 +16,14 @@ import { createPortal } from 'react-dom';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { EditorView } from '@codemirror/view';
 import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
+import { normalizeMarkdown } from './normalizeMarkdown';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
 import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
 import { Slice } from '@milkdown/prose/model';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
 import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
+import { uploadConfig } from '@milkdown/kit/plugin/upload';
 import i18next from 'i18next';
 
 // Crepe 样式（亮色 + 暗色主题）
@@ -41,7 +43,9 @@ import {
   createImageUploader,
   createTransientBlobUrlRegistry,
   pickImageWithTauriDialog,
+  validateImageFile,
 } from './features/imageUpload';
+import { bindBrowserImageUploads, createUploadLifecycle, handleNativeImageDrop, type UploadLifecycle } from './uploadLifecycle';
 import { applyCrepePlugins } from './plugins';
 import { appendCalloutToggleSlashItems } from './plugins/slashMenuExtras';
 import { createMermaidObserver } from './features/mermaidPreview';
@@ -51,7 +55,6 @@ import { debugMasterSwitch, debugLog } from '../../debug-panel/debugMasterSwitch
 import { 
   emitImageUploadDebug, 
   captureDOMInfo, 
-  checkSelectorMatches, 
   captureImageBlockSnapshot 
 } from '../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
 import './CrepeEditor.css';
@@ -66,20 +69,19 @@ import { resolveFlashSnippet } from './agentDiffFlash';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
 import {
-  deleteCrepeBlock,
-  duplicateCrepeBlock,
-  turnCrepeBlockInto,
+  crepeBlockCommands,
   type CrepeBlockTurnInto,
 } from './blockMenuCommands';
+import { isBlockTargetCurrent, resolveBlockHandleTarget, resolveBlockSelection, type BlockTarget } from './blockTarget';
 import {
   findCrepeBlockMenuTypeaheadIndex,
   getNextCrepeBlockMenuIndex,
-  isCrepeBlockMenuDocCurrent,
   shouldDismissCrepeBlockMenuForKey,
 } from './blockMenuState';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
-type BlockMenuState = { pos: number; x: number; y: number; doc: unknown } | null;
+type BlockMenuState = { target: BlockTarget; noteId: string | undefined; x: number; y: number } | null;
+type BlockMenuHighlight = { pos: number; left: number; top: number; width: number; height: number };
 type BlockMenuAction = CrepeBlockTurnInto | 'duplicate' | 'delete';
 
 /** turn-into 目标（渲染顺序即键盘导航顺序） */
@@ -186,11 +188,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层包装
   const containerRef = useRef<HTMLDivElement>(null); // Crepe 容器
   const crepeRef = useRef<Crepe | null>(null);
+  const uploadsRef = useRef<UploadLifecycle | null>(null);
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
+  const readonlyRef = useRef(readonly);
+  readonlyRef.current = readonly;
   const viewRef = useRef<any>(null); // 存储 ProseMirror view 引用
   const dropIndicatorRef = useRef<HTMLDivElement>(null); // 拖拽插入条
   const blockMenuElRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
-  const [blockMenu, setBlockMenu] = useState<BlockMenuState>(null);
+  const [blockMenu, setBlockMenuState] = useState<BlockMenuState>(null);
+  const blockMenuRef = useRef<BlockMenuState>(null);
+  const setBlockMenu = useCallback((menu: BlockMenuState) => {
+    // Invalidate synchronously, including before React flushes a document/note switch.
+    blockMenuRef.current = menu;
+    setBlockMenuState(menu);
+  }, []);
+  const [blockMenuHighlights, setBlockMenuHighlights] = useState<BlockMenuHighlight[]>([]);
   const [blockMenuActive, setBlockMenuActive] = useState(-1);
   const blockMenuActiveRef = useRef(-1); // keydown 监听内读取，避免闭包过期
   const [initPhase, setInitPhase] = useState('pending'); // 🔧 调试：追踪初始化阶段
@@ -245,24 +259,16 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     };
     const openHandleMenu = (handle: Element) => {
       const view = viewRef.current;
-      if (!view) return;
+      if (!view || readonlyRef.current) return;
       const rect = handle.getBoundingClientRect();
-      // 探测点钳入编辑器内容区，句柄悬停在内容区外（窄栏/缩进块）时 posAtCoords 也能命中
-      const editorRect = (view.dom as HTMLElement).getBoundingClientRect();
-      const probeX = Math.min(
-        Math.max(rect.right + 24, editorRect.left + 4),
-        Math.max(editorRect.left + 4, editorRect.right - 4),
-      );
-      const hit = view.posAtCoords({ left: probeX, top: rect.top + rect.height / 2 });
-      if (!hit) return;
-      const $pos = view.state.doc.resolve(Math.max(0, hit.inside >= 0 ? hit.inside : hit.pos));
-      const pos = $pos.depth > 0 ? $pos.before(1) : hit.pos;
+      const target = resolveBlockHandleTarget(view, handle);
+      if (!target) return;
       // 先按句柄位置放置；渲染后由 useLayoutEffect 按菜单实测尺寸钳入视口
       setBlockMenu({
-        pos,
+        target,
+        noteId: noteIdRef.current,
         x: rect.right + 6,
         y: Math.max(8, rect.top),
-        doc: view.state.doc,
       });
     };
     const onPointerUp = (event: PointerEvent) => {
@@ -307,7 +313,48 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       container.removeEventListener('pointerup', onPointerUp, true);
       container.removeEventListener('keydown', onHandleKeyDown, true);
     };
-  }, [isReady, readonly]);
+  }, [isReady, readonly, noteId, setBlockMenu]);
+
+  useLayoutEffect(() => {
+    setBlockMenu(null);
+  }, [noteId, readonly, setBlockMenu]);
+
+  // Paint the captured sibling range without changing PM selection, document or history.
+  // The body portal is independent of editor NodeViews (including upload widgets).
+  useLayoutEffect(() => {
+    if (!blockMenu) {
+      setBlockMenuHighlights([]);
+      return;
+    }
+    const { target } = blockMenu;
+    const update = () => {
+      const view = viewRef.current;
+      if (!view || blockMenuRef.current !== blockMenu || readonlyRef.current
+        || blockMenu.noteId !== noteIdRef.current || !isBlockTargetCurrent(view, target)) {
+        setBlockMenu(null);
+        return;
+      }
+      const rects: BlockMenuHighlight[] = [];
+      let pos = target.pos;
+      for (const node of target.nodes) {
+        const dom = view.nodeDOM(pos);
+        if (dom instanceof HTMLElement) {
+          const { left, top, width, height } = dom.getBoundingClientRect();
+          if (width > 0 && height > 0) rects.push({ pos, left, top, width, height });
+        }
+        pos += node.nodeSize;
+      }
+      setBlockMenuHighlights(rects);
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    const observer = new ResizeObserver(update);
+    observer.observe(target.view.dom);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      observer.disconnect();
+    };
+  }, [blockMenu, setBlockMenu]);
 
   // 菜单开/关（对象变化）时重置键盘高亮
   useEffect(() => {
@@ -342,16 +389,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const runBlockAction = useCallback((action: BlockMenuAction) => {
     const view = viewRef.current;
     const menu = blockMenu;
-    if (!view || !menu) return;
-    if (!isCrepeBlockMenuDocCurrent(view.state.doc, menu.doc)) {
+    if (!view || !menu || menu !== blockMenuRef.current) return;
+    if (readonlyRef.current || menu.noteId !== noteIdRef.current || !isBlockTargetCurrent(view, menu.target)) {
       setBlockMenu(null);
       return;
     }
-    if (action === 'duplicate') duplicateCrepeBlock(view, menu.pos);
-    else if (action === 'delete') deleteCrepeBlock(view, menu.pos);
-    else turnCrepeBlockInto(view, menu.pos, action);
     setBlockMenu(null);
-  }, [blockMenu]);
+    crepeBlockCommands[action](view, menu.target);
+  }, [blockMenu, setBlockMenu]);
 
   useEffect(() => {
     if (!blockMenu) return;
@@ -483,10 +528,18 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
       },
       
+      normalizeMarkdown: (markdown: string) => {
+        const crepe = crepeRef.current;
+        if (!crepe) throw new Error('Editor is not ready.');
+        return crepe.editor.action((ctx) => normalizeMarkdown(ctx, markdown));
+      },
+
       setMarkdown: (markdown: string) => {
         const crepe = crepeRef.current;
         if (!crepe) return false;
         try {
+          setBlockMenu(null);
+          uploadsRef.current?.cancelAll();
           // Milkdown 版本类型差异，运行时兼容
           (crepe.editor as any).action(replaceAll(markdown));
           return true;
@@ -570,6 +623,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       },
       
       setReadonly: (value: boolean) => {
+        if (value) setBlockMenu(null);
+        if (value) uploadsRef.current?.cancelAll();
         crepeRef.current?.setReadonly(value);
       },
       
@@ -916,6 +971,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       getCrepe: () => crepeRef.current,
       
       destroy: async () => {
+        setBlockMenu(null);
         const crepe = crepeRef.current;
         if (crepe) {
           runStashedCrepeCleanups(crepe);
@@ -1580,20 +1636,20 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
       },
 
-      // 📱 触屏无 hover 块句柄：在当前选区顶层块处打开块操作菜单
+      // 选区入口锁定最近嵌套内容单元或同容器多块范围，与句柄共用命令目标。
       // （复用块句柄的 setBlockMenu 渲染路径；渲染后 useLayoutEffect 会按实测尺寸钳入视口）
       openBlockMenuAtSelection: () => {
         const view = viewRef.current;
-        if (!view || view.isDestroyed) return;
+        if (!view || view.isDestroyed || !view.editable || readonlyRef.current) return;
         try {
-          const { $from } = view.state.selection;
-          const pos = $from.depth > 0 ? $from.before(1) : $from.pos;
-          const coords = view.coordsAtPos(Math.min(pos + 1, view.state.doc.content.size));
+          const target = resolveBlockSelection(view);
+          if (!target) return;
+          const coords = view.coordsAtPos(Math.min(target.pos + 1, view.state.doc.content.size));
           setBlockMenu({
-            pos,
+            target,
+            noteId: noteIdRef.current,
             x: coords.left,
             y: Math.max(8, coords.bottom + 6),
-            doc: view.state.doc,
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] openBlockMenuAtSelection failed:', e);
@@ -1744,6 +1800,20 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
         // 本实例降级上传产生的 blob URL，销毁时统一 revoke
         const blobUrlRegistry = createTransientBlobUrlRegistry();
+        const uploadLifecycle = createUploadLifecycle({
+          container,
+          getView: () => crepeRef.current === crepe ? crepe.editor.ctx.get(editorViewCtx) : null,
+          isCurrent: () => !destroyed && noteIdRef.current === noteId && crepeRef.current === crepe,
+          validate: validateImageFile,
+          upload: createImageUploader(noteId, {
+            register: url => {
+              // An uncancellable backend/upload may complete after disposal.
+              if (destroyed || crepeRef.current !== crepe) URL.revokeObjectURL(url);
+              else blobUrlRegistry.register(url);
+            },
+            releaseAll: blobUrlRegistry.releaseAll,
+          }),
+        });
 
         // 创建 Crepe 实例
         const crepe = new Crepe({
@@ -1837,6 +1907,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         });
 
         emitCrepeDebug('init', 'debug', 'Crepe 实例已创建');
+        // Crepe already installs plugin-upload; customize its existing state widget.
+        crepe.editor.config(ctx => ctx.update(uploadConfig.key, config => ({
+          ...config,
+          uploadWidgetFactory: uploadLifecycle.widgetFactory,
+        })));
 
         // 应用扩展插件（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
         applyCrepePlugins(crepe, pluginsOptionsRef.current);
@@ -1857,6 +1932,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         emitCrepeDebug('init', 'info', 'crepe.create() 完成', undefined, captureDOMSnapshot(container));
 
         if (destroyed) {
+          uploadLifecycle.dispose();
           setInitPhase('destroyed-before-ready');
           emitCrepeDebug('lifecycle', 'warning', '组件已销毁，放弃初始化');
           await crepe.destroy();
@@ -1864,6 +1940,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
 
         crepeRef.current = crepe;
+        uploadsRef.current = uploadLifecycle;
         setIsReady(true);
         setInitPhase('ready');
         
@@ -1966,7 +2043,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       view.updateState = (newState: any) => {
                         const oldState = view.state;
                         originalUpdateState(newState);
+                        uploadLifecycle.pruneDeleted();
                         if (destroyed) return;
+
+                        const menu = blockMenuRef.current;
+                        if (menu && !isBlockTargetCurrent(view, menu.target)) setBlockMenu(null);
 
                         if (oldState.doc !== newState.doc || !oldState.selection.eq(newState.selection) || oldState.storedMarks !== newState.storedMarks) {
                           onFormattingChangeRef.current?.(readFormattingState(newState));
@@ -2229,7 +2310,6 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         // 我们需要拦截 label 的点击，阻止它触发 file input，改用 Tauri dialog
         const isTauriEnv = typeof window !== 'undefined' &&
           Boolean((window as any).__TAURI_INTERNALS__);
-        const uploader = createImageUploader(noteId, blobUrlRegistry);
 
         const imageDebugEnabled = debugMasterSwitch.isEnabled();
         if (imageDebugEnabled) {
@@ -2394,283 +2474,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           });
         }
 
-        const handleImageUploadClick = async (e: MouseEvent) => {
-          const target = e.target as HTMLElement;
-          
-          // 发射点击检测事件
-          emitImageUploadDebug('click_detected', 'debug', '检测到点击事件', {
-            isTauriEnv,
-            targetTag: target.tagName,
-            targetClass: target.className,
-          }, captureDOMInfo(target), checkSelectorMatches(target), captureImageBlockSnapshot(container));
-          
-          // 只在 Tauri 环境下拦截，浏览器环境使用原生 file input
-          if (!isTauriEnv) {
-            emitImageUploadDebug('tauri_check', 'info', '非 Tauri 环境，跳过拦截，使用原生 file input', {
-              reason: 'not_tauri_env',
-            });
-            return;
-          }
-          
-          // 如果点击的是链接输入框，不拦截（优先检查）
-          if (target.classList.contains('link-input-area') || 
-              (target.tagName === 'INPUT' && !target.classList.contains('hidden'))) {
-            emitImageUploadDebug('selector_check', 'debug', '点击的是输入框，跳过拦截', {
-              reason: 'input_element',
-              targetClass: target.className,
-              targetTag: target.tagName,
-            });
-            return;
-          }
-          
-          // 检查是否在 ImageBlock 或 ImageInline 内
-          const imageContainer = target.closest('.milkdown-image-block') || 
-                                target.closest('.milkdown-image-inline');
-          
-          if (!imageContainer) {
-            emitImageUploadDebug('selector_check', 'debug', '不在图片容器内，跳过处理', {
-              reason: 'no_image_container',
-            });
-            return;
-          }
-          
-          // 检查图片容器内是否有 .placeholder（表示是空图片，需要上传）
-          // 如果图片已经有 src，则不需要拦截
-          const hasPlaceholder = imageContainer.querySelector('.placeholder') !== null;
-          const hasImageEdit = imageContainer.querySelector('.image-edit') !== null;
-          
-          // 发射选择器检查事件
-          emitImageUploadDebug('selector_check', 'debug', '选择器匹配检查', {
-            hasImageContainer: true,
-            hasPlaceholder,
-            hasImageEdit,
-            targetTag: target.tagName,
-            targetClass: target.className,
-          }, undefined, checkSelectorMatches(target));
-          
-          // 只处理空图片块的点击（有 placeholder 表示未上传图片）
-          if (!hasPlaceholder) {
-            emitImageUploadDebug('selector_check', 'debug', '图片已有内容，跳过拦截', {
-              reason: 'image_has_content',
-              hasPlaceholder,
-            });
-            return;
-          }
-
-          // 阻止默认行为（label 触发 file input）
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-
-          emitImageUploadDebug('dialog_open', 'info', '准备打开 Tauri 文件对话框', {
-            targetClass: target.className,
-          });
-          
-          // 使用 Tauri dialog 选择图片
-          let file: File | null = null;
-          try {
-            file = await pickImageWithTauriDialog();
-          } catch (error) {
-            emitImageUploadDebug('dialog_result', 'error', '打开文件对话框失败', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
-            const i18next = (await import('i18next')).default;
-            showGlobalNotification(
-              'error',
-              i18next.t('notes:editor.image_upload.dialog_failed', {
-                defaultValue: '无法打开图片选择对话框',
-              }),
-            );
-            return;
-          }
-
-          // 异步等待期间本实例可能已销毁（切换笔记会重建编辑器），
-          // 销毁后 crepeRef.current 已指向新实例，绝不能再写入
-          if (destroyed) return;
-
-          if (!file) {
-            emitImageUploadDebug('dialog_result', 'warning', '用户取消选择或未选择文件', {
-              result: null,
-            });
-            return;
-          }
-
-          try {
-            const { validateImageFile } = await import('@/components/crepe/features/imageUpload');
-            await validateImageFile(file);
-          } catch {
-            emitImageUploadDebug('dialog_result', 'error', '图片文件损坏或无法解码', {
-              fileName: file.name,
-              fileSize: file.size,
-            });
-            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
-            const i18next = (await import('i18next')).default;
-            showGlobalNotification(
-              'error',
-              i18next.t('notes:editor.image_upload.invalid_image', {
-                defaultValue: '无法读取该图片，文件可能已损坏或格式不受支持',
-              }),
-            );
-            return;
-          }
-          
-          emitImageUploadDebug('dialog_result', 'success', '文件选择成功', {
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-          });
-
-          try {
-            emitImageUploadDebug('upload_start', 'info', '开始上传文件', {
-              fileName: file.name,
-              noteId,
-            });
-            
-            // 调用上传函数获取 URL
-            const url = await uploader(file);
-
-            if (destroyed) return;
-
-            emitImageUploadDebug('upload_complete', 'success', '文件上传完成', {
-              url,
-              fileName: file.name,
-            });
-            
-            // 找到最近的图片块容器
-            const imageBlock = target.closest('.milkdown-image-block') || target.closest('.milkdown-image-inline');
-            
-            emitImageUploadDebug('node_find', 'info', '开始查找图片节点', {
-              hasImageBlock: !!imageBlock,
-              imageBlockClass: (imageBlock as HTMLElement)?.className,
-            });
-            
-            // 已通过 destroyed 检查，crepeRef.current 仍指向本实例
-            const currentCrepe = crepeRef.current;
-            if (!currentCrepe) {
-              emitImageUploadDebug('error', 'error', '编辑器已销毁，无法更新节点', {});
-              return;
-            }
-            
-            // 🔧 外层 try-catch：捕获编辑器已销毁时 ctx.get 抛出的 "Context 'nodes' not found" 错误
-            try {
-            currentCrepe.editor.action((ctx) => {
-              try {
-                const view = ctx.get('editorView') as any;
-                if (!view) {
-                  emitImageUploadDebug('node_find', 'error', '无法获取 editorView', {});
-                  return;
-                }
-                
-                // 遍历文档查找图片节点
-                const { state } = view;
-                let imagePos = -1;
-                let firstEmptyImagePos = -1; // 备选：第一个空 src 的图片节点
-                const nodeTypes: string[] = [];
-                
-                state.doc.descendants((node: any, pos: number) => {
-                  nodeTypes.push(`${node.type.name}@${pos}`);
-                  if (imagePos >= 0) return false;
-                  // 检查是否是图片节点（Milkdown 使用 image-block）
-                  if (node.type.name === 'image' || node.type.name === 'image-block' || node.type.name === 'imageBlock' || node.type.name === 'image_block') {
-                    // 记录第一个空 src 的图片节点作为备选
-                    if (firstEmptyImagePos < 0 && !node.attrs?.src) {
-                      firstEmptyImagePos = pos;
-                    }
-                    // 优先：检查这个节点的 DOM 是否匹配（如果 imageBlock 仍然有效）
-                    const domNode = view.nodeDOM(pos);
-                    if (domNode && imageBlock && document.body.contains(imageBlock) &&
-                        (imageBlock.contains(domNode) || domNode.contains(imageBlock) || domNode === imageBlock)) {
-                      imagePos = pos;
-                      return false;
-                    }
-                  }
-                  return true;
-                });
-                
-                // 如果 DOM 匹配失败，使用第一个空 src 的图片节点
-                if (imagePos < 0 && firstEmptyImagePos >= 0) {
-                  imagePos = firstEmptyImagePos;
-                  emitImageUploadDebug('node_find', 'info', '使用备选：第一个空 src 图片节点', {
-                    imagePos,
-                  });
-                }
-                
-                emitImageUploadDebug('node_find', imagePos >= 0 ? 'success' : 'warning', 
-                  imagePos >= 0 ? '找到图片节点' : '未找到匹配的图片节点', {
-                  imagePos,
-                  nodeTypesCount: nodeTypes.length,
-                  nodeTypes: nodeTypes.slice(0, 10), // 只显示前10个
-                });
-                
-                if (imagePos >= 0) {
-                  const node = state.doc.nodeAt(imagePos);
-                  if (node) {
-                    // 更新图片节点的 src 属性
-                    const tr = state.tr.setNodeMarkup(imagePos, undefined, {
-                      ...node.attrs,
-                      src: url,
-                    });
-                    view.dispatch(tr);
-                    
-                    emitImageUploadDebug('node_update', 'success', '图片节点更新成功', {
-                      imagePos,
-                      newSrc: url,
-                      nodeType: node.type.name,
-                      prevAttrs: node.attrs,
-                    });
-                  }
-                } else {
-                  emitImageUploadDebug('node_update', 'error', '无法更新：未找到图片节点', {
-                    nodeTypesInDoc: nodeTypes,
-                  });
-                }
-              } catch (err) {
-                emitImageUploadDebug('error', 'error', `更新节点失败: ${err}`, {
-                  error: String(err),
-                });
-              }
-            });
-            } catch (editorActionError) {
-              // 🔧 捕获编辑器销毁后 ctx.get 抛出的 "Context 'nodes' not found" 错误
-              // 这是预期行为，异步操作完成时编辑器可能已被销毁
-              debugLog.warn('[CrepeEditor] Editor action failed (editor may be destroyed):', editorActionError);
-            }
-          } catch (error) {
-            emitImageUploadDebug('error', 'error', `上传失败: ${error}`, {
-              error: String(error),
-              fileName: file?.name,
-            });
-          }
-        };
-        
-        // Tauri 下点击空 ImageBlock 走 Tauri dialog 选图。
-        // 使用 capture: true 在捕获阶段拦截，确保在 label 触发 file input 之前处理。
-        container.addEventListener('click', handleImageUploadClick, { capture: true });
-        
-        // 在 Tauri 环境中阻止 DOM 原生 drop 事件到达 Milkdown 的图片区域
-        // 这样 Milkdown 的 onUpload 不会被触发（我们用 Tauri API 处理）
-        const handleDomDrop = (e: DragEvent) => {
-          if (!isTauriEnv) return;
-          
-          const target = e.target as HTMLElement;
-          const imageContainer = target?.closest?.('.milkdown-image-block') || 
-                                target?.closest?.('.milkdown-image-inline');
-          
-          if (imageContainer) {
-            const hasPlaceholder = imageContainer.querySelector('.placeholder') !== null;
-            if (hasPlaceholder) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              emitImageUploadDebug('selector_check', 'info', '阻止 DOM drop 事件（由 Tauri 处理）', {
-                targetClass: target?.className,
-              });
-            }
-          }
-        };
-        
-        container.addEventListener('drop', handleDomDrop, { capture: true });
+        const uploadView = crepe.editor.ctx.get(editorViewCtx);
+        const unbindBrowserUploads = bindBrowserImageUploads({
+          container,
+          view: uploadView,
+          lifecycle: uploadLifecycle,
+          native: isTauriEnv,
+          pickNative: pickImageWithTauriDialog,
+        });
         
         // Tauri 拖放事件处理
         let dragDropUnlisten: (() => void) | undefined;
@@ -2688,245 +2499,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             
             const webview = getCurrentWebview();
             
-            const unlisten = await webview.onDragDropEvent(async (event) => {
-              if (event.payload.type !== 'drop') return;
-              
-              const paths = event.payload.paths;
-              if (!paths || paths.length === 0) return;
-              
-              emitImageUploadDebug('click_detected', 'info', '检测到 Tauri 拖放事件', {
-                pathsCount: paths.length,
-                paths: paths.slice(0, 3),
-              });
-              
-              // 检查是否拖放到了 ImageBlock 区域
-              const pos = event.payload.position;
-              if (!pos) return;
-              
-              const elementAtPoint = document.elementFromPoint(pos.x, pos.y);
-              if (!elementAtPoint) return;
-              
-              // 只处理图片文件
-              const imagePaths = paths.filter(p => 
-                /\.(jpg|jpeg|png|gif|bmp|webp|svg|heic|heif)$/i.test(p)
-              );
-              
-              if (imagePaths.length === 0) {
-                emitImageUploadDebug('selector_check', 'warning', '没有图片文件', {
-                  paths,
-                });
-                return;
-              }
-              
-              const imageContainer = elementAtPoint.closest('.milkdown-image-block') || 
-                                    elementAtPoint.closest('.milkdown-image-inline');
-              
-              // 检查是否在编辑器容器内
-              const isInEditor = elementAtPoint.closest('.crepe-editor-wrapper') !== null ||
-                                elementAtPoint.closest('.milkdown') !== null ||
-                                elementAtPoint.closest('.ProseMirror') !== null;
-              
-              if (!isInEditor) {
-                emitImageUploadDebug('selector_check', 'debug', '拖放位置不在编辑器内', {
-                  x: pos.x,
-                  y: pos.y,
-                  elementClass: (elementAtPoint as HTMLElement).className,
-                });
-                return;
-              }
-              
-              const filePath = imagePaths[0];
-              emitImageUploadDebug('dialog_result', 'info', '处理拖放的图片文件', {
-                filePath,
-                hasImageContainer: !!imageContainer,
-              });
-              
-              try {
-                // 读取文件
-                const assetUrl = convertFileSrc(filePath);
-                const response = await fetch(assetUrl);
-                if (!response.ok) {
-                  throw new Error(`Failed to fetch: ${response.status}`);
-                }
-                
-                const blob = await response.blob();
-                const { extractFileName } = await import('@/utils/fileManager');
-                const fileName = extractFileName(filePath) || 'image.png';
-                const file = new File([blob], fileName, { type: blob.type || 'image/png' });
-
-                if (destroyed || dragDropSetupAborted) return;
-
-                emitImageUploadDebug('file_convert', 'success', '文件读取成功', {
-                  fileName: file.name,
-                  fileSize: file.size,
-                  fileType: file.type,
-                });
-
-                try {
-                  const { validateImageFile } = await import('@/components/crepe/features/imageUpload');
-                  await validateImageFile(file);
-                } catch {
-                  emitImageUploadDebug('file_convert', 'error', '拖放图片损坏或无法解码', {
-                    fileName: file.name,
-                    fileSize: file.size,
+            const unlisten = await webview.onDragDropEvent(event => {
+              if (destroyed || dragDropSetupAborted) return;
+              handleNativeImageDrop({
+                payload: event.payload,
+                pixelRatio: window.devicePixelRatio,
+                view: uploadView,
+                container,
+                lifecycle: uploadLifecycle,
+                read: async (path, signal) => {
+                  const response = await fetch(convertFileSrc(path), { signal });
+                  if (!response.ok) throw new Error(`Failed to read image: ${response.status}`);
+                  const blob = await response.blob();
+                  return new File([blob], path.split(/[/\\]/).pop() || 'image', {
+                    type: blob.type || 'application/octet-stream',
                   });
-                  const { showGlobalNotification } = await import('@/components/UnifiedNotification');
-                  const i18next = (await import('i18next')).default;
-                  showGlobalNotification(
-                    'error',
-                    i18next.t('notes:editor.image_upload.invalid_image', {
-                      defaultValue: '无法读取该图片，文件可能已损坏或格式不受支持',
-                    }),
-                  );
-                  return;
-                }
-                
-                // 上传文件
-                const url = await uploader(file);
-
-                // 上传期间本实例可能已销毁；此后 crepeRef.current 指向新实例，禁止写入
-                if (destroyed || dragDropSetupAborted) return;
-
-                emitImageUploadDebug('upload_complete', 'success', '拖放图片上传完成', {
-                  url,
-                  fileName: file.name,
-                });
-                
-                const currentCrepe = crepeRef.current;
-                if (!currentCrepe) {
-                  emitImageUploadDebug('error', 'error', '编辑器已销毁，无法更新拖放节点', {});
-                  return;
-                }
-                
-                // 🔧 外层 try-catch：捕获编辑器已销毁时 ctx.get 抛出的 "Context 'nodes' not found" 错误
-                try {
-                currentCrepe.editor.action((ctx) => {
-                  try {
-                    const view = ctx.get('editorView') as any;
-                    if (!view) return;
-                    
-                    const { state } = view;
-                    
-                    // 情况1: 拖放到已有的空图片容器
-                    if (imageContainer) {
-                      const hasPlaceholder = imageContainer.querySelector('.placeholder') !== null;
-                      if (hasPlaceholder) {
-                        // 查找对应的图片节点并更新
-                        let imagePos = -1;
-                        state.doc.descendants((node: any, nodePos: number) => {
-                          if (imagePos >= 0) return false;
-                          if (node.type.name === 'image' || node.type.name === 'image-block' || node.type.name === 'imageBlock' || node.type.name === 'image_block') {
-                            const domNode = view.nodeDOM(nodePos);
-                            if (domNode && document.body.contains(imageContainer) &&
-                                (imageContainer.contains(domNode) || domNode.contains(imageContainer) || domNode === imageContainer)) {
-                              imagePos = nodePos;
-                              return false;
-                            }
-                          }
-                          return true;
-                        });
-                        
-                        if (imagePos >= 0) {
-                          const node = state.doc.nodeAt(imagePos);
-                          if (node) {
-                            const tr = state.tr.setNodeMarkup(imagePos, undefined, {
-                              ...node.attrs,
-                              src: url,
-                            });
-                            view.dispatch(tr);
-                            emitImageUploadDebug('node_update', 'success', '拖放图片节点更新成功', {
-                              imagePos,
-                              newSrc: url,
-                            });
-                            return;
-                          }
-                        }
-                      } else {
-                        emitImageUploadDebug('selector_check', 'debug', '图片已有内容，将在拖放位置插入新图片', {
-                          reason: 'image_has_content',
-                        });
-                      }
-                    }
-                    
-                    // 情况2: 没有图片容器或图片容器已有内容，在拖放位置插入新图片
-                    emitImageUploadDebug('node_insert', 'info', '在拖放位置插入新图片节点', {
-                      x: pos.x,
-                      y: pos.y,
-                    });
-                    
-                    // 获取拖放位置对应的编辑器位置
-                    const posAtCoords = view.posAtCoords({ left: pos.x, top: pos.y });
-                    let insertPos: number;
-                    
-                    if (posAtCoords && posAtCoords.pos >= 0) {
-                      // 找到最近的块级节点边界
-                      const $pos = state.doc.resolve(posAtCoords.pos);
-                      // 在当前块之后插入
-                      insertPos = $pos.after($pos.depth > 0 ? 1 : 0);
-                      // 确保位置有效
-                      if (insertPos > state.doc.content.size) {
-                        insertPos = state.doc.content.size;
-                      }
-                    } else {
-                      // 无法确定位置，在当前选区位置插入
-                      const { from } = state.selection;
-                      const $from = state.doc.resolve(from);
-                      insertPos = $from.after($from.depth > 0 ? 1 : 0);
-                      if (insertPos > state.doc.content.size) {
-                        insertPos = state.doc.content.size;
-                      }
-                    }
-                    
-                    // 查找图片节点类型
-                    const imageBlockType = state.schema.nodes['image-block'] || 
-                                          state.schema.nodes['imageBlock'] || 
-                                          state.schema.nodes['image_block'] ||
-                                          state.schema.nodes['image'];
-                    
-                    if (imageBlockType) {
-                      // 创建图片节点
-                      const imageNode = imageBlockType.create({
-                        src: url,
-                        alt: fileName,
-                      });
-                      
-                      // 插入图片节点
-                      const tr = state.tr.insert(insertPos, imageNode);
-                      view.dispatch(tr.scrollIntoView());
-                      view.focus();
-                      
-                      emitImageUploadDebug('node_insert', 'success', '新图片节点插入成功', {
-                        insertPos,
-                        src: url,
-                        nodeType: imageBlockType.name,
-                      });
-                    } else {
-                      // 备选：使用 Markdown 格式插入
-                      emitImageUploadDebug('node_insert', 'warning', '未找到图片节点类型，使用 Markdown 格式', {
-                        availableNodes: Object.keys(state.schema.nodes),
-                      });
-                      
-                      const imageMarkdown = `\n![${fileName}](${url})\n`;
-                      const tr = state.tr.insertText(imageMarkdown, insertPos);
-                      view.dispatch(tr.scrollIntoView());
-                      view.focus();
-                    }
-                  } catch (err) {
-                    emitImageUploadDebug('error', 'error', `拖放更新节点失败: ${err}`, {
-                      error: String(err),
-                    });
-                  }
-                });
-                } catch (editorActionError) {
-                  // 🔧 捕获编辑器销毁后 ctx.get 抛出的 "Context 'nodes' not found" 错误
-                  debugLog.warn('[CrepeEditor] Editor action failed during drag-drop (editor may be destroyed):', editorActionError);
-                }
-              } catch (error) {
-                emitImageUploadDebug('error', 'error', `拖放处理失败: ${error}`, {
-                  error: String(error),
-                  filePath,
-                });
-              }
+                },
+              });
             });
             
             // 再次检查是否已被销毁，如果是则立即清理
@@ -3082,8 +2671,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
         
         (crepe as any).__imageUploadCleanup = () => {
-          container.removeEventListener('click', handleImageUploadClick, { capture: true });
-          container.removeEventListener('drop', handleDomDrop, { capture: true });
+          unbindBrowserUploads();
+          uploadLifecycle.dispose();
+          if (uploadsRef.current === uploadLifecycle) uploadsRef.current = null;
           imageRenderObserver?.disconnect();
           imageRenderCleanup.forEach(fn => fn());
           imageRenderCleanup.clear();
@@ -3125,6 +2715,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     return () => {
       emitCrepeDebug('lifecycle', 'info', '开始清理编辑器', { noteId });
       destroyed = true;
+      setBlockMenu(null);
       clearExposeTimeouts();
       // ACR 4.0：解绑滚动跟随监听 / 清掉未完成的内容脉冲
       agentFollowerRef.current?.dispose();
@@ -3164,6 +2755,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
    */
   useEffect(() => {
     if (crepeRef.current && isReady) {
+      if (readonly) uploadsRef.current?.cancelAll();
       crepeRef.current.setReadonly(readonly);
     }
   }, [readonly, isReady]);
@@ -3208,6 +2800,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 role="menuitem"
                 tabIndex={isActive ? 0 : -1}
                 data-active={isActive || undefined}
+                data-block-command={action}
                 data-destructive={action === 'delete' || undefined}
                 // 键盘高亮：无 CSS 所有权，用内联 hover token 兜底
                 style={isActive ? { backgroundColor: 'var(--interactive-hover)' } : undefined}
@@ -3228,6 +2821,19 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             }
             return button;
           })}
+        </div>,
+        document.body,
+      )}
+      {blockMenu && createPortal(
+        <div aria-hidden="true" data-block-menu-range="true" style={{ pointerEvents: 'none' }}>
+          {blockMenuHighlights.map((rect) => (
+            <div key={rect.pos} data-block-menu-target-pos={rect.pos} style={{
+              position: 'fixed', pointerEvents: 'none', zIndex: 'calc(var(--z-popover, 1200) - 1)',
+              left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+              outline: '2px solid hsl(var(--primary) / 0.65)', outlineOffset: 2,
+              background: 'hsl(var(--primary) / 0.08)', borderRadius: 4,
+            }} />
+          ))}
         </div>,
         document.body,
       )}

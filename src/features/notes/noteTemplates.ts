@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export type NoteTemplateId =
   | 'lecture'
   | 'mistake'
@@ -6,7 +8,8 @@ export type NoteTemplateId =
   | 'reading'
   | 'weekly'
   | 'cornell'
-  | 'literature';
+  | 'literature'
+  | `personal:${string}`;
 
 export interface NoteTemplate {
   id: NoteTemplateId;
@@ -177,9 +180,41 @@ export function applyNoteTemplate(
   currentMarkdown: string,
   templateMarkdown: string,
   variables?: NoteTemplateVariables,
+  mode: 'append' | 'replace' = 'append',
 ): string {
   const template = renderNoteTemplate(templateMarkdown, variables).trim();
+  if (!template) return currentMarkdown;
+  if (mode === 'replace') return `${template}\n`;
   if (!currentMarkdown.trim()) return `${template}\n`;
   const separator = currentMarkdown.endsWith('\n') ? '\n---\n\n' : '\n\n---\n\n';
   return `${currentMarkdown}${separator}${template}\n`;
+}
+
+/** Host integration seam: snapshot must contain the full document, including unsaved edits. */
+export interface NoteTemplateDocument {
+  noteId: string;
+  revision: number;
+  markdown: string;
+}
+
+export interface NoteTemplateDocumentHost {
+  getDocument: () => NoteTemplateDocument;
+  /** Must enforce the supplied baseline and persist through the normal editor save path. */
+  replaceDocument: (markdown: string, baseline: NoteTemplateDocument) => Promise<NoteTemplateDocument | boolean | void>;
+  variables?: NoteTemplateVariables;
+}
+
+/** Previewed replacement fails closed after editing or switching notes. */
+export async function replaceWithNoteTemplate(
+  host: NoteTemplateDocumentHost,
+  baseline: NoteTemplateDocument,
+  renderedMarkdown: string,
+): Promise<void> {
+  const current = host.getDocument();
+  if (current.noteId !== baseline.noteId || current.revision !== baseline.revision || current.markdown !== baseline.markdown) {
+    throw new Error(i18n.t('notes:personalTemplates.errors.note_changed'));
+  }
+  if (!renderedMarkdown.trim()) throw new Error(i18n.t('notes:personalTemplates.errors.empty_body'));
+  const result = await host.replaceDocument(renderedMarkdown, baseline);
+  if (result === false) throw new Error(i18n.t('notes:personalTemplates.errors.not_applied'));
 }

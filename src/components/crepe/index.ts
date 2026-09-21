@@ -6,7 +6,7 @@
  */
 
 export { CrepeEditor, default } from './CrepeEditor';
-export type { CrepeEditorApi, CrepeEditorProps, ImageUploadConfig } from './types';
+export type { CrepeEditorApi, CrepeEditorProps, FullDocumentApi, FullDocumentSnapshot, ImageUploadConfig } from './types';
 export { createImageUploader, createImageBlockConfig, fileToBase64 } from './features/imageUpload';
 export { createMermaidObserver, renderMermaidDiagram, scanAndRenderMermaidBlocks } from './features/mermaidPreview';
 export { applyCrepePlugins, defaultPluginOptions } from './plugins';

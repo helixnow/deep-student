@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NoteContentView from '@/features/learning-hub/apps/views/NoteContentView';
 import type { DstuNode } from '@/dstu/types';
+import type { CrepeEditorApi } from '@/components/crepe/types';
+import { createFullDocumentApi } from '@/features/notes/fullDocument';
 import {
   __resetContentDirtyRegistry,
   registerContentDirtyChecker,
@@ -156,6 +158,33 @@ async function renderWindowedNote(markdown = makeLines(1000)) {
   return mocks.latestEditorProps;
 }
 
+function attachFullDocumentEditor(props: any, liveVisible: string) {
+  const state = { visible: liveVisible, revision: 1, rejectCandidate: false, throwCandidate: false };
+  const retainFailure = vi.fn();
+  const setMarkdown = vi.fn((markdown: string) => {
+    state.revision++;
+    if (markdown === 'candidate' && state.throwCandidate) throw new Error('parser failed');
+    state.visible = markdown === 'candidate' && state.rejectCandidate ? 'normalized candidate' : markdown;
+    return true;
+  });
+  const flushPendingSave = vi.fn(() => props.onSave(state.visible));
+  const extended = props.extendEditorApi({
+    getMarkdown: () => state.visible,
+    setMarkdown,
+    isReadonly: () => false,
+    flushPendingSave,
+  } as unknown as CrepeEditorApi);
+  const api = createFullDocumentApi(extended, {
+    noteId: props.noteId,
+    isCurrent: () => mocks.latestEditorProps.noteId === props.noteId,
+    revision: () => state.revision,
+    isWindowed: () => extended.isDocumentWindowed(),
+    retainFailure,
+  });
+  act(() => props.onEditorReady(api));
+  return { api, state, setMarkdown, flushPendingSave, retainFailure };
+}
+
 describe('NoteContentView windowing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -224,6 +253,76 @@ describe('NoteContentView windowing', () => {
     visible = visible.replace('line 1\n', 'edited first line\n');
     expect(api.getFullMarkdown()).toBe(markdown.replace('line 1\n', 'edited first line\n'));
     expect(api.getFullMarkdown()).toContain('line 1000');
+  });
+
+  it.each(['roundtrip', 'throw'] as const)('restores the live unsaved window and complete draft on %s failure', async (failure) => {
+    const original = makeLines(1000) + '\n\n';
+    const props = await renderWindowedNote(original);
+    const liveVisible = 'UNSAVED first line\nnew local paragraph\n';
+    const { api, state, retainFailure, flushPendingSave } = attachFullDocumentEditor(props, liveVisible);
+    const before = api.getFullDocument();
+    state.rejectCandidate = failure === 'roundtrip';
+    state.throwCandidate = failure === 'throw';
+
+    await act(async () => {
+      await expect(api.replaceFullDocument('candidate', before)).rejects.toThrow();
+    });
+
+    expect(state.visible).toBe(liveVisible);
+    expect(api.getFullDocument().markdown).toBe(before.markdown);
+    expect(api.getFullDocument().markdown).toContain('line 1000\n\n');
+    expect(mocks.latestEditorProps.initialContent).toBe(liveVisible);
+    expect(flushPendingSave).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(retainFailure.mock.calls[0][2]).toBe(before.markdown);
+    // A later autosave uses the rebased live prefix boundary, not the old 100 lines.
+    await act(async () => mocks.latestEditorProps.onSave(state.visible));
+    expect(mocks.update.mock.calls.at(-1)?.[1]).toBe(before.markdown);
+  });
+
+  it('persists a full replacement of an unsaved window, including edits in its hidden tail', async () => {
+    const props = await renderWindowedNote();
+    const { api } = attachFullDocumentEditor(props, 'UNSAVED prefix');
+    const before = api.getFullDocument();
+    const candidate = before.markdown.replace('line 1000', 'AI changed hidden tail');
+    await act(async () => expect(api.replaceFullDocument(candidate, before)).resolves.toMatchObject({ noteId: node.id, markdown: candidate }));
+    expect(mocks.update.mock.calls.at(-1)?.[1]).toBe(candidate);
+    expect(api.getFullDocument().markdown).toBe(candidate);
+    expect(mocks.latestEditorProps.windowingState.hasMore).toBe(false);
+  });
+
+  it('rejects an old revision even after text returns to the same value', async () => {
+    const props = await renderWindowedNote();
+    const { api, state, setMarkdown } = attachFullDocumentEditor(props, 'UNSAVED prefix');
+    const baseline = api.getFullDocument();
+    state.revision++;
+    await expect(api.replaceFullDocument('candidate', baseline)).rejects.toThrow();
+    expect(setMarkdown).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('does not acknowledge an old full replacement or restore it into a newly opened note', async () => {
+    const oldContent = makeLines(1000);
+    mocks.get.mockResolvedValue(ok(node));
+    mocks.getContent.mockResolvedValue(ok(oldContent));
+    mocks.loadInitialLineWindowSetting.mockResolvedValue(100);
+    mocks.watch.mockReturnValue(vi.fn());
+    const view = render(<NoteContentView node={node} isActive />);
+    await waitFor(() => expect(mocks.latestEditorProps).not.toBeNull());
+    const { api } = attachFullDocumentEditor(mocks.latestEditorProps, 'old unsaved prefix');
+    const pending = deferred<ReturnType<typeof ok<DstuNode>>>();
+    mocks.update.mockReturnValueOnce(pending.promise);
+    let outcome!: Promise<unknown>;
+    act(() => { outcome = api.replaceFullDocument('candidate', api.getFullDocument()).catch((error) => error); });
+    const second = { ...node, id: 'note_2', sourceId: 'note_2', path: '/note_2' };
+    mocks.get.mockResolvedValue(ok(second));
+    mocks.getContent.mockResolvedValue(ok('second note'));
+    view.rerender(<NoteContentView node={second} isActive />);
+    await waitFor(() => expect(mocks.latestEditorProps.noteId).toBe('note_2'));
+    await act(async () => { pending.resolve(ok(node)); await outcome; });
+    expect(await outcome).toBeInstanceOf(Error);
+    expect(mocks.latestEditorProps.initialContent).toBe('second note');
+    expect(() => api.getFullDocument()).toThrow();
   });
 
   it('loads more from the original suffix while preserving the edited prefix', async () => {

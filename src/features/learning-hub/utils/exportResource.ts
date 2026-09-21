@@ -26,16 +26,29 @@ export function isExportUnsupportedPlatform(): boolean {
  * @param t i18n 翻译函数（需绑定 learningHub 命名空间）
  * @returns 是否成功保存（用户取消视为 false 但不报错）
  */
-export async function exportResourceById(resourceId: string, t: TFunction): Promise<boolean> {
+export async function exportResourceById(resourceId: string, t: TFunction, windowId?: string): Promise<boolean> {
   try {
+    // Resolve at the point of consumption, after export I/O, so the last unsaved
+    // keystroke and unloaded suffix are included. Keep the backend's metadata header.
+    const readExportContent = async (diskExport: string): Promise<string> => {
+      if (!resourceId.startsWith('note_')) return diskExport;
+      const { getNoteEditor } = await import('@/features/workbench/agent/drivers/noteDriver');
+      const editor = getNoteEditor(resourceId, windowId);
+      if (!editor) return diskExport;
+      if (!editor.getFullDocument) throw new Error('笔记全文读取能力尚未就绪，请稍后重试导出。');
+      const draft = editor.getFullDocument();
+      if (draft.noteId !== resourceId) throw new Error('笔记已切换，请重新导出。');
+      const header = diskExport.match(/^---\n[\s\S]*?\n---\n\n/)?.[0] ?? '';
+      return header + draft.markdown;
+    };
     if (isExportUnsupportedPlatform()) {
       // 移动端没有文件保存对话框：文本资源（笔记/翻译/作文）降级为「复制 Markdown」，
       // 让移动端用户有可用出口而非死路警告；二进制资源（PDF/图片）维持不支持提示。
       if (/^(note_|tr_|essay_)/.test(resourceId)) {
         try {
           const result = await dstu.exportResource(`/${resourceId}`, 'markdown');
-          if (result.ok && result.value.payloadType === 'text' && result.value.content) {
-            if (await copyTextToClipboard(result.value.content)) {
+          if (result.ok && result.value.payloadType === 'text' && typeof result.value.content === 'string') {
+            if (await copyTextToClipboard(await readExportContent(result.value.content))) {
               showGlobalNotification('success', t('contextMenu.exportCopiedMobile'));
               return true;
             }
@@ -83,9 +96,9 @@ export async function exportResourceById(resourceId: string, t: TFunction): Prom
 
     const payload = exportResult.value;
 
-    if (payload.payloadType === 'text' && payload.content) {
+    if (payload.payloadType === 'text' && typeof payload.content === 'string') {
       const result = await fileManager.saveTextFile({
-        content: payload.content,
+        content: format === 'markdown' ? await readExportContent(payload.content) : payload.content,
         title: t('contextMenu.exportSaveTitle'),
         defaultFileName: payload.suggestedFilename,
         filters: [{

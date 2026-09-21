@@ -85,6 +85,20 @@ describe('generateCardsFromNote', () => {
     expect(vi.mocked(generateCardsFromText).mock.calls[0][0].deckName).toBe('化学笔记');
   });
 
+  it('制卡使用当前完整草稿快照，优先于旧全文字符串与可见前缀', async () => {
+    let markdown = 'UNSAVED prefix\nHIDDEN tail';
+    const editor = makeEditor({
+      getFullDocument: () => ({ noteId: 'note_1', revision: 2, markdown }),
+      getFullMarkdown: () => 'stale full content',
+      getMarkdown: () => 'visible prefix',
+      isDocumentWindowed: () => true,
+    });
+    markdown += '\nlatest keystroke';
+    await generateCardsFromNote({ editor });
+    expect(vi.mocked(generateCardsFromText).mock.calls[0][0].content).toBe(markdown);
+    expect(readNoteMarkdown(makeEditor({ isDocumentWindowed: () => true }))).toBe('');
+  });
+
   it('宿主未开启 enableGenerateCards 时不注入制卡命令（底栏不渲染按钮）', () => {
     const commands = buildMobileEditorCommands(makeEditor(), { noteTitle: '化学笔记' });
     expect(commands.generateCards).toBeUndefined();

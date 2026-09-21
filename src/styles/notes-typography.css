@@ -116,6 +116,63 @@
   --notes-agent-caret-label-bg: color-mix(in hsl, hsl(var(--info)) 24%, hsl(var(--background)));
   --notes-agent-caret-label-border: hsl(var(--info) / 0.45);
 }
+
+/* WP04/WP09: the header reads/writes note_appearance:<id>; the entire editor
+ * consumes that same preset, including read-only and focus mode. Keep the
+ * focus alias on the shell so it resolves against the selected local width. */
+.notes-crepe-shell {
+  --notes-focus-content-max-w: var(--notes-content-max-w);
+}
+
+.notes-crepe-shell:has(.notes-document-header[data-notes-preset='compact']) {
+  --notes-content-max-w: 720px;
+  --notes-body-size: calc(15px * var(--font-size-scale, 1));
+  --notes-body-lh: 1.5;
+  --notes-block-gap: 0.5em;
+  --notes-callout-gap: 0.75em;
+}
+
+.notes-crepe-shell:has(.notes-document-header[data-notes-preset='wide']) {
+  --notes-content-max-w: 1120px;
+}
+
+/* Keep keyboard focus visible on document controls without a permanent frame. */
+.notes-document-header button:focus-visible,
+.notes-document-header .notes-document-title:focus-visible,
+.notes-appearance-panel button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.notes-appearance-option[aria-pressed='true'] {
+  background: var(--interactive-selected, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.notes-appearance-option[aria-disabled='true'] {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@media (pointer: coarse) {
+  .notes-document-actions button,
+  .notes-appearance-panel button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .notes-document-header .notes-doc-stats-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .notes-document-header .notes-doc-stats-trigger::after {
+    content: none;
+  }
+}
+
 .notes-conflict-banner {
   display: flex;
   align-items: center;

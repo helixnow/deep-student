@@ -507,6 +507,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         // --- BackupOnly ---
         TableClassification {
             database: "vfs",
+            table_name: "note_document_revisions",
+            primary_key: "seq",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "version_id",
+            has_json_blobs: true,
+            merge_notes: "Local full-document history; SQLite backup only, not note ZIP or RowSync",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "mindmap_versions",
             primary_key: "version_id",
             category: SyncCategory::BackupOnly,
