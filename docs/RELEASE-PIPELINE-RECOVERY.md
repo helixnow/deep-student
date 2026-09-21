@@ -255,3 +255,11 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - 下载 R2 实际分发的 APK，其 SHA-256 与 GitHub release asset digest 一致。包内版本为 `0.9.63 / 14649`，minSdk 24、targetSdk 36，主库 94,306,608 字节；主库和 PDFium 均为 AArch64、ELF LOAD 段 16KB 对齐。
 - 成品检查发现应用内更新安装器缺少 Manifest 的 `REQUEST_INSTALL_PACKAGES` 权限，影响 Android 8+ 请求安装更新包。`4d046534e` 为 CI 和本地构建补齐权限注入，CI 增加签名成品的 `aapt dump permissions` 检查。actionlint、shell 语法及发布/恢复测试通过（57 passed，2 个 Linux 专属测试在 macOS 跳过）。
 - 修复包运行 `35554894076` 的编译、签名、成品权限检查、GitHub/R2 发布和 CDN 刷新均成功。重新下载公开 APK 确认权限存在，版本仍为 `0.9.63 / 14649`，签名证书与原包一致；下载站文件 SHA-256 为 `b0ca0c5f3ffa352b91c84a8e2883a14fe700fbb0b10cc8bc199b0bfa98dbfcfb`，与 GitHub asset digest 一致。同版本补包需要手动重新下载覆盖安装；未进行 Android 设备启动测试，不能据此排除用户反馈中的其他运行时问题。
+
+### 2026-09-21：PC 启动停在 Logo
+
+- 下载 Release `35519238647` 的真实 `frontend-dist`，执行入口即报 `Cannot set properties of undefined (setting 'unstable_now')`：`vendor-micro` 中的 scheduler 经 `vendor-recharts` 中的 React DOM 提前调用，CommonJS exports 尚未初始化。错误发生在 main.tsx 执行与 React 挂载之前，HTML 初始 Logo 因此一直保留；原有 React 错误边界和启动预检超时无法覆盖。
+- `vite.config.ts` 将 React、React DOM、scheduler、react-is 和 use-sync-external-store 放入独立 `vendor-react`，移除 scheduler/use-sync-external-store 的 micro 分包规则，解除这组运行时依赖的循环。
+- 新增 `node scripts/ci/check-frontend-startup.mjs [dist目录]`，在 JSDOM 中执行**已经打包的真实入口图**并检查 React 替换初始占位。IPC 保持 pending，不模拟业务初始化成功。该检查已接入 CI build 与发布 frontend 阶段；它稳定拒绝旧发布产物，修复产物在 Node 22 下通过。此门禁不替代 WebView/后端实测。
+- 实际桌面验证使用 `npm run tauri dev`、独立 identifier `com.deepstudent.startup-audit` 和生产前端静态服务：旧产物复现 Logo 卡住；修复产物进入首次使用引导及完整学习桌面。未使用 demo/hero 或 tauri-lab，未修改用户原数据目录。Windows 安装包尚未实机验证；修复还需随下一发布候选交付。
+- 验证：生产 Vite 构建、旧产物失败/新产物成功的入口对照、真实 macOS 桌面启动、actionlint 和发布/恢复脚本回归（57 passed，2 个 Linux 专属测试跳过）。

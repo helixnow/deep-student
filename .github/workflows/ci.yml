@@ -80,7 +80,7 @@ jobs:
         if: matrix.task == 'build'
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: npx vite build && node scripts/check-bundle-size.mjs --warn-only
+        run: npx vite build && node scripts/ci/check-frontend-startup.mjs && node scripts/check-bundle-size.mjs --warn-only
       - name: npm audit (informational)
         if: matrix.task == 'lint'
         run: |
