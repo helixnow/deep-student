@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.64](https://github.com/helixnow/deep-student/compare/v0.9.63...v0.9.64) (2026-09-21)
+
+
+### Bug Fixes
+
+* **android:** declare permission for in-app APK installation ([4d04653](https://github.com/helixnow/deep-student/commit/4d046534e7f28cf2b3d895103131f75e209af17d))
+* **startup:** keep React runtime in one production chunk ([c7248a2](https://github.com/helixnow/deep-student/commit/c7248a222191eef28b5f175d4a7217289594240e))
+
 ## [0.9.63](https://github.com/helixnow/deep-student/compare/v0.9.62...v0.9.63) (2026-09-20)
 
 
