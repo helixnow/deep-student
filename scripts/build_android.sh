@@ -180,6 +180,7 @@ inject_android_permissions() {
     local PERMISSIONS=(
         "android.permission.RECORD_AUDIO"
         "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.REQUEST_INSTALL_PACKAGES"
     )
     local changed=false
 
@@ -200,7 +201,7 @@ inject_android_permissions() {
     done
 
     if [[ "$changed" == true ]]; then
-        info "✓ Android microphone permissions injected"
+        info "✓ Android microphone and APK installation permissions injected"
     fi
 }
 
