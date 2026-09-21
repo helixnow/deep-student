@@ -245,3 +245,12 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - main `8f7f787ce` 的完整 CI（run `35512557653`）成功，包含八个 Rust 分片、三个 Provider、Windows 沙箱、前端和迁移门禁。普通提交触发的 Release 仅完成身份判断，尚未发布新版本。
 - 发布 PR 的同批修复 CI（run `35512624980`）仅余画像并发更新测试失败：笔记元数据在事务外读取后，竞争写入替换并删除旧正文资源，导致后续读取报 `Resource NotFound`。笔记更新已将元数据/CAS 检查移入读取正文的同一 SAVEPOINT 快照，保留已有冲突/数据库锁重试；新候选完整门禁及各平台发布仍待验收。
 - 该竞态修复的本地回归：画像 19 项、笔记仓库 32 项、每日日志 7 项通过；线上失败的画像并发更新用例额外连续运行 10 次通过。
+
+### v0.9.63 实际发布验收进度
+
+- 竞态修复 `d80b89bb7` 的 main CI（`35514651109`）及候选 dispatch CI（`35514728942`）均成功。GitHub 未将 dispatch 的检查计入 PR required checks；维护者批准原先 `action_required` 的 PR 事件后，正式 PR CI（`35514732157`）成功，#404 自动合并。
+- 发布提交 `2687bc53229d09db653ccd16795ce216709d051a` 的 main push CI（`35517783501`）成功，自动 Release（`35519238647`）创建 `v0.9.63` 草稿并进入真实构建。
+- Release 的源码/版本预检、exact-SHA CI、前端及完整迁移门禁、四个桌面平台构建与发布均成功，`v0.9.63` 已公开。实际保存平台产物、provenance、`native-*` 和 `release-complete-*` 检查点；尚未完成线上跨 run 恢复演练。
+- 独立 Android 运行 `35524235072` 的 APK 编译及签名成功，发布在 `Delete old APK from Release` 步骤失败；桌面发布自动触发的 `35528439643` 全部成功，APK 已上传 GitHub 和 R2。
+- 下载 R2 实际分发的 APK，其 SHA-256 与 GitHub release asset digest 一致。包内版本为 `0.9.63 / 14649`，minSdk 24、targetSdk 36，主库 94,306,608 字节；主库和 PDFium 均为 AArch64、ELF LOAD 段 16KB 对齐。
+- 成品检查发现应用内更新安装器缺少 Manifest 的 `REQUEST_INSTALL_PACKAGES` 权限，影响 Android 8+ 请求安装更新包。CI 和本地构建已补齐权限注入，CI 增加签名成品的 `aapt dump permissions` 检查。actionlint、shell 语法及发布/恢复测试通过（57 passed，2 个 Linux 专属测试在 macOS 跳过）；修复后的 APK 尚待构建和成品检查，未进行 Android 设备启动测试。

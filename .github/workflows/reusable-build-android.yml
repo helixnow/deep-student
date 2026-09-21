@@ -219,8 +219,8 @@ jobs:
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
           echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, lean-recovery=${{ inputs.lean_recovery }}"
           echo "java            : $(java -version 2>&1 | head -1)"
-          echo "ndk             : 27.0.12077973 (pinned)"
-          echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
+          echo "ndk             : 29.0.13846066 (pinned)"
+          echo "build-tools     : 36.0.0 (pinned) / platforms: android-36 (pinned)"
           echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / setup-java v4.8.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
 
       - name: Generate version info
@@ -263,7 +263,7 @@ jobs:
           test -f "$MANIFEST" || { echo "::error::AndroidManifest.xml not found at $MANIFEST"; exit 1; }
 
           # POST_NOTIFICATIONS：Android 13+ 系统通知必需（审阅 33 P1-2，与 capabilities/mobile.json 的 notification:default 配套）
-          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS android.permission.POST_NOTIFICATIONS; do
+          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS android.permission.POST_NOTIFICATIONS android.permission.REQUEST_INSTALL_PACKAGES; do
             PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
             if ! grep -qF "$PERMISSION" "$MANIFEST"; then
               sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
@@ -467,6 +467,14 @@ jobs:
             --out /tmp/signed.apk
 
           "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          # Android 8+ requires this declaration for the in-app APK installer.
+          # Check the packaged manifest, not only the generated source manifest.
+          "${BUILD_TOOLS}/aapt" dump permissions /tmp/signed.apk > /tmp/apk-permissions.txt
+          if ! grep -qF "android.permission.REQUEST_INSTALL_PACKAGES" /tmp/apk-permissions.txt; then
+            echo "::error::APK is missing REQUEST_INSTALL_PACKAGES; in-app updates cannot request installation."
+            exit 1
+          fi
 
           # 发布守卫：lean 恢复构建（opt-level=0）会产生约 330MB 的未优化
           # libdeep_student_lib.so（正常优化构建约 116MB），低内存设备启动
