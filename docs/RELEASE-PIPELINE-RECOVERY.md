@@ -253,4 +253,5 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - Release 的源码/版本预检、exact-SHA CI、前端及完整迁移门禁、四个桌面平台构建与发布均成功，`v0.9.63` 已公开。实际保存平台产物、provenance、`native-*` 和 `release-complete-*` 检查点；尚未完成线上跨 run 恢复演练。
 - 独立 Android 运行 `35524235072` 的 APK 编译及签名成功，发布在 `Delete old APK from Release` 步骤失败；桌面发布自动触发的 `35528439643` 全部成功，APK 已上传 GitHub 和 R2。
 - 下载 R2 实际分发的 APK，其 SHA-256 与 GitHub release asset digest 一致。包内版本为 `0.9.63 / 14649`，minSdk 24、targetSdk 36，主库 94,306,608 字节；主库和 PDFium 均为 AArch64、ELF LOAD 段 16KB 对齐。
-- 成品检查发现应用内更新安装器缺少 Manifest 的 `REQUEST_INSTALL_PACKAGES` 权限，影响 Android 8+ 请求安装更新包。CI 和本地构建已补齐权限注入，CI 增加签名成品的 `aapt dump permissions` 检查。actionlint、shell 语法及发布/恢复测试通过（57 passed，2 个 Linux 专属测试在 macOS 跳过）；修复后的 APK 尚待构建和成品检查，未进行 Android 设备启动测试。
+- 成品检查发现应用内更新安装器缺少 Manifest 的 `REQUEST_INSTALL_PACKAGES` 权限，影响 Android 8+ 请求安装更新包。`4d046534e` 为 CI 和本地构建补齐权限注入，CI 增加签名成品的 `aapt dump permissions` 检查。actionlint、shell 语法及发布/恢复测试通过（57 passed，2 个 Linux 专属测试在 macOS 跳过）。
+- 修复包运行 `35554894076` 的编译、签名、成品权限检查、GitHub/R2 发布和 CDN 刷新均成功。重新下载公开 APK 确认权限存在，版本仍为 `0.9.63 / 14649`，签名证书与原包一致；下载站文件 SHA-256 为 `b0ca0c5f3ffa352b91c84a8e2883a14fe700fbb0b10cc8bc199b0bfa98dbfcfb`，与 GitHub asset digest 一致。同版本补包需要手动重新下载覆盖安装；未进行 Android 设备启动测试，不能据此排除用户反馈中的其他运行时问题。
