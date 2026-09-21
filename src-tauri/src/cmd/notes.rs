@@ -15,6 +15,7 @@ use crate::models::AppError;
 use crate::unified_file_manager;
 use crate::vfs::index_service::VfsIndexService;
 use crate::vfs::repos::note_repo::{NoteBacklink, NoteOutgoingLink};
+use crate::vfs::repos::note_revision_repo::{NoteHistoryPage, NoteRevision, NoteRevisionRepo, NoteRevisionSummary};
 use crate::vfs::types::VfsCreateNoteParams;
 use crate::vfs::{VfsLanceStore, VfsNoteRepo};
 use chrono::Utc;
@@ -241,6 +242,75 @@ fn collect_note_asset_deletion_entries_inner(
 }
 
 // ================= Notes: 独立笔记系统（CRUD） =================
+
+/// Local history, cursor-paginated without loading document bodies.
+#[tauri::command]
+pub async fn notes_history_list(
+    note_id: String,
+    cursor: Option<i64>,
+    limit: Option<u32>,
+    pinned_only: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<NoteHistoryPage> {
+    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    tokio::task::spawn_blocking(move || {
+        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        NoteRevisionRepo::list_filtered(&conn, &note_id, cursor, limit.unwrap_or(30), pinned_only.unwrap_or(false))
+            .map_err(|e| AppError::database(e.to_string()))
+    }).await.map_err(|e| AppError::internal(e.to_string()))?
+}
+
+/// Read-only preview. Viewing history does not change retention or block purge.
+#[tauri::command]
+pub async fn notes_history_get(
+    note_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+) -> Result<NoteRevision> {
+    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    tokio::task::spawn_blocking(move || {
+        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        NoteRevisionRepo::get(&conn, &note_id, &version_id)
+            .map_err(|e| AppError::database(e.to_string()))
+    }).await.map_err(|e| AppError::internal(e.to_string()))?
+}
+
+/// Explicit local history retention management (also available for trash notes).
+#[tauri::command]
+pub async fn notes_history_set_pinned(
+    note_id: String,
+    version_id: String,
+    pinned: bool,
+    state: State<'_, AppState>,
+) -> Result<NoteRevisionSummary> {
+    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    tokio::task::spawn_blocking(move || {
+        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        NoteRevisionRepo::set_pinned(&conn, &note_id, &version_id, pinned)
+            .map_err(|e| AppError::database(e.to_string()))
+    }).await.map_err(|e| AppError::internal(e.to_string()))?
+}
+
+/// Always creates a root-folder copy; never overwrites current or unsaved text.
+#[tauri::command]
+pub async fn notes_history_restore_copy(
+    note_id: String,
+    version_id: String,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<crate::dstu::types::DstuNode> {
+    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let node = tokio::task::spawn_blocking(move || {
+        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        let note = NoteRevisionRepo::restore_copy(&conn, &note_id, &version_id)
+            .map_err(|e| AppError::database(e.to_string()))?;
+        Ok::<_, AppError>(note_to_dstu_node(&note))
+    }).await.map_err(|e| AppError::internal(e.to_string()))??;
+    crate::dstu::handler_utils::node_converters::emit_watch_event(
+        &window, crate::dstu::types::DstuWatchEvent::created(&node.path, node.clone()),
+    );
+    Ok(node)
+}
 
 /// DEPRECATED: 全量列表（含 content_md）载荷过大，新代码请使用
 /// `notes_list_meta`（轻量元数据）或 `notes_list_advanced`（分页 + 过滤 + total）。
@@ -619,10 +689,15 @@ pub async fn notes_hard_delete(
         conn.execute_batch("SAVEPOINT notes_hard_delete_with_assets")
             .map_err(|e| AppError::database(format!("开启笔记硬删除事务失败: {}", e)))?;
         let transaction_result = (|| -> Result<Vec<_>> {
+            VfsNoteRepo::purge_note_with_conn(&conn, &note_id)
+                .map_err(|e| AppError::database(format!("硬删除笔记失败: {}", e)))?;
+            let retained = NoteRevisionRepo::retained_asset_paths(&conn)
+                .map_err(|e| AppError::database(e.to_string()))?;
             let mut intents = Vec::with_capacity(pending_asset_deletions.len());
             for (key, _size) in &pending_asset_deletions {
                 let local_path = asset_local_path_from_key(&key)
                     .map_err(|e| AppError::validation(e.to_string()))?;
+                if retained.contains(local_path.to_string_lossy().as_ref()) { continue; }
                 intents.push(
                     prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
                         .map_err(|e| {
@@ -631,8 +706,6 @@ pub async fn notes_hard_delete(
                 );
             }
 
-            VfsNoteRepo::purge_note_with_conn(&conn, &note_id)
-                .map_err(|e| AppError::database(format!("硬删除笔记失败: {}", e)))?;
             Ok(intents)
         })();
         let intents = match transaction_result {
@@ -654,7 +727,9 @@ pub async fn notes_hard_delete(
             finish_asset_deletion_with_conn(&conn, &active_dir, intent)
                 .map_err(|e| AppError::file_system(format!("完成笔记资产删除安全链失败: {}", e)))?;
         }
-        file_manager.delete_note_assets_dir(&subject, &note_id)?;
+        // Only remove an empty directory; another note/history may own references
+        // to files under this note's original asset directory.
+        let _ = std::fs::remove_dir(&assets_dir);
 
         Ok::<(bool, Vec<String>), AppError>((true, resource_ids))
     })
@@ -794,6 +869,10 @@ pub async fn notes_empty_trash(
         conn.execute_batch("SAVEPOINT notes_empty_trash_with_assets")
             .map_err(|e| AppError::database(format!("开启清空回收站事务失败: {}", e)))?;
         let transaction_result = (|| -> Result<(usize, Vec<_>)> {
+            let deleted = VfsNoteRepo::purge_deleted_notes_with_conn(&conn)
+                .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
+            let retained = NoteRevisionRepo::retained_asset_paths(&conn)
+                .map_err(|e| AppError::database(e.to_string()))?;
             let intent_capacity = pending_dirs
                 .iter()
                 .map(|(_, _, entries)| entries.len())
@@ -803,6 +882,7 @@ pub async fn notes_empty_trash(
                 for (key, _size) in entries {
                     let local_path = asset_local_path_from_key(key)
                         .map_err(|e| AppError::validation(e.to_string()))?;
+                    if retained.contains(local_path.to_string_lossy().as_ref()) { continue; }
                     intents.push(
                         prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
                             .map_err(|e| {
@@ -814,8 +894,6 @@ pub async fn notes_empty_trash(
                     );
                 }
             }
-            let deleted = VfsNoteRepo::purge_deleted_notes_with_conn(&conn)
-                .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
             Ok((deleted, intents))
         })();
         let (deleted, intents) = match transaction_result {
@@ -840,7 +918,7 @@ pub async fn notes_empty_trash(
             })?;
         }
         for (subject, note_id, _entries) in pending_dirs {
-            file_manager.delete_note_assets_dir(&subject, &note_id)?;
+            let _ = std::fs::remove_dir(notes_assets_root.join(subject).join(note_id));
         }
 
         Ok::<(usize, Vec<String>), AppError>((deleted, resource_ids))
@@ -1141,7 +1219,7 @@ pub async fn notes_assets_scan_orphans(
             .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
         let mut stmt2 = vfs_conn
             .prepare(
-                "SELECT COALESCE(r.data, '') FROM notes n JOIN resources r ON r.id = n.resource_id WHERE n.deleted_at IS NULL",
+                "SELECT COALESCE(r.data, '') FROM notes n JOIN resources r ON r.id = n.resource_id",
             )
             .map_err(|e| AppError::database(e.to_string()))?;
         let rows2 = stmt2
@@ -1198,6 +1276,8 @@ pub async fn notes_assets_scan_orphans(
             }
         }
 
+        refs.extend(NoteRevisionRepo::retained_asset_paths(&vfs_conn)
+            .map_err(|e| AppError::database(e.to_string()))?);
         // 3) 归一化比较：支持不同分隔符
         let mut orphans: Vec<String> = Vec::new();
         for p in all.into_iter() {
@@ -2014,7 +2094,7 @@ pub struct NotesDbStats {
     pub db_path: String,
     pub file_size_bytes: u64,
     pub total_notes: i64,
-    /// 版本历史已移除（V20260214 迁移 DROP notes_versions），恒为 0，仅为兼容旧前端保留字段
+    /// 本地持久化文档历史版本总数
     pub total_versions: i64,
     /// notes_assets 目录下的文件总数（★ P2-5：原先恒 0，现为真实统计）
     pub total_assets: i64,
@@ -2039,8 +2119,9 @@ pub async fn notes_db_stats(state: State<'_, AppState>) -> Result<NotesDbStats> 
         let total_notes: i64 = conn
             .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
             .unwrap_or(0);
-        // 版本历史表已删除，保持 0（见字段注释）
-        let total_versions: i64 = 0;
+        let total_versions: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM note_document_revisions", [], |r| r.get(0),
+        ).map_err(|e| AppError::database(e.to_string()))?;
 
         // ★ P2-5：递归统计 notes_assets 目录的文件数与字节数
         let mut total_assets: i64 = 0;

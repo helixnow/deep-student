@@ -44,7 +44,7 @@ export const TOGGLE_STYLE = `
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
-.milkdown-toggle[data-open="true"] .milkdown-toggle__arrow {
+.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__header > .milkdown-toggle__arrow {
   transform: rotate(90deg);
 }
 .milkdown-toggle__title {
@@ -71,7 +71,7 @@ export const TOGGLE_STYLE = `
     grid-template-rows 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
-.milkdown-toggle[data-open="true"] .milkdown-toggle__body {
+.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__body {
   grid-template-rows: 1fr;
   opacity: 1;
 }
@@ -82,11 +82,11 @@ export const TOGGLE_STYLE = `
   overflow: clip;
   min-height: 0;
 }
-.milkdown-toggle[data-open="false"] .milkdown-toggle__body-inner {
+.milkdown-toggle[data-view-open="false"] > .milkdown-toggle__body > .milkdown-toggle__body-inner {
   pointer-events: none;
 }
 /* 空 toggle：展开且内容为单个空块时提示可输入 */
-.milkdown-toggle[data-open="true"][data-empty="true"] .milkdown-toggle__body-inner::before {
+.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__body > .milkdown-toggle__body-inner::before {
   content: attr(data-empty-placeholder);
   position: absolute;
   inset: 0 auto auto 0;
@@ -95,7 +95,7 @@ export const TOGGLE_STYLE = `
 }
 /* 聚焦空段落时编辑器自带 crepe-placeholder（"输入 /"）会出现在同一位置，
    此时让位给它，避免两条提示文字重叠 */
-.milkdown-toggle[data-open="true"][data-empty="true"] .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
+.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__body > .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
   content: none;
 }
 /* 触屏：折叠箭头 ~20px 难以点准；::after 扩命中到 ≥44px。

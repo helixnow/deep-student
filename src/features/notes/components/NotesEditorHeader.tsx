@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNotesOptional } from '../NotesContext';
 import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '../notesUtils';
-import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
+import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal, ClockCounterClockwise } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { NOTE_APPEARANCE_ICONS, NOTE_APPEARANCE_PRESETS, useNoteAppearance } from '../noteAppearance';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -52,6 +55,8 @@ interface NotesEditorHeaderProps {
     tags?: string[];
     /** 标签变更回调（DSTU 模式必传才可编辑；Context 模式回退 updateNoteTags） */
     onTagsChange?: (tags: string[]) => Promise<void> | void;
+    /** 宿主接入历史面板时提供；阅读态也允许查看历史。 */
+    onOpenHistory?: () => void;
 }
 
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
@@ -67,6 +72,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     readOnly = false,
     tags: tagsProp,
     onTagsChange,
+    onOpenHistory,
 }) => {
     const { t, i18n } = useTranslation(['notes', 'common', 'translation']);
     const isZh = (i18n.language || '').startsWith('zh');
@@ -112,6 +118,35 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     // ========== 根据模式选择数据源 ==========
     const noteId = isDstuMode ? dstuNoteId : contextActive?.id;
+    const appearance = useNoteAppearance(noteId);
+    const appearanceTitleId = useId();
+    const [appearanceOpen, setAppearanceOpen] = useState(false);
+    const appearanceTriggerRef = useRef<HTMLButtonElement>(null);
+    const appearancePanelRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!appearanceOpen) return;
+        const frame = requestAnimationFrame(() => {
+            const panel = appearancePanelRef.current;
+            const selected = panel?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]:not(:disabled)');
+            (selected ?? panel)?.focus();
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [appearanceOpen]);
+    useEffect(() => { setAppearanceOpen(false); }, [noteId]);
+    const appearanceLabel = t('notes:appearance.label', { defaultValue: isZh ? '页面外观' : 'Page appearance' });
+    const presetLabels = {
+        standard: t('notes:appearance.standard', { defaultValue: isZh ? '标准' : 'Standard' }),
+        compact: t('notes:appearance.compact', { defaultValue: isZh ? '紧凑' : 'Compact' }),
+        wide: t('notes:appearance.wide', { defaultValue: isZh ? '宽幅' : 'Wide' }),
+    };
+    const iconLabels = [
+        t('notes:appearance.icon_none', { defaultValue: isZh ? '无图标' : 'No icon' }),
+        t('notes:appearance.icon_document', { defaultValue: isZh ? '文档' : 'Document' }),
+        t('notes:appearance.icon_books', { defaultValue: isZh ? '书籍' : 'Books' }),
+        t('notes:appearance.icon_idea', { defaultValue: isZh ? '灵感' : 'Idea' }),
+        t('notes:appearance.icon_experiment', { defaultValue: isZh ? '实验' : 'Experiment' }),
+        t('notes:appearance.icon_notes', { defaultValue: isZh ? '记录' : 'Notes' }),
+    ];
     
     // Determine display title
     const displayTitle = isDstuMode ? (initialTitle || "") : (contextActive?.title || "");
@@ -513,7 +548,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     if (!noteId) return null;
 
     return (
-        <header className="notes-document-header group relative pt-7 pb-3">
+        <header className="notes-document-header group relative pt-7 pb-3" data-notes-preset={appearance.value.preset}>
+            {appearance.value.icon && <div className="mb-2 text-3xl" aria-hidden="true">{appearance.value.icon}</div>}
             <textarea
                 ref={titleRef}
                 rows={1}
@@ -528,10 +564,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             />
             
              {/* Meta info & Breadcrumbs */}
-             <div className="mt-2 flex min-h-5 items-center gap-4">
+             <div className="mt-2 flex min-h-5 flex-wrap items-center gap-x-4 gap-y-2">
                 {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
                 {showBreadcrumbs && (
-                    <nav className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 overflow-hidden whitespace-nowrap mask-linear-fade select-none mr-auto">
+                    <nav aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })} className="notes-document-breadcrumbs flex min-w-0 max-w-full flex-wrap items-center gap-1.5 text-xs text-muted-foreground select-none mr-auto">
                         {breadcrumbs.map((item, index) => {
                             const isCurrent = index === breadcrumbs.length - 1;
                             const icon = item.type === 'folder' ? (
@@ -549,8 +585,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     {index > 0 && <CaretRight className="h-3 w-3 shrink-0 opacity-40" aria-hidden="true" />}
                                     {isCurrent ? (
                                         <span
-                                            className="flex items-center gap-1 text-foreground/70 font-medium"
+                                            className="flex min-w-0 items-center gap-1 text-foreground font-medium"
                                             aria-current="page"
+                                            title={item.title}
                                         >
                                             {icon}
                                             {label}
@@ -558,7 +595,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     ) : (
                                         <button
                                             type="button"
-                                            className="relative flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
+                                            className="flex min-w-0 items-center gap-1 rounded-sm py-1 text-muted-foreground hover:text-foreground transition-colors duration-150 cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                                             onClick={() => handleBreadcrumbClick(item)}
                                             title={item.title}
                                         >
@@ -616,7 +653,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {showRetry && (
                                 <button
                                     type="button"
-                                    className="relative underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1.5 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
+                                    className="underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                                     onClick={() => {
                                         void onRetrySave?.();
                                     }}
@@ -626,6 +663,57 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             )}
                         </span>
                     )}
+                </div>
+                <div className="notes-document-actions flex flex-wrap items-center gap-1">
+                    <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
+                        <PopoverTrigger asChild>
+                            <DsButton ref={appearanceTriggerRef} variant="ghost" size="sm" className="notes-appearance-trigger gap-1.5 text-xs text-muted-foreground" aria-label={appearanceLabel} aria-haspopup="dialog" aria-controls={appearanceOpen ? `${appearanceTitleId}-panel` : undefined}>
+                                <SlidersHorizontal size={14} aria-hidden="true" />
+                                {appearanceLabel}
+                            </DsButton>
+                        </PopoverTrigger>
+                        <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-64 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
+                            onKeyDown={(event) => {
+                                if (event.key !== 'Escape') return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setAppearanceOpen(false);
+                                appearanceTriggerRef.current?.focus();
+                            }}>
+                            <h3 id={appearanceTitleId} className="mb-3 text-sm font-medium">{appearanceLabel}</h3>
+                            <fieldset disabled={appearance.loading || appearance.error === 'load'}>
+                                <legend className="mb-2 text-xs text-muted-foreground">{t('notes:appearance.layout', { defaultValue: isZh ? '排版' : 'Layout' })}</legend>
+                                <div className="flex gap-1">
+                                    {NOTE_APPEARANCE_PRESETS.map((preset) => (
+                                        <DsButton key={preset} variant="ghost" size="sm" className="notes-appearance-option flex-1 text-xs" aria-pressed={appearance.value.preset === preset} aria-disabled={appearance.saving} onClick={() => void appearance.update({ preset })}>
+                                            {presetLabels[preset]}
+                                        </DsButton>
+                                    ))}
+                                </div>
+                            </fieldset>
+                            <fieldset className="mt-3" disabled={appearance.loading || appearance.error === 'load'}>
+                                <legend className="mb-2 text-xs text-muted-foreground">{t('notes:appearance.icon', { defaultValue: isZh ? '页面图标' : 'Page icon' })}</legend>
+                                <div className="flex flex-wrap gap-1">
+                                    {NOTE_APPEARANCE_ICONS.map((icon, index) => (
+                                        <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                            {icon ? <span aria-hidden="true">{icon}</span> : <X size={14} aria-hidden="true" />}
+                                        </DsButton>
+                                    ))}
+                                </div>
+                            </fieldset>
+                            {(appearance.loading || appearance.saving) && <p role="status" className="mt-2 text-xs text-muted-foreground">{appearance.loading ? t('common:loading') : t('notes:editor.save_status.saving')}</p>}
+                            {appearance.error && <div role="alert" className="mt-2 text-xs text-destructive">
+                                {appearance.error === 'load'
+                                    ? t('notes:appearance.load_failed', { defaultValue: isZh ? '外观加载失败' : 'Could not load appearance' })
+                                    : t('notes:appearance.save_failed', { defaultValue: isZh ? '外观未保存，请重新选择' : 'Appearance was not saved. Please select again.' })}
+                                {appearance.error === 'load' && <DsButton variant="ghost" size="sm" onClick={() => void appearance.reload()}>{t('notes:editor.save_status.retry')}</DsButton>}
+                            </div>}
+                        </PopoverContent>
+                    </Popover>
+                    {onOpenHistory && <DsButton variant="ghost" size="sm" className="gap-1.5 text-xs text-muted-foreground" onClick={onOpenHistory}>
+                        <ClockCounterClockwise size={14} aria-hidden="true" />
+                        {t('notes:header.history', { defaultValue: isZh ? '历史版本' : 'Version history' })}
+                    </DsButton>}
                 </div>
             </div>
 
@@ -651,7 +739,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}

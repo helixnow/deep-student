@@ -83,6 +83,11 @@ function codePointAt(text: string, index: number): string | undefined {
   return value === undefined ? undefined : String.fromCodePoint(value);
 }
 
+function advanceCodePoint(text: string, index: number): number {
+  // At EOF still advance past the end so the next RegExp.exec terminates.
+  return index + ((text.codePointAt(index) ?? 0) > 0xFFFF ? 2 : 1);
+}
+
 function isWholeWordMatch(text: string, start: number, end: number): boolean {
   const before = codePointBefore(text, start);
   const after = codePointAt(text, end);
@@ -242,8 +247,8 @@ function collectRegexMatchesInTextblock(
     const rawStart = m.index;
     const rawEnd = rawStart + m[0].length;
     if (m[0].length === 0) {
-      // 零宽匹配（如 `a*`）：无可高亮区间，跳一位防死循环
-      regex.lastIndex = rawStart + 1;
+      // Unicode 正则从代理对中间执行会回退到码点开头，必须越过整个码点。
+      regex.lastIndex = advanceCodePoint(raw, rawStart);
       continue;
     }
     const crossesBarrier =
@@ -259,7 +264,7 @@ function collectRegexMatchesInTextblock(
     }
     if (!accepted) {
       // 被拒的匹配从下一字符重试，避免跳过其内部起始的合法匹配
-      regex.lastIndex = rawStart + 1;
+      regex.lastIndex = advanceCodePoint(raw, rawStart);
     }
   }
   return matches;

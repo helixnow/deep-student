@@ -11,7 +11,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NoteBlank } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { getNoteTemplates, type NoteTemplate } from '../noteTemplates';
+import { getNoteTemplates, type NoteTemplate, type NoteTemplateDocumentHost } from '../noteTemplates';
+import { PersonalNoteTemplates } from './PersonalNoteTemplates';
 
 /** 模板内联面板收起动画时长（200ms 过渡 + 少量缓冲后卸载） */
 const TEMPLATE_PANEL_EXIT_MS = 220;
@@ -27,7 +28,9 @@ export interface NotesTemplatePanelProps {
   /** Esc 或应用模板后请求收起 */
   onRequestClose: () => void;
   /** 应用模板（父组件负责渲染变量并写入编辑器） */
-  onApplyTemplate: (template: NoteTemplate) => void;
+  onApplyTemplate: (template: NoteTemplate) => void | Promise<void>;
+  /** Optional full-document host enables capture and preview-confirmed replacement. */
+  documentHost?: NoteTemplateDocumentHost;
   /** 卡片禁用（只读 / 编辑器未就绪） */
   disabled?: boolean;
   /** aria-controls 关联 id（由触发按钮持有） */
@@ -43,6 +46,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   disabled = false,
   panelId,
   triggerRef,
+  documentHost,
 }) => {
   const { t, i18n } = useTranslation(['notes']);
   // mounted 控制 DOM 挂载（收起动画结束后卸载），expanded 驱动过渡目标态
@@ -51,6 +55,16 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const apply = async (template: NoteTemplate) => {
+    if (disabled || applying) return;
+    setApplying(true);
+    setApplyError(null);
+    try { await onApplyTemplate(template); }
+    catch (error) { setApplyError(error instanceof Error ? error.message : String(error)); }
+    finally { setApplying(false); }
+  };
 
   useEffect(() => {
     if (open) {
@@ -145,7 +159,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
         <div
           role="region"
           aria-label={t('notes:toolbar.note_templates', 'Note templates')}
-          className="notes-template-panel mx-auto w-full max-w-[var(--notes-content-max-w)] px-5 sm:px-12"
+          className="notes-template-panel mx-auto max-h-[60vh] w-full max-w-[var(--notes-content-max-w)] overflow-y-auto px-5 sm:px-12"
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;
             event.preventDefault();
@@ -176,7 +190,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
                 disabled={disabled}
                 tabIndex={index === activeIndex ? 0 : -1}
                 onFocus={() => setActiveIndex(index)}
-                onClick={() => onApplyTemplate(template)}
+                 onClick={() => { void apply(template); }}
               >
                 <span className="notes-template-card__title">
                   <NoteBlank size={13} aria-hidden className="notes-template-card__icon" />
@@ -188,6 +202,8 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
               </button>
             ))}
           </div>
+           {applyError && <p role="alert" className="text-sm text-destructive">{applyError}</p>}
+           <PersonalNoteTemplates disabled={disabled || applying} onApplyTemplate={onApplyTemplate} documentHost={documentHost} />
         </div>
       </div>
     </div>

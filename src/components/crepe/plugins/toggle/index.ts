@@ -14,7 +14,7 @@ import { toggleInputRule } from './input-rule'
 import { toggleKeymap } from './keymap'
 import { remarkTogglePlugin } from './remark'
 import { toggleSchema } from './schema'
-import { toggleView } from './view'
+import { toggleEditableSync, toggleView } from './view'
 
 export { applyToggleInputRule, createEmptyToggleNode, toggleInputRule } from './input-rule'
 export {
@@ -41,6 +41,7 @@ export function togglePlugin(): MilkdownPlugin[] {
     remarkTogglePlugin,
     toggleSchema,
     toggleView,
+    toggleEditableSync,
     toggleInputRule,
     toggleKeymap,
   ].flat()

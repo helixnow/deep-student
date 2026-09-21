@@ -553,6 +553,7 @@ impl VfsNoteRepo {
                 note_id, resource_result.resource_id
             );
 
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, &note_id, "created")?;
             Ok(VfsNote {
                 id: note_id,
                 resource_id: resource_result.resource_id,
@@ -659,6 +660,7 @@ impl VfsNoteRepo {
             // CAS tokens must advance even when two writes land in the same
             // millisecond; otherwise a stale expected_updated_at can still
             // match after the first writer commits.
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
             let now = next_updated_at(&current_note.updated_at);
 
             // 2. 处理内容更新（版本管理）
@@ -759,7 +761,7 @@ impl VfsNoteRepo {
             }
 
             // ★ 2026-06-12 修复（审阅问题 S5）：resource_id 切换成功后，清理旧资源。
-            // 笔记没有版本表，旧资源切换后即无人引用；不清理会在每次内容编辑时
+            // 历史自带正文、不依赖 resources；不清理会在每次内容编辑时
             // 泄漏一行 resources（含完整笔记内容）+ 残留向量索引单元。
             // 仅当确实无其他笔记引用时删除（防御历史无盐共享数据）。
             if new_resource_id.is_some() && current_note.resource_id != *final_resource_id {
@@ -795,6 +797,7 @@ impl VfsNoteRepo {
             }
 
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "edit")?;
 
             // 4. 返回更新后的笔记
             Ok(VfsNote {
@@ -1495,6 +1498,7 @@ impl VfsNoteRepo {
                     }
                 })?;
 
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
             // 2. 原子化重命名恢复：避免「先查重后更新」并发 TOCTOU
             let mut restored_title: Option<String> = None;
             for idx in 0..1000usize {
@@ -1564,6 +1568,7 @@ impl VfsNoteRepo {
                 0
             };
 
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "trash_restore")?;
             Ok((note.title, new_title, folder_items_restored))
         })();
 
@@ -1893,9 +1898,27 @@ impl VfsNoteRepo {
 
     /// 原子更新笔记元数据（使用现有连接）。
     ///
-    /// 所有校验先于写入完成，最终只发出一条 UPDATE；若提供
-    /// `expected_updated_at`，同一条 UPDATE 同时执行 CAS。
+    /// 元数据与完整历史快照在同一 SAVEPOINT 内提交；实际元数据仍用一条
+    /// UPDATE 写入，并在提供 `expected_updated_at` 时保留原有 CAS。
     pub fn update_note_metadata_with_conn(
+        conn: &Connection,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        super::note_revision_repo::NoteRevisionRepo::transaction(conn, || {
+            let document_update = update.title.is_some() || update.tags.is_some() || update.props.is_some();
+            if document_update {
+                super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
+            }
+            let note = Self::update_note_metadata_uncommitted(conn, note_id, update)?;
+            if document_update {
+                super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "metadata")?;
+            }
+            Ok(note)
+        })
+    }
+
+    fn update_note_metadata_uncommitted(
         conn: &Connection,
         note_id: &str,
         update: VfsNoteMetadataUpdate,

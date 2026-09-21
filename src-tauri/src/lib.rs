@@ -2034,6 +2034,10 @@ pub fn run() {
             ,crate::commands::notes_delete_asset
             ,crate::commands::notes_resolve_asset_path
             ,crate::commands::notes_restore
+            ,crate::commands::notes_history_list
+            ,crate::commands::notes_history_get
+            ,crate::commands::notes_history_set_pinned
+            ,crate::commands::notes_history_restore_copy
             ,crate::commands::notes_assets_index_scan
             ,crate::commands::notes_assets_scan_orphans
             ,crate::commands::notes_assets_bulk_delete

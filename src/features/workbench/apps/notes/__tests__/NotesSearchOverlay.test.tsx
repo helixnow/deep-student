@@ -209,6 +209,38 @@ describe('NotesSearchOverlay', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    { isComposing: true },
+    { isComposing: false, keyCode: 229 },
+  ])('leaves candidate keys to the IME (%j)', (composition) => {
+    const onOpenResource = vi.fn();
+    const onClose = vi.fn();
+    const onModeChange = vi.fn();
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[node(), node({ id: 'note_2', name: 'Biology' })]}
+        onOpenResource={onOpenResource}
+        onClose={onClose}
+        onModeChange={onModeChange}
+      />,
+    );
+    const input = screen.getByRole('combobox', { name: 'Search notes' });
+    const initialActive = input.getAttribute('aria-activedescendant');
+    for (const key of ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab']) {
+      expect(fireEvent.keyDown(input, { key, ctrlKey: key === 'Tab', ...composition })).toBe(true);
+      expect(input.getAttribute('aria-activedescendant')).toBe(initialActive);
+    }
+    expect(onOpenResource).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onModeChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).not.toBe(initialActive);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('does not let a slower full-text request replace a newer query result', async () => {
     const resolvers = new Map<string, (value: { ok: true; value: DstuNode[] }) => void>();
     search.mockImplementation((query: string) => new Promise((resolve) => {

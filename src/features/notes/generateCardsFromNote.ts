@@ -38,6 +38,8 @@ function defaultTranslate(key: string, defaultValue: string): string {
 export function readNoteMarkdown(editor?: CrepeEditorApi | null): string {
   if (!editor) return '';
   try {
+    if (editor.getFullDocument) return editor.getFullDocument().markdown;
+    if (editor.isDocumentWindowed?.() && !editor.getFullMarkdown) return '';
     return editor.getFullMarkdown?.() ?? editor.getMarkdown() ?? '';
   } catch {
     return '';

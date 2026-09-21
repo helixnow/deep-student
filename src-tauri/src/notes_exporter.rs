@@ -1009,7 +1009,10 @@ fn write_zip_entry_to_disk<R: Read>(entry: &mut R, disk_path: &Path) -> io::Resu
     if let Some(parent) = disk_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut out = fs::File::create(disk_path)?;
+    // Asset keys are immutable once written: historical notes may still use
+    // them. VFS imports allocate a fresh namespace; legacy imports must also
+    // refuse a collision instead of truncating an existing historical image.
+    let mut out = fs::OpenOptions::new().write(true).create_new(true).open(disk_path)?;
     match io::copy(entry, &mut out) {
         Ok(written) => Ok(written),
         Err(e) => {
@@ -1915,6 +1918,9 @@ impl NotesImporter {
         let mut written_attachment_paths: Vec<PathBuf> = Vec::new();
         let mut note_ids: HashSet<String> = HashSet::new();
         let mut folder_paths: HashMap<String, Option<String>> = HashMap::new();
+        // WP05: importing an older ZIP must never overwrite bytes retained by
+        // a local history revision. Every VFS import gets fresh attachment keys.
+        let asset_namespace = format!("_global/import_{}", uuid::Uuid::new_v4().simple());
 
         // 统计 MD 文件数量
         let mut total_md_files = 0usize;
@@ -1990,7 +1996,9 @@ impl NotesImporter {
             }
 
             let (metadata, note_content) = self.parse_markdown_export(&content)?;
-            let normalized_content = rewrite_content_paths_for_import(&note_content, "", path_slug);
+            let normalized_content = rewrite_content_paths_for_import(&note_content, "", path_slug)
+                .replace("notes_assets/", &format!("notes_assets/{}/", asset_namespace))
+                .replace("notes_assets\\", &format!("notes_assets/{}/", asset_namespace));
 
             processed_notes += 1;
             if should_report_progress(processed_notes, total_md_files) {
@@ -2184,7 +2192,7 @@ impl NotesImporter {
             let subject_slug = parts[0];
             let relative_in_subject = parts[1..].join("/");
 
-            let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
+            let relative_path = format!("notes_assets/{}/{}/{}", asset_namespace, subject_slug, relative_in_subject);
             let Some(disk_path) =
                 resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
             else {

@@ -14,7 +14,7 @@
 import { editorViewCtx } from '@milkdown/kit/core';
 import i18n from '@/i18n';
 import { boundedRegexReplace } from '@/utils/boundedRegexReplace';
-import type { CrepeEditorApi } from '@/components/crepe/types';
+import type { CrepeEditorApi, FullDocumentSnapshot } from '@/components/crepe/types';
 import {
   agentHighlightKey,
   type AgentHighlightMeta,
@@ -650,6 +650,10 @@ export function remapInsertPos(
 }
 
 function readCompleteMarkdown(api: CrepeEditorApi): string {
+  if (api.getFullDocument) return api.getFullDocument().markdown;
+  if (api.isDocumentWindowed?.() && !api.getFullMarkdown) {
+    throw new Error('长笔记编辑器未提供安全的全文读取 API');
+  }
   return api.getFullMarkdown?.() ?? api.getMarkdown();
 }
 
@@ -664,25 +668,32 @@ async function replaceCompleteMarkdown(
   api: CrepeEditorApi,
   markdown: string,
   expectedMarkdown: string,
+  baseline = api.getFullDocument?.(),
 ): Promise<void> {
   if (readCompleteMarkdown(api) !== expectedMarkdown) {
     throw new Error('笔记正文已变化，OCC 校验失败');
   }
 
-  if (api.replaceFullMarkdown) {
-    const changed = await api.replaceFullMarkdown(markdown, { expectedMarkdown });
+  const canonical = api.normalizeMarkdown?.(markdown) ?? markdown;
+
+  if (api.replaceFullDocument && baseline) {
+    const applied = await api.replaceFullDocument(markdown, baseline);
+    if (applied.markdown !== canonical) throw new Error('全文替换后的内容验证失败');
+  } else if (api.replaceFullMarkdown) {
+    const changed = await api.replaceFullMarkdown(canonical, { expectedMarkdown });
     if (!changed) throw new Error('全文替换被编辑器拒绝');
   } else {
-    if (!api.setMarkdown(markdown)) {
+    if (api.isDocumentWindowed?.()) throw new Error('长笔记编辑器未提供安全的全文写入 API');
+    if (!api.setMarkdown(canonical)) {
       throw new Error('编辑器拒绝 setMarkdown');
     }
-    if (api.getMarkdown() !== markdown) {
+    if (api.getMarkdown() !== canonical) {
       throw new Error('setMarkdown 后正文验证失败');
     }
     await flushRequired(api);
   }
 
-  if (readCompleteMarkdown(api) !== markdown) {
+  if (readCompleteMarkdown(api) !== canonical) {
     throw new Error('全文替换后的内容验证失败');
   }
 }
@@ -1029,16 +1040,18 @@ async function applyWindowedNoteInsert(
   const text = extractInsertText(op.payload);
   if (!text) return { ok: false, reason: '插入内容为空' };
 
-  const before = readCompleteMarkdown(api);
+  const baseline = api.getFullDocument?.();
+  const before = baseline?.markdown ?? readCompleteMarkdown(api);
   const computed = computeWindowedInsertion(before, text, parseAnchor(op.anchor));
   if (computed.error) return { ok: false, reason: computed.error };
-  if (!api.replaceFullMarkdown) {
+  if (!api.replaceFullDocument && !api.replaceFullMarkdown) {
     return { ok: false, reason: '长笔记编辑器未提供安全的全文写入 API' };
   }
 
   try {
+    computed.content = api.normalizeMarkdown?.(computed.content) ?? computed.content;
     await run.pacing.tick(run.pacing.profile.instant ? 0 : 1);
-    await replaceCompleteMarkdown(api, computed.content, before);
+    await replaceCompleteMarkdown(api, computed.content, before, baseline);
     return { ok: true, before, after: computed.content };
   } catch (error) {
     const current = readCompleteMarkdown(api);
@@ -1072,8 +1085,10 @@ async function applyDestructiveDirect(
   persistenceError?: string;
 }> {
   let previous = '';
+  let baseline: FullDocumentSnapshot | undefined;
   try {
-    previous = readCompleteMarkdown(api);
+    baseline = api.getFullDocument?.();
+    previous = baseline?.markdown ?? readCompleteMarkdown(api);
   } catch {
     return { ok: false, reason: '无法读取当前笔记正文' };
   }
@@ -1082,7 +1097,8 @@ async function applyDestructiveDirect(
     return { ok: false, reason: computed.error };
   }
   try {
-    await replaceCompleteMarkdown(api, computed.content, previous);
+    computed.content = api.normalizeMarkdown?.(computed.content) ?? computed.content;
+    await replaceCompleteMarkdown(api, computed.content, previous, baseline);
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'setMarkdown 失败';
     if (readCompleteMarkdown(api) !== computed.content) {

@@ -1,6 +1,9 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Schema } from '@milkdown/prose/model';
+import { EditorState, type Transaction } from '@milkdown/prose/state';
+import type { CrepeEditorApi } from '@/components/crepe/types';
 
 import { FindReplacePanel } from '../FindReplacePanel';
 
@@ -27,6 +30,29 @@ vi.mock('react-i18next', () => ({
     },
   }),
 }));
+
+function createEditor(windowed = false) {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'paragraph+' },
+      paragraph: { content: 'text*' },
+      text: {},
+    },
+  });
+  const view = {
+    state: EditorState.create({
+      schema,
+      doc: schema.node('doc', null, [schema.node('paragraph', null, schema.text('cat cat'))]),
+    }),
+    dispatch: vi.fn((tr: Transaction) => { view.state = view.state.apply(tr); }),
+    domAtPos: () => ({ node: document.createElement('p'), offset: 0 }),
+  };
+  const api = {
+    getCrepe: () => ({ editor: { action: (run: (ctx: unknown) => void) => run({ get: () => view }) } }),
+    isDocumentWindowed: () => windowed,
+  } as unknown as CrepeEditorApi;
+  return { api, view };
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -77,6 +103,7 @@ describe('FindReplacePanel empty state', () => {
     fireEvent.change(input, { target: { value: 'nothing' } });
     expect(screen.getByText('0/0')).toBeInTheDocument();
     expect(screen.getByTitle('无匹配结果')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'false');
   });
 });
 
@@ -101,6 +128,30 @@ describe('FindReplacePanel regex mode', () => {
     fireEvent.change(input, { target: { value: 'a+' } });
     expect(screen.queryByText('无效正则表达式')).not.toBeInTheDocument();
     expect(screen.getByText('0/0')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'false');
+  });
+});
+
+describe('FindReplacePanel search scope', () => {
+  it('always describes the loaded scope, including when matches exist', () => {
+    const { api } = createEditor(true);
+    render(<FindReplacePanel editorApi={api} onClose={vi.fn()} initialQuery="cat" />);
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    const scope = '范围：当前笔记已加载部分（长文），未加载内容不参与查找和替换。';
+    expect(screen.getByText(scope)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '查找' })).toHaveAccessibleDescription(scope);
+    fireEvent.click(screen.getByRole('button', { name: '展开替换' }));
+    expect(screen.getByRole('textbox', { name: '替换为' })).toHaveAccessibleDescription(scope);
+
+    fireEvent.change(screen.getByRole('textbox', { name: '查找' }), { target: { value: 'missing' } });
+    expect(screen.getByTitle('已加载部分无匹配（长文）')).toBeInTheDocument();
+  });
+
+  it('does not promise whole-document coverage when the host does not supply windowing information', () => {
+    render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: '查找' })).toHaveAccessibleDescription(
+      '范围：当前笔记已加载内容；不跨段落或内嵌对象匹配。',
+    );
   });
 });
 
@@ -120,6 +171,48 @@ describe('FindReplacePanel focusSignal', () => {
 });
 
 describe('FindReplacePanel keyboard', () => {
+  it.each([
+    { isComposing: true },
+    { isComposing: false, keyCode: 229 },
+  ])('does not navigate, replace, close or consume editor shortcuts during composition (%j)', (composition) => {
+    const { api, view } = createEditor();
+    const onClose = vi.fn();
+    render(<FindReplacePanel editorApi={api} onClose={onClose} initialQuery="cat" />);
+    fireEvent.click(screen.getByRole('button', { name: '展开替换' }));
+    const find = screen.getByRole('textbox', { name: '查找' });
+    const replace = screen.getByRole('textbox', { name: '替换为' });
+    fireEvent.change(replace, { target: { value: 'dog' } });
+    view.dispatch.mockClear();
+
+    for (const input of [find, replace]) {
+      for (const key of ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'F3']) {
+        expect(fireEvent.keyDown(input, { key, ...composition })).toBe(true);
+      }
+      for (const key of ['Enter', 'f', 'z', 'y']) {
+        expect(fireEvent.keyDown(input, { key, ctrlKey: true, ...composition })).toBe(true);
+      }
+    }
+    expect(screen.getByRole('search')).toHaveAttribute('data-state', 'open');
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    expect(view.dispatch).not.toHaveBeenCalled();
+    expect(view.state.doc.textContent).toBe('cat cat');
+    act(() => { vi.runAllTimers(); });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Normal keys remain actionable once composition has ended.
+    fireEvent.keyDown(find, { key: 'Enter' });
+    expect(screen.getByText('2/2')).toBeInTheDocument();
+    fireEvent.keyDown(find, { key: 'Enter', shiftKey: true });
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    fireEvent.keyDown(replace, { key: 'Enter' });
+    expect(view.state.doc.textContent).toBe('dog cat');
+    fireEvent.keyDown(replace, { key: 'Enter', ctrlKey: true });
+    expect(view.state.doc.textContent).toBe('dog dog');
+    fireEvent.keyDown(replace, { key: 'Escape' });
+    act(() => { vi.runAllTimers(); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('closes with exit transition on Escape from the find input', () => {
     const onClose = vi.fn();
     render(<FindReplacePanel editorApi={null} onClose={onClose} />);

@@ -22,7 +22,23 @@ export type CrepeAgentInsertResult = {
 export type CrepeFullDocumentReplaceOptions = {
   /** Full-document OCC precondition. The write must be rejected if it no longer matches. */
   expectedMarkdown: string;
+  /** Notes hosts carry the original editor identity/revision through to the window composer. */
+  baseline?: FullDocumentSnapshot;
 };
+
+/** A live complete draft, including unsaved edits and the unloaded suffix. */
+export interface FullDocumentSnapshot {
+  readonly noteId: string;
+  readonly revision: number;
+  readonly markdown: string;
+}
+
+/** NotesCrepeEditor supplies this after the owning view extends the base editor API. */
+export interface FullDocumentApi extends CrepeEditorApi {
+  getFullDocument: () => FullDocumentSnapshot;
+  /** Returns the actual canonical draft and its revision after confirmed persistence. */
+  replaceFullDocument: (markdown: string, baseline: FullDocumentSnapshot) => Promise<FullDocumentSnapshot>;
+}
 
 export type { AgentHighlightMeta };
 
@@ -36,8 +52,15 @@ export interface CrepeEditorApi {
   /** 设置 Markdown 内容（会替换当前内容） */
   setMarkdown: (markdown: string) => boolean;
 
-  /** Full persisted document, which may be larger than the editor's loaded line window. */
+  /** Parse/serialize without mutation; rejects schema content loss before returning canonical Markdown. */
+  normalizeMarkdown?: (markdown: string) => string;
+
+  /** Live complete draft (not disk content), including edits in the loaded line window. */
   getFullMarkdown?: () => string;
+
+  /** Notes host contract; base Crepe editors do not own a note or its save lifecycle. */
+  getFullDocument?: FullDocumentApi['getFullDocument'];
+  replaceFullDocument?: FullDocumentApi['replaceFullDocument'];
 
   /** Whether getMarkdown() currently represents only a visible prefix of the document. */
   isDocumentWindowed?: () => boolean;

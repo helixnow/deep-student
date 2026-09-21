@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, X, CaretUp, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import { editorViewCtx } from '@milkdown/kit/core';
 import { undo as pmUndo, redo as pmRedo } from '@milkdown/prose/history';
@@ -65,6 +66,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const [replaceFeedback, setReplaceFeedback] = useState<string | null>(null);
 
   const findInputRef = useRef<HTMLInputElement>(null);
+  const scopeHintId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -252,6 +254,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   // Cmd/Ctrl+Z / Shift+Z / Y：焦点在查找框时仍把撤销/重做交给编辑器（替换必须可撤销）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (isComposingKeyEvent(e)) return;
       // C5：隐藏/非活动实例不消费全局快捷键
       if (!ownsGlobalInput()) return;
       if (e.key === 'F3') {
@@ -333,9 +336,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   }, [readOnly, findText, replaceText, caseSensitive, wholeWord, useRegex, getView, syncHighlight, showReplaceFeedback]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
-      // C10：中文候选确认（isComposing/keyCode 229）不触发查找导航
-      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       // Enter / Shift+Enter 在匹配间正反向循环
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
@@ -347,9 +349,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
 
   /** 替换输入框：Enter 替换当前，Cmd/Ctrl+Enter 全部替换 */
   const handleReplaceKeyDown = (e: React.KeyboardEvent) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
-      // C10：候选确认不触发替换
-      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
         handleReplaceAll();
@@ -362,10 +363,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     }
   };
 
-  const replaceDisabled = readOnly || !findText || matchCount === 0;
+  const replaceDisabled = readOnly || !findText || regexInvalid || matchCount === 0;
   // C7/R06：长文按窗口加载时，查找只覆盖可见片段；范围必须对用户可见，
   // 不能让“前缀无匹配”被读成“全篇无匹配”。
   const windowed = editorApi?.isDocumentWindowed?.() ?? false;
+  const scopeHint = windowed
+    ? t('notes:findReplace.scopeLoadedPortion', {
+      defaultValue: '范围：当前笔记已加载部分（长文），未加载内容不参与查找和替换。',
+    })
+    : t('notes:findReplace.scopeLoadedContent', {
+      defaultValue: '范围：当前笔记已加载内容；不跨段落或内嵌对象匹配。',
+    });
   const panelLabel = t('notes:findReplace.panelLabel');
   const findLabel = t('notes:findReplace.findLabel');
   const replaceLabel = t('notes:findReplace.replaceLabel');
@@ -436,7 +444,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               ? t('notes:editorV2.find_regex_placeholder', { defaultValue: '查找（正则）…' })
               : t('notes:findReplace.findPlaceholder')}
             aria-label={findLabel}
-            aria-invalid={findText.length > 0 && (matchCount === 0 || regexInvalid)}
+            aria-invalid={regexInvalid}
+            aria-describedby={scopeHintId}
             value={findText}
             onChange={(e) => setFindText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -447,16 +456,20 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           <span
             className={cn(
               'flex-shrink-0 whitespace-nowrap px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
-              replaceFeedback
-                ? 'text-[hsl(var(--success))]'
-                : matchCount > 0
-                  ? 'text-muted-foreground'
-                  : 'text-[hsl(var(--destructive)/0.85)]',
+              regexInvalid
+                ? 'text-[hsl(var(--destructive)/0.85)]'
+                : replaceFeedback
+                  ? 'text-[hsl(var(--success))]'
+                  : matchCount > 0
+                    ? 'text-muted-foreground'
+                    : 'text-[hsl(var(--destructive)/0.85)]',
             )}
             aria-live="polite"
             aria-atomic="true"
           >
-            {replaceFeedback ? (
+            {regexInvalid ? (
+              <span key="invalid-regex" className="inline-block ui-rise-in">{noMatchText}</span>
+            ) : replaceFeedback ? (
               <span key={replaceFeedback} className="inline-block ui-rise-in">
                 {replaceFeedback}
               </span>
@@ -466,8 +479,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
                 {`${currentIndex + 1}/${matchCount}`}
               </span>
             ) : (
-              <span key="no-match" className="inline-block ui-rise-in" title={noMatchText}>
-                {regexInvalid ? noMatchText : '0/0'}
+              <span key="no-match" className="inline-block ui-rise-in" title={noMatchText} aria-label={noMatchText}>
+                0/0
               </span>
             )}
           </span>
@@ -517,7 +530,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             size="sm"
             className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(-1)}
-            disabled={matchCount === 0}
+            disabled={regexInvalid || matchCount === 0}
             title={t('notes:findReplace.prev')}
             aria-label={t('notes:findReplace.prev')}
           >
@@ -528,7 +541,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             size="sm"
             className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(1)}
-            disabled={matchCount === 0}
+            disabled={regexInvalid || matchCount === 0}
             title={t('notes:findReplace.next')}
             aria-label={t('notes:findReplace.next')}
           >
@@ -555,6 +568,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base"
               placeholder={t('notes:findReplace.replacePlaceholder')}
               aria-label={replaceLabel}
+              aria-describedby={scopeHintId}
               value={replaceText}
               onChange={(e) => setReplaceText(e.target.value)}
               onKeyDown={handleReplaceKeyDown}
@@ -582,6 +596,9 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           </div>
         </div>
       )}
+      <p id={scopeHintId} className="px-3 pb-1 text-[10px] text-muted-foreground" aria-live="polite">
+        {scopeHint}
+      </p>
     </div>
   );
 };

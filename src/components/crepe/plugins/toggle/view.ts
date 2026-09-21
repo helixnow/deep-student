@@ -1,11 +1,11 @@
 /**
- * Toggle NodeView：箭头切换 open + 标题 contenteditable + 可折叠内容区。
+ * Toggle NodeView：本实例展开状态 + 标题 contenteditable + 可折叠内容区。
  */
 
 import type { Node } from '@milkdown/prose/model'
-import { TextSelection } from '@milkdown/prose/state'
-import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
-import { $view } from '@milkdown/utils'
+import { Plugin, TextSelection } from '@milkdown/prose/state'
+import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/prose/view'
+import { $prose, $view } from '@milkdown/utils'
 import i18next from 'i18next'
 
 import { TOGGLE_DATA_TYPE, toggleSchema } from './schema'
@@ -15,10 +15,14 @@ function t(key: string, defaultValue: string): string {
   return i18next.t(key, { defaultValue })
 }
 
-function syncOpenDom(root: HTMLElement, open: boolean): void {
-  root.dataset.open = open ? 'true' : 'false'
-  root.setAttribute('data-open', open ? 'true' : 'false')
-}
+// setProps({ editable }) does not necessarily update unchanged NodeViews.
+const editableSyncs = new WeakMap<EditorView, Set<() => void>>()
+
+export const toggleEditableSync = $prose(() => new Plugin({
+  view: () => ({
+    update: (view) => editableSyncs.get(view)?.forEach((sync) => sync()),
+  }),
+}))
 
 function isToggleContentEmpty(node: Node): boolean {
   if (node.childCount !== 1) return false
@@ -34,15 +38,20 @@ function createToggleNodeView(
   initialNode: Node,
   view: EditorView,
   getPos: () => number | undefined,
-) {
+): NodeView {
   ensureToggleStyles()
 
   let node = initialNode
+  // Undefined follows the author's default; interaction lasts for this NodeView.
+  let localOpen: boolean | undefined
+  let destroyed = false
+  let composing = false
+  let editable = view.editable
 
   const dom = document.createElement('div')
   dom.className = 'milkdown-toggle'
   dom.dataset.type = TOGGLE_DATA_TYPE
-  syncOpenDom(dom, Boolean(node.attrs.open))
+  dom.dataset.open = String(Boolean(node.attrs.open))
   syncEmptyDom(dom, node)
   dom.setAttribute('data-title', String(node.attrs.title ?? ''))
 
@@ -81,43 +90,66 @@ function createToggleNodeView(
 
   dom.append(header, body)
 
-  const setAttrs = (attrs: Record<string, unknown>) => {
-    if (!view.editable) return
+  const syncOpenDom = () => {
+    const open = localOpen ?? Boolean(node.attrs.open)
+    // data-open remains the persisted default for DOM parsing/copying.
+    dom.dataset.viewOpen = String(open)
+    arrow.setAttribute('aria-expanded', String(open))
+    body.setAttribute('aria-hidden', String(!open))
+    body.toggleAttribute('inert', !open)
+  }
+  syncOpenDom()
+
+  const livePos = () => {
+    if (destroyed || view.isDestroyed) return undefined
     const pos = getPos()
-    if (pos == null) return
-    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs }))
+    if (pos == null || view.state.doc.nodeAt(pos) !== node) return undefined
+    return pos
   }
 
-  const onArrowPointerDown = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!view.editable) return
-    setAttrs({ open: !node.attrs.open })
-  }
-
+  // Native button activation covers pointer, Enter and Space (including AT clicks).
   const onArrowClick = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
+    if (destroyed) return
+    localOpen = !(localOpen ?? Boolean(node.attrs.open))
+    syncOpenDom()
   }
 
-  arrow.addEventListener('mousedown', onArrowPointerDown)
   arrow.addEventListener('click', onArrowClick)
 
   const commitTitle = () => {
+    if (!view.editable || !editable) return
+    const pos = livePos()
+    if (pos == null) return
     const next = titleEl.textContent ?? ''
     if (next === String(node.attrs.title ?? '')) return
-    setAttrs({ title: next })
-    dom.setAttribute('data-title', next)
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, title: next }))
   }
 
+  const syncEditable = () => {
+    if (editable === view.editable) return
+    editable = view.editable
+    composing = false
+    // Discard an uncommitted draft before disabling editing can trigger blur.
+    titleEl.textContent = String(node.attrs.title ?? '')
+    titleEl.contentEditable = editable ? 'true' : 'false'
+  }
+  let syncs = editableSyncs.get(view)
+  if (!syncs) editableSyncs.set(view, syncs = new Set())
+  syncs.add(syncEditable)
+
   const onTitleKeydown = (event: KeyboardEvent) => {
+    if (!view.editable || !editable || livePos() == null) return
+    if (composing || event.isComposing || event.keyCode === 229) return
     if (event.key === 'Enter') {
       event.preventDefault()
       commitTitle()
-      const pos = getPos()
+      const pos = livePos()
       if (pos == null) return
       // 进入内容区首块（折叠态先展开再进入）
-      if (!node.attrs.open) setAttrs({ open: true })
+      localOpen = true
+      syncOpenDom()
       const $pos = view.state.doc.resolve(pos + 1)
       const selection = TextSelection.near($pos, 1)
       view.dispatch(view.state.tr.setSelection(selection))
@@ -131,8 +163,12 @@ function createToggleNodeView(
     }
   }
 
+  const onCompositionStart = () => { composing = true }
+  const onCompositionEnd = () => { composing = false }
   titleEl.addEventListener('blur', commitTitle)
   titleEl.addEventListener('keydown', onTitleKeydown)
+  titleEl.addEventListener('compositionstart', onCompositionStart)
+  titleEl.addEventListener('compositionend', onCompositionEnd)
 
   return {
     dom,
@@ -140,10 +176,11 @@ function createToggleNodeView(
     update: (updated: Node) => {
       if (updated.type !== node.type) return false
       node = updated
-      syncOpenDom(dom, Boolean(updated.attrs.open))
+      dom.dataset.open = String(Boolean(updated.attrs.open))
+      syncOpenDom()
       syncEmptyDom(dom, updated)
       dom.setAttribute('data-title', String(updated.attrs.title ?? ''))
-      titleEl.contentEditable = view.editable ? 'true' : 'false'
+      syncEditable()
       // 避免覆盖用户正在编辑的标题
       if (document.activeElement !== titleEl) {
         const nextTitle = String(updated.attrs.title ?? '')
@@ -155,6 +192,8 @@ function createToggleNodeView(
     },
     ignoreMutation: (mutation) => {
       const target = mutation.target
+      // View-only attributes must not enter PM's DOM reparsing / save pipeline.
+      if (mutation.type === 'attributes' && (target === dom || target === body)) return true
       if (!(target instanceof HTMLElement) && !(target instanceof Text)) return false
       if (header.contains(target) || target === header) return true
       return false
@@ -167,10 +206,13 @@ function createToggleNodeView(
       return false
     },
     destroy: () => {
-      arrow.removeEventListener('mousedown', onArrowPointerDown)
+      destroyed = true
+      syncs.delete(syncEditable)
       arrow.removeEventListener('click', onArrowClick)
       titleEl.removeEventListener('blur', commitTitle)
       titleEl.removeEventListener('keydown', onTitleKeydown)
+      titleEl.removeEventListener('compositionstart', onCompositionStart)
+      titleEl.removeEventListener('compositionend', onCompositionEnd)
       dom.remove()
     },
   }

@@ -1,10 +1,12 @@
 import { Schema } from '@milkdown/prose/model';
 import { EditorState } from '@milkdown/prose/state';
+import { vi } from 'vitest';
 import {
   collectSearchMatches,
   replaceAllSearchMatches,
   compileSearchRegex,
   expandReplacement,
+  type SearchOptions,
 } from '../searchHighlight';
 
 const schema = new Schema({
@@ -32,6 +34,22 @@ const schema = new Schema({
 
 function docFromText(text: string) {
   return schema.node('doc', null, [schema.node('paragraph', null, [schema.text(text)])]);
+}
+
+// A synchronous RegExp loop cannot be interrupted by Vitest's timeout. Bound
+// exec calls so a surrogate-pair regression fails instead of hanging the worker.
+function collectRegexWithBudget(doc: ReturnType<typeof docFromText>, query: string, options: SearchOptions = {}) {
+  const originalExec = RegExp.prototype.exec;
+  let calls = 0;
+  const spy = vi.spyOn(RegExp.prototype, 'exec').mockImplementation(function (this: RegExp, text: string) {
+    if (this.global && ++calls > 50) throw new Error('Regex search did not advance');
+    return originalExec.call(this, text);
+  });
+  try {
+    return collectSearchMatches(doc, query, { ...options, useRegex: true });
+  } finally {
+    spy.mockRestore();
+  }
 }
 
 describe('collectSearchMatches', () => {
@@ -151,6 +169,52 @@ describe('regex search', () => {
   it('skips zero-length regex matches without looping forever', () => {
     const doc = docFromText('abc');
     expect(collectSearchMatches(doc, 'x*', { useRegex: true })).toEqual([]);
+  });
+
+  it('advances zero-width matches over emoji and still finds later text', () => {
+    expect(collectRegexWithBudget(docFromText('😀x😀'), 'x*')).toEqual([
+      { from: 3, to: 4, captures: ['x'] },
+    ]);
+    expect(collectRegexWithBudget(docFromText('😀'), '$')).toEqual([]);
+  });
+
+  it('also advances zero-width matches when a legacy pattern falls back from Unicode mode', () => {
+    expect(compileSearchRegex('\\a*', false)?.unicode).toBe(false);
+    expect(collectRegexWithBudget(docFromText('😀a'), '\\a*')).toEqual([
+      { from: 3, to: 4, captures: ['a'] },
+    ]);
+  });
+
+  it('advances rejected whole-word matches over astral letters', () => {
+    expect(collectRegexWithBudget(docFromText('𐐀xcat cat'), '𐐀x|cat', { wholeWord: true })).toEqual([
+      { from: 8, to: 11, captures: ['cat'] },
+    ]);
+  });
+
+  it('retries inside a rejected emoji/barrier match without skipping later valid text', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [
+        schema.text('😀'),
+        schema.node('hard_break'),
+        schema.text('cat'),
+      ]),
+    ]);
+    expect(collectRegexWithBudget(doc, '😀.cat|cat')).toEqual([
+      { from: 4, to: 7, captures: ['cat'] },
+    ]);
+  });
+
+  it('keeps accepted regex matches non-overlapping across marks', () => {
+    const doc = schema.node('doc', null, [
+      schema.node('paragraph', null, [
+        schema.text('😀', [schema.marks.strong.create()]),
+        schema.text('😀😀'),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const matches = collectRegexWithBudget(doc, '😀😀');
+    expect(matches).toEqual([{ from: 1, to: 5, captures: ['😀😀'] }]);
+    expect(state.apply(replaceAllSearchMatches(state.tr, matches, 'x')).doc.textContent).toBe('x😀');
   });
 
   it('does not match across a hard break in regex mode', () => {

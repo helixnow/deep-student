@@ -1040,6 +1040,14 @@
       "path": "vfs/V20260912__qbank_generation_tasks.sql",
       "sha256": "b60cfeebebf076aa8c9c0e3d9309ecfd56f14d3649470434e0efda38965209b7",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260921,
+      "name": "note_document_revisions",
+      "path": "vfs/V20260921__note_document_revisions.sql",
+      "sha256": "a91d1e79fbe0000c4692297fa39cf8057e7cacc155b758454244b3beb9f9ae06",
+      "dangers": []
     }
   ]
 }

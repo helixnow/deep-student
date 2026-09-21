@@ -769,6 +769,60 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.getFullMarkdown()).toContain('hidden-602');
   });
 
+  it('全文写入与撤销都使用共享快照 API，不读取旧全文字符串', async () => {
+    let markdown = 'UNSAVED prefix\nHIDDEN tail';
+    let revision = 1;
+    const original = markdown;
+    const replaceFullDocument = vi.fn(async (next: string, baseline: { noteId: string; revision: number; markdown: string }) => {
+      expect(baseline).toEqual({ noteId: NOTE_ID, revision, markdown });
+      markdown = next;
+      revision++;
+      return { noteId: NOTE_ID, revision, markdown };
+    });
+    const api = {
+      ...makeEditorApi({ markdown: 'visible only', windowedFullMarkdown: 'STALE disk full' }),
+      getFullDocument: () => ({ noteId: NOTE_ID, revision, markdown }),
+      replaceFullDocument,
+    };
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const record = vi.fn();
+    const receipt = await noteDriver.apply(makeRun({ ledger: { record } }), [{
+      kind: 'note_replace', destructive: true, label: '替换隐藏尾部',
+      payload: { search: 'HIDDEN tail', replace: 'changed tail' },
+    }]);
+    expect(receipt.status).toBe('completed');
+    expect(markdown).toBe('UNSAVED prefix\nchanged tail');
+    expect(replaceFullDocument).toHaveBeenCalledTimes(1);
+    await (record.mock.calls[0][1] as () => Promise<void>)();
+    expect(markdown).toBe(original);
+    expect(replaceFullDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it('窗口化追加在 pacing 等待期间修订变化时拒绝旧建议，即使文本已改回', async () => {
+    const markdown = 'UNSAVED prefix\nHIDDEN tail';
+    let revision = 1;
+    const replaceFullDocument = vi.fn(async (_next: string, baseline: { revision: number }) => {
+      if (baseline.revision !== revision) throw new Error('revision conflict');
+      return true;
+    });
+    const api = {
+      ...makeEditorApi({ markdown: 'visible only', windowedFullMarkdown: markdown }),
+      getFullDocument: () => ({ noteId: NOTE_ID, revision, markdown }),
+      replaceFullDocument,
+    };
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const run = makeRun();
+    run.pacing.tick = vi.fn(async () => { revision++; });
+    const receipt = await noteDriver.apply(run, [{
+      kind: 'note_append', destructive: false, label: '旧修订追加',
+      anchor: { position: 'end' }, payload: { content: '\nagent appended' },
+    }]);
+    expect(receipt.status).toBe('failed');
+    expect(replaceFullDocument).toHaveBeenCalledWith(markdown + '\nagent appended', {
+      noteId: NOTE_ID, revision: 1, markdown,
+    });
+  });
+
   it('窗口化长笔记 offset / 缺标题锚点 → 上报 forms key 而非硬编码文案', async () => {
     const visible = 'visible prefix';
     const full = `${visible}\nhidden tail`;

@@ -10,6 +10,7 @@ import { CaretRight, CircleNotch, FileText, MagnifyingGlass, TreeStructure, X } 
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuListOptions, type DstuNode, type DstuNodeType } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -548,6 +549,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   }, [displayedResults.length]);
 
   const onInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposingKeyEvent(event)) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       event.stopPropagation();
@@ -561,8 +563,6 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       return;
     }
     if (event.key === 'Enter' && activeResult) {
-      // C10：中文候选确认不打开结果
-      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       event.stopPropagation();
       void openResult(activeResult);
@@ -571,6 +571,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
 
   // 无遮罩悬浮面板：不做 Tab 焦点陷阱，仅保留 Escape 关闭与 Ctrl+Tab 切模式
   const onPanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

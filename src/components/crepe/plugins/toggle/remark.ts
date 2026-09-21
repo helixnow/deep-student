@@ -38,6 +38,27 @@ function emptyParagraph(): Node {
   return { type: 'paragraph', children: [] } as Node
 }
 
+/** Remove only the marker prefix, retaining the remaining inline AST and marks. */
+function inlineAfter(nodes: Node[], offset: number): Node[] {
+  const result: Node[] = []
+  for (const node of nodes) {
+    if (offset === 0) {
+      result.push(node)
+      continue
+    }
+    const length = collectPlainText(node).length
+    if (offset >= length) {
+      offset -= length
+      continue
+    }
+    result.push(isParent(node)
+      ? { ...node, children: inlineAfter(node.children, offset) } as Node
+      : { ...node, value: collectPlainText(node).slice(offset) } as Node)
+    offset = 0
+  }
+  return result
+}
+
 /**
  * 从 blockquote 首段拆出 toggle marker；若首段含 softbreak 后的正文，生成剩余 paragraph。
  */
@@ -54,14 +75,14 @@ function extractMarkerFromBlockquote(
   const marker = parseToggleMarker(firstLine)
   if (!marker) return null
 
-  const restLines = lines.slice(1).join('\n').replace(/^\n/, '')
+  const restInline = inlineAfter(first.children, firstLine.length + 1)
   const restSiblings = blockquote.children.slice(1)
   const body: Node[] = []
 
-  if (restLines.trim().length > 0) {
+  if (restInline.length > 0) {
     body.push({
       type: 'paragraph',
-      children: [{ type: 'text', value: restLines } as Node],
+      children: restInline,
     } as Node)
   }
   body.push(...restSiblings)

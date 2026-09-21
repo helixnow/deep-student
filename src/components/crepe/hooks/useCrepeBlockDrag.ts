@@ -13,11 +13,14 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { NodeSelection } from '@milkdown/kit/prose/state';
 import type { Crepe } from '@milkdown/crepe';
+import { isBlockTargetCurrent, resolveBlockHandleTarget, type BlockTarget } from '../blockTarget';
+import { moveCrepeBlocks } from '../blockMenuCommands';
 
 export interface BlockDragState {
   isDragging: boolean;
   sourcePos: number;
   sourceNode: any;
+  sourceTarget: BlockTarget;
   targetInsertPos: number;
   insertBefore: boolean;
   draggedElement: HTMLElement | null;
@@ -102,69 +105,13 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     return wrapperRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
   }, [wrapperRef]);
 
-  /** 把文档内任意位置收敛到对应顶层块的位置 */
-  const resolveTopLevelPos = useCallback((view: any, rawPos: number): number | null => {
-    const clamped = Math.max(0, Math.min(rawPos, view.state.doc.content.size));
-    const $pos = view.state.doc.resolve(clamped);
-    const pos = $pos.depth > 0 ? $pos.before(1) : clamped;
-    return view.state.doc.nodeAt(pos) ? pos : null;
-  }, []);
-
   /**
-   * 根据 block handle 位置找到对应的 ProseMirror 顶层节点
-   *
-   * 用 handle 垂直中心命中的顶层块 DOM + posAtDOM 求位置，不再依赖
-   * posAtCoords(x + 100) 的魔法水平偏移；rect 是布局后的真实坐标，
-   * 缩放和窄侧边距下同样成立。
+   * 与菜单共享嵌套内容单元解析；句柄纵向命中实际内容 DOM。
    */
-  const findNodePosFromBlockHandle = useCallback((blockHandle: Element): { pos: number; node: any } | null => {
+  const findNodePosFromBlockHandle = useCallback((blockHandle: Element): BlockTarget | null => {
     const view = getView();
-    const proseMirror = getProseMirrorElement();
-    if (!view || !proseMirror) return null;
-
-    const handleRect = blockHandle.getBoundingClientRect();
-    const centerY = handleRect.top + handleRect.height / 2;
-
-    let matched: Element | null = null;
-    let nearest: Element | null = null;
-    let nearestDistance = Infinity;
-    for (const child of Array.from(proseMirror.children)) {
-      const rect = child.getBoundingClientRect();
-      if (rect.height <= 0) continue;
-      if (centerY >= rect.top && centerY <= rect.bottom) {
-        matched = child;
-        break;
-      }
-      const distance = Math.min(Math.abs(centerY - rect.top), Math.abs(centerY - rect.bottom));
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearest = child;
-      }
-    }
-    const blockElement = matched ?? nearest;
-
-    let rawPos = -1;
-    if (blockElement) {
-      try {
-        rawPos = view.posAtDOM(blockElement, 0);
-      } catch {
-        rawPos = -1;
-      }
-    }
-    if (rawPos < 0) {
-      // 兜底：从内容列实际左缘（ProseMirror rect + padding-left）取样
-      const pmRect = proseMirror.getBoundingClientRect();
-      const paddingLeft = Number.parseFloat(getComputedStyle(proseMirror).paddingLeft) || 0;
-      const probeX = Math.min(pmRect.left + paddingLeft + 4, pmRect.right - 4);
-      const hit = view.posAtCoords({ left: probeX, top: centerY });
-      if (!hit) return null;
-      rawPos = hit.inside >= 0 ? hit.inside : hit.pos;
-    }
-
-    const pos = resolveTopLevelPos(view, rawPos);
-    if (pos === null) return null;
-    return { pos, node: view.state.doc.nodeAt(pos) };
-  }, [getView, getProseMirrorElement, resolveTopLevelPos]);
+    return view ? resolveBlockHandleTarget(view, blockHandle) : null;
+  }, [getView]);
 
   /**
    * 隐藏 drop indicator
@@ -186,12 +133,24 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     const wrapper = wrapperRef.current;
     const proseMirror = getProseMirrorElement();
     if (!view || !wrapper || !proseMirror) return;
+    const source = dragStateRef.current?.sourceTarget;
+    if (dragStateRef.current) dragStateRef.current.targetInsertPos = -1;
+    if (!source || !isBlockTargetCurrent(view, source)) {
+      hideDropIndicator();
+      return;
+    }
 
     let closestBlock: Element | null = null;
     let closestDistance = Infinity;
     let insertBefore = true;
 
-    for (const block of Array.from(proseMirror.children)) {
+    const $source = view.state.doc.resolve(source.pos);
+    let childPos = $source.start();
+    for (let index = 0; index < $source.parent.childCount; index += 1) {
+      const pos = childPos;
+      childPos += $source.parent.child(index).nodeSize;
+      const block = view.nodeDOM(pos);
+      if (!(block instanceof HTMLElement)) continue;
       const rect = block.getBoundingClientRect();
       if (rect.height <= 0) continue;
       const middle = rect.top + rect.height / 2;
@@ -200,29 +159,16 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
         closestDistance = distance;
         closestBlock = block;
         insertBefore = clientY < middle;
+        if (dragStateRef.current) {
+          dragStateRef.current.targetInsertPos = insertBefore ? pos : childPos;
+          dragStateRef.current.insertBefore = insertBefore;
+        }
       }
     }
 
     if (!closestBlock) {
       hideDropIndicator();
       return;
-    }
-
-    let targetPos = -1;
-    try {
-      const rawPos = view.posAtDOM(closestBlock, 0);
-      const topPos = resolveTopLevelPos(view, rawPos);
-      if (topPos !== null) {
-        const node = view.state.doc.nodeAt(topPos);
-        targetPos = insertBefore ? topPos : topPos + node.nodeSize;
-      }
-    } catch {
-      targetPos = -1;
-    }
-
-    if (dragStateRef.current && targetPos >= 0) {
-      dragStateRef.current.targetInsertPos = targetPos;
-      dragStateRef.current.insertBefore = insertBefore;
     }
 
     const indicator = dropIndicatorRef.current;
@@ -246,49 +192,14 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       }
       indicator.dataset.visible = 'true';
     }
-  }, [getView, wrapperRef, getProseMirrorElement, resolveTopLevelPos, hideDropIndicator, dropIndicatorRef]);
+  }, [getView, wrapperRef, getProseMirrorElement, hideDropIndicator, dropIndicatorRef]);
 
   /**
    * 执行块移动操作
    */
-  const executeBlockMove = useCallback((sourcePos: number, targetPos: number) => {
+  const executeBlockMove = useCallback((source: BlockTarget, targetPos: number) => {
     const view = getView();
-    if (!view) return false;
-
-    try {
-      const sourceNode = view.state.doc.nodeAt(sourcePos);
-      if (!sourceNode) return false;
-
-      const sourceNodeSize = sourceNode.nodeSize;
-      // 目标落在源块自身边界（块前/块后）时是 no-op，跳过以免产生冗余历史步骤
-      if (targetPos === sourcePos || targetPos === sourcePos + sourceNodeSize) {
-        return false;
-      }
-      // 防御：目标位置不允许落进源块内部（嵌套块坐标计算异常时的兜底）
-      if (targetPos > sourcePos && targetPos < sourcePos + sourceNodeSize) {
-        return false;
-      }
-      let tr = view.state.tr;
-
-      if (targetPos > sourcePos) {
-        // 向下移动：先插入后删除
-        const nodeToInsert = sourceNode.copy(sourceNode.content);
-        tr = tr.insert(targetPos, nodeToInsert);
-        tr = tr.delete(sourcePos, sourcePos + sourceNodeSize);
-      } else {
-        // 向上移动：先删除后插入
-        const nodeToInsert = sourceNode.copy(sourceNode.content);
-        tr = tr.delete(sourcePos, sourcePos + sourceNodeSize);
-        tr = tr.insert(targetPos, nodeToInsert);
-      }
-
-      view.dispatch(tr.scrollIntoView());
-      view.focus();
-      return true;
-    } catch (err) {
-      console.error('[useCrepeBlockDrag] Block move failed:', err);
-      return false;
-    }
+    return view ? moveCrepeBlocks(view, source, targetPos) : false;
   }, [getView]);
 
   /**
@@ -519,7 +430,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     }
 
     const view = getView();
-    if (view && NodeSelection.isSelectable(nodeInfo.node)) {
+    if (view && nodeInfo.nodes.length === 1 && NodeSelection.isSelectable(nodeInfo.nodes[0])) {
       const nodeSelection = NodeSelection.create(view.state.doc, nodeInfo.pos);
       view.dispatch(view.state.tr.setSelection(nodeSelection));
     }
@@ -543,7 +454,8 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     const state: BlockDragState = {
       isDragging: true,
       sourcePos: nodeInfo.pos,
-      sourceNode: nodeInfo.node,
+      sourceNode: nodeInfo.nodes[0],
+      sourceTarget: nodeInfo,
       targetInsertPos: -1,
       insertBefore: true,
       draggedElement,
@@ -689,7 +601,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       return;
     }
 
-    const { sourcePos, targetInsertPos, draggedElement } = dragStateRef.current;
+    const { sourcePos, sourceTarget, targetInsertPos, draggedElement } = dragStateRef.current;
 
     stopAutoScroll();
     restoreBodyCursor();
@@ -703,7 +615,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
 
     // 执行块移动
     if (targetInsertPos >= 0 && sourcePos !== targetInsertPos) {
-      executeBlockMove(sourcePos, targetInsertPos);
+      executeBlockMove(sourceTarget, targetInsertPos);
     }
 
     removeDragGhost();

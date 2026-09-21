@@ -172,6 +172,19 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   );
 
   useEffect(() => {
+    if (!visible) setInsertOpen(false);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!insertOpen) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setInsertOpen(false);
+    };
+    document.addEventListener('keydown', dismiss);
+    return () => document.removeEventListener('keydown', dismiss);
+  }, [insertOpen]);
+
+  useEffect(() => {
     if (!visible) return;
 
     const update = () => {
@@ -351,7 +364,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       : []),
   ];
 
-  // 内联块插入条（替代仅插 `/` 的旧交互；slash 菜单保留为兜底入口）
+  // 内联块插入条；更多菜单只展示 UI，不向正文插入触发字符。
   const insertItems: ToolbarItem[] = [
     {
       id: 'image',

@@ -772,7 +772,10 @@
 /* 工具栏按钮 - button.toolbar-item */
 .crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item,
 .crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item {
-  all: unset !important;
+  appearance: none;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
   cursor: pointer !important;
   padding: 6px !important;
   border-radius: var(--notes-popup-item-radius, 4px) !important;
@@ -783,27 +786,22 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  outline: none !important;
 }
 
-/* 工具栏内所有子元素都重置边框。
- * 性能：禁用 [class*="group"] 这类 class 属性子串选择器——Blink 失效集按属性名
- * 建键，页面任何元素的 class 一变都会触发其子树失效（同 svg[style] 坑，CDP 实锤）。
- * milkdown 实际类名有限，直接枚举。 */
-.crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item *,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item *,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar button,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar button *,
+/* Only reset group decoration. Descendant resets erase keyboard focus and SVG
+ * presentation attributes, so buttons and their children keep their semantics. */
 .crepe-editor-wrapper .milkdown .milkdown-toolbar .group,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar .group *,
 .crepe-editor-wrapper .milkdown .milkdown-toolbar .menu-group,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar .menu-group *,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar .button-group,
-.crepe-editor-wrapper .milkdown .milkdown-toolbar .button-group * {
-  all: unset !important;
+.crepe-editor-wrapper .milkdown .milkdown-toolbar .button-group {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-toolbar button:focus-visible,
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item:focus-visible {
+  outline: 2px solid hsl(var(--ring)) !important;
+  outline-offset: -2px !important;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item svg {
@@ -1493,6 +1491,11 @@
 .crepe-editor-wrapper button:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
+}
+
+/* Insets keep the focus ring inside the horizontally clipped inline strip. */
+.notes-editor-toolbar .notes-editor-toolbar-inline button:focus-visible {
+  outline-offset: -2px;
 }
 
 .notes-editor-toolbar button.active,
