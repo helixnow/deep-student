@@ -121,6 +121,9 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: npm run build
 
+      - name: Execute production entry and initial React render
+        run: node .release-tooling/scripts/ci/check-frontend-startup.mjs
+
       # ── dist 完整性 + sourcemap 泄漏防线（fail-closed）──
       # 任何 .map 进入 artifact 都会被 5 个平台打进安装包 = 分发源码。
       - name: Verify dist output (no sourcemap leak)
