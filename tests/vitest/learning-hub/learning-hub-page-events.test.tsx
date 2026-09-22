@@ -23,7 +23,10 @@ vi.mock('react-i18next', async () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, fallback?: string) => fallback ?? key,
+      // Mirror i18next's two overloads: a literal fallback or an options object.
+      t: (key: string, fallback?: string | { defaultValue?: string }) => (
+        typeof fallback === 'string' ? fallback : fallback?.defaultValue ?? key
+      ),
     }),
   };
 });
