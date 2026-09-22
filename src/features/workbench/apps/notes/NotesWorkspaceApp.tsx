@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isMacOS } from '@/utils/platform';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
 import { requestContentCloseDecision } from '../content/ContentCloseConfirmation';
 import {
@@ -678,7 +679,7 @@ interface WorkspaceTabsProps {
   /** Double-clicking the empty strip area (browser-style) creates a new note. */
   onNewTab?: () => void;
   contextMenuKey: string | null;
-  leftOffset: number;
+  sidebarWidth: string;
   saveStates: Map<string, SaveState>;
 }
 
@@ -692,7 +693,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   onOpenContextMenu,
   onNewTab,
   contextMenuKey,
-  leftOffset,
+  sidebarWidth,
   saveStates,
 }) => {
   const { t } = useTranslation('workbench');
@@ -709,13 +710,36 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
     if (event.target instanceof Node && overflowMenuRef.current?.contains(event.target)) return;
     setOverflowOpen(false);
   }, []);
-  const dismissOverflowWithEscape = useCallback((event: Event) => {
-    if (event instanceof KeyboardEvent && event.key === 'Escape') setOverflowOpen(false);
-  }, []);
   useEventRegistry(overflowOpen ? [
     { target: 'document', type: 'pointerdown', listener: dismissOverflow },
-    { target: 'document', type: 'keydown', listener: dismissOverflowWithEscape },
-  ] : [], [overflowOpen, dismissOverflow, dismissOverflowWithEscape]);
+  ] : [], [overflowOpen, dismissOverflow]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const menu = overflowMenuRef.current;
+    const selected = menu?.querySelector<HTMLButtonElement>('[role="menuitem"][data-active="true"]')
+      ?? menu?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    selected?.focus();
+  }, [overflowOpen]);
+
+  const handleOverflowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setOverflowOpen(false);
+      overflowRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(overflowMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
+  };
 
   useEffect(() => {
     const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -746,6 +770,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
     button?.click();
   };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number, key: string) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'ArrowRight') {
       event.preventDefault();
       focusTab(event, index + 1);
@@ -779,7 +804,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   };
 
   return (
-  <div className="notes-titlebar-tabs" style={{ paddingLeft: leftOffset }}>
+  <div className="notes-titlebar-tabs" style={{ '--notes-titlebar-sidebar-width': sidebarWidth } as React.CSSProperties}>
     <div
       ref={stripRef}
       className="notes-tabstrip scrollbar-none"
@@ -912,7 +937,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
             ref={overflowMenuRef}
             className="notes-tabs-overflow-menu"
             viewportClassName="notes-tabs-overflow-menu-viewport"
-            viewportProps={{ role: 'menu' }}
+            viewportProps={{ role: 'menu', 'aria-label': t('notesWorkspace.tabs.showAll', 'Show all open files'), onKeyDown: handleOverflowKeyDown }}
             style={overflowMenuPosition}
             fullHeight={false}
             trackOffsetTop={4}
@@ -928,7 +953,11 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                   key={tab.key}
                   data-active={tab.key === activeKey ? 'true' : 'false'}
                   data-save-state={overflowSaveState}
-                  onClick={() => { onActivate(tab.key); setOverflowOpen(false); }}
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    overflowRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+                    onActivate(tab.key);
+                  }}
                 >
                   <ResourceGlyph type={tab.type} size={14} />
                   <span>{tab.title}</span>
@@ -1102,7 +1131,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     || Boolean(splitTab)
     || workspaceWidth < BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH
     || availableMainWidth < 760;
-  const titlebarTabsLeft = Math.max(76, sidebarLayoutWidth);
+  // 标签 portal 的原点已在红绿灯右侧；这里只传侧栏宽度，CSS 扣除 slot 的预留。
+  // 与实际侧栏消费相同 token，收起 / 窄窗 / 专注模式均不再额外留白。
+  const titlebarSidebarWidth = explorerVisible && !focusMode
+    ? sizeClass === 'wide' ? 'var(--wb-sidebar-width, 272px)' : 'var(--wb-sidebar-width-medium, 240px)'
+    : '0px';
   const saveStates = useMemo(
     () => new Map(tabs.map((tab) => [tab.key, tabSaveStates[tab.key] ?? getTabSaveState(tab, windowId)])),
     [tabSaveStates, tabs, windowId],
@@ -2804,7 +2837,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           onOpenContextMenu={openTabContextMenu}
           onNewTab={() => { void createResource('note'); }}
           contextMenuKey={tabContextMenu?.key ?? null}
-          leftOffset={titlebarTabsLeft}
+          sidebarWidth={titlebarSidebarWidth}
           saveStates={saveStates}
         />,
         titlebarTarget,
@@ -2965,8 +2998,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <div className="notes-files-subscreen-body">{explorerSurface}</div>
         </div>
       )}
-      {learningCreateOpen && createPortal(<CreateLearningNoteDialog folderId={contextualFolderId} onClose={() => setLearningCreateOpen(false)}
-        onCreated={async (node) => { await loadResources({ blocking: false }); await openResource({ type: 'note', id: node.id }, node.name); }} />, document.body)}
+      {learningCreateOpen && <CreateLearningNoteDialog folderId={contextualFolderId} onClose={() => setLearningCreateOpen(false)}
+        onCreated={async (node) => { await loadResources({ blocking: false }); await openResource({ type: 'note', id: node.id }, node.name); }} />}
       <NotesSearchOverlay
         open={searchOpen}
         mode={searchMode}

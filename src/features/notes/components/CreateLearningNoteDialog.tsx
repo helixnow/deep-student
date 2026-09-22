@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DsDialog, DsDialogBody, DsDialogHeader, DsDialogTitle } from '@/components/ui/DsDialog';
 import type { DstuNode } from '@/dstu';
 import { createLearningNote, finishLearningNoteCreation, LearningNoteInitializationError } from '../createLearningNote';
 import { getCourseDefaultTemplate, loadPersonalNoteTemplates, type PersonalNoteTemplate } from '../personalNoteTemplates';
@@ -37,9 +38,10 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
   const selected = choice === 'course-default' ? courseDefault : all.find((item) => item.id === choice);
   const effectiveCourse = course || (!Object.hasOwn(changes, 'course') ? selected?.learningPreset?.course ?? '' : '');
   const preset = { ...selected?.learningPreset, ...(course.trim() ? { course: course.trim() } : {}) };
-  return <div role="dialog" aria-modal="true" aria-label={t('learning.create.title', { defaultValue: '新建学习笔记' })}
-    className="fixed inset-4 z-[100] m-auto flex max-h-[90vh] max-w-xl flex-col overflow-auto rounded-lg border bg-background p-5 shadow-xl">
-    <h2>{t('learning.create.title', { defaultValue: '新建学习笔记' })}</h2>
+  return <DsDialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }} showClose={!busy} closeOnOverlay={!busy}
+    maxWidth="max-w-xl" aria-label={t('learning.create.title', { defaultValue: '新建学习笔记' })}>
+    <DsDialogHeader><DsDialogTitle>{t('learning.create.title', { defaultValue: '新建学习笔记' })}</DsDialogTitle></DsDialogHeader>
+    <DsDialogBody className="py-4">
     <fieldset disabled={busy || Boolean(pending) || Boolean(created)} className="space-y-3">
       <label className="block">{t('learning.create.name', { defaultValue: '笔记标题' })}<input autoFocus className="block w-full border bg-background p-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
       <label className="block">{t('learning.create.course', { defaultValue: '所属课程' })}<input className="block w-full border bg-background p-2" value={effectiveCourse} onChange={(event) => { setCourse(event.target.value); setChanges((current) => ({ ...current, course: event.target.value.trim() })); }} /></label>
@@ -86,5 +88,6 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
       finally { if (mounted.current) setBusy(false); }
     }}>{t('learning.create.open_partial', { defaultValue: '打开已创建笔记' })}</button>}
     {error && <p role="alert" className="text-destructive">{error}<button type="button" disabled={busy} onClick={() => setReload((count) => count + 1)}>{t('learning.reload')}</button></p>}
-  </div>;
+    </DsDialogBody>
+  </DsDialog>;
 }

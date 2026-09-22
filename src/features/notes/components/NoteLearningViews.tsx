@@ -27,7 +27,9 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
       {groups.map((group) => (
         <section key={group.label}>
           <h3 className="mb-1 font-medium text-muted-foreground">{group.label} · {group.notes.length}</h3>
-          {group.notes.length === 0 && <p className="py-2 text-muted-foreground">{t('learning.empty')}</p>}
+          {group.notes.length === 0 && <p className="py-2 text-muted-foreground">
+            {t(view === 'review' ? 'learning.review_empty' : view === 'status' ? 'learning.group_empty' : 'learning.empty')}
+          </p>}
           <ul className="space-y-1">
             {group.notes.map((note) => {
               const props = readNoteLearningProps(learningPropsFromMetadata(note.metadata));
@@ -35,7 +37,7 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                 <button type="button" className="w-full rounded px-2 py-2 text-left hover:bg-muted aria-[current=true]:bg-muted"
                   aria-current={note.id === activeId ? 'true' : undefined} onClick={() => onOpen(note)}>
                   <span className="block break-words font-medium">{note.name}</span>
-                  {(props.course || props.chapter) && <span className="block text-muted-foreground">{[props.course, props.chapter].filter(Boolean).join(' / ')}</span>}
+                  {(props.course || props.chapter) && <span className="block break-words text-muted-foreground">{[props.course, props.chapter].filter(Boolean).join(' / ')}</span>}
                   <span className="block text-muted-foreground">{props.mastery ? t(`learning.mastery.${props.mastery}`) : t('learning.mastery_unset')}</span>
                   {props.reviewDate && <span className="block text-muted-foreground">{props.reviewDate}{props.reviewDate < today ? ` · ${t('learning.overdue')}` : props.reviewDate === today ? ` · ${t('learning.today')}` : ''}</span>}
                 </button>

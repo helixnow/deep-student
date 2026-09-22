@@ -41,6 +41,7 @@ import {
 import { useNotesOptional } from '../NotesContext';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { isMacOS } from '@/utils/platform';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
@@ -275,6 +276,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
 
   /** role="menu" 方向键 roving tabindex */
   const handleMenuKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

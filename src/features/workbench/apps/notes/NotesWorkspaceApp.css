@@ -585,6 +585,8 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+  /* .wb-title-app-slot 已从红绿灯预留区右侧开始，不能再次叠加完整侧栏宽度。 */
+  padding-left: max(0px, calc(var(--notes-titlebar-sidebar-width, 0px) - var(--wb-macos-traffic-lights-inset, 72px)));
 
   /* Keep a reliable titlebar drag target after the final tab. */
   padding-right: 78px;
@@ -613,13 +615,16 @@
   pointer-events: auto;
 }
 
-/* 触屏：溢出触发按钮 28px 目标过小，扩到 44px，负 margin 抵消占位
-   （每边 -8px，槽位仍占 32px，视觉图标不变） */
+/* 触屏横向分配真实的 44px，避免负 margin 侵入最后一个标签的命中区。 */
 @media (pointer: coarse) {
+  .notes-tabs-overflow {
+    flex-basis: 44px;
+  }
+
   .notes-tabs-overflow .notes-icon-button {
     width: 44px;
     height: 44px;
-    margin: -8px;
+    margin: 0;
   }
 }
 

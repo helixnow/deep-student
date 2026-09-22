@@ -320,21 +320,21 @@ describe('NotesWorkspaceApp', () => {
     const titlebarTabs = document.querySelector<HTMLElement>('.notes-titlebar-tabs')!;
     expect(workspace).toHaveAttribute('data-explorer-open', 'true');
     expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
-    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+    expect(titlebarTabs.style.getPropertyValue('--notes-titlebar-sidebar-width')).toBe('var(--wb-sidebar-width, 272px)');
 
     dispatchWorkspaceCommand('toggle-sidebar');
 
     expect(workspace).toHaveAttribute('data-explorer-open', 'false');
     expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'true');
     expect(document.querySelector('.wb-sys-aside')).toHaveAttribute('aria-hidden', 'true');
-    // 折叠后 titlebar 标签回落到窗控件最小间距（sidebarLayoutWidth 归零）
-    expect(titlebarTabs.style.paddingLeft).toBe('76px');
+    // 折叠后只保留 titlebar slot 自带的窗控件预留，不再重复添加左侧间距。
+    expect(titlebarTabs.style.getPropertyValue('--notes-titlebar-sidebar-width')).toBe('0px');
 
     dispatchWorkspaceCommand('toggle-sidebar');
 
     expect(workspace).toHaveAttribute('data-explorer-open', 'true');
     expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
-    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+    expect(titlebarTabs.style.getPropertyValue('--notes-titlebar-sidebar-width')).toBe('var(--wb-sidebar-width, 272px)');
   });
 
   it('opens a mindmap for cold-launch instance keys with the real mm_ prefix', async () => {

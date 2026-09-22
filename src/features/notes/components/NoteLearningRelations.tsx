@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -69,11 +68,14 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
           if (!status.resource_exists || !status.locator_exists) { await load(); throw new Error(t('learning.relations.missing', { defaultValue: '资源或定位目标已失效' })); }
           if (mounted.current) setPreview(relation);
         })}>{t('learning.relations.open', { defaultValue: '打开关联资源' })}</button>
-        {!readOnly && <><button type="button" disabled={locked} onClick={() => { setEditing(relation); setType(relation.type); setResourceId(relation.resource_id); setLocation(relation.locator.type === 'whole' ? '' : String(relation.locator.value)); }}>
+        {!readOnly && <><button type="button" disabled={locked} onClick={() => { setEditing(relation); setType(relation.type); setSelectedLabel(''); setResourceId(relation.resource_id); setLocation(relation.locator.type === 'whole' ? '' : String(relation.locator.value)); }}>
           {t('learning.relations.edit', { defaultValue: '编辑关系' })}</button>
           <button type="button" disabled={locked} onClick={() => void run(async () => {
             if (!await service.delete(relation.id, relation.revision)) throw new Error(t('learning.relations.delete_failed', { defaultValue: '关系未删除，请刷新后重试。' }));
-            if (mounted.current) { if (editing?.id === relation.id) setEditing(undefined); await load(); }
+            if (mounted.current) {
+              if (editing?.id === relation.id) { setEditing(undefined); setResourceId(''); setLocation(''); setSelectedLabel(''); }
+              await load();
+            }
           })}>{t('learning.relations.delete', { defaultValue: '解除关系' })}</button></>}
       </div>
     </li>)}</ul>
@@ -81,7 +83,7 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
       <label className="block">{t('learning.relations.type', { defaultValue: '关系类型' })}<select className="block w-full border bg-background p-1" value={type} onChange={(event) => { setType(event.target.value as NoteRelationType); setLocation(''); setResourceId(''); setSelectedLabel(''); }}>
         <option value="source">{t('learning.relations.types.source', { defaultValue: '来源 PDF' })}</option><option value="card">{t('learning.relations.types.card', { defaultValue: '关联卡片' })}</option><option value="mistake">{t('learning.relations.types.mistake', { defaultValue: '关联错题' })}</option>
       </select></label>
-      <NoteRelationTargetPicker key={type} type={type} disabled={locked} onChoose={(id, target, label) => { setResourceId(id); setLocation(target); setSelectedLabel(label); }} />
+      <NoteRelationTargetPicker key={`${type}:${editing?.id ?? 'new'}`} type={type} disabled={locked} onChoose={(id, target, label) => { setResourceId(id); setLocation(target); setSelectedLabel(label); }} />
       {selectedLabel && <p className="break-words">{selectedLabel}</p>}
       <details><summary>{t('learning.relations.manual', { defaultValue: '按资源 ID 关联' })}</summary>
       <label className="block">{t('learning.relations.resource_id', { defaultValue: '资源 ID（卡片填文档 ID）' })}<input className="block w-full border bg-background p-1" value={resourceId} onChange={(event) => { setResourceId(event.target.value); setSelectedLabel(''); }} /></label>
@@ -94,9 +96,9 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
           resource_id: resourceId.trim(), locator: type === 'source' ? { type: 'page', value: Number(location) } : { type: type === 'card' ? 'card' : 'question', value: location.trim() }, expected_revision: editing?.revision ?? null });
         if (mounted.current) { setEditing(undefined); setResourceId(''); setLocation(''); setSelectedLabel(''); await load(); }
       })}>{t('learning.relations.save', { defaultValue: '保存关系' })}</button>
-      {editing && <button type="button" onClick={() => { setEditing(undefined); setResourceId(''); setLocation(''); }}>{t('learning.relations.cancel', { defaultValue: '取消编辑关系' })}</button>}
+      {editing && <button type="button" onClick={() => { setEditing(undefined); setResourceId(''); setLocation(''); setSelectedLabel(''); }}>{t('learning.relations.cancel', { defaultValue: '取消编辑关系' })}</button>}
     </fieldset>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
-    {preview && createPortal(<NoteRelationPreview key={preview.id} relation={preview} onClose={() => setPreview(undefined)} />, document.body)}
+    {preview && <NoteRelationPreview key={preview.id} relation={preview} onClose={() => setPreview(undefined)} />}
   </section>;
 }

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuNode } from '@/dstu';
 import { NoteLearningViews } from './components/NoteLearningViews';
@@ -53,7 +52,7 @@ export function NotesLibraryView({ onOpen, activeId }: { onOpen: (note: DstuNode
     </div>
     {error && <p role="alert" className="p-3 text-destructive">{error}</p>}
     {loading ? <p role="status">{t('learning.loading')}</p> : <div className="min-h-0 flex-1"><NoteLearningViews notes={filtered} view={view} activeId={activeId} onOpen={onOpen} /></div>}
-    {creating && createPortal(<CreateLearningNoteDialog onClose={() => setCreating(false)} onCreated={(note) => { void load(); onOpen(note); }} />, document.body)}
+    {creating && <CreateLearningNoteDialog onClose={() => setCreating(false)} onCreated={(note) => { void load(); onOpen(note); }} />}
   </section>;
 }
 

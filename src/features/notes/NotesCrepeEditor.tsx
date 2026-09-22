@@ -42,6 +42,7 @@ import {
 } from './findQueryBridge';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { isMacOS } from '../../utils/platform';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { useTauriDragAndDrop } from '../../hooks/useTauriDragAndDrop';
 import { useAIReview } from './aiReview';
 import { createFullDocumentApi, assertNoteContentSize, fullDocumentRecoveryStore, type FullDocumentSearchApi, type FullDocumentApi, type FullDocumentViewHost, type RetainedNoteDraft } from './fullDocument';
@@ -2531,7 +2532,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
                 aria-hidden={!pageActionsOpen || undefined}
                 {...(!pageActionsOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
                 onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return;
+                  if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
                   event.preventDefault();
                   event.stopPropagation();
                   setPageActionsOpen(false);

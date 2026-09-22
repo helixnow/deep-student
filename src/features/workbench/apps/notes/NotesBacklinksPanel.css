@@ -142,7 +142,30 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+/* The property form and relations share one scroll region. A full-height context
+ * panel would otherwise push the relation form below the clipped panel edge. */
+.notes-backlinks-panel-properties > .notes-context-panel {
+  height: auto;
+  flex: 0 0 auto;
+}
+
+.notes-backlinks-panel-properties .notes-context-outline {
+  flex: 0 0 auto;
+  height: clamp(120px, 30vh, 280px);
+}
+
+.notes-backlinks-panel-properties > section {
+  flex: 0 0 auto;
+  padding-inline: 12px;
+}
+
+/* Author display:flex rules must not override the native hidden attribute. */
+.notes-backlinks-panel > [hidden] {
+  display: none !important;
 }
 
 /* 属性页内容沿用面板底色，避免 NotesContextPanel 自带 bg-background 割裂 */

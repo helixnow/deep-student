@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   Plus,
   TextIndent,
@@ -187,7 +188,13 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   useEffect(() => {
     if (!insertOpen) return;
     const dismiss = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setInsertOpen(false);
+      if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+      event.preventDefault();
+      setInsertOpen(false);
+      const root = rootRef.current;
+      if (root?.querySelector('.mobile-editor-toolbar__insert-row')?.contains(document.activeElement)) {
+        root.querySelector<HTMLButtonElement>('[data-action="insert-toggle"]')?.focus();
+      }
     };
     document.addEventListener('keydown', dismiss);
     return () => document.removeEventListener('keydown', dismiss);
@@ -221,8 +228,14 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     if (!visible || typeof document === 'undefined') return;
     const rootStyle = document.documentElement.style;
     rootStyle.setProperty('--mobile-toolbar-keyboard-offset', `${bottomOffset}px`);
-    rootStyle.setProperty('--mobile-toolbar-height', `${rootRef.current?.offsetHeight ?? 52}px`);
+    const toolbar = rootRef.current;
+    const updateHeight = () => rootStyle.setProperty('--mobile-toolbar-height', `${toolbar?.offsetHeight ?? 52}px`);
+    updateHeight();
+    // Expanded rows reflow on rotation/window resize even if keyboard offset is unchanged.
+    const observer = new ResizeObserver(updateHeight);
+    if (toolbar) observer.observe(toolbar);
     return () => {
+      observer.disconnect();
       rootStyle.removeProperty('--mobile-toolbar-keyboard-offset');
       rootStyle.removeProperty('--mobile-toolbar-height');
     };
@@ -493,6 +506,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       aria-label={toolbarLabel}
       data-testid="mobile-editor-toolbar"
       data-collapsed={isCollapsed ? 'true' : undefined}
+      aria-hidden={isCollapsed || undefined}
+      {...(isCollapsed ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       data-expanded={expanded ? 'true' : undefined}
       data-inserting={insertOpen ? 'true' : undefined}
       style={

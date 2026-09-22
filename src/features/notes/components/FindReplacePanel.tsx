@@ -21,6 +21,7 @@ import {
   type SearchMatch,
   type SearchOptions,
 } from '@/components/crepe/plugins/searchHighlight';
+import './FindReplacePanel.css';
 
 export interface FindReplacePanelProps {
   editorApi: CrepeEditorApi | null;
@@ -39,7 +40,7 @@ export interface FindReplacePanelProps {
 /** 退场过渡时长，与 --dropdown-close-dur（150ms）对齐；含少量缓冲防止过早卸载 */
 const EXIT_FALLBACK_MS = 180;
 
-/** 📱 触屏：24px 图标按钮放大到 ≥44px 触控目标（面板为 flex 布局，输入框 min-w-0 自动收缩） */
+/** 触屏图标保留真实 44px 命中区；窄面板由容器查询把选项移到下一行。 */
 const COARSE_ICON_BTN = '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11';
 
 function prefersReducedMotion(): boolean {
@@ -77,6 +78,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
 
   const findInputRef = useRef<HTMLInputElement>(null);
   const scopeHintId = useId();
+  const replaceRowId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -343,7 +345,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   // Cmd/Ctrl+Z / Shift+Z / Y：焦点在查找框时仍把撤销/重做交给编辑器（替换必须可撤销）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isComposingKeyEvent(e)) return;
+      if (e.defaultPrevented || isComposingKeyEvent(e)) return;
       // C5：隐藏/非活动实例不消费全局快捷键
       if (!ownsGlobalInput()) return;
       if (e.key === 'F3') {
@@ -416,20 +418,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const handleReplaceAll = useCallback(() => { void replaceMatches(true); }, [replaceMatches]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isComposingKeyEvent(e)) return;
+    if (e.defaultPrevented || isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       // Enter / Shift+Enter 在匹配间正反向循环
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      requestClose();
     }
   };
 
   /** 替换输入框：Enter 替换当前，Cmd/Ctrl+Enter 全部替换 */
   const handleReplaceKeyDown = (e: React.KeyboardEvent) => {
-    if (isComposingKeyEvent(e)) return;
+    if (e.defaultPrevented || isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
@@ -437,9 +436,6 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       } else {
         handleReplaceCurrent();
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      requestClose();
     }
   };
 
@@ -461,9 +457,16 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       ref={rootRef}
       aria-label={panelLabel}
       aria-busy={busy}
+      {...(isClosing ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        requestClose();
+      }}
       data-state={isClosing ? 'closing' : 'open'}
       className={cn(
-        'relative z-40 flex w-full flex-shrink-0 flex-col overflow-hidden',
+        'notes-find-replace relative z-40 flex w-full flex-shrink-0 flex-col overflow-hidden',
         'border-b border-border/60 bg-background',
         'shadow-[0_2px_8px_hsl(var(--shadow-base)/0.06)]',
         // 入场：token 驱动 drop-in（150ms，--dropdown-ease；ui-motion 已内置 reduced-motion 降级）。
@@ -475,12 +478,12 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         className,
       )}
     >
-      <div className="flex items-center gap-1 px-2 py-1">
+      <div className="notes-find-replace__find-row flex items-center gap-1 px-2 py-1">
         {!readOnly ? (
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
+            className={cn('notes-find-replace__toggle h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => setIsReplaceMode(!isReplaceMode)}
             title={isReplaceMode
               ? t('notes:findReplace.hideReplace')
@@ -489,6 +492,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               ? t('notes:findReplace.hideReplace')
               : t('notes:findReplace.showReplace')}
             aria-expanded={isReplaceMode}
+            aria-controls={isReplaceMode ? replaceRowId : undefined}
           >
             {/* 收起时向右、展开时向下（Typora/VS Code 语义） */}
             <CaretRight
@@ -499,10 +503,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             />
           </DsButton>
         ) : (
-          <div className="w-6 flex-shrink-0" />
+          <div className="notes-find-replace__toggle w-6 flex-shrink-0" aria-hidden="true" />
         )}
 
-        <div className="relative flex w-full min-w-0 max-w-[320px] items-center">
+        <div className="notes-find-replace__input relative flex w-full min-w-0 max-w-[320px] items-center">
           <MagnifyingGlass className="absolute left-2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
             ref={findInputRef}
@@ -528,7 +532,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         {(findText || replaceFeedback) && (
           <span
             className={cn(
-              'flex-shrink-0 whitespace-nowrap px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
+              'notes-find-replace__status px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
               regexInvalid
                 ? 'text-[hsl(var(--destructive)/0.85)]'
                 : replaceFeedback
@@ -561,7 +565,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           </span>
         )}
 
-        <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
+        <div className="notes-find-replace__actions ml-auto flex flex-shrink-0 flex-wrap items-center gap-0.5">
           {busy && !replacingRef.current && <DsButton variant="ghost" size="sm" onClick={() => {
             abortRef.current?.abort();
             setBusy(false);
@@ -627,23 +631,22 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           >
             <CaretDown className="h-4 w-4" />
           </DsButton>
-          <div className="mx-0.5 h-4 w-[1px] bg-border/60" aria-hidden="true" />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn('h-6 w-6 p-0 text-muted-foreground hover:text-foreground', COARSE_ICON_BTN)}
-            onClick={requestClose}
-            aria-label={t('common:close')}
-          >
-            <X className="h-4 w-4" />
-          </DsButton>
         </div>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className={cn('notes-find-replace__close h-6 w-6 p-0 text-muted-foreground hover:text-foreground', COARSE_ICON_BTN)}
+          onClick={requestClose}
+          aria-label={t('common:close')}
+        >
+          <X className="h-4 w-4" />
+        </DsButton>
       </div>
 
       {isReplaceMode && !readOnly && (
-        <div className="ui-rise-in flex items-center gap-1 px-2 pb-1">
-          <div className="w-6 flex-shrink-0" /> {/* Spacer to align with input above */}
-          <div className="relative flex w-full min-w-0 max-w-[320px] items-center">
+        <div id={replaceRowId} className="notes-find-replace__replace-row ui-rise-in flex items-center gap-1 px-2 pb-1">
+          <div className="notes-find-replace__spacer w-6 flex-shrink-0" aria-hidden="true" />
+          <div className="notes-find-replace__input relative flex w-full min-w-0 max-w-[320px] items-center">
             <Input
               className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base"
               placeholder={t('notes:findReplace.replacePlaceholder')}
@@ -654,7 +657,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               onKeyDown={handleReplaceKeyDown}
             />
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1">
+          <div className="notes-find-replace__replace-actions flex flex-shrink-0 flex-wrap items-center gap-1">
             <DsButton
               variant="secondary"
               size="sm"

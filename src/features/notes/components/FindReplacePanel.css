@@ -1,0 +1,40 @@
+.notes-find-replace {
+  container: notes-find-replace / inline-size;
+}
+
+.notes-find-replace .notes-find-replace__find-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.notes-find-replace__toggle { grid-column: 1; grid-row: 1; }
+.notes-find-replace .notes-find-replace__input { grid-column: 2; grid-row: 1; max-width: none; }
+.notes-find-replace__close { grid-column: 3; grid-row: 1; }
+
+.notes-find-replace .notes-find-replace__actions {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-left: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.notes-find-replace__status {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notes-find-replace .notes-find-replace__replace-row { flex-wrap: wrap; }
+.notes-find-replace__spacer { display: none; }
+.notes-find-replace__replace-actions { min-width: 0; max-width: 100%; }
+
+/* Use the editor pane's width, including split panes, rather than the WebView. */
+@container notes-find-replace (min-width: 680px) {
+  .notes-find-replace .notes-find-replace__find-row { display: flex; flex-wrap: wrap; }
+  .notes-find-replace .notes-find-replace__input { flex: 1 1 180px; max-width: 320px; }
+  .notes-find-replace .notes-find-replace__actions { margin-left: auto; }
+  .notes-find-replace .notes-find-replace__replace-row { flex-wrap: nowrap; }
+  .notes-find-replace__spacer { display: block; }
+}

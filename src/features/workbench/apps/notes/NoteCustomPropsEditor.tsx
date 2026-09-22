@@ -12,6 +12,7 @@ import { Check, CircleNotch, PencilSimple, Plus, SlidersHorizontal, Trash, X } f
 import { NoteLearningPropsFields } from '@/features/notes/components/NoteLearningPropsFields';
 import { LegacyLearningPropsMapper } from '@/features/notes/components/LegacyLearningPropsMapper';
 import { LEARNING_PROP_KEYS, isLearningPropValue, type LearningField } from '@/features/notes/noteLearningProps';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 与 tags 数量限额同一个量级；键值均有长度限制（后端亦校验兜底） */
 export const NOTE_PROPS_MAX_COUNT = 32;
@@ -232,12 +233,14 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
                 <dd className="notes-props-editing">
                   <input
                     value={editingValue}
+                    disabled={saving}
                     onChange={(event) => {
                       setEditingValue(event.target.value);
                       setError(null);
                     }}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                      if (event.defaultPrevented || isComposingKeyEvent(event) || saving) return;
+                      if (event.key === 'Enter') {
                         event.preventDefault();
                         void saveEditedValue();
                       }
@@ -325,6 +328,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
           <input
             ref={keyInputRef}
             value={newKey}
+            disabled={saving}
             placeholder={t('notesWorkspace.props.keyPlaceholder', { defaultValue: '属性名' })}
             aria-label={t('notesWorkspace.props.keyPlaceholder', { defaultValue: '属性名' })}
             onChange={(event) => {
@@ -332,6 +336,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
               setError(null);
             }}
             onKeyDown={(event) => {
+              if (event.defaultPrevented || isComposingKeyEvent(event) || saving) return;
               if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
@@ -341,6 +346,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
           />
           <input
             value={newValue}
+            disabled={saving}
             placeholder={t('notesWorkspace.props.valuePlaceholder', { defaultValue: '值' })}
             aria-label={t('notesWorkspace.props.valuePlaceholder', { defaultValue: '值' })}
             onChange={(event) => {
@@ -348,7 +354,8 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
               setError(null);
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+              if (event.defaultPrevented || isComposingKeyEvent(event) || saving) return;
+              if (event.key === 'Enter') {
                 event.preventDefault();
                 void addProp();
               }
@@ -382,6 +389,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
         <button
           type="button"
           className="notes-props-add-button"
+          disabled={saving}
           onClick={() => {
             setAdding(true);
             setError(null);

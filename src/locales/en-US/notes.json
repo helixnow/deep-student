@@ -15,6 +15,17 @@
     "paragraph": "Paragraph",
     "insert": "Insert"
   },
+  "formatGate": {
+    "checking": "Checking note format…",
+    "readonly_label": "Read-only note source",
+    "unsupported": "This note uses an unsupported format. The full source is shown below. Use a compatible version to edit it.",
+    "copy": "Copy full source",
+    "copy_failed": "Copy failed. Please try again.",
+    "export": "Export source",
+    "export_title": "Export note source",
+    "raw_label": "Full note source",
+    "retry": "Check format again"
+  },
   "canvas": {
     "untitled": "Untitled Note",
     "error": {
@@ -237,6 +248,9 @@
     "legacy_value": "Previous value retained: {{value}}. It will only be replaced when you edit and save this field.",
     "legacy_hint": "Existing custom properties are kept and are not automatically mapped to learning properties.",
     "save": "Save learning properties",
+    "saving": "Saving learning properties…",
+    "saved": "Learning properties saved",
+    "unsaved": "Learning properties have unsaved changes. Click “Save learning properties”.",
     "view_label": "View",
     "view_selector": "Note learning view",
     "views_label": "Learning view",
@@ -248,6 +262,8 @@
     },
     "unset_group": "Not set / previous value retained",
     "review_range": "Reviews: overdue and the next 7 days",
+    "review_empty": "No overdue reviews or reviews due in the next 7 days. Set a review date in learning properties.",
+    "group_empty": "No notes with this mastery status.",
     "empty": "No notes yet",
     "mastery_unset": "Mastery status not set",
     "overdue": "Overdue",

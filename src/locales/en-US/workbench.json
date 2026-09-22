@@ -897,6 +897,7 @@
       "enterQuery": "Enter text to search note contents.",
       "searchFailed": "Could not search notes.",
       "openFailed": "Could not open this resource.",
+      "opening": "Opening resource…",
       "retry": "Retry",
       "mindmap": "Mind map",
       "note": "Note",
