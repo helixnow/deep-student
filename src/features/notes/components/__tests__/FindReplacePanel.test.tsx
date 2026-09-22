@@ -45,11 +45,15 @@ function createEditor(windowed = false) {
       doc: schema.node('doc', null, [schema.node('paragraph', null, schema.text('cat cat'))]),
     }),
     dispatch: vi.fn((tr: Transaction) => { view.state = view.state.apply(tr); }),
+    updateState: vi.fn((state: EditorState) => { view.state = state; }),
     domAtPos: () => ({ node: document.createElement('p'), offset: 0 }),
   };
   const api = {
     getCrepe: () => ({ editor: { action: (run: (ctx: unknown) => void) => run({ get: () => view }) } }),
     isDocumentWindowed: () => windowed,
+    getFullDocument: () => ({ noteId: 'test', revision: 1, markdown: view.state.doc.textContent }),
+    materializeFullDocument: async () => { windowed = false; },
+    applyFullDocumentTransaction: async (tr: Transaction) => { view.dispatch(tr); },
   } as unknown as CrepeEditorApi;
   return { api, view };
 }
@@ -133,24 +137,25 @@ describe('FindReplacePanel regex mode', () => {
 });
 
 describe('FindReplacePanel search scope', () => {
-  it('always describes the loaded scope, including when matches exist', () => {
+  it('materializes the document before describing whole draft matches', async () => {
     const { api } = createEditor(true);
     render(<FindReplacePanel editorApi={api} onClose={vi.fn()} initialQuery="cat" />);
+    await act(async () => {});
     expect(screen.getByText('1/2')).toBeInTheDocument();
-    const scope = '范围：当前笔记已加载部分（长文），未加载内容不参与查找和替换。';
+    const scope = '范围：当前笔记完整草稿；不跨段落或内嵌对象匹配。';
     expect(screen.getByText(scope)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '查找' })).toHaveAccessibleDescription(scope);
     fireEvent.click(screen.getByRole('button', { name: '展开替换' }));
     expect(screen.getByRole('textbox', { name: '替换为' })).toHaveAccessibleDescription(scope);
 
     fireEvent.change(screen.getByRole('textbox', { name: '查找' }), { target: { value: 'missing' } });
-    expect(screen.getByTitle('已加载部分无匹配（长文）')).toBeInTheDocument();
+    expect(screen.getByTitle('无匹配结果')).toBeInTheDocument();
   });
 
-  it('does not promise whole-document coverage when the host does not supply windowing information', () => {
+  it('describes the full draft search contract', () => {
     render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
     expect(screen.getByRole('textbox', { name: '查找' })).toHaveAccessibleDescription(
-      '范围：当前笔记已加载内容；不跨段落或内嵌对象匹配。',
+      '范围：当前笔记完整草稿；不跨段落或内嵌对象匹配。',
     );
   });
 });
@@ -174,7 +179,7 @@ describe('FindReplacePanel keyboard', () => {
   it.each([
     { isComposing: true },
     { isComposing: false, keyCode: 229 },
-  ])('does not navigate, replace, close or consume editor shortcuts during composition (%j)', (composition) => {
+  ])('does not navigate, replace, close or consume editor shortcuts during composition (%j)', async (composition) => {
     const { api, view } = createEditor();
     const onClose = vi.fn();
     render(<FindReplacePanel editorApi={api} onClose={onClose} initialQuery="cat" />);
@@ -204,9 +209,9 @@ describe('FindReplacePanel keyboard', () => {
     expect(screen.getByText('2/2')).toBeInTheDocument();
     fireEvent.keyDown(find, { key: 'Enter', shiftKey: true });
     expect(screen.getByText('1/2')).toBeInTheDocument();
-    fireEvent.keyDown(replace, { key: 'Enter' });
+    await act(async () => { fireEvent.keyDown(replace, { key: 'Enter' }); });
     expect(view.state.doc.textContent).toBe('dog cat');
-    fireEvent.keyDown(replace, { key: 'Enter', ctrlKey: true });
+    await act(async () => { fireEvent.keyDown(replace, { key: 'Enter', ctrlKey: true }); });
     expect(view.state.doc.textContent).toBe('dog dog');
     fireEvent.keyDown(replace, { key: 'Escape' });
     act(() => { vi.runAllTimers(); });

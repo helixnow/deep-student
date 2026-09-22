@@ -15,8 +15,8 @@ const state = vi.hoisted(() => ({
 vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
-  NotesEditorHeader: ({ onOpenHistory }: NotesEditorHeaderProps) => (
-    <button disabled={!onOpenHistory} onClick={onOpenHistory}>Open note history</button>
+  NotesEditorHeader: ({ onOpenHistory, charCount }: NotesEditorHeaderProps) => (
+    <><button disabled={!onOpenHistory} onClick={onOpenHistory}>Open note history</button><span data-testid="full-count">{charCount}</span></>
   ),
 }));
 vi.mock('@/features/notes/components/NotesTemplatePanel', () => ({
@@ -86,15 +86,22 @@ import { NotesCrepeEditor } from './NotesCrepeEditor';
 import { useAIReview } from './aiReview';
 import { aiReviewSessionKey, storeAIReviewSession } from './aiReviewModel';
 import { fullDocumentRecoveryStore } from './fullDocument';
+import { noteHostCoordinator } from './noteHostCoordinator';
+import { publishNotesFindQuery, clearPendingNotesFindQueriesForTests } from './findQueryBridge';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(invoke).mockImplementation(async (command, args: any) => {
+    if (command === 'notes_get_format') return { note_id: args.noteId, content_format: 'markdown-legacy', format_version: 1, serializer_version: 'markdown-v1', required_capabilities: [] };
+    return command === 'notes_history_list' ? { items: [], next_cursor: null } : null;
+  });
   state.selectionVisible = false;
   state.readonly = false;
   state.templateProps = null;
   state.aiReviewOverrides = {};
   storeAIReviewSession(aiReviewSessionKey('host-note'), null);
   fullDocumentRecoveryStore().clear();
+  clearPendingNotesFindQueriesForTests();
   vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
   vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
     matches: /min-width|prefers-reduced-motion/.test(query), media: query, onchange: null,
@@ -106,6 +113,22 @@ beforeEach(() => {
 });
 
 describe('notes host reliability wiring', () => {
+  it('consumes a cold library query and publishes full draft statistics and outline content', async () => {
+    const tail = '\n\n## Tail heading\nTAIL-QUERY';
+    const outline = vi.fn();
+    window.addEventListener('notes:content-changed', outline);
+    publishNotesFindQuery({ noteId: 'host-note', query: 'TAIL-QUERY' });
+    const extendEditorApi = (api: CrepeEditorApi) => ({ ...api, getFullMarkdown: () => api.getMarkdown() + tail });
+    try {
+      render(<NotesCrepeEditor noteId="host-note" initialContent="Prefix" extendEditorApi={extendEditorApi}
+        windowingState={{ enabled: true, loadedLineCount: 1, totalLineCount: 4, hasMore: true }} />);
+      await waitFor(() => expect(screen.getByRole('textbox', { name: '查找' })).toHaveValue('TAIL-QUERY'));
+      expect(screen.getByTestId('full-count')).toHaveTextContent(String(('Prefix' + tail).replace(/\s/g, '').length));
+      fireEvent.change(screen.getByRole('textbox', { name: 'test note editor' }), { target: { value: 'Live draft' } });
+      await waitFor(() => expect(outline.mock.calls.at(-1)?.[0].detail.content).toBe('Live draft' + tail));
+      expect(screen.getByTestId('full-count')).toHaveTextContent(String(('Live draft' + tail).replace(/\s/g, '').length));
+    } finally { window.removeEventListener('notes:content-changed', outline); }
+  });
   it('keeps citation selection available in read-only mode', async () => {
     render(<NotesCrepeEditor noteId="host-note" initialContent="original" readOnly />);
     await waitFor(() => expect(state.selectionVisible).toBe(true));
@@ -115,7 +138,7 @@ describe('notes host reliability wiring', () => {
 
   it('first Escape collapses AI review without leaving focus; IME Escape does neither', async () => {
     const { container } = render(<NotesCrepeEditor noteId="host-note" initialContent="original" onSave={async () => {}} />);
-    const editor = screen.getByRole('textbox', { name: 'test note editor' });
+    const editor = await screen.findByRole('textbox', { name: 'test note editor' });
     act(() => editor.focus());
     fireEvent.keyDown(editor, { key: 'u', ctrlKey: true, shiftKey: true });
     const shell = container.querySelector('.notes-crepe-shell')!;
@@ -141,7 +164,7 @@ describe('notes host reliability wiring', () => {
 
   it('opens the real history panel through header props and consumes Escape before focus mode', async () => {
     const { container } = render(<NotesCrepeEditor noteId="host-note" initialContent="original" />);
-    const editor = screen.getByRole('textbox', { name: 'test note editor' });
+    const editor = await screen.findByRole('textbox', { name: 'test note editor' });
     act(() => editor.focus());
     fireEvent.keyDown(editor, { key: 'u', ctrlKey: true, shiftKey: true });
     const shell = container.querySelector('.notes-crepe-shell')!;
@@ -179,6 +202,7 @@ describe('notes host reliability wiring', () => {
       onSave={onSave} extendEditorApi={extendEditorApi}
       windowingState={{ enabled: true, loadedLineCount: 1, totalLineCount: 5, hasMore: true }} />);
     await waitFor(() => expect(state.templateProps?.documentHost).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.page_actions', 'More note actions') }));
     fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.note_templates', 'Note templates') }));
     expect(state.templateProps?.open).toBe(true);
     expect(state.templateProps?.disabled).toBe(false);
@@ -230,6 +254,50 @@ describe('notes host reliability wiring', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it('blocks stale autosave in every mounted instance after a committed update fails to refresh', async () => {
+    const saveA = vi.fn(async () => {}), saveB = vi.fn(async () => {});
+    const refreshA = vi.fn(async () => {});
+    const refreshB = vi.fn(async () => { throw new Error('refresh B failed'); });
+    const extendA = (api: CrepeEditorApi) => ({ ...api, refreshDocumentFromDisk: refreshA });
+    const extendB = (api: CrepeEditorApi) => ({ ...api, refreshDocumentFromDisk: refreshB });
+    render(<><NotesCrepeEditor noteId="multi-note" initialContent="original" acrWindowId="multi-a" onSave={saveA} extendEditorApi={extendA} />
+      <NotesCrepeEditor noteId="multi-note" initialContent="original" acrWindowId="multi-b" onSave={saveB} extendEditorApi={extendB} /></>);
+    await waitFor(() => expect(noteHostCoordinator.all(['multi-note'])).toHaveLength(2));
+    const entries = noteHostCoordinator.all(['multi-note']);
+    await act(async () => {
+      await expect(noteHostCoordinator.withLockedNotes(['multi-note'], async () => {
+        await noteHostCoordinator.flushPendingSaves(['multi-note']);
+        noteHostCoordinator.invalidateNotes(['multi-note']);
+        await noteHostCoordinator.refreshNotes(['multi-note']);
+      })).rejects.toThrow('refresh B failed');
+    });
+    const failed = entries.find(entry => entry.windowId === 'multi-b')!;
+    await expect(failed.api.flushPendingSave!()).rejects.toThrow('笔记操作尚未完成');
+    expect(saveB).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('textbox', { name: 'test note editor' })[1]).toHaveAttribute('readonly');
+    expect(screen.getByText('refresh B failed')).toBeInTheDocument();
+  });
+
+  it('offers slowly hydrated drafts without overwriting text typed during hydration', async () => {
+    let resolveDrafts!: (value: unknown) => void;
+    vi.mocked(invoke).mockImplementation(async (command, args: any) => {
+      if (command === 'notes_get_format') return { note_id: args.noteId, content_format: 'markdown-legacy', format_version: 1, serializer_version: 'markdown-v1', required_capabilities: [] };
+      return command === 'notes_state_list' && args?.request?.type === 'draft'
+        ? new Promise(resolve => { resolveDrafts = resolve; }) : null;
+    });
+    let api: CrepeEditorApi | null = null;
+    render(<NotesCrepeEditor noteId="hydrate-note" initialContent="saved" onEditorReady={value => { api = value; }} />);
+    await waitFor(() => expect(api).not.toBeNull());
+    fireEvent.change(screen.getByRole('textbox', { name: 'test note editor' }), { target: { value: 'new live draft' } });
+    await act(async () => { resolveDrafts([{ note_id: 'hydrate-note', type: 'draft', key: 'old', revision: 1, deleted: false,
+      value: { markdown: 'old recovery', error: 'prior failure', window_id: 'old-window' } }]); });
+    expect(api!.getFullDocument!().markdown).toBe('new live draft');
+    fireEvent.click(screen.getByRole('button', { name: '查看草稿 1' }));
+    expect(screen.getByText('prior failure')).toBeInTheDocument();
+    expect(api!.getFullDocument!().markdown).toBe('new live draft');
+    vi.mocked(invoke).mockResolvedValue(null);
+  });
+
   it('routes each recovery choice and persistence retry to useAIReview with the owning note and window', async () => {
     const restoreCandidate = vi.fn(async (_id?: string) => {});
     const retryPersistence = vi.fn(async () => {});
@@ -243,6 +311,7 @@ describe('notes host reliability wiring', () => {
     await waitFor(() => expect(useAIReview).toHaveBeenLastCalledWith({
       noteId: 'host-note', windowId: 'host-window', enabled: true,
       editorApi: expect.objectContaining({ getFullDocument: expect.any(Function), replaceFullDocument: expect.any(Function) }),
+      host: { acquireReviewLease: expect.any(Function), resolveScope: expect.any(Function), saveAs: expect.any(Function), applyDocument: expect.any(Function) },
     }));
     expect(screen.getByRole('alert')).toHaveTextContent('Persistence failed');
     const recoveryButton = (index: number) => screen.getByRole('button', {

@@ -6,6 +6,7 @@ import { NoteCustomPropsEditor } from '@/features/workbench/apps/notes/NoteCusto
 import '@/features/workbench/apps/notes/NoteCustomPropsEditor.css';
 import { learningPropsFromMetadata } from '../noteLearningProps';
 import { mergeNotePropEdits } from '../notePropEdits';
+import { NoteLearningRelations } from './NoteLearningRelations';
 
 /** Independent metadata baseline: never advance the owning editor's content OCC token. Key by note ID/path. */
 export function NoteLearningPropertiesSection({ node, readOnly = false }: { node: DstuNode; readOnly?: boolean }) {
@@ -80,5 +81,6 @@ export function NoteLearningPropertiesSection({ node, readOnly = false }: { node
     {!liveNode && !loadError && <p role="status" className="text-xs text-muted-foreground">{t('learning.loading')}</p>}
     {liveNode && <NoteCustomPropsEditor key={`${node.id}:${node.path}`}
       value={learningPropsFromMetadata(liveNode.metadata)} readOnly={readOnly} onChange={save} />}
+    <NoteLearningRelations noteId={node.id} readOnly={readOnly} />
   </section>;
 }

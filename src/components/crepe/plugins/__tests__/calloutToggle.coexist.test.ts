@@ -8,6 +8,7 @@ import { Editor, defaultValueCtx, editorViewCtx, rootCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { getMarkdown } from '@milkdown/utils';
+import type { EditorView } from '@milkdown/prose/view';
 import { describe, expect, it } from 'vitest';
 
 import { calloutPlugin } from '../callout';
@@ -66,7 +67,7 @@ async function createEditor(
   };
 }
 
-function collectBlockTypes(view: { state: { doc: { descendants: (f: (n: { type: { name: string }; attrs: Record<string, unknown> }) => void) => void } } }) {
+function collectBlockTypes(view: EditorView) {
   const types: Array<{ name: string; typeAttr?: string; title?: string; open?: boolean }> = [];
   view.state.doc.descendants((node) => {
     if (node.type.name === 'callout') {
@@ -78,7 +79,7 @@ function collectBlockTypes(view: { state: { doc: { descendants: (f: (n: { type: 
     } else if (node.type.name === TOGGLE_TYPE) {
       types.push({
         name: TOGGLE_TYPE,
-        title: String(node.attrs.title ?? ''),
+        title: node.child(0).textContent,
         open: Boolean(node.attrs.open),
       });
     } else if (node.type.name === 'blockquote') {

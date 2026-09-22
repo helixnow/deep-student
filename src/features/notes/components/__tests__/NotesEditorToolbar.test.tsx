@@ -1,15 +1,10 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { CrepeEditorApi } from '@/components/crepe/types';
-import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
 import { NotesEditorToolbar } from '../NotesEditorToolbar';
-
-vi.mock('@/features/anki/generateCardsFromText', () => ({
-  MIN_CONTENT_LENGTH_FOR_CARDS: 10,
-  generateCardsFromText: vi.fn(async () => ({ ok: true as const })),
-}));
+import { layoutCommandLabel } from '@/components/crepe/commandMenus';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
@@ -48,10 +43,6 @@ function makeEditor(overrides: Partial<CrepeEditorApi> = {}): CrepeEditorApi {
 }
 
 describe('NotesEditorToolbar', () => {
-  beforeEach(() => {
-    vi.mocked(generateCardsFromText).mockClear();
-  });
-
   it('keeps every formatting command keyboard reachable in one quiet menu', () => {
     const editor = makeEditor();
 
@@ -82,14 +73,35 @@ describe('NotesEditorToolbar', () => {
     expect(screen.getByRole('menuitem', { name: 'wikilink' })).toBeInTheDocument();
   });
 
-  it('wikilink entry inserts a [[ trigger through the existing autocomplete path', () => {
-    const editor = makeEditor();
+  it('wikilink entry uses the shared command that triggers autocomplete', () => {
+    const editor = makeEditor({ executeCommand: vi.fn(async () => true) });
     render(<NotesEditorToolbar editor={editor} />);
 
     fireEvent.click(screen.getByRole('button', { name: '格式化' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'wikilink' }));
-    expect(editor.focus).toHaveBeenCalled();
-    expect(editor.insertAtCursor).toHaveBeenCalledWith('[[');
+    expect(editor.executeCommand).toHaveBeenCalledWith('wikilink', undefined);
+    expect(editor.insertAtCursor).not.toHaveBeenCalled();
+  });
+
+  it('updates layout availability from command-state notifications and uses the shared command', () => {
+    let enabled = false;
+    let notify!: () => void;
+    const dispose = vi.fn();
+    const editor = makeEditor({
+      executeCommand: vi.fn(async () => true),
+      canExecuteCommand: vi.fn(() => enabled),
+      subscribeCommandState: listener => { notify = listener; return dispose; },
+    });
+    const rendered = render(<NotesEditorToolbar editor={editor} />);
+    fireEvent.click(screen.getByRole('button', { name: '格式化' }));
+    const layoutItem = () => screen.getByRole('menuitem', { name: layoutCommandLabel('insert-columns') });
+    expect(layoutItem()).toBeDisabled();
+    act(() => { enabled = true; notify(); });
+    expect(layoutItem()).not.toBeDisabled();
+    fireEvent.click(layoutItem());
+    expect(editor.executeCommand).toHaveBeenCalledWith('insert-columns', undefined);
+    rendered.unmount();
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it('callout / toggle entries degrade to no-op without a crepe instance', () => {
@@ -113,7 +125,7 @@ describe('NotesEditorToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '格式化' }));
     const menu = screen.getByRole('menu');
-    const items = screen.getAllByRole('menuitem');
+    const items = screen.getAllByRole('menuitem').filter(item => !(item as HTMLButtonElement).disabled);
     expect(items.length).toBeGreaterThan(2);
 
     // 初始：仅第一项可 Tab 到
@@ -137,41 +149,4 @@ describe('NotesEditorToolbar', () => {
     expect(items[0]).toHaveAttribute('tabindex', '0');
   });
 
-  it('exposes a generate-cards action that feeds the note body to the shared card pipeline', async () => {
-    const editor = makeEditor();
-    render(<NotesEditorToolbar editor={editor} />);
-
-    const trigger = screen.getByRole('button', { name: 'generateCards' });
-    fireEvent.click(trigger);
-
-    await waitFor(() => {
-      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
-    });
-    expect(vi.mocked(generateCardsFromText).mock.calls[0][0]).toMatchObject({
-      content: '# 光合作用\n叶绿体把光能转成化学能。',
-    });
-  });
-
-  it('prefers the full document over the loaded window when generating cards', async () => {
-    const editor = makeEditor({
-      getMarkdown: vi.fn(() => 'visible prefix only'),
-      getFullMarkdown: vi.fn(() => 'visible prefix only\nplus the windowed tail'),
-    });
-    render(<NotesEditorToolbar editor={editor} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'generateCards' }));
-
-    await waitFor(() => {
-      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
-    });
-    expect(vi.mocked(generateCardsFromText).mock.calls[0][0].content).toBe(
-      'visible prefix only\nplus the windowed tail',
-    );
-  });
-
-  it('keeps the generate-cards action disabled without an editor', () => {
-    render(<NotesEditorToolbar editor={null} />);
-
-    expect(screen.getByRole('button', { name: 'generateCards' })).toBeDisabled();
-  });
 });

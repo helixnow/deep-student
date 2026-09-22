@@ -6,6 +6,7 @@ import type { DstuNode } from '@/dstu';
 const { data } = vi.hoisted(() => ({ data: {
   nodes: [] as DstuNode[],
   watchers: new Set<(event: { type: string; node: DstuNode; path: string }) => void>(),
+  createdContent: '',
 } }));
 vi.mock('@/dstu', () => ({
   dstu: {
@@ -17,6 +18,17 @@ vi.mock('@/dstu', () => ({
     },
     getContent: async () => ({ ok: true, value: '' }),
     search: async () => ({ ok: true, value: [] }),
+    create: async (_path: string, options: { name: string; content: string }) => {
+      data.createdContent = options.content;
+      const node = { id: 'note_created', sourceId: 'note_created', path: '/note_created', name: options.name, type: 'note', createdAt: 1000, updatedAt: 1000, metadata: {} } as DstuNode;
+      data.nodes.push(node); return { ok: true, value: node };
+    },
+    get: async (path: string) => ({ ok: true, value: data.nodes.find((node) => node.path === path) }),
+    setMetadata: async (path: string, metadata: Record<string, unknown>) => {
+      const node = data.nodes.find((node) => node.path === path)!;
+      node.metadata = metadata; node.updatedAt += 1000;
+      return { ok: true, value: undefined };
+    },
   },
   folderApi: {
     listFolders: async () => ({ ok: true, value: [] }),
@@ -65,10 +77,26 @@ describe('NotesWorkspaceApp learning views', () => {
     expect(screen.getByRole('heading', { name: '已掌握 · 2' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('笔记学习视图'), { target: { value: 'review' } });
     expect(screen.getByRole('heading', { name: /近期复习.* · 0/ })).toBeInTheDocument();
+    // Delayed older metadata cannot resurrect an overdue item.
     act(() => data.watchers.forEach((callback) => callback({ type: 'updated', node: data.nodes[0], path: '/n1' })));
+    expect(screen.getByRole('heading', { name: /近期复习.* · 0/ })).toBeInTheDocument();
+    act(() => data.watchers.forEach((callback) => callback({ type: 'updated', node: { ...data.nodes[0], updatedAt: 3 }, path: '/n1' })));
     expect(screen.getByRole('heading', { name: /近期复习.* · 1/ })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('笔记学习视图'), { target: { value: 'list' } });
     const list = screen.getByLabelText('学习视图');
     expect(within(list).getAllByRole('button')).toHaveLength(2);
+  });
+  it('creates a course note through the visible workspace entry and opens the initialized note', async () => {
+    render(<NotesWorkspaceApp windowId="study-create" instanceKey={null} isActive isVisible onTitleChange={vi.fn()} requestClose={vi.fn()} />);
+    await screen.findByText('微积分');
+    fireEvent.click(screen.getByRole('button', { name: '新建' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '新建学习笔记' }));
+    fireEvent.change(screen.getByLabelText('笔记标题'), { target: { value: '积分练习' } });
+    fireEvent.change(screen.getByLabelText('所属课程'), { target: { value: '高数' } });
+    fireEvent.change(screen.getByLabelText('新建模板'), { target: { value: 'lecture' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建笔记' }));
+    await screen.findByTestId('opened-note_created');
+    expect(data.createdContent).toContain('本节目标');
+    expect(data.nodes.find((node) => node.id === 'note_created')?.metadata?.props).toEqual({ study_course: '高数' });
   });
 });

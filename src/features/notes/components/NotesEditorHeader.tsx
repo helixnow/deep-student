@@ -14,6 +14,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { cn } from '@/lib/utils';
 import { springSnap, motionSafe } from '@/styles/motion-springs';
 import { useTagSuggestions } from '../hooks/useTagSuggestions';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   NOTE_TAG_MAX_CHARS,
   NOTE_TAGS_MAX_COUNT,
@@ -309,7 +310,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+        if (isComposingKeyEvent(e)) return;
         if (e.key === 'Enter') {
             e.preventDefault();
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
@@ -448,6 +449,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     /** 标签前置校验的内联错误（超长 / 控制字符 / 数量达上限） */
     const [tagError, setTagError] = useState<string | null>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
+    const tagTriggerRef = useRef<HTMLButtonElement>(null);
+    const restoreTagFocusRef = useRef(false);
     const tagSuggestionsListId = useId();
     const tagErrorId = useId();
 
@@ -467,6 +470,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     useEffect(() => {
         if (tagInputOpen) tagInputRef.current?.focus();
+        else if (restoreTagFocusRef.current) {
+            restoreTagFocusRef.current = false;
+            tagTriggerRef.current?.focus({ preventScroll: true });
+        }
     }, [tagInputOpen]);
 
     // 📱 Android 返回键：标签建议 listbox 打开时先收起输入行（同 Esc 路径），
@@ -675,6 +682,12 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                         <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-64 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
                             onKeyDown={(event) => {
                                 if (event.key !== 'Escape') return;
+                                if (isComposingKeyEvent(event)) {
+                                    // The shared Popover also listens on document. Leave
+                                    // IME cancellation native, without closing that layer.
+                                    event.stopPropagation();
+                                    return;
+                                }
                                 event.preventDefault();
                                 event.stopPropagation();
                                 setAppearanceOpen(false);
@@ -763,11 +776,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     setTagError(null);
                                 }}
                                 onKeyDown={(e) => {
+                                    if (isComposingKeyEvent(e)) return;
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
                                         void handleAddTag(highlightedTagSuggestion ?? undefined);
                                     } else if (e.key === 'Escape') {
                                         e.preventDefault();
+                                        restoreTagFocusRef.current = true;
                                         setTagInput('');
                                         setTagError(null);
                                         setTagInputOpen(false);
@@ -840,6 +855,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                         </span>
                     ) : (
                         <button
+                            ref={tagTriggerRef}
                             type="button"
                             className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                             onClick={() => setTagInputOpen(true)}

@@ -131,7 +131,7 @@ export const InlineEditText = React.memo(function InlineEditText({
   // 键盘事件处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     // 中文输入法正在输入时不处理
-    if (isComposingRef.current) return;
+    if (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
 
     if (e.key === 'Enter') {
       e.preventDefault();

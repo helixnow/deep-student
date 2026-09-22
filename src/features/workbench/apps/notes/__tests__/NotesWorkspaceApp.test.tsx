@@ -67,6 +67,11 @@ vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification }));
 vi.mock('@/utils/notesApi', () => ({
   NotesAPI: { listTags },
 }));
+vi.mock('@/features/notes/noteRelations', () => ({
+  NOTE_RELATIONS_CHANGED: 'notes:relations-changed',
+  isNoteRelationUsable: () => true,
+  noteRelationsService: { list: async () => [], put: vi.fn(), delete: vi.fn(), referenceStatus: vi.fn() },
+}));
 
 vi.mock('@/dstu', () => ({
   dstu: {
@@ -141,6 +146,13 @@ function dispatchWorkspaceCommand(action: NotesWorkspaceCommandAction): void {
       detail: { action },
     }));
   });
+}
+
+function openExplorerMenu(): HTMLButtonElement {
+  const header = document.querySelector('[data-notes-explorer] header')! as HTMLElement;
+  const trigger = within(header).getByRole('button', { name: /更多操作|More actions/ }) as HTMLButtonElement;
+  fireEvent.click(trigger);
+  return trigger;
 }
 
 function mockLibraryWithThreeNotes(): void {
@@ -962,21 +974,23 @@ describe('NotesWorkspaceApp', () => {
       .toHaveAttribute('aria-selected', 'true');
   });
 
-  it('opens full-text search through the ribbon search control', async () => {
+  it('opens full-text search through the explorer menu', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
 
-    fireEvent.click(screen.getByRole('button', { name: /Search notes|搜索笔记/ }));
+    openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Search notes|搜索笔记/ }));
 
     const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     expect(within(dialog).getByRole('button', { name: /Search content|搜索内容/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('opens the backlinks panel through the ribbon link control', async () => {
+  it('opens the backlinks panel through the explorer menu', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByTestId('note-editor-note_1');
 
-    fireEvent.click(screen.getByRole('button', { name: /属性与链接|Linked notes|关联笔记/ }));
+    openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /属性与链接|Linked notes|关联笔记/ }));
 
     expect(await screen.findByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeInTheDocument();
     await waitFor(() => expect(getContent).toHaveBeenCalledWith('/course/note_1'));
@@ -987,7 +1001,8 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
 
-    fireEvent.click(screen.getByRole('button', { name: /回收站|Trash/ }));
+    openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /回收站|Trash/ }));
     expect(await screen.findByRole('region', { name: /回收站|Trash/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /恢复|Restore/ }));
     await waitFor(() => expect(trashApi.restoreItem).toHaveBeenCalledWith('note_1', 'note'));
@@ -1002,7 +1017,8 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
 
-    fireEvent.click(screen.getByRole('button', { name: /回收站|Trash/ }));
+    openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /回收站|Trash/ }));
     expect(await screen.findByText('Archived')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /恢复 Archived|Restore Archived/ }));
     await waitFor(() => expect(trashApi.restoreItem).toHaveBeenCalledWith('fld_archived', 'folder'));
@@ -1011,10 +1027,8 @@ describe('NotesWorkspaceApp', () => {
   it('keeps the trash dialog keyboard-contained and closes it with Escape', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
-    const trigger = screen.getByRole('button', { name: /回收站|Trash/ });
-
-    trigger.focus();
-    fireEvent.click(trigger);
+    const trigger = openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /回收站|Trash/ }));
     const dialog = await screen.findByRole('region', { name: /回收站|Trash/ });
     // 非模态面板打开时把焦点送到面板容器本身（无焦点陷阱）
     await waitFor(() => expect(dialog).toHaveFocus());
@@ -1071,7 +1085,8 @@ describe('NotesWorkspaceApp', () => {
 
     render(<NotesWorkspaceApp {...props()} />);
     await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(3));
-    fireEvent.click(screen.getByRole('button', { name: /刷新|Refresh/ }));
+    openExplorerMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /刷新|Refresh/ }));
     await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(5));
 
     await act(async () => {
@@ -1125,7 +1140,8 @@ describe('NotesWorkspaceApp', () => {
   it('keeps the create-folder input on blur while it has text or an IME composition', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
-    fireEvent.click(screen.getByRole('button', { name: /新建文件夹|New folder/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^(新建|New)$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /新建文件夹|New folder/ }));
     const input = await screen.findByRole('textbox', { name: /新建文件夹|New folder/ });
 
     // 已有输入：失焦（点错地方）不得清空取消

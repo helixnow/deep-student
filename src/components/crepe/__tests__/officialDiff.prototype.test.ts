@@ -283,14 +283,13 @@ describe('TASK009 official component / complex structures', () => {
     expect(diffPluginKey.getState(f.view.state)).toBeNull();
   });
 
-  it('LIMITATION: toggle/callout candidate previews serialize attrs but omit visible titles', async () => {
+  it('renders toggle title content while the raw callout preview still exposes only title attrs', async () => {
     const f = await setup('> [!toggle]- Old title\n>\n> Body.\n\nSeparator.\n\n> [!note] Old callout\n>\n> Body.');
     f.start('> [!toggle] New title\n>\n> Body.\n\nSeparator.\n\n> [!tip] New callout\n>\n> Body.');
     const togglePreview = f.root.querySelector('.milkdown-diff-added [data-type="toggle"]')!;
     const calloutPreview = f.root.querySelector('.milkdown-diff-added [data-type="callout"]')!;
-    expect(togglePreview.getAttribute('data-title')).toBe('New title');
+    expect(togglePreview.textContent).toContain('New title');
     expect(calloutPreview.getAttribute('data-callout-title')).toBe('New callout');
-    expect(togglePreview.textContent).not.toContain('New title');
     expect(calloutPreview.textContent).not.toContain('New callout');
     expect(f.buttons('accept')).toHaveLength(2);
   });

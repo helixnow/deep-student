@@ -1,7 +1,7 @@
 /**
  * 笔记编辑器 chrome（NotesCrepeEditor 宿主层）样式：
  * - 模板内联展开面板（编辑器顶部随文档流长出，无浮层）
- * - 焦点模式沉浸过渡（chrome 淡出淡入 + 编辑列宽度平滑过渡）
+ * - 焦点模式沉浸过渡（chrome 淡出淡入，保持所选排版）
  *
  * 颜色一律走 hsl(var(--token))；动效 150/200ms + var(--dropdown-ease)；
  * 按压反馈 var(--m-press-dur)。reduced-motion 统一降级。
@@ -139,13 +139,14 @@
   }
 }
 
-/* 编辑列宽度平滑过渡：进入焦点模式后阅读列略放宽，营造沉浸感 */
+/* All presets keep their column in focus mode. Animating max-width rewraps
+   paragraphs and moves the caret/scroll anchor. */
 .notes-crepe-shell .notes-editor-content {
-  transition: max-width 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  max-width: var(--notes-content-max-w, 816px);
 }
 
 .notes-crepe-shell[data-focus-mode='true'] .notes-editor-content {
-  max-width: var(--notes-focus-content-max-w, 920px);
+  max-width: var(--notes-content-max-w, 816px);
 }
 
 /* 焦点模式真正隐藏头部（上方 115 行注释所述"组件层切 data-focus-mode=true 收走"）。
@@ -169,13 +170,11 @@
   backdrop-filter: var(--wb-glass-blur, none);
 }
 
-/* 触屏/窄屏：焦点模式追求极简视觉，按钮视觉保持 32px，
-   用伪元素把命中区外扩到 ≥44px（h-8 w-8 直接点不准）。 */
+/* Actual 44px box keeps the exit button's target within its allocated space. */
 @media (max-width: 767.98px), (pointer: coarse) {
-  .notes-focus-exit::after {
-    content: '';
-    position: absolute;
-    inset: -6px;
+  .notes-focus-exit {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -198,15 +197,51 @@
   }
 }
 
-/* Page actions become labelled touch targets; formatting remains by the keyboard. */
+/* 页面级动作只在带文字的菜单中呈现，与正文格式分层。 */
+.notes-crepe-shell .notes-chrome-text-button {
+  width: auto;
+  height: 28px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+.notes-editor-toolbar .notes-editor-format-trigger {
+  width: auto;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.notes-action-group-label {
+  padding: 8px 10px 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+}
+.notes-action-group-label:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid hsl(var(--border) / 0.6);
+}
 .notes-page-actions button {
   width: 100%;
-  min-height: 44px;
+  height: auto;
+  min-height: 32px;
   justify-content: flex-start;
-  gap: 10px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 6px 10px;
 }
+.notes-page-actions button svg { flex-shrink: 0; }
 .notes-page-actions button span { font-size: 13px; }
+.notes-page-actions kbd {
+  margin-left: auto;
+  font-family: inherit;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+@media (max-width: 767.98px), (pointer: coarse) {
+  .notes-page-actions button,
+  .notes-crepe-shell .notes-chrome-text-button { min-height: 44px; }
+}
 .notes-editor-header-section[data-mobile-hosted='true'] { min-height: 0; border-bottom: 0; }
 .notes-editor-header-section[data-mobile-hosted='true']:empty { display: none; }
 @media (max-width: 767px) {

@@ -12,16 +12,11 @@ import type { NodeType } from '@milkdown/prose/model'
 import { TextSelection } from '@milkdown/prose/state'
 import { $inputRule } from '@milkdown/utils'
 
-import { toggleSchema } from './schema'
+import { createToggleNode, toggleSchema } from './schema'
 
 /** 在当前位置插入一个展开态空 toggle（slash 菜单可复用）。 */
 export function createEmptyToggleNode(ctx: Ctx) {
-  const type = toggleSchema.type(ctx)
-  const paragraph = type.schema.nodes.paragraph
-  if (!paragraph) {
-    throw new Error('paragraph node missing in schema')
-  }
-  return type.create({ title: '', open: true }, paragraph.create())
+  return createToggleNode(toggleSchema.type(ctx).schema)
 }
 
 /**
@@ -45,7 +40,8 @@ export function applyToggleInputRule(
 
   const from = $start.before()
   const to = $start.after()
-  const toggleNode = toggleNodeType.create({ title: '', open: true }, paragraph.create())
+  if (!$start.node($start.depth - 1).canReplaceWith($start.index($start.depth - 1), $start.index($start.depth - 1) + 1, toggleNodeType)) return null
+  const toggleNode = createToggleNode(state.schema)
   const tr = state.tr.replaceWith(from, to, toggleNode)
   const sel = TextSelection.near(tr.doc.resolve(from + 1), 1)
   return tr.setSelection(sel)

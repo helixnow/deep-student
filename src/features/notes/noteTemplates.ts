@@ -1,4 +1,5 @@
 import i18n from '@/i18n';
+import { LEARNING_PROP_KEYS, updateNoteLearningProps, type LearningField, type NoteLearningProps } from './noteLearningProps';
 
 export type NoteTemplateId =
   | 'lecture'
@@ -17,6 +18,7 @@ export interface NoteTemplate {
   /** 模板卡片上的一句话摘要（内联面板预览用） */
   summary: string;
   markdown: string;
+  learningPreset?: NoteLearningProps;
 }
 
 /**
@@ -201,7 +203,48 @@ export interface NoteTemplateDocumentHost {
   getDocument: () => NoteTemplateDocument;
   /** Must enforce the supplied baseline and persist through the normal editor save path. */
   replaceDocument: (markdown: string, baseline: NoteTemplateDocument) => Promise<NoteTemplateDocument | boolean | void>;
+  /** Capture the editor's remembered selection before panel inputs take focus. Positions are host-native. */
+  getInsertionPoint?: () => { from: number; to: number };
+  /** Insert at the captured position, enforcing baseline and using the normal save path. */
+  insertDocument?: (markdown: string, baseline: NoteTemplateDocument, position: { from: number; to: number }) => Promise<NoteTemplateDocument | boolean | void>;
   variables?: NoteTemplateVariables;
+}
+
+/** Optional metadata host, independent of the document revision/save channel. */
+export interface NoteTemplateLearningPropsHost {
+  getProps: () => { noteId: string; props: Record<string, unknown> };
+  saveProps: (next: Record<string, unknown>, baseline: { noteId: string; props: Record<string, unknown> }) => Promise<void>;
+}
+
+export function fillUnsetTemplateLearningProps(props: Record<string, unknown>, preset: NoteLearningProps): Record<string, unknown> {
+  const changes: Partial<Record<LearningField, string>> = {};
+  for (const field of Object.keys(preset) as LearningField[]) {
+    if (!Object.keys(props).some((key) => key.trim().toLowerCase() === LEARNING_PROP_KEYS[field])) changes[field] = preset[field];
+  }
+  return updateNoteLearningProps(props, changes);
+}
+
+export type NoteTemplateApplyMode = 'insert' | 'append' | 'replace';
+/** All three operations consume the exact preview text, not a newly rendered template. */
+export async function applyPreviewedNoteTemplate(
+  host: NoteTemplateDocumentHost, baseline: NoteTemplateDocument, rendered: string,
+  mode: NoteTemplateApplyMode, position?: { from: number; to: number },
+): Promise<void> {
+  const current = host.getDocument();
+  if (current.noteId !== baseline.noteId || current.revision !== baseline.revision || current.markdown !== baseline.markdown) {
+    throw new Error(i18n.t('notes:personalTemplates.errors.note_changed'));
+  }
+  if (!rendered.trim()) throw new Error(i18n.t('notes:personalTemplates.errors.empty_body'));
+  if (mode === 'insert') {
+    if (!host.insertDocument || !position) throw new Error(i18n.t('notes:personalTemplates.errors.no_selection', { defaultValue: '请先在编辑器中选择插入位置，再重新预览。' }));
+    if (await host.insertDocument(rendered, baseline, position) === false) throw new Error(i18n.t('notes:personalTemplates.errors.not_applied'));
+    return;
+  }
+  // Do not re-render {{variables}} here: the preview may contain literal user-authored tokens.
+  const text = rendered.trim();
+  const markdown = mode === 'replace' || !baseline.markdown.trim() ? `${text}\n`
+    : `${baseline.markdown}${baseline.markdown.endsWith('\n') ? '\n---\n\n' : '\n\n---\n\n'}${text}\n`;
+  if (await host.replaceDocument(markdown, baseline) === false) throw new Error(i18n.t('notes:personalTemplates.errors.not_applied'));
 }
 
 /** Previewed replacement fails closed after editing or switching notes. */

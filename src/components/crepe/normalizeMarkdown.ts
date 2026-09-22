@@ -4,6 +4,7 @@ import { ParserState, SerializerState } from '@milkdown/transformer';
 import { EditorState } from '@milkdown/prose/state';
 import type { Node } from '@milkdown/prose/model';
 import { trailingConfig } from '@milkdown/kit/plugin/trailing';
+import { normalizeOfficialDiffDoc } from './officialDiffAdapter';
 
 // Source positions and list looseness describe spelling/layout, not document content.
 // Compare every other property, including unknown extension attributes, without hashing.
@@ -44,15 +45,18 @@ export function normalizeMarkdown(ctx: Ctx, markdown: string): string {
     try { return SerializerState.create(schema, remark)(doc); }
     finally { ctx.set(editorViewCtx, view); }
   };
-  const parsed = parse(markdown);
-  if (!parsed) throw new Error('Markdown parsing failed.');
+  const raw = parse(markdown);
+  if (!raw) throw new Error('Markdown parsing failed.');
+  const parsed = normalizeOfficialDiffDoc(raw);
+  parsed.check();
   const canonical = serialize(parsed);
   const tree = (source: string) => remark.runSync(remark.parse(source), source);
   // Comparing PM documents alone would miss nodes already dropped by the schema parser.
   if (!sameMarkdownTree(tree(markdown), tree(canonical))) {
     throw new Error('Markdown normalization would change or lose content unsupported by the editor schema.');
   }
-  const reparsed = parse(canonical);
+  const reparsedRaw = parse(canonical);
+  const reparsed = reparsedRaw && normalizeOfficialDiffDoc(reparsedRaw);
   if (!reparsed || !parsed.eq(reparsed)) throw new Error('Markdown schema round-trip changed the document.');
   // Crepe's trailing plugin adds an empty paragraph after lists/code/other blocks.
   // Model that documented transaction without dispatching or touching upload/history state.

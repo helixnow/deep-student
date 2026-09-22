@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
+import { invoke } from '@tauri-apps/api/core';
+import { noteNeedsColumnsWriter } from '@/features/notes/noteEditorHost';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { NoteLearningPropertiesSection } from '@/features/notes/components/NoteLearningPropertiesSection';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
@@ -33,7 +35,7 @@ import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import type { CrepeEditorApi } from '@/components/crepe';
-import { assertFullDocumentBaseline, assertNoteContentSize } from '@/features/notes/fullDocument';
+import { assertFullDocumentBaseline, assertNoteContentSize, type FullDocumentViewHost } from '@/features/notes/fullDocument';
 import {
   DEFAULT_INITIAL_LINE_WINDOW,
   composeWindowedSave,
@@ -347,11 +349,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
 
-  const refreshFromDisk = useCallback(async (forceApply: boolean) => {
+  const refreshFromDisk = useCallback(async (forceApply: boolean, requireSuccess = false) => {
     const currentNoteId = node.id;
     const { nodeResult, contentResult } = await readOccSafeNoteSnapshot(node.path);
     // 防竞态：期间切换了笔记则放弃
     if (loadingNoteIdRef.current !== null && loadingNoteIdRef.current !== currentNoteId) {
+      if (requireSuccess) throw new Error('笔记已切换，无法刷新原编辑器。');
       return;
     }
     const diskUpdatedAt = nodeResult.ok && nodeResult.value
@@ -370,6 +373,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         );
       }
       return;
+    }
+    if (requireSuccess && (!nodeResult.ok || !nodeResult.value || !contentResult.ok)) {
+      throw new Error('笔记更新已提交，但刷新失败；请重试刷新后继续编辑。');
     }
     if (!contentResult.ok) {
       if (diskUpdatedAt !== null) {
@@ -590,6 +596,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
     savingContentNoteIdRef.current = savedNoteId;
     try {
+      if (noteNeedsColumnsWriter(savedNoteId)) {
+        const saved = await invoke<{ updated_at: string }>('notes_update', { note: {
+          id: savedNoteId, content_md: saveContent,
+          expected_updated_at: updatedAtToVersionToken(lastKnownUpdatedAtRef.current), capabilities: ['ds-columns-v1'],
+        } }).catch(error => {
+          const failure = toVfsError(error);
+          throw Object.assign(new Error(failure.toUserMessage()), {
+            isNoteConflict: failure.code === VfsErrorCode.CONFLICT,
+            isNonRetryable: failure.code === VfsErrorCode.CONFLICT,
+          });
+        });
+        applySuccess(new Date(saved.updated_at).getTime());
+        return;
+      }
       const result = await dstu.update(node.path, saveContent, node.type, {
         expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
       });
@@ -826,8 +846,17 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             )
           : visible;
       };
-      const acrApi: CrepeEditorApi = {
+      const acrApi: FullDocumentViewHost = {
         ...api,
+        getStorageUpdatedAt: () => updatedAtToVersionToken(lastKnownUpdatedAtRef.current) ?? undefined,
+        refreshDocumentFromDisk: () => refreshFromDiskRef.current(true, true),
+        acceptFullDocumentView: (markdown) => {
+          assertCurrentNote();
+          fullContentRef.current = markdown;
+          const lines = getMarkdownLineCount(markdown);
+          setMarkdownWindow({ loadedMarkdown: markdown, loadedLineCount: lines, totalLineCount: lines, hasMore: false });
+          setContent(markdown);
+        },
         getFullMarkdown: getLiveFullMarkdown,
         isDocumentWindowed: () => markdownWindowRef.current?.hasMore === true,
         replaceFullMarkdown: async (markdown, options) => {
@@ -1026,6 +1055,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 防止旧笔记内容被初始化进新笔记的草稿并被自动保存。
   const isContentReady = content !== null && contentNoteId === node.id;
   const visibleContent = markdownWindow?.loadedMarkdown ?? (content ?? '');
+  let outlineContent = isContentReady ? (content ?? '') : '';
+  if (isContentReady) {
+    try { outlineContent = editorApiRef.current?.getFullMarkdown?.() ?? outlineContent; }
+    catch { /* The previous editor can still be disposing during a note switch. */ }
+  }
 
   // 首次加载直接渲染单内容区骨架，加载完成时内容原位替换，避免布局跳动。
 
@@ -1131,7 +1165,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             </DsButton>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? visibleContent : ''} onTagsChange={readOnly ? undefined : handleTagsChange}
+            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={outlineContent} onTagsChange={readOnly ? undefined : handleTagsChange}
               beforeOutline={<NoteLearningPropertiesSection key={`${noteId}:${node.path}`} node={node} readOnly={readOnly} />} />
           </div>
         </aside>
@@ -1165,7 +1199,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               createdAt={node.createdAt}
               updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
               tags={tags}
-              content={isContentReady ? (visibleContent) : ''}
+              content={outlineContent}
               onTagsChange={readOnly ? undefined : handleTagsChange}
               onHeadingNavigate={() => setMobilePanelOpen(false)}
               beforeOutline={<NoteLearningPropertiesSection key={`${noteId}:${node.path}`} node={node} readOnly={readOnly} />}

@@ -49,6 +49,7 @@ futures-util = "0.3"
 r2d2 = "0.8.9"
 r2d2_sqlite = "0.35.0"
 regex = "1.0"
+pulldown-cmark = "0.10.3" # Root-level stable note block boundaries (also a transitive dependency).
 # html2md 已移除（与 panic=abort 不兼容），使用 html2text 替代
 aes-gcm = "0.10"
 rand = "0.8"

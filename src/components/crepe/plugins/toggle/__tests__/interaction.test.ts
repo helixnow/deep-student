@@ -1,403 +1,290 @@
-import { Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/core'
-import { commonmark } from '@milkdown/preset-commonmark'
-import { history, undo, undoDepth } from '@milkdown/prose/history'
-import { EditorState, TextSelection } from '@milkdown/prose/state'
-import { $prose, getMarkdown } from '@milkdown/utils'
+import { closeHistory, redo, undo, undoDepth } from '@milkdown/prose/history'
+import { DOMParser, DOMSerializer, Fragment, Slice } from '@milkdown/prose/model'
+import { NodeSelection } from '@milkdown/prose/state'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { duplicateCrepeBlock, deleteCrepeBlock, turnCrepeBlockInto } from '../../../blockMenuCommands'
+import { resolveBlockTarget } from '../../../blockTarget'
+import { createToggleNode, revealToggleAtPosition, unwrapToggle } from '../index'
+import { bodyStart, createToggleEditor, key, select, typeText } from './fixture'
 
-import { applyToggleInputRule } from '../input-rule'
-import {
-  TOGGLE_TYPE,
-  togglePlugin,
-  tryExitToggleOnEnter,
-  tryUnwrapEmptyToggleOnBackspace,
-} from '../index'
-
-async function createToggleEditor(markdown: string, readOnly = false) {
-  const root = document.createElement('div')
-  document.body.appendChild(root)
-
-  const editor = Editor.make()
-  editor.config((ctx) => {
-    ctx.set(rootCtx, root)
-    ctx.set(defaultValueCtx, markdown)
-    ctx.update(editorViewOptionsCtx, (options) => ({
-      ...options,
-      editable: () => !readOnly,
-      handleScrollToSelection: () => true, // jsdom has no Range layout API.
-    }))
-  })
-  editor.use(commonmark)
-  editor.use(togglePlugin())
-  editor.use($prose(() => history()))
-  await editor.create()
-
-  return {
-    editor,
-    root,
-    view: editor.ctx.get(editorViewCtx),
-    destroy: async () => {
-      await editor.destroy()
-      root.remove()
-    },
-  }
-}
-
-function findTogglePos(doc: { descendants: (f: (node: { type: { name: string }; nodeSize: number }, pos: number) => void | boolean) => void }): number | null {
-  let found: number | null = null
-  doc.descendants((node, pos) => {
-    if (node.type.name === TOGGLE_TYPE) {
-      found = pos
-      return false
-    }
-  })
-  return found
-}
-
-describe('toggle interaction', () => {
-  it.each([false, true])('arrow click/Enter/Space only change this view (readOnly=%s)', async (readOnly) => {
-    const source = `> [!toggle] 可切换
-> body
-`
-    const { editor, root, view, destroy } = await createToggleEditor(source, readOnly)
-    const other = await createToggleEditor(source, readOnly)
+describe('real Crepe toggle interaction', () => {
+  it.each([false, true])('arrow click/Enter/Space change only this view (readOnly=%s)', async (readOnly) => {
+    const f = await createToggleEditor('> [!toggle] title\n> body', readOnly)
+    const other = await createToggleEditor('> [!toggle] title\n> body', readOnly)
     try {
       const user = userEvent.setup()
-      const beforeDoc = view.state.doc
-      const beforeMarkdown = editor.action(getMarkdown())
-      const dispatch = vi.spyOn(view, 'dispatch')
-      const toggleEl = root.querySelector('.milkdown-toggle') as HTMLElement | null
-      expect(toggleEl).toBeTruthy()
-      expect(toggleEl!.dataset.viewOpen).toBe('true')
-
-      const arrow = toggleEl!.querySelector('.milkdown-toggle__arrow') as HTMLButtonElement
-      expect(arrow).toBeTruthy()
-      expect(arrow.type).toBe('button')
-      expect(arrow.getAttribute('aria-label')).toBeTruthy()
-      expect(arrow.getAttribute('aria-expanded')).toBe('true')
-
-      arrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      expect(toggleEl!.dataset.viewOpen).toBe('true')
+      const doc = f.view.state.doc
+      const markdown = f.crepe.getMarkdown()
+      const dispatch = vi.spyOn(f.view, 'dispatch')
+      const el = f.root.querySelector<HTMLElement>('.milkdown-toggle')!
+      const arrow = el.querySelector('button')!
       await user.click(arrow)
-      expect(toggleEl!.dataset.viewOpen).toBe('false')
-      expect(arrow.getAttribute('aria-expanded')).toBe('false')
-      const body = toggleEl!.querySelector('.milkdown-toggle__body')!
-      expect(body.getAttribute('aria-hidden')).toBe('true')
-      expect(body.hasAttribute('inert')).toBe(true)
-
+      expect(el.dataset.viewOpen).toBe('false')
+      expect(el.querySelector('[data-toggle-body]')?.hasAttribute('inert')).toBe(true)
       await user.keyboard('{Enter}')
-      expect(toggleEl!.dataset.viewOpen).toBe('true')
-      expect(arrow.getAttribute('aria-expanded')).toBe('true')
-      expect(body.hasAttribute('inert')).toBe(false)
+      expect(el.dataset.viewOpen).toBe('true')
       await user.keyboard(' ')
-      expect(toggleEl!.dataset.viewOpen).toBe('false')
-      // Let PM's MutationObserver process DOM changes, detecting accidental reparsing.
+      expect(el.dataset.viewOpen).toBe('false')
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(dispatch).not.toHaveBeenCalled()
-      expect(view.state.doc).toBe(beforeDoc)
-      expect(undoDepth(view.state)).toBe(0)
-      expect(editor.action(getMarkdown())).toBe(beforeMarkdown)
-      expect(toggleEl!.dataset.open).toBe('true')
-      expect((other.root.querySelector('.milkdown-toggle') as HTMLElement).dataset.viewOpen).toBe('true')
-    } finally {
-      await destroy()
-      await other.destroy()
-    }
+      expect(f.view.state.doc).toBe(doc)
+      expect(undoDepth(f.view.state)).toBe(0)
+      expect(f.crepe.getMarkdown()).toBe(markdown)
+      expect(el.dataset.open).toBe('true')
+      expect(other.root.querySelector<HTMLElement>('.milkdown-toggle')!.dataset.viewOpen).toBe('true')
+    } finally { await f.destroy(); await other.destroy() }
   })
 
-  it('keeps the local expansion across body edits, undo and author-default updates', async () => {
-    const { editor, root, view, destroy } = await createToggleEditor('> [!toggle]- 标题\n> **正文**\n')
+  it('typing, selection replacement, input rules, undo/redo all use PM title text', async () => {
+    const f = await createToggleEditor('')
     try {
-      const el = root.querySelector('.milkdown-toggle') as HTMLElement
-      const pos = findTogglePos(view.state.doc)!
-      const before = editor.action(getMarkdown())
-      ;(el.querySelector('button') as HTMLButtonElement).click()
-      view.dispatch(view.state.tr.insertText('新增', pos + 2))
+      select(f.view, 1)
+      typeText(f.view, '>>> ')
+      expect(f.view.state.doc.firstChild!.type.name).toBe('toggle')
+      expect(f.view.state.selection.$from.parent.type.name).toBe('toggleTitle')
+      f.view.dispatch(closeHistory(f.view.state.tr))
+      typeText(f.view, '# **literal** >>> [link](url) 中文')
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('# **literal** >>> [link](url) 中文')
+      expect(f.view.state.doc.firstChild!.child(0).firstChild!.marks).toEqual([])
+      expect(f.view.state.doc.firstChild!.attrs.title).toBeUndefined()
+      const titleDOM = f.root.querySelector('[data-toggle-title]')!
+      expect(titleDOM.hasAttribute('contenteditable')).toBe(false)
+      expect(f.view.posAtDOM(titleDOM, 0)).toBe(2)
+      expect(undo(f.view.state, f.view.dispatch)).toBe(true)
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('')
+      expect(redo(f.view.state, f.view.dispatch)).toBe(true)
+      select(f.view, 2, 3)
+      typeText(f.view, '搜索替换')
+      expect(f.view.state.doc.textBetween(2, 6)).toBe('搜索替换')
+      expect(f.parse(f.crepe.getMarkdown())!.firstChild!.eq(f.view.state.doc.firstChild!)).toBe(true)
+      f.view.state.doc.check()
+    } finally { await f.destroy() }
+  })
+
+  it('PM DOM observer consumes title IME changes; composing Enter is not navigation', async () => {
+    const f = await createToggleEditor('> [!toggle]- 旧标题\n> 正文')
+    try {
+      select(f.view, 2)
+      const el = f.root.querySelector<HTMLElement>('.milkdown-toggle')!
+      const title = el.querySelector('[data-toggle-title]')!
+      expect(key(f.view, 'Enter', { isComposing: true })).toBe(false)
+      expect(key(f.view, 'Enter', { keyCode: 229 })).toBe(false)
+      f.view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      title.firstChild!.textContent = '中文输入'
+      f.view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文输入' }))
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('中文输入')
+      expect(el.dataset.viewOpen).toBe('false')
+      expect(undo(f.view.state, f.view.dispatch)).toBe(true)
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('旧标题')
+      // PM's Safari guard consumes Enter for 500ms after compositionend.
+      await new Promise((resolve) => setTimeout(resolve, 510))
+      select(f.view, 2)
+      expect(key(f.view, 'Enter')).toBe(true)
+      expect(f.view.state.selection.from).toBe(bodyStart(f.view))
       expect(el.dataset.viewOpen).toBe('true')
-      expect(undoDepth(view.state)).toBe(1)
-      expect(undo(view.state, view.dispatch)).toBe(true)
+      expect(f.view.state.doc.firstChild!.attrs.open).toBe(false)
+    } finally { await f.destroy() }
+  })
+
+  it('Enter/Tab/Delete title edges enter body; Backspace/Shift-Tab body start return to title', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> **body**\n\noutside')
+    try {
+      const before = f.view.state.doc
+      for (const input of ['Enter', 'Tab', 'Delete']) {
+        select(f.view, before.firstChild!.child(0).nodeSize)
+        expect(key(f.view, input)).toBe(true)
+        expect(f.view.state.selection.from).toBe(bodyStart(f.view))
+        expect(key(f.view, 'Tab', { shiftKey: true })).toBe(true)
+        expect(f.view.state.selection.$from.parent.type.name).toBe('toggleTitle')
+        select(f.view, bodyStart(f.view))
+        expect(key(f.view, 'Backspace')).toBe(true)
+        expect(f.view.state.selection.from).toBe(before.firstChild!.child(0).nodeSize)
+      }
+      expect(f.view.state.doc).toBe(before)
+      expect(undoDepth(f.view.state)).toBe(0)
+    } finally { await f.destroy() }
+  })
+
+  it('Backspace at title start losslessly unwraps nested body and undo restores the structure', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> **body**\n>\n> - item\n>\n> > [!toggle]- Nested\n> > inner')
+    try {
+      select(f.view, 2)
+      const before = f.view.state.doc
+      expect(key(f.view, 'Backspace')).toBe(true)
+      expect(f.view.state.doc.firstChild!.type.name).toBe('paragraph')
+      expect(f.view.state.doc.firstChild!.textContent).toBe('Title')
+      const start = f.view.state.doc.firstChild!.nodeSize
+      expect(f.view.state.doc.content.cut(start, start + before.firstChild!.child(1).content.size).eq(before.firstChild!.child(1).content)).toBe(true)
+      f.view.state.doc.check()
+      expect(undo(f.view.state, f.view.dispatch)).toBe(true)
+      expect(f.view.state.doc.eq(before)).toBe(true)
+    } finally { await f.destroy() }
+  })
+
+  it('last empty body paragraph exits, but Enter in a nested list uses native list editing', async () => {
+    const f = await createToggleEditor('> [!toggle] title\n> - item')
+    try {
+      const { view } = f
+      let itemTextPos = 0
+      view.state.doc.descendants((node, pos) => { if (node.isText && node.text === 'item') itemTextPos = pos })
+      select(view, itemTextPos + 4)
+      expect(key(view, 'Enter')).toBe(true)
+      expect(view.state.selection.$from.parent.type.name).toBe('paragraph')
+      expect(view.state.selection.$from.node(-1).type.name).toBe('list_item')
+      const toggle = view.state.doc.firstChild!
+      const insertAt = toggle.nodeSize - 2
+      view.dispatch(view.state.tr.insert(insertAt, view.state.schema.nodes.paragraph.create()))
+      select(view, insertAt + 1)
+      const countBefore = view.state.doc.childCount
+      expect(key(view, 'Enter')).toBe(true)
+      expect(view.state.selection.$from.depth).toBe(1)
+      expect(view.state.doc.childCount).toBe(countBefore + 1)
+      view.state.doc.check()
+    } finally { await f.destroy() }
+  })
+
+  it('only-empty body Backspace preserves title whitespace and title-only toggles remain valid', async () => {
+    const f = await createToggleEditor('')
+    try {
+      f.view.dispatch(f.view.state.tr.replaceWith(0, f.view.state.doc.content.size, createToggleNode(f.view.state.schema, '  title  ')))
+      select(f.view, bodyStart(f.view))
+      expect(key(f.view, 'Backspace')).toBe(true)
+      expect(f.view.state.doc.firstChild!.textContent).toBe('  title  ')
+      expect(f.view.state.doc.firstChild!.type.name).toBe('paragraph')
+    } finally { await f.destroy() }
+  })
+
+  it('rich/multiline paste in title is plain text and undoable', async () => {
+    const f = await createToggleEditor('> [!toggle] Old\n> body')
+    try {
+      select(f.view, 2, 5)
+      const event = new Event('paste') as ClipboardEvent
+      Object.defineProperty(event, 'clipboardData', { value: { getData: () => '**plain**\nsecond' } })
+      const slice = new Slice(Fragment.from(f.view.state.schema.nodes.paragraph.create(null, f.view.state.schema.text('rich', [f.view.state.schema.marks.strong.create()]))), 0, 0)
+      expect(f.view.someProp('handlePaste', (fn) => fn(f.view, event, slice))).toBe(true)
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('**plain** second')
+      expect(f.view.state.doc.firstChild!.child(0).firstChild!.marks).toEqual([])
+      expect(undo(f.view.state, f.view.dispatch)).toBe(true)
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('Old')
+    } finally { await f.destroy() }
+  })
+
+  it('native clipboard copies selected title text, title/body ranges and whole toggles', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> **body** rest\n\noutside')
+    try {
+      select(f.view, 2, 7)
+      const titleCopy = f.view.serializeForClipboard(f.view.state.selection.content())
+      expect(titleCopy.text).toBe('Title')
+      select(f.view, 4, bodyStart(f.view) + 4)
+      const rangeCopy = f.view.serializeForClipboard(f.view.state.selection.content())
+      expect(rangeCopy.text).toContain('tle')
+      expect(rangeCopy.text).toContain('body')
+      expect(key(f.view, 'Backspace')).toBe(true)
+      f.view.state.doc.check()
+      // Native cross-textblock deletion joins the unselected suffix into title;
+      // the fixed schema recreates the required empty body paragraph.
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('Ti rest')
+      expect(f.view.state.doc.firstChild!.child(1).textContent).toBe('')
+      expect(undo(f.view.state, f.view.dispatch)).toBe(true)
+      f.view.dispatch(f.view.state.tr.setSelection(NodeSelection.create(f.view.state.doc, 0)))
+      const blockCopy = f.view.serializeForClipboard(f.view.state.selection.content())
+      expect(blockCopy.text).toContain('[!toggle]- Title')
+      const outsidePos = f.view.state.doc.firstChild!.nodeSize + 1
+      select(f.view, outsidePos, outsidePos + 7)
+      const paste = new Event('paste') as ClipboardEvent
+      Object.defineProperty(paste, 'clipboardData', { value: {
+        getData: (format: string) => format === 'text/html' ? blockCopy.dom.innerHTML : format === 'text/plain' ? blockCopy.text : '',
+      } })
+      expect(f.view.pasteHTML(blockCopy.dom.innerHTML, paste)).toBe(true)
+      f.view.state.doc.check()
+      const toggles: string[] = []
+      f.view.state.doc.descendants((node) => { if (node.type.name === 'toggle') toggles.push(node.child(0).textContent) })
+      expect(toggles).toEqual(['Title', 'Title'])
+    } finally { await f.destroy() }
+  })
+
+  it('nested search reveal is reversible, composes owners, and never changes doc/history', async () => {
+    const f = await createToggleEditor('> [!toggle]- Outer\n>\n> > [!toggle]- Inner\n> > needle', true)
+    try {
+      const doc = f.view.state.doc
+      let pos = 0
+      doc.descendants((node, at) => { if (node.isText && node.text === 'needle') pos = at })
+      const els = f.root.querySelectorAll<HTMLElement>('.milkdown-toggle')
+      const dispatch = vi.spyOn(f.view, 'dispatch')
+      const release = revealToggleAtPosition(f.view, pos)
+      const release2 = revealToggleAtPosition(f.view, pos)
+      expect(Array.from(els, (el) => el.dataset.viewOpen)).toEqual(['true', 'true'])
+      release()
+      expect(els[1].dataset.viewOpen).toBe('true')
+      els[1].querySelector('button')!.click() // local preference survives release
+      release2()
+      expect(Array.from(els, (el) => el.dataset.viewOpen)).toEqual(['false', 'true'])
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(f.view.state.doc).toBe(doc)
+      expect(undoDepth(f.view.state)).toBe(0)
+      expect(getComputedStyle(els[0].querySelector('button')!).transform).toBe('rotate(0deg)')
+      expect(getComputedStyle(els[1].querySelector('button')!).transform).toBe('rotate(90deg)')
+    } finally { await f.destroy() }
+  })
+
+  it('local open survives title/body edits, undo and author-default changes', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> body')
+    try {
+      const el = f.root.querySelector<HTMLElement>('.milkdown-toggle')!
+      el.querySelector('button')!.click()
+      select(f.view, 2)
+      typeText(f.view, 'new')
       expect(el.dataset.viewOpen).toBe('true')
-      expect(editor.action(getMarkdown())).toBe(before)
-      expect(view.state.doc.nodeAt(pos)?.attrs.open).toBe(false)
-      expect(root.querySelector('strong')?.textContent).toBe('正文')
-      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { title: '默认已修改', open: true }))
-      ;(el.querySelector('button') as HTMLButtonElement).click()
-      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { title: '再次修改', open: true }))
+      undo(f.view.state, f.view.dispatch)
+      expect(el.dataset.viewOpen).toBe('true')
+      f.view.dispatch(f.view.state.tr.setNodeMarkup(0, undefined, { open: true }))
+      el.querySelector('button')!.click()
+      f.view.dispatch(f.view.state.tr.insertText('new', bodyStart(f.view)))
       expect(el.dataset.viewOpen).toBe('false')
       expect(el.dataset.open).toBe('true')
-    } finally {
-      await destroy()
-    }
+    } finally { await f.destroy() }
   })
 
-  it('guards IME Enter and commits title once before entering the locally expanded body', async () => {
-    const { root, view, destroy } = await createToggleEditor('> [!toggle]- 旧标题\n> 正文\n')
+  it('full-block DOM copy, duplicate, delete and conversion preserve formal children', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> **body**\n\noutside')
     try {
-      const el = root.querySelector('.milkdown-toggle') as HTMLElement
-      const title = el.querySelector('.milkdown-toggle__title') as HTMLElement
-      title.tabIndex = 0 // jsdom does not make contentEditable properties focusable.
-      title.focus()
-      title.textContent = '输入中的标题'
-      const dispatch = vi.spyOn(view, 'dispatch')
-      for (const options of [{ isComposing: true }, { keyCode: 229 }]) {
-        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, ...options })
-        title.dispatchEvent(event)
-        expect(event.defaultPrevented).toBe(false)
-      }
-      title.dispatchEvent(new CompositionEvent('compositionstart'))
-      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
-      expect(dispatch).not.toHaveBeenCalled()
-      expect(document.activeElement).toBe(title)
-      expect(el.dataset.viewOpen).toBe('false')
-      title.dispatchEvent(new CompositionEvent('compositionend'))
-      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
-      title.dispatchEvent(new FocusEvent('blur'))
-      expect(dispatch.mock.calls.filter(([tr]) => tr.docChanged)).toHaveLength(1)
-      const pos = findTogglePos(view.state.doc)!
-      expect(view.state.doc.nodeAt(pos)?.attrs).toMatchObject({ title: '输入中的标题', open: false })
-      expect(el.dataset.viewOpen).toBe('true')
-      expect(view.state.selection.from).toBe(pos + 2)
-      expect(undoDepth(view.state)).toBe(1)
-      undo(view.state, view.dispatch)
-      expect(view.state.doc.nodeAt(pos)?.attrs.title).toBe('旧标题')
-    } finally {
-      await destroy()
-    }
+      const node = f.view.state.doc.firstChild!
+      f.view.dispatch(f.view.state.tr.setSelection(NodeSelection.create(f.view.state.doc, 0)))
+      const wrapper = document.createElement('div')
+      wrapper.append(DOMSerializer.fromSchema(f.view.state.schema).serializeFragment(f.view.state.selection.content().content))
+      expect(DOMParser.fromSchema(f.view.state.schema).parse(wrapper).firstChild!.eq(node)).toBe(true)
+      expect(duplicateCrepeBlock(f.view, 0)).toBe(true)
+      expect(f.view.state.doc.child(1).eq(node)).toBe(true)
+      expect(deleteCrepeBlock(f.view, resolveBlockTarget(f.view, 0)!)).toBe(true)
+      expect(f.view.state.doc.firstChild!.eq(node)).toBe(true)
+      expect(unwrapToggle(f.view, 0)).toBe(true)
+      expect(turnCrepeBlockInto(f.view, 0, 'heading-2')).toBe(true)
+      expect(f.view.state.doc.firstChild!.textContent).toBe('Title')
+      expect(f.view.state.doc.child(1).firstChild!.marks[0].type.name).toBe('strong')
+      f.view.state.doc.check()
+    } finally { await f.destroy() }
   })
 
-  it('discards a title draft when switching to readOnly and resumes editing when enabled', async () => {
-    const { root, view, destroy } = await createToggleEditor('> [!toggle]- 原标题\n> 正文\n')
+  it('readOnly is inherited by title/body; arrow remains usable and editing resumes', async () => {
+    const f = await createToggleEditor('> [!toggle]- Title\n> body')
     try {
-      const title = root.querySelector('.milkdown-toggle__title') as HTMLElement
-      title.tabIndex = 0
-      title.focus()
-      title.textContent = '未提交草稿'
-      const dispatch = vi.spyOn(view, 'dispatch')
-      view.setProps({ editable: () => false })
-      expect(title.contentEditable).toBe('false')
-      expect(title.textContent).toBe('原标题')
-      title.textContent = '只读事件不能写入'
-      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
-      title.dispatchEvent(new FocusEvent('blur'))
-      expect(dispatch).not.toHaveBeenCalled()
-      expect(view.state.doc.firstChild?.attrs.title).toBe('原标题')
-      view.setProps({ editable: () => true })
-      expect(title.contentEditable).toBe('true')
-      expect(title.textContent).toBe('原标题')
-      title.textContent = '提交标题'
-      title.dispatchEvent(new FocusEvent('blur'))
-      expect(view.state.doc.firstChild?.attrs.title).toBe('提交标题')
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('does not let a removed title blur write to its replacement or a destroyed editor', async () => {
-    const { root, view, destroy } = await createToggleEditor('> [!toggle] 原标题\n> 正文\n')
-    const title = root.querySelector('.milkdown-toggle__title') as HTMLElement
-    title.tabIndex = 0
-    title.focus()
-    title.textContent = '待提交'
-    const pos = findTogglePos(view.state.doc)!
-    const toggle = view.state.doc.nodeAt(pos)!
-    view.dispatch(view.state.tr.replaceWith(pos, pos + toggle.nodeSize, view.state.schema.nodes.paragraph.create()))
-    const dispatch = vi.spyOn(view, 'dispatch')
-    title.dispatchEvent(new FocusEvent('blur'))
-    expect(dispatch).not.toHaveBeenCalled()
-    expect(view.state.doc.firstChild?.type.name).toBe('paragraph')
-    await destroy()
-    title.dispatchEvent(new FocusEvent('blur'))
-    expect(dispatch).not.toHaveBeenCalled()
-  })
-
-  it('Enter on trailing empty block exits toggle', async () => {
-    // Markdown 会折叠空行；在 PM 文档里手动追加末尾空段再测退出
-    const source = `> [!toggle] 退出
-> 首段
-`
-    const { view, destroy } = await createToggleEditor(source)
-    try {
-      const togglePos = findTogglePos(view.state.doc)
-      expect(togglePos).not.toBeNull()
-      const toggle = view.state.doc.nodeAt(togglePos!)
-      expect(toggle).toBeTruthy()
-
-      const paragraph = view.state.schema.nodes.paragraph
-      expect(paragraph).toBeTruthy()
-      const empty = paragraph!.create()
-      const insertAt = togglePos! + toggle!.nodeSize - 1
-      view.dispatch(view.state.tr.insert(insertAt, empty))
-
-      const toggled = view.state.doc.nodeAt(togglePos!)
-      expect(toggled!.childCount).toBeGreaterThanOrEqual(2)
-
-      const lastIndex = toggled!.childCount - 1
-      let offset = togglePos! + 1
-      for (let i = 0; i < lastIndex; i += 1) {
-        offset += toggled!.child(i).nodeSize
-      }
-      const emptyPos = offset + 1
-      view.dispatch(
-        view.state.tr.setSelection(TextSelection.create(view.state.doc, emptyPos)),
-      )
-
-      const childCountBefore = toggled!.childCount
-      view.setProps({ editable: () => false })
-      expect(tryExitToggleOnEnter(view)).toBe(false)
-      view.setProps({ editable: () => true })
-      const handled = tryExitToggleOnEnter(view)
-      expect(handled).toBe(true)
-
-      const after = view.state.doc.nodeAt(togglePos!)
-      expect(after?.type.name).toBe(TOGGLE_TYPE)
-      expect(after!.childCount).toBe(childCountBefore - 1)
-
-      const { $from } = view.state.selection
-      let insideToggle = false
-      for (let d = $from.depth; d > 0; d -= 1) {
-        if ($from.node(d).type.name === TOGGLE_TYPE) insideToggle = true
-      }
-      expect(insideToggle).toBe(false)
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('applies open/closed CSS dataset for transition hooks', async () => {
-    const { root, destroy } = await createToggleEditor(`> [!toggle]- 折叠
-> x
-`)
-    try {
-      const el = root.querySelector('.milkdown-toggle') as HTMLElement
-      expect(el.dataset.open).toBe('false')
-      expect(el.dataset.viewOpen).toBe('false')
-      expect(el.querySelector('.milkdown-toggle__body')).toBeTruthy()
-      expect(document.getElementById('milkdown-toggle-styles')).toBeTruthy()
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('keeps nested arrow/body styles independent of the outer expansion', async () => {
-    const { root, view, destroy } = await createToggleEditor('')
-    try {
-      const { toggle, paragraph } = view.state.schema.nodes
-      const inner = toggle.create({ title: '内层', open: false }, paragraph.create())
-      const outer = toggle.create({ title: '外层', open: true }, inner)
-      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, outer))
-      const arrows = root.querySelectorAll<HTMLButtonElement>('.milkdown-toggle__arrow')
-      const bodies = root.querySelectorAll<HTMLElement>('.milkdown-toggle__body')
-      expect(getComputedStyle(arrows[0]).transform).toBe('rotate(90deg)')
-      expect(getComputedStyle(arrows[1]).transform).toBe('rotate(0deg)')
-      expect(getComputedStyle(bodies[1]).gridTemplateRows).toBe('0fr')
-      arrows[1].click()
-      arrows[0].click()
-      expect(arrows[0].getAttribute('aria-expanded')).toBe('false')
-      expect(arrows[1].getAttribute('aria-expanded')).toBe('true')
-      expect(getComputedStyle(bodies[1]).gridTemplateRows).toBe('1fr')
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('Backspace in the only empty block unwraps the toggle keeping the title', async () => {
-    const source = `> [!toggle] 标题在
-> 正文
-`
-    const { view, destroy } = await createToggleEditor(source)
-    try {
-      const togglePos = findTogglePos(view.state.doc)
-      expect(togglePos).not.toBeNull()
-
-      // 清空内容区，只留一个空段落
-      const toggle = view.state.doc.nodeAt(togglePos!)
-      const contentFrom = togglePos! + 1
-      const contentTo = togglePos! + toggle!.nodeSize - 1
-      const paragraph = view.state.schema.nodes.paragraph!
-      view.dispatch(
-        view.state.tr.replaceWith(contentFrom, contentTo, paragraph.create()),
-      )
-      view.dispatch(
-        view.state.tr.setSelection(
-          TextSelection.create(view.state.doc, togglePos! + 2),
-        ),
-      )
-
-      view.setProps({ editable: () => false })
-      expect(tryUnwrapEmptyToggleOnBackspace(view)).toBe(false)
-      view.setProps({ editable: () => true })
-      const handled = tryUnwrapEmptyToggleOnBackspace(view)
-      expect(handled).toBe(true)
-
-      const first = view.state.doc.nodeAt(togglePos!)
-      expect(first?.type.name).toBe('paragraph')
-      expect(first?.textContent).toBe('标题在')
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('Backspace is a no-op when the toggle still has content', async () => {
-    const source = `> [!toggle] 有货
-> 正文
-`
-    const { view, destroy } = await createToggleEditor(source)
-    try {
-      const togglePos = findTogglePos(view.state.doc)
-      view.dispatch(
-        view.state.tr.setSelection(
-          TextSelection.create(view.state.doc, togglePos! + 2),
-        ),
-      )
-      expect(tryUnwrapEmptyToggleOnBackspace(view)).toBe(false)
-      expect(view.state.doc.nodeAt(togglePos!)?.type.name).toBe(TOGGLE_TYPE)
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('marks empty toggles with data-empty for the placeholder hint', async () => {
-    const { root, view, destroy } = await createToggleEditor(`> [!toggle] 空的
->
-`)
-    try {
-      const el = root.querySelector('.milkdown-toggle') as HTMLElement
-      expect(el.dataset.empty).toBe('true')
-      const inner = el.querySelector('.milkdown-toggle__body-inner') as HTMLElement
-      expect(inner.dataset.emptyPlaceholder).toBeTruthy()
-
-      const togglePos = findTogglePos(view.state.doc)
-      view.dispatch(view.state.tr.insertText('内容', togglePos! + 2))
-      expect(el.dataset.empty).toBe('false')
-    } finally {
-      await destroy()
-    }
-  })
-
-  it('input rule >>> inserts an expanded empty toggle', async () => {
-    const { view, destroy } = await createToggleEditor('')
-    try {
-      const schema = view.state.schema
-      const text = '>>> '
-      const paragraph = schema.nodes.paragraph!.create(null, schema.text(text))
-      const state = EditorState.create({
-        schema,
-        doc: schema.nodes.doc!.create(null, paragraph),
-      })
-      const start = 1
-      const end = start + text.length
-      const match = /^>>>\s$/.exec(text)
-      expect(match).toBeTruthy()
-
-      const tr = applyToggleInputRule(state, match!, start, end, schema.nodes.toggle)
-      expect(tr).toBeTruthy()
-      const next = state.apply(tr!)
-      expect(next.doc.firstChild?.type.name).toBe(TOGGLE_TYPE)
-      expect(next.doc.firstChild?.attrs.open).toBe(true)
-      expect(next.doc.firstChild?.attrs.title).toBe('')
-    } finally {
-      await destroy()
-    }
+      select(f.view, 2)
+      f.crepe.setReadonly(true)
+      const before = f.view.state.doc
+      expect(f.view.dom.getAttribute('contenteditable')).toBe('false')
+      expect(f.root.querySelector('[data-toggle-title][contenteditable]')).toBeNull()
+      expect(key(f.view, 'Enter')).toBe(false)
+      expect(unwrapToggle(f.view, 0)).toBe(false)
+      expect(duplicateCrepeBlock(f.view, 0)).toBe(false)
+      expect(deleteCrepeBlock(f.view, 0)).toBe(false)
+      expect(f.view.someProp('handleTextInput', (fn) => fn(f.view, 2, 2, 'x', () => f.view.state.tr.insertText('x')))).not.toBe(true)
+      expect(f.view.state.doc).toBe(before)
+      f.crepe.setReadonly(false)
+      typeText(f.view, 'new')
+      expect(f.view.state.doc.firstChild!.child(0).textContent).toBe('newTitle')
+    } finally { await f.destroy() }
   })
 })

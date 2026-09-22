@@ -24,6 +24,9 @@ function collectPlainText(node: Node): string {
   if (node.type === 'text') {
     return String((node as Node & { value?: string }).value ?? '')
   }
+  if (node.type === 'image' || node.type === 'imageReference') {
+    return String((node as Node & { alt?: string }).alt ?? '')
+  }
   // mdast softbreak / break → 换行，便于按行拆 marker
   if (node.type === 'break' || node.type === 'softbreak') {
     return '\n'
@@ -114,7 +117,8 @@ function transformToggleBlockquotes() {
         children: extracted.body,
       }
 
-      parent.children.splice(index, 1, toggleNode)
+      // Mutate in place so unist visits nested blockquotes in the new body too.
+      Object.assign(node, toggleNode)
     })
   }
 }

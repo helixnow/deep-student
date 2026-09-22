@@ -8,10 +8,11 @@ import { GenerativeUIPanel } from '@/features/generative-ui/components/Generativ
 import { buildAIDiffSummaryIntent } from '@/features/generative-ui/utils/buildAIDiffSummaryIntent';
 import { isMacOS } from '@/utils/platform';
 import type { AIEditState, CanvasEditOperation, DiffLine } from './hooks/useAIEditState';
-import { computeDiffLines } from './hooks/useAIEditState';
 import { isReviewShortcut, type AIReviewSession, type AIReviewDecision } from './aiReviewModel';
+import { OfficialDiffReview, type OfficialDiffReviewProps } from './OfficialDiffReview';
+import type { AIReviewLanding, AIReviewScope } from './officialDiffContract';
 
-interface AIDiffPanelProps {
+export interface AIDiffPanelProps {
   state: AIEditState;
   onAccept: () => void;
   onReject: () => void;
@@ -20,6 +21,13 @@ interface AIDiffPanelProps {
   onApplySelected?: () => void;
   review?: AIReviewSession | null;
   onDecideGroup?: (id: number, decision: AIReviewDecision) => void;
+  onReviewDecision?: OfficialDiffReviewProps['onReviewDecision'];
+  onReviewReady?: OfficialDiffReviewProps['onReviewReady'];
+  onReviewError?: OfficialDiffReviewProps['onReviewError'];
+  onScopeChange?: (kind: AIReviewScope['kind']) => void;
+  onLandingChange?: (landing: AIReviewLanding) => void;
+  canResolveScope?: boolean;
+  canSaveAs?: boolean;
   readOnly?: boolean;
   canHandleShortcut?: () => boolean;
   isApplying?: boolean;
@@ -125,9 +133,11 @@ export function AIDiffPanel({
   onReject,
   onSuspend,
   onCopy,
-  onApplySelected,
   review,
-  onDecideGroup,
+  onReviewDecision,
+  onReviewReady,
+  onReviewError,
+  onScopeChange, onLandingChange, canResolveScope = false, canSaveAs = false,
   readOnly = false,
   canHandleShortcut,
   isApplying = false,
@@ -259,40 +269,38 @@ export function AIDiffPanel({
           </div>
 
           {review?.error && <p role="alert" className="px-3 py-2 text-sm text-destructive">{review.error}</p>}
-          {review?.wholeDocument && <p className="px-3 py-1 text-xs text-muted-foreground">{t('aiDiff.atomic', '包含复杂 Markdown 节点，按全文整组审阅以保留结构。')}</p>}
-          {review && !review.wholeDocument && (
-            <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
-              <span>{t('aiDiff.staged', '分组决定暂存，点击应用后统一保存。')}</span>
-              <DsButton variant="outline" size="sm" onClick={onApplySelected}
-                disabled={isApplying || readOnly || !review.groups.some((group) => group.decision === 'accept')}>
-                {t('aiDiff.apply_selected', '仅应用已接受组')}
-              </DsButton>
-            </div>
-          )}
+          {review && onScopeChange && onLandingChange && <div className="flex gap-3 px-3 py-2 text-xs">
+            <label>范围 <select aria-label="AI 编辑范围" value={review.request.scope?.kind ?? 'page'}
+              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+              onChange={event => onScopeChange(event.target.value as AIReviewScope['kind'])}>
+              <option value="selection" disabled={!canResolveScope}>选区</option>
+              <option value="block" disabled={!canResolveScope}>当前块</option>
+              <option value="section" disabled={!canResolveScope}>当前章节</option>
+              <option value="page">整页</option>
+            </select></label>
+            <label>落点 <select aria-label="AI 结果落点" value={review.request.landing ?? 'replace'}
+              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+              onChange={event => onLandingChange(event.target.value as AIReviewLanding)}>
+              <option value="replace">替换</option><option value="insert-below">插入下方</option>
+              <option value="save-as" disabled={!canSaveAs}>另存结果</option>
+            </select></label>
+          </div>}
+          {review && <p className="px-3 py-1 text-xs text-muted-foreground">接受此组会立即保存到笔记；其余建议保留。表格、折叠块和提示块按块审阅。</p>}
 
           <div className="flex-shrink-0 border-b border-border/40 px-3 py-2">
             <GenerativeUIPanel intent={summaryIntent} showChrome={false} />
           </div>
 
           <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">
-            {diffLines.length === 0 ? (
+            {review && onReviewDecision && onReviewReady && onReviewError ? (
+              <OfficialDiffReview review={review} onReviewDecision={onReviewDecision}
+                onReviewReady={onReviewReady} onReviewError={onReviewError} />
+            ) : diffLines.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 {t('aiDiff.no_changes')}
               </div>
             ) : (
-              review && !review.wholeDocument && onDecideGroup ? (
-                <div>{review.groups.map((group) => (
-                  <div key={group.id} className="border-b border-border/40 py-1">
-                    {group.changed && <div className="flex items-center gap-1 px-3 py-1 text-xs">
-                      <span className="mr-auto">{group.decision === 'accept' ? t('aiDiff.group_accepted', '已接受') : group.decision === 'reject' ? t('aiDiff.group_rejected', '已拒绝') : t('aiDiff.group_pending', '待决定')}</span>
-                      <DsButton size="sm" variant="ghost" disabled={isApplying || !!review.retryBaseline} onClick={() => onDecideGroup(group.id, 'accept')}>{t('aiDiff.accept_group', '接受此组')}</DsButton>
-                      <DsButton size="sm" variant="ghost" disabled={isApplying || !!review.retryBaseline} onClick={() => onDecideGroup(group.id, 'reject')}>{t('aiDiff.reject_group', '拒绝此组')}</DsButton>
-                      <DsButton size="sm" variant="ghost" disabled={isApplying || !!review.retryBaseline} onClick={() => onDecideGroup(group.id, 'pending')}>{t('aiDiff.reset_group', '重置')}</DsButton>
-                    </div>}
-                    <DiffHunksView lines={computeDiffLines(group.before, group.after)} />
-                  </div>
-                ))}</div>
-              ) : <DiffHunksView lines={diffLines} />
+              <DiffHunksView lines={diffLines} />
             )}
           </CustomScrollArea>
         </div>

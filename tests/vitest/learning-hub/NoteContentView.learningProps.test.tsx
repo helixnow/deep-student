@@ -22,7 +22,14 @@ vi.mock('@/dstu', () => ({
 }));
 vi.mock('@/features/notes/markdownWindowSettings', () => ({ loadInitialLineWindowSetting: async () => 100 }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
-vi.mock('@/stores/systemStatusStore', () => ({ useSystemStatusStore: { getState: () => ({ maintenanceMode: mocks.maintenance }) } }));
+vi.mock('@/stores/systemStatusStore', () => ({ useSystemStatusStore: Object.assign(
+  (selector: (state: { maintenanceMode: boolean }) => unknown) => selector({ maintenanceMode: mocks.maintenance }),
+  { getState: () => ({ maintenanceMode: mocks.maintenance }) },
+) }));
+vi.mock('@/features/notes/noteRelations', () => ({
+  NOTE_RELATIONS_CHANGED: 'notes:relations-changed', isNoteRelationUsable: () => true,
+  noteRelationsService: { list: async () => [], put: vi.fn(), delete: vi.fn(), referenceStatus: vi.fn() },
+}));
 vi.mock('@/hooks/useBreakpoint', () => ({ useIsMobile: () => mocks.mobile }));
 vi.mock('@/components/layout', () => ({ useMobileSubviewChrome: () => false }));
 vi.mock('@/features/notes/NotesCrepeEditor', () => ({
@@ -106,6 +113,7 @@ describe('classic-shell learning properties', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('已在其他位置修改');
     expect(mocks.setMetadata).not.toHaveBeenCalled();
     expect(screen.getByLabelText('课程')).toHaveValue('我的课程');
+    fireEvent.click(screen.getByRole('button', { name: '已核对最新值，保留草稿重试' }));
     fireEvent.click(screen.getByRole('button', { name: '保存学习属性' }));
     await waitFor(() => expect(mocks.setMetadata).toHaveBeenCalledWith('/note_a', { props: { study_course: '我的课程', status: 'keep' } }, new Date(3000).toISOString()));
   });

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/shad/Badge";
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { dstu, updatedAtToVersionToken } from '@/dstu';
 import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 const normalizeHeadingText = (raw: string) => {
     const withoutLinks = raw.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -48,6 +49,7 @@ import {
     type NotesActiveHeadingDetail,
 } from './components/outlineActiveHeadingBridge';
 import './NotesContextPanel.css';
+import '@/styles/notes-typography.css';
 
 // ============================================================================
 // DSTU 模式 Props 接口
@@ -130,6 +132,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     // 大纲行 DOM（滚动跟随时把高亮行滚入面板可视区）
     const outlineRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const tagInputRef = useRef<HTMLInputElement>(null);
+    const tagTriggerRef = useRef<HTMLButtonElement>(null);
+    const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+    const restoreTagFocusRef = useRef(false);
+    const restoreRenameFocusRef = useRef<string | null>(null);
     // 标签行内重命名（双击 chip / 铅笔按钮进入；跨笔记全局传播）
     const [editingTag, setEditingTag] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
@@ -549,6 +555,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     };
 
     const handleCancelRenameTag = () => {
+        restoreRenameFocusRef.current = editingTag;
         setEditingTag(null);
         setRenameValue("");
         setPendingGlobalRename(null);
@@ -637,8 +644,18 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     useEffect(() => {
         if (isAddingTag && tagInputRef.current) {
             tagInputRef.current.focus();
+        } else if (!isAddingTag && restoreTagFocusRef.current) {
+            restoreTagFocusRef.current = false;
+            tagTriggerRef.current?.focus({ preventScroll: true });
         }
     }, [isAddingTag]);
+
+    useEffect(() => {
+        if (!editingTag && restoreRenameFocusRef.current) {
+            renameTriggerRefs.current.get(restoreRenameFocusRef.current)?.focus({ preventScroll: true });
+            restoreRenameFocusRef.current = null;
+        }
+    }, [editingTag]);
 
     if (!effectiveActive) {
         return (
@@ -649,7 +666,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     }
 
     return (
-        <div className="flex h-full flex-col bg-background text-xs text-foreground">
+        <div className="notes-context-panel flex h-full flex-col bg-background text-xs text-foreground">
             {/* Metadata + Tags：B04 元数据后置，空白不再占据大纲之前的首屏 */}
             <div className="order-last space-y-4 px-3 py-3">
                 {/* Dates — compact, consistent formatting */}
@@ -695,7 +712,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-[36px]"
+                                className="notes-context-tag group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
                             >
                                 {canEditTags && editingTag === tag ? (
                                     <span className="flex items-center gap-1">
@@ -704,12 +721,15 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             value={renameValue}
                                             onChange={e => setRenameValue(e.target.value)}
                                             onKeyDown={e => {
+                                                if (isComposingKeyEvent(e)) return;
                                                 if (e.key === 'Enter') {
-                                                    // C10：中文候选确认（isComposing/keyCode 229）不等于提交
-                                                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                                                    e.preventDefault();
                                                     handleRenameTag();
                                                 }
-                                                if (e.key === 'Escape') handleCancelRenameTag();
+                                                if (e.key === 'Escape') {
+                                                    e.preventDefault();
+                                                    handleCancelRenameTag();
+                                                }
                                             }}
                                             aria-label={t('notes:header.rename_tag')}
                                             autoFocus
@@ -751,6 +771,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
                                                     className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                    ref={(node) => { if (node) renameTriggerRefs.current.set(tag, node); else renameTriggerRefs.current.delete(tag); }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleStartRenameTag(tag);
@@ -786,12 +807,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 placeholder={t('notes:context.add_tag')}
                                 onChange={e => setTagInput(e.target.value)}
                                 onKeyDown={e => {
+                                    if (isComposingKeyEvent(e)) return;
                                     if (e.key === 'Enter') {
-                                        // C10：候选确认不触发标签提交
-                                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                                        e.preventDefault();
                                         handleAddTag();
                                     }
                                     if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        restoreTagFocusRef.current = true;
                                         setIsAddingTag(false);
                                         setTagInput("");
                                     }
@@ -803,6 +826,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             />
                         ) : (
                             <DsButton
+                                ref={tagTriggerRef}
                                 variant="ghost" size="sm"
                                 className={cn(
                                     "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",

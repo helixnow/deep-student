@@ -7,6 +7,27 @@ import type { Crepe } from '@milkdown/crepe';
 import type { AgentHighlightMeta } from './plugins/agentHighlight';
 import type { CrepePluginsOptions } from './plugins';
 import type { CrepeFormattingState } from './formattingState';
+import type { BlockTransferService } from './blockTransfer/service';
+import type { CrepeCommandId, CrepeCommandRequest } from './commandRegistry';
+
+export interface CrepeDocumentCapabilities {
+  noteId: string;
+  /** Confirmed by the backend for this document, not inferred from its content. */
+  writable: boolean;
+  capabilities: readonly string[];
+}
+export interface CrepeUploadState { pending: number; running: number; failed: number; reviewLeases: number }
+
+export interface CrepeBlockActionsHost {
+  /** Live complete Markdown authority, never just the visible window. */
+  getFullMarkdown(): string;
+  isDocumentWindowed(): boolean;
+  /** Must reject on failed persistence; called before publishing a copied link. */
+  flushPendingSave(): Promise<void>;
+  transferService: BlockTransferService;
+  /** User-triggered format opt-in; returns the backend-confirmed current-page grant. */
+  requestLayoutCapability?: () => Promise<CrepeDocumentCapabilities | null>;
+}
 
 export type CrepeSelectionSnapshot = {
   from: number;
@@ -46,6 +67,26 @@ export type { AgentHighlightMeta };
  * Crepe 编辑器对外暴露的 API
  */
 export interface CrepeEditorApi {
+  /** Storage OCC token installed with this editor's current baseline. */
+  getStorageUpdatedAt?: () => string | undefined;
+  /** Backend-confirmed grant for the current note; null closes layout writes. */
+  setDocumentCapabilities?: (capabilities: CrepeDocumentCapabilities | null) => void;
+  /** Plain export of the loaded document. Windowed hosts must materialize first. */
+  getPlainMarkdown?: () => string;
+  /** Blocks user input/new uploads without cancelling in-flight uploads. Release in finally. */
+  acquireReviewLease?: () => () => void;
+  getUploadState?: () => CrepeUploadState;
+  subscribeCommandState?: (listener: () => void) => () => void;
+  executeCommand?: (command: CrepeCommandId, request?: CrepeCommandRequest) => Promise<boolean>;
+  canExecuteCommand?: (command: CrepeCommandId, request?: CrepeCommandRequest) => boolean;
+  /** Device picker routed through the same mapped upload lifecycle as paste/drop. */
+  insertImageFromDevice?: () => void;
+  /** Bind after NotesCrepeEditor has attached the complete-document/save lifecycle. */
+  configureBlockActions?: (host: CrepeBlockActionsHost | null) => void;
+  /** Root IDs only. Host materializes a windowed note before calling this. */
+  focusBlock?: (blockId: string) => boolean;
+  /** Format metadata for an upgraded but empty note; does not generate IDs on open. */
+  setBlockIdentityMode?: (enabled: boolean) => void;
   /** 获取当前 Markdown 内容 */
   getMarkdown: () => string;
   

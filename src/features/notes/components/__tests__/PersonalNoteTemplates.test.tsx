@@ -9,6 +9,25 @@ afterEach(cleanup);
 beforeEach(() => localStorage.clear());
 
 describe('personal templates UI', () => {
+  it('exposes distinct insertion, append and replacement actions and keeps preview after an insertion save failure', async () => {
+    const baseline = { noteId: 'note_a', revision: 1, markdown: '整篇原文' };
+    const insertDocument = vi.fn().mockRejectedValueOnce(new Error('disk full')).mockResolvedValue(true);
+    const replaceDocument = vi.fn().mockResolvedValue(true);
+    render(<PersonalNoteTemplates onApplyTemplate={vi.fn()} documentHost={{ getDocument: () => baseline, replaceDocument,
+      getInsertionPoint: () => ({ from: 2, to: 2 }), insertDocument }} />);
+    fireEvent.change(screen.getByLabelText('模板正文（Markdown）'), { target: { value: '插入正文' } });
+    fireEvent.click(screen.getByRole('button', { name: '预览模板' }));
+    const insert = await screen.findByRole('button', { name: '插入当前位置' });
+    expect(screen.getByRole('button', { name: '追加到笔记末尾' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '确认替换正文' })).toBeDisabled();
+    fireEvent.click(insert);
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full');
+    expect(replaceDocument).not.toHaveBeenCalled();
+    expect(insertDocument).toHaveBeenCalledWith('插入正文', baseline, { from: 2, to: 2 });
+    fireEvent.click(insert);
+    await screen.findByText('模板已插入所选位置');
+    expect(screen.queryByRole('button', { name: '确认替换正文' })).toBeNull();
+  });
   it('authors, saves, reloads, previews and appends a personal template', async () => {
     const onApplyTemplate = vi.fn().mockResolvedValue(undefined);
     const { unmount } = render(<PersonalNoteTemplates onApplyTemplate={onApplyTemplate} />);

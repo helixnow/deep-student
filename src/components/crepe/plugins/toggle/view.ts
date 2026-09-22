@@ -1,223 +1,144 @@
-/**
- * Toggle NodeView：本实例展开状态 + 标题 contenteditable + 可折叠内容区。
- */
-
 import type { Node } from '@milkdown/prose/model'
-import { Plugin, TextSelection } from '@milkdown/prose/state'
+import { Plugin } from '@milkdown/prose/state'
 import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/prose/view'
 import { $prose, $view } from '@milkdown/utils'
 import i18next from 'i18next'
 
-import { TOGGLE_DATA_TYPE, toggleSchema } from './schema'
+import { TOGGLE_TYPE } from './marker'
+import { TOGGLE_DATA_TYPE, toggleSchema, toggleBodySchema } from './schema'
 import { ensureToggleStyles } from './styles'
 
-function t(key: string, defaultValue: string): string {
-  return i18next.t(key, { defaultValue })
+interface ToggleViewState {
+  sync: () => void
+  reveal: () => () => void
+  open: () => void
+}
+const views = new WeakMap<EditorView, Map<HTMLElement, ToggleViewState>>()
+
+/** Search/navigation contract: reveal every containing toggle, without a transaction.
+ * Release when changing/clearing the hit. Restores the user's local expansion,
+ * supports overlapping reveal owners, and also works in readOnly editors. */
+export function revealToggleAtPosition(view: EditorView, pos: number): () => void {
+  const releases: Array<() => void> = []
+  const $pos = view.state.doc.resolve(pos)
+  for (let depth = 1; depth <= $pos.depth; depth++) {
+    if ($pos.node(depth).type.name !== TOGGLE_TYPE) continue
+    const dom = view.nodeDOM($pos.before(depth))
+    if (dom instanceof HTMLElement) {
+      const release = views.get(view)?.get(dom)?.reveal()
+      if (release) releases.push(release)
+    }
+  }
+  return () => releases.forEach((release) => release())
 }
 
-// setProps({ editable }) does not necessarily update unchanged NodeViews.
-const editableSyncs = new WeakMap<EditorView, Set<() => void>>()
+/** Keyboard navigation opens the body locally, retaining the author's default. */
+export function openToggleView(view: EditorView, pos: number): void {
+  const dom = view.nodeDOM(pos)
+  if (dom instanceof HTMLElement) views.get(view)?.get(dom)?.open()
+}
 
-export const toggleEditableSync = $prose(() => new Plugin({
-  view: () => ({
-    update: (view) => editableSyncs.get(view)?.forEach((sync) => sync()),
-  }),
+// Runs after PM has rendered both children (including the first render).
+export const toggleViewSync = $prose(() => new Plugin({
+  view: (view) => {
+    const sync = () => views.get(view)?.forEach((entry) => entry.sync())
+    sync()
+    return { update: sync }
+  },
 }))
 
-function isToggleContentEmpty(node: Node): boolean {
-  if (node.childCount !== 1) return false
-  const first = node.firstChild
-  return Boolean(first && first.isTextblock && first.content.size === 0)
-}
-
-function syncEmptyDom(root: HTMLElement, node: Node): void {
-  root.dataset.empty = isToggleContentEmpty(node) ? 'true' : 'false'
-}
-
-function createToggleNodeView(
-  initialNode: Node,
-  view: EditorView,
-  getPos: () => number | undefined,
-): NodeView {
+function createToggleNodeView(initialNode: Node, view: EditorView): NodeView {
   ensureToggleStyles()
-
   let node = initialNode
-  // Undefined follows the author's default; interaction lasts for this NodeView.
   let localOpen: boolean | undefined
   let destroyed = false
-  let composing = false
-  let editable = view.editable
-
+  const reveals = new Set<object>()
   const dom = document.createElement('div')
   dom.className = 'milkdown-toggle'
   dom.dataset.type = TOGGLE_DATA_TYPE
-  dom.dataset.open = String(Boolean(node.attrs.open))
-  syncEmptyDom(dom, node)
-  dom.setAttribute('data-title', String(node.attrs.title ?? ''))
-
-  const header = document.createElement('div')
-  header.className = 'milkdown-toggle__header'
-  header.contentEditable = 'false'
-
   const arrow = document.createElement('button')
   arrow.type = 'button'
+  arrow.contentEditable = 'false'
   arrow.className = 'milkdown-toggle__arrow'
-  arrow.setAttribute(
-    'aria-label',
-    t('notes:toggle.arrowLabel', '展开或折叠'),
-  )
+  arrow.setAttribute('aria-label', i18next.t('notes:toggle.arrowLabel', { defaultValue: '展开或折叠' }))
   arrow.textContent = '▸'
+  const contentDOM = document.createElement('div')
+  contentDOM.className = 'milkdown-toggle__content'
+  dom.append(arrow, contentDOM)
 
-  const titleEl = document.createElement('div')
-  titleEl.className = 'milkdown-toggle__title'
-  titleEl.contentEditable = view.editable ? 'true' : 'false'
-  titleEl.dataset.placeholder = t('notes:toggle.titlePlaceholder', '无标题')
-  titleEl.textContent = String(node.attrs.title ?? '')
-
-  header.append(arrow, titleEl)
-
-  const body = document.createElement('div')
-  body.className = 'milkdown-toggle__body'
-  body.setAttribute('data-toggle-body', 'true')
-
-  const bodyInner = document.createElement('div')
-  bodyInner.className = 'milkdown-toggle__body-inner'
-  bodyInner.dataset.emptyPlaceholder = t(
-    'notes:toggle.emptyPlaceholder',
-    '空的折叠块，输入内容…',
-  )
-  body.appendChild(bodyInner)
-
-  dom.append(header, body)
-
-  const syncOpenDom = () => {
-    const open = localOpen ?? Boolean(node.attrs.open)
-    // data-open remains the persisted default for DOM parsing/copying.
+  const sync = () => {
+    if (destroyed) return
+    const open = reveals.size > 0 || (localOpen ?? Boolean(node.attrs.open))
+    dom.dataset.open = String(node.attrs.open)
     dom.dataset.viewOpen = String(open)
+    const bodyNode = node.child(1)
+    dom.dataset.empty = String(bodyNode.childCount === 1 && bodyNode.firstChild!.isTextblock && !bodyNode.firstChild!.content.size)
     arrow.setAttribute('aria-expanded', String(open))
-    body.setAttribute('aria-hidden', String(!open))
-    body.toggleAttribute('inert', !open)
+    const body = contentDOM.children[1]
+    if (body) {
+      body.setAttribute('aria-hidden', String(!open))
+      body.toggleAttribute('inert', !open)
+    }
   }
-  syncOpenDom()
-
-  const livePos = () => {
-    if (destroyed || view.isDestroyed) return undefined
-    const pos = getPos()
-    if (pos == null || view.state.doc.nodeAt(pos) !== node) return undefined
-    return pos
-  }
-
-  // Native button activation covers pointer, Enter and Space (including AT clicks).
-  const onArrowClick = (event: MouseEvent) => {
+  const onClick = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (destroyed) return
     localOpen = !(localOpen ?? Boolean(node.attrs.open))
-    syncOpenDom()
+    sync()
   }
-
-  arrow.addEventListener('click', onArrowClick)
-
-  const commitTitle = () => {
-    if (!view.editable || !editable) return
-    const pos = livePos()
-    if (pos == null) return
-    const next = titleEl.textContent ?? ''
-    if (next === String(node.attrs.title ?? '')) return
-    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, title: next }))
-  }
-
-  const syncEditable = () => {
-    if (editable === view.editable) return
-    editable = view.editable
-    composing = false
-    // Discard an uncommitted draft before disabling editing can trigger blur.
-    titleEl.textContent = String(node.attrs.title ?? '')
-    titleEl.contentEditable = editable ? 'true' : 'false'
-  }
-  let syncs = editableSyncs.get(view)
-  if (!syncs) editableSyncs.set(view, syncs = new Set())
-  syncs.add(syncEditable)
-
-  const onTitleKeydown = (event: KeyboardEvent) => {
-    if (!view.editable || !editable || livePos() == null) return
-    if (composing || event.isComposing || event.keyCode === 229) return
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      commitTitle()
-      const pos = livePos()
-      if (pos == null) return
-      // 进入内容区首块（折叠态先展开再进入）
-      localOpen = true
-      syncOpenDom()
-      const $pos = view.state.doc.resolve(pos + 1)
-      const selection = TextSelection.near($pos, 1)
-      view.dispatch(view.state.tr.setSelection(selection))
-      view.focus()
-      return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      titleEl.textContent = String(node.attrs.title ?? '')
-      view.focus()
-    }
-  }
-
-  const onCompositionStart = () => { composing = true }
-  const onCompositionEnd = () => { composing = false }
-  titleEl.addEventListener('blur', commitTitle)
-  titleEl.addEventListener('keydown', onTitleKeydown)
-  titleEl.addEventListener('compositionstart', onCompositionStart)
-  titleEl.addEventListener('compositionend', onCompositionEnd)
-
+  arrow.addEventListener('click', onClick)
+  let entries = views.get(view)
+  if (!entries) views.set(view, entries = new Map())
+  entries.set(dom, {
+    sync,
+    open: () => { localOpen = true; sync() },
+    reveal: () => {
+      const token = {}
+      reveals.add(token)
+      sync()
+      return () => { reveals.delete(token); sync() }
+    },
+  })
+  sync()
   return {
-    dom,
-    contentDOM: bodyInner,
-    update: (updated: Node) => {
+    dom, contentDOM,
+    update: (updated) => {
       if (updated.type !== node.type) return false
       node = updated
-      dom.dataset.open = String(Boolean(updated.attrs.open))
-      syncOpenDom()
-      syncEmptyDom(dom, updated)
-      dom.setAttribute('data-title', String(updated.attrs.title ?? ''))
-      syncEditable()
-      // 避免覆盖用户正在编辑的标题
-      if (document.activeElement !== titleEl) {
-        const nextTitle = String(updated.attrs.title ?? '')
-        if (titleEl.textContent !== nextTitle) {
-          titleEl.textContent = nextTitle
-        }
-      }
+      sync()
       return true
     },
     ignoreMutation: (mutation) => {
-      const target = mutation.target
-      // View-only attributes must not enter PM's DOM reparsing / save pipeline.
-      if (mutation.type === 'attributes' && (target === dom || target === body)) return true
-      if (!(target instanceof HTMLElement) && !(target instanceof Text)) return false
-      if (header.contains(target) || target === header) return true
-      return false
+      if (arrow.contains(mutation.target)) return true
+      return mutation.type === 'attributes' && (
+        mutation.target === dom || mutation.target === contentDOM.children[1]
+      )
     },
-    stopEvent: (event) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement) && !(target instanceof Text)) return false
-      if (arrow === target || arrow.contains(target)) return true
-      if (titleEl === target || titleEl.contains(target)) return true
-      return false
-    },
+    stopEvent: (event) => event.target instanceof globalThis.Node && arrow.contains(event.target),
     destroy: () => {
       destroyed = true
-      syncs.delete(syncEditable)
-      arrow.removeEventListener('click', onArrowClick)
-      titleEl.removeEventListener('blur', commitTitle)
-      titleEl.removeEventListener('keydown', onTitleKeydown)
-      titleEl.removeEventListener('compositionstart', onCompositionStart)
-      titleEl.removeEventListener('compositionend', onCompositionEnd)
-      dom.remove()
+      entries.delete(dom)
+      arrow.removeEventListener('click', onClick)
     },
   }
 }
 
 export const toggleView = $view(toggleSchema.node, (): NodeViewConstructor => {
-  return (node, view, getPos) => createToggleNodeView(node, view, getPos)
+  return (node, view) => createToggleNodeView(node, view)
+})
+
+// PM observes a body's nearest NodeView, not its outer toggle's ignoreMutation.
+// Own only the view attributes here; all content/selection mutations stay native.
+export const toggleBodyView = $view(toggleBodySchema.node, (): NodeViewConstructor => () => {
+  const dom = document.createElement('div')
+  dom.className = 'milkdown-toggle__body'
+  dom.dataset.toggleBody = 'true'
+  const contentDOM = document.createElement('div')
+  contentDOM.className = 'milkdown-toggle__body-inner'
+  contentDOM.dataset.emptyPlaceholder = i18next.t('notes:toggle.emptyPlaceholder', { defaultValue: '空的折叠块，输入内容…' })
+  dom.append(contentDOM)
+  return {
+    dom, contentDOM,
+    ignoreMutation: (mutation) => mutation.type === 'attributes' && mutation.target === dom,
+  }
 })

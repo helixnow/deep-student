@@ -1,5 +1,50 @@
 # WP10：学习属性、个人模板与学习视图接入
 
+## 2026-09-22 当前接线合同（供主 agent / host agent）
+
+- `noteRelations.ts` **已对齐实际后端** `docs/dev/notes-storage-contract-20260922.md`：`notes_relation_put({request})` 使用 snake_case 请求/响应；`list({noteId})`；`delete({id,expectedRevision})`；`notes_reference_status({resourceId,locator})`。不再使用 provisional upsert。source/page 使用 VFS resources.id，card/card 使用 document_tasks.document_id，mistake/question 使用 exam resource ID。
+- `NoteLearningRelations` 已挂到 `NoteLearningPropertiesSection`（经典壳）及 `NotesWorkspaceApp` 属性页。内建来源阅读器/卡片预览、有效性检查、版本化 CRUD；无需 NoteContentView 额外挂第二份。
+- `NotesLibraryView` 是独立笔记列表/状态/复习容器。`LearningHubPage` 桌面和移动分支已通过 `NotesLibraryEntry` 接入“学习资源 / 笔记学习”入口；打开仍走 `handleOpenApp`。没有向混合 Finder 添加学习 viewMode。
+- `CreateLearningNoteDialog` 在工作台文件侧栏“新建 → 新建学习笔记”和经典笔记学习库可达。明确选择空白 / 课程默认 / 指定模板，默认空白；课程输入、手动属性优先于模板预设。
+- 实际 `dstu_create` 的 notes 分支（handlers.rs）只消费 tags，不保存 props。前端已使用 `createLearningNote → finishLearningNoteCreation`：创建正文后，通过 get/setMetadata(OCC)/get 保存属性；失败显示“正文已创建，属性尚未保存”，提供同 ID 重试或打开已创建笔记，避免重复创建。**后端可选 needs**：若要真正原子初始化，应让 note 创建事务接受 props；本轮前端不依赖尚不存在的能力。
+
+### Host agent 精准 needs
+
+`NotesTemplatePanel` 的 `documentHost` 已扩展（深导入 `noteTemplates.ts`）：
+
+```ts
+getDocument(): { noteId: string; revision: number; markdown: string };
+replaceDocument(markdown, baseline): Promise<NoteTemplateDocument | boolean | void>;
+getInsertionPoint?(): { from: number; to: number };
+insertDocument?(markdown, baseline, position: {from:number;to:number}): Promise<NoteTemplateDocument | boolean | void>;
+```
+
+`getInsertionPoint` 必须返回编辑器失焦前记住的选区；坐标为 Host 原生坐标（分页映射由 Host 负责）。`insertDocument` 再次检查 noteId/revision 和选区有效性，插到该位置并走正常保存。返回 false/reject 代表未成功，UI 保留预览。个人模板的追加已直接走全文 Host 的版本检查和 replaceDocument，保留原文字节前缀；替换继续使用显式确认。**请按 noteId 为模板面板设 key**。正文模板操作不隐式修改属性。
+
+面板另接可选 `learningPropsHost: NoteTemplateLearningPropsHost`：
+
+```ts
+getProps(): { noteId: string; props: Record<string, unknown> };
+saveProps(next, baseline): Promise<void>;
+```
+
+`saveProps` 需以 baseline 做 `mergeNotePropEdits`、最新 metadata OCC 写入，失败 reject；不推进正文 token。个人模板预览中的“应用属性预设”只填未设置字段，未知/非法旧值保留。已有属性编辑器的“从个人模板填入属性预设”继续可用，不依赖此可选 Host。
+
+locale 由主 agent 补：新增键位于 `notes:learning.mapping.* / learning.relations.* / learning.create.* / learning.library.* / learning.confirm_latest` 与 `personalTemplates.insert/inserted/preset_preview/apply_preset/preset_applied/errors.no_selection`；源码均提供中文 defaultValue，可直接提取。
+
+### 本轮实现与验证结果
+
+- 旧自由属性：`LegacyLearningPropsMapper` 已在真实 `NoteCustomPropsEditor` 中可达；选择来源、明确目标值、前后预览、应用、撤销。来源键与未知值不删除；应用检查来源/目标变化，撤销只恢复本次目标差异，保留其他并发修改。失败保留预览，切篇随 note key 重挂载。
+- 学习字段草稿保留开始编辑时的基线，同字段并发更新不会被新的 props 悄悄覆盖。失败后提供“已核对最新值，保留草稿重试”。工作台丢弃旧版本 metadata 事件，三视图共享列表。
+- 个人模板加本地 revision，防同一 WebView 的两个编辑面板互相覆盖。现有 settings 仓库不提供跨 WebView 原子 CAS；这里不声称增加了后端事务。正文操作三种语义与失败/换篇/版本检查均已有 UI 和测试。
+- 关系 UI 提供 PDF/卡片/题目集选择器，分页读真实 DSTU / Anki library / qbank APIs。业务 source ID 与底层 resource ID 明确区分；PDF 阅读器用 source ID 挂载并等待页码定位 ACK，错题使用 qbank 定位事件，卡片按真实 document/card ID 读取。失效关系仍显示；显示标题实时解析，不参与关系身份。手工 ID 输入折叠在高级入口。
+- 验证：17 文件、122 项整组回归通过；收尾补充“显式清除模板课程”用例后，受影响 3 文件、9 项再次通过（当前定向覆盖共 123 项）。`npm run typecheck:native -- --pretty false` 最终通过。
+- `noteRelations.ipc.test.ts` 绕过 vitest 对 core 的全局 alias，使用真正 `@tauri-apps/api/core.js` 的 invoke，经 Tauri mockIPC 验证注册命令、snake_case request、typed locator、CAS/delete 参数和错误传播。这是 IPC 边界合同测试，**不是运行中的 Rust 后端端到端验收**；本轮未启动桌面或运行视觉测试。
+- 初次交接时尚缺 `getInsertionPoint/insertDocument` 和 `learningPropsHost`；主代理整合现已在 `NotesCrepeEditor` 通过 `templateDocumentHost` / `useTemplateLearningPropsHost` 接通。模板入口收拢至“页面 → 笔记模板”，先记住正文选区再打开面板。最新验证边界见 `docs/dev/notes-host-integration-20260922.md`。
+- 所有本轮编辑均经 apply_patch；未 commit、stash、reset 或还原工作区。
+
+下方为上一轮接入记录，当前合同以上述段落为准。
+
 ## 真实入口核验
 
 - 经典壳：`App.tsx` → `LearningHubPage` → `UnifiedAppPanel` → `NoteContentView` → `NotesCrepeEditor`。

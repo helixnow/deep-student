@@ -1,4 +1,20 @@
 {
+  "chrome": {
+    "create": "New",
+    "page": "Page",
+    "format": "Format",
+    "read": "Read",
+    "edit": "Edit",
+    "note_tools": "Note tools",
+    "view": "View",
+    "export": "Export",
+    "export_plain": "Plain Markdown",
+    "export_layout": "Markdown with layout",
+    "load_full_document": "Load full document for block actions",
+    "text_style": "Text style",
+    "paragraph": "Paragraph",
+    "insert": "Insert"
+  },
   "canvas": {
     "untitled": "Untitled Note",
     "error": {
@@ -136,6 +152,71 @@
     "incomplete": "Some wiki links were not updated because of unsaved changes, save failures, or the batch limit. Please check them manually."
   },
   "learning": {
+    "confirm_latest": "Latest values checked; retry with my draft",
+    "library": {
+      "title": "Learning notes",
+      "search": "Search notes, courses, or chapters",
+      "resources": "Learning resources"
+    },
+    "create": {
+      "title": "New learning note",
+      "name": "Note title",
+      "course": "Course",
+      "template": "Template for new note",
+      "blank": "Blank note",
+      "default": "Course default: {{title}}",
+      "hint": "The course default is applied only when selected. Properties you have entered take priority.",
+      "submit": "Create note",
+      "cancel": "Cancel creation",
+      "retry_props": "Retry saving properties",
+      "open_partial": "Open created note",
+      "props_failed": "The note content was created, but its properties have not been saved: {{error}}",
+      "invalid_title": "Enter a valid note title."
+    },
+    "mapping": {
+      "title": "Map existing custom properties",
+      "hint": "Choose source properties and target values, then preview and apply. Original properties and unknown values are kept.",
+      "source": "Source property for {{field}}",
+      "target": "Target value for {{field}}",
+      "preview": "Preview mapping",
+      "apply": "Apply mapping",
+      "undo": "Undo last mapping",
+      "invalid": "Choose an existing property and a valid target value."
+    },
+    "relations": {
+      "title": "Linked learning resources",
+      "empty": "No learning resources linked yet",
+      "whole": "Entire resource",
+      "missing": "The resource or linked location is no longer available",
+      "open": "Open linked resource",
+      "edit": "Edit link",
+      "delete_failed": "The link was not removed. Refresh and try again.",
+      "delete": "Remove link",
+      "type": "Link type",
+      "types": {
+        "source": "Source PDF",
+        "card": "Related card",
+        "mistake": "Related mistake"
+      },
+      "manual": "Link by resource ID",
+      "resource_id": "Resource ID (document ID for cards)",
+      "page": "PDF page number",
+      "card_id": "Card ID",
+      "question_id": "Question ID",
+      "invalid_page": "Enter a valid page number starting from 1.",
+      "save": "Save link",
+      "cancel": "Cancel editing link",
+      "focus_failed": "The reader has not reached the linked location yet. Wait for it to load and try again.",
+      "preview": "Linked resource preview",
+      "locate": "Go to linked location",
+      "close": "Close preview",
+      "choose": "Choose from library",
+      "search": "Find resources to link",
+      "back": "Back to question sets",
+      "no_results": "No matching resources",
+      "previous": "Previous page",
+      "next": "Next page"
+    },
     "title": "Learning properties",
     "section_label": "Note learning properties",
     "reload": "Reload properties",
@@ -200,6 +281,28 @@
     }
   },
   "history": {
+    "description_full": "View complete versions and their differences. Restore as a new copy by default; overwriting the current note retains its existing version first. Previewing does not retain a version indefinitely.",
+    "configure_retention": "Configure history retention",
+    "bucket_seconds": "Combine edits every (seconds; 0 to keep separate)",
+    "max_versions": "Ordinary edit version limit (0 for unlimited)",
+    "policy_help": "Pinned versions and format migration baselines are exempt. Changing these rules does not immediately remove history.",
+    "save_policy": "Save retention rules",
+    "policy_saved": "Retention rules saved",
+    "current_restored": "Current note restored. The version from before the overwrite has been retained.",
+    "unsupported_format": "This version's format cannot be restored here. Use a compatible app version.",
+    "select_lines": "Restore selected lines only",
+    "selection_help": "Select complete paragraphs, lists, or code blocks without cutting through their structure.",
+    "start_line": "Start line",
+    "end_line": "End line",
+    "selection_preview": "Selected content restore preview",
+    "compare_current": "Compare with current note",
+    "diff_preview": "Restore difference preview",
+    "overwrite_title": "Confirm overwriting current note",
+    "overwrite_warning": "The preview above will replace the entire current note, including in selected-lines mode. Unsaved drafts will be handled first and the complete current version retained. Restoration stops if the current content has changed.",
+    "cancel_overwrite": "Cancel overwrite",
+    "confirm_overwrite": "Retain current version and overwrite",
+    "host_required": "The editor must handle unsaved drafts first",
+    "overwrite_current": "Overwrite current note…",
     "title": "Note history",
     "description": "Complete versions saved on this device. Continuous edits are combined every 5 minutes, keeping the latest 100 ordinary edit versions. Previewing does not retain a version indefinitely; you can choose to retain important versions. Restoring creates a copy at the root of your library and keeps the original note and current draft as they are.",
     "retained_only": "Show only versions retained indefinitely",
@@ -271,6 +374,8 @@
   },
   "fullDocument": {
     "errors": {
+      "view_unavailable": "The full-note editor is not ready yet. Please try again.",
+      "materialize_failed": "Could not load the complete note. Please try again.",
       "baseline_changed": "The note changed or you switched notes, so suggestions for the earlier version were not applied. Copy the proposed content, then generate new suggestions.",
       "content_too_large": "The content exceeds the 1 MiB (UTF-8) limit. It has been kept so you can copy it or shorten it and try again.",
       "stale_editor": "You switched notes. Writing to the previous editor was blocked.",
@@ -285,6 +390,11 @@
     }
   },
   "personalTemplates": {
+    "inserted": "Template inserted at the selected position",
+    "insert": "Insert at current position",
+    "preset_preview": "Property presets (fill unset fields only)",
+    "preset_applied": "Property presets saved",
+    "apply_preset": "Apply property presets",
     "title": "Personal templates",
     "untitled": "Untitled template",
     "loading": "Loading personal templates…",
@@ -325,6 +435,8 @@
     "reload": "Reload templates",
     "errors": {
       "load_failed": "Could not read personal templates. The original data has been kept.",
+      "no_selection": "Choose an insertion point in the editor, then preview again.",
+      "version_conflict": "The template was modified. Select it again and review it before saving.",
       "invalid_preset": "The template's learning property presets are invalid. The original data has been kept.",
       "invalid_stored_course": "The template's default course is invalid. The original data has been kept.",
       "invalid_course": "The default course format is invalid.",
@@ -522,6 +634,14 @@
     }
   },
   "findReplace": {
+    "scopeFullDraft": "Scope: the complete draft of this note. Matches do not span paragraphs or embedded objects.",
+    "searchingFullDraft": "Processing the complete note…",
+    "errors": {
+      "search_timeout": "The regular expression search timed out and was stopped. Simplify the expression.",
+      "search_cancelled": "Search cancelled. Change the query to search again.",
+      "search_worker_failed": "Could not start the regular expression search. Please try again.",
+      "full_document_unavailable": "The complete note is not ready yet. Please try again."
+    },
     "inputRequired": "Enter content to search",
     "editorNotReady": "Editor not ready yet",
     "findUnsupported": "Current editor does not support find",
@@ -577,6 +697,9 @@
     "no_insight": "No insights yet"
   },
   "toolbar": {
+    "wikilink": "Wiki link",
+    "callout": "Callout",
+    "toggle": "Toggle block",
     "ask_agent": "Ask Agent",
     "new_note": "New note",
     "new_folder": "New folder",
@@ -653,6 +776,11 @@
     "insert_hint": "Insert at the end of the current note"
   },
   "blockMenu": {
+    "heading4": "Heading 4",
+    "heading5": "Heading 5",
+    "heading6": "Heading 6",
+    "copyBlockLink": "Copy block link",
+    "moveToNote": "Move to another note…",
     "label": "Block actions",
     "addAfter": "Add block below",
     "dragOrMenu": "Drag block or open block menu",
@@ -670,6 +798,47 @@
     "toggle": "Toggle block",
     "duplicate": "Duplicate",
     "delete": "Delete"
+  },
+  "blockIdentity": {
+    "topLevelOnly": "Persistent IDs are supported for top-level blocks only. Nested blocks are not supported yet.",
+    "hostRequired": "Full-note block operations are not available for this note yet.",
+    "fullDocumentRequired": "Load the complete note before creating block links or moving blocks to another note.",
+    "singleLink": "Select one top-level block to copy its link.",
+    "linkCopied": "Block link copied"
+  },
+  "blockDrop": {
+    "invalid": "Cannot drop here (inside its own descendant or an incompatible container)",
+    "inside": "Move into container; persistent links apply only to top-level blocks",
+    "move": "Move here"
+  },
+  "blockTransfer": {
+    "title": "Move blocks to another note",
+    "undone": "Move undone",
+    "done": "Blocks moved with their original IDs preserved",
+    "refreshFailed": "Saved, but the views could not be refreshed. Reopen both notes.",
+    "description": "Append the selected blocks to the destination note. Open drafts of both notes will be saved before moving.",
+    "search": "Search notes or paths",
+    "target": "Destination note",
+    "loading": "Loading notes…",
+    "empty": "No matching destination notes",
+    "close": "Close",
+    "undo": "Undo move",
+    "move": "Move"
+  },
+  "layout": {
+    "label": "Page layout",
+    "insert-columns": "Insert two columns",
+    "insert-cornell": "Insert Cornell layout",
+    "convert-columns": "Convert to two columns",
+    "convert-cornell": "Convert to Cornell layout",
+    "convert-cornell-template": "Convert Cornell template",
+    "unwrap-columns": "Unwrap into regular blocks"
+  },
+  "draftPersistence": {
+    "save_unconfirmed": "Draft storage was not confirmed.",
+    "recovered": "Unsaved draft recovered.",
+    "save_before_discard": "The draft has not been stored yet. Retry saving before discarding it.",
+    "delete_unconfirmed": "Draft deletion was not confirmed."
   },
   "search": {
     "placeholder": "Search notes...",
@@ -1348,6 +1517,8 @@
     "title": "Properties"
   },
   "context": {
+    "content_load_failed": "Could not load the content. The outline is unavailable.",
+    "content_loading": "Loading content…",
     "open": "Open",
     "properties": "Properties",
     "outline": "Outline",
@@ -1500,6 +1671,11 @@
     "placeholder": "Ask a question..."
   },
   "header": {
+    "rename_tag_across_success": "Tag renamed throughout the library",
+    "rename_tag_batch_summary": "Updated {{updated}} notes, skipped {{skipped}} with unsaved changes, failed on {{failed}}",
+    "rename_tag_across_library": "Rename this tag throughout the library",
+    "rename_tag_across_confirm": "Rename every “{{oldName}}” tag in the library to “{{newName}}” and save the changes to other notes? This affects multiple notes.",
+    "rename_tag_across_confirm_action": "Rename throughout library",
     "documentTitle": "Note title",
     "breadcrumbs": "Note path",
     "history": "Version history",
@@ -1573,6 +1749,7 @@
     "cycleType": "Change callout type"
   },
   "wikilink": {
+    "noCandidates": "No candidate notes",
     "create": "Create \"{{title}}\"",
     "empty": "No matching notes"
   },
@@ -1598,6 +1775,11 @@
     "slashDescription": "Collapsible title and body"
   },
   "mobileToolbar": {
+    "columns": "Insert two columns",
+    "cornell": "Insert Cornell layout",
+    "convertColumns": "Convert to two columns",
+    "convertCornell": "Convert to Cornell layout",
+    "unwrapColumns": "Unwrap into regular blocks",
     "insert": "Insert",
     "strikethrough": "Strikethrough",
     "blockActions": "Block actions",

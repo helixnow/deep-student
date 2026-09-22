@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import type { CrepeEditorApi } from '@/components/crepe';
+// This suite isolates queue scheduling; format admission has dedicated real-host coverage.
+vi.mock('@/features/notes/NoteFormatGate', () => ({ NoteFormatGate: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 let latestOnChange: ((markdown: string) => void) | null = null;
 let latestOnDocumentChange: (() => void) | null = null;

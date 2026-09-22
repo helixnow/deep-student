@@ -1,4 +1,5 @@
 import i18n from '@/i18n';
+import { mergeNotePropEdits } from './notePropEdits';
 
 /** Stored as string values in DSTU metadata.props; no inference from legacy keys. */
 export const LEARNING_PROP_KEYS = {
@@ -18,6 +19,43 @@ export interface NoteLearningProps {
   reviewDate?: string;
 }
 export type LearningField = keyof NoteLearningProps;
+
+export interface LearningPropMapping {
+  sourceKey: string;
+  field: LearningField;
+  /** Explicit user choice; especially necessary for legacy status/date values. */
+  value: string;
+}
+export interface LearningPropMappingPreview {
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  mappings: readonly LearningPropMapping[];
+}
+/** Copy selected legacy values. Original keys and all unknown values remain untouched. */
+export function previewLearningPropMapping(props: Record<string, unknown>, mappings: readonly LearningPropMapping[]): LearningPropMappingPreview {
+  const fields = new Set<LearningField>();
+  const changes: Partial<Record<LearningField, string>> = {};
+  for (const mapping of mappings) {
+    if (!Object.hasOwn(props, mapping.sourceKey) || fields.has(mapping.field) || !isLearningPropValue(mapping.field, mapping.value)) {
+      throw new Error(i18n.t('notes:learning.mapping.invalid', { defaultValue: '请选择已有属性与有效的目标值。' }));
+    }
+    fields.add(mapping.field);
+    changes[mapping.field] = mapping.value;
+  }
+  return { before: { ...props }, after: updateNoteLearningProps(props, changes), mappings: mappings.map((item) => ({ ...item })) };
+}
+export function applyLearningPropMapping(current: Record<string, unknown>, preview: LearningPropMappingPreview): Record<string, unknown> {
+  for (const { sourceKey } of preview.mappings) {
+    if (!Object.hasOwn(current, sourceKey) || !Object.is(current[sourceKey], preview.before[sourceKey])) {
+      throw new Error(i18n.t('notes:learning.errors.concurrent_edit', { key: sourceKey }));
+    }
+  }
+  return mergeNotePropEdits(preview.before, preview.after, current);
+}
+/** Undo only this mapping's changes; concurrent unrelated edits survive. */
+export function undoLearningPropMapping(current: Record<string, unknown>, preview: LearningPropMappingPreview): Record<string, unknown> {
+  return mergeNotePropEdits(preview.after, preview.before, current);
+}
 
 export function localCalendarDate(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

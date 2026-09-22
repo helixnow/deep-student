@@ -9,7 +9,7 @@ import { assertFullDocumentBaseline, assertNoteContentSize, FullDocumentSaveErro
 import { computeDiffLines, computeProposedContent, type AIEditState, type CanvasAIEditRequest, type CanvasAIEditResult } from './hooks/useAIEditState';
 import type { AIEditCheckpoint } from './hooks/useCanvasAIEditHandler';
 import {
-  aiReviewSessionKey, composeAIReview, createAIReviewSession, decideAIReviewGroup,
+  aiReviewSessionKey, createAIReviewSession,
   readAIReviewSession, storeAIReviewSession, type AIReviewDecision, type AIReviewSession,
   aiReviewError, aiReviewSessionVersion,
 } from './aiReviewModel';
@@ -17,8 +17,9 @@ import {
   claimAIReviewRecovery, loadPersistedAIReview, newAIReviewPersistenceId,
   persistAIReviewSession, removePersistedAIReview, type AIReviewRecoveryOption,
 } from './aiReviewPersistence';
+import { scopeAIReviewCandidate, type AIReviewHost, type AIReviewRequest, type AIReviewScope, type AIReviewLanding, type OfficialReviewControls, type OfficialReviewDecision } from './officialDiffContract';
 
-type LocalRequest = CanvasAIEditRequest & {
+type LocalRequest = AIReviewRequest & {
   onLocalDisposition?: (result: { accepted: true } | { accepted: false; reason: string }) => void;
   onSettled?: () => void;
 };
@@ -49,17 +50,21 @@ export function projectAIReviewCandidate(request: CanvasAIEditRequest, original:
   return projected.error ? { content: request.content ?? request.replace ?? '', error: projected.error } : projected;
 }
 
-/** Host review controller. Decisions are staged until one version-checked, persisted apply. */
-export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
+/** Host owns the only live document. Official review commands propose version-checked writes. */
+export function useAIReview({ noteId, editorApi, enabled = true, windowId, host }: {
   noteId?: string | null;
   editorApi: CrepeEditorApi | null;
   enabled?: boolean;
   windowId?: string;
+  host?: AIReviewHost;
 }) {
   const key = aiReviewSessionKey(noteId ?? '', windowId);
   const [, refresh] = useReducer((n: number) => n + 1, 0);
-  const current = useRef({ key, noteId, editorApi, enabled, windowId });
-  current.current = { key, noteId, editorApi, enabled, windowId };
+  const current = useRef({ key, noteId, editorApi, enabled, windowId, host });
+  current.current = { key, noteId, editorApi, enabled, windowId, host };
+  const official = useRef<{ key: string; controls: OfficialReviewControls } | null>(null);
+  const lease = useRef<(() => void) | null>(null);
+  const releaseLease = useCallback(() => { lease.current?.(); lease.current = null; }, []);
   const mounted = useRef(true);
   const applying = useRef(new Set<string>());
   const [isApplying, setIsApplying] = useState(false);
@@ -84,6 +89,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
       if (persistenceTickets.current.get(target) !== ticket) return;
       if (session.resolution && readAIReviewSession(target)?.persistenceId === session.persistenceId) storeAIReviewSession(target, null);
       publishPersistence(target, { status: 'saved' });
+      return true;
     } catch (error) {
       if (persistenceTickets.current.get(target) !== ticket) return;
       const explanation = session.resolution
@@ -91,6 +97,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
         : aiReviewError('persist_failed', '候选或审阅决定尚未持久化，重启后可能丢失。请重试保存。');
       publishPersistence(target, { status: 'error', error: `${explanation} ${message(error)}` });
       if (mounted.current && current.current.key === target) showGlobalNotification('error', explanation);
+      return false;
     }
   }, [publishPersistence]);
   const update = useCallback((target: string, session: AIReviewSession | null, save = true) => {
@@ -102,11 +109,11 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
 
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
+    return () => { mounted.current = false; releaseLease(); official.current?.controls.suspend(); };
+  }, [releaseLease]);
   useEffect(() => {
     setIsApplying(applying.current.has(key));
-    setCheckpoints((entries) => entries.filter((entry) => entry.noteId === noteId));
+    setCheckpoints((entries) => (readAIReviewSession(key)?.accepted ?? entries).filter((entry) => entry.noteId === noteId));
   }, [key, noteId]);
 
   // Re-open a preserved session only against the same content. Never silently rebase changes.
@@ -119,6 +126,9 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
       if (snapshot.markdown === session.baseline.markdown) {
         update(key, { ...session, baseline: snapshot }, false);
       } else if (session.retryBaseline?.markdown === snapshot.markdown) {
+        update(key, { ...session, retryBaseline: snapshot }, false);
+      } else if (session.retryDecision?.action === 'accept' && session.request.landing !== 'save-as'
+        && (api.normalizeMarkdown?.(session.retryDecision.after) ?? session.retryDecision.after) === snapshot.markdown) {
         update(key, { ...session, retryBaseline: snapshot }, false);
       } else {
         update(key, { ...session, conflict: true, error: aiReviewError('version_changed', '笔记版本已变化，候选及分组决定已保留。请复制候选内容后重新生成建议。') }, false);
@@ -149,8 +159,6 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
         return;
       }
       const restored = loaded.session;
-      const projection = projectAIReviewCandidate(restored.request, restored.baseline.markdown);
-      if (projection.error) restored.error = projection.error;
       const snapshot = (owner.editorApi as FullDocumentApi).getFullDocument();
       if (snapshot.noteId !== restored.baseline.noteId) throw new Error(aiReviewError('version_changed', '笔记版本已变化，候选及分组决定已保留。请复制候选内容后重新生成建议。'));
       if (snapshot.markdown === restored.baseline.markdown) {
@@ -158,6 +166,10 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
         // A failed applied draft lost on restart can be applied again against the unchanged original.
         restored.retryBaseline = undefined;
       } else if (restored.retryBaseline?.markdown === snapshot.markdown) restored.retryBaseline = snapshot;
+      else if (restored.retryDecision?.action === 'accept' && restored.request.landing !== 'save-as'
+        && (owner.editorApi.normalizeMarkdown?.(restored.retryDecision.after) ?? restored.retryDecision.after) === snapshot.markdown) {
+        restored.retryBaseline = snapshot;
+      }
       else {
         restored.conflict = true;
         restored.error = aiReviewError('version_changed', '笔记版本已变化，候选及分组决定已保留。请复制候选内容后重新生成建议。');
@@ -165,6 +177,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
       }
       if (!claimAIReviewRecovery(restored, owner.key)) throw new Error(aiReviewError('recovery_claimed', '候选已由其他笔记窗口恢复，请刷新后重试。'));
       update(owner.key, restored, false);
+      setCheckpoints(restored.accepted.filter(entry => entry.noteId === owner.noteId));
       // Persist the new owning window only after accepting the hydration result.
       await persist(owner.key, restored);
     } catch (error) {
@@ -197,12 +210,13 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
       const api = owner.editorApi as FullDocumentApi | null;
       if (!api) throw new Error(aiReviewError('editor_not_ready', '编辑器尚未就绪。'));
       const baseline = api.getFullDocument();
-      const proposed = projectAIReviewCandidate(request, baseline.markdown);
+      const proposed = scopeAIReviewCandidate(request, baseline, projectAIReviewCandidate);
       // The existing projector deliberately rejects oversized output before allocation.
       // Preserve the exact supplied text for copy/recovery even for a rejected projection.
       const candidate = proposed.content;
       const session = createAIReviewSession(request, baseline, candidate);
       if (proposed.error) session.error = proposed.error;
+      try { assertNoteContentSize(candidate); } catch (error) { session.error = message(error); }
       update(owner.key, session);
       request.onLocalDisposition?.({ accepted: true });
       try { await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId }); }
@@ -233,57 +247,85 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
     };
   }, [enabled, receive]);
 
-  const handleAccept = useCallback(async (acceptPending = true) => {
+  const handleOfficialDecision = useCallback(async (decision: OfficialReviewDecision) => {
     const owner = current.current;
     const session = readAIReviewSession(owner.key);
     const api = owner.editorApi as FullDocumentApi | null;
-    if (!owner.enabled || !session || !api || applying.current.has(owner.key)) return;
-    if (session.resolution) { await persist(owner.key, session); return; }
-    const applicationSession: AIReviewSession = {
-      ...session,
-      groups: session.groups.map((group) => group.decision === 'pending'
-        ? { ...group, decision: acceptPending ? 'accept' : 'reject' } : group),
-    };
-    const candidate = composeAIReview(applicationSession);
+    if (!owner.enabled || !session || !api || applying.current.has(owner.key)) throw new Error('审阅尚未就绪。');
+    if (session.resolution) throw new Error('审阅已结束。');
     applying.current.add(owner.key);
     setIsApplying(true);
+    let appliedDocument = session.baseline;
+    let savedAs = session.savedAs;
     try {
       if (session.conflict) throw new Error(aiReviewError('version_changed', '笔记版本已变化，候选及分组决定已保留。请复制候选内容后重新生成建议。'));
-      if (api.isReadonly()) throw new Error(aiReviewError('read_only', '阅读模式下不能修改笔记。'));
-      // Projection errors (invalid regex/search/oversize) must not turn raw recovery text into a write.
-      const projected = projectAIReviewCandidate(session.request, session.baseline.markdown);
+      if (session.retryDecision && (session.retryDecision.after !== decision.after || session.retryDecision.target !== decision.target
+        || session.retryDecision.action !== decision.action)) throw new Error('请先重试上一组的保存，再处理其他建议。');
+      if (!session.retryBaseline && session.request.landing !== 'save-as' && api.normalizeMarkdown
+        && api.normalizeMarkdown(decision.before) !== api.normalizeMarkdown(session.baseline.markdown)) {
+        throw new Error('候选审阅结构与正文不一致，请重新打开审阅。');
+      }
+      const projected = scopeAIReviewCandidate(session.request, session.origin, projectAIReviewCandidate);
       if (projected.error) throw new Error(projected.error);
       const baseline = session.retryBaseline ?? session.baseline;
       assertFullDocumentBaseline(api.getFullDocument(), baseline);
-      let appliedDocument;
-      if (session.retryBaseline) {
-        if ((api.normalizeMarkdown?.(candidate) ?? candidate) !== baseline.markdown) throw new Error(aiReviewError('decisions_changed', '保存失败后分组决定已变化，请复制候选并重新审阅。'));
-        if (!api.flushPendingSave) throw new Error(aiReviewError('save_unavailable', '笔记保存能力尚未就绪。'));
-        await api.flushPendingSave();
-        appliedDocument = baseline;
-      } else {
-        appliedDocument = await api.replaceFullDocument(candidate, baseline);
+      // Persist intent before the body write. A crash between the two stores is
+      // recoverable by comparing the exact proposed full document on reopen.
+      const intent = { ...session, retryDecision: decision };
+      if (!await persist(owner.key, intent)) throw new Error('审阅状态尚未保存，请重试。');
+      if (decision.action === 'accept') {
+        assertNoteContentSize(decision.after);
+        if (session.request.landing === 'save-as') {
+          if (!owner.host?.saveAs) throw new Error('另存结果接口尚未就绪。');
+          savedAs = await owner.host.saveAs(decision.after, session.persistenceId!, session.savedAs);
+          // Coordinated save-as may refresh the unchanged source and advance its
+          // editor revision. Accept that revision only if its full body is intact.
+          const refreshed = api.getFullDocument();
+          if (refreshed.noteId !== baseline.noteId || refreshed.markdown !== baseline.markdown) throw new Error('另存期间原笔记已变化。');
+          appliedDocument = refreshed;
+        } else if (session.retryBaseline) {
+          if ((api.normalizeMarkdown?.(decision.after) ?? decision.after) !== baseline.markdown) throw new Error('保存失败后候选已变化，请重新审阅。');
+          if (!api.flushPendingSave) throw new Error('笔记保存接口尚未就绪。');
+          await api.flushPendingSave();
+          appliedDocument = baseline;
+        } else if ((api.normalizeMarkdown?.(decision.after) ?? decision.after) !== baseline.markdown) {
+          appliedDocument = owner.host?.applyDocument
+            ? await owner.host.applyDocument(decision.after, baseline)
+            : await api.replaceFullDocument(decision.after, baseline);
+        }
       }
-      // A switch during persistence cannot report a new page's result as this session's success.
-      if (current.current.key !== owner.key || current.current.editorApi !== api || !mounted.current) return;
+      if (current.current.key !== owner.key || current.current.editorApi !== api || !mounted.current) throw new Error('笔记窗口已变化，审阅结果已保留供恢复。');
       assertFullDocumentBaseline(api.getFullDocument(), appliedDocument);
       const appliedMarkdown = appliedDocument.markdown;
-      const resolved: AIReviewSession = { ...applicationSession, resolution: 'accepted' };
-      update(owner.key, resolved, false);
-      settle(session);
+      const checkpointBefore = session.request.landing === 'save-as' ? session.savedAs?.markdown ?? '' : session.baseline.markdown;
+      const checkpointAfter = session.request.landing === 'save-as' ? savedAs?.markdown ?? '' : appliedMarkdown;
       const checkpoint: AIEditCheckpoint = {
-        id: session.request.requestId, noteId: session.baseline.noteId,
-        originalContent: session.baseline.markdown, resultContent: appliedMarkdown, appliedAt: Date.now(),
-        operation: session.request.operation, diffLines: computeDiffLines(session.baseline.markdown, appliedMarkdown),
+        id: `${session.request.requestId}:${session.decisions.length}`, noteId: savedAs?.noteId ?? session.baseline.noteId,
+        originalContent: checkpointBefore, resultContent: checkpointAfter, appliedAt: Date.now(),
+        operation: session.request.operation, diffLines: computeDiffLines(checkpointBefore, checkpointAfter),
       };
-      setCheckpoints((entries) => [...entries.slice(-4), checkpoint]);
-      if (!session.restored) await report({
-        requestId: session.request.requestId, success: true, affectedCount: appliedMarkdown.length,
-        beforePreview: session.baseline.markdown.slice(0, 500), afterPreview: appliedMarkdown.slice(0, 500),
-        // A partial accept has no meaningful whole-request replaceCount.
+      const accepted = decision.action === 'accept' && checkpointBefore !== checkpointAfter ? [...session.accepted, checkpoint] : session.accepted;
+      const resolved: AIReviewSession = { ...session, baseline: appliedDocument, savedAs, target: decision.target,
+        generation: session.retryDecision ? session.generation + 1 : session.generation,
+        decisions: [...session.decisions, decision], accepted, error: undefined,
+        retryBaseline: undefined, retryDecision: undefined,
+        groups: [...session.groups, { id: session.decisions.length, before: decision.before, after: decision.after,
+          changed: true, decision: decision.action }],
+        resolution: decision.remaining === 0 ? 'accepted' : undefined };
+      update(owner.key, resolved, false);
+      setCheckpoints(accepted.filter(entry => entry.noteId === owner.noteId));
+      if (resolved.resolution) { releaseLease(); settle(session); }
+      if (resolved.resolution && !session.restored) await report({
+        requestId: session.request.requestId, success: true, affectedCount: checkpointAfter.length,
+        beforePreview: session.origin.markdown.slice(0, 500), afterPreview: checkpointAfter.slice(0, 500),
       });
+      // The body is confirmed; advance the projection even if the final state CAS
+      // fails. The durable prepared intent still recovers the exact applied group.
       await persist(owner.key, resolved);
+      return checkpointAfter;
     } catch (error) {
+      // Do not roll back a successfully committed body if only state persistence failed.
+      if (readAIReviewSession(owner.key) !== session) throw error;
       let retryBaseline = session.retryBaseline;
       try {
         if (error instanceof FullDocumentSaveError) {
@@ -291,12 +333,28 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
           retryBaseline = error.appliedDocument;
         }
       } catch { /* old editor: preserve candidate under its original note */ }
-      update(owner.key, { ...applicationSession, error: message(error), retryBaseline });
+      update(owner.key, { ...session, error: message(error), retryBaseline, retryDecision: decision });
+      throw error;
     } finally {
       applying.current.delete(owner.key);
       if (mounted.current && current.current.key === owner.key) setIsApplying(false);
     }
-  }, [update, persist]);
+  }, [update, persist, releaseLease]);
+
+  const handleAccept = useCallback(async (_acceptPending = true) => {
+    const owner = current.current;
+    const session = readAIReviewSession(owner.key);
+    if (!session || applying.current.has(owner.key)) return;
+    try {
+      if (session.resolution) { await persist(owner.key, session); return; }
+      if (session.retryDecision) { await handleOfficialDecision(session.retryDecision); return; }
+      if (official.current?.key !== owner.key) throw new Error('审阅编辑器尚未就绪，请展开候选后重试。');
+      await official.current.controls.acceptAll();
+    } catch (error) {
+      const latest = readAIReviewSession(owner.key);
+      if (latest) update(owner.key, { ...latest, error: message(error) }, false);
+    }
+  }, [handleOfficialDecision, persist, update]);
 
   const handleReject = useCallback(async () => {
     const { key: target } = current.current;
@@ -304,25 +362,61 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
     if (!session || applying.current.has(target)) return;
     const resolved: AIReviewSession = session.resolution ? session : { ...session, resolution: 'discarded' };
     update(target, resolved, false);
+    releaseLease();
     if (!session.resolution) {
       settle(session);
       if (!session.restored) await report({ requestId: session.request.requestId, success: false, error: aiReviewError('discarded', '用户明确丢弃建议。') });
     }
     await persist(target, resolved);
-  }, [update, persist]);
+  }, [update, persist, releaseLease]);
   const setCollapsed = useCallback((collapsed: boolean) => {
     const { key: target } = current.current;
     const session = readAIReviewSession(target);
-    if (session && session.collapsed !== collapsed && !session.resolution) update(target, { ...session, collapsed });
-  }, [update]);
-  const decideGroup = useCallback((id: number, decision: AIReviewDecision) => {
-    const { key: target } = current.current;
-    const session = readAIReviewSession(target);
-    if (session && !session.retryBaseline && !session.resolution && !applying.current.has(target)) {
-      const next = decideAIReviewGroup(session, id, decision);
-      if (next !== session) update(target, next);
+    if (!session || session.resolution || applying.current.has(target)) return;
+    if (collapsed) { official.current?.controls.suspend(); releaseLease(); }
+    let next = { ...session, collapsed };
+    if (!collapsed && current.current.editorApi) {
+      const snapshot = (current.current.editorApi as FullDocumentApi).getFullDocument();
+      if (snapshot.markdown === (session.retryBaseline ?? session.baseline).markdown) {
+        next = { ...next, baseline: session.retryBaseline ? session.baseline : snapshot,
+          retryBaseline: session.retryBaseline ? snapshot : undefined, conflict: false, error: undefined };
+      } else next = { ...next, conflict: true, error: '笔记版本已变化，候选和已接受组已保留。请重新生成建议。' };
     }
+    if (session.collapsed !== collapsed || next.conflict !== session.conflict) update(target, next);
+  }, [update, releaseLease]);
+  const decideGroup = useCallback(async (index: number, decision: AIReviewDecision) => {
+    if (decision === 'pending') throw new Error('已接受组请通过检查点撤销。');
+    if (official.current?.key !== current.current.key) throw new Error('审阅编辑器尚未就绪。');
+    await official.current.controls.decideGroup(index, decision);
+  }, []);
+  const onReviewReady = useCallback((controls: OfficialReviewControls | null) => {
+    releaseLease();
+    official.current = controls ? { key: current.current.key, controls } : null;
+    const session = readAIReviewSession(current.current.key);
+    if (controls && session && !session.collapsed && !session.conflict) lease.current = current.current.host?.acquireReviewLease?.() ?? null;
+  }, [releaseLease]);
+  const onReviewError = useCallback((error: unknown) => {
+    const session = readAIReviewSession(current.current.key);
+    if (session) update(current.current.key, { ...session, error: message(error) }, false);
   }, [update]);
+  const changeReviewProjection = useCallback((kind?: AIReviewScope['kind'], landing?: AIReviewLanding) => {
+    const owner = current.current;
+    const session = readAIReviewSession(owner.key);
+    if (!session || session.decisions.length || session.retryDecision || applying.current.has(owner.key)) return;
+    try {
+      const baseline = (owner.editorApi as FullDocumentApi).getFullDocument();
+      assertFullDocumentBaseline(baseline, session.baseline);
+      const scope = kind === 'page' ? { kind, from: 0, to: baseline.markdown.length, baseline } as AIReviewScope
+        : kind ? owner.host?.resolveScope?.(kind) : session.request.scope;
+      if (kind && !scope) throw new Error('范围选择接口尚未就绪。');
+      const request = { ...session.request, scope, landing: landing ?? session.request.landing };
+      const candidate = scopeAIReviewCandidate(request, baseline, projectAIReviewCandidate);
+      assertNoteContentSize(candidate.content);
+      update(owner.key, { ...createAIReviewSession(request, baseline, candidate.content),
+        generation: session.generation + 1, persistenceId: session.persistenceId,
+        persistenceRevision: session.persistenceRevision, error: candidate.error });
+    } catch (error) { onReviewError(error); }
+  }, [onReviewError, update]);
   const copyCandidate = useCallback(async () => {
     const { key: target } = current.current;
     const session = readAIReviewSession(target);
@@ -341,10 +435,18 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
     try {
       const baseline = api.getFullDocument();
       if (baseline.markdown !== top.resultContent) throw new Error(aiReviewError('checkpoint_changed', '检查点之后正文已改变。'));
-      await api.replaceFullDocument(top.originalContent, baseline);
+      const applied = await api.replaceFullDocument(top.originalContent, baseline);
       if (current.current.key === owner.key && mounted.current) {
         checkpointsRef.current = checkpointsRef.current.filter((entry) => entry !== top);
         setCheckpoints(checkpointsRef.current);
+        const session = readAIReviewSession(owner.key);
+        if (session && !session.resolution) {
+          const lastAccept = session.decisions.map(decision => decision.action === 'accept' && decision.after === top.resultContent).lastIndexOf(true);
+          const decisions = session.decisions.filter((_, index) => index !== lastAccept);
+          update(owner.key, { ...session, baseline: applied, accepted: checkpointsRef.current, decisions,
+            groups: session.groups.filter((_, index) => index !== lastAccept),
+            generation: session.generation + 1, retryBaseline: undefined, retryDecision: undefined });
+        }
       }
     } catch {
       if (current.current.key === owner.key && mounted.current) setCheckpoints((entries) => entries.map((entry) => entry === top ? { ...entry, stale: true } : entry));
@@ -352,7 +454,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
       applying.current.delete(owner.key);
       if (current.current.key === owner.key && mounted.current) setIsApplying(false);
     }
-  }, []);
+  }, [update]);
   const dismissCheckpoint = useCallback(() => setCheckpoints([]), []);
   useEffect(() => {
     if (!noteId || !enabled) return;
@@ -380,6 +482,14 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId }: {
   } : emptyState, [session?.request, session?.baseline.markdown, session?.candidate]);
   return {
     session, aiEditState, handleAccept, handleReject, isApplying,
+    submitReview: receive,
+    officialReviewProps: { onReviewDecision: handleOfficialDecision, onReviewReady, onReviewError },
+    scopeProps: {
+      onScopeChange: (kind: AIReviewScope['kind']) => changeReviewProjection(kind),
+      onLandingChange: (landing: AIReviewLanding) => changeReviewProjection(undefined, landing),
+      canResolveScope: !!host?.resolveScope, canSaveAs: !!host?.saveAs,
+    },
+    resolveScope: host?.resolveScope,
     setCollapsed, decideGroup, copyCandidate,
     checkpoints, checkpoint: checkpoints.at(-1) ?? null, rollbackCheckpoint, dismissCheckpoint,
     persistenceStatus: persistence.status, persistenceError: persistence.error,

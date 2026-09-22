@@ -46,6 +46,13 @@ import './MobileEditorToolbar.css';
 
 /** 全部命令由宿主回调注入，不直接依赖编辑器实例 */
 export type MobileEditorToolbarCommands = {
+  subscribeState?: (listener: () => void) => () => void;
+  canExecute?: (action: string) => boolean;
+  insertColumns?: () => void;
+  insertCornell?: () => void;
+  convertColumns?: () => void;
+  convertCornell?: () => void;
+  unwrapColumns?: () => void;
   toggleBold: () => void;
   toggleItalic: () => void;
   /** 可选：宿主未接线时按钮仍展示，点击为 no-op */
@@ -160,6 +167,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   const [bottomOffset, setBottomOffset] = useState(0);
   const [insertOpen, setInsertOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [, refreshCommands] = useState(0);
+  useEffect(() => commands.subscribeState?.(() => refreshCommands(value => value + 1)), [commands.subscribeState]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const tr = useCallback(
@@ -366,6 +375,15 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
 
   // 内联块插入条；更多菜单只展示 UI，不向正文插入触发字符。
   const insertItems: ToolbarItem[] = [
+    ...([
+      ['columns', 'insertColumns', '插入双列'], ['cornell', 'insertCornell', '插入康奈尔布局'],
+      ['convertColumns', 'convertColumns', '转为双列'], ['convertCornell', 'convertCornell', '转为康奈尔布局'],
+      ['unwrapColumns', 'unwrapColumns', '展开为普通块'],
+    ] as const).flatMap(([id, command, defaultLabel]) => commands[command] ? [{
+      id, labelKey: `notes:mobileToolbar.${id}`, defaultLabel,
+      icon: <SquaresFour size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+      onAction: commands[command]!,
+    }] : []),
     {
       id: 'image',
       labelKey: 'notes:mobileToolbar.image',
@@ -446,6 +464,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         aria-pressed={isToggleable ? isActive : undefined}
         data-action={item.id}
         data-active={isActive ? 'true' : undefined}
+        disabled={commands.canExecute ? !commands.canExecute(item.id) : undefined}
         // 避免点按钮抢走编辑器焦点（P0-1：触屏走 pointer/touch，不触发 mousedown）
         onMouseDown={preventFocusSteal}
         onPointerDown={preventFocusSteal}

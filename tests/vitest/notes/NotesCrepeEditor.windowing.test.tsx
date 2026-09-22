@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import type { CrepeEditorApi } from '@/components/crepe';
+vi.mock('@/features/notes/NoteFormatGate', () => ({ NoteFormatGate: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 vi.mock('react-i18next', () => {
   // Production useTranslation keeps t stable. A new function per render rebuilds

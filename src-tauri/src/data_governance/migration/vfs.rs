@@ -1022,6 +1022,35 @@ pub const V20260921_NOTE_DOCUMENT_REVISIONS: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_note_revisions_timeline"])
 .idempotent();
 
+pub const V20260922_NOTE_STORAGE_FOUNDATIONS: MigrationDef = MigrationDef::new(
+    20260922,
+    "note_storage_foundations",
+    include_str!("../../../migrations/vfs/V20260922__note_storage_foundations.sql"),
+)
+.with_expected_tables(&["note_document_formats", "note_transfer_operations", "note_state", "note_learning_relations"])
+.with_expected_indexes(&["idx_note_learning_relations_note", "idx_note_learning_relations_resource"])
+.idempotent();
+
+pub const V20260923_NOTE_HISTORY_INTEGRATION: MigrationDef = MigrationDef::new(
+    20260923,
+    "note_history_integration",
+    include_str!("../../../migrations/vfs/V20260923__note_history_integration.sql"),
+)
+.with_expected_tables(&["note_history_retention", "note_review_save_operations", "note_review_save_receipts"])
+.with_expected_queries(&[
+    "SELECT edit_bucket_seconds, max_edit_versions FROM note_history_retention WHERE id=1",
+    "SELECT version_id FROM note_document_revisions LIMIT 0",
+])
+.idempotent();
+
+pub const V20260924_NOTE_EDITOR_LEASES: MigrationDef = MigrationDef::new(
+    20260924,
+    "note_editor_leases",
+    include_str!("../../../migrations/vfs/V20260924__note_editor_leases.sql"),
+)
+.with_expected_tables(&["note_editor_participants", "note_editor_leases", "note_editor_lease_notes", "note_editor_lease_acks", "note_editor_write_grants"])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1087,6 +1116,9 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING,
     V20260912_QBANK_GENERATION_TASKS,
     V20260921_NOTE_DOCUMENT_REVISIONS,
+    V20260922_NOTE_STORAGE_FOUNDATIONS,
+    V20260923_NOTE_HISTORY_INTEGRATION,
+    V20260924_NOTE_EDITOR_LEASES,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1111,6 +1143,18 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "resources",
     "notes",
     "note_document_revisions",
+    "note_document_formats",
+    "note_transfer_operations",
+    "note_state",
+    "note_learning_relations",
+    "note_history_retention",
+    "note_review_save_operations",
+    "note_review_save_receipts",
+    "note_editor_participants",
+    "note_editor_leases",
+    "note_editor_lease_notes",
+    "note_editor_lease_acks",
+    "note_editor_write_grants",
     "files",
     "exam_sheets",
     "translations",
@@ -1166,7 +1210,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 43;
+pub const VFS_TABLE_COUNT: usize = 55;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1240,14 +1284,14 @@ mod tests {
 
     #[test]
     fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260921);
+        assert_eq!(VFS_SCHEMA_VERSION, 20260924);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("note_document_revisions")
+            Some("note_history_integration")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

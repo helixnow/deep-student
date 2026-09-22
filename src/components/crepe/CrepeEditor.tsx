@@ -15,14 +15,11 @@ import React, { useRef, useEffect, useLayoutEffect, useCallback, useState, forwa
 import { createPortal } from 'react-dom';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { EditorView } from '@codemirror/view';
-import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
+import { editorViewCtx, parserCtx, serializerCtx } from '@milkdown/kit/core';
 import { normalizeMarkdown } from './normalizeMarkdown';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
-import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
 import { Slice } from '@milkdown/prose/model';
-import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
-import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
 import { uploadConfig } from '@milkdown/kit/plugin/upload';
 import i18next from 'i18next';
 
@@ -34,7 +31,17 @@ import '@milkdown/crepe/theme/frame-dark.css';
 import 'katex/contrib/mhchem';
 
 // 本地模块
-import type { CrepeEditorProps, CrepeEditorApi } from './types';
+import type { CrepeEditorProps, CrepeEditorApi, CrepeBlockActionsHost, CrepeDocumentCapabilities } from './types';
+import { bindCrepeCommandHost, canEditCrepeView, canExecuteCrepeCommand, executeCrepeCommand,
+  LAYOUT_COMMANDS, isLayoutCommand, notifyCrepeCommandState, subscribeCrepeCommandState, type CrepeCommandId, type CrepeCommandRequest } from './commandRegistry';
+import { wireCrepeCommandMenu, layoutCommandLabel } from './commandMenus';
+import { COLUMNS_REQUIRED_CAPABILITY, exportColumnsPlainMarkdown } from './plugins/columns';
+import { copyBlockWithFreshIdentity } from './plugins/blockIdentity';
+import { preflightRootBlockIdentity } from './plugins/blockIdentity/commands';
+import { buildBlockLink, focusBlockId } from './plugins/blockIdentity/links';
+import { blockIdentityKey } from './plugins/blockIdentity';
+import { BlockTransferDialog } from './blockTransfer/BlockTransferDialog';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { readFormattingState } from './formattingState';
 import { readCssTimeMs } from '@/shared/utils/cssTime';
 import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
@@ -67,12 +74,8 @@ import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorVi
 import { AgentScrollFollower } from './agentScrollFollow';
 import { resolveFlashSnippet } from './agentDiffFlash';
 import { showGlobalNotification } from '../UnifiedNotification';
-import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
-import {
-  crepeBlockCommands,
-  type CrepeBlockTurnInto,
-} from './blockMenuCommands';
-import { isBlockTargetCurrent, resolveBlockHandleTarget, resolveBlockSelection, type BlockTarget } from './blockTarget';
+import type { CrepeBlockTurnInto } from './blockMenuCommands';
+import { isBlockTargetCurrent, resolveBlockHandleTarget, resolveBlockSelection, resolveStableBlockTarget, type BlockTarget } from './blockTarget';
 import {
   findCrepeBlockMenuTypeaheadIndex,
   getNextCrepeBlockMenuIndex,
@@ -82,7 +85,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 
 type BlockMenuState = { target: BlockTarget; noteId: string | undefined; x: number; y: number } | null;
 type BlockMenuHighlight = { pos: number; left: number; top: number; width: number; height: number };
-type BlockMenuAction = CrepeBlockTurnInto | 'duplicate' | 'delete';
+type BlockMenuAction = CrepeBlockTurnInto | typeof LAYOUT_COMMANDS[number] | 'duplicate' | 'delete' | 'copy-block-link' | 'move-to-note';
 
 /** turn-into 目标（渲染顺序即键盘导航顺序） */
 const BLOCK_MENU_TURN_INTO_ACTIONS: readonly CrepeBlockTurnInto[] = [
@@ -104,14 +107,21 @@ const BLOCK_MENU_ACTIONS: readonly BlockMenuAction[] = [
   ...BLOCK_MENU_TURN_INTO_ACTIONS,
   'duplicate',
   'delete',
+  'copy-block-link',
+  'move-to-note',
+  ...LAYOUT_COMMANDS,
 ];
 
 function getBlockMenuActionLabel(action: BlockMenuAction): string {
+  if (isLayoutCommand(action)) return layoutCommandLabel(action);
   switch (action) {
     case 'paragraph': return i18next.t('notes:blockMenu.paragraph', 'Text');
     case 'heading-1': return i18next.t('notes:blockMenu.heading1', 'Heading 1');
     case 'heading-2': return i18next.t('notes:blockMenu.heading2', 'Heading 2');
     case 'heading-3': return i18next.t('notes:blockMenu.heading3', 'Heading 3');
+    case 'heading-4': return i18next.t('notes:blockMenu.heading4', 'Heading 4');
+    case 'heading-5': return i18next.t('notes:blockMenu.heading5', 'Heading 5');
+    case 'heading-6': return i18next.t('notes:blockMenu.heading6', 'Heading 6');
     case 'bullet-list': return i18next.t('notes:blockMenu.bulletList', 'Bulleted list');
     case 'ordered-list': return i18next.t('notes:blockMenu.orderedList', 'Numbered list');
     case 'task-list': return i18next.t('notes:slashMenu.listGroup.taskList', 'To-do list');
@@ -121,6 +131,8 @@ function getBlockMenuActionLabel(action: BlockMenuAction): string {
     case 'toggle': return i18next.t('notes:toggle.slashLabel', 'Toggle list');
     case 'duplicate': return i18next.t('notes:blockMenu.duplicate', 'Duplicate');
     case 'delete': return i18next.t('notes:blockMenu.delete', 'Delete');
+    case 'copy-block-link': return i18next.t('notes:blockMenu.copyBlockLink', '复制块链接');
+    case 'move-to-note': return i18next.t('notes:blockMenu.moveToNote', '移动到其他笔记…');
   }
 }
 
@@ -137,6 +149,7 @@ const CREPE_STASHED_CLEANUP_KEYS = [
   '__mermaidCleanup',
   '__debugDragCleanup',
   '__imageUploadCleanup',
+  '__commandHostCleanup',
 ] as const;
 
 /** 统一执行 stashed 清理；effect cleanup 与 api.destroy() 都必须走这里，避免 observer 泄漏。 */
@@ -220,6 +233,18 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const placeholderRef = useRef(placeholder);
   const pluginsOptionsRef = useRef(pluginsOptions);
   const defaultValueRef = useRef(defaultValue);
+  const identityOriginalRef = useRef(defaultValue);
+  const blockActionsHostRef = useRef<CrepeBlockActionsHost | null>(null);
+  const capabilitiesRef = useRef<CrepeDocumentCapabilities | null>(null);
+  const reviewLeasesRef = useRef(new Set<symbol>());
+  const canWriteLayout = useCallback(() => {
+    const grant = capabilitiesRef.current;
+    return Boolean(grant && grant.noteId === noteIdRef.current && grant.writable
+      && grant.capabilities.includes(COLUMNS_REQUIRED_CAPABILITY));
+  }, []);
+  const [blockTransfer, setBlockTransfer] = useState<{
+    noteId: string; blockIds: string[]; host: CrepeBlockActionsHost;
+  } | null>(null);
   const exposeTimeoutsRef = useRef<number[]>([]);
   // ACR 4.0：AI 打字机演出的节流滚动跟随（每实例一个，unmount 时 dispose）
   const agentFollowerRef = useRef<AgentScrollFollower | null>(null);
@@ -317,6 +342,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
   useLayoutEffect(() => {
     setBlockMenu(null);
+    setBlockTransfer(null);
   }, [noteId, readonly, setBlockMenu]);
 
   // Paint the captured sibling range without changing PM selection, document or history.
@@ -390,12 +416,46 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     const view = viewRef.current;
     const menu = blockMenu;
     if (!view || !menu || menu !== blockMenuRef.current) return;
-    if (readonlyRef.current || menu.noteId !== noteIdRef.current || !isBlockTargetCurrent(view, menu.target)) {
+    if (readonlyRef.current || !canEditCrepeView(view) || menu.noteId !== noteIdRef.current || !isBlockTargetCurrent(view, menu.target)) {
       setBlockMenu(null);
       return;
     }
     setBlockMenu(null);
-    crepeBlockCommands[action](view, menu.target);
+    if (action === 'copy-block-link' || action === 'move-to-note'
+      || (action === 'duplicate' && menu.target.depth === 1 && blockActionsHostRef.current)) {
+      void (async () => {
+        try {
+          const crepe = crepeRef.current;
+          const host = blockActionsHostRef.current;
+          if (menu.target.depth !== 1) throw new Error(i18next.t('notes:blockIdentity.topLevelOnly', '持久身份仅支持顶层块；嵌套块暂不支持。'));
+          if (!crepe || !host || !menu.noteId) throw new Error(i18next.t('notes:blockIdentity.hostRequired', '当前笔记尚未接入完整文档块操作。'));
+          if (host.isDocumentWindowed()) throw new Error(i18next.t('notes:blockIdentity.fullDocumentRequired', '请先加载完整笔记，再创建块链接或跨页移动。'));
+          if (action === 'copy-block-link' && menu.target.nodes.length !== 1) throw new Error(i18next.t('notes:blockIdentity.singleLink', '复制块链接时请选择一个顶层块。'));
+          const fullMarkdown = host.getFullMarkdown();
+          crepe.editor.action(ctx => preflightRootBlockIdentity(ctx, menu.target, fullMarkdown, identityOriginalRef.current));
+          const allIds = await host.transferService.ensureIdentities(menu.noteId, fullMarkdown);
+          if (menu.noteId !== noteIdRef.current) throw new Error('Note changed before the block operation completed.');
+          const ids = allIds.slice(menu.target.fromIndex, menu.target.toIndex);
+          if (ids.length !== menu.target.nodes.length) throw new Error('An empty trailing block cannot be linked or moved.');
+          if (action === 'duplicate') {
+            const currentView = viewRef.current;
+            const currentTarget = currentView && resolveStableBlockTarget(currentView, ids);
+            if (!currentTarget || !await executeCrepeCommand(currentView, 'duplicate', { target: currentTarget })) throw new Error('Block changed before duplication.');
+            return;
+          }
+          if (action === 'move-to-note') {
+            setBlockTransfer({ noteId: menu.noteId, blockIds: ids, host });
+            return;
+          }
+          await host.flushPendingSave();
+          if (menu.noteId !== noteIdRef.current) throw new Error('Note changed before the link was saved.');
+          await copyTextToClipboard(buildBlockLink({ noteId: menu.noteId, blockId: ids[0] }));
+          showGlobalNotification('success', i18next.t('notes:blockIdentity.linkCopied', '块链接已复制'));
+        } catch (error) { showGlobalNotification('error', error instanceof Error ? error.message : String(error)); }
+      })();
+      return;
+    }
+    void executeCrepeCommand(view, action, { target: menu.target }).catch(error => showGlobalNotification('error', String(error)));
   }, [blockMenu, setBlockMenu]);
 
   useEffect(() => {
@@ -516,7 +576,55 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     // 注意：不要在这里捕获 crepeRef.current，而是在每个方法调用时动态读取
     // 否则会导致闭包捕获到初始的 null 值
     
+    const execute = async (id: CrepeCommandId, request?: CrepeCommandRequest) => {
+      const view = viewRef.current;
+      return view ? executeCrepeCommand(view, id, request) : false;
+    };
+    const run = (id: CrepeCommandId, request?: CrepeCommandRequest) => {
+      void execute(id, request).catch(error => showGlobalNotification('error', String(error)));
+    };
     return {
+      executeCommand: execute,
+      subscribeCommandState: listener => viewRef.current ? subscribeCrepeCommandState(viewRef.current, listener) : () => {},
+      canExecuteCommand: (id, request) => Boolean(viewRef.current && canExecuteCrepeCommand(viewRef.current, id, request)),
+      setDocumentCapabilities: (grant) => {
+        capabilitiesRef.current = grant?.noteId === noteIdRef.current ? grant : null;
+        notifyCrepeCommandState(viewRef.current);
+      },
+      getPlainMarkdown: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return '';
+        return crepe.editor.action(ctx => exportColumnsPlainMarkdown(
+          copyBlockWithFreshIdentity(ctx.get(editorViewCtx).state.doc, false), ctx.get(serializerCtx)));
+      },
+      acquireReviewLease: () => {
+        const leases = reviewLeasesRef.current, token = Symbol('crepe-review');
+        leases.add(token);
+        setBlockMenu(null); cleanupBlockDrag();
+        const release = uploadsRef.current?.acquireReviewLease();
+        notifyCrepeCommandState(viewRef.current);
+        return () => { leases.delete(token); release?.(); notifyCrepeCommandState(viewRef.current); };
+      },
+      getUploadState: () => uploadsRef.current?.getState() ?? { pending: 0, running: 0, failed: 0, reviewLeases: reviewLeasesRef.current.size },
+      insertImageFromDevice: () => {
+        const view = viewRef.current;
+        if (!view || !canEditCrepeView(view)) return;
+        uploadsRef.current?.start([{ name: i18next.t('notes:upload.choose', { defaultValue: '选择图片' }),
+          read: async () => pickImageWithTauriDialog(),
+        }], { pos: view.state.selection.from });
+      },
+      configureBlockActions: (host) => {
+        blockActionsHostRef.current = host;
+        notifyCrepeCommandState(viewRef.current);
+      },
+      setBlockIdentityMode: (enabled) => {
+        const view = viewRef.current;
+        if (view && !view.isDestroyed) view.dispatch(view.state.tr.setMeta(blockIdentityKey, enabled));
+      },
+      focusBlock: (id) => {
+        const view = viewRef.current;
+        return Boolean(view && !view.isDestroyed && focusBlockId(view, id));
+      },
       getMarkdown: () => {
         const crepe = crepeRef.current;
         if (!crepe) return '';
@@ -542,6 +650,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           uploadsRef.current?.cancelAll();
           // Milkdown 版本类型差异，运行时兼容
           (crepe.editor as any).action(replaceAll(markdown));
+          identityOriginalRef.current = markdown;
           return true;
         } catch (e) {
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
@@ -1378,269 +1487,27 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
       },
       
-      // ===== Milkdown 命令 API =====
-      // 使用 ProseMirror 命令直接操作，避免与 Crepe 内置模块冲突
-      
-      toggleBold: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const markType = view.state.schema.marks.strong;
-          if (markType) {
-            toggleMark(markType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleBold failed:', e);
-        }
-      },
-      
-      toggleItalic: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const markType = view.state.schema.marks.emphasis;
-          if (markType) {
-            toggleMark(markType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleItalic failed:', e);
-        }
-      },
-      
-      toggleStrikethrough: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          // Milkdown GFM 中删除线的 schema 名称是 strike_through（带下划线）
-          const markType = view.state.schema.marks.strike_through || view.state.schema.marks.strikethrough;
-          if (markType) {
-            toggleMark(markType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleStrikethrough failed:', e);
-        }
-      },
-      
-      toggleInlineCode: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const markType = view.state.schema.marks.inlineCode || view.state.schema.marks.code;
-          if (markType) {
-            toggleMark(markType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleInlineCode failed:', e);
-        }
-      },
-      
-      setHeading: (level: number) => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.heading;
-          if (nodeType) {
-            setBlockType(nodeType, { level })(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] setHeading failed:', e);
-        }
-      },
-      
-      toggleBulletList: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.bullet_list || view.state.schema.nodes.bulletList;
-          if (nodeType) {
-            wrapIn(nodeType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleBulletList failed:', e);
-        }
-      },
-      
-      toggleOrderedList: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.ordered_list || view.state.schema.nodes.orderedList;
-          if (nodeType) {
-            wrapIn(nodeType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleOrderedList failed:', e);
-        }
-      },
-      
-      toggleTaskList: () => {
-        const crepe = crepeRef.current;
-        if (!crepe) return;
-        try {
-          // 使用 Milkdown 命令系统创建任务列表
-          // 任务列表在 Milkdown 中是带有 checked 属性的 list_item
-          crepe.editor.action((ctx) => {
-            try {
-              const commands = ctx.get(commandsCtx);
-              const listItem = listItemSchema.type(ctx);
-              commands.call(wrapInBlockTypeCommand.key, {
-                nodeType: listItem,
-                attrs: { checked: false },
-              });
-            } catch (innerError) {
-              debugLog.error('[CrepeEditor] toggleTaskList action failed:', innerError);
-            }
-          });
-          // 聚焦编辑器
-          const view = viewRef.current;
-          if (view) view.focus();
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleTaskList failed:', e);
-        }
-      },
-      
-      toggleBlockquote: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.blockquote;
-          if (nodeType) {
-            wrapIn(nodeType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] toggleBlockquote failed:', e);
-        }
-      },
-      
-      insertHr: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.hr || view.state.schema.nodes.horizontal_rule;
-          if (nodeType) {
-            const { tr } = view.state;
-            const node = nodeType.create();
-            view.dispatch(tr.replaceSelectionWith(node).scrollIntoView());
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] insertHr failed:', e);
-        }
-      },
-      
-      insertCodeBlock: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.code_block || view.state.schema.nodes.codeBlock;
-          if (nodeType) {
-            setBlockType(nodeType)(view.state, view.dispatch);
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] insertCodeBlock failed:', e);
-        }
-      },
-      
-      insertLink: (href?: string, text?: string) => {
-        const view = viewRef.current;
-        const crepe = crepeRef.current;
-        if (!view) return;
-        try {
-          const markType = view.state.schema.marks.link;
-          if (!markType) return;
-
-          const trimmedHref = isNonEmptyHref(href) ? href!.trim() : '';
-
-          // 无有效 href：绝不插入空链接；打开 LinkTooltip 编辑流程（工具栏调用方不传 href）
-          if (!trimmedHref) {
-            if (crepe) {
-              crepe.editor.action((ctx) => {
-                const { from, to } = view.state.selection;
-                const api = ctx.get(linkTooltipAPI.key);
-                api.addLink(from, to);
-              });
-              view.focus();
-              return;
-            }
-            showGlobalNotification(
-              'info',
-              i18next.t('notes:crepe.link.href_required'),
-            );
-            view.focus();
-            return;
-          }
-
-          const { from, empty } = view.state.selection;
-          if (empty) {
-            const linkText = text || trimmedHref;
-            const linkMark = markType.create({ href: trimmedHref });
-            const tr = view.state.tr.insertText(linkText, from);
-            tr.addMark(from, from + linkText.length, linkMark);
-            view.dispatch(tr);
-          } else {
-            toggleMark(markType, { href: trimmedHref })(view.state, view.dispatch);
-          }
-          view.focus();
-        } catch (e) {
-          debugLog.error('[CrepeEditor] insertLink failed:', e);
-        }
-      },
-      
-      insertImage: (src?: string, alt?: string) => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const nodeType = view.state.schema.nodes.image;
-          if (nodeType) {
-            const node = nodeType.create({ src: src || '', alt: alt || '' });
-            const { tr } = view.state;
-            view.dispatch(tr.replaceSelectionWith(node).scrollIntoView());
-            view.focus();
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] insertImage failed:', e);
-        }
-      },
-      
-      insertTable: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        try {
-          const tableType = view.state.schema.nodes.table;
-          const rowType = view.state.schema.nodes.table_row || view.state.schema.nodes.tableRow;
-          const cellType = view.state.schema.nodes.table_cell || view.state.schema.nodes.tableCell;
-          const headerType = view.state.schema.nodes.table_header || view.state.schema.nodes.tableHeader;
-          
-          if (tableType && rowType && (cellType || headerType)) {
-            const cell = cellType || headerType;
-            const emptyCell = cell.createAndFill();
-            if (emptyCell) {
-              const row = rowType.create(null, [emptyCell, cell.createAndFill()!, cell.createAndFill()!]);
-              const table = tableType.create(null, [row, rowType.create(null, [cell.createAndFill()!, cell.createAndFill()!, cell.createAndFill()!])]);
-              const { tr } = view.state;
-              view.dispatch(tr.replaceSelectionWith(table).scrollIntoView());
-              view.focus();
-            }
-          }
-        } catch (e) {
-          debugLog.error('[CrepeEditor] insertTable failed:', e);
-        }
-      },
+      // Compatibility API methods all delegate to the same Milkdown-backed registry.
+      toggleBold: () => run('bold'),
+      toggleItalic: () => run('italic'),
+      toggleStrikethrough: () => run('strikethrough'),
+      toggleInlineCode: () => run('inline-code'),
+      setHeading: level => { if (level >= 1 && level <= 6) run(`heading-${level}` as CrepeCommandId); },
+      toggleBulletList: () => run('bullet-list', { toggle: true }),
+      toggleOrderedList: () => run('ordered-list', { toggle: true }),
+      toggleTaskList: () => run('task-list', { toggle: true }),
+      toggleBlockquote: () => run('quote', { toggle: true }),
+      insertHr: () => run('hr'),
+      insertCodeBlock: () => run('code-block'),
+      insertLink: (href, text) => run('link', { href, text }),
+      insertImage: (src, alt) => run('image', { src, alt }),
+      insertTable: () => run('table'),
 
       // 选区入口锁定最近嵌套内容单元或同容器多块范围，与句柄共用命令目标。
       // （复用块句柄的 setBlockMenu 渲染路径；渲染后 useLayoutEffect 会按实测尺寸钳入视口）
       openBlockMenuAtSelection: () => {
         const view = viewRef.current;
-        if (!view || view.isDestroyed || !view.editable || readonlyRef.current) return;
+        if (!view || !canEditCrepeView(view) || readonlyRef.current) return;
         try {
           const target = resolveBlockSelection(view);
           if (!target) return;
@@ -1816,6 +1683,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         });
 
         // 创建 Crepe 实例
+        identityOriginalRef.current = defaultValueRef.current;
+        blockActionsHostRef.current = null;
+        capabilitiesRef.current = null;
+        reviewLeasesRef.current = new Set();
         const crepe = new Crepe({
           root: container,
           defaultValue: processedDefaultValue,
@@ -1889,12 +1760,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               // A3/A4：slash 菜单追加 callout / toggle（见 docs/revamp/03|04）
               buildMenu: (builder) => {
                 appendCalloutToggleSlashItems(builder);
+                wireCrepeCommandMenu(builder, 'slash');
               },
             },
             
             // 工具栏配置（使用默认）
             [CrepeFeature.Toolbar]: {
-              // 可以在这里自定义工具栏按钮
+              buildToolbar: builder => wireCrepeCommandMenu(builder, 'bubble'),
             },
             
             // LaTeX 配置
@@ -1914,7 +1786,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         })));
 
         // 应用扩展插件（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
-        applyCrepePlugins(crepe, pluginsOptionsRef.current);
+        applyCrepePlugins(crepe, { ...pluginsOptionsRef.current, columns: { canWrite: canWriteLayout } });
 
         // 设置只读状态
         if (readonly) {
@@ -1941,6 +1813,24 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
         crepeRef.current = crepe;
         uploadsRef.current = uploadLifecycle;
+        const commandView = crepe.editor.ctx.get(editorViewCtx);
+        (crepe as any).__commandHostCleanup = bindCrepeCommandHost(commandView, {
+          ctx: crepe.editor.ctx,
+          isReviewActive: () => reviewLeasesRef.current.size > 0,
+          canWriteLayout,
+          get requestLayoutCapability() {
+            if (!blockActionsHostRef.current?.requestLayoutCapability) return undefined;
+            return async () => {
+              const sourceNote = noteIdRef.current;
+              const grant = await blockActionsHostRef.current!.requestLayoutCapability!();
+              if (crepe !== crepeRef.current || sourceNote !== noteIdRef.current) return false;
+              capabilitiesRef.current = grant?.noteId === sourceNote ? grant : null;
+              notifyCrepeCommandState(commandView);
+              return canWriteLayout();
+            };
+          },
+          onError: error => showGlobalNotification('error', String(error)),
+        });
         setIsReady(true);
         setInitPhase('ready');
         
@@ -2773,6 +2663,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     >
       {/* Crepe 编辑器容器 */}
       <div ref={containerRef} className="crepe-editor-container" />
+      {blockTransfer && blockTransfer.noteId === noteId && <BlockTransferDialog
+        sourceNoteId={blockTransfer.noteId} blockIds={blockTransfer.blockIds}
+        service={blockTransfer.host.transferService} onClose={() => setBlockTransfer(null)}
+      />}
       
       {/* 手动的拖拽插入条，放在容器外部避免被 Crepe 覆盖 */}
       <div
@@ -2802,6 +2696,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 data-active={isActive || undefined}
                 data-block-command={action}
                 data-destructive={action === 'delete' || undefined}
+                disabled={action !== 'copy-block-link' && action !== 'move-to-note'
+                  && !canExecuteCrepeCommand(blockMenu.target.view, action, { target: blockMenu.target })}
+                aria-disabled={(action === 'copy-block-link' || action === 'move-to-note')
+                  && (blockMenu.target.depth !== 1 || (action === 'copy-block-link' && blockMenu.target.nodes.length !== 1)) || undefined}
+                title={(action === 'copy-block-link' || action === 'move-to-note') && blockMenu.target.depth !== 1
+                  ? i18next.t('notes:blockIdentity.topLevelOnly', '持久身份仅支持顶层块；嵌套块暂不支持。') : undefined}
                 // 键盘高亮：无 CSS 所有权，用内联 hover token 兜底
                 style={isActive ? { backgroundColor: 'var(--interactive-hover)' } : undefined}
                 onMouseEnter={() => setBlockMenuActiveIndex(index)}

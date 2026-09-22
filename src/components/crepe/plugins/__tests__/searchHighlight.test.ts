@@ -1,8 +1,10 @@
 import { Schema } from '@milkdown/prose/model';
 import { EditorState } from '@milkdown/prose/state';
 import { vi } from 'vitest';
+import { installSearchWorkerHarness } from './searchWorkerTestHarness';
 import {
   collectSearchMatches,
+  collectSearchMatchesAsync,
   replaceAllSearchMatches,
   compileSearchRegex,
   expandReplacement,
@@ -36,20 +38,8 @@ function docFromText(text: string) {
   return schema.node('doc', null, [schema.node('paragraph', null, [schema.text(text)])]);
 }
 
-// A synchronous RegExp loop cannot be interrupted by Vitest's timeout. Bound
-// exec calls so a surrogate-pair regression fails instead of hanging the worker.
 function collectRegexWithBudget(doc: ReturnType<typeof docFromText>, query: string, options: SearchOptions = {}) {
-  const originalExec = RegExp.prototype.exec;
-  let calls = 0;
-  const spy = vi.spyOn(RegExp.prototype, 'exec').mockImplementation(function (this: RegExp, text: string) {
-    if (this.global && ++calls > 50) throw new Error('Regex search did not advance');
-    return originalExec.call(this, text);
-  });
-  try {
-    return collectSearchMatches(doc, query, { ...options, useRegex: true });
-  } finally {
-    spy.mockRestore();
-  }
+  return collectSearchMatchesAsync(doc, query, { ...options, useRegex: true });
 }
 
 describe('collectSearchMatches', () => {
@@ -148,50 +138,53 @@ describe('collectSearchMatches', () => {
 });
 
 describe('regex search', () => {
-  it('matches with a regex pattern (case-insensitive by default)', () => {
+  let harness: ReturnType<typeof installSearchWorkerHarness>;
+  beforeEach(() => { harness = installSearchWorkerHarness(); });
+  afterEach(() => harness.cleanup());
+  it('matches with a regex pattern (case-insensitive by default)', async () => {
     const doc = docFromText('Foo1 foo2 bar3');
-    const matches = collectSearchMatches(doc, 'foo\\d', { useRegex: true });
+    const matches = await collectRegexWithBudget(doc, 'foo\\d');
     expect(matches).toHaveLength(2);
     expect(matches[0]).toMatchObject({ from: 1, to: 5 });
   });
 
-  it('respects caseSensitive in regex mode', () => {
+  it('respects caseSensitive in regex mode', async () => {
     const doc = docFromText('Foo foo');
-    expect(collectSearchMatches(doc, 'Foo', { useRegex: true, caseSensitive: true }))
+    expect(await collectRegexWithBudget(doc, 'Foo', { caseSensitive: true }))
       .toHaveLength(1);
   });
 
-  it('treats an invalid regex as zero matches', () => {
+  it('reports invalid regex from the worker', async () => {
     const doc = docFromText('anything');
-    expect(collectSearchMatches(doc, '([', { useRegex: true })).toEqual([]);
+    await expect(collectRegexWithBudget(doc, '([')).rejects.toThrow('invalid_regex');
   });
 
-  it('skips zero-length regex matches without looping forever', () => {
+  it('skips zero-length regex matches without looping forever', async () => {
     const doc = docFromText('abc');
-    expect(collectSearchMatches(doc, 'x*', { useRegex: true })).toEqual([]);
+    expect(await collectRegexWithBudget(doc, 'x*')).toEqual([]);
   });
 
-  it('advances zero-width matches over emoji and still finds later text', () => {
-    expect(collectRegexWithBudget(docFromText('😀x😀'), 'x*')).toEqual([
+  it('advances zero-width matches over emoji and still finds later text', async () => {
+    expect(await collectRegexWithBudget(docFromText('😀x😀'), 'x*')).toEqual([
       { from: 3, to: 4, captures: ['x'] },
     ]);
-    expect(collectRegexWithBudget(docFromText('😀'), '$')).toEqual([]);
+    expect(await collectRegexWithBudget(docFromText('😀'), '$')).toEqual([]);
   });
 
-  it('also advances zero-width matches when a legacy pattern falls back from Unicode mode', () => {
+  it('also advances zero-width matches when a legacy pattern falls back from Unicode mode', async () => {
     expect(compileSearchRegex('\\a*', false)?.unicode).toBe(false);
-    expect(collectRegexWithBudget(docFromText('😀a'), '\\a*')).toEqual([
+    expect(await collectRegexWithBudget(docFromText('😀a'), '\\a*')).toEqual([
       { from: 3, to: 4, captures: ['a'] },
     ]);
   });
 
-  it('advances rejected whole-word matches over astral letters', () => {
-    expect(collectRegexWithBudget(docFromText('𐐀xcat cat'), '𐐀x|cat', { wholeWord: true })).toEqual([
+  it('advances rejected whole-word matches over astral letters', async () => {
+    expect(await collectRegexWithBudget(docFromText('𐐀xcat cat'), '𐐀x|cat', { wholeWord: true })).toEqual([
       { from: 8, to: 11, captures: ['cat'] },
     ]);
   });
 
-  it('retries inside a rejected emoji/barrier match without skipping later valid text', () => {
+  it('retries inside a rejected emoji/barrier match without skipping later valid text', async () => {
     const doc = schema.node('doc', null, [
       schema.node('paragraph', null, [
         schema.text('😀'),
@@ -199,12 +192,12 @@ describe('regex search', () => {
         schema.text('cat'),
       ]),
     ]);
-    expect(collectRegexWithBudget(doc, '😀.cat|cat')).toEqual([
+    expect(await collectRegexWithBudget(doc, '😀.cat|cat')).toEqual([
       { from: 4, to: 7, captures: ['cat'] },
     ]);
   });
 
-  it('keeps accepted regex matches non-overlapping across marks', () => {
+  it('keeps accepted regex matches non-overlapping across marks', async () => {
     const doc = schema.node('doc', null, [
       schema.node('paragraph', null, [
         schema.text('😀', [schema.marks.strong.create()]),
@@ -212,12 +205,12 @@ describe('regex search', () => {
       ]),
     ]);
     const state = EditorState.create({ schema, doc });
-    const matches = collectRegexWithBudget(doc, '😀😀');
+    const matches = await collectRegexWithBudget(doc, '😀😀');
     expect(matches).toEqual([{ from: 1, to: 5, captures: ['😀😀'] }]);
     expect(state.apply(replaceAllSearchMatches(state.tr, matches, 'x')).doc.textContent).toBe('x😀');
   });
 
-  it('does not match across a hard break in regex mode', () => {
+  it('does not match across a hard break in regex mode', async () => {
     const brokenDoc = schema.node('doc', null, [
       schema.node('paragraph', null, [
         schema.text('hel'),
@@ -225,22 +218,36 @@ describe('regex search', () => {
         schema.text('lo'),
       ]),
     ]);
-    expect(collectSearchMatches(brokenDoc, 'hel.lo', { useRegex: true })).toEqual([]);
+    expect(await collectRegexWithBudget(brokenDoc, 'hel.lo')).toEqual([]);
   });
 
-  it('carries capture groups and expands $1 / $& / $$ in replacements', () => {
+  it('carries capture groups and expands $1 / $& / $$ in replacements', async () => {
     const doc = docFromText('item-42');
-    const matches = collectSearchMatches(doc, 'item-(\\d+)', { useRegex: true });
+    const matches = await collectRegexWithBudget(doc, 'item-(\\d+)');
     expect(matches).toHaveLength(1);
     expect(matches[0].captures?.[1]).toBe('42');
     expect(expandReplacement('#$1 ($&) $$', matches[0])).toBe('#42 (item-42) $');
   });
 
-  it('replaceAllSearchMatches expands captures per match', () => {
+  it('replaceAllSearchMatches expands captures per match', async () => {
     const state = EditorState.create({ schema, doc: docFromText('a1 b2') });
-    const matches = collectSearchMatches(state.doc, '([a-z])(\\d)', { useRegex: true });
+    const matches = await collectRegexWithBudget(state.doc, '([a-z])(\\d)');
     const transaction = replaceAllSearchMatches(state.tr, matches, '$2$1');
     expect(state.apply(transaction).doc.textContent).toBe('1a 2b');
+  });
+  it('never executes user regex on the main thread and terminates catastrophic work on cancel', async () => {
+    const doc = docFromText('a'.repeat(100000) + '!');
+    expect(collectSearchMatches(doc, '(a+)+$', { useRegex: true })).toEqual([]);
+    const controller = new AbortController();
+    const pending = collectSearchMatchesAsync(doc, '(a+)+$', { useRegex: true }, controller.signal);
+    setTimeout(() => controller.abort(), 80);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(harness.terminated).toBe(1);
+    expect(await collectRegexWithBudget(docFromText('safe42'), '\\d+')).toHaveLength(1);
+  });
+  it('terminates catastrophic regex at the execution deadline', async () => {
+    await expect(collectRegexWithBudget(docFromText('a'.repeat(100000) + '!'), '(a+)+$')).rejects.toThrow('search_timeout');
+    expect(harness.terminated).toBe(1);
   });
 });
 
