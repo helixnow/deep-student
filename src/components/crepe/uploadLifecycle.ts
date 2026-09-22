@@ -82,6 +82,8 @@ export function createUploadLifecycle(options: {
   upload: (file: File) => Promise<string>;
 }) {
   const tasks = new Map<symbol, UploadTask>();
+  const reviewLeases = new Set<symbol>();
+  let restoreReviewInteraction: (() => void) | undefined;
   let disposed = false;
   const panel = document.createElement('div');
   panel.className = 'sticky bottom-0 z-10 rounded border bg-background p-2 text-sm shadow';
@@ -191,9 +193,36 @@ export function createUploadLifecycle(options: {
 
   return {
     widgetFactory,
+    getState() {
+      const running = [...tasks.values()].filter(task => task.running).length;
+      return { pending: tasks.size, running, failed: tasks.size - running, reviewLeases: reviewLeases.size };
+    },
+    /** Review is in a separate Crepe. Existing uploads must complete into the live
+     * document; their revision change makes a pending review fail OCC normally.
+     * Inert blocks user interaction without changing view.editable (pending
+     * uploads depend on it) or the user's readonly setting. Host writes remain
+     * version-checked through FullDocumentApi. Never call setReadonly here:
+     * CrepeEditor.setReadonly intentionally cancels in-flight uploads.
+     */
+    acquireReviewLease() {
+      const token = Symbol('review');
+      if (!reviewLeases.size) {
+        const dom = currentView()?.dom;
+        if (dom) {
+          const wasInert = dom.inert;
+          dom.inert = true;
+          restoreReviewInteraction = () => { dom.inert = wasInert; };
+        }
+      }
+      reviewLeases.add(token);
+      return () => {
+        reviewLeases.delete(token);
+        if (!reviewLeases.size) { restoreReviewInteraction?.(); restoreReviewInteraction = undefined; }
+      };
+    },
     start(sources: UploadSource[], target: UploadTarget): symbol | null {
       const view = currentView();
-      if (!view?.editable || !sources.length) return null;
+      if (!view?.editable || !sources.length || reviewLeases.size) return null;
       // Only one upload may own an empty image node at a time.
       if (target.node && [...tasks.values()].some(task => task.target.node && find(view, task.id)?.from === target.pos)) return null;
       const id = Symbol('crepe-image-upload');
@@ -232,6 +261,8 @@ export function createUploadLifecycle(options: {
       }
     },
     dispose() {
+      restoreReviewInteraction?.(); restoreReviewInteraction = undefined;
+      reviewLeases.clear();
       [...tasks.keys()].forEach(cancel);
       disposed = true;
       panel.remove();

@@ -5,7 +5,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@/utils/shared', () => ({ isTauriRuntime: true }));
 
 import { getCourseDefaultTemplate, loadPersonalNoteTemplates, savePersonalNoteTemplate, PERSONAL_NOTE_TEMPLATES_KEY } from '../personalNoteTemplates';
-import { applyNoteTemplate, replaceWithNoteTemplate } from '../noteTemplates';
+import { applyNoteTemplate, replaceWithNoteTemplate, applyPreviewedNoteTemplate } from '../noteTemplates';
 
 describe('personal template persistence', () => {
   beforeEach(() => {
@@ -45,6 +45,13 @@ describe('personal template persistence', () => {
     expect(await loadPersonalNoteTemplates()).toHaveLength(1);
   });
 
+  it('rejects stale template editors after another panel updates the same template', async () => {
+    const first = await savePersonalNoteTemplate({ title: '课程', markdown: '旧正文' });
+    const updated = await savePersonalNoteTemplate({ ...first, markdown: '另一面板新正文', expectedRevision: first.revision });
+    await expect(savePersonalNoteTemplate({ ...first, markdown: '过时草稿', expectedRevision: first.revision })).rejects.toThrow('模板已被修改');
+    expect(await loadPersonalNoteTemplates()).toEqual([updated]);
+  });
+
   it('adds course defaults and typed presets without migrating old templates; assigning a new default keeps both', async () => {
     const old = await savePersonalNoteTemplate({ title: '旧模板', markdown: '正文' });
     const first = await savePersonalNoteTemplate({ title: '数学模板', markdown: '数学', defaultForCourse: ' 数学 ',
@@ -64,6 +71,24 @@ describe('personal template persistence', () => {
 });
 
 describe('template application protection', () => {
+  it('inserts at the captured selection, appends exact preview bytes, rejects stale modes and failed saves', async () => {
+    const baseline = { noteId: 'note_a', revision: 5, markdown: 'original  \n' };
+    const position = { from: 3, to: 3 };
+    const host = { getDocument: () => baseline, replaceDocument: vi.fn().mockResolvedValue(true), insertDocument: vi.fn().mockResolvedValue(true) };
+    await applyPreviewedNoteTemplate(host, baseline, '{{title}} preview', 'insert', position);
+    expect(host.insertDocument).toHaveBeenCalledWith('{{title}} preview', baseline, position);
+    await applyPreviewedNoteTemplate(host, baseline, '{{title}} preview', 'append');
+    expect(host.replaceDocument).toHaveBeenCalledWith('original  \n\n---\n\n{{title}} preview\n', baseline);
+    await applyPreviewedNoteTemplate(host, baseline, 'replacement', 'replace');
+    expect(host.replaceDocument).toHaveBeenLastCalledWith('replacement\n', baseline);
+    for (const mode of ['insert', 'append', 'replace'] as const) {
+      await expect(applyPreviewedNoteTemplate({ ...host, getDocument: () => ({ ...baseline, noteId: 'note_b' }) }, baseline, 'body', mode, position)).rejects.toThrow();
+    }
+    host.insertDocument.mockResolvedValueOnce(false);
+    await expect(applyPreviewedNoteTemplate(host, baseline, 'body', 'insert', position)).rejects.toThrow();
+    host.replaceDocument.mockRejectedValueOnce(new Error('disk full'));
+    await expect(applyPreviewedNoteTemplate(host, baseline, 'body', 'append')).rejects.toThrow('disk full');
+  });
   it('preserves the exact original prefix on append and treats empty templates as a no-op', () => {
     const original = '# 原文\n\n有两个尾空格  \n{{date}}';
     expect(applyNoteTemplate(original, '# 模板')).toBe(`${original}\n\n---\n\n# 模板\n`);

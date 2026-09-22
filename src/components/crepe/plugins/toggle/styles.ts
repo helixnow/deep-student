@@ -6,17 +6,15 @@ const STYLE_ID = 'milkdown-toggle-styles'
 
 export const TOGGLE_STYLE = `
 .milkdown-toggle {
+  position: relative;
   margin: 0.5em 0;
   border-radius: var(--notes-radius-control, 8px);
 }
-.milkdown-toggle__header {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.35em;
-  padding: 0.15em 0;
-  user-select: none;
-}
 .milkdown-toggle__arrow {
+  position: absolute;
+  left: 0;
+  top: 0.15em;
+  user-select: none;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -44,10 +42,11 @@ export const TOGGLE_STYLE = `
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
 }
-.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__header > .milkdown-toggle__arrow {
+.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__arrow {
   transform: rotate(90deg);
 }
 .milkdown-toggle__title {
+  padding: 0.15em 0 0.15em 1.6em;
   flex: 1 1 auto;
   min-width: 0;
   outline: none;
@@ -56,7 +55,8 @@ export const TOGGLE_STYLE = `
   white-space: pre-wrap;
   word-break: break-word;
 }
-.milkdown-toggle__title:empty::before {
+.milkdown-toggle__title:empty::before,
+.milkdown-toggle__title:has(> br:only-child)::before {
   content: attr(data-placeholder);
   color: hsl(var(--muted-foreground, 215 16% 47%));
   font-weight: 500;
@@ -71,7 +71,7 @@ export const TOGGLE_STYLE = `
     grid-template-rows 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
-.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__body {
+.milkdown-toggle[data-view-open="true"] > .milkdown-toggle__content > .milkdown-toggle__body {
   grid-template-rows: 1fr;
   opacity: 1;
 }
@@ -82,11 +82,11 @@ export const TOGGLE_STYLE = `
   overflow: clip;
   min-height: 0;
 }
-.milkdown-toggle[data-view-open="false"] > .milkdown-toggle__body > .milkdown-toggle__body-inner {
+.milkdown-toggle[data-view-open="false"] > .milkdown-toggle__content > .milkdown-toggle__body > .milkdown-toggle__body-inner {
   pointer-events: none;
 }
 /* 空 toggle：展开且内容为单个空块时提示可输入 */
-.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__body > .milkdown-toggle__body-inner::before {
+.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__content > .milkdown-toggle__body > .milkdown-toggle__body-inner::before {
   content: attr(data-empty-placeholder);
   position: absolute;
   inset: 0 auto auto 0;
@@ -95,15 +95,12 @@ export const TOGGLE_STYLE = `
 }
 /* 聚焦空段落时编辑器自带 crepe-placeholder（"输入 /"）会出现在同一位置，
    此时让位给它，避免两条提示文字重叠 */
-.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__body > .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
+.milkdown-toggle[data-view-open="true"][data-empty="true"] > .milkdown-toggle__content > .milkdown-toggle__body > .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
   content: none;
 }
 /* 触屏：折叠箭头 ~20px 难以点准；::after 扩命中到 ≥44px。
    右缘锚定（只向左/上下外溢），避免向右盖住可编辑标题的点击。 */
 @media (pointer: coarse) {
-  .milkdown-toggle__arrow {
-    position: relative;
-  }
   .milkdown-toggle__arrow::after {
     content: '';
     position: absolute;

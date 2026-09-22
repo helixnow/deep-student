@@ -26,7 +26,7 @@ export function isExportUnsupportedPlatform(): boolean {
  * @param t i18n 翻译函数（需绑定 learningHub 命名空间）
  * @returns 是否成功保存（用户取消视为 false 但不报错）
  */
-export async function exportResourceById(resourceId: string, t: TFunction, windowId?: string): Promise<boolean> {
+export async function exportResourceById(resourceId: string, t: TFunction, windowId?: string, noteLayout: 'plain' | 'layout' = 'plain'): Promise<boolean> {
   try {
     // Resolve at the point of consumption, after export I/O, so the last unsaved
     // keystroke and unloaded suffix are included. Keep the backend's metadata header.
@@ -39,7 +39,11 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
       const draft = editor.getFullDocument();
       if (draft.noteId !== resourceId) throw new Error('笔记已切换，请重新导出。');
       const header = diskExport.match(/^---\n[\s\S]*?\n---\n\n/)?.[0] ?? '';
-      return header + draft.markdown;
+      if (noteLayout === 'layout') return header + draft.markdown;
+      const fullApi = editor as import('@/features/notes/fullDocument').FullDocumentSearchApi;
+      if (fullApi.materializeFullDocument) await fullApi.materializeFullDocument();
+      if (editor.isDocumentWindowed?.()) throw new Error('全文尚未加载，无法导出普通 Markdown。');
+      return header + (editor.getPlainMarkdown?.() ?? draft.markdown);
     };
     if (isExportUnsupportedPlatform()) {
       // 移动端没有文件保存对话框：文本资源（笔记/翻译/作文）降级为「复制 Markdown」，

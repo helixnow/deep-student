@@ -2,7 +2,7 @@ import type { Node as ProseNode } from '@milkdown/prose/model';
 import { NodeSelection } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 
-/** Runtime identity only: valid for this view and this immutable document snapshot. */
+/** Position capture valid for this view/snapshot; persistent IDs are root-only metadata. */
 export interface BlockTarget {
   readonly view: EditorView;
   readonly doc: ProseNode;
@@ -14,6 +14,26 @@ export interface BlockTarget {
   readonly fromIndex: number;
   readonly toIndex: number;
   readonly nodes: readonly ProseNode[];
+}
+
+export function stableBlockIds(target: BlockTarget): readonly string[] | null {
+  if (target.depth !== 1 || target.parentPos !== -1) return null;
+  const ids = target.nodes.map(node => node.attrs.dsBlockId as string | null);
+  return ids.every((id): id is string => Boolean(id)) ? ids : null;
+}
+
+/** Re-capture an explicitly upgraded/hydrated root range by ID, never by stale positions. */
+export function resolveStableBlockTarget(view: EditorView, ids: readonly string[]): BlockTarget | null {
+  if (!ids.length || view.isDestroyed) return null;
+  let start: number | null = null;
+  view.state.doc.forEach((node, pos) => { if (node.attrs.dsBlockId === ids[0]) start = pos; });
+  if (start === null) return null;
+  const first = resolveBlockTarget(view, start);
+  if (!first || first.fromIndex + ids.length > view.state.doc.childCount) return null;
+  const nodes = ids.map((_, index) => view.state.doc.child(first.fromIndex + index));
+  if (nodes.some((node, index) => node.attrs.dsBlockId !== ids[index])) return null;
+  return { ...first, nodes, toIndex: first.fromIndex + nodes.length,
+    to: first.pos + nodes.reduce((sum, node) => sum + node.nodeSize, 0), type: nodes.length > 1 ? 'range' : first.type };
 }
 
 export const isListItem = (node: ProseNode): boolean =>
@@ -40,6 +60,16 @@ export function resolveBlockTarget(view: EditorView, pos: number): BlockTarget |
     start = $pos.before(depth);
   }
   const $start = doc.resolve(start);
+  // Structural wrappers are never independent draggable/deletable blocks.
+  // A toggle's editable title addresses the toggle; body children retain depth.
+  if (node.type.name === 'toggleTitle' || node.type.name === 'toggleBody') {
+    if ($start.parent.type.name !== 'toggle') return null;
+    depth = $start.depth;
+    node = $start.parent;
+    start = $start.before(depth);
+  } else if (node.type.name === 'ds_column') {
+    return null;
+  }
   if ($start.depth > 0 && isListItem($start.parent)) {
     depth = $start.depth;
     node = $start.parent;
@@ -91,6 +121,7 @@ export function blockTargetsAtY(view: EditorView, y: number): BlockTarget | null
   let distance = Infinity;
   view.state.doc.descendants((node, pos) => {
     if (!node.isBlock) return;
+    if (node.type.name === 'toggleBody' || node.type.name === 'ds_column') return true;
     const dom = view.nodeDOM(pos);
     if (!(dom instanceof HTMLElement)) return;
     if (dom.closest('[hidden], [inert]')) return false;

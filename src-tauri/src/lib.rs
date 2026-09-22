@@ -371,6 +371,7 @@ pub fn run() {
         // 在前端 bundle 执行前安装极小的错误桥，覆盖入口脚本加载失败/白屏。
         // main.tsx 成功启动后会注销这些监听，再由统一 errorReporter 接管。
         if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            crate::cmd::notes::cleanup_note_editor_leases(webview.app_handle().clone(), None, Some(webview.label().to_owned()));
             let _ = webview.eval(
                 r#"
                 (() => {
@@ -584,6 +585,11 @@ pub fn run() {
     };
 
     let builder = builder
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                crate::cmd::notes::cleanup_note_editor_leases(window.app_handle().clone(), Some(window.label().to_owned()), None);
+            }
+        })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -1168,6 +1174,22 @@ pub fn run() {
                 std::sync::Mutex::new(sentry_guard),
             )));
             app.manage(state);
+            // Reset process-local editor membership after restart, then expire
+            // lost heartbeats without relying on a renderer remaining alive.
+            if let Some(db) = app.state::<crate::commands::AppState>().vfs_db.clone() {
+                if let Ok(conn) = db.get_conn_safe() {
+                    crate::vfs::repos::note_lease_repo::NoteLeaseRepo::cleanup(&conn, i64::MAX, None, None)
+                        .map_err(|e| format!("Notes lease startup cleanup: {}", e))?;
+                }
+                let lease_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                    loop {
+                        interval.tick().await;
+                        crate::cmd::notes::cleanup_note_editor_leases(lease_app.clone(), None, None);
+                    }
+                });
+            }
 
             // 插件系统（编译期注册；依赖 AppState）
             {
@@ -2038,6 +2060,37 @@ pub fn run() {
             ,crate::commands::notes_history_get
             ,crate::commands::notes_history_set_pinned
             ,crate::commands::notes_history_restore_copy
+            ,crate::commands::notes_history_current
+            ,crate::commands::notes_history_restore_selection_copy
+            ,crate::commands::notes_history_restore_current
+            ,crate::commands::notes_history_get_retention
+            ,crate::commands::notes_history_set_retention
+            ,crate::commands::notes_enable_columns
+            ,crate::commands::notes_review_save_as
+            ,crate::commands::notes_transfer_blocks
+            ,crate::commands::notes_editor_register
+            ,crate::commands::notes_editor_heartbeat
+            ,crate::commands::notes_editor_unregister
+            ,crate::commands::notes_editor_begin
+            ,crate::commands::notes_editor_lease_status
+            ,crate::commands::notes_editor_freeze_ack
+            ,crate::commands::notes_editor_flush
+            ,crate::commands::notes_editor_finish
+            ,crate::commands::notes_editor_refresh_ack
+            ,crate::commands::notes_editor_release
+            ,crate::commands::notes_undo_transfer
+            ,crate::commands::notes_get_format
+            ,crate::commands::notes_migrate_blocks
+            ,crate::commands::notes_state_get
+            ,crate::commands::notes_state_list
+            ,crate::commands::notes_state_put
+            ,crate::commands::notes_state_delete
+            ,crate::commands::notes_relation_get
+            ,crate::commands::notes_relation_list
+            ,crate::commands::notes_relation_put
+            ,crate::commands::notes_relation_delete
+            ,crate::commands::notes_reference_status
+            ,crate::commands::notes_invalidate_resource_refs
             ,crate::commands::notes_assets_index_scan
             ,crate::commands::notes_assets_scan_orphans
             ,crate::commands::notes_assets_bulk_delete

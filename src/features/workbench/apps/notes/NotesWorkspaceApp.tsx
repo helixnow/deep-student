@@ -67,6 +67,8 @@ import {
 import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
+import { NoteLearningRelations } from '@/features/notes/components/NoteLearningRelations';
+import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
 import { sameNoteLearningMetadata, type NoteLearningView } from '@/features/notes/noteLearningProps';
 import { NotesGraphTab } from './graph/NotesGraphTab';
 import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
@@ -973,6 +975,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [learningView, setLearningView] = useState<NoteLearningView | 'tree'>('tree');
+  const [learningCreateOpen, setLearningCreateOpen] = useState(false);
   const [tabs, setTabs] = useState<WorkspaceTab[]>(() => persistedState.tabs);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(() => persistedState.activeTabKey);
   const [rightTabKey, setRightTabKey] = useState<string | null>(() => persistedState.rightTabKey);
@@ -1684,16 +1687,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const unwatch = dstu.watch('*', (event) => {
       const changedNode = event.node;
       if (event.type === 'updated' && changedNode && resourceType(changedNode.type)) {
+        const known = resourcesRef.current.find((node) => node.id === changedNode.id);
+        if (known && changedNode.updatedAt < known.updatedAt) return;
         setResources((current) => {
           const index = current.findIndex((node) => node.id === changedNode.id);
           if (index < 0) return current;
           const existing = current[index];
-          // Content-only saves produce updated events too. Skip React work when
-          // the explorer-visible shape did not change.
+          if (changedNode.updatedAt < existing.updatedAt) return current;
+          // Keep the latest version even on content-only saves, so delayed
+          // metadata cannot restore an older learning state. Skip duplicate snapshots.
           if (
             existing.name === changedNode.name
             && existing.path === changedNode.path
             && existing.type === changedNode.type
+            && existing.updatedAt === changedNode.updatedAt
             && sameNoteLearningMetadata(existing.metadata, changedNode.metadata)
           ) return current;
           const next = [...current];
@@ -2461,11 +2468,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   );
 
   // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
-  // 探索器工具栏尾部低频动作（新建导图/刷新/搜索/背链/回收站/文库）。
-  // 中窗侧栏仅 240px，10 个图标按钮必溢出被裁：中窗折叠进「更多」菜单，
-  // 宽窗与紧凑子屏（探索器全宽展示）保持整排图标。
-  const explorerTailActions: ExplorerOverflowAction[] = [
+  // 新建按资源类型归组；库级操作始终收进菜单，避免侧栏宽度与窗口分级不一致时溢出。
+  const explorerCreateActions: ExplorerOverflowAction[] = [
+    { key: 'new-note', label: t('notesWorkspace.explorer.newNote', 'New note'), icon: <FileText size={15} />, onSelect: () => { void createResource('note'); } },
+    { key: 'new-learning-note', label: t('notes:learning.create.title', { defaultValue: '新建学习笔记' }), icon: <Notebook size={15} />, onSelect: () => setLearningCreateOpen(true) },
+    { key: 'new-folder', label: t('notesWorkspace.explorer.newFolder', 'New folder'), icon: <FolderPlus size={15} />, onSelect: () => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); } },
     { key: 'new-mindmap', label: t('notesWorkspace.explorer.newMindmap', 'New mind map'), icon: <TreeStructure size={15} />, onSelect: () => { void createResource('mindmap'); } },
+  ];
+  const explorerTailActions: ExplorerOverflowAction[] = [
     { key: 'refresh', label: t('notesWorkspace.explorer.refresh', 'Refresh'), icon: <ArrowsClockwise size={15} />, onSelect: () => { void loadResources({ blocking: false }); } },
     { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: () => openSearchOverlay('full-text') },
     { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: () => setBacklinksOpen((open) => !open) },
@@ -2493,23 +2503,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               disabled={!navHistory.canForward}
               onClick={() => { void navHistory.runNavigation('forward', activateHistoryEntry); }}
             ><ArrowRight size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.newNote', 'New note')} onClick={() => void createResource('note')}><FileText size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.newFolder', 'New folder')} onClick={() => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); }}><FolderPlus size={15} /></IconButton>
-            {sizeClass === 'medium' ? (
-              <ExplorerOverflowMenu
-                label={t('notesWorkspace.explorer.moreActions', 'More actions')}
-                actions={explorerTailActions}
-              />
-            ) : (
-              explorerTailActions.map((action) => (
-                <IconButton
-                  key={action.key}
-                  label={action.label}
-                  data-active={action.active === undefined ? undefined : (action.active ? 'true' : 'false')}
-                  onClick={action.onSelect}
-                >{action.icon}</IconButton>
-              ))
-            )}
+            <ExplorerOverflowMenu
+              label={t('notes:chrome.create')}
+              triggerText={t('notes:chrome.create')}
+              actions={explorerCreateActions}
+            />
+            <ExplorerOverflowMenu
+              label={t('notesWorkspace.explorer.moreActions', 'More actions')}
+              actions={explorerTailActions}
+            />
           </div>
         </header>
         <div className="notes-search">
@@ -2914,11 +2916,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             onCreateFromUnresolved={createFromUnresolved}
             onRefresh={() => { void loadResources({ blocking: false }); }}
             propertiesContent={(
+              <>
               <NotesPropertiesTab
                 key={activeResource?.id ?? 'no-note'}
                 activeResource={activeResource}
                 onRefresh={() => { void loadResources({ blocking: false }); }}
               />
+              {activeResource?.type === 'note' && <NoteLearningRelations noteId={activeResource.id} />}
+              </>
             )}
             graphContent={(
               <NotesGraphTab
@@ -2960,6 +2965,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <div className="notes-files-subscreen-body">{explorerSurface}</div>
         </div>
       )}
+      {learningCreateOpen && createPortal(<CreateLearningNoteDialog folderId={contextualFolderId} onClose={() => setLearningCreateOpen(false)}
+        onCreated={async (node) => { await loadResources({ blocking: false }); await openResource({ type: 'note', id: node.id }, node.name); }} />, document.body)}
       <NotesSearchOverlay
         open={searchOpen}
         mode={searchMode}

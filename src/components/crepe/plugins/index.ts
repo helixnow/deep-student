@@ -22,6 +22,10 @@ import { mentionPlugin } from './mention';
 import type { MentionPluginConfig } from './mention';
 import { pdfRefPlugin } from './pdfRef';
 import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
+import { blockIdentityPlugin } from './blockIdentity';
+import { columnsPlugin, type ColumnsOptions } from './columns';
+import { canonicalDocumentPlugin } from '../canonicalDocument';
+import { crepeExecuteCommand, crepeCommandBindingsPlugin } from '../commandRegistry';
 
 // Prism 核心必须先导入，组件依赖全局 Prism 对象
 import 'prismjs';
@@ -49,6 +53,8 @@ import 'prismjs/components/prism-markdown';
  * 插件配置选项
  */
 export interface CrepePluginsOptions {
+  /** Registration always reads layouts; writes require the current host's confirmed grant. */
+  columns?: ColumnsOptions;
   /** 启用自动 Markdown 格式化（输入 **text** 自动粗体等） */
   automd?: boolean;
   /**
@@ -163,6 +169,9 @@ export const applyCrepePlugins = (
   if (enablePdfRefLink) {
     crepe.editor.use(pdfRefPlugin());
   }
+  crepe.editor.use(columnsPlugin(options.columns));
+  crepe.editor.use(blockIdentityPlugin());
+  crepe.editor.use(canonicalDocumentPlugin).use(crepeExecuteCommand).use(crepeCommandBindingsPlugin);
 };
 
 /**

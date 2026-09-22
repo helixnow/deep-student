@@ -15,6 +15,9 @@ import { NodeSelection } from '@milkdown/kit/prose/state';
 import type { Crepe } from '@milkdown/crepe';
 import { isBlockTargetCurrent, resolveBlockHandleTarget, type BlockTarget } from '../blockTarget';
 import { moveCrepeBlocks } from '../blockMenuCommands';
+import { resolveCrepeBlockDrop } from '../blockDrop';
+import { canEditCrepeView } from '../commandRegistry';
+import i18next from 'i18next';
 
 export interface BlockDragState {
   isDragging: boolean;
@@ -140,42 +143,28 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       return;
     }
 
-    let closestBlock: Element | null = null;
-    let closestDistance = Infinity;
-    let insertBefore = true;
-
-    const $source = view.state.doc.resolve(source.pos);
-    let childPos = $source.start();
-    for (let index = 0; index < $source.parent.childCount; index += 1) {
-      const pos = childPos;
-      childPos += $source.parent.child(index).nodeSize;
-      const block = view.nodeDOM(pos);
-      if (!(block instanceof HTMLElement)) continue;
-      const rect = block.getBoundingClientRect();
-      if (rect.height <= 0) continue;
-      const middle = rect.top + rect.height / 2;
-      const distance = Math.abs(clientY - middle);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestBlock = block;
-        insertBefore = clientY < middle;
-        if (dragStateRef.current) {
-          dragStateRef.current.targetInsertPos = insertBefore ? pos : childPos;
-          dragStateRef.current.insertBefore = insertBefore;
-        }
-      }
-    }
-
-    if (!closestBlock) {
+    const drop = resolveCrepeBlockDrop(view, source, { x: lastPointerRef.current?.x ?? 0, y: clientY });
+    if (!drop || !canEditCrepeView(view)) {
       hideDropIndicator();
       return;
+    }
+    if (dragStateRef.current) {
+      dragStateRef.current.targetInsertPos = drop.valid ? drop.pos : -1;
+      dragStateRef.current.insertBefore = drop.kind === 'before';
     }
 
     const indicator = dropIndicatorRef.current;
     if (indicator) {
       const wrapperRect = wrapper.getBoundingClientRect();
-      const blockRect = closestBlock.getBoundingClientRect();
-      const y = (insertBefore ? blockRect.top : blockRect.bottom) - wrapperRect.top;
+      const blockRect = drop.rect;
+      const y = (drop.kind === 'before' ? blockRect.top : blockRect.bottom) - wrapperRect.top;
+      indicator.dataset.dropKind = drop.kind;
+      indicator.dataset.dropValid = String(drop.valid);
+      indicator.title = !drop.valid ? i18next.t('notes:blockDrop.invalid', { defaultValue: '无法放入此位置（自身后代或不兼容的容器）' })
+        : drop.kind === 'inside' ? i18next.t('notes:blockDrop.inside', { defaultValue: '移入容器；持久链接仅适用于顶层块' })
+          : i18next.t('notes:blockDrop.move', { defaultValue: '移动到此处' });
+      indicator.style.backgroundColor = drop.valid ? '' : 'hsl(var(--destructive))';
+      indicator.style.outline = drop.kind === 'inside' ? `2px solid ${drop.valid ? 'hsl(var(--primary))' : 'hsl(var(--destructive))'}` : '';
       const wasVisible = indicator.dataset.visible === 'true';
       indicator.style.top = '0px';
       indicator.style.left = `${blockRect.left - wrapperRect.left}px`;
@@ -199,7 +188,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
    */
   const executeBlockMove = useCallback((source: BlockTarget, targetPos: number) => {
     const view = getView();
-    return view ? moveCrepeBlocks(view, source, targetPos) : false;
+    return view && canEditCrepeView(view) ? moveCrepeBlocks(view, source, targetPos) : false;
   }, [getView]);
 
   /**
@@ -430,6 +419,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     }
 
     const view = getView();
+    if (!view || !canEditCrepeView(view)) return;
     if (view && nodeInfo.nodes.length === 1 && NodeSelection.isSelectable(nodeInfo.nodes[0])) {
       const nodeSelection = NodeSelection.create(view.state.doc, nodeInfo.pos);
       view.dispatch(view.state.tr.setSelection(nodeSelection));

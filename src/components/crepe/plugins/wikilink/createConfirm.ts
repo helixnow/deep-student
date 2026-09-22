@@ -8,6 +8,7 @@
 
 import { computePosition, flip, offset, shift } from '@floating-ui/dom';
 import i18next from 'i18next';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 const CLASS = 'crepe-wikilink-create-confirm';
 
@@ -50,6 +51,7 @@ function attachGlobalClose(): void {
     closeWikilinkCreateConfirm();
   };
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

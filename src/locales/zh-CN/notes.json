@@ -1,4 +1,20 @@
 {
+  "chrome": {
+    "create": "新建",
+    "page": "页面",
+    "format": "格式",
+    "read": "阅读",
+    "edit": "编辑",
+    "note_tools": "笔记工具",
+    "view": "查看",
+    "export": "导出",
+    "export_plain": "普通 Markdown",
+    "export_layout": "Markdown（保留布局）",
+    "load_full_document": "加载全文以使用块操作",
+    "text_style": "文字样式",
+    "paragraph": "段落",
+    "insert": "插入"
+  },
   "canvas": {
     "untitled": "未命名笔记",
     "error": {
@@ -136,6 +152,71 @@
     "incomplete": "部分笔记中的双链未同步（有未保存修改、写回失败或超出单批上限），请手动检查。"
   },
   "learning": {
+    "confirm_latest": "已核对最新值，保留草稿重试",
+    "library": {
+      "title": "笔记学习",
+      "search": "搜索笔记、课程或章节",
+      "resources": "学习资源"
+    },
+    "create": {
+      "title": "新建学习笔记",
+      "name": "笔记标题",
+      "course": "所属课程",
+      "template": "新建模板",
+      "blank": "空白笔记",
+      "default": "课程默认：{{title}}",
+      "hint": "课程默认仅在选择后应用，已填写的属性优先保留。",
+      "submit": "创建笔记",
+      "cancel": "取消新建",
+      "retry_props": "重试保存属性",
+      "open_partial": "打开已创建笔记",
+      "props_failed": "笔记正文已创建，属性尚未保存：{{error}}",
+      "invalid_title": "请输入有效的笔记标题。"
+    },
+    "mapping": {
+      "title": "映射旧自由属性",
+      "hint": "选择来源与目标值，预览后应用。原属性及未知值全部保留。",
+      "source": "{{field}}来源属性",
+      "target": "{{field}}目标值",
+      "preview": "预览映射",
+      "apply": "应用映射",
+      "undo": "撤销上次映射",
+      "invalid": "请选择已有属性与有效的目标值。"
+    },
+    "relations": {
+      "title": "学习资源关系",
+      "empty": "尚未关联学习资源",
+      "whole": "整个资源",
+      "missing": "资源或定位目标已失效",
+      "open": "打开关联资源",
+      "edit": "编辑关系",
+      "delete_failed": "关系未删除，请刷新后重试。",
+      "delete": "解除关系",
+      "type": "关系类型",
+      "types": {
+        "source": "来源 PDF",
+        "card": "关联卡片",
+        "mistake": "关联错题"
+      },
+      "manual": "按资源 ID 关联",
+      "resource_id": "资源 ID（卡片填文档 ID）",
+      "page": "PDF 页码",
+      "card_id": "卡片 ID",
+      "question_id": "题目 ID",
+      "invalid_page": "请输入从 1 开始的有效页码。",
+      "save": "保存关系",
+      "cancel": "取消编辑关系",
+      "focus_failed": "阅读器尚未完成定位，请加载后重试。",
+      "preview": "关联资源预览",
+      "locate": "定位到关联位置",
+      "close": "关闭预览",
+      "choose": "从资源库选择",
+      "search": "查找关联资源",
+      "back": "返回题目集",
+      "no_results": "没有匹配的资源",
+      "previous": "上一页",
+      "next": "下一页"
+    },
     "title": "学习属性",
     "section_label": "笔记学习属性",
     "reload": "重新读取属性",
@@ -200,6 +281,28 @@
     }
   },
   "history": {
+    "description_full": "查看完整历史与差异。默认恢复为新副本；覆盖当前笔记前会保留现有版本。预览不会自动长期保留。",
+    "configure_retention": "配置历史保留",
+    "bucket_seconds": "合并间隔（秒，0 为不合并）",
+    "max_versions": "普通编辑版本上限（0 为不限）",
+    "policy_help": "固定版本与格式迁移基线不受此限制；修改规则不立即清理历史。",
+    "save_policy": "保存保留规则",
+    "policy_saved": "保留规则已保存",
+    "current_restored": "已恢复当前笔记，覆盖前版本已保留。",
+    "unsupported_format": "此版本格式暂不支持恢复，请使用兼容版本。",
+    "select_lines": "只恢复选定行",
+    "selection_help": "请选择完整段落、列表或代码块；不能截断文档结构。",
+    "start_line": "起始行",
+    "end_line": "结束行",
+    "selection_preview": "选段恢复预览",
+    "compare_current": "与当前笔记比较",
+    "diff_preview": "恢复差异预览",
+    "overwrite_title": "确认覆盖当前笔记",
+    "overwrite_warning": "将用上方预览内容覆盖整篇当前笔记（选段模式也替换整篇）。确认后先处理编辑草稿，并保留覆盖前的完整版本；当前内容若已变化则停止恢复。",
+    "cancel_overwrite": "取消覆盖",
+    "confirm_overwrite": "保留当前版本并覆盖",
+    "host_required": "需要编辑器先处理未保存草稿",
+    "overwrite_current": "覆盖当前笔记…",
     "title": "笔记历史",
     "description": "本机保存的完整版本。连续编辑每 5 分钟合并，保留最近 100 个普通编辑版本。预览不会自动长期保留；重要版本可主动保留。恢复会在资源库根目录创建副本，原笔记和当前草稿保持原样。",
     "retained_only": "只看已长期保留的版本",
@@ -271,6 +374,8 @@
   },
   "fullDocument": {
     "errors": {
+      "view_unavailable": "全文编辑器尚未就绪，请重试。",
+      "materialize_failed": "无法加载完整笔记，请重试。",
       "baseline_changed": "笔记已变化或已切换，未应用旧版本建议。请复制候选内容后重新生成建议。",
       "content_too_large": "正文超过 1 MiB（UTF-8）上限，内容已保留，可复制或缩减后重试。",
       "stale_editor": "笔记已切换，拒绝写入过期编辑器。",
@@ -285,6 +390,11 @@
     }
   },
   "personalTemplates": {
+    "inserted": "模板已插入所选位置",
+    "insert": "插入当前位置",
+    "preset_preview": "属性预设（仅填入未设置字段）",
+    "preset_applied": "属性预设已保存",
+    "apply_preset": "应用属性预设",
     "title": "个人模板",
     "untitled": "未命名模板",
     "loading": "正在读取个人模板…",
@@ -325,6 +435,8 @@
     "reload": "重新读取模板",
     "errors": {
       "load_failed": "个人模板数据无法读取，原数据已保留。",
+      "no_selection": "请先在编辑器中选择插入位置，再重新预览。",
+      "version_conflict": "模板已被修改，请重新选择模板并核对后再保存。",
       "invalid_preset": "模板学习属性预设无效，原数据已保留。",
       "invalid_stored_course": "模板默认课程无效，原数据已保留。",
       "invalid_course": "默认课程格式无效。",
@@ -495,6 +607,14 @@
     }
   },
   "findReplace": {
+    "scopeFullDraft": "范围：当前笔记完整草稿；不跨段落或内嵌对象匹配。",
+    "searchingFullDraft": "正在处理全文…",
+    "errors": {
+      "search_timeout": "正则搜索超时，已终止。请简化表达式。",
+      "search_cancelled": "已取消搜索。修改查询可重新搜索。",
+      "search_worker_failed": "无法启动正则搜索，请重试。",
+      "full_document_unavailable": "全文尚未就绪，请重试。"
+    },
     "inputRequired": "请输入查找内容",
     "editorNotReady": "编辑器尚未就绪",
     "findUnsupported": "当前编辑器不支持查找",
@@ -550,6 +670,9 @@
     "irec_prefix": "@灵感"
   },
   "toolbar": {
+    "wikilink": "双链引用",
+    "callout": "高亮块",
+    "toggle": "折叠块",
     "ask_agent": "询问 Agent",
     "new_note": "新建笔记",
     "new_folder": "新建文件夹",
@@ -626,6 +749,11 @@
     "insert_hint": "插入到当前笔记末尾"
   },
   "blockMenu": {
+    "heading4": "四级标题",
+    "heading5": "五级标题",
+    "heading6": "六级标题",
+    "copyBlockLink": "复制块链接",
+    "moveToNote": "移动到其他笔记…",
     "label": "块操作",
     "addAfter": "在下方添加块",
     "dragOrMenu": "拖动块或打开块菜单",
@@ -643,6 +771,47 @@
     "toggle": "折叠块",
     "duplicate": "复制块",
     "delete": "删除块"
+  },
+  "blockIdentity": {
+    "topLevelOnly": "持久身份仅支持顶层块；嵌套块暂不支持。",
+    "hostRequired": "当前笔记尚未接入完整文档块操作。",
+    "fullDocumentRequired": "请先加载完整笔记，再创建块链接或跨页移动。",
+    "singleLink": "复制块链接时请选择一个顶层块。",
+    "linkCopied": "块链接已复制"
+  },
+  "blockDrop": {
+    "invalid": "无法放入此位置（自身后代或不兼容的容器）",
+    "inside": "移入容器；持久链接仅适用于顶层块",
+    "move": "移动到此处"
+  },
+  "blockTransfer": {
+    "title": "移动块到其他笔记",
+    "undone": "已撤销移动",
+    "done": "块已移动，原有块 ID 已保留",
+    "refreshFailed": "保存已完成，但页面刷新失败。请重新打开两篇笔记。",
+    "description": "将所选块追加到目标笔记末尾。移动前会保存两篇笔记的开放草稿。",
+    "search": "搜索笔记或路径",
+    "target": "目标笔记",
+    "loading": "正在加载笔记…",
+    "empty": "没有匹配的目标笔记",
+    "close": "关闭",
+    "undo": "撤销移动",
+    "move": "移动"
+  },
+  "layout": {
+    "label": "页面布局",
+    "insert-columns": "插入双列",
+    "insert-cornell": "插入康奈尔布局",
+    "convert-columns": "转为双列",
+    "convert-cornell": "转为康奈尔布局",
+    "convert-cornell-template": "转换康奈尔模板",
+    "unwrap-columns": "展开为普通块"
+  },
+  "draftPersistence": {
+    "save_unconfirmed": "草稿持久化未确认。",
+    "recovered": "已恢复未保存草稿。",
+    "save_before_discard": "草稿尚未持久化，请先重试保存再丢弃。",
+    "delete_unconfirmed": "草稿删除未确认。"
   },
   "search": {
     "placeholder": "搜索笔记...",
@@ -1337,6 +1506,8 @@
     "title": "属性"
   },
   "context": {
+    "content_load_failed": "正文加载失败，大纲不可用。",
+    "content_loading": "正在加载正文…",
     "open": "打开",
     "properties": "属性",
     "outline": "大纲",
@@ -1489,6 +1660,11 @@
     "placeholder": "输入问题..."
   },
   "header": {
+    "rename_tag_across_success": "全库标签已重命名",
+    "rename_tag_batch_summary": "已更新 {{updated}} 篇，跳过 {{skipped}} 篇（有未保存修改），失败 {{failed}} 篇",
+    "rename_tag_across_library": "在整个文库重命名此标签",
+    "rename_tag_across_confirm": "将把整个文库中所有「{{oldName}}」标签重命名为「{{newName}}」，并写入其他笔记。此操作影响多篇笔记。",
+    "rename_tag_across_confirm_action": "全库重命名",
     "documentTitle": "笔记标题",
     "breadcrumbs": "笔记路径",
     "history": "历史版本",
@@ -1562,6 +1738,7 @@
     "cycleType": "切换 Callout 类型"
   },
   "wikilink": {
+    "noCandidates": "无候选笔记",
     "create": "创建 \"{{title}}\"",
     "empty": "无匹配笔记"
   },
@@ -1587,6 +1764,11 @@
     "slashDescription": "可折叠的标题与内容"
   },
   "mobileToolbar": {
+    "columns": "插入双列",
+    "cornell": "插入康奈尔布局",
+    "convertColumns": "转为双列",
+    "convertCornell": "转为康奈尔布局",
+    "unwrapColumns": "展开为普通块",
     "insert": "插入",
     "strikethrough": "删除线",
     "blockActions": "块操作",

@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { useTranslation } from 'react-i18next';
 import { Check, CircleNotch, PencilSimple, Plus, SlidersHorizontal, Trash, X } from '@phosphor-icons/react';
 import { NoteLearningPropsFields } from '@/features/notes/components/NoteLearningPropsFields';
+import { LegacyLearningPropsMapper } from '@/features/notes/components/LegacyLearningPropsMapper';
 import { LEARNING_PROP_KEYS, isLearningPropValue, type LearningField } from '@/features/notes/noteLearningProps';
 
 /** 与 tags 数量限额同一个量级；键值均有长度限制（后端亦校验兜底） */
@@ -210,6 +211,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
       </div>
 
       <NoteLearningPropsFields value={value} readOnly={!canEdit} disabled={saving || adding || editingKey !== null} onSave={commit} />
+      {canEdit && <LegacyLearningPropsMapper value={value} disabled={saving || adding || editingKey !== null} onSave={commit} />}
 
       {entries.length === 0 && !adding && (
         <p className="notes-props-empty">

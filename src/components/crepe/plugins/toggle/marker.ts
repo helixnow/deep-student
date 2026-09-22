@@ -16,14 +16,14 @@ export interface ToggleMarker {
 }
 
 /** 匹配行首 `[!toggle]` / `[!toggle]-` / `[!toggle]+` */
-const TOGGLE_MARKER_RE = /^\[!toggle\]([+-]?)\s*(.*)$/i
+const TOGGLE_MARKER_RE = /^\[!toggle\]([+-]?)[ \t]?(.*)$/i
 
 export function parseToggleMarker(text: string): ToggleMarker | null {
   const trimmed = text.replace(/^\uFEFF/, '').trimStart()
   const match = TOGGLE_MARKER_RE.exec(trimmed)
   if (!match) return null
   const flag = match[1] ?? ''
-  const title = (match[2] ?? '').trimEnd()
+  const title = match[2] ?? ''
   // `-` → 折叠；`+` 或无后缀 → 展开
   const open = flag !== '-'
   return { open, title }
@@ -31,8 +31,11 @@ export function parseToggleMarker(text: string): ToggleMarker | null {
 
 export function formatToggleMarker(title: string, open: boolean): string {
   const suffix = open ? '' : '-'
-  const normalized = title.replace(/\s+/g, ' ').trim()
-  return `[!toggle]${suffix}${normalized ? ` ${normalized}` : ''}`
+  const escaped = title
+    .replace(/([\\`*{}\[\]<>()!_#+\-.|~$=&])/g, '\\$1')
+    .replace(/\r\n|[\r\n\t]/g, (char) => char === '\t' ? '&#9;' : '&#10;')
+    .replace(/^ +| +$/g, (spaces) => '&#32;'.repeat(spaces.length))
+  return `[!toggle]${suffix}${escaped ? ` ${escaped}` : ''}`
 }
 
 export function isToggleMarkerText(text: string): boolean {

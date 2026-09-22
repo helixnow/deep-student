@@ -114,13 +114,17 @@ describe('slash insert actions', () => {
       let found: { open: boolean; title: string } | null = null;
       view.state.doc.descendants((node) => {
         if (node.type.name === TOGGLE_TYPE) {
+          expect(node.child(0).type.name).toBe('toggleTitle');
+          expect(node.child(1).type.name).toBe('toggleBody');
+          expect(node.attrs).not.toHaveProperty('title');
           found = {
             open: Boolean(node.attrs.open),
-            title: String(node.attrs.title ?? ''),
+            title: node.child(0).textContent,
           };
         }
       });
       expect(found).toEqual({ open: true, title: '' });
+      view.state.doc.check();
     } finally {
       await destroy();
     }

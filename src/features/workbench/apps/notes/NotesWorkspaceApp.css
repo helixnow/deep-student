@@ -114,16 +114,11 @@
   white-space: nowrap;
 }
 
-/* 按钮组约 250px；标题放不下完整文字时整个隐藏，避免残留孤立省略号 */
-@container (max-width: 286px) {
-  .notes-explorer header > span {
-    display: none;
-  }
-}
-
 .notes-explorer header > div {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
 }
 
 .notes-explorer header .notes-icon-button {
@@ -131,8 +126,25 @@
   height: 25px;
 }
 
+.notes-explorer header .notes-explorer-create-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.notes-explorer header .notes-icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ============================================================
- * 探索器工具栏「更多」折叠菜单（中窗 240px 侧栏放不下整排图标）
+ * 探索器新建与更多菜单
  * ============================================================ */
 
 .notes-explorer-overflow {
@@ -198,13 +210,20 @@
   color: hsl(var(--primary));
 }
 
-/* 触屏：25px 目标过小，扩到 44px，负 margin 抵消占位（每边 -9.5px，横向仍占 25px） */
+/* 实际分配 44px 命中区，不用负 margin 让相邻目标互相覆盖。 */
 @media (pointer: coarse) {
+  .notes-explorer header {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    padding-top: 6px;
+  }
   .notes-explorer header .notes-icon-button {
     width: 44px;
     height: 44px;
-    margin: -9.5px;
   }
+  .notes-explorer header .notes-explorer-create-trigger { width: auto; }
+  .notes-explorer-overflow-menu > button { min-height: 44px; }
 }
 
 .notes-search {

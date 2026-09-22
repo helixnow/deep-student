@@ -13,13 +13,14 @@ import type { MilkdownPlugin } from '@milkdown/ctx'
 import { toggleInputRule } from './input-rule'
 import { toggleKeymap } from './keymap'
 import { remarkTogglePlugin } from './remark'
-import { toggleSchema } from './schema'
-import { toggleEditableSync, toggleView } from './view'
+import { toggleSchema, toggleTitleSchema, toggleBodySchema } from './schema'
+import { toggleViewSync, toggleView, toggleBodyView } from './view'
 
 export { applyToggleInputRule, createEmptyToggleNode, toggleInputRule } from './input-rule'
 export {
   tryExitToggleOnEnter,
   tryUnwrapEmptyToggleOnBackspace,
+  unwrapToggle,
   toggleKeymap,
   toggleKeymapKey,
 } from './keymap'
@@ -31,17 +32,20 @@ export {
   type ToggleMarker,
 } from './marker'
 export { remarkTogglePlugin } from './remark'
-export { TOGGLE_DATA_TYPE, toggleSchema } from './schema'
+export { TOGGLE_DATA_TYPE, TOGGLE_TITLE_TYPE, TOGGLE_BODY_TYPE, toggleSchema, toggleTitleSchema, toggleBodySchema, createToggleNode } from './schema'
 export { ensureToggleStyles, TOGGLE_STYLE } from './styles'
-export { toggleView } from './view'
+export { toggleView, revealToggleAtPosition, openToggleView } from './view'
 
 /** 统一入口：返回可 `editor.use(...)` 的插件列表（不自行注册）。 */
 export function togglePlugin(): MilkdownPlugin[] {
   return [
     remarkTogglePlugin,
     toggleSchema,
+    toggleTitleSchema,
+    toggleBodySchema,
     toggleView,
-    toggleEditableSync,
+    toggleBodyView,
+    toggleViewSync,
     toggleInputRule,
     toggleKeymap,
   ].flat()

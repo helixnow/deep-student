@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NoteBlank } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { getNoteTemplates, type NoteTemplate, type NoteTemplateDocumentHost } from '../noteTemplates';
+import { getNoteTemplates, type NoteTemplate, type NoteTemplateDocumentHost, type NoteTemplateLearningPropsHost } from '../noteTemplates';
 import { PersonalNoteTemplates } from './PersonalNoteTemplates';
 
 /** 模板内联面板收起动画时长（200ms 过渡 + 少量缓冲后卸载） */
@@ -31,6 +31,7 @@ export interface NotesTemplatePanelProps {
   onApplyTemplate: (template: NoteTemplate) => void | Promise<void>;
   /** Optional full-document host enables capture and preview-confirmed replacement. */
   documentHost?: NoteTemplateDocumentHost;
+  learningPropsHost?: NoteTemplateLearningPropsHost;
   /** 卡片禁用（只读 / 编辑器未就绪） */
   disabled?: boolean;
   /** aria-controls 关联 id（由触发按钮持有） */
@@ -47,6 +48,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   panelId,
   triggerRef,
   documentHost,
+  learningPropsHost,
 }) => {
   const { t, i18n } = useTranslation(['notes']);
   // mounted 控制 DOM 挂载（收起动画结束后卸载），expanded 驱动过渡目标态
@@ -187,7 +189,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
                 ref={(el) => { cardRefs.current[index] = el; }}
                 type="button"
                 className="notes-template-card"
-                disabled={disabled}
+                disabled={disabled || applying}
                 tabIndex={index === activeIndex ? 0 : -1}
                 onFocus={() => setActiveIndex(index)}
                  onClick={() => { void apply(template); }}
@@ -203,7 +205,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
             ))}
           </div>
            {applyError && <p role="alert" className="text-sm text-destructive">{applyError}</p>}
-           <PersonalNoteTemplates disabled={disabled || applying} onApplyTemplate={onApplyTemplate} documentHost={documentHost} />
+           <PersonalNoteTemplates disabled={disabled || applying} onApplyTemplate={onApplyTemplate} documentHost={documentHost} learningPropsHost={learningPropsHost} />
         </div>
       </div>
     </div>

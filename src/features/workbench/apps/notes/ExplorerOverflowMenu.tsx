@@ -1,13 +1,9 @@
 /**
- * 探索器工具栏「更多」折叠菜单。
- *
- * 中窗（medium）侧栏只有 240px，9-10 个图标按钮（约 250px）必然溢出被裁。
- * 折叠形态保留高频入口（后退/前进/新建笔记/新建文件夹），其余动作收进
- * 本菜单；宽窗（wide）不折叠，保持原有一排图标。
+ * 文件侧栏的新建 / 更多菜单。所有窗口尺寸使用一致的文字入口。
  */
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { DotsThree } from '@phosphor-icons/react';
+import { DotsThree, Plus, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export interface ExplorerOverflowAction {
@@ -23,9 +19,10 @@ export interface ExplorerOverflowAction {
 export interface ExplorerOverflowMenuProps {
   label: string;
   actions: readonly ExplorerOverflowAction[];
+  triggerText?: string;
 }
 
-export const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({ label, actions }) => {
+export const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({ label, actions, triggerText }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -81,7 +78,7 @@ export const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({ labe
       <button
         ref={triggerRef}
         type="button"
-        className={cn('notes-icon-button')}
+        className={cn('notes-icon-button', triggerText && 'notes-explorer-create-trigger')}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
@@ -90,7 +87,7 @@ export const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({ labe
         data-active={open ? 'true' : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        <DotsThree size={17} weight="bold" />
+        {triggerText ? <><Plus size={14} aria-hidden /><span>{triggerText}</span><CaretDown size={10} aria-hidden /></> : <DotsThree size={17} weight="bold" />}
       </button>
       {open && (
         <div

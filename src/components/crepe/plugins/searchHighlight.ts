@@ -2,15 +2,14 @@
  * 笔记编辑器查找高亮插件
  *
  * 通过 ProseMirror Decoration 高亮所有匹配项，当前匹配项使用强调色。
- * 由 FindReplacePanel 通过 transaction meta 驱动：
- *   view.dispatch(tr.setMeta(searchHighlightKey, { query, activeIndex, caseSensitive, wholeWord }))
+ * FindReplacePanel 通过 setSearchHighlight 更新本地视图，不触发编辑事务。
  *
- * 文档变更时自动重新计算匹配（支持边输入边更新计数）。
+ * 文档变更通知面板重新搜索；用户正则只在可终止 Worker 中执行。
  */
 
-import { Plugin, PluginKey, type Transaction } from '@milkdown/prose/state';
-import { Decoration, DecorationSet } from '@milkdown/prose/view';
-import type { Node as ProseNode } from '@milkdown/prose/model';
+import { Plugin, PluginKey, type Transaction, type EditorState } from '@milkdown/prose/state';
+import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view';
+import { Fragment, type Node as ProseNode } from '@milkdown/prose/model';
 import { $prose } from '@milkdown/utils';
 
 export interface SearchMatch {
@@ -38,6 +37,8 @@ export interface SearchHighlightState {
 }
 
 export interface SearchHighlightMeta {
+  /** Results computed off-thread for this exact document. */
+  matches?: SearchMatch[];
   query?: string;
   activeIndex?: number;
   caseSensitive?: boolean;
@@ -281,20 +282,68 @@ export function collectSearchMatches(
   // CJK 无空格分词：整词边界对汉字几乎总是误伤，含 CJK 时退回子串匹配
   const wholeWord = (options.wholeWord ?? false) && !queryHasCjk(query);
   const useRegex = options.useRegex ?? false;
-  const regex = useRegex ? compileSearchRegex(query, caseSensitive) : null;
-  // 正则语法错误：按无匹配处理（面板层用 compileSearchRegex 单独提示无效态）
-  if (useRegex && !regex) return [];
+  // User regex execution is ONLY allowed inside the terminable worker below.
+  if (useRegex) return [];
   const matches: SearchMatch[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
     const projection = projectTextblock(node, pos);
-    matches.push(...(regex
-      ? collectRegexMatchesInTextblock(projection, regex, wholeWord)
-      : collectMatchesInTextblock(projection, query, caseSensitive, wholeWord)));
+    for (const match of collectMatchesInTextblock(projection, query, caseSensitive, wholeWord)) matches.push(match);
     // Text children were consumed as one projection; do not visit them again.
     return false;
   });
   return matches;
+}
+
+/** Exported source also lets integration tests run the very same code in a real worker. */
+export function searchWorkerSource(): string {
+  // Use runtime names so bundler minification cannot break the isolated closures.
+  const helpers = [compileSearchRegex, isCjkChar, queryHasCjk, isWordChar,
+    codePointBefore, codePointAt, advanceCodePoint, isWholeWordMatch, collectRegexMatchesInTextblock];
+  return [
+    ...helpers.map((fn) => `const ${fn.name} = ${fn.toString()};`),
+    `onmessage = ({ data: { projections, query, options } }) => {
+      const regex = ${compileSearchRegex.name}(query, options.caseSensitive);
+      if (!regex) { postMessage({ error: 'invalid_regex' }); return; }
+      const matches = [];
+      for (const projection of projections) {
+        for (const match of ${collectRegexMatchesInTextblock.name}(projection, regex, options.wholeWord && !${queryHasCjk.name}(query))) matches.push(match);
+      }
+      postMessage({ matches });
+    };`,
+  ].join('\n');
+}
+
+export function collectSearchMatchesAsync(
+  doc: ProseNode, query: string, options: SearchOptions = {}, signal?: AbortSignal,
+): Promise<SearchMatch[]> {
+  if (signal?.aborted) return Promise.reject(new DOMException('Search cancelled', 'AbortError'));
+  if (!query || !options.useRegex) return Promise.resolve(collectSearchMatches(doc, query, options));
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([searchWorkerSource()], { type: 'text/javascript' }));
+    let worker: Worker;
+    try { worker = new Worker(url); }
+    catch (error) { URL.revokeObjectURL(url); reject(new Error('search_worker_failed', { cause: error })); return; }
+    const finish = (error?: Error, matches: SearchMatch[] = []) => {
+      worker.terminate();
+      URL.revokeObjectURL(url);
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (error) reject(error); else resolve(matches);
+    };
+    const abort = () => finish(new DOMException('Search cancelled', 'AbortError'));
+    const timer = setTimeout(() => finish(new Error('search_timeout')), 2000);
+    signal?.addEventListener('abort', abort, { once: true });
+    worker.onmessage = ({ data }) => finish(data.error ? new Error(data.error) : undefined, data.matches);
+    worker.onerror = () => finish(new Error('search_worker_failed'));
+    const projections: TextblockProjection[] = [];
+    doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true;
+      projections.push(projectTextblock(node, pos));
+      return false;
+    });
+    worker.postMessage({ projections, query, options });
+  });
 }
 
 /**
@@ -329,7 +378,19 @@ export function replaceAllSearchMatches(
   let next = transaction;
   for (let i = nonOverlapping.length - 1; i >= 0; i--) {
     const match = nonOverlapping[i];
-    next = next.insertText(expandReplacement(replacement, match), match.from, match.to);
+    const text = expandReplacement(replacement, match);
+    // Keep the marks of each crossed text run (including links). Replacement is
+    // plain text, never parsed as Markdown; inline atoms cannot enter these ranges.
+    const nodes: ProseNode[] = [];
+    let consumed = 0;
+    next.doc.nodesBetween(match.from, match.to, (node, pos) => {
+      if (!node.isText) return;
+      const length = Math.min(match.to, pos + node.nodeSize) - Math.max(match.from, pos);
+      const end = pos + node.nodeSize >= match.to ? text.length : Math.min(text.length, consumed + length);
+      if (end > consumed) nodes.push(next.doc.type.schema.text(text.slice(consumed, end), node.marks));
+      consumed = end;
+    });
+    next = next.replaceWith(match.from, match.to, Fragment.fromArray(nodes));
   }
   return next;
 }
@@ -341,8 +402,9 @@ function buildState(
   caseSensitive: boolean,
   wholeWord: boolean,
   useRegex: boolean,
+  suppliedMatches?: SearchMatch[],
 ): SearchHighlightState {
-  const matches = collectSearchMatches(doc, query, { caseSensitive, wholeWord, useRegex });
+  const matches = suppliedMatches ?? collectSearchMatches(doc, query, { caseSensitive, wholeWord, useRegex });
   const clamped = matches.length === 0 ? 0 : Math.min(Math.max(activeIndex, 0), matches.length - 1);
   const decorations = matches.length === 0
     ? DecorationSet.empty
@@ -367,12 +429,27 @@ const emptyState = (): SearchHighlightState => ({
   decorations: DecorationSet.empty,
 });
 
+const viewHighlights = new WeakMap<EditorState, SearchHighlightState>();
+/** Pure view update: metadata dispatch would run appendTransaction plugins such
+ * as trailing-paragraph and can dirty an otherwise untouched read-only note. */
+export function setSearchHighlight(view: EditorView, meta: SearchHighlightMeta): void {
+  const previous = viewHighlights.get(view.state) ?? emptyState();
+  const query = meta.query ?? previous.query;
+  viewHighlights.set(view.state, query ? buildState(view.state.doc, query,
+    meta.activeIndex ?? previous.activeIndex, meta.caseSensitive ?? previous.caseSensitive,
+    meta.wholeWord ?? previous.wholeWord, meta.useRegex ?? previous.useRegex,
+    meta.matches ?? previous.matches) : emptyState());
+  view.updateState(view.state);
+}
+
 export const searchHighlightPlugin = $prose(() =>
   new Plugin<SearchHighlightState>({
     key: searchHighlightKey,
     state: {
       init: emptyState,
-      apply(tr, value) {
+      apply(tr, value, oldState, newState) {
+        const local = viewHighlights.get(oldState);
+        if (local) viewHighlights.set(newState, tr.docChanged ? emptyState() : local);
         const meta = tr.getMeta(searchHighlightKey) as SearchHighlightMeta | undefined;
         if (meta) {
           const nextQuery = meta.query ?? value.query;
@@ -382,7 +459,8 @@ export const searchHighlightPlugin = $prose(() =>
           // 新查询从第一个匹配开始；同查询导航沿用传入索引
           const nextIndex = meta.activeIndex ?? (nextQuery !== value.query ? 0 : value.activeIndex);
           if (!nextQuery) return emptyState();
-          return buildState(tr.doc, nextQuery, nextIndex, nextCase, nextWhole, nextRegex);
+           return buildState(tr.doc, nextQuery, nextIndex, nextCase, nextWhole, nextRegex,
+             meta.matches ?? (!tr.docChanged && nextQuery === value.query && nextRegex === value.useRegex ? value.matches : undefined));
         }
         if (tr.docChanged) {
           if (!value.query) return value;
@@ -400,8 +478,15 @@ export const searchHighlightPlugin = $prose(() =>
     },
     props: {
       decorations(state) {
-        return searchHighlightKey.getState(state)?.decorations ?? DecorationSet.empty;
+        return viewHighlights.get(state)?.decorations ?? searchHighlightKey.getState(state)?.decorations ?? DecorationSet.empty;
       },
     },
+    view: () => ({
+      update(view, previous) {
+        if (view.state.doc !== previous.doc) {
+          view.dom.dispatchEvent(new CustomEvent('notes-search-document-changed'));
+        }
+      },
+    }),
   })
 );

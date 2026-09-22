@@ -3,6 +3,9 @@ import { SlashProvider } from '@milkdown/kit/plugin/slash';
 import type { EditorView } from '@milkdown/prose/view';
 import { crepeBlockCommands } from './blockMenuCommands';
 import { isBlockTargetCurrent, resolveBlockSelection } from './blockTarget';
+import { canEditCrepeView, canExecuteCrepeCommand, executeCrepeCommand, LAYOUT_COMMANDS, isLayoutCommand } from './commandRegistry';
+import { layoutCommandLabel } from './commandMenus';
+import { showGlobalNotification } from '../UnifiedNotification';
 
 const openMenus = new WeakMap<EditorView, () => void>();
 const labels: Record<keyof typeof crepeBlockCommands, [string, string]> = {
@@ -10,6 +13,9 @@ const labels: Record<keyof typeof crepeBlockCommands, [string, string]> = {
   'heading-1': ['heading1', '一级标题'],
   'heading-2': ['heading2', '二级标题'],
   'heading-3': ['heading3', '三级标题'],
+  'heading-4': ['heading4', '四级标题'],
+  'heading-5': ['heading5', '五级标题'],
+  'heading-6': ['heading6', '六级标题'],
   'bullet-list': ['bulletList', '无序列表'],
   'ordered-list': ['orderedList', '有序列表'],
   'task-list': ['taskList', '任务列表'],
@@ -24,7 +30,7 @@ const labels: Record<keyof typeof crepeBlockCommands, [string, string]> = {
 /** Programmatic menu using the pinned SlashProvider, without a slash/query in the
  * document. Crepe's built-in items clearTextInCurrentBlock and are unsafe here. */
 export function openCrepeBlockCommandMenu(view: EditorView, actions = false): boolean {
-  if (view.isDestroyed || !view.editable || view.composing) return false;
+  if (!canEditCrepeView(view) || view.composing) return false;
   const target = resolveBlockSelection(view);
   if (!target) return false;
   openMenus.get(view)?.();
@@ -76,19 +82,21 @@ export function openCrepeBlockCommandMenu(view: EditorView, actions = false): bo
     buttons[next].focus({ preventScroll: true });
     buttons[next].scrollIntoView?.({ block: 'nearest' });
   };
-  for (const id of Object.keys(crepeBlockCommands) as (keyof typeof crepeBlockCommands)[]) {
+  for (const id of [...Object.keys(crepeBlockCommands) as (keyof typeof crepeBlockCommands)[], ...LAYOUT_COMMANDS]) {
     if (!actions && (id === 'duplicate' || id === 'delete')) continue;
     const button = document.createElement('button');
     button.type = 'button';
     button.role = 'menuitem';
     button.dataset.command = id;
     if (id === 'delete') button.dataset.destructive = 'true';
-    button.textContent = i18next.t(`notes:blockMenu.${labels[id][0]}`, { defaultValue: labels[id][1] });
+    button.textContent = isLayoutCommand(id) ? layoutCommandLabel(id)
+      : i18next.t(`notes:blockMenu.${labels[id][0]}`, { defaultValue: labels[id][1] });
+    button.disabled = !canExecuteCrepeCommand(view, id, { target });
     button.addEventListener('pointerdown', (event) => event.preventDefault());
     button.addEventListener('click', () => {
       close();
       // The captured target stays bound to its instance/document even after focus changes.
-      crepeBlockCommands[id](view, target);
+      void executeCrepeCommand(view, id, { target }).catch(error => showGlobalNotification('error', String(error)));
       if (!view.isDestroyed) view.focus();
     });
     buttons.push(button);

@@ -240,7 +240,7 @@ describe('NoteContentView windowing', () => {
 
     expect(screen.queryByTestId('notes-context-panel')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'notes:contextPanel.title' }));
-    await waitFor(() => expect(mocks.contextPanelContents.at(-1)).toBe(props.initialContent));
+    await waitFor(() => expect(mocks.contextPanelContents.at(-1)).toBe(makeLines(1000)));
   });
 
   it('provides live full markdown to internal editor actions before the tail is loaded', async () => {
@@ -253,6 +253,9 @@ describe('NoteContentView windowing', () => {
     visible = visible.replace('line 1\n', 'edited first line\n');
     expect(api.getFullMarkdown()).toBe(markdown.replace('line 1\n', 'edited first line\n'));
     expect(api.getFullMarkdown()).toContain('line 1000');
+    act(() => props.onEditorReady(api));
+    fireEvent.click(screen.getByRole('button', { name: 'notes:contextPanel.title' }));
+    await waitFor(() => expect(mocks.contextPanelContents.at(-1)).toBe(api.getFullMarkdown()));
   });
 
   it.each(['roundtrip', 'throw'] as const)('restores the live unsaved window and complete draft on %s failure', async (failure) => {

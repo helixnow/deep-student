@@ -1,5 +1,4 @@
-import { Editor, defaultValueCtx, editorViewCtx, rootCtx } from '@milkdown/core'
-import { commonmark } from '@milkdown/preset-commonmark'
+import { DOMParser, DOMSerializer } from '@milkdown/prose/model'
 import { getMarkdown } from '@milkdown/utils'
 import { describe, expect, it } from 'vitest'
 
@@ -7,35 +6,12 @@ import {
   formatToggleMarker,
   parseToggleMarker,
   TOGGLE_TYPE,
-  togglePlugin,
+  createToggleNode,
 } from '../index'
+import { createToggleEditor } from './fixture'
 
 function normalizeMarkdown(md: string): string {
   return md.replace(/\r\n/g, '\n').replace(/\n+$/, '\n').trimEnd() + '\n'
-}
-
-async function createToggleEditor(markdown: string) {
-  const root = document.createElement('div')
-  document.body.appendChild(root)
-
-  const editor = Editor.make()
-  editor.config((ctx) => {
-    ctx.set(rootCtx, root)
-    ctx.set(defaultValueCtx, markdown)
-  })
-  editor.use(commonmark)
-  editor.use(togglePlugin())
-  await editor.create()
-
-  return {
-    editor,
-    root,
-    view: editor.ctx.get(editorViewCtx),
-    destroy: async () => {
-      await editor.destroy()
-      root.remove()
-    },
-  }
 }
 
 describe('parseToggleMarker / formatToggleMarker', () => {
@@ -66,6 +42,71 @@ describe('parseToggleMarker / formatToggleMarker', () => {
 })
 
 describe('toggle markdown roundtrip', () => {
+  it.each([
+    ['> [!toggle]- **粗体** *斜体* [链接](https://example.com) `a*b` ![图示](image.png) $x^2$\n> body', '粗体 斜体 链接 a*b 图示 x^2'],
+    ['> [!toggle] \\*字面\\* \\[方括号\\] C:\\\\path &amp; &lt;b&gt;\n> body', '*字面* [方括号] C:\\path & <b>'],
+    ['> [!toggle]+ old\n> body', 'old'],
+    ['> [!toggle]-无空格旧标题\n> body', '无空格旧标题'],
+    ['> [!toggle]- **title\n> body** rest', 'title'],
+  ])('imports old complex titles as one plain PM text node: %s', async (source, title) => {
+    const f = await createToggleEditor(source)
+    try {
+      const node = f.view.state.doc.firstChild!
+      expect(node.child(0).type.name).toBe('toggleTitle')
+      expect(node.child(1).type.name).toBe('toggleBody')
+      expect(node.child(0).textContent).toBe(title)
+      expect(node.child(0).firstChild?.marks).toEqual([])
+      const markdown = f.crepe.getMarkdown()
+      expect(markdown).toContain('[!toggle]')
+      expect(markdown).not.toContain('\\[!toggle]')
+      expect(f.parse(markdown)!.eq(f.view.state.doc)).toBe(true)
+      f.view.state.doc.check()
+    } finally { await f.destroy() }
+  })
+
+  it('roundtrips newly edited literal punctuation and whitespace without title attr', async () => {
+    const f = await createToggleEditor('')
+    try {
+      const title = '  **literal** [link](url) `code` $math$ \\ &amp; <tag> | ~~x~~ a  b\tend  '
+      const node = createToggleNode(f.view.state.schema, title, undefined, { open: false })
+      f.view.dispatch(f.view.state.tr.replaceWith(0, f.view.state.doc.content.size, node))
+      // Crepe's trailing-node plugin adds an empty editor paragraph after edits;
+      // Markdown intentionally does not persist that blank UI landing paragraph.
+      expect(f.parse(f.crepe.getMarkdown())!.firstChild!.eq(node)).toBe(true)
+      expect(f.view.state.schema.nodeFromJSON(f.view.state.doc.toJSON()).eq(f.view.state.doc)).toBe(true)
+      const wrapper = document.createElement('div')
+      wrapper.append(DOMSerializer.fromSchema(f.view.state.schema).serializeFragment(f.view.state.doc.content))
+      expect(wrapper.querySelector('[data-title]')).toBeNull()
+      expect(wrapper.querySelector('[data-toggle-title]')?.textContent).toBe(title)
+      expect(DOMParser.fromSchema(f.view.state.schema).parse(wrapper).eq(f.view.state.doc)).toBe(true)
+    } finally { await f.destroy() }
+  })
+
+  it('imports old copied HTML title once, retaining body marks and author default', async () => {
+    const f = await createToggleEditor('')
+    try {
+      const old = document.createElement('div')
+      old.innerHTML = '<div data-type="toggle" data-open="false" data-title="Old &amp; title"><div data-toggle-body><p><strong>body</strong></p></div></div>'
+      const doc = DOMParser.fromSchema(f.view.state.schema).parse(old)
+      doc.check()
+      expect(doc.firstChild?.attrs.open).toBe(false)
+      expect(doc.firstChild?.attrs.title).toBeUndefined()
+      expect(doc.firstChild?.child(0).textContent).toBe('Old & title')
+      expect(doc.firstChild?.child(1).firstChild?.firstChild?.marks[0].type.name).toBe('strong')
+    } finally { await f.destroy() }
+  })
+
+  it('parses and serializes nested toggle, callout, table, list, code and inline marks', async () => {
+    const f = await createToggleEditor('> [!toggle]- Outer\n>\n> > [!toggle]- Inner\n> >\n> > - **item**\n> >\n> > ```js\n> > code()\n> > ```\n>\n> > [!note] Callout\n> >\n> > body\n>\n> | A | B |\n> | - | - |\n> | x | y |')
+    try {
+      const names: string[] = []
+      f.view.state.doc.descendants((node) => { names.push(node.type.name) })
+      expect(names.filter((name) => name === 'toggle')).toHaveLength(2)
+      expect(names).toEqual(expect.arrayContaining(['toggleTitle', 'toggleBody', 'callout', 'table', 'bullet_list', 'code_block']))
+      expect(f.parse(f.crepe.getMarkdown())!.eq(f.view.state.doc)).toBe(true)
+      f.view.state.doc.check()
+    } finally { await f.destroy() }
+  })
   it('preserves inline formatting immediately after the marker across roundtrips', async () => {
     const source = '> [!toggle]- 标题\n> **粗体**、*斜体*、[链接](https://example.com)、`代码`、![图片](image.png)\n'
     const first = await createToggleEditor(source)
@@ -99,7 +140,8 @@ describe('toggle markdown roundtrip', () => {
         if (node.type.name === TOGGLE_TYPE) {
           found = true
           expect(node.attrs.open).toBe(false)
-          expect(node.attrs.title).toBe('折叠标题')
+          expect(node.firstChild?.textContent).toBe('折叠标题')
+          expect(node.attrs).not.toHaveProperty('title')
           expect(node.textContent).toContain('内容段落')
         }
       })
@@ -132,7 +174,7 @@ describe('toggle markdown roundtrip', () => {
       view.state.doc.descendants((node) => {
         if (node.type.name === TOGGLE_TYPE) {
           open = Boolean(node.attrs.open)
-          expect(node.attrs.title).toBe('展开标题')
+          expect(node.firstChild?.textContent).toBe('展开标题')
         }
       })
       expect(open).toBe(true)

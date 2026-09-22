@@ -1,5 +1,7 @@
 import type { CrepeFormattingState } from '@/components/crepe/formattingState';
-import { insertImageFromDevice } from '../mobileEditorCommands';
+import { insertImageFromDevice, runEditorCommand } from '../mobileEditorCommands';
+import { LAYOUT_COMMANDS, type CrepeCommandId } from '@/components/crepe/commandRegistry';
+import { layoutCommandLabel } from '@/components/crepe/commandMenus';
 /**
  * 笔记编辑器顶部工具栏
  * 提供常用的 Markdown 格式化操作
@@ -13,7 +15,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import type { CrepeEditorApi } from '@/components/crepe/types';
-import type { Ctx } from '@milkdown/kit/ctx';
 import {
   TextAa,
   TextB,
@@ -35,18 +36,13 @@ import {
   ChatCenteredText,
   CaretCircleDown,
   BracketsSquare,
-  Cards,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { useNotesOptional } from '../NotesContext';
-import { generateCardsFromNote } from '../generateCardsFromNote';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { isMacOS } from '@/utils/platform';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import {
-  insertEmptyCallout,
-  insertEmptyToggle,
-} from '@/components/crepe/plugins/slashMenuExtras';
 
 interface NotesEditorToolbarProps {
   /** 可选：直接传入 editor，用于白板等非 NotesContext 场景 */
@@ -117,10 +113,11 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   const contextEditor = notesContext?.editor ?? null;
   
   const editor = externalEditor ?? contextEditor;
+  const [, refreshCommands] = useState(0);
+  useEffect(() => editor?.subscribeCommandState?.(() => refreshCommands(value => value + 1)), [editor]);
   const isDisabled = !editor || readOnly;
   const mac = isMacOS();
   const [overflowOpen, setOverflowOpen] = useState(false);
-  const [generatingCards, setGeneratingCards] = useState(false);
 
   // 内联区横向滚动：仅在真实溢出时展示渐隐 mask 提示
   const inlineRef = useRef<HTMLDivElement | null>(null);
@@ -139,9 +136,17 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
 
   // 溢出菜单 roving tabindex（role="menu" 方向键导航）
   const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const formatTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [menuActiveIndex, setMenuActiveIndex] = useState(0);
   useEffect(() => {
-    if (overflowOpen) setMenuActiveIndex(0);
+    if (!overflowOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const index = menuItemRefs.current.findIndex(item => item && !item.disabled);
+      if (index < 0) return;
+      setMenuActiveIndex(index);
+      menuItemRefs.current[index]?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [overflowOpen]);
 
   // 使用 ProseMirror 命令直接操作编辑器
@@ -209,50 +214,24 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
     editor?.insertCodeBlock();
   }, [editor]);
 
-  /** 通过 Crepe ctx 运行插件级插入命令（callout / toggle 走 slash 菜单同款实现） */
-  const runWithCtx = useCallback((fn: (ctx: Ctx) => void) => {
-    const crepe = editor?.getCrepe?.();
-    if (!crepe?.editor) return;
-    try {
-      crepe.editor.action(fn);
-    } catch {
-      // 编辑器未就绪 / 已销毁
-    }
+  const handleCallout = useCallback(() => {
+    runEditorCommand(editor, 'insert-callout');
   }, [editor]);
 
-  const handleCallout = useCallback(() => {
-    runWithCtx(insertEmptyCallout);
-  }, [runWithCtx]);
-
   const handleToggle = useCallback(() => {
-    runWithCtx(insertEmptyToggle);
-  }, [runWithCtx]);
-
-  /**
-   * 生成卡片：把当前笔记全文送进共享制卡入口（与错题本 / 作文批改同一条 CardForge 通道）。
-   * 只读笔记同样可以制卡，因此不受 readOnly 影响，仅在编辑器缺失或任务提交中禁用。
-   */
-  const handleGenerateCards = useCallback(() => {
-    if (!editor || generatingCards) return;
-    setGeneratingCards(true);
-    void generateCardsFromNote({
-      editor,
-      noteTitle: notesContext?.active?.title,
-      translate: tr,
-    }).finally(() => {
-      setGeneratingCards(false);
-    });
-  }, [editor, generatingCards, notesContext?.active?.title, tr]);
+    runEditorCommand(editor, 'insert-toggle');
+  }, [editor]);
 
   /** 插入 `[[` 触发 wikilink 自动补全浮层（与手动输入同一路径） */
   const handleWikilink = useCallback(() => {
     if (!editor) return;
-    editor.focus();
-    editor.insertAtCursor('[[');
+    runEditorCommand(editor, 'wikilink');
   }, [editor]);
 
   // 快捷键文案对齐 Milkdown preset-commonmark / preset-gfm 真实 keymap；
   // Mod-K 由本阶段 linkKeymapPlugin 补齐（见 docs/revamp/07-shortcuts.md）
+  const commandIds: CrepeCommandId[] = ['bold', 'italic', 'strikethrough', 'inline-code', 'heading-1', 'heading-2', 'heading-3',
+    'bullet-list', 'ordered-list', 'task-list', 'quote', 'link', 'wikilink', 'insert-callout', 'insert-toggle', 'hr', 'code-block', 'image', 'table'];
   const formatActions = [
     { active: activeStates.bold, icon: <TextB />, label: tr('notes:toolbar.bold', '粗体'), shortcut: formatShortcut({ key: 'B' }, mac), action: handleBold },
     { active: activeStates.italic, icon: <TextItalic />, label: tr('notes:toolbar.italic', '斜体'), shortcut: formatShortcut({ key: 'I' }, mac), action: handleItalic },
@@ -273,38 +252,53 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
     { icon: <FileCode />, label: tr('notes:toolbar.codeBlock', '代码块'), shortcut: formatShortcut({ alt: true, key: 'C' }, mac), action: handleCodeBlock },
     { icon: <Image />, label: tr('notes:toolbar.image', '图片'), action: handleImage },
     { icon: <Table />, label: tr('notes:toolbar.table', '表格'), action: handleTable },
-  ];
+  ].map((item, index) => ({ ...item, command: commandIds[index],
+    disabled: editor?.canExecuteCommand ? !editor.canExecuteCommand(commandIds[index], { toggle: true }) : false,
+  })).concat(LAYOUT_COMMANDS.map(command => ({ command, disabled: !editor?.canExecuteCommand?.(command),
+    icon: <Table />, label: layoutCommandLabel(command), action: () => runEditorCommand(editor, command),
+  })));
 
-  // 桌面端外露的高频按钮（按 label 匹配 formatActions，分组间加分隔线）。
-  // B04：常驻只保留“文字样式 / 列表 / 插入链接”，其余（标题、公式、图表、
-  // callout、折叠块等）进入“更多”溢出菜单；选中文本的选区格式由浮条提供。
-  const inlineGroups: string[][] = [
-    [tr('notes:toolbar.bold', '粗体'), tr('notes:toolbar.italic', '斜体'), tr('notes:toolbar.code', '行内代码')],
-    [tr('notes:toolbar.bulletList', '无序列表'), tr('notes:toolbar.orderedList', '有序列表'), tr('notes:toolbar.taskList', '任务列表')],
-    [tr('notes:toolbar.quote', '引用'), tr('notes:toolbar.link', '链接')],
+  // 常驻只放四个高频动作；其余按文字/段落/插入/布局分组。
+  const inlineGroups: CrepeCommandId[][] = [
+    ['bold', 'italic'],
+    ['bullet-list', 'link'],
   ];
-  const actionByLabel = new Map(formatActions.map((item) => [item.label, item]));
+  const actionByCommand = new Map(formatActions.map((item) => [item.command, item]));
+  const menuGroups: Record<number, string> = {
+    0: tr('notes:chrome.text_style', '文字样式'),
+    4: tr('notes:chrome.paragraph', '段落'),
+    11: tr('notes:chrome.insert', '插入'),
+    19: tr('notes:layout.label', '页面布局'),
+  };
 
   const toolbarLabel = tr('notes:toolbar.label', '格式化');
-  const generateCardsLabel = tr('notes:toolbar.generateCards', '生成卡片');
 
   /** role="menu" 方向键 roving tabindex */
   const handleMenuKeyDown = useCallback((event: React.KeyboardEvent) => {
-    const count = menuItemRefs.current.length;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setOverflowOpen(false);
+      formatTriggerRef.current?.focus();
+      return;
+    }
+    const enabledIndices = menuItemRefs.current.flatMap((item, index) => item && !item.disabled ? [index] : []);
+    const count = enabledIndices.length;
     if (count === 0) return;
+    const current = enabledIndices.indexOf(menuActiveIndex);
     let next: number | null = null;
     switch (event.key) {
       case 'ArrowDown':
-        next = (menuActiveIndex + 1) % count;
+        next = enabledIndices[(current + 1) % count];
         break;
       case 'ArrowUp':
-        next = (menuActiveIndex - 1 + count) % count;
+        next = enabledIndices[(current < 0 ? count - 1 : current - 1 + count) % count];
         break;
       case 'Home':
-        next = 0;
+        next = enabledIndices[0];
         break;
       case 'End':
-        next = count - 1;
+        next = enabledIndices[count - 1];
         break;
       default:
         return;
@@ -332,16 +326,16 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         {inlineGroups.map((group, groupIndex) => (
           <React.Fragment key={groupIndex}>
             {groupIndex > 0 && <span className="notes-editor-toolbar-divider" aria-hidden="true" />}
-            {group.map((label) => {
-              const item = actionByLabel.get(label);
+            {group.map((command) => {
+              const item = actionByCommand.get(command);
               if (!item) return null;
               return (
-                <CommonTooltip key={label} content={item.label} shortcut={item.shortcut} position="bottom">
+                <CommonTooltip key={command} content={item.label} shortcut={item.shortcut} position="bottom">
                   <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    disabled={isDisabled}
+                    disabled={isDisabled || item.disabled}
                     aria-label={item.label}
                     aria-pressed={item.active}
                     className="flex-none ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
@@ -357,29 +351,13 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         ))}
         <span className="notes-editor-toolbar-divider" aria-hidden="true" />
       </div>
-      {/* 生成卡片：常驻主操作，内联区在窄屏收起后仍可点到；触屏保证 44px 命中区 */}
-      <CommonTooltip content={generateCardsLabel}>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          disabled={!editor || generatingCards}
-          aria-label={generateCardsLabel}
-          aria-busy={generatingCards || undefined}
-          className="notes-editor-generate-cards flex-none ui-press hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={handleGenerateCards}
-        >
-          <Cards className="h-4 w-4" />
-        </DsButton>
-      </CommonTooltip>
       <Popover open={overflowOpen} onOpenChange={setOverflowOpen}>
         <CommonTooltip content={toolbarLabel}>
           <PopoverTrigger asChild>
             <DsButton
+              ref={formatTriggerRef}
               variant="ghost"
-              size="icon"
-              iconOnly
+              size="sm"
               disabled={isDisabled}
               className={overflowOpen ? 'notes-editor-format-trigger active flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11' : 'notes-editor-format-trigger flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11'}
               aria-label={toolbarLabel}
@@ -388,14 +366,18 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               onMouseDown={(event) => event.preventDefault()}
             >
               <TextAa className="h-4 w-4" />
+              <span>{tr('notes:chrome.format', '格式')}</span>
+              <CaretDown className="h-3 w-3" />
             </DsButton>
           </PopoverTrigger>
         </CommonTooltip>
         <PopoverContent
           align="start"
           sideOffset={4}
-          className="notes-toolbar-overflow w-52 p-0"
+          className="notes-toolbar-overflow w-64 p-0"
           role="menu"
+          aria-hidden={!overflowOpen || undefined}
+          {...(!overflowOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
           onKeyDown={handleMenuKeyDown}
           onWheel={(event) => event.stopPropagation()}
         >
@@ -405,24 +387,33 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
             fullHeight={false}
           >
             {formatActions.map((item, index) => (
-              <DsButton
-                key={item.label}
-                ref={(el) => { menuItemRefs.current[index] = el; }}
-                variant="ghost"
-                size="sm"
-                role={item.active === undefined ? "menuitem" : "menuitemcheckbox"}
-                tabIndex={index === menuActiveIndex ? 0 : -1}
-                className="notes-toolbar-overflow-item [@media(pointer:coarse)]:!min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
-                aria-label={item.label}
-                aria-checked={item.active}
-                onMouseDown={(event) => event.preventDefault()}
-                onFocus={() => setMenuActiveIndex(index)}
-                onClick={() => { item.action(); setOverflowOpen(false); }}
-              >
-                {React.cloneElement(item.icon, { className: 'h-4 w-4 shrink-0' })}
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {item.shortcut && <kbd>{item.shortcut}</kbd>}
-              </DsButton>
+              <React.Fragment key={item.command}>
+                {menuGroups[index] && <div className="notes-action-group-label" role="presentation">{menuGroups[index]}</div>}
+                <DsButton
+                  ref={(el) => { menuItemRefs.current[index] = el; }}
+                  variant="ghost"
+                  size="sm"
+                  role={item.active === undefined ? "menuitem" : "menuitemcheckbox"}
+                  tabIndex={index === menuActiveIndex ? 0 : -1}
+                  className="notes-toolbar-overflow-item [@media(pointer:coarse)]:!min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                  aria-label={item.label}
+                  aria-checked={item.active}
+                  disabled={isDisabled || item.disabled}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onFocus={() => setMenuActiveIndex(index)}
+                  onClick={() => {
+                    item.action();
+                    setOverflowOpen(false);
+                    if (menuItemRefs.current.includes(document.activeElement as HTMLButtonElement)) {
+                      formatTriggerRef.current?.focus();
+                    }
+                  }}
+                >
+                  {React.cloneElement(item.icon, { className: 'h-4 w-4 shrink-0' })}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                </DsButton>
+              </React.Fragment>
             ))}
           </CustomScrollArea>
         </PopoverContent>

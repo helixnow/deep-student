@@ -1048,6 +1048,30 @@
       "path": "vfs/V20260921__note_document_revisions.sql",
       "sha256": "a91d1e79fbe0000c4692297fa39cf8057e7cacc155b758454244b3beb9f9ae06",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260922,
+      "name": "note_storage_foundations",
+      "path": "vfs/V20260922__note_storage_foundations.sql",
+      "sha256": "f7ccccc5e6ea9078202bc41c51c6cdd348c6ba40623c275b7773a0fbf8df922f",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260923,
+      "name": "note_history_integration",
+      "path": "vfs/V20260923__note_history_integration.sql",
+      "sha256": "71f8064d10186a88f21fee25f01956f833f4e1254cff68db71aba9e319e1bb73",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260924,
+      "name": "note_editor_leases",
+      "path": "vfs/V20260924__note_editor_leases.sql",
+      "sha256": "04004d03207bc511973730809433c3078fc202b78ade46c528704ada1594c0bd",
+      "dangers": []
     }
   ]
 }

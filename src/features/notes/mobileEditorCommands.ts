@@ -1,18 +1,16 @@
 /**
  * 移动端工具条 → CrepeEditorApi 命令桥。
- * indent/outdent/undo/redo/openSlash 在 CrepeEditorApi 上未直接暴露，经 getCrepe() 走 ProseMirror。
+ * 写操作复用共享命令注册表；菜单展示仍通过编辑器 view 打开。
  */
 
 import i18next from 'i18next';
 import { editorViewCtx } from '@milkdown/kit/core';
-import { undo as pmUndo, redo as pmRedo } from '@milkdown/prose/history';
-import { sinkListItem, liftListItem } from '@milkdown/prose/schema-list';
 import type { EditorView } from '@milkdown/prose/view';
 
 import type { CrepeEditorApi } from '@/components/crepe';
 import { openCrepeBlockCommandMenu } from '@/components/crepe/blockCommandMenu';
-import { crepeBlockCommands, toggleCrepeBlockFormat, type CrepeBlockTurnInto } from '@/components/crepe/blockMenuCommands';
-import { resolveBlockSelection } from '@/components/crepe/blockTarget';
+import type { CrepeBlockTurnInto } from '@/components/crepe/blockMenuCommands';
+import { executeCrepeCommand, canExecuteCrepeCommand, canEditCrepeView, type CrepeCommandId, type CrepeCommandRequest } from '@/components/crepe/commandRegistry';
 import {
   createImageUploader,
   validateImageFile,
@@ -47,71 +45,27 @@ function withEditorView(editor: CrepeEditorApi | null | undefined, action: ViewA
   }
 }
 
-function resolveListItemType(view: EditorView) {
-  const nodes = view.state.schema.nodes;
-  return nodes.list_item ?? nodes.listItem ?? null;
+export function runEditorCommand(editor: CrepeEditorApi | null | undefined, id: CrepeCommandId, request?: CrepeCommandRequest): void {
+  if (editor?.executeCommand) { void editor.executeCommand(id, request).catch(error => showGlobalNotification('error', String(error))); return; }
+  withEditorView(editor, view => { void executeCrepeCommand(view, id, request).catch(error => showGlobalNotification('error', String(error))); });
 }
 
-/** 列表缩进：优先 sinkListItem，失败则向编辑器 DOM 派发 Tab */
+/** 列表缩进经统一 canExecute/schema 门禁。 */
 export function indentEditor(editor: CrepeEditorApi | null | undefined): void {
-  withEditorView(editor, (view) => {
-    const listItem = resolveListItemType(view);
-    try {
-      if (listItem && sinkListItem(listItem)(view.state, view.dispatch)) {
-        return;
-      }
-    } catch {
-      // sink 在部分嵌套结构下可能抛错，降级到 Tab 派发
-    }
-    view.focus();
-    view.dom.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', bubbles: true, cancelable: true }),
-    );
-  });
+  runEditorCommand(editor, 'indent');
 }
 
-/** 列表反缩进：优先 liftListItem，失败则派发 Shift+Tab */
+/** 列表反缩进经统一 canExecute/schema 门禁。 */
 export function outdentEditor(editor: CrepeEditorApi | null | undefined): void {
-  withEditorView(editor, (view) => {
-    const listItem = resolveListItemType(view);
-    try {
-      if (listItem && liftListItem(listItem)(view.state, view.dispatch)) {
-        return;
-      }
-    } catch {
-      // lift 失败时降级到 Shift+Tab 派发
-    }
-    view.focus();
-    view.dom.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Tab',
-        code: 'Tab',
-        shiftKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-  });
+  runEditorCommand(editor, 'outdent');
 }
 
 export function undoEditor(editor: CrepeEditorApi | null | undefined): void {
-  withEditorView(editor, (view) => {
-    try {
-      pmUndo(view.state, view.dispatch);
-    } catch {
-      // 历史插件未挂载 / 状态异常时静默（工具条按钮不应抛错）
-    }
-  });
+  runEditorCommand(editor, 'undo');
 }
 
 export function redoEditor(editor: CrepeEditorApi | null | undefined): void {
-  withEditorView(editor, (view) => {
-    try {
-      pmRedo(view.state, view.dispatch);
-    } catch {
-      // 同 undoEditor
-    }
-  });
+  runEditorCommand(editor, 'redo');
 }
 
 /** Opening/cancelling is UI-only: no document transaction or undo entry. */
@@ -120,13 +74,7 @@ export function openSlashMenu(editor: CrepeEditorApi | null | undefined): void {
 }
 
 function turnCurrentBlockInto(editor: CrepeEditorApi | null | undefined, kind: CrepeBlockTurnInto): void {
-  withEditorView(editor, (view) => {
-    const target = resolveBlockSelection(view);
-    if (!target) return;
-    if (kind === 'bullet-list' || kind === 'ordered-list' || kind === 'task-list' || kind === 'quote') {
-      toggleCrepeBlockFormat(view, target, kind);
-    } else crepeBlockCommands[kind](view, target);
-  });
+  runEditorCommand(editor, kind, { toggle: true });
 }
 
 function isTauriEnv(): boolean {
@@ -145,6 +93,8 @@ export async function insertImageFromDevice(
   noteId: string | undefined,
 ): Promise<void> {
   if (!editor) return;
+  if (editor.insertImageFromDevice) { editor.insertImageFromDevice(); return; }
+  if (editor.isReadonly()) return;
   if (!isTauriEnv()) {
     editor.insertImage();
     return;
@@ -238,6 +188,20 @@ export function buildMobileEditorCommands(
   extras?: MobileEditorCommandExtras,
 ): MobileEditorToolbarCommands {
   return {
+    subscribeState: editor?.subscribeCommandState,
+    canExecute: (action) => {
+      const ids: Record<string, CrepeCommandId> = { bold: 'bold', italic: 'italic', strikethrough: 'strikethrough',
+        h1: 'heading-1', h2: 'heading-2', h3: 'heading-3', bullet: 'bullet-list', task: 'task-list', ordered: 'ordered-list',
+        codeblock: 'code-block', columns: 'insert-columns', cornell: 'insert-cornell', convertColumns: 'convert-columns',
+        convertCornell: 'convert-cornell', unwrapColumns: 'unwrap-columns' };
+      if (action === 'generateCards' || action === 'find') return Boolean(editor);
+      if (action === 'slash' || action === 'blockActions') {
+        let enabled = false; withEditorView(editor, view => { enabled = canEditCrepeView(view); }); return enabled;
+      }
+      const id = ids[action] ?? action as CrepeCommandId;
+      if (editor?.canExecuteCommand) return editor.canExecuteCommand(id, { toggle: true });
+      let enabled = false; withEditorView(editor, view => { enabled = canExecuteCrepeCommand(view, id, { toggle: true }); }); return enabled;
+    },
     toggleBold: () => editor?.toggleBold(),
     toggleItalic: () => editor?.toggleItalic(),
     toggleStrikethrough: () => editor?.toggleStrikethrough(),
@@ -257,7 +221,15 @@ export function buildMobileEditorCommands(
     insertCodeBlock: () => turnCurrentBlockInto(editor, 'code-block'),
     insertTable: () => editor?.insertTable(),
     // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
-    openBlockActions: () => withEditorView(editor, (view) => { openCrepeBlockCommandMenu(view, true); }),
+    openBlockActions: () => {
+      if (editor?.executeCommand && editor.openBlockMenuAtSelection) editor.openBlockMenuAtSelection();
+      else withEditorView(editor, (view) => { openCrepeBlockCommandMenu(view, true); });
+    },
+    insertColumns: () => runEditorCommand(editor, 'insert-columns'),
+    insertCornell: () => runEditorCommand(editor, 'insert-cornell'),
+    convertColumns: () => runEditorCommand(editor, 'convert-columns'),
+    convertCornell: () => runEditorCommand(editor, 'convert-cornell'),
+    unwrapColumns: () => runEditorCommand(editor, 'unwrap-columns'),
     // 生成卡片：走与桌面工具栏同一个共享制卡入口，不新起链路；
     // 仅笔记宿主显式开启（enableGenerateCards）后暴露，未开启时按钮不渲染
     ...(extras?.enableGenerateCards

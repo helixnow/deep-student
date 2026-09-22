@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls, useIsPresent } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
 import { springSheet } from '@/styles/motion-springs';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /**
  * Android 系统返回键接入：DsDialog 是 framer-motion 自绘弹窗（非 Radix），
@@ -46,8 +47,11 @@ function useEscapeClose(open: boolean, close: () => void) {
     const token = Symbol('card-dialog-esc');
     escapeStack.push(token);
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || e.defaultPrevented || isComposingKeyEvent(e)) return;
       if (escapeStack[escapeStack.length - 1] !== token) return;
+      // Window-level hosts use defaultPrevented to keep the same Escape from
+      // also leaving focus mode. Inner popovers may consume Escape first.
+      e.preventDefault();
       closeRef.current();
     };
     document.addEventListener('keydown', handler);
@@ -106,13 +110,51 @@ const alertContentVariants = {
 // ============================================================================
 
 function ModalPortal({ children, open }: { children: React.ReactNode; open: boolean }) {
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
+  const [ready, setReady] = React.useState(false);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const openerRef = React.useRef<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    // Mount the content only after recording the opener: an autoFocus input
+    // otherwise steals focus before an effect can record the return target.
+    if (open) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setReady(open);
+  }, [open]);
+  React.useEffect(() => {
+    if (!open) return;
+    const opener = openerRef.current;
+    return () => {
+      // Restore after React's commit-time focus restoration, not during its
+      // layout cleanup (which would be overwritten by the exiting input).
+      const active = document.activeElement;
+      if (opener?.isConnected && (active === document.body || contentRef.current?.contains(active))) {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  }, [open]);
   return createPortal(
-    <AnimatePresence mode="wait">{open && children}</AnimatePresence>,
+    <AnimatePresence mode="wait">{open && ready && <DialogFocusScope contentRef={contentRef}>{children}</DialogFocusScope>}</AnimatePresence>,
     document.body,
   );
+}
+
+function DialogFocusScope({ children, contentRef }: {
+  children: React.ReactNode;
+  contentRef: React.MutableRefObject<HTMLDivElement | null>;
+}) {
+  // The portal content mounts later than DsDialog. Bind the trap here so an
+  // initially-open dialog also receives keyboard focus and a working Tab loop.
+  const present = useIsPresent();
+  const trapRef = useFocusTrap<HTMLDivElement>(present, { restoreFocus: false });
+  const setRef = React.useCallback((node: HTMLDivElement | null) => {
+    trapRef.current = node;
+    // React detaches refs before effect cleanup. Keep the last node
+    // through that cleanup so focus still inside the exiting layer is detected.
+    if (node) contentRef.current = node;
+  }, [trapRef, contentRef]);
+  return React.cloneElement(children as React.ReactElement<React.HTMLAttributes<HTMLDivElement> & React.RefAttributes<HTMLDivElement>>, {
+    ref: setRef,
+    tabIndex: -1,
+  });
 }
 
 // ============================================================================
@@ -148,10 +190,6 @@ export function DsDialog({
 
   // Android 返回键 = 关闭弹窗（与 ESC 同语义）
   useAndroidBackClose(open, () => onOpenChange(false));
-
-  // 焦点陷阱（aria-modal 契约）：Tab 在弹窗内循环，关闭后焦点归还触发元素。
-  // 内容含 autoFocus 输入框时不抢初始焦点（hook 内已判定焦点是否已入容器）。
-  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
 
   // 移动端（<768，与 App shell 同源）切换为 bottom sheet 形态，
   // 视觉规格对齐全局移动设置 Sheet（rounded-t-[24px] + 顶部把手 + 贴底全宽）
@@ -200,7 +238,6 @@ export function DsDialog({
 />
         {/* 内容 */}
         <motion.div
-          ref={focusTrapRef}
           role="dialog"
           aria-modal="true"
           tabIndex={-1}
@@ -434,9 +471,6 @@ export function DsAlertDialog({
   // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
   useAndroidBackClose(open, handleCancel);
 
-  // 焦点陷阱：初始焦点落到第一个按钮（取消 = 最不具破坏性），关闭后归还
-  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
-
   // Android 键盘避让：与 DsDialog 同一套 useKeyboardHeight 机制（children 内含输入框时生效）
   const keyboardHeight = useKeyboardHeight();
   const keyboardAvoid = keyboardHeight > 0;
@@ -467,7 +501,6 @@ export function DsAlertDialog({
         <motion.div className="fixed inset-0 bg-black/35 backdrop-blur-[2px]" variants={overlayVariants} />
         {/* 内容 */}
         <motion.div
-          ref={focusTrapRef}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby={titleId}

@@ -13,6 +13,8 @@ export type PersonalNoteTemplate = NoteTemplate & {
   /** Optional additions to the existing v1 library; older templates remain valid. */
   defaultForCourse?: string;
   learningPreset?: NoteLearningProps;
+  /** Local library revision; absent on pre-WP10 templates means zero. */
+  revision?: number;
 };
 
 function validatePreset(value: unknown): asserts value is NoteLearningProps {
@@ -57,6 +59,7 @@ export function savePersonalNoteTemplate(input: {
   /** Empty string clears the assignment; omitted preserves it on updates. */
   defaultForCourse?: string;
   learningPreset?: NoteLearningProps;
+  expectedRevision?: number;
 }): Promise<PersonalNoteTemplate> {
   const operation = pendingWrite.then(async () => {
     const title = input.title.trim();
@@ -65,6 +68,9 @@ export function savePersonalNoteTemplate(input: {
     if (new TextEncoder().encode(input.markdown).byteLength > 1024 * 1024) throw new Error(i18n.t('notes:personalTemplates.errors.body_too_large'));
     const templates = await loadPersonalNoteTemplates();
     const existing = templates.find((item) => item.id === input.id);
+    if (input.expectedRevision !== undefined && (!existing || (existing.revision ?? 0) !== input.expectedRevision)) {
+      throw new Error(i18n.t('notes:personalTemplates.errors.version_conflict', { defaultValue: '模板已被修改，请重新选择模板并核对后再保存。' }));
+    }
     const defaultForCourse = input.defaultForCourse === undefined ? existing?.defaultForCourse : input.defaultForCourse.trim();
     if (defaultForCourse && !isLearningPropValue('course', defaultForCourse)) throw new Error(i18n.t('notes:personalTemplates.errors.invalid_course'));
     const learningPreset = input.learningPreset ?? existing?.learningPreset;
@@ -73,6 +79,7 @@ export function savePersonalNoteTemplate(input: {
       ...existing,
       id: input.id ?? `personal:${nanoid()}`,
       title, summary: input.summary?.trim() ?? '', markdown: input.markdown,
+      revision: (existing?.revision ?? 0) + 1,
     };
     if (defaultForCourse) template.defaultForCourse = defaultForCourse;
     else delete template.defaultForCourse;
@@ -80,7 +87,10 @@ export function savePersonalNoteTemplate(input: {
     // A course has one explicit default. Selecting a new one does not delete the old template.
     if (defaultForCourse) {
       for (const other of templates) {
-        if (other.id !== template.id && other.defaultForCourse === defaultForCourse) delete other.defaultForCourse;
+        if (other.id !== template.id && other.defaultForCourse === defaultForCourse) {
+          delete other.defaultForCourse;
+          other.revision = (other.revision ?? 0) + 1;
+        }
       }
     }
     const index = templates.findIndex((item) => item.id === template.id);

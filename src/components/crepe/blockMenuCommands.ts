@@ -2,23 +2,29 @@ import type { EditorView } from '@milkdown/prose/view';
 import { Fragment, Slice, type Node as ProseNode, type Schema } from '@milkdown/prose/model';
 import { Selection, type Transaction } from '@milkdown/prose/state';
 import { closeHistory } from '@milkdown/prose/history';
+import { copyBlockWithFreshIdentity } from './plugins/blockIdentity';
+import { createToggleNode, unwrapToggle } from './plugins/toggle';
+import { createColumnsValidator } from './plugins/columns';
 import {
   isBlockTargetCurrent, isListItem, resolveBlockCommandTarget, type BlockTarget,
 } from './blockTarget';
 
 export type CrepeBlockTurnInto =
-  | 'paragraph' | 'heading-1' | 'heading-2' | 'heading-3'
+  | 'paragraph' | 'heading-1' | 'heading-2' | 'heading-3' | 'heading-4' | 'heading-5' | 'heading-6'
   | 'bullet-list' | 'ordered-list' | 'task-list'
   | 'quote' | 'code-block' | 'callout' | 'toggle';
 
 type BlockInput = number | BlockTarget;
+const validContainers = createColumnsValidator();
 
 function atomicChange(view: EditorView, prepare: () => Transaction | false): boolean {
+  if (!view.editable || view.dom?.inert) return false;
   let tr: Transaction | false;
   try {
     tr = prepare();
     if (!tr || !tr.docChanged || tr.doc.eq(view.state.doc)) return false;
     tr.doc.check();
+    if (!validContainers(tr.doc)) return false;
   } catch { return false; }
   // No dispatch (including selection-only dispatch) occurs before the entire plan is valid.
   // Don't report a post-dispatch host exception as a rejected, unchanged command.
@@ -36,7 +42,8 @@ function replace(view: EditorView, from: number, to: number, content: Fragment, 
 export function duplicateCrepeBlock(view: EditorView, input: BlockInput): boolean {
   const target = resolveBlockCommandTarget(view, input);
   if (!target || !view.editable) return false;
-  return atomicChange(view, () => replace(view, target.to, target.to, Fragment.fromArray([...target.nodes]), target.to + 1));
+  return atomicChange(view, () => replace(view, target.to, target.to,
+    Fragment.fromArray(target.nodes.map(node => copyBlockWithFreshIdentity(node, target.depth === 1))), target.to + 1));
 }
 
 export function deleteCrepeBlock(view: EditorView, input: BlockInput): boolean {
@@ -96,12 +103,27 @@ function convertBlocks(schema: Schema, blocks: readonly ProseNode[], kind: Crepe
   }
   const wrapper = kind === 'quote' ? nodes.blockquote : kind === 'callout' ? nodes.callout : kind === 'toggle' ? nodes.toggle : undefined;
   if (!wrapper) return null;
+  if (kind === 'toggle' && nodes.toggleTitle && nodes.toggleBody) return Fragment.from(createToggleNode(schema, '', blocks));
   return Fragment.from(wrapper.createChecked(null, Fragment.fromArray([...blocks])));
 }
 
 export function turnCrepeBlockInto(view: EditorView, input: BlockInput, kind: CrepeBlockTurnInto): boolean {
   const target = resolveBlockCommandTarget(view, input);
   if (!target || !view.editable) return false;
+  if (kind === 'paragraph' && target.nodes.length === 1 && target.nodes[0].type.name === 'toggle'
+    && view.state.schema.nodes.toggleTitle) {
+    return atomicChange(view, () => {
+      let tr: Transaction | false = false;
+      const projected = Object.create(view) as EditorView;
+      Object.defineProperty(projected, 'dispatch', { value: (next: Transaction) => {
+        const first = next.doc.nodeAt(target.pos);
+        if (first && target.nodes[0].attrs.dsBlockId) next.setNodeMarkup(target.pos, undefined,
+          { ...first.attrs, dsBlockId: target.nodes[0].attrs.dsBlockId });
+        tr = next;
+      } });
+      return unwrapToggle(projected, target.pos) ? tr : false;
+    });
+  }
   return atomicChange(view, () => {
     const $pos = target.doc.resolve(target.pos);
     let blocks = [...target.nodes];
@@ -128,6 +150,14 @@ export function turnCrepeBlockInto(view: EditorView, input: BlockInput, kind: Cr
       }
     } else converted = convertBlocks(view.state.schema, blocks, kind);
     if (!converted) return false;
+    if (target.depth === 1 && target.nodes.some(node => node.attrs.dsBlockId)) {
+      // Merging blocks retains the first identity. Other merged IDs cease to exist.
+      const identified: ProseNode[] = [];
+      converted.forEach((node, _offset, index) => identified.push(node.type.createChecked({
+        ...node.attrs, dsBlockId: target.nodes[index]?.attrs.dsBlockId ?? null,
+      }, node.content, node.marks)));
+      converted = Fragment.fromArray(identified);
+    }
     if (listItems) {
       // Split only the containing list around the selected items. Siblings and nested lists survive.
       const list = $pos.parent;
@@ -179,23 +209,52 @@ export function toggleCrepeBlockFormat(view: EditorView, target: BlockTarget,
 }
 
 /** Same-container sibling move, including a captured multi-block range. */
-export function moveCrepeBlocks(view: EditorView, target: BlockTarget, insertPos: number): boolean {
-  if (!view.editable || !isBlockTargetCurrent(view, target)) return false;
-  if (insertPos >= target.pos && insertPos <= target.to) return false;
-  return atomicChange(view, () => {
+export function prepareCrepeBlockMove(view: EditorView, target: BlockTarget, insertPos: number): Transaction | null {
+  if (!view.editable || view.dom?.inert || !isBlockTargetCurrent(view, target)) return null;
+  if (insertPos >= target.pos && insertPos <= target.to) return null;
+  try {
     const $from = target.doc.resolve(target.pos);
     const $insert = target.doc.resolve(insertPos);
-    if ($from.parent !== $insert.parent || $from.start() !== $insert.start() || $insert.textOffset) return false;
+    if ($insert.textOffset || $insert.parent.isTextblock) return null;
+    if ($from.parent !== $insert.parent || $from.start() !== $insert.start()) {
+      const moved = Fragment.fromArray([...target.nodes]);
+      if (!$insert.parent.canReplace($insert.index(), $insert.index(), moved)) return null;
+      let from = target.pos, to = target.to, replacement = Fragment.empty;
+      // A list cannot keep zero items. Its last item removes the list wrapper;
+      // other block+ containers keep an empty paragraph when their last block moves.
+      if (isListItem(target.nodes[0]) && target.nodes.length === $from.parent.childCount) {
+        from = $from.before($from.depth); to = from + $from.parent.nodeSize;
+      }
+      const $remove = target.doc.resolve(from), $end = target.doc.resolve(to);
+      if (!$remove.parent.canReplace($remove.index(), $end.index(), replacement)) {
+        const empty = view.state.schema.nodes.paragraph.createAndFill();
+        if (!empty) return null;
+        replacement = Fragment.from(empty);
+      }
+      if (insertPos >= from && insertPos <= to) return null;
+      const tr = view.state.tr.replace(from, to, new Slice(replacement, 0, 0));
+      const destination = tr.mapping.map(insertPos);
+      tr.replace(destination, destination, new Slice(moved, 0, 0));
+      tr.doc.check();
+      if (!validContainers(tr.doc)) return null;
+      return tr.setSelection(Selection.near(tr.doc.resolve(destination + 1)));
+    }
     const parent = $from.parent;
     const siblings = Array.from({ length: parent.childCount }, (_, i) => parent.child(i));
     siblings.splice(target.fromIndex, target.nodes.length);
     const index = $insert.index() - (insertPos > target.to ? target.nodes.length : 0);
     siblings.splice(index, 0, ...target.nodes);
     const content = Fragment.fromArray(siblings);
-    if (!parent.type.validContent(content)) return false;
+    if (!parent.type.validContent(content)) return null;
     return replace(view, $from.start(), $from.end(), content,
       insertPos > target.to ? insertPos - (target.to - target.pos) + 1 : insertPos + 1);
-  });
+  } catch { return null; }
+}
+
+/** Exact sibling/cross-container move. Destination is never widened to the root. */
+export function moveCrepeBlocks(view: EditorView, target: BlockTarget, insertPos: number): boolean {
+  const before = view.state.doc;
+  return atomicChange(view, () => prepareCrepeBlockMove(view, target, insertPos) || false) && view.state.doc !== before;
 }
 
 /** Shared by the block entry points and the mobile menu/format controls. */
@@ -204,6 +263,9 @@ export const crepeBlockCommands = {
   'heading-1': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-1'),
   'heading-2': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-2'),
   'heading-3': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-3'),
+  'heading-4': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-4'),
+  'heading-5': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-5'),
+  'heading-6': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'heading-6'),
   'bullet-list': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'bullet-list'),
   'ordered-list': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'ordered-list'),
   'task-list': (view: EditorView, target: BlockInput) => turnCrepeBlockInto(view, target, 'task-list'),

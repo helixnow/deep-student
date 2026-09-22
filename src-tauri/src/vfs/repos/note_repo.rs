@@ -553,6 +553,8 @@ impl VfsNoteRepo {
                 note_id, resource_result.resource_id
             );
 
+            let format = super::note_format_repo::NoteFormatRepo::detect(&note_id, &params.content)?;
+            super::note_format_repo::NoteFormatRepo::insert(conn, &format)?;
             super::note_revision_repo::NoteRevisionRepo::snapshot(conn, &note_id, "created")?;
             Ok(VfsNote {
                 id: note_id,
@@ -616,6 +618,32 @@ impl VfsNoteRepo {
         note_id: &str,
         params: VfsUpdateNoteParams,
     ) -> VfsResult<VfsNote> {
+        Self::update_note_with_format(conn, note_id, params, None)
+    }
+
+    /// Only the explicit, lossless per-page migration may supply a format upgrade.
+    pub(crate) fn update_note_with_format(
+        conn: &Connection,
+        note_id: &str,
+        params: VfsUpdateNoteParams,
+        format_upgrade: Option<super::note_format_repo::NoteFormat>,
+    ) -> VfsResult<VfsNote> {
+        Self::update_note_authorized(conn, note_id, params, format_upgrade, &[])
+    }
+
+    pub fn update_note_with_capabilities(
+        conn: &Connection, note_id: &str, params: VfsUpdateNoteParams, capabilities: &[String],
+    ) -> VfsResult<VfsNote> {
+        if params.expected_updated_at.as_deref().is_none_or(str::is_empty) {
+            return Err(super::note_format_repo::invalid("Capability-aware saves require expected_updated_at"));
+        }
+        Self::update_note_authorized(conn, note_id, params, None, capabilities)
+    }
+
+    fn update_note_authorized(
+        conn: &Connection, note_id: &str, params: VfsUpdateNoteParams,
+        format_upgrade: Option<super::note_format_repo::NoteFormat>, capabilities: &[String],
+    ) -> VfsResult<VfsNote> {
         // ★ M-011 修复 + 2026-07 防御性校验：空标题/超长/控制字符、tags 形状
         // （在 SAVEPOINT 外提前校验，避免先建新资源再回滚的无谓开销）
         if let Some(ref title) = params.title {
@@ -635,6 +663,7 @@ impl VfsNoteRepo {
         })?;
 
         let result = (|| -> VfsResult<VfsNote> {
+            super::note_lease_repo::NoteLeaseRepo::check_write(conn, note_id)?;
             // Read the note and its resource in the same SQLite snapshot. A
             // concurrent update replaces and deletes the old resource; reading
             // the note before this savepoint could leave a dangling resource ID.
@@ -657,10 +686,19 @@ impl VfsNoteRepo {
                 }
             }
 
+            if let Some(content) = &params.content {
+                if format_upgrade.is_none() {
+                    super::note_format_repo::NoteFormatRepo::validate_write_capabilities(conn, note_id, content, capabilities)?;
+                }
+            }
+
             // CAS tokens must advance even when two writes land in the same
             // millisecond; otherwise a stale expected_updated_at can still
             // match after the first writer commits.
             super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
+            if let Some(format) = &format_upgrade {
+                super::note_format_repo::NoteFormatRepo::insert(conn, format)?;
+            }
             let now = next_updated_at(&current_note.updated_at);
 
             // 2. 处理内容更新（版本管理）
@@ -766,6 +804,10 @@ impl VfsNoteRepo {
             // 仅当确实无其他笔记引用时删除（防御历史无盐共享数据）。
             if new_resource_id.is_some() && current_note.resource_id != *final_resource_id {
                 let old_rid = &current_note.resource_id;
+                // A note resource is replaced on every edit. Relationships track
+                // the live resource identity, before the old resource is reclaimed.
+                conn.execute("UPDATE note_learning_relations SET resource_id=?1, revision=revision+1, updated_at=?2 WHERE resource_id=?3 AND invalidated_at IS NULL AND NOT EXISTS (SELECT 1 FROM notes WHERE resource_id=?3)",
+                    params![final_resource_id, now, old_rid])?;
                 let note_refs: i64 = conn.query_row(
                     "SELECT COUNT(*) FROM notes WHERE resource_id = ?1",
                     params![old_rid],
@@ -797,7 +839,9 @@ impl VfsNoteRepo {
             }
 
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
-            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "edit")?;
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id,
+                if format_upgrade.is_some() { "format_migration" } else { "edit" })?;
+            super::note_relation_repo::NoteRelationRepo::invalidate_missing_blocks(conn, note_id)?;
 
             // 4. 返回更新后的笔记
             Ok(VfsNote {

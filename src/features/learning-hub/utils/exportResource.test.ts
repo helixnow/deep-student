@@ -26,6 +26,22 @@ beforeEach(() => {
 });
 
 describe('note export full draft contract', () => {
+  it('materializes before plain export and keeps layout Markdown on explicit layout export', async () => {
+    let windowed = true;
+    const materialize = vi.fn(async () => { windowed = false; });
+    const plain = vi.fn(() => { expect(windowed).toBe(false); return 'left\n\nright\n'; });
+    const layout = '<!-- ds:columns -->\nleft and right\n';
+    mocks.getNoteEditor.mockReturnValue({
+      getFullDocument: () => ({ noteId: 'note_1', revision: 4, markdown: layout }),
+      materializeFullDocument: materialize, isDocumentWindowed: () => windowed, getPlainMarkdown: plain,
+    });
+    expect(await exportResourceById('note_1', t)).toBe(true);
+    expect(mocks.saveTextFile.mock.calls[0][0].content).toBe(header + 'left\n\nright\n');
+    expect(materialize).toHaveBeenCalledOnce();
+    expect(await exportResourceById('note_1', t, undefined, 'layout')).toBe(true);
+    expect(mocks.saveTextFile.mock.calls[1][0].content).toBe(header + layout);
+    expect(plain).toHaveBeenCalledOnce();
+  });
   it('keeps export metadata and includes the latest unsaved prefix and hidden tail in the owning window', async () => {
     let markdown = 'initial draft';
     mocks.getNoteEditor.mockReturnValue({ getFullDocument: () => ({ noteId: 'note_1', revision: 3, markdown }) });

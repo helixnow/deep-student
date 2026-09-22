@@ -44,6 +44,7 @@ pub mod emitter;
 pub mod field_merge;
 pub mod history;
 pub mod hlc;
+mod note_history;
 pub mod pomodoro_counts;
 pub mod progress;
 pub mod state;
@@ -3068,7 +3069,7 @@ impl SyncManager {
             if !Self::table_exists_for_snapshot(conn, table.table_name)? {
                 continue;
             }
-            let columns = Self::table_column_names(conn, table.table_name)?;
+            let columns = Self::get_table_columns(conn, table.table_name)?;
             if columns.is_empty() {
                 continue;
             }
@@ -4580,6 +4581,17 @@ impl SyncManager {
     ) -> Result<(), SyncError> {
         Self::ensure_table_allowed_and_exists_for(conn, database_name, table_name)?;
 
+        if table_name == "note_document_revisions" {
+            return note_history::apply_revision(conn, record_id, data);
+        }
+        note_history::validate_incoming(conn, table_name, record_id, data)?;
+        let history_notes = note_history::affected_notes(conn, table_name, record_id)?;
+        let previous_note_resource = if table_name == "notes" && !history_notes.is_empty() {
+            conn.query_row("SELECT resource_id FROM notes WHERE id=?1", [record_id], |r| r.get::<_, String>(0)).optional()
+                .map_err(|e| SyncError::Database(e.to_string()))?
+        } else { None };
+        note_history::snapshot_notes(conn, &history_notes, "before_sync")?;
+
         let table_ident = Self::quote_identifier(table_name)?;
 
         let mut obj = data
@@ -4604,6 +4616,9 @@ impl SyncManager {
         // these columns, so strip them on ingress as well as excluding them on
         // egress.  A receiving device must build its own Lance rows.
         obj.retain(|column, _| !Self::is_local_derived_sync_column(table_name, column));
+        if table_name == "note_learning_relations" {
+            note_history::prepare_relation(conn, record_id, &mut obj)?;
+        }
         if let Some(deltas) = field_deltas.as_mut() {
             deltas.retain(|column, _| !Self::is_local_derived_sync_column(table_name, column));
         }
@@ -5024,6 +5039,14 @@ impl SyncManager {
             }
         }
 
+        let mut history_notes = history_notes;
+        if table_name == "notes" && Self::table_has_column(conn, "note_document_revisions", "version_id") {
+            if !history_notes.iter().any(|id| id == record_id) { history_notes.push(record_id.to_string()); }
+        }
+        note_history::snapshot_notes(conn, &history_notes, "remote_sync")?;
+        if let Some(previous) = previous_note_resource {
+            note_history::retarget_note_relations(conn, record_id, &previous)?;
+        }
         Ok(())
     }
 
@@ -5369,6 +5392,8 @@ impl SyncManager {
 
     fn primary_key_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
+        // seq is a device-local timeline cursor, never a transport identity.
+        if table_name == "note_document_revisions" { return Ok(vec!["version_id".into()]); }
         let table_ident = Self::quote_identifier(table_name)?;
         let sql = format!("PRAGMA table_info({})", table_ident);
         let mut stmt = conn
@@ -5572,6 +5597,22 @@ impl SyncManager {
             let canonical = Self::resolve_alias(aliases, &fk.parent_table, &current)?;
             if canonical != current {
                 obj.insert(fk.child_column, serde_json::Value::String(canonical));
+            }
+        }
+        if table_name == "note_learning_relations" {
+            use crate::vfs::repos::note_relation_repo::NoteLocator;
+            let raw = obj.get("locator_json").and_then(serde_json::Value::as_str)
+                .ok_or_else(|| SyncError::Database("Missing relation locator".into()))?;
+            let mut locator: NoteLocator = serde_json::from_str(raw).map_err(|e| SyncError::Database(e.to_string()))?;
+            if !matches!(locator, NoteLocator::Card(_)) {
+                if let Some(id) = obj.get("resource_id").and_then(serde_json::Value::as_str) {
+                    let mapped = Self::resolve_alias(aliases, "resources", id)?;
+                    obj.insert("resource_id".into(), serde_json::Value::String(mapped));
+                }
+            }
+            if let NoteLocator::Question(id) = &mut locator {
+                *id = Self::resolve_alias(aliases, "questions", id)?;
+                obj.insert("locator_json".into(), serde_json::Value::String(serde_json::to_string(&locator).map_err(|e| SyncError::Database(e.to_string()))?));
             }
         }
         Ok(())
@@ -6001,6 +6042,9 @@ impl SyncManager {
             "notes" | "files" | "exam_sheets" | "translations" | "essays" | "mindmaps"
             | "todo_items" => 40,
             "chat_v2_blocks" => 42,
+            "note_document_formats" => 43,
+            "note_document_revisions" => 45,
+            "note_learning_relations" => 70,
             "chat_v2_compactions" => 45,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
             "chat_messages" | "review_chat_messages" | "anki_cards" | "review_session_mistakes" => {
@@ -6556,6 +6600,7 @@ impl SyncManager {
         C: AsRef<[SyncChangeWithData]>,
     {
         let changes = changes.as_ref();
+        note_history::validate_batch_formats(changes)?;
         if changes.is_empty() {
             return Ok(ApplyChangesResult::empty());
         }
@@ -7068,6 +7113,7 @@ impl SyncManager {
         P: FnOnce(&Connection) -> Result<(), SyncError>,
         F: FnOnce(&Connection, &ApplyChangesResult) -> Result<(), SyncError>,
     {
+        note_history::validate_batch_formats(changes)?;
         if changes.is_empty() {
             return Ok(ApplyChangesResult::empty());
         }
@@ -7221,6 +7267,7 @@ impl SyncManager {
     > {
         use conflict_resolver::{ConflictResolver, ConflictSide};
 
+        note_history::validate_batch_formats(changes)?;
         if changes.is_empty() {
             return Ok((
                 ApplyChangesResult::empty(),
@@ -8034,6 +8081,14 @@ impl SyncManager {
         skip_lww: bool,
         allow_field_merge: bool,
     ) -> Result<bool, SyncError> {
+        if change.table_name == "note_document_revisions" {
+            // Retention/pruning decisions are device-local. A remote prune must
+            // not delete a version retained here (or block a delayed insertion).
+            if change.operation == ChangeOperation::Delete { return Ok(false); }
+            let data = change.data.as_ref().ok_or_else(|| SyncError::Database("History payload missing".into()))?;
+            Self::apply_single_record(conn, &change.table_name, &change.record_id, data, change.database_name.as_deref(), false)?;
+            return Ok(true);
+        }
         Self::ensure_delete_versions_table(conn)?;
         match change.operation {
             ChangeOperation::Delete => {
@@ -8612,6 +8667,8 @@ impl SyncManager {
     /// 获取表的所有列名
     fn is_local_derived_sync_column(table_name: &str, column: &str) -> bool {
         match table_name {
+            "note_document_revisions" => matches!(column, "seq" | "edit_bucket"),
+            "note_learning_relations" => column == "revision",
             "resources" => matches!(
                 column,
                 "index_state"
@@ -8877,6 +8934,7 @@ impl SyncManager {
             result.push(SyncChangeWithData::from_entry_with_data(entry, data));
         }
 
+        note_history::include_note_dependencies(conn, &mut result)?;
         Ok(result)
     }
 
@@ -8952,7 +9010,13 @@ impl SyncManager {
         tables.sort_by(|a, b| a.table_name.cmp(b.table_name));
 
         for table in &tables {
+            // History is an immutable union with device-local retention. Devices
+            // may intentionally retain different subsets, so it is not a drift signal.
+            if table.table_name == "note_document_revisions" { continue; }
             let columns = Self::table_column_names(conn, table.table_name)?;
+            let columns: Vec<_> = columns.into_iter().filter(|column|
+                !(table.table_name == "note_learning_relations" && column == "revision")
+            ).collect();
             if columns.is_empty() {
                 continue;
             }
