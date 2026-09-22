@@ -54,14 +54,16 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
         .filter(el => {
           const element = el as HTMLElement;
           // 确保元素可见且可交互
-          return element.offsetParent !== null && 
-                 !element.hasAttribute('disabled') &&
+          return element.tabIndex >= 0 &&
+                 element.getClientRects().length > 0 &&
+                 !element.matches(':disabled') &&
+                 !element.closest('[inert], [aria-hidden="true"]') &&
                  getComputedStyle(element).visibility !== 'hidden';
         }) as HTMLElement[];
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
 
       const focusableElements = getFocusableElements();
       if (focusableElements.length === 0) {

@@ -297,6 +297,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   node,
   readOnly = false,
   isActive,
+  focusScopeId,
   onSaveStateChange,
 }) => {
   // 'review' 需显式加入：secondaryTabs 与退出确认使用 review:* 文案，
@@ -2145,6 +2146,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
     const onFocus = (ev: Event) => {
       const detail = (ev as CustomEvent<QbankFocusEventDetail>).detail;
+      if (detail?.targetScopeId && detail.targetScopeId !== focusScopeId) return;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
       const questionId = detail?.questionId;
       if (!questionId) return;
@@ -2169,7 +2171,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         flushPendingQbankRefreshRef.current = null;
       }
     };
-  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId]);
+  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId, focusScopeId]);
 
   // ========== 条件返回（早期退出） ==========
   

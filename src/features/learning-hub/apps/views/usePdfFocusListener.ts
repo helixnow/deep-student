@@ -22,6 +22,8 @@ export interface PdfFocusRequest {
 }
 
 export interface PdfFocusEventDetail {
+  /** Optional reader instance target, used by embedded relation previews. */
+  targetScopeId?: string;
   sourceId?: string;
   pageNumber?: number;
   path?: string;
@@ -31,6 +33,7 @@ export interface PdfFocusEventDetail {
 }
 
 interface UsePdfFocusListenerOptions {
+  focusScopeId?: string;
   /** 是否启用（仅 PDF 类型时启用） */
   enabled: boolean;
   /** 节点 ID */
@@ -49,6 +52,7 @@ interface UsePdfFocusListenerOptions {
  * @returns [focusRequest, handleFocusHandled] 当前跳转请求和处理完成回调
  */
 export function usePdfFocusListener({
+  focusScopeId,
   enabled,
   nodeId,
   nodeSourceId,
@@ -70,6 +74,7 @@ export function usePdfFocusListener({
 
     const handler = (event: Event) => {
       const customEvent = event as CustomEvent<PdfFocusEventDetail>;
+      if (customEvent.detail?.targetScopeId && customEvent.detail.targetScopeId !== focusScopeId) return;
       const { sourceId, pageNumber, path } = customEvent.detail || {};
       if (!pageNumber || !Number.isFinite(pageNumber) || pageNumber <= 0) return;
 
@@ -109,7 +114,7 @@ export function usePdfFocusListener({
       // - 真实卸载的显式失败回执见下面的 unmount-only effect。
       // pendingAcksRef 存于 ref，重订阅后 handleFocusHandled 仍可回 true。
     };
-  }, [enabled, nodeId, nodeSourceId, nodePath, nodeName]);
+  }, [enabled, nodeId, nodeSourceId, nodePath, nodeName, focusScopeId]);
 
   // ★ ACR 4.0（A7）：组件真实卸载时对所有 pending ack 显式回失败，
   // 不再留给 1.5s 超时——派发方立即拿到失败回执并把请求标记 stale，

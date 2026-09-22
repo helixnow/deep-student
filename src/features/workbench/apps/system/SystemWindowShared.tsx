@@ -19,6 +19,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { WbSysSizeClass } from './useWbSysSize';
 import './SystemWindowShared.css';
 
@@ -191,36 +192,37 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
 
   // 焦点管理：开抽屉焦点入面板（aria-modal 对话框契约），关抽屉还给把手
   useEffect(() => {
-    if (drawerOpen) {
+    if (compact && drawerOpen) {
       const drawer = drawerRef.current;
       const handle = handleRef.current;
       drawer?.focus();
       return () => {
-        // 仅当焦点仍滞留在抽屉内时才归还，避免抢走用户点出去的焦点
+        // inert 可能已让焦点退回 body；用户主动点到别处时不抢焦点。
         const active = document.activeElement;
-        if (active && drawer?.contains(active)) {
-          handle?.focus();
+        if (handle?.isConnected && (active === document.body || (active && drawer?.contains(active)))) {
+          handle.focus({ preventScroll: true });
         }
       };
     }
     return undefined;
-  }, [drawerOpen]);
+  }, [compact, drawerOpen]);
 
   const handleEscape = useCallback((event: Event) => {
     const e = event as KeyboardEvent;
-    if (drawerOpen && e.key === 'Escape') {
+    if (compact && drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !isComposingKeyEvent(e)
+      && e.target instanceof Node && drawerRef.current?.contains(e.target)) {
+      e.preventDefault();
       e.stopPropagation();
       setDrawerOpen(false);
     }
-  }, [drawerOpen, setDrawerOpen]);
+  }, [compact, drawerOpen, setDrawerOpen]);
 
-  // capture：先于 workbench 全局快捷键（Esc 退出俯瞰等）消费掉
-  useEventRegistry(drawerOpen ? [{
+  // 内层菜单 / 弹窗先消费 Escape，再由抽屉处理未消费的事件。
+  useEventRegistry(compact && drawerOpen ? [{
     target: 'document',
     type: 'keydown',
     listener: handleEscape,
-    options: true,
-  }] : [], [drawerOpen, handleEscape]);
+  }] : [], [compact, drawerOpen, handleEscape]);
 
   /*
    * 抽屉内点中导航项（button / a / [role=button]）后自动收起。
@@ -231,7 +233,8 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   const handleDrawerClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement | null;
     const actionable = target?.closest('button, a, [role="button"]');
-    if (actionable && !actionable.closest('[data-wb-drawer-stay]')) {
+    // React portal 事件仍沿组件树冒泡，弹窗内的按钮不属于抽屉导航。
+    if (actionable && e.currentTarget.contains(actionable) && !actionable.closest('[data-wb-drawer-stay]')) {
       window.setTimeout(() => setDrawerOpen(false), 0);
     }
   }, [setDrawerOpen]);
@@ -246,7 +249,8 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
       data-wb-sys-sidebar-collapsed={!compact && sidebarCollapsed ? 'true' : 'false'}
     >
       {/* 并排侧栏（compact 档由 CSS 离场） */}
-      <div className="wb-sys-aside" aria-hidden={compact || sidebarCollapsed}>
+      <div className="wb-sys-aside" aria-hidden={compact || sidebarCollapsed}
+        {...(compact || sidebarCollapsed ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}>
         {!compact && sidebar}
       </div>
 
@@ -288,6 +292,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
             aria-modal="true"
             aria-label={navLabel}
             aria-hidden={!drawerOpen}
+            {...(!drawerOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
             onClick={handleDrawerClick}
             data-wb-sys-drawer
           >

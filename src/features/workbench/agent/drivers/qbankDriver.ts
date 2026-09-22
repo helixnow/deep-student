@@ -36,6 +36,8 @@ export interface QbankFocusResult {
 
 export interface QbankFocusEventDetail {
   questionId: string;
+  /** Optional reader instance target, used by embedded relation previews. */
+  targetScopeId?: string;
   /** Restricts a workbench activation to the currently mounted exam resource. */
   targetResourceId?: string;
   acknowledge?: (result: QbankFocusResult) => void;
