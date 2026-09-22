@@ -354,7 +354,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const { nodeResult, contentResult } = await readOccSafeNoteSnapshot(node.path);
     // 防竞态：期间切换了笔记则放弃
     if (loadingNoteIdRef.current !== null && loadingNoteIdRef.current !== currentNoteId) {
-      if (requireSuccess) throw new Error('笔记已切换，无法刷新原编辑器。');
+      if (requireSuccess) throw new Error(i18n.t('backend_errors:note_content.refresh_after_note_switch', { defaultValue: '笔记已切换，无法刷新原编辑器。' }));
       return;
     }
     const diskUpdatedAt = nodeResult.ok && nodeResult.value
@@ -375,7 +375,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return;
     }
     if (requireSuccess && (!nodeResult.ok || !nodeResult.value || !contentResult.ok)) {
-      throw new Error('笔记更新已提交，但刷新失败；请重试刷新后继续编辑。');
+      throw new Error(i18n.t('backend_errors:note_content.refresh_after_commit_failed', { defaultValue: '笔记更新已提交，但刷新失败；请重试刷新后继续编辑。' }));
     }
     if (!contentResult.ok) {
       if (diskUpdatedAt !== null) {

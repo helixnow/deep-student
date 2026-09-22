@@ -78,10 +78,12 @@ async function setup(host?: Parameters<typeof useAIReview>[0]['host']) {
 }
 describe('official per-group host commit', () => {
   it('uses the coordinated host commit for accepted groups and keeps decisions pending on lease failure', async () => {
-    let commit!: (text: string) => ReturnType<FullDocumentApi['getFullDocument']>;
-    const applyDocument = vi.fn(async (text: string) => commit(text));
+    // The host receives applyDocument before the hook result exists, so the
+    // implementation is wired through a holder once `f` is available.
+    const commitRef: { current?: (text: string) => ReturnType<FullDocumentApi['getFullDocument']> } = {};
+    const applyDocument = vi.fn(async (text: string) => commitRef.current!(text));
     const f = await setup({ applyDocument });
-    commit = text => { f.state.markdown = text; f.state.revision++; return f.api.getFullDocument(); };
+    commitRef.current = text => { f.state.markdown = text; f.state.revision++; return f.api.getFullDocument(); };
     applyDocument.mockRejectedValueOnce(new Error('remote draft conflict'));
     await expect(f.click('accept')).rejects.toThrow('remote draft conflict');
     expect(f.state.markdown).toBe(original);

@@ -10,13 +10,19 @@ import { normalizeMarkdown } from '@/components/crepe/normalizeMarkdown';
 import { editorViewCtx, schemaCtx } from '@milkdown/kit/core';
 import { useAIReview } from '@/features/notes/aiReview';
 import { aiReviewSessionKey, storeAIReviewSession } from '@/features/notes/aiReviewModel';
+import { createOfficialDiffAdapter } from '@/components/crepe/officialDiffAdapter';
 import { calloutPlugin } from '@/components/crepe/plugins/callout';
 import { togglePlugin } from '@/components/crepe/plugins/toggle';
 import { wikilinkPlugin } from '@/components/crepe/plugins/wikilink';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), getContent: vi.fn(), update: vi.fn(), props: null as any,
+  invoke: vi.fn(), rows: new Map<string, any>(),
 }));
+// The coordinated AI review persists its prepared intent through notes_state_*.
+// jsdom has no Tauri IPC, so back it with an in-memory revision-checked store.
+vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@/dstu', () => ({ dstu: {
   get: mocks.get, getContent: mocks.getContent, update: mocks.update,
   watch: () => () => {}, setMetadata: vi.fn(),
@@ -34,8 +40,23 @@ const node = { id: 'review-a', sourceId: 'review-a', path: '/review-a', name: 'A
   createdAt: 1000, updatedAt: 2000, metadata: { tags: [] } };
 const ok = <T,>(value: T) => ({ ok: true as const, value });
 const fixtures: Array<{ crepe: Crepe; root: HTMLElement }> = [];
+const roots: HTMLElement[] = [];
+// The hook suspends its official controls on unmount, so adapters must outlive
+// the component tree and are destroyed after cleanup().
+const adapters: Array<() => Promise<void>> = [];
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.props = null;
+  vi.clearAllMocks(); mocks.props = null; mocks.rows.clear();
+  mocks.invoke.mockReset().mockImplementation(async (command: string, args: any) => {
+    if (typeof command !== 'string' || !command.startsWith('notes_state_')) return null;
+    if (command === 'chat_v2_canvas_edit_result') return null;
+    const r = args.request;
+    if (command === 'notes_state_list') return [...mocks.rows.values()].filter((row) => row.note_id === r.note_id && !row.deleted);
+    const old = mocks.rows.get(r.key);
+    if (command === 'notes_state_get') return old ?? null;
+    if (r.expected_revision !== (old?.revision ?? null)) throw new Error('notes.state_conflict');
+    const row = { ...r, revision: (old?.revision ?? 0) + 1, deleted: command === 'notes_state_delete' };
+    mocks.rows.set(r.key, structuredClone(row)); return row;
+  });
   storeAIReviewSession(aiReviewSessionKey(node.id), null);
   mocks.get.mockResolvedValue(ok(node));
   mocks.getContent.mockResolvedValue(ok('original\n'));
@@ -43,6 +64,8 @@ beforeEach(() => {
 });
 afterEach(async () => {
   cleanup();
+  for (const destroy of adapters.splice(0)) await destroy();
+  for (const root of roots.splice(0)) root.remove();
   for (const { crepe, root } of fixtures.splice(0)) { await crepe.destroy(); root.remove(); }
 });
 
@@ -203,6 +226,19 @@ describe('real Crepe full-document contract', () => {
     act(() => window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', { detail: {
       requestId: 'real-review', noteId: node.id, operation: 'set', content: candidate,
     } })));
+    // Accepting now commits through the official review controls, which the host
+    // registers with onReviewReady. Without them handleAccept cannot apply the
+    // candidate and leaves the session pending.
+    const root = document.createElement('div'); document.body.append(root); roots.push(root);
+    let adapter!: Awaited<ReturnType<typeof createOfficialDiffAdapter>>;
+    await act(async () => {
+      adapter = await createOfficialDiffAdapter({
+        root, baseline: original.markdown, target: candidate,
+        onDecision: (decision) => hook.result.current.officialReviewProps.onReviewDecision(decision),
+        onError: (error) => hook.result.current.officialReviewProps.onReviewError(error),
+      });
+      hook.result.current.officialReviewProps.onReviewReady(adapter);
+    });
     if (failSave) mocks.update.mockRejectedValueOnce(new Error('disk unavailable'));
     await act(async () => hook.result.current.handleAccept());
     if (failSave) {
@@ -220,5 +256,6 @@ describe('real Crepe full-document contract', () => {
     expect(api.getFullDocument().markdown).toBe(original.markdown);
     expect(hook.result.current.checkpoint).toBeNull();
     expect(mocks.update.mock.calls.at(-1)?.[1]).toBe(original.markdown);
+    adapters.push(() => adapter.destroy());
   });
 });
