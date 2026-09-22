@@ -36,6 +36,9 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
     const container = containerRef.current;
     const initialFocus = optionsRef.current?.initialFocus !== false;
     const restoreFocus = optionsRef.current?.restoreFocus !== false;
+    // jsdom and other layout-less environments report zero rects for every
+    // element, so only treat layout as a visibility signal when it is measurable.
+    const canMeasureLayout = document.documentElement.getClientRects().length > 0;
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
@@ -55,10 +58,10 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
           const element = el as HTMLElement;
           // 确保元素可见且可交互
           return element.tabIndex >= 0 &&
-                 element.getClientRects().length > 0 &&
                  !element.matches(':disabled') &&
                  !element.closest('[inert], [aria-hidden="true"]') &&
-                 getComputedStyle(element).visibility !== 'hidden';
+                 getComputedStyle(element).visibility !== 'hidden' &&
+                 (!canMeasureLayout || element.getClientRects().length > 0);
         }) as HTMLElement[];
     };
 

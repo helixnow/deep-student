@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence, useDragControls, useIsPresent } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -143,8 +143,9 @@ function DialogFocusScope({ children, contentRef }: {
 }) {
   // The portal content mounts later than DsDialog. Bind the trap here so an
   // initially-open dialog also receives keyboard focus and a working Tab loop.
-  const present = useIsPresent();
-  const trapRef = useFocusTrap<HTMLDivElement>(present, { restoreFocus: false });
+  // Presence is owned by AnimatePresence, which keeps this mounted through the
+  // exit animation, so the trap stays active for its whole lifetime.
+  const trapRef = useFocusTrap<HTMLDivElement>(true, { restoreFocus: false });
   const setRef = React.useCallback((node: HTMLDivElement | null) => {
     trapRef.current = node;
     // React detaches refs before effect cleanup. Keep the last node
