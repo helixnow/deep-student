@@ -151,6 +151,8 @@ impl RequestAdapter for ErnieAdapter {
             body.insert("penalty_score".to_string(), json!(rep_penalty));
         }
         // reasoning_effort 已在 apply_reasoning_config 中处理
+        // 2C 自定义请求体扩展
+        super::merge_extra_body(body, config);
     }
 }
 

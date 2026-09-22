@@ -2004,6 +2004,8 @@ pub fn run() {
             crate::commands::mcp_stdio_close,
             crate::commands::save_mcp_config,
             crate::commands::reload_mcp_client,
+            crate::commands::get_mcp_stdio_allow_unapproved,
+            crate::commands::set_mcp_stdio_allow_unapproved,
             crate::commands::get_mcp_config,
             crate::commands::import_mcp_config,
             crate::commands::export_mcp_config,

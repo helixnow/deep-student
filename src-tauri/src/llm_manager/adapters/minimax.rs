@@ -159,6 +159,8 @@ impl RequestAdapter for MiniMaxAdapter {
             body.insert("repetition_penalty".to_string(), json!(rep_penalty));
         }
         // MiniMax 不使用 effort/verbosity 参数
+        // 2C 自定义请求体扩展
+        super::merge_extra_body(body, config);
     }
 
     fn get_passback_policy(&self, config: &ApiConfig) -> PassbackPolicy {

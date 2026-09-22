@@ -450,6 +450,21 @@ fn canonical_path_string(path: &Path, label: &str) -> std::result::Result<String
         .ok_or_else(|| format!("{} path is not valid UTF-8: {}", label, path.display()))
 }
 
+/// 选项 ① 辅助：与 `mcp::global::normalize_command_path` 等价的副本，
+/// 仅在"未批准模式"下使用——去掉 `\\?\` 前缀避免 spawn 静默失败。
+/// 严格模式走 `validate_stdio_start_against_entries` 内部的 canonicalize，
+/// 不会经过这里。
+#[cfg(feature = "mcp")]
+fn normalize_command_path_for_unapproved(command: &str) -> String {
+    if let Some(rest) = command.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = command.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        command.to_string()
+    }
+}
+
 /// `mcp_stdio_start` is an approved-config launcher, not a generic process API.
 /// Validation returns the canonical, immutable values that must be used for
 /// spawning so a request cannot pass by basename and then execute a different
@@ -548,6 +563,47 @@ pub async fn mcp_stdio_start(
     #[cfg(feature = "mcp")]
     {
         let env = env.unwrap_or_default();
+        // 选项 ①：全局"MCP 危险模式"开关。默认 false（严格批准门）。
+        // 开启后跳过 validate_stdio_start_against_entries，任何 (command, args, env, cwd, framing)
+        // 都会被直接 spawn。这是用户明确知情下的"完全放开"选项（类似 PowerShell 的 Bypass）。
+        let allow_unapproved =
+            crate::chat_v2::tools::mcp_settings_store::read_mcp_allow_unapproved(&state.database)
+                .unwrap_or(false);
+
+        if allow_unapproved {
+            // 每次越门 spawn 都打 warn，留下完整审计轨迹（RULES.txt 第 5 条）
+            let env_keys: Vec<&str> = env.keys().map(|k| k.as_str()).collect();
+            log::warn!(
+                "mcp_stdio_start UNAPPROVED MODE: command={:?} args={:?} cwd={:?} framing={:?} env_keys={:?} — approved-config gate bypassed by user setting {}",
+                command,
+                args,
+                cwd,
+                framing,
+                env_keys,
+                crate::chat_v2::tools::mcp_settings_store::MCP_ALLOW_UNAPPROVED_KEY
+            );
+            // 仍然规范化 command/cwd，但不做匹配校验
+            let normalized_command = normalize_command_path_for_unapproved(&command);
+            let framing_normalized = framing
+                .as_deref()
+                .map(|f| f.to_string())
+                .unwrap_or_else(|| "jsonl".to_string());
+            let cwd_pathbuf = cwd
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+            return mcp_start_stdio_session(
+                window,
+                normalized_command,
+                args,
+                env,
+                Some(framing_normalized),
+                Some(cwd_pathbuf.to_string_lossy().into_owned()),
+            )
+            .await
+            .map_err(|e| AppError::internal(format!("{}", e)));
+        }
+
         let entries =
             crate::chat_v2::tools::mcp_settings_store::read_mcp_tools_list(&state.database)
                 .map_err(AppError::internal)?;
@@ -728,6 +784,37 @@ pub async fn reload_mcp_client(state: State<'_, AppState>) -> Result<serde_json:
     // 后端 MCP 已禁用。清理缓存并返回提示
     state.llm_manager.clear_mcp_tool_cache().await;
     Ok(serde_json::json!({"success": true, "message": "Backend MCP disabled; frontend SDK in use"}))
+}
+
+/// 选项 ①：读取全局"MCP 危险模式"开关
+#[tauri::command]
+pub async fn get_mcp_stdio_allow_unapproved(state: State<'_, AppState>) -> Result<bool> {
+    crate::chat_v2::tools::mcp_settings_store::read_mcp_allow_unapproved(&state.database)
+        .map_err(AppError::internal)
+}
+
+/// 选项 ①：写入全局"MCP 危险模式"开关
+/// 开启后 `mcp_stdio_start` 跳过批准门，任何命令都会被直接 spawn。
+/// 开启动作本身需要打到 warn 级日志，留下审计轨迹。
+#[tauri::command]
+pub async fn set_mcp_stdio_allow_unapproved(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<()> {
+    crate::chat_v2::tools::mcp_settings_store::write_mcp_allow_unapproved(&state.database, enabled)
+        .map_err(AppError::internal)?;
+    if enabled {
+        log::warn!(
+            "MCP UNAPPROVED MODE ENABLED: {} set to true — mcp_stdio_start will bypass approved-config gate",
+            crate::chat_v2::tools::mcp_settings_store::MCP_ALLOW_UNAPPROVED_KEY
+        );
+    } else {
+        log::info!(
+            "MCP UNAPPROVED MODE DISABLED: {} set to false",
+            crate::chat_v2::tools::mcp_settings_store::MCP_ALLOW_UNAPPROVED_KEY
+        );
+    }
+    Ok(())
 }
 /// 预热前端 MCP 工具清单缓存（降低首条消息不广告的概率）
 #[tauri::command]
