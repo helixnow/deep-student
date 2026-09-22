@@ -277,6 +277,13 @@ fn row_sync_tables_have_primary_keys_and_change_log_triggers() {
 
         let triggers = trigger_sql_for_table(&conn, entry.table_name);
         for operation in ["insert", "update", "delete"] {
+            if TableClassification::change_log_trigger_exempt(
+                entry.database,
+                entry.table_name,
+                operation,
+            ) {
+                continue;
+            }
             let has_operation_trigger = triggers.iter().any(|sql| {
                 sql.contains("__change_log")
                     && sql.contains(entry.table_name)
@@ -306,14 +313,26 @@ fn row_sync_change_log_record_ids_follow_classified_primary_keys() {
             .collect();
 
         for operation in ["insert", "update", "delete"] {
+            if TableClassification::change_log_trigger_exempt(
+                entry.database,
+                entry.table_name,
+                operation,
+            ) {
+                continue;
+            }
             let row_alias = if operation == "delete" { "old" } else { "new" };
-            let operation_clause = format!("after {operation} on");
+            // An update trigger may be column-scoped (`AFTER UPDATE OF pinned ON ...`)
+            // when the table is immutable apart from that column.
+            let operation_clauses = [
+                format!("after {operation} on"),
+                format!("after {operation} of"),
+            ];
             let trigger_sql = triggers
                 .iter()
                 .find(|sql| {
                     sql.contains("__change_log")
                         && sql.contains(entry.table_name)
-                        && sql.contains(&operation_clause)
+                        && operation_clauses.iter().any(|clause| sql.contains(clause))
                 })
                 .unwrap_or_else(|| {
                     panic!(

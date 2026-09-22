@@ -1310,9 +1310,41 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     )
     .expect("update vfs indexing config row");
 
+    conn.execute_batch(&format!(
+        "INSERT INTO note_state (note_id, state_type, state_key, value_json, revision, deleted, updated_at)
+             VALUES ('note_all', 'review', 'non_row_state', '{{}}', 1, 0, '{ts}');
+         INSERT INTO note_transfer_operations (operation_id, source_note_id, target_note_id, request_json,
+             source_before, target_before, asset_refs_json, result_json, created_at)
+             VALUES ('nto_non_row', 'note_all', 'note_all', '{{}}', '', '', '[]', '{{}}', '{ts}');
+         INSERT INTO note_review_save_operations (operation_id, source_note_id, note_id, revision, created_at)
+             VALUES ('nrso_non_row', 'note_all', 'note_all', 1, '{ts}');
+         INSERT INTO note_review_save_receipts (operation_id, expected_updated_at, request_json, result_json)
+             VALUES ('nrso_non_row', '{ts}', '{{}}', '{{}}');
+         INSERT INTO note_editor_participants (id, webview_label, window_label, note_id, expires_at)
+             VALUES ('nep_non_row', 'main', 'main', 'note_all', {ms});
+         INSERT INTO note_editor_leases (token, operation_id, owner_id, phase, expires_at)
+             VALUES ('nel_non_row', 'nel_op_non_row', 'owner_non_row', 'ready', {ms});
+         INSERT INTO note_editor_lease_notes (note_id, token) VALUES ('note_all', 'nel_non_row');
+         INSERT INTO note_editor_lease_acks (token, participant_id, draft_json, refreshed)
+             VALUES ('nel_non_row', 'nep_non_row', '{{}}', 0);
+         INSERT INTO note_editor_write_grants (token) VALUES ('nel_non_row');
+         UPDATE note_history_retention SET updated_at = '{ts}' WHERE id = 1;"
+    ))
+    .expect("insert notes local state and editor coordination rows");
+
     BTreeSet::from([
         "note_tags",
         "note_links",
+        "note_state",
+        "note_transfer_operations",
+        "note_history_retention",
+        "note_review_save_operations",
+        "note_review_save_receipts",
+        "note_editor_participants",
+        "note_editor_leases",
+        "note_editor_lease_notes",
+        "note_editor_lease_acks",
+        "note_editor_write_grants",
         "mastery_states",
         "automation_todo_deliveries",
         "qbank_generation_tasks",

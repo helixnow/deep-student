@@ -596,6 +596,57 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Version history, backup only",
         },
+        // --- Notes editor coordination: one mounted editor per WebView ---
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_participants",
+            primary_key: "id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Live editor registration bound to a WebView label; expires locally",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_leases",
+            primary_key: "token",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Cross-WebView write lease; meaningless on another device",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_lease_notes",
+            primary_key: "note_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Notes fenced by the local lease token",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_lease_acks",
+            primary_key: "token,participant_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Per-participant freeze/flush acknowledgements for one local operation",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_write_grants",
+            primary_key: "token",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Grant row that exists only inside the authorized write transaction",
+        },
         TableClassification {
             database: "vfs",
             table_name: "memory_config",
@@ -1120,6 +1171,19 @@ impl TableClassification {
             .into_iter()
             .filter(|c| c.category == SyncCategory::RowSync)
             .collect()
+    }
+
+    /// RowSync tables that deliberately omit one `__change_log` operation trigger.
+    ///
+    /// `note_document_revisions` keeps pruning local (see its merge notes): a
+    /// delete trigger would replay a local prune onto every other device. Pins do
+    /// sync through the dedicated `trg__change_log_note_document_revisions_pin`
+    /// UPDATE trigger. Every other RowSync table must carry insert/update/delete.
+    pub fn change_log_trigger_exempt(database: &str, table_name: &str, operation: &str) -> bool {
+        matches!(
+            (database, table_name, operation),
+            ("vfs", "note_document_revisions", "delete")
+        )
     }
 
     /// Get tables for which checksum should be computed (RowSync + FileSync only)

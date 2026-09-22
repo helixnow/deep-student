@@ -4587,9 +4587,16 @@ impl SyncManager {
         note_history::validate_incoming(conn, table_name, record_id, data)?;
         let history_notes = note_history::affected_notes(conn, table_name, record_id)?;
         let previous_note_resource = if table_name == "notes" && !history_notes.is_empty() {
-            conn.query_row("SELECT resource_id FROM notes WHERE id=?1", [record_id], |r| r.get::<_, String>(0)).optional()
-                .map_err(|e| SyncError::Database(e.to_string()))?
-        } else { None };
+            conn.query_row(
+                "SELECT resource_id FROM notes WHERE id=?1",
+                [record_id],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| SyncError::Database(e.to_string()))?
+        } else {
+            None
+        };
         note_history::snapshot_notes(conn, &history_notes, "before_sync")?;
 
         let table_ident = Self::quote_identifier(table_name)?;
@@ -5040,8 +5047,12 @@ impl SyncManager {
         }
 
         let mut history_notes = history_notes;
-        if table_name == "notes" && Self::table_has_column(conn, "note_document_revisions", "version_id") {
-            if !history_notes.iter().any(|id| id == record_id) { history_notes.push(record_id.to_string()); }
+        if table_name == "notes"
+            && Self::table_has_column(conn, "note_document_revisions", "version_id")
+        {
+            if !history_notes.iter().any(|id| id == record_id) {
+                history_notes.push(record_id.to_string());
+            }
         }
         note_history::snapshot_notes(conn, &history_notes, "remote_sync")?;
         if let Some(previous) = previous_note_resource {
@@ -5393,7 +5404,9 @@ impl SyncManager {
     fn primary_key_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
         // seq is a device-local timeline cursor, never a transport identity.
-        if table_name == "note_document_revisions" { return Ok(vec!["version_id".into()]); }
+        if table_name == "note_document_revisions" {
+            return Ok(vec!["version_id".into()]);
+        }
         let table_ident = Self::quote_identifier(table_name)?;
         let sql = format!("PRAGMA table_info({})", table_ident);
         let mut stmt = conn
@@ -5601,9 +5614,12 @@ impl SyncManager {
         }
         if table_name == "note_learning_relations" {
             use crate::vfs::repos::note_relation_repo::NoteLocator;
-            let raw = obj.get("locator_json").and_then(serde_json::Value::as_str)
+            let raw = obj
+                .get("locator_json")
+                .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| SyncError::Database("Missing relation locator".into()))?;
-            let mut locator: NoteLocator = serde_json::from_str(raw).map_err(|e| SyncError::Database(e.to_string()))?;
+            let mut locator: NoteLocator =
+                serde_json::from_str(raw).map_err(|e| SyncError::Database(e.to_string()))?;
             if !matches!(locator, NoteLocator::Card(_)) {
                 if let Some(id) = obj.get("resource_id").and_then(serde_json::Value::as_str) {
                     let mapped = Self::resolve_alias(aliases, "resources", id)?;
@@ -5612,7 +5628,13 @@ impl SyncManager {
             }
             if let NoteLocator::Question(id) = &mut locator {
                 *id = Self::resolve_alias(aliases, "questions", id)?;
-                obj.insert("locator_json".into(), serde_json::Value::String(serde_json::to_string(&locator).map_err(|e| SyncError::Database(e.to_string()))?));
+                obj.insert(
+                    "locator_json".into(),
+                    serde_json::Value::String(
+                        serde_json::to_string(&locator)
+                            .map_err(|e| SyncError::Database(e.to_string()))?,
+                    ),
+                );
             }
         }
         Ok(())
@@ -6696,20 +6718,16 @@ impl SyncManager {
                         }
                     }
 
-                    // 精确抑制：标记由本次回放产生的、匹配当前 table+record 的所有
-                    // change_log 条目为已同步。
+                    // 回放抑制：本次回放期间产生的 change_log 条目全部标记为已同步，
+                    // 包括触发器为派生表（如笔记历史快照）写入的行。写入发生在本事务
+                    // 的单连接内，期间没有并发的本地写入，因此这里不存在需要保留上传的
+                    // 本地改动；留下任何一条都会让目标端回声上传远端刚下发的数据。
                     if let Some(max_id) = pre_log_max_id {
                         let sync_version = chrono::Utc::now().timestamp();
                         let _ = conn.execute(
                             "UPDATE __change_log SET sync_version = ?1 \
-                             WHERE id > ?2 AND sync_version = 0 \
-                             AND table_name = ?3 AND record_id = ?4",
-                            params![
-                                sync_version,
-                                max_id,
-                                &change_to_apply.table_name,
-                                &change_to_apply.record_id,
-                            ],
+                             WHERE id > ?2 AND sync_version = 0",
+                            params![sync_version, max_id],
                         );
                     }
 
@@ -8084,9 +8102,21 @@ impl SyncManager {
         if change.table_name == "note_document_revisions" {
             // Retention/pruning decisions are device-local. A remote prune must
             // not delete a version retained here (or block a delayed insertion).
-            if change.operation == ChangeOperation::Delete { return Ok(false); }
-            let data = change.data.as_ref().ok_or_else(|| SyncError::Database("History payload missing".into()))?;
-            Self::apply_single_record(conn, &change.table_name, &change.record_id, data, change.database_name.as_deref(), false)?;
+            if change.operation == ChangeOperation::Delete {
+                return Ok(false);
+            }
+            let data = change
+                .data
+                .as_ref()
+                .ok_or_else(|| SyncError::Database("History payload missing".into()))?;
+            Self::apply_single_record(
+                conn,
+                &change.table_name,
+                &change.record_id,
+                data,
+                change.database_name.as_deref(),
+                false,
+            )?;
             return Ok(true);
         }
         Self::ensure_delete_versions_table(conn)?;
@@ -9012,11 +9042,16 @@ impl SyncManager {
         for table in &tables {
             // History is an immutable union with device-local retention. Devices
             // may intentionally retain different subsets, so it is not a drift signal.
-            if table.table_name == "note_document_revisions" { continue; }
+            if table.table_name == "note_document_revisions" {
+                continue;
+            }
             let columns = Self::table_column_names(conn, table.table_name)?;
-            let columns: Vec<_> = columns.into_iter().filter(|column|
-                !(table.table_name == "note_learning_relations" && column == "revision")
-            ).collect();
+            let columns: Vec<_> = columns
+                .into_iter()
+                .filter(|column| {
+                    !(table.table_name == "note_learning_relations" && column == "revision")
+                })
+                .collect();
             if columns.is_empty() {
                 continue;
             }
