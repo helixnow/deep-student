@@ -897,6 +897,7 @@
       "enterQuery": "输入内容以搜索笔记正文。",
       "searchFailed": "无法搜索笔记。",
       "openFailed": "无法打开此资源。",
+      "opening": "正在打开资源…",
       "retry": "重试",
       "mindmap": "思维导图",
       "note": "笔记",

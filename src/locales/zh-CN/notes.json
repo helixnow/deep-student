@@ -15,6 +15,17 @@
     "paragraph": "段落",
     "insert": "插入"
   },
+  "formatGate": {
+    "checking": "正在确认笔记格式…",
+    "readonly_label": "笔记原文只读视图",
+    "unsupported": "此笔记使用尚不支持的格式，已显示完整原文。请使用兼容版本编辑。",
+    "copy": "复制完整原文",
+    "copy_failed": "复制失败，请重试。",
+    "export": "导出原文",
+    "export_title": "导出笔记原文",
+    "raw_label": "完整笔记原文",
+    "retry": "重新检查格式"
+  },
   "canvas": {
     "untitled": "未命名笔记",
     "error": {
@@ -237,6 +248,9 @@
     "legacy_value": "旧值保留：{{value}}；仅在修改此字段并保存后替换。",
     "legacy_hint": "原有自由属性保留，不会自动映射到学习属性。",
     "save": "保存学习属性",
+    "saving": "正在保存学习属性…",
+    "saved": "学习属性已保存",
+    "unsaved": "学习属性有未保存修改，请点击“保存学习属性”。",
     "view_label": "视图",
     "view_selector": "笔记学习视图",
     "views_label": "学习视图",
@@ -248,6 +262,8 @@
     },
     "unset_group": "未设置 / 旧值保留",
     "review_range": "近期复习（含逾期及未来 7 天）",
+    "review_empty": "没有逾期或未来 7 天内需要复习的笔记。可在学习属性中设置复习日期。",
+    "group_empty": "此掌握状态下暂无笔记。",
     "empty": "暂无笔记",
     "mastery_unset": "未设置掌握状态",
     "overdue": "已逾期",

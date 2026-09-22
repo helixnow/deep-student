@@ -269,6 +269,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const priorFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef(true);
   const wasOpenRef = useRef(open);
   const searchSequenceRef = useRef(0);
   const overlayId = useId();
@@ -339,7 +340,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const displayedResults = activeMode === 'quick-open' ? quickOpenResults : fullTextResults;
   const hasMoreResults = activeMode === 'quick-open' ? quickOpenHasMore : fullTextHasMore;
   const showRecentGroups = activeMode === 'quick-open' && recentCount > 0;
-  const hasResultList = displayedResults.length > 0 && !searchError && !openError;
+  const hasResultList = displayedResults.length > 0 && !searchError;
   const listId = `${overlayId}-notes-search-results`;
   const activeResult = displayedResults[activeIndex] ?? null;
   const activeDescendantId = activeResult
@@ -382,6 +383,10 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
 
   useEffect(() => {
     if (!open) return undefined;
+    restoreFocusRef.current = true;
+    // Captured for the cleanup's focus-containment check: only steal focus back
+    // from this overlay, never from a newly focused editor.
+    const root = rootRef.current;
     priorFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -395,7 +400,11 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     return () => {
       window.cancelAnimationFrame(frame);
       const previous = priorFocusRef.current;
-      if (previous && document.contains(previous)) previous.focus();
+      const focused = document.activeElement;
+      if (restoreFocusRef.current && previous?.isConnected
+        && (focused === document.body || (focused instanceof Node && root?.contains(focused)))) {
+        previous.focus({ preventScroll: true });
+      }
     };
   }, [open]);
 
@@ -528,6 +537,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     setOpenError(null);
     try {
       await onOpenResource(resource, { mode: activeMode, query: highlightQuery });
+      // The destination editor owns focus after a successful open.
+      restoreFocusRef.current = false;
       // `onClose` normally unmounts the overlay. Clear this first so a host
       // that deliberately keeps it mounted does not leave every result disabled.
       setIsOpening(false);
@@ -549,7 +560,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   }, [displayedResults.length]);
 
   const onInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isComposingKeyEvent(event)) return;
+    if (event.defaultPrevented || isComposingKeyEvent(event) || !hasResultList) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       event.stopPropagation();
@@ -567,11 +578,11 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       event.stopPropagation();
       void openResult(activeResult);
     }
-  }, [activeResult, moveActiveResult, openResult]);
+  }, [activeResult, hasResultList, moveActiveResult, openResult]);
 
   // 无遮罩悬浮面板：不做 Tab 焦点陷阱，仅保留 Escape 关闭与 Ctrl+Tab 切模式
   const onPanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (isComposingKeyEvent(event)) return;
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -619,6 +630,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     const root = rootRef.current;
     if (!root) return;
     if (event.target instanceof Node && root.contains(event.target)) return;
+    restoreFocusRef.current = false;
     onCloseRef.current();
   }, []);
   useEventRegistry(
@@ -673,6 +685,8 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       data-notes-search-overlay
       role="region"
       aria-label={searchTitle}
+      aria-hidden={!open || undefined}
+      {...(!open ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       onKeyDown={onPanelKeyDown}
     >
       <div className="notes-search-overlay-input-wrap">
@@ -699,7 +713,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           <button
             className="notes-search-overlay-clear"
             type="button"
-            onClick={() => setQuery('')}
+            onClick={() => { setQuery(''); setOpenError(null); inputRef.current?.focus(); }}
             aria-label={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
             title={t('notesWorkspace.searchOverlay.clear', 'Clear search')}
           >
@@ -779,6 +793,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
 
       <div className="notes-search-overlay-results-wrap">
         <div className="notes-search-overlay-status" aria-live="polite">
+          {isOpening && (
+            <span>
+              <CircleNotch className="notes-search-overlay-spinner" size={14} aria-hidden="true" />
+              {t('notesWorkspace.searchOverlay.opening', 'Opening resource…')}
+            </span>
+          )}
           {isSearching && (
             <span>
               <CircleNotch className="notes-search-overlay-spinner" size={14} aria-hidden="true" />
@@ -790,16 +810,13 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           )}
         </div>
 
+        {openError && <div className="notes-search-overlay-open-error" role="alert">{openError}</div>}
         {searchError ? (
           <div className="notes-search-overlay-message" role="alert">
             <span>{searchError}</span>
             <button type="button" onClick={() => setSearchAttempt((attempt) => attempt + 1)}>
               {t('notesWorkspace.searchOverlay.retry', 'Retry')}
             </button>
-          </div>
-        ) : openError ? (
-          <div className="notes-search-overlay-message" role="alert">
-            {openError}
           </div>
         ) : displayedResults.length > 0 ? (
           <CustomScrollArea

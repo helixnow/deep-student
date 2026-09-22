@@ -848,7 +848,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
             <Separator />
 
             {/* Outline Section：B04 大纲直达——视觉顺序优先于元数据/统计 */}
-            <div className="order-first flex-1 flex flex-col min-h-0">
+            <div className="notes-context-outline order-first flex-1 flex flex-col min-h-0">
                 <div className="px-3 pt-3 pb-1">
                     <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                         <TextAlignLeft className="w-3.5 h-3.5" />

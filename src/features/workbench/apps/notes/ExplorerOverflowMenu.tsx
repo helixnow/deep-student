@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { DotsThree, Plus, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface ExplorerOverflowAction {
   key: string;
@@ -53,6 +54,7 @@ export const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({ labe
   }, [open]);
 
   const onMenuKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

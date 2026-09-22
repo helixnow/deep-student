@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NoteBlank } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { getNoteTemplates, type NoteTemplate, type NoteTemplateDocumentHost, type NoteTemplateLearningPropsHost } from '../noteTemplates';
 import { PersonalNoteTemplates } from './PersonalNoteTemplates';
 
@@ -113,6 +114,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   }, [templates.length]);
 
   const handleGridKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     const count = templates.length;
     if (count === 0) return;
     let next: number | null = null;
@@ -151,6 +153,8 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   return (
     <div
       id={panelId}
+      aria-hidden={!open || undefined}
+      {...(!open ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       className={cn(
         'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] will-change-[grid-template-rows]',
         'motion-reduce:transition-none',
@@ -163,7 +167,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
           aria-label={t('notes:toolbar.note_templates', 'Note templates')}
           className="notes-template-panel mx-auto max-h-[60vh] w-full max-w-[var(--notes-content-max-w)] overflow-y-auto px-5 sm:px-12"
           onKeyDown={(event) => {
-            if (event.key !== 'Escape') return;
+            if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
             event.preventDefault();
             event.stopPropagation();
             onRequestClose();

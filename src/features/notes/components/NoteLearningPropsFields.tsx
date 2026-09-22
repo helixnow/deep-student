@@ -20,18 +20,20 @@ export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
   const baseline = useRef<Record<string, unknown>>();
   const [saving, setSaving] = useState(false);
   const [failedSave, setFailedSave] = useState(false);
+  const [saved, setSaved] = useState(false);
   const edit = (field: LearningField, text: string) => {
     baseline.current ??= value;
+    setSaved(false);
     setChanges((prev) => ({ ...prev, [field]: text })); setError('');
   };
   const current = readNoteLearningProps(value);
   const save = async () => {
     if (saving) return;
-    setSaving(true); setError('');
+    setSaving(true); setError(''); setSaved(false);
     try {
       const before = baseline.current ?? value;
       const next = mergeNotePropEdits(before, updateNoteLearningProps(before, changes), value);
-      if (await onSave(next)) { setChanges({}); baseline.current = undefined; setFailedSave(false); }
+      if (await onSave(next)) { setChanges({}); baseline.current = undefined; setFailedSave(false); setSaved(true); }
       else setFailedSave(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -64,7 +66,7 @@ export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
       })}
       <p className="text-muted-foreground">{t('learning.legacy_hint')}</p>
       {!readOnly && <LearningTemplatePresetPicker course={changes.course ?? current.course ?? ''} disabled={disabled}
-        onChoose={(preset) => { baseline.current ??= value; setChanges((draft) => {
+        onChoose={(preset) => { baseline.current ??= value; setSaved(false); setChanges((draft) => {
           const next = { ...draft };
           for (const field of Object.keys(preset) as LearningField[]) {
             const key = LEARNING_PROP_KEYS[field];
@@ -74,7 +76,10 @@ export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
           return next;
         }); }} />}
       {!readOnly && <button type="button" className="rounded border border-border px-2 py-1"
-        disabled={disabled || Object.keys(changes).length === 0} onClick={() => void save()}>{t('learning.save')}</button>}
+        disabled={disabled || Object.keys(changes).length === 0} onClick={() => void save()}>{t(saving ? 'learning.saving' : 'learning.save')}</button>}
+      {!readOnly && <p role="status" className="text-muted-foreground">
+        {saving ? t('learning.saving') : Object.keys(changes).length > 0 ? t('learning.unsaved') : saved ? t('learning.saved') : ''}
+      </p>}
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {(error || failedSave) && <button type="button" onClick={() => { baseline.current = value; setError(''); setFailedSave(false); }}>{t('learning.confirm_latest', { defaultValue: '已核对最新值，保留草稿重试' })}</button>}
     </fieldset>

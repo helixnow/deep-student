@@ -22,7 +22,7 @@ export function NoteRelationTargetPicker({ type, disabled, onChoose }: {
   useEffect(() => {
     if (!open) return;
     let active = true;
-    setLoading(true); setError(''); setChoices([]);
+    setLoading(true); setError(''); setChoices([]); setMore(false);
     const load = async () => {
       let rows: Choice[];
       let hasMore: boolean;
@@ -67,7 +67,7 @@ export function NoteRelationTargetPicker({ type, disabled, onChoose }: {
           onChoose(choice.resourceId, choice.location ?? '1', choice.label); setOpen(false);
         }}>{choice.label}</button>
       </li>)}</ul>}
-      {!loading && choices.length === 0 && <p>{t('learning.relations.no_results', { defaultValue: '没有匹配的资源' })}</p>}
+      {!loading && !error && choices.length === 0 && <p>{t('learning.relations.no_results', { defaultValue: '没有匹配的资源' })}</p>}
       <div className="flex gap-3"><button type="button" disabled={disabled || loading || page === 1} onClick={() => setPage(page - 1)}>{t('learning.relations.previous', { defaultValue: '上一页' })}</button>
         <button type="button" disabled={disabled || loading || !more} onClick={() => setPage(page + 1)}>{t('learning.relations.next', { defaultValue: '下一页' })}</button></div>
       {error && <p role="alert">{error}</p>}
