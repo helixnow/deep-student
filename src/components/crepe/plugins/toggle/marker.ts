@@ -32,7 +32,7 @@ export function parseToggleMarker(text: string): ToggleMarker | null {
 export function formatToggleMarker(title: string, open: boolean): string {
   const suffix = open ? '' : '-'
   const escaped = title
-    .replace(/([\\`*{}\[\]<>()!_#+\-.|~$=&])/g, '\\$1')
+    .replace(/([\\`*{}[\]<>()!_#+\-.|~$=&])/g, '\\$1')
     .replace(/\r\n|[\r\n\t]/g, (char) => char === '\t' ? '&#9;' : '&#10;')
     .replace(/^ +| +$/g, (spaces) => '&#32;'.repeat(spaces.length))
   return `[!toggle]${suffix}${escaped ? ` ${escaped}` : ''}`

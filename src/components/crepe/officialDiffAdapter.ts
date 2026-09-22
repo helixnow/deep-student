@@ -25,6 +25,15 @@ export function normalizeOfficialDiffDoc(node: ProseNode): ProseNode {
     ? { ...node.attrs, caption: '' } : node.attrs, Fragment.fromArray(children), node.marks);
 }
 
+/** Crepe's trailing plugin keeps a final empty paragraph as a layout placeholder.
+ * It carries no user content, so review bookkeeping must not count it as a
+ * pending change (otherwise "accept all" never reports the review as finished). */
+export function withoutTrailingPlaceholderParagraph(node: ProseNode): ProseNode {
+  const last = node.lastChild;
+  if (!last || last.type.name !== 'paragraph' || last.content.size > 0) return node;
+  return node.type.create(node.attrs, node.content.cut(0, node.content.size - last.nodeSize), node.marks);
+}
+
 /** The component's schema serializer doesn't run our NodeViews. Add read-only titles. */
 export function renderOfficialDiffTitles(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>('.milkdown-diff-added [data-type="toggle"], .milkdown-diff-added [data-type="callout"]').forEach(node => {
@@ -113,7 +122,10 @@ export async function createOfficialDiffAdapter(options: {
       const { computeDocDiff } = await import('@milkdown/kit/plugin/diff');
       const decision: OfficialReviewDecision = { action: rejection ? 'reject' : 'accept',
         before: serialize(view.state.doc), after: serialize(nextDoc), target: serialize(nextTarget),
-        remaining: computeDocDiff(nextDoc, nextTarget).length,
+        remaining: computeDocDiff(
+          withoutTrailingPlaceholderParagraph(nextDoc),
+          withoutTrailingPlaceholderParagraph(nextTarget),
+        ).length,
         range: range && { fromA: range.fromA, toA: range.toA, fromB: range.fromB, toB: range.toB },
       };
       const confirmed = await options.onDecision(decision);

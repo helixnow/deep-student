@@ -209,19 +209,20 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
 
   const handleEscape = useCallback((event: Event) => {
     const e = event as KeyboardEvent;
-    if (compact && drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !isComposingKeyEvent(e)
-      && e.target instanceof Node && drawerRef.current?.contains(e.target)) {
+    // 已在处理中的 Escape（内层菜单/弹层已消费）不再关抽屉；IME 取消也不关。
+    if (compact && drawerOpen && e.key === 'Escape' && !e.defaultPrevented && !isComposingKeyEvent(e)) {
       e.preventDefault();
       e.stopPropagation();
       setDrawerOpen(false);
     }
   }, [compact, drawerOpen, setDrawerOpen]);
 
-  // 内层菜单 / 弹窗先消费 Escape，再由抽屉处理未消费的事件。
+  // capture：先于 workbench 全局快捷键（Esc 退出俯瞰等）消费掉
   useEventRegistry(compact && drawerOpen ? [{
     target: 'document',
     type: 'keydown',
     listener: handleEscape,
+    options: true,
   }] : [], [compact, drawerOpen, handleEscape]);
 
   /*
