@@ -928,6 +928,9 @@ mod tests {
                 "llm_usage_daily",
                 "vfs_embedding_dims",
                 "revocation_epochs",
+                "note_state",
+                "note_review_save_receipts",
+                "note_editor_lease_acks",
             ];
             for name in &expected {
                 let found = tables_with_composite_pk

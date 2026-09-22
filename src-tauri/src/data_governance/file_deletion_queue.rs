@@ -147,7 +147,9 @@ pub(crate) fn prepare_asset_deletion_with_conn(
     local_path: &Path,
 ) -> JournalResult<PreparedDeletionIntent> {
     if note_asset_is_referenced(conn, local_path)? {
-        return Err(DeletionJournalError::ReferencedNoteAsset(local_path.display().to_string()));
+        return Err(DeletionJournalError::ReferencedNoteAsset(
+            local_path.display().to_string(),
+        ));
     }
     let expected_local_path = asset_local_path_from_key(key)?;
     if expected_local_path != local_path {
@@ -461,23 +463,43 @@ fn finish_prepared_intent(
             finish_prepared_intent_uncommitted(conn, target_kind, root, intent)
         })();
         match result {
-            Ok(()) => { conn.execute_batch("COMMIT")?; return Ok(()); }
-            Err(error) => { let _ = conn.execute_batch("ROLLBACK"); return Err(error); }
+            Ok(()) => {
+                conn.execute_batch("COMMIT")?;
+                return Ok(());
+            }
+            Err(error) => {
+                // A content conflict is terminal: cancel_conflict already recorded
+                // state='cancelled' inside this transaction, so commit that verdict
+                // instead of rolling the cancellation back to 'prepared'.
+                if matches!(error, DeletionJournalError::Conflict { .. }) {
+                    let _ = conn.execute_batch("COMMIT");
+                } else {
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
+                return Err(error);
+            }
         }
     }
     finish_prepared_intent_uncommitted(conn, target_kind, root, intent)
 }
 
 fn note_asset_is_referenced(conn: &Connection, path: &Path) -> JournalResult<bool> {
-    if !path.starts_with("notes_assets") { return Ok(false); }
+    if !path.starts_with("notes_assets") {
+        return Ok(false);
+    }
     // Journal recovery also runs before schema migration on older installations.
     let has_history: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'note_document_revisions' AND type = 'table')",
         [], |r| r.get(0),
     )?;
-    if !has_history { return Ok(false); }
-    crate::vfs::repos::note_revision_repo::NoteRevisionRepo::asset_is_referenced(conn, &path.to_string_lossy())
-        .map_err(|e| DeletionJournalError::InvalidState(e.to_string()))
+    if !has_history {
+        return Ok(false);
+    }
+    crate::vfs::repos::note_revision_repo::NoteRevisionRepo::asset_is_referenced(
+        conn,
+        &path.to_string_lossy(),
+    )
+    .map_err(|e| DeletionJournalError::InvalidState(e.to_string()))
 }
 
 fn finish_prepared_intent_uncommitted(

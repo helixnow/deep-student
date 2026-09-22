@@ -1027,8 +1027,16 @@ pub const V20260922_NOTE_STORAGE_FOUNDATIONS: MigrationDef = MigrationDef::new(
     "note_storage_foundations",
     include_str!("../../../migrations/vfs/V20260922__note_storage_foundations.sql"),
 )
-.with_expected_tables(&["note_document_formats", "note_transfer_operations", "note_state", "note_learning_relations"])
-.with_expected_indexes(&["idx_note_learning_relations_note", "idx_note_learning_relations_resource"])
+.with_expected_tables(&[
+    "note_document_formats",
+    "note_transfer_operations",
+    "note_state",
+    "note_learning_relations",
+])
+.with_expected_indexes(&[
+    "idx_note_learning_relations_note",
+    "idx_note_learning_relations_resource",
+])
 .idempotent();
 
 pub const V20260923_NOTE_HISTORY_INTEGRATION: MigrationDef = MigrationDef::new(
@@ -1036,7 +1044,11 @@ pub const V20260923_NOTE_HISTORY_INTEGRATION: MigrationDef = MigrationDef::new(
     "note_history_integration",
     include_str!("../../../migrations/vfs/V20260923__note_history_integration.sql"),
 )
-.with_expected_tables(&["note_history_retention", "note_review_save_operations", "note_review_save_receipts"])
+.with_expected_tables(&[
+    "note_history_retention",
+    "note_review_save_operations",
+    "note_review_save_receipts",
+])
 .with_expected_queries(&[
     "SELECT edit_bucket_seconds, max_edit_versions FROM note_history_retention WHERE id=1",
     "SELECT version_id FROM note_document_revisions LIMIT 0",
@@ -1048,7 +1060,13 @@ pub const V20260924_NOTE_EDITOR_LEASES: MigrationDef = MigrationDef::new(
     "note_editor_leases",
     include_str!("../../../migrations/vfs/V20260924__note_editor_leases.sql"),
 )
-.with_expected_tables(&["note_editor_participants", "note_editor_leases", "note_editor_lease_notes", "note_editor_lease_acks", "note_editor_write_grants"])
+.with_expected_tables(&[
+    "note_editor_participants",
+    "note_editor_leases",
+    "note_editor_lease_notes",
+    "note_editor_lease_acks",
+    "note_editor_write_grants",
+])
 .idempotent();
 
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
@@ -1291,7 +1309,7 @@ mod tests {
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("note_history_integration")
+            Some("note_editor_leases")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables
