@@ -66,13 +66,13 @@ use super::handler_utils::{
     update_mindmap_content_with_occ,
 };
 
+use crate::vfs::repos::note_lease_repo::{NoteLeaseAuth, NoteLeaseRepo};
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
     VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
     VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteMetadataUpdate,
     VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
-use crate::vfs::repos::note_lease_repo::{NoteLeaseAuth, NoteLeaseRepo};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
@@ -1406,9 +1406,15 @@ pub async fn dstu_update(
             };
             let updated_note = match if let Some(auth) = lease.as_ref() {
                 let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
-                NoteLeaseRepo::authorized(&conn, auth, webview.label(), NoteLeaseRepo::now(), true, ||
-                    VfsNoteRepo::update_note_with_conn(&conn, &id, update_params.clone()))
-                    .map_err(|e| e.to_string())
+                NoteLeaseRepo::authorized(
+                    &conn,
+                    auth,
+                    webview.label(),
+                    NoteLeaseRepo::now(),
+                    true,
+                    || VfsNoteRepo::update_note_with_conn(&conn, &id, update_params.clone()),
+                )
+                .map_err(|e| e.to_string())
             } else {
                 VfsNoteRepo::update_note(&vfs_db, &id, update_params).map_err(|e| e.to_string())
             } {

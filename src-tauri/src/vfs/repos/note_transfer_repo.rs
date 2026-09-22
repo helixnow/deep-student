@@ -103,7 +103,10 @@ impl NoteTransferRepo {
         // Before/after versions survive the ordinary edit coalescing policy.
         for id in [&request.source_note_id, &request.target_note_id] {
             let version = NoteRevisionRepo::snapshot(conn, id, "transfer_before")?;
-            conn.execute("UPDATE note_document_revisions SET pinned=1 WHERE version_id=?1", [version])?;
+            conn.execute(
+                "UPDATE note_document_revisions SET pinned=1 WHERE version_id=?1",
+                [version],
+            )?;
         }
         // This backend splice preserves complete root containers and therefore
         // is itself a capable writer; page opt-in is still checked by the repo.
@@ -131,7 +134,10 @@ impl NoteTransferRepo {
         let sv = NoteRevisionRepo::snapshot(conn, &s.id, "transfer")?;
         let tv = NoteRevisionRepo::snapshot(conn, &t.id, "transfer")?;
         for version in [&sv, &tv] {
-            conn.execute("UPDATE note_document_revisions SET pinned=1 WHERE version_id=?1", [version])?;
+            conn.execute(
+                "UPDATE note_document_revisions SET pinned=1 WHERE version_id=?1",
+                [version],
+            )?;
         }
         Ok(TransferResult {
             operation_id: request.operation_id.clone(),

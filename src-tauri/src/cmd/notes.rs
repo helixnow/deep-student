@@ -14,15 +14,28 @@ use crate::dstu::handler_utils::node_converters::note_to_dstu_node;
 use crate::models::AppError;
 use crate::unified_file_manager;
 use crate::vfs::index_service::VfsIndexService;
-use crate::vfs::repos::note_repo::{NoteBacklink, NoteOutgoingLink};
-use crate::vfs::repos::note_revision_repo::{NoteHistoryPage, NoteRevision, NoteRevisionRepo, NoteRevisionSummary};
 use crate::vfs::repos::note_format_repo::{NoteFormat, NoteFormatRepo};
-use crate::vfs::repos::note_history_restore::{NoteHistoryCurrent, NoteHistoryRetention, NoteHistorySelection};
+use crate::vfs::repos::note_history_restore::{
+    NoteHistoryCurrent, NoteHistoryRetention, NoteHistorySelection,
+};
+use crate::vfs::repos::note_lease_repo::{
+    FrozenDraft, LeaseCancellation, LeaseNote, LeaseStatus, NoteLeaseAuth, NoteLeaseRepo,
+    ParticipantStatus,
+};
+use crate::vfs::repos::note_relation_repo::{
+    NoteLocator, NoteReferenceStatus, NoteRelation, NoteRelationPut, NoteRelationRepo,
+};
+use crate::vfs::repos::note_repo::{NoteBacklink, NoteOutgoingLink};
 use crate::vfs::repos::note_review_repo::{NoteReviewRepo, ReviewSaveRequest, ReviewSaveResult};
-use crate::vfs::repos::note_transfer_repo::{NoteTransferRepo, TransferBlocksRequest, TransferResult};
-use crate::vfs::repos::note_state_repo::{NoteState, NoteStateDelete, NoteStateKey, NoteStateList, NoteStatePut, NoteStateRepo};
-use crate::vfs::repos::note_relation_repo::{NoteLocator, NoteReferenceStatus, NoteRelation, NoteRelationPut, NoteRelationRepo};
-use crate::vfs::repos::note_lease_repo::{NoteLeaseRepo, NoteLeaseAuth, FrozenDraft, LeaseStatus, LeaseNote, ParticipantStatus, LeaseCancellation};
+use crate::vfs::repos::note_revision_repo::{
+    NoteHistoryPage, NoteRevision, NoteRevisionRepo, NoteRevisionSummary,
+};
+use crate::vfs::repos::note_state_repo::{
+    NoteState, NoteStateDelete, NoteStateKey, NoteStateList, NoteStatePut, NoteStateRepo,
+};
+use crate::vfs::repos::note_transfer_repo::{
+    NoteTransferRepo, TransferBlocksRequest, TransferResult,
+};
 use crate::vfs::types::VfsCreateNoteParams;
 use crate::vfs::{VfsLanceStore, VfsNoteRepo};
 use chrono::Utc;
@@ -251,276 +264,587 @@ fn collect_note_asset_deletion_entries_inner(
 // ================= Notes: 独立笔记系统（CRUD） =================
 
 async fn note_storage<T, F>(state: State<'_, AppState>, work: F) -> Result<T>
-where T: Send + 'static, F: FnOnce(&rusqlite::Connection) -> crate::vfs::error::VfsResult<T> + Send + 'static {
-    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+where
+    T: Send + 'static,
+    F: FnOnce(&rusqlite::Connection) -> crate::vfs::error::VfsResult<T> + Send + 'static,
+{
+    let db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
     tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        let conn = db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
         work(&conn).map_err(|e| match e {
-            crate::vfs::error::VfsError::Conflict { key, message } => AppError::conflict(format!("{}: {}", key, message)),
-            crate::vfs::error::VfsError::InvalidArgument { reason, .. } => AppError::validation(reason),
+            crate::vfs::error::VfsError::Conflict { key, message } => {
+                AppError::conflict(format!("{}: {}", key, message))
+            }
+            crate::vfs::error::VfsError::InvalidArgument { reason, .. } => {
+                AppError::validation(reason)
+            }
             other => AppError::database(other.to_string()),
         })
-    }).await.map_err(|e| AppError::internal(e.to_string()))?
+    })
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))?
 }
 
-async fn note_write_storage<T, F>(state: State<'_, AppState>, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, work: F) -> Result<T>
-where T: Send + 'static, F: FnOnce(&rusqlite::Connection) -> crate::vfs::error::VfsResult<T> + Send + 'static {
-    let label=webview.label().to_owned();
-    let result=note_storage(state.clone(),move |conn| match lease {
-        Some(auth)=>NoteLeaseRepo::authorized(conn,&auth,&label,NoteLeaseRepo::now(),true,||work(conn)),
-        None=>work(conn),
-    }).await?;
+async fn note_write_storage<T, F>(
+    state: State<'_, AppState>,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    work: F,
+) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&rusqlite::Connection) -> crate::vfs::error::VfsResult<T> + Send + 'static,
+{
+    let label = webview.label().to_owned();
+    let result = note_storage(state.clone(), move |conn| match lease {
+        Some(auth) => {
+            NoteLeaseRepo::authorized(conn, &auth, &label, NoteLeaseRepo::now(), true, || {
+                work(conn)
+            })
+        }
+        None => work(conn),
+    })
+    .await?;
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn notes_editor_register(note_id:String,webview:tauri::Webview,state:State<'_,AppState>)->Result<ParticipantStatus> {
-    let label=webview.label().to_owned();
-    let window=webview.window().label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::register(conn,&note_id,&label,&window,NoteLeaseRepo::now())).await?;
-    if let Some(status)=&result.active_lease {let _=app.emit("notes:lease-changed",status);}
+pub async fn notes_editor_register(
+    note_id: String,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<ParticipantStatus> {
+    let label = webview.label().to_owned();
+    let window = webview.window().label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::register(conn, &note_id, &label, &window, NoteLeaseRepo::now())
+    })
+    .await?;
+    if let Some(status) = &result.active_lease {
+        let _ = app.emit("notes:lease-changed", status);
+    }
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_heartbeat(participant_id:String,webview:tauri::Webview,state:State<'_,AppState>)->Result<ParticipantStatus> {
-    let label=webview.label().to_owned();
-    note_storage(state,move|conn|NoteLeaseRepo::heartbeat(conn,&participant_id,&label,NoteLeaseRepo::now())).await
+pub async fn notes_editor_heartbeat(
+    participant_id: String,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<ParticipantStatus> {
+    let label = webview.label().to_owned();
+    note_storage(state, move |conn| {
+        NoteLeaseRepo::heartbeat(conn, &participant_id, &label, NoteLeaseRepo::now())
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_editor_unregister(participant_id:String,webview:tauri::Webview,state:State<'_,AppState>)->Result<Vec<LeaseCancellation>> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::unregister(conn,&participant_id,&label,NoteLeaseRepo::now())).await?;
-    for event in &result {let _=app.emit("notes:lease-ended",event);}
+pub async fn notes_editor_unregister(
+    participant_id: String,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<Vec<LeaseCancellation>> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::unregister(conn, &participant_id, &label, NoteLeaseRepo::now())
+    })
+    .await?;
+    for event in &result {
+        let _ = app.emit("notes:lease-ended", event);
+    }
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_begin(participant_id:String,operation_id:String,note_ids:Vec<String>,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseStatus> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::begin(conn,&participant_id,&label,&operation_id,note_ids,NoteLeaseRepo::now())).await?;
-    let _=app.emit("notes:lease-changed",&result);
+pub async fn notes_editor_begin(
+    participant_id: String,
+    operation_id: String,
+    note_ids: Vec<String>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseStatus> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::begin(
+            conn,
+            &participant_id,
+            &label,
+            &operation_id,
+            note_ids,
+            NoteLeaseRepo::now(),
+        )
+    })
+    .await?;
+    let _ = app.emit("notes:lease-changed", &result);
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_lease_status(token:String,state:State<'_,AppState>)->Result<Option<LeaseStatus>> {
-    note_storage(state,move|conn|NoteLeaseRepo::status(conn,&token)).await
+pub async fn notes_editor_lease_status(
+    token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LeaseStatus>> {
+    note_storage(state, move |conn| NoteLeaseRepo::status(conn, &token)).await
 }
 #[tauri::command]
-pub async fn notes_editor_freeze_ack(lease:NoteLeaseAuth,draft:FrozenDraft,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseStatus> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let event_app=app.clone();
-    let result=note_storage(state,move|conn| {
-        let result=NoteLeaseRepo::ack(conn,&lease,&label,draft,NoteLeaseRepo::now());
-        if let Err(crate::vfs::error::VfsError::Conflict{key,..})=&result {
-            if matches!(key.as_str(),"notes.lease_stale_draft"|"notes.lease_divergent_drafts") {
-                let event=NoteRevisionRepo::transaction(conn,||NoteLeaseRepo::remove(conn,&lease.token,key))?;
-                let _=event_app.emit("notes:lease-ended",event);
+pub async fn notes_editor_freeze_ack(
+    lease: NoteLeaseAuth,
+    draft: FrozenDraft,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseStatus> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let event_app = app.clone();
+    let result = note_storage(state, move |conn| {
+        let result = NoteLeaseRepo::ack(conn, &lease, &label, draft, NoteLeaseRepo::now());
+        if let Err(crate::vfs::error::VfsError::Conflict { key, .. }) = &result {
+            if matches!(
+                key.as_str(),
+                "notes.lease_stale_draft" | "notes.lease_divergent_drafts"
+            ) {
+                let event = NoteRevisionRepo::transaction(conn, || {
+                    NoteLeaseRepo::remove(conn, &lease.token, key)
+                })?;
+                let _ = event_app.emit("notes:lease-ended", event);
             }
         }
         result
-    }).await?;
-    let _=app.emit("notes:lease-changed",&result);
+    })
+    .await?;
+    let _ = app.emit("notes:lease-changed", &result);
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_flush(lease:NoteLeaseAuth,note_id:String,capabilities:Option<Vec<String>>,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseNote> {
-    let label=webview.label().to_owned();
-    note_storage(state,move|conn|NoteLeaseRepo::flush(conn,&lease,&label,&note_id,&capabilities.unwrap_or_default(),NoteLeaseRepo::now())).await
+pub async fn notes_editor_flush(
+    lease: NoteLeaseAuth,
+    note_id: String,
+    capabilities: Option<Vec<String>>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseNote> {
+    let label = webview.label().to_owned();
+    note_storage(state, move |conn| {
+        NoteLeaseRepo::flush(
+            conn,
+            &lease,
+            &label,
+            &note_id,
+            &capabilities.unwrap_or_default(),
+            NoteLeaseRepo::now(),
+        )
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_editor_finish(lease:NoteLeaseAuth,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseStatus> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::finish(conn,&lease,&label,NoteLeaseRepo::now())).await?;
-    let _=app.emit("notes:lease-changed",&result);
+pub async fn notes_editor_finish(
+    lease: NoteLeaseAuth,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseStatus> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::finish(conn, &lease, &label, NoteLeaseRepo::now())
+    })
+    .await?;
+    let _ = app.emit("notes:lease-changed", &result);
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_refresh_ack(lease:NoteLeaseAuth,updated_at:String,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseStatus> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::refresh_ack(conn,&lease,&label,&updated_at,NoteLeaseRepo::now())).await?;
-    let _=app.emit("notes:lease-changed",&result);
+pub async fn notes_editor_refresh_ack(
+    lease: NoteLeaseAuth,
+    updated_at: String,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseStatus> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::refresh_ack(conn, &lease, &label, &updated_at, NoteLeaseRepo::now())
+    })
+    .await?;
+    let _ = app.emit("notes:lease-changed", &result);
     Ok(result)
 }
 #[tauri::command]
-pub async fn notes_editor_release(lease:NoteLeaseAuth,cancel:bool,webview:tauri::Webview,state:State<'_,AppState>)->Result<LeaseCancellation> {
-    let label=webview.label().to_owned();
-    let app=webview.app_handle().clone();
-    let result=note_storage(state,move|conn|NoteLeaseRepo::release(conn,&lease,&label,cancel,NoteLeaseRepo::now())).await?;
-    let _=app.emit("notes:lease-ended",&result);
+pub async fn notes_editor_release(
+    lease: NoteLeaseAuth,
+    cancel: bool,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+) -> Result<LeaseCancellation> {
+    let label = webview.label().to_owned();
+    let app = webview.app_handle().clone();
+    let result = note_storage(state, move |conn| {
+        NoteLeaseRepo::release(conn, &lease, &label, cancel, NoteLeaseRepo::now())
+    })
+    .await?;
+    let _ = app.emit("notes:lease-ended", &result);
     Ok(result)
 }
 
 /// TTL/close cleanup runs off the UI thread, for all windows and WebViews.
-pub(crate) fn cleanup_note_editor_leases(app:tauri::AppHandle,window:Option<String>,webview:Option<String>) {
+pub(crate) fn cleanup_note_editor_leases(
+    app: tauri::AppHandle,
+    window: Option<String>,
+    webview: Option<String>,
+) {
     use tauri::Manager;
-    let Some(db)=app.try_state::<AppState>().and_then(|s|s.vfs_db.clone()) else {return};
-    tauri::async_runtime::spawn_blocking(move|| {
-        let result=db.get_conn_safe().and_then(|conn|NoteLeaseRepo::cleanup(&conn,NoteLeaseRepo::now(),window.as_deref(),webview.as_deref()));
+    let Some(db) = app.try_state::<AppState>().and_then(|s| s.vfs_db.clone()) else {
+        return;
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = db.get_conn_safe().and_then(|conn| {
+            NoteLeaseRepo::cleanup(
+                &conn,
+                NoteLeaseRepo::now(),
+                window.as_deref(),
+                webview.as_deref(),
+            )
+        });
         match result {
-            Ok(events)=>for event in events {let _=app.emit("notes:lease-ended",event);},
-            Err(error)=>log::warn!("Notes editor lease cleanup: {}",error),
+            Ok(events) => {
+                for event in events {
+                    let _ = app.emit("notes:lease-ended", event);
+                }
+            }
+            Err(error) => log::warn!("Notes editor lease cleanup: {}", error),
         }
     });
 }
 
 #[tauri::command]
-pub async fn notes_transfer_blocks(request: TransferBlocksRequest, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<TransferResult> {
-    let result = note_write_storage(state, lease, webview, move |conn| NoteTransferRepo::transfer(conn, request)).await?;
+pub async fn notes_transfer_blocks(
+    request: TransferBlocksRequest,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<TransferResult> {
+    let result = note_write_storage(state, lease, webview, move |conn| {
+        NoteTransferRepo::transfer(conn, request)
+    })
+    .await?;
     let _ = app.emit("notes:transfer-completed", &result);
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn notes_undo_transfer(operation_id: String, expected_source_updated_at: String, expected_target_updated_at: String, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<TransferResult> {
-    let result = note_write_storage(state, lease, webview, move |conn| NoteTransferRepo::undo(conn, &operation_id, &expected_source_updated_at, &expected_target_updated_at)).await?;
+pub async fn notes_undo_transfer(
+    operation_id: String,
+    expected_source_updated_at: String,
+    expected_target_updated_at: String,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<TransferResult> {
+    let result = note_write_storage(state, lease, webview, move |conn| {
+        NoteTransferRepo::undo(
+            conn,
+            &operation_id,
+            &expected_source_updated_at,
+            &expected_target_updated_at,
+        )
+    })
+    .await?;
     let _ = app.emit("notes:transfer-completed", &result);
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn notes_get_format(note_id: String, state: State<'_, AppState>) -> Result<NoteFormatStatus> {
-    note_storage(state, move |conn| NoteRevisionRepo::transaction(conn,|| note_format_status(conn, &note_id))).await
+pub async fn notes_get_format(
+    note_id: String,
+    state: State<'_, AppState>,
+) -> Result<NoteFormatStatus> {
+    note_storage(state, move |conn| {
+        NoteRevisionRepo::transaction(conn, || note_format_status(conn, &note_id))
+    })
+    .await
 }
 
 #[derive(Serialize)]
 pub struct NoteFormatStatus {
-    #[serde(flatten)] pub format: NoteFormat,
+    #[serde(flatten)]
+    pub format: NoteFormat,
     pub required_capabilities: Vec<String>,
     pub updated_at: String,
 }
 
-fn note_format_status(conn: &rusqlite::Connection, note_id: &str) -> crate::vfs::error::VfsResult<NoteFormatStatus> {
-    let format = NoteFormatRepo::get(conn,note_id)?;
-    let note = VfsNoteRepo::get_note_including_deleted_with_conn(conn,note_id)?.ok_or_else(|| crate::vfs::repos::note_format_repo::invalid("Note missing"))?;
-    Ok(NoteFormatStatus { required_capabilities:NoteFormatRepo::required_capabilities(&format), format, updated_at:note.updated_at })
+fn note_format_status(
+    conn: &rusqlite::Connection,
+    note_id: &str,
+) -> crate::vfs::error::VfsResult<NoteFormatStatus> {
+    let format = NoteFormatRepo::get(conn, note_id)?;
+    let note = VfsNoteRepo::get_note_including_deleted_with_conn(conn, note_id)?
+        .ok_or_else(|| crate::vfs::repos::note_format_repo::invalid("Note missing"))?;
+    Ok(NoteFormatStatus {
+        required_capabilities: NoteFormatRepo::required_capabilities(&format),
+        format,
+        updated_at: note.updated_at,
+    })
 }
 
 #[tauri::command]
-pub async fn notes_enable_columns(note_id: String, expected_updated_at: String, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<NoteFormatStatus> {
-    let result = note_write_storage(state,lease,webview,move |conn| {
-        NoteRevisionRepo::transaction(conn,|| {
-            NoteFormatRepo::enable_columns(conn,&note_id,&expected_updated_at)?;
-            note_format_status(conn,&note_id)
+pub async fn notes_enable_columns(
+    note_id: String,
+    expected_updated_at: String,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<NoteFormatStatus> {
+    let result = note_write_storage(state, lease, webview, move |conn| {
+        NoteRevisionRepo::transaction(conn, || {
+            NoteFormatRepo::enable_columns(conn, &note_id, &expected_updated_at)?;
+            note_format_status(conn, &note_id)
         })
-    }).await?;
+    })
+    .await?;
     let _ = app.emit("notes:format-changed", &result);
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn notes_review_save_as(operation_id: String, source_note_id: String, markdown: String, expected_updated_at: Option<String>, capabilities: Option<Vec<String>>, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<ReviewSaveResult> {
-    let result = note_write_storage(state,lease,webview,move |conn| NoteReviewRepo::save_as(conn,ReviewSaveRequest {
-        operation_id,source_note_id,markdown,expected_updated_at,capabilities:capabilities.unwrap_or_default()
-    })).await?;
+pub async fn notes_review_save_as(
+    operation_id: String,
+    source_note_id: String,
+    markdown: String,
+    expected_updated_at: Option<String>,
+    capabilities: Option<Vec<String>>,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<ReviewSaveResult> {
+    let result = note_write_storage(state, lease, webview, move |conn| {
+        NoteReviewRepo::save_as(
+            conn,
+            ReviewSaveRequest {
+                operation_id,
+                source_note_id,
+                markdown,
+                expected_updated_at,
+                capabilities: capabilities.unwrap_or_default(),
+            },
+        )
+    })
+    .await?;
     let _ = app.emit("notes:review-saved", &result);
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn notes_migrate_blocks(note_id: String, expected_updated_at: String, content: String, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<crate::vfs::types::VfsNote> {
-    let note = note_write_storage(state, lease, webview, move |conn| NoteFormatRepo::migrate(conn, &note_id, &expected_updated_at, &content)).await?;
+pub async fn notes_migrate_blocks(
+    note_id: String,
+    expected_updated_at: String,
+    content: String,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<crate::vfs::types::VfsNote> {
+    let note = note_write_storage(state, lease, webview, move |conn| {
+        NoteFormatRepo::migrate(conn, &note_id, &expected_updated_at, &content)
+    })
+    .await?;
     let _ = app.emit("notes:format-changed", &note);
     Ok(note)
 }
 
 /// request.type = "review" | "draft"; all nested request/response keys are snake_case.
 #[tauri::command]
-pub async fn notes_state_get(request: NoteStateKey, state: State<'_, AppState>) -> Result<Option<NoteState>> {
+pub async fn notes_state_get(
+    request: NoteStateKey,
+    state: State<'_, AppState>,
+) -> Result<Option<NoteState>> {
     note_storage(state, move |conn| NoteStateRepo::get(conn, &request)).await
 }
 #[tauri::command]
-pub async fn notes_state_list(request: NoteStateList, state: State<'_, AppState>) -> Result<Vec<NoteState>> {
+pub async fn notes_state_list(
+    request: NoteStateList,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteState>> {
     note_storage(state, move |conn| NoteStateRepo::list(conn, &request)).await
 }
 #[tauri::command]
-pub async fn notes_state_put(request: NoteStatePut, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<NoteState> {
+pub async fn notes_state_put(
+    request: NoteStatePut,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<NoteState> {
     let row = note_storage(state, move |conn| NoteStateRepo::put(conn, request)).await?;
     let _ = app.emit("notes:state-changed", &row);
     Ok(row)
 }
 #[tauri::command]
-pub async fn notes_state_delete(request: NoteStateDelete, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<NoteState> {
+pub async fn notes_state_delete(
+    request: NoteStateDelete,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<NoteState> {
     let row = note_storage(state, move |conn| NoteStateRepo::delete(conn, request)).await?;
     let _ = app.emit("notes:state-changed", &row);
     Ok(row)
 }
 #[tauri::command]
-pub async fn notes_relation_get(id: String, state: State<'_, AppState>) -> Result<Option<NoteRelation>> {
+pub async fn notes_relation_get(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<NoteRelation>> {
     let anki = state.anki_database.clone();
     note_storage(state, move |conn| {
-        let anki = anki.get_conn_safe().map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
+        let anki = anki
+            .get_conn_safe()
+            .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
         NoteRelationRepo::get(conn, Some(&anki), &id)
-    }).await
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_relation_list(note_id: String, state: State<'_, AppState>) -> Result<Vec<NoteRelation>> {
+pub async fn notes_relation_list(
+    note_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteRelation>> {
     let anki = state.anki_database.clone();
     note_storage(state, move |conn| {
-        let anki = anki.get_conn_safe().map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
+        let anki = anki
+            .get_conn_safe()
+            .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
         NoteRelationRepo::list(conn, Some(&anki), &note_id)
-    }).await
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_relation_put(request: NoteRelationPut, state: State<'_, AppState>) -> Result<NoteRelation> {
+pub async fn notes_relation_put(
+    request: NoteRelationPut,
+    state: State<'_, AppState>,
+) -> Result<NoteRelation> {
     let anki = state.anki_database.clone();
     note_storage(state, move |conn| {
-        let anki = anki.get_conn_safe().map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
+        let anki = anki
+            .get_conn_safe()
+            .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
         NoteRelationRepo::put(conn, Some(&anki), request)
-    }).await
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_relation_delete(id: String, expected_revision: i64, state: State<'_, AppState>) -> Result<bool> {
-    note_storage(state, move |conn| NoteRelationRepo::delete(conn, &id, expected_revision)).await
+pub async fn notes_relation_delete(
+    id: String,
+    expected_revision: i64,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    note_storage(state, move |conn| {
+        NoteRelationRepo::delete(conn, &id, expected_revision)
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_reference_status(resource_id: String, locator: NoteLocator, state: State<'_, AppState>) -> Result<NoteReferenceStatus> {
+pub async fn notes_reference_status(
+    resource_id: String,
+    locator: NoteLocator,
+    state: State<'_, AppState>,
+) -> Result<NoteReferenceStatus> {
     let anki = state.anki_database.clone();
     note_storage(state, move |conn| {
-        let anki = anki.get_conn_safe().map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
+        let anki = anki
+            .get_conn_safe()
+            .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))?;
         NoteRelationRepo::reference_status(conn, Some(&anki), &resource_id, &locator)
-    }).await
+    })
+    .await
 }
 #[tauri::command]
-pub async fn notes_invalidate_resource_refs(resource_id: String, state: State<'_, AppState>) -> Result<usize> {
-    note_storage(state, move |conn| NoteRelationRepo::invalidate_resource(conn, &resource_id)).await
+pub async fn notes_invalidate_resource_refs(
+    resource_id: String,
+    state: State<'_, AppState>,
+) -> Result<usize> {
+    note_storage(state, move |conn| {
+        NoteRelationRepo::invalidate_resource(conn, &resource_id)
+    })
+    .await
 }
 
 /// Local history, cursor-paginated without loading document bodies.
 #[tauri::command]
-pub async fn notes_history_current(note_id: String, state: State<'_, AppState>) -> Result<NoteHistoryCurrent> {
-    note_storage(state,move |conn| NoteRevisionRepo::current(conn,&note_id)).await
+pub async fn notes_history_current(
+    note_id: String,
+    state: State<'_, AppState>,
+) -> Result<NoteHistoryCurrent> {
+    note_storage(state, move |conn| NoteRevisionRepo::current(conn, &note_id)).await
 }
 
 #[tauri::command]
-pub async fn notes_history_get_retention(state: State<'_, AppState>) -> Result<NoteHistoryRetention> {
-    note_storage(state,NoteRevisionRepo::get_retention).await
+pub async fn notes_history_get_retention(
+    state: State<'_, AppState>,
+) -> Result<NoteHistoryRetention> {
+    note_storage(state, NoteRevisionRepo::get_retention).await
 }
 
 #[tauri::command]
-pub async fn notes_history_set_retention(policy: NoteHistoryRetention, state: State<'_, AppState>) -> Result<NoteHistoryRetention> {
-    note_storage(state,move |conn| NoteRevisionRepo::set_retention(conn,policy)).await
+pub async fn notes_history_set_retention(
+    policy: NoteHistoryRetention,
+    state: State<'_, AppState>,
+) -> Result<NoteHistoryRetention> {
+    note_storage(state, move |conn| {
+        NoteRevisionRepo::set_retention(conn, policy)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn notes_history_restore_selection_copy(note_id: String, version_id: String, selection: NoteHistorySelection, state: State<'_, AppState>, window: Window) -> Result<crate::dstu::types::DstuNode> {
-    let node = note_storage(state,move |conn| {
-        NoteRevisionRepo::restore_selection_copy(conn,&note_id,&version_id,Some(&selection)).map(|note|note_to_dstu_node(&note))
-    }).await?;
-    crate::dstu::handler_utils::node_converters::emit_watch_event(&window,crate::dstu::types::DstuWatchEvent::created(&node.path,node.clone()));
+pub async fn notes_history_restore_selection_copy(
+    note_id: String,
+    version_id: String,
+    selection: NoteHistorySelection,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<crate::dstu::types::DstuNode> {
+    let node = note_storage(state, move |conn| {
+        NoteRevisionRepo::restore_selection_copy(conn, &note_id, &version_id, Some(&selection))
+            .map(|note| note_to_dstu_node(&note))
+    })
+    .await?;
+    crate::dstu::handler_utils::node_converters::emit_watch_event(
+        &window,
+        crate::dstu::types::DstuWatchEvent::created(&node.path, node.clone()),
+    );
     Ok(node)
 }
 
 #[tauri::command]
-pub async fn notes_history_restore_current(note_id: String, version_id: String, expected_updated_at: String, selection: Option<NoteHistorySelection>, lease: Option<NoteLeaseAuth>, webview: tauri::Webview, state: State<'_, AppState>, window: Window) -> Result<crate::dstu::types::DstuNode> {
-    let node = note_write_storage(state,lease,webview,move |conn| {
-        NoteRevisionRepo::restore_current(conn,&note_id,&version_id,&expected_updated_at,selection.as_ref()).map(|note|note_to_dstu_node(&note))
-    }).await?;
-    crate::dstu::handler_utils::node_converters::emit_watch_event(&window,crate::dstu::types::DstuWatchEvent::updated(&node.path,node.clone()));
+pub async fn notes_history_restore_current(
+    note_id: String,
+    version_id: String,
+    expected_updated_at: String,
+    selection: Option<NoteHistorySelection>,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<crate::dstu::types::DstuNode> {
+    let node = note_write_storage(state, lease, webview, move |conn| {
+        NoteRevisionRepo::restore_current(
+            conn,
+            &note_id,
+            &version_id,
+            &expected_updated_at,
+            selection.as_ref(),
+        )
+        .map(|note| note_to_dstu_node(&note))
+    })
+    .await?;
+    crate::dstu::handler_utils::node_converters::emit_watch_event(
+        &window,
+        crate::dstu::types::DstuWatchEvent::updated(&node.path, node.clone()),
+    );
     Ok(node)
 }
 
@@ -533,12 +857,25 @@ pub async fn notes_history_list(
     pinned_only: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<NoteHistoryPage> {
-    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
     tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
-        NoteRevisionRepo::list_filtered(&conn, &note_id, cursor, limit.unwrap_or(30), pinned_only.unwrap_or(false))
-            .map_err(|e| AppError::database(e.to_string()))
-    }).await.map_err(|e| AppError::internal(e.to_string()))?
+        let conn = db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        NoteRevisionRepo::list_filtered(
+            &conn,
+            &note_id,
+            cursor,
+            limit.unwrap_or(30),
+            pinned_only.unwrap_or(false),
+        )
+        .map_err(|e| AppError::database(e.to_string()))
+    })
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))?
 }
 
 /// Read-only preview. Viewing history does not change retention or block purge.
@@ -548,12 +885,19 @@ pub async fn notes_history_get(
     version_id: String,
     state: State<'_, AppState>,
 ) -> Result<NoteRevision> {
-    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
     tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        let conn = db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
         NoteRevisionRepo::get(&conn, &note_id, &version_id)
             .map_err(|e| AppError::database(e.to_string()))
-    }).await.map_err(|e| AppError::internal(e.to_string()))?
+    })
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))?
 }
 
 /// Explicit local history retention management (also available for trash notes).
@@ -564,12 +908,19 @@ pub async fn notes_history_set_pinned(
     pinned: bool,
     state: State<'_, AppState>,
 ) -> Result<NoteRevisionSummary> {
-    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
     tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        let conn = db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
         NoteRevisionRepo::set_pinned(&conn, &note_id, &version_id, pinned)
             .map_err(|e| AppError::database(e.to_string()))
-    }).await.map_err(|e| AppError::internal(e.to_string()))?
+    })
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))?
 }
 
 /// Always creates a root-folder copy; never overwrites current or unsaved text.
@@ -580,15 +931,23 @@ pub async fn notes_history_restore_copy(
     state: State<'_, AppState>,
     window: Window,
 ) -> Result<crate::dstu::types::DstuNode> {
-    let db = state.vfs_db.clone().ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+    let db = state
+        .vfs_db
+        .clone()
+        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
     let node = tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
+        let conn = db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
         let note = NoteRevisionRepo::restore_copy(&conn, &note_id, &version_id)
             .map_err(|e| AppError::database(e.to_string()))?;
         Ok::<_, AppError>(note_to_dstu_node(&note))
-    }).await.map_err(|e| AppError::internal(e.to_string()))??;
+    })
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))??;
     crate::dstu::handler_utils::node_converters::emit_watch_event(
-        &window, crate::dstu::types::DstuWatchEvent::created(&node.path, node.clone()),
+        &window,
+        crate::dstu::types::DstuWatchEvent::created(&node.path, node.clone()),
     );
     Ok(node)
 }
@@ -743,15 +1102,36 @@ pub async fn notes_update(
     _window: Window,
 ) -> Result<crate::notes_manager::NoteItem> {
     if note.capabilities.is_some() || lease.is_some() {
-        let capabilities=note.capabilities.clone().unwrap_or_default();
+        let capabilities = note.capabilities.clone().unwrap_or_default();
         return note_write_storage(state, lease, webview, move |conn| {
-            let updated = VfsNoteRepo::update_note_with_capabilities(conn,&note.id,crate::vfs::types::VfsUpdateNoteParams {
-                title:note.title, content:note.content_md.clone(), tags:note.tags, expected_updated_at:note.expected_updated_at,
-            },&capabilities)?;
-            let content = match note.content_md { Some(content)=>content, None=>VfsNoteRepo::get_note_content_with_conn(conn,&updated.id)?.unwrap_or_default() };
-            Ok(crate::notes_manager::NoteItem { id:updated.id,title:updated.title,content_md:content,tags:updated.tags,
-                created_at:updated.created_at,updated_at:updated.updated_at,is_favorite:updated.is_favorite })
-        }).await;
+            let updated = VfsNoteRepo::update_note_with_capabilities(
+                conn,
+                &note.id,
+                crate::vfs::types::VfsUpdateNoteParams {
+                    title: note.title,
+                    content: note.content_md.clone(),
+                    tags: note.tags,
+                    expected_updated_at: note.expected_updated_at,
+                },
+                &capabilities,
+            )?;
+            let content = match note.content_md {
+                Some(content) => content,
+                None => {
+                    VfsNoteRepo::get_note_content_with_conn(conn, &updated.id)?.unwrap_or_default()
+                }
+            };
+            Ok(crate::notes_manager::NoteItem {
+                id: updated.id,
+                title: updated.title,
+                content_md: content,
+                tags: updated.tags,
+                created_at: updated.created_at,
+                updated_at: updated.updated_at,
+                is_favorite: updated.is_favorite,
+            })
+        })
+        .await;
     }
     // 使用 spawn_blocking 避免在异步上下文中阻塞
     // 链接图维护已收敛到 repo 层（VfsNoteRepo::update_note 正文变化时同事务重写出链）
@@ -993,7 +1373,9 @@ pub async fn notes_hard_delete(
             for (key, _size) in &pending_asset_deletions {
                 let local_path = asset_local_path_from_key(&key)
                     .map_err(|e| AppError::validation(e.to_string()))?;
-                if retained.contains(local_path.to_string_lossy().as_ref()) { continue; }
+                if retained.contains(local_path.to_string_lossy().as_ref()) {
+                    continue;
+                }
                 intents.push(
                     prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
                         .map_err(|e| {
@@ -1178,7 +1560,9 @@ pub async fn notes_empty_trash(
                 for (key, _size) in entries {
                     let local_path = asset_local_path_from_key(key)
                         .map_err(|e| AppError::validation(e.to_string()))?;
-                    if retained.contains(local_path.to_string_lossy().as_ref()) { continue; }
+                    if retained.contains(local_path.to_string_lossy().as_ref()) {
+                        continue;
+                    }
                     intents.push(
                         prepare_asset_deletion_with_conn(&conn, &active_dir, key, &local_path)
                             .map_err(|e| {
@@ -1572,8 +1956,10 @@ pub async fn notes_assets_scan_orphans(
             }
         }
 
-        refs.extend(NoteRevisionRepo::retained_asset_paths(&vfs_conn)
-            .map_err(|e| AppError::database(e.to_string()))?);
+        refs.extend(
+            NoteRevisionRepo::retained_asset_paths(&vfs_conn)
+                .map_err(|e| AppError::database(e.to_string()))?,
+        );
         // 3) 归一化比较：支持不同分隔符
         let mut orphans: Vec<String> = Vec::new();
         for p in all.into_iter() {
@@ -2415,9 +2801,11 @@ pub async fn notes_db_stats(state: State<'_, AppState>) -> Result<NotesDbStats> 
         let total_notes: i64 = conn
             .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
             .unwrap_or(0);
-        let total_versions: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM note_document_revisions", [], |r| r.get(0),
-        ).map_err(|e| AppError::database(e.to_string()))?;
+        let total_versions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM note_document_revisions", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| AppError::database(e.to_string()))?;
 
         // ★ P2-5：递归统计 notes_assets 目录的文件数与字节数
         let mut total_assets: i64 = 0;

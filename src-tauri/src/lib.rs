@@ -587,7 +587,11 @@ pub fn run() {
     let builder = builder
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                crate::cmd::notes::cleanup_note_editor_leases(window.app_handle().clone(), Some(window.label().to_owned()), None);
+                crate::cmd::notes::cleanup_note_editor_leases(
+                    window.app_handle().clone(),
+                    Some(window.label().to_owned()),
+                    None,
+                );
             }
         })
         .plugin(tauri_plugin_clipboard_manager::init())

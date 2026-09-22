@@ -12,10 +12,10 @@ use zip::write::FileOptions;
 use crate::database::Database;
 use crate::file_manager::FileManager;
 use crate::models::AppError;
-use crate::vfs::{VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams};
-use crate::vfs::repos::note_revision_repo::{NoteRevision, NoteRevisionRepo};
 use crate::vfs::repos::note_format_repo::{NoteFormat, NoteFormatRepo};
 use crate::vfs::repos::note_relation_repo::{NoteLocator, NoteRelationRepo};
+use crate::vfs::repos::note_revision_repo::{NoteRevision, NoteRevisionRepo};
+use crate::vfs::{VfsCreateNoteParams, VfsDatabase, VfsNoteRepo, VfsUpdateNoteParams};
 
 type Result<T> = std::result::Result<T, AppError>;
 
@@ -429,7 +429,11 @@ impl NotesExporter {
         Ok(default_dir.join(filename))
     }
 
-    fn render_markdown_note_flat(&self, note: &ExportNote, folder_path: Option<&String>) -> Result<String> {
+    fn render_markdown_note_flat(
+        &self,
+        note: &ExportNote,
+        folder_path: Option<&String>,
+    ) -> Result<String> {
         let mut md_content = String::new();
 
         md_content.push_str("---\n");
@@ -689,13 +693,19 @@ impl NotesExporter {
 
         Self::write_documents(&mut zip, &bundle, file_options)?;
         let manifest = Manifest {
-            schema_version: SCHEMA_VERSION, exported_at: Utc::now().to_rfc3339(),
-            app_version: env!("CARGO_PKG_VERSION").into(), note_count: 1,
-            attachment_count: bundle.attachments.len(), version_count: bundle.revisions.len(),
-            preferences: Vec::new(), subjects: Vec::new(),
+            schema_version: SCHEMA_VERSION,
+            exported_at: Utc::now().to_rfc3339(),
+            app_version: env!("CARGO_PKG_VERSION").into(),
+            note_count: 1,
+            attachment_count: bundle.attachments.len(),
+            version_count: bundle.revisions.len(),
+            preferences: Vec::new(),
+            subjects: Vec::new(),
         };
-        zip.start_file("manifest.json", file_options).map_err(|e| AppError::file_system(e.to_string()))?;
-        serde_json::to_writer_pretty(&mut zip, &manifest).map_err(|e| AppError::file_system(e.to_string()))?;
+        zip.start_file("manifest.json", file_options)
+            .map_err(|e| AppError::file_system(e.to_string()))?;
+        serde_json::to_writer_pretty(&mut zip, &manifest)
+            .map_err(|e| AppError::file_system(e.to_string()))?;
         let readme = format!(
             "# 笔记导出\n\n\
             导出时间：{}\n\
@@ -742,7 +752,8 @@ impl NotesExporter {
             .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
         // Autosave can replace a resource while export is running. Current
         // documents and their revision timelines must share one read snapshot.
-        let _read_snapshot = vfs_conn.unchecked_transaction()
+        let _read_snapshot = vfs_conn
+            .unchecked_transaction()
             .map_err(|e| AppError::database(e.to_string()))?;
 
         let notes = VfsNoteRepo::list_notes_with_conn(&vfs_conn, None, 1_000_000, 0)
@@ -786,11 +797,18 @@ impl NotesExporter {
             for note in &export_notes {
                 let mut stmt = vfs_conn.prepare("SELECT version_id FROM note_document_revisions WHERE note_id=?1 ORDER BY seq")
                     .map_err(|e| AppError::database(e.to_string()))?;
-                let ids = stmt.query_map([&note.id], |r| r.get::<_, String>(0))
+                let ids = stmt
+                    .query_map([&note.id], |r| r.get::<_, String>(0))
                     .map_err(|e| AppError::database(e.to_string()))?;
                 for id in ids {
-                    revisions.push(NoteRevisionRepo::get(&vfs_conn, &note.id, &id.map_err(|e| AppError::database(e.to_string()))?)
-                        .map_err(|e| AppError::database(e.to_string()))?);
+                    revisions.push(
+                        NoteRevisionRepo::get(
+                            &vfs_conn,
+                            &note.id,
+                            &id.map_err(|e| AppError::database(e.to_string()))?,
+                        )
+                        .map_err(|e| AppError::database(e.to_string()))?,
+                    );
                 }
             }
         }
@@ -804,11 +822,17 @@ impl NotesExporter {
         for revision in &revisions {
             referenced_paths.extend(extract_note_asset_paths(&revision.content_md));
             collect_props_assets(revision.props.as_ref(), &mut referenced_paths);
-            referenced_paths.extend(revision.asset_refs.iter().filter(|r| r.kind == "notes_asset")
-                .map(|r| PathBuf::from(&r.value)));
+            referenced_paths.extend(
+                revision
+                    .asset_refs
+                    .iter()
+                    .filter(|r| r.kind == "notes_asset")
+                    .map(|r| PathBuf::from(&r.value)),
+            );
         }
         for stored_path in referenced_paths {
-            if is_path_traversal(&stored_path) || strip_notes_assets_prefix(&stored_path).is_none() {
+            if is_path_traversal(&stored_path) || strip_notes_assets_prefix(&stored_path).is_none()
+            {
                 return Err(AppError::validation("Unsafe note attachment reference"));
             }
             let abs_path = app_data_dir.join(&stored_path);
@@ -820,7 +844,9 @@ impl NotesExporter {
                     absolute_path: abs_path,
                 });
             } else {
-                return Err(AppError::file_system("A referenced note/history attachment is missing"));
+                return Err(AppError::file_system(
+                    "A referenced note/history attachment is missing",
+                ));
             }
         }
         attachments.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -835,23 +861,45 @@ impl NotesExporter {
         })
     }
 
-    fn write_documents(zip: &mut zip::ZipWriter<fs::File>, bundle: &SubjectBundle, options: FileOptions) -> Result<()> {
-        fn write_json(zip: &mut zip::ZipWriter<fs::File>, path: &str, value: &impl Serialize, options: FileOptions) -> Result<()> {
+    fn write_documents(
+        zip: &mut zip::ZipWriter<fs::File>,
+        bundle: &SubjectBundle,
+        options: FileOptions,
+    ) -> Result<()> {
+        fn write_json(
+            zip: &mut zip::ZipWriter<fs::File>,
+            path: &str,
+            value: &impl Serialize,
+            options: FileOptions,
+        ) -> Result<()> {
             let bytes = serde_json::to_vec(value).map_err(|e| AppError::internal(e.to_string()))?;
-            if bytes.len() as u64 > MAX_IMPORT_TEXT_BYTES { return Err(AppError::validation("A single document exceeds the archive entry size limit")); }
-            zip.start_file(path, options).map_err(|e| AppError::file_system(e.to_string()))?;
-            zip.write_all(&bytes).map_err(|e| AppError::file_system(e.to_string()))
+            if bytes.len() as u64 > MAX_IMPORT_TEXT_BYTES {
+                return Err(AppError::validation(
+                    "A single document exceeds the archive entry size limit",
+                ));
+            }
+            zip.start_file(path, options)
+                .map_err(|e| AppError::file_system(e.to_string()))?;
+            zip.write_all(&bytes)
+                .map_err(|e| AppError::file_system(e.to_string()))
         }
         // Limit each document, not the entire library: many retained versions
         // must not make our own export exceed the importer's text-entry limit.
-        let mut index = DocumentArchive { notes: Vec::new(), revisions: Vec::new(), note_files: Vec::new(), revision_files: Vec::new() };
+        let mut index = DocumentArchive {
+            notes: Vec::new(),
+            revisions: Vec::new(),
+            note_files: Vec::new(),
+            revision_files: Vec::new(),
+        };
         for (i, note) in bundle.notes.iter().enumerate() {
             let path = format!("_versions/notes/{i}.json");
-            write_json(zip, &path, note, options)?; index.note_files.push(path);
+            write_json(zip, &path, note, options)?;
+            index.note_files.push(path);
         }
         for (i, revision) in bundle.revisions.iter().enumerate() {
             let path = format!("_versions/history/{i}.json");
-            write_json(zip, &path, revision, options)?; index.revision_files.push(path);
+            write_json(zip, &path, revision, options)?;
+            index.revision_files.push(path);
         }
         write_json(zip, "_versions/documents.json", &index, options)
     }
@@ -869,7 +917,9 @@ fn collect_props_assets(props: Option<&Value>, paths: &mut HashSet<PathBuf>) {
     if let Some(props) = props {
         match props {
             Value::String(s) => paths.extend(extract_note_asset_paths(s)),
-            Value::Object(m) => m.values().for_each(|v| collect_props_assets(Some(v), paths)),
+            Value::Object(m) => m
+                .values()
+                .for_each(|v| collect_props_assets(Some(v), paths)),
             Value::Array(a) => a.iter().for_each(|v| collect_props_assets(Some(v), paths)),
             _ => {}
         }
@@ -879,43 +929,100 @@ fn collect_props_assets(props: Option<&Value>, paths: &mut HashSet<PathBuf>) {
 fn collect_relations(conn: &rusqlite::Connection, note_id: &str) -> Result<Vec<ExportRelation>> {
     let mut stmt = conn.prepare("SELECT id,block_id,relation_type,resource_id,locator_json,invalidated_at,created_at,updated_at FROM note_learning_relations WHERE note_id=?1 ORDER BY id")
         .map_err(|e| AppError::database(e.to_string()))?;
-    let raw = stmt.query_map([note_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get::<_, String>(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))
+    let raw = stmt
+        .query_map([note_id], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get::<_, String>(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+            ))
+        })
         .map_err(|e| AppError::database(e.to_string()))?;
     raw.map(|row| {
-        let (id,block_id,relation_type,resource_id,locator,invalidated_at,created_at,updated_at) = row.map_err(|e| AppError::database(e.to_string()))?;
-        Ok(ExportRelation { id,block_id,relation_type,resource_id,
-            locator: serde_json::from_str(&locator).map_err(|e| AppError::validation(e.to_string()))?,
-            invalidated_at,created_at,updated_at })
-    }).collect()
+        let (
+            id,
+            block_id,
+            relation_type,
+            resource_id,
+            locator,
+            invalidated_at,
+            created_at,
+            updated_at,
+        ) = row.map_err(|e| AppError::database(e.to_string()))?;
+        Ok(ExportRelation {
+            id,
+            block_id,
+            relation_type,
+            resource_id,
+            locator: serde_json::from_str(&locator)
+                .map_err(|e| AppError::validation(e.to_string()))?,
+            invalidated_at,
+            created_at,
+            updated_at,
+        })
+    })
+    .collect()
 }
 
-fn import_relations(conn: &rusqlite::Connection, notes: &[ExportNote], imported: &BTreeMap<String, String>) -> Result<()> {
+fn import_relations(
+    conn: &rusqlite::Connection,
+    notes: &[ExportNote],
+    imported: &BTreeMap<String, String>,
+) -> Result<()> {
     let mut resources = BTreeMap::new();
     for note in notes {
         if let (Some(source), Some(target)) = (&note.resource_id, imported.get(&note.id)) {
-            let resource: String = conn.query_row("SELECT resource_id FROM notes WHERE id=?1", [target], |r| r.get(0))
+            let resource: String = conn
+                .query_row("SELECT resource_id FROM notes WHERE id=?1", [target], |r| {
+                    r.get(0)
+                })
                 .map_err(|e| AppError::database(e.to_string()))?;
             resources.insert(source.clone(), resource);
         }
     }
     for note in notes {
-        let Some(target) = imported.get(&note.id) else { continue; };
+        let Some(target) = imported.get(&note.id) else {
+            continue;
+        };
         for relation in &note.relations {
             // Only VFS locators may use the VFS mapping. Card document IDs have
             // a separate namespace even if their spelling matches a resource ID.
             let card = matches!(relation.locator, NoteLocator::Card(_));
-            let resource = if card { &relation.resource_id } else { resources.get(&relation.resource_id).unwrap_or(&relation.resource_id) };
-            let valid = if card { false } else {
-                let status = NoteRelationRepo::reference_status(conn, None, resource, &relation.locator)
-                    .map_err(|e| AppError::database(e.to_string()))?;
+            let resource = if card {
+                &relation.resource_id
+            } else {
+                resources
+                    .get(&relation.resource_id)
+                    .unwrap_or(&relation.resource_id)
+            };
+            let valid = if card {
+                false
+            } else {
+                let status =
+                    NoteRelationRepo::reference_status(conn, None, resource, &relation.locator)
+                        .map_err(|e| AppError::database(e.to_string()))?;
                 status.resource_exists && status.locator_exists
             };
             let owner_valid = relation.block_id.as_ref().map_or(true, |block| {
-                VfsNoteRepo::get_note_content_with_conn(conn, target).ok().flatten()
-                    .and_then(|body| crate::vfs::repos::note_format_repo::blocks(&body).ok()
-                        .map(|blocks| blocks.iter().any(|b| b.id == block))).unwrap_or(false)
+                VfsNoteRepo::get_note_content_with_conn(conn, target)
+                    .ok()
+                    .flatten()
+                    .and_then(|body| {
+                        crate::vfs::repos::note_format_repo::blocks(&body)
+                            .ok()
+                            .map(|blocks| blocks.iter().any(|b| b.id == block))
+                    })
+                    .unwrap_or(false)
             });
-            let invalidated = relation.invalidated_at.clone().or_else(|| (!valid || !owner_valid).then(|| Utc::now().to_rfc3339()));
+            let invalidated = relation
+                .invalidated_at
+                .clone()
+                .or_else(|| (!valid || !owner_valid).then(|| Utc::now().to_rfc3339()));
             conn.execute("INSERT INTO note_learning_relations(id,note_id,block_id,relation_type,resource_id,locator_json,revision,invalidated_at,created_at,updated_at)
                 VALUES(?1,?2,?3,?4,?5,?6,1,?7,?8,?9)",
                 rusqlite::params![format!("nrel_{}", uuid::Uuid::new_v4().simple()), target, relation.block_id, relation.relation_type, resource,
@@ -926,8 +1033,12 @@ fn import_relations(conn: &rusqlite::Connection, notes: &[ExportNote], imported:
     Ok(())
 }
 
-fn read_archive_json<T: serde::de::DeserializeOwned>(file: &mut zip::read::ZipFile<'_>) -> Result<T> {
-    if file.size() > MAX_IMPORT_TEXT_BYTES { return Err(AppError::validation("Archive JSON exceeds size limit")); }
+fn read_archive_json<T: serde::de::DeserializeOwned>(
+    file: &mut zip::read::ZipFile<'_>,
+) -> Result<T> {
+    if file.size() > MAX_IMPORT_TEXT_BYTES {
+        return Err(AppError::validation("Archive JSON exceeds size limit"));
+    }
     serde_json::from_reader(file.take(MAX_IMPORT_TEXT_BYTES + 1))
         .map_err(|e| AppError::validation(format!("Invalid archive JSON: {e}")))
 }
@@ -950,8 +1061,15 @@ fn plain_markdown(content: &str) -> Result<String> {
                     Event::Start(tag) => {
                         if depth == 0 && matches!(tag, Tag::Paragraph) {
                             let text = body[range.clone()].trim_end_matches(['\n', '\r']);
-                            if text.starts_with(":::ds-columns{") || matches!(text, ":::column" | ":::end-column" | ":::end-ds-columns") {
-                                removals.push(root.range.start + range.start..root.range.start + range.end);
+                            if text.starts_with(":::ds-columns{")
+                                || matches!(
+                                    text,
+                                    ":::column" | ":::end-column" | ":::end-ds-columns"
+                                )
+                            {
+                                removals.push(
+                                    root.range.start + range.start..root.range.start + range.end,
+                                );
                             }
                         }
                         depth += 1;
@@ -963,17 +1081,29 @@ fn plain_markdown(content: &str) -> Result<String> {
         }
     }
     let mut result = content.to_string();
-    for range in removals.into_iter().rev() { result.replace_range(range, ""); }
+    for range in removals.into_iter().rev() {
+        result.replace_range(range, "");
+    }
     Ok(result)
 }
 
 fn validate_document_format(id: &str, content: &str, format: Option<&NoteFormat>) -> Result<()> {
-    let detected = NoteFormatRepo::detect(id, content).map_err(|e| AppError::validation(e.to_string()))?;
+    let detected =
+        NoteFormatRepo::detect(id, content).map_err(|e| AppError::validation(e.to_string()))?;
     if let Some(format) = format {
-        NoteFormatRepo::ensure_supported(format).map_err(|e| AppError::validation(e.to_string()))?;
-        if format.content_format != detected.content_format { return Err(AppError::validation("Document envelope does not match declared format")); }
-        if !NoteFormatRepo::required_capabilities(&detected).is_empty() && NoteFormatRepo::required_capabilities(format).is_empty() {
-            return Err(AppError::validation("Document envelope lacks required columns capability"));
+        NoteFormatRepo::ensure_supported(format)
+            .map_err(|e| AppError::validation(e.to_string()))?;
+        if format.content_format != detected.content_format {
+            return Err(AppError::validation(
+                "Document envelope does not match declared format",
+            ));
+        }
+        if !NoteFormatRepo::required_capabilities(&detected).is_empty()
+            && NoteFormatRepo::required_capabilities(format).is_empty()
+        {
+            return Err(AppError::validation(
+                "Document envelope lacks required columns capability",
+            ));
         }
     }
     Ok(())
@@ -989,13 +1119,30 @@ fn remap_asset_text(text: &str, paths: &BTreeMap<String, String>) -> String {
     while offset < text.len() {
         let remaining = &text[offset..];
         let found = keys.iter().find_map(|key| {
-            let variants = [key.to_string(), key.replace('/', "\\"), key.replace(' ', "%20")];
-            variants.into_iter().find(|v| remaining.starts_with(v) && remaining[v.len()..].chars().next()
-                .map_or(true, |c| c.is_whitespace() || ")]}\"'<>?,#".contains(c)))
+            let variants = [
+                key.to_string(),
+                key.replace('/', "\\"),
+                key.replace(' ', "%20"),
+            ];
+            variants
+                .into_iter()
+                .find(|v| {
+                    remaining.starts_with(v)
+                        && remaining[v.len()..]
+                            .chars()
+                            .next()
+                            .map_or(true, |c| c.is_whitespace() || ")]}\"'<>?,#".contains(c))
+                })
                 .map(|v| (v.len(), paths[*key].as_str()))
         });
-        if let Some((len, replacement)) = found { result.push_str(replacement); offset += len; }
-        else { let ch = remaining.chars().next().unwrap(); result.push(ch); offset += ch.len_utf8(); }
+        if let Some((len, replacement)) = found {
+            result.push_str(replacement);
+            offset += len;
+        } else {
+            let ch = remaining.chars().next().unwrap();
+            result.push(ch);
+            offset += ch.len_utf8();
+        }
     }
     result
 }
@@ -1009,7 +1156,9 @@ fn remap_props(props: &mut Option<Value>, paths: &BTreeMap<String, String>) {
             _ => {}
         }
     }
-    if let Some(value) = props { visit(value, paths); }
+    if let Some(value) = props {
+        visit(value, paths);
+    }
 }
 
 fn insert_archive_revision(conn: &rusqlite::Connection, r: &NoteRevision) -> Result<()> {
@@ -1264,7 +1413,10 @@ fn write_zip_entry_to_disk<R: Read>(entry: &mut R, disk_path: &Path) -> io::Resu
     // Asset keys are immutable once written: historical notes may still use
     // them. VFS imports allocate a fresh namespace; legacy imports must also
     // refuse a collision instead of truncating an existing historical image.
-    let mut out = fs::OpenOptions::new().write(true).create_new(true).open(disk_path)?;
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(disk_path)?;
     match io::copy(entry, &mut out) {
         Ok(written) => Ok(written),
         Err(e) => {
@@ -1617,7 +1769,10 @@ impl NotesImporter {
 
         match manifest_result {
             Some((3, manifest)) => {
-                let vfs = self.vfs_db.as_ref().ok_or_else(|| AppError::validation("History ZIP requires VFS"))?;
+                let vfs = self
+                    .vfs_db
+                    .as_ref()
+                    .ok_or_else(|| AppError::validation("History ZIP requires VFS"))?;
                 self.import_document_archive(zip, manifest, options, vfs)
             }
             Some((version, manifest)) if version == 2 => {
@@ -1657,12 +1812,24 @@ impl NotesImporter {
 
     fn validate_legacy_documents(&self, zip: &mut zip::ZipArchive<fs::File>) -> Result<()> {
         for index in 0..zip.len() {
-            let mut file = zip.by_index(index).map_err(|e| AppError::validation(e.to_string()))?;
+            let mut file = zip
+                .by_index(index)
+                .map_err(|e| AppError::validation(e.to_string()))?;
             let name = file.name();
-            if file.is_dir() || !name.ends_with(".md") || name == "README.md" || name.starts_with("_versions/") || name.contains("/_versions/") { continue; }
-            if file.size() > MAX_IMPORT_TEXT_BYTES { return Err(AppError::validation("Markdown entry exceeds size limit")); }
+            if file.is_dir()
+                || !name.ends_with(".md")
+                || name == "README.md"
+                || name.starts_with("_versions/")
+                || name.contains("/_versions/")
+            {
+                continue;
+            }
+            if file.size() > MAX_IMPORT_TEXT_BYTES {
+                return Err(AppError::validation("Markdown entry exceeds size limit"));
+            }
             let mut content = String::new();
-            file.read_to_string(&mut content).map_err(|e| AppError::validation(e.to_string()))?;
+            file.read_to_string(&mut content)
+                .map_err(|e| AppError::validation(e.to_string()))?;
             let (meta, body) = self.parse_markdown_export(&content)?;
             validate_document_format(&meta.id, &body, None)?;
         }
@@ -1672,67 +1839,117 @@ impl NotesImporter {
     /// Schema 3 is all-or-nothing for notes, history and asset bytes. Preferences
     /// are not part of this document transaction. Old ZIPs keep their old reader.
     fn import_document_archive(
-        &self, mut zip: zip::ZipArchive<fs::File>, manifest: Manifest,
-        options: ImportOptions, vfs: &VfsDatabase,
+        &self,
+        mut zip: zip::ZipArchive<fs::File>,
+        manifest: Manifest,
+        options: ImportOptions,
+        vfs: &VfsDatabase,
     ) -> Result<ImportSummary> {
         let mut documents: DocumentArchive = {
-            let mut file = zip.by_name("_versions/documents.json")
+            let mut file = zip
+                .by_name("_versions/documents.json")
                 .map_err(|e| AppError::validation(format!("Missing document archive: {e}")))?;
             read_archive_json(&mut file)?
         };
         for path in &documents.note_files {
-            let mut file = zip.by_name(path).map_err(|e| AppError::validation(e.to_string()))?;
+            let mut file = zip
+                .by_name(path)
+                .map_err(|e| AppError::validation(e.to_string()))?;
             documents.notes.push(read_archive_json(&mut file)?);
         }
         for path in &documents.revision_files {
-            let mut file = zip.by_name(path).map_err(|e| AppError::validation(e.to_string()))?;
+            let mut file = zip
+                .by_name(path)
+                .map_err(|e| AppError::validation(e.to_string()))?;
             documents.revisions.push(read_archive_json(&mut file)?);
         }
-        if documents.notes.len() != manifest.note_count || documents.revisions.len() != manifest.version_count {
+        if documents.notes.len() != manifest.note_count
+            || documents.revisions.len() != manifest.version_count
+        {
             return Err(AppError::validation("Document/history count mismatch"));
         }
         let mut preferences = Vec::new();
         for pref in &manifest.preferences {
-            let mut file = zip.by_name(&pref.file).map_err(|e| AppError::validation(e.to_string()))?;
+            let mut file = zip
+                .by_name(&pref.file)
+                .map_err(|e| AppError::validation(e.to_string()))?;
             preferences.push((pref.key.clone(), read_archive_json::<Value>(&mut file)?));
         }
         let mut note_ids = HashSet::new();
         let mut version_ids = HashSet::new();
         for note in &documents.notes {
-            if !note_ids.insert(note.id.clone()) { return Err(AppError::validation("Duplicate note ID")); }
+            if !note_ids.insert(note.id.clone()) {
+                return Err(AppError::validation("Duplicate note ID"));
+            }
             validate_document_format(&note.id, &note.content_md, note.format.as_ref())?;
             let mut relation_ids = HashSet::new();
             for relation in &note.relations {
-                if relation.id.is_empty() || !relation_ids.insert(&relation.id)
-                    || !matches!(relation.relation_type.as_str(), "source" | "card" | "mistake")
-                    || (relation.relation_type == "card" && !matches!(relation.locator, NoteLocator::Card(_)))
-                    || (relation.relation_type == "mistake" && !matches!(relation.locator, NoteLocator::Question(_))) {
+                if relation.id.is_empty()
+                    || !relation_ids.insert(&relation.id)
+                    || !matches!(
+                        relation.relation_type.as_str(),
+                        "source" | "card" | "mistake"
+                    )
+                    || (relation.relation_type == "card"
+                        && !matches!(relation.locator, NoteLocator::Card(_)))
+                    || (relation.relation_type == "mistake"
+                        && !matches!(relation.locator, NoteLocator::Question(_)))
+                {
                     return Err(AppError::validation("Invalid archive learning relation"));
                 }
             }
         }
         for revision in &documents.revisions {
-            if !note_ids.contains(&revision.summary.note_id) || !version_ids.insert(revision.summary.version_id.clone()) {
-                return Err(AppError::validation("Invalid history ownership/duplicate version"));
+            if !note_ids.contains(&revision.summary.note_id)
+                || !version_ids.insert(revision.summary.version_id.clone())
+            {
+                return Err(AppError::validation(
+                    "Invalid history ownership/duplicate version",
+                ));
             }
-            validate_document_format(&revision.summary.note_id, &revision.content_md, Some(&NoteFormat {
-                note_id: revision.summary.note_id.clone(), content_format: revision.content_format.clone(),
-                format_version: revision.format_version, serializer_version: revision.serializer_version.clone(), baseline_version_id: None,
-            }))?;
+            validate_document_format(
+                &revision.summary.note_id,
+                &revision.content_md,
+                Some(&NoteFormat {
+                    note_id: revision.summary.note_id.clone(),
+                    content_format: revision.content_format.clone(),
+                    format_version: revision.format_version,
+                    serializer_version: revision.serializer_version.clone(),
+                    baseline_version_id: None,
+                }),
+            )?;
         }
-        let namespace = format!("notes_assets/_global/import_{}/", uuid::Uuid::new_v4().simple());
+        let namespace = format!(
+            "notes_assets/_global/import_{}/",
+            uuid::Uuid::new_v4().simple()
+        );
         let mut assets = BTreeMap::new();
         for i in 0..zip.len() {
-            let file = zip.by_index(i).map_err(|e| AppError::validation(e.to_string()))?;
-            if file.is_dir() { continue; }
+            let file = zip
+                .by_index(i)
+                .map_err(|e| AppError::validation(e.to_string()))?;
+            if file.is_dir() {
+                continue;
+            }
             if let Some(path) = file.name().strip_prefix("assets/") {
-                if is_unsafe_archive_relative(path) { return Err(AppError::validation("Unsafe asset path")); }
-                if assets.insert(format!("notes_assets/{path}"), (i, format!("{namespace}{path}"))).is_some() {
+                if is_unsafe_archive_relative(path) {
+                    return Err(AppError::validation("Unsafe asset path"));
+                }
+                if assets
+                    .insert(
+                        format!("notes_assets/{path}"),
+                        (i, format!("{namespace}{path}")),
+                    )
+                    .is_some()
+                {
                     return Err(AppError::validation("Duplicate asset path"));
                 }
             }
         }
-        let path_map: BTreeMap<String, String> = assets.iter().map(|(k, (_, v))| (k.clone(), v.clone())).collect();
+        let path_map: BTreeMap<String, String> = assets
+            .iter()
+            .map(|(k, (_, v))| (k.clone(), v.clone()))
+            .collect();
         let mut required_assets = HashSet::new();
         for note in &documents.notes {
             required_assets.extend(extract_note_asset_paths(&note.content_md));
@@ -1741,105 +1958,207 @@ impl NotesImporter {
         for revision in &documents.revisions {
             required_assets.extend(extract_note_asset_paths(&revision.content_md));
             collect_props_assets(revision.props.as_ref(), &mut required_assets);
-            required_assets.extend(revision.asset_refs.iter().filter(|r| r.kind == "notes_asset").map(|r| PathBuf::from(&r.value)));
+            required_assets.extend(
+                revision
+                    .asset_refs
+                    .iter()
+                    .filter(|r| r.kind == "notes_asset")
+                    .map(|r| PathBuf::from(&r.value)),
+            );
         }
-        if required_assets.iter().any(|path| !path_map.contains_key(path.to_string_lossy().as_ref())) {
-            return Err(AppError::validation("Archive is missing a referenced current/history attachment"));
+        if required_assets
+            .iter()
+            .any(|path| !path_map.contains_key(path.to_string_lossy().as_ref()))
+        {
+            return Err(AppError::validation(
+                "Archive is missing a referenced current/history attachment",
+            ));
         }
         // Remapping changes immutable snapshot content, so give imported history
         // fresh IDs and remap every lineage edge (including pruned ancestors).
         let mut lineage = BTreeMap::new();
         for r in &documents.revisions {
-            for id in std::iter::once(&r.summary.version_id).chain(r.summary.parent_version_id.iter()).chain(r.summary.restored_from_version_id.iter()) {
-                lineage.entry(id.clone()).or_insert_with(|| format!("nrev_{}", uuid::Uuid::new_v4().simple()));
+            for id in std::iter::once(&r.summary.version_id)
+                .chain(r.summary.parent_version_id.iter())
+                .chain(r.summary.restored_from_version_id.iter())
+            {
+                lineage
+                    .entry(id.clone())
+                    .or_insert_with(|| format!("nrev_{}", uuid::Uuid::new_v4().simple()));
             }
         }
-        let mut conn = vfs.get_conn_safe().map_err(|e| AppError::database(e.to_string()))?;
-        let tx = conn.transaction().map_err(|e| AppError::database(e.to_string()))?;
+        let mut conn = vfs
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
         let mut written = Vec::new();
         let mut imported = BTreeMap::new();
         let result = (|| -> Result<ImportSummary> {
             let mut overwritten = 0;
             let mut skipped = 0;
             for note in &mut documents.notes {
-                let existing = VfsNoteRepo::get_note_with_conn(&tx, &note.id).map_err(|e| AppError::database(e.to_string()))?;
+                let existing = VfsNoteRepo::get_note_with_conn(&tx, &note.id)
+                    .map_err(|e| AppError::database(e.to_string()))?;
                 if let Some(old) = &existing {
-                    if options.conflict_strategy == ImportConflictStrategy::Skip ||
-                        (options.conflict_strategy == ImportConflictStrategy::MergeKeepNewer && note.updated_at <= old.updated_at) {
-                        skipped += 1; continue;
+                    if options.conflict_strategy == ImportConflictStrategy::Skip
+                        || (options.conflict_strategy == ImportConflictStrategy::MergeKeepNewer
+                            && note.updated_at <= old.updated_at)
+                    {
+                        skipped += 1;
+                        continue;
                     }
                 }
                 note.content_md = remap_asset_text(&note.content_md, &path_map);
                 remap_props(&mut note.props, &path_map);
                 let id = if let Some(old) = existing {
-                    let current_format = NoteFormatRepo::get(&tx, &old.id).map_err(|e| AppError::database(e.to_string()))?;
-                    NoteFormatRepo::ensure_supported(&current_format).map_err(|e| AppError::validation(e.to_string()))?;
+                    let current_format = NoteFormatRepo::get(&tx, &old.id)
+                        .map_err(|e| AppError::database(e.to_string()))?;
+                    NoteFormatRepo::ensure_supported(&current_format)
+                        .map_err(|e| AppError::validation(e.to_string()))?;
                     let mut incoming_format = match &note.format {
                         Some(format) => format.clone(),
-                        None => NoteFormatRepo::detect(&old.id, &note.content_md).map_err(|e| AppError::validation(e.to_string()))?,
+                        None => NoteFormatRepo::detect(&old.id, &note.content_md)
+                            .map_err(|e| AppError::validation(e.to_string()))?,
                     };
                     incoming_format.note_id = old.id.clone();
-                    incoming_format.baseline_version_id = incoming_format.baseline_version_id.as_ref().and_then(|v| lineage.get(v)).cloned();
-                    let before = NoteRevisionRepo::snapshot(&tx, &old.id, "before_import").map_err(|e| AppError::database(e.to_string()))?;
-                    NoteRevisionRepo::set_pinned(&tx, &old.id, &before, true).map_err(|e| AppError::database(e.to_string()))?;
-                    VfsNoteRepo::update_note_with_format(&tx, &old.id, VfsUpdateNoteParams {
-                        title: Some(note.title.clone()), content: Some(note.content_md.clone()), tags: Some(note.tags.clone()), expected_updated_at: Some(old.updated_at),
-                    }, Some(incoming_format)).map_err(|e| AppError::database(e.to_string()))?;
-                    overwritten += 1; old.id
+                    incoming_format.baseline_version_id = incoming_format
+                        .baseline_version_id
+                        .as_ref()
+                        .and_then(|v| lineage.get(v))
+                        .cloned();
+                    let before = NoteRevisionRepo::snapshot(&tx, &old.id, "before_import")
+                        .map_err(|e| AppError::database(e.to_string()))?;
+                    NoteRevisionRepo::set_pinned(&tx, &old.id, &before, true)
+                        .map_err(|e| AppError::database(e.to_string()))?;
+                    VfsNoteRepo::update_note_with_format(
+                        &tx,
+                        &old.id,
+                        VfsUpdateNoteParams {
+                            title: Some(note.title.clone()),
+                            content: Some(note.content_md.clone()),
+                            tags: Some(note.tags.clone()),
+                            expected_updated_at: Some(old.updated_at),
+                        },
+                        Some(incoming_format),
+                    )
+                    .map_err(|e| AppError::database(e.to_string()))?;
+                    overwritten += 1;
+                    old.id
                 } else {
-                    let created = VfsNoteRepo::create_note_with_conn(&tx, VfsCreateNoteParams {
-                        title: note.title.clone(), content: note.content_md.clone(), tags: note.tags.clone(),
-                    }).map_err(|e| AppError::database(e.to_string()))?;
+                    let created = VfsNoteRepo::create_note_with_conn(
+                        &tx,
+                        VfsCreateNoteParams {
+                            title: note.title.clone(),
+                            content: note.content_md.clone(),
+                            tags: note.tags.clone(),
+                        },
+                    )
+                    .map_err(|e| AppError::database(e.to_string()))?;
                     // Unpublished auto-generated snapshot is replaced by complete archive history.
-                    tx.execute("DELETE FROM note_document_revisions WHERE note_id=?1", [&created.id]).map_err(|e| AppError::database(e.to_string()))?;
+                    tx.execute(
+                        "DELETE FROM note_document_revisions WHERE note_id=?1",
+                        [&created.id],
+                    )
+                    .map_err(|e| AppError::database(e.to_string()))?;
                     created.id
                 };
-                tx.execute("UPDATE notes SET props=?2, is_favorite=?3, created_at=?4 WHERE id=?1",
-                    rusqlite::params![id, note.props.as_ref().map(Value::to_string), note.is_favorite, note.created_at])
-                    .map_err(|e| AppError::database(e.to_string()))?;
+                tx.execute(
+                    "UPDATE notes SET props=?2, is_favorite=?3, created_at=?4 WHERE id=?1",
+                    rusqlite::params![
+                        id,
+                        note.props.as_ref().map(Value::to_string),
+                        note.is_favorite,
+                        note.created_at
+                    ],
+                )
+                .map_err(|e| AppError::database(e.to_string()))?;
                 if let Some(format) = &note.format {
-                    let mut format = format.clone(); format.note_id = id.clone();
-                    format.baseline_version_id = format.baseline_version_id.as_ref().and_then(|v| lineage.get(v)).cloned();
-                    NoteFormatRepo::insert(&tx, &format).map_err(|e| AppError::database(e.to_string()))?;
+                    let mut format = format.clone();
+                    format.note_id = id.clone();
+                    format.baseline_version_id = format
+                        .baseline_version_id
+                        .as_ref()
+                        .and_then(|v| lineage.get(v))
+                        .cloned();
+                    NoteFormatRepo::insert(&tx, &format)
+                        .map_err(|e| AppError::database(e.to_string()))?;
                 }
                 imported.insert(note.id.clone(), id);
             }
             for revision in &mut documents.revisions {
-                let Some(id) = imported.get(&revision.summary.note_id) else { continue; };
+                let Some(id) = imported.get(&revision.summary.note_id) else {
+                    continue;
+                };
                 revision.summary.note_id = id.clone();
                 revision.summary.version_id = lineage[&revision.summary.version_id].clone();
-                revision.summary.parent_version_id = revision.summary.parent_version_id.as_ref().map(|v| lineage[v].clone());
-                revision.summary.restored_from_version_id = revision.summary.restored_from_version_id.as_ref().map(|v| lineage[v].clone());
+                revision.summary.parent_version_id = revision
+                    .summary
+                    .parent_version_id
+                    .as_ref()
+                    .map(|v| lineage[v].clone());
+                revision.summary.restored_from_version_id = revision
+                    .summary
+                    .restored_from_version_id
+                    .as_ref()
+                    .map(|v| lineage[v].clone());
                 revision.content_md = remap_asset_text(&revision.content_md, &path_map);
                 remap_props(&mut revision.props, &path_map);
-                for asset in &mut revision.asset_refs { asset.value = remap_asset_text(&asset.value, &path_map); }
+                for asset in &mut revision.asset_refs {
+                    asset.value = remap_asset_text(&asset.value, &path_map);
+                }
                 insert_archive_revision(&tx, revision)?;
             }
             for id in imported.values() {
-                NoteRevisionRepo::snapshot(&tx, id, "import").map_err(|e| AppError::database(e.to_string()))?;
+                NoteRevisionRepo::snapshot(&tx, id, "import")
+                    .map_err(|e| AppError::database(e.to_string()))?;
             }
             import_relations(&tx, &documents.notes, &imported)?;
             // Publish bytes before committing references; a failed copy rolls the
             // transaction back and removes only files created by this import.
             if !imported.is_empty() {
                 for (_, (index, relative)) in &assets {
-                    let path = resolve_import_attachment_disk_path(&self.file_manager.get_writable_app_data_dir(), relative)
-                        .ok_or_else(|| AppError::validation("Unsafe attachment destination"))?;
-                    let mut file = zip.by_index(*index).map_err(|e| AppError::file_system(e.to_string()))?;
-                    write_zip_entry_to_disk(&mut file, &path).map_err(|e| AppError::file_system(e.to_string()))?;
+                    let path = resolve_import_attachment_disk_path(
+                        &self.file_manager.get_writable_app_data_dir(),
+                        relative,
+                    )
+                    .ok_or_else(|| AppError::validation("Unsafe attachment destination"))?;
+                    let mut file = zip
+                        .by_index(*index)
+                        .map_err(|e| AppError::file_system(e.to_string()))?;
+                    write_zip_entry_to_disk(&mut file, &path)
+                        .map_err(|e| AppError::file_system(e.to_string()))?;
                     written.push(path);
                 }
             }
-            Ok(ImportSummary { subject_count: 0, note_count: imported.len(), attachment_count: written.len(), skipped_count: skipped, overwritten_count: overwritten })
+            Ok(ImportSummary {
+                subject_count: 0,
+                note_count: imported.len(),
+                attachment_count: written.len(),
+                skipped_count: skipped,
+                overwritten_count: overwritten,
+            })
         })();
-        let result = result.and_then(|summary| tx.commit().map(|_| summary).map_err(|e| AppError::database(e.to_string())));
-        if result.is_err() { for path in written { let _ = fs::remove_file(path); } }
-        else {
+        let result = result.and_then(|summary| {
+            tx.commit()
+                .map(|_| summary)
+                .map_err(|e| AppError::database(e.to_string()))
+        });
+        if result.is_err() {
+            for path in written {
+                let _ = fs::remove_file(path);
+            }
+        } else {
             // Keep the pre-existing best-effort preferences contract: they live
             // in a separate DB. Folder membership references need the new IDs.
             fn remap_ids(value: &mut Value, ids: &BTreeMap<String, String>) {
                 match value {
-                    Value::String(s) => { if let Some(id) = ids.get(s) { *s = id.clone(); } }
+                    Value::String(s) => {
+                        if let Some(id) = ids.get(s) {
+                            *s = id.clone();
+                        }
+                    }
                     Value::Array(a) => a.iter_mut().for_each(|v| remap_ids(v, ids)),
                     Value::Object(m) => m.values_mut().for_each(|v| remap_ids(v, ids)),
                     _ => {}
@@ -1848,15 +2167,27 @@ impl NotesImporter {
             if let Ok(legacy) = self.db.get_conn_safe() {
                 for (key, mut value) in preferences {
                     remap_ids(&mut value, &imported);
-                    let key = if key.starts_with("notes.pref.") { key } else { format!("notes.pref.{key}") };
+                    let key = if key.starts_with("notes.pref.") {
+                        key
+                    } else {
+                        format!("notes.pref.{key}")
+                    };
                     if let Err(e) = legacy.execute("INSERT INTO settings(key,value,updated_at) VALUES(?1,?2,?3) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
                         rusqlite::params![key, value.to_string(), Utc::now().to_rfc3339()]) {
                         log::warn!("Document import committed; preferences could not be restored: {e}");
                     }
                 }
             }
-            Self::report_progress(&options, ImportProgress { stage: ImportStage::Done, progress: 100,
-                current_item: None, processed: imported.len(), total: imported.len() });
+            Self::report_progress(
+                &options,
+                ImportProgress {
+                    stage: ImportStage::Done,
+                    progress: 100,
+                    current_item: None,
+                    processed: imported.len(),
+                    total: imported.len(),
+                },
+            );
         }
         result
     }
@@ -2383,10 +2714,16 @@ impl NotesImporter {
         let asset_namespace = format!("_global/import_{}", uuid::Uuid::new_v4().simple());
         let mut asset_paths = BTreeMap::new();
         for index in 0..zip.len() {
-            let file = zip.by_index(index).map_err(|e| AppError::validation(e.to_string()))?;
-            if file.is_dir() { continue; }
+            let file = zip
+                .by_index(index)
+                .map_err(|e| AppError::validation(e.to_string()))?;
+            if file.is_dir() {
+                continue;
+            }
             if let Some(path) = file.name().strip_prefix("assets/") {
-                if is_unsafe_archive_relative(path) { continue; }
+                if is_unsafe_archive_relative(path) {
+                    continue;
+                }
                 let normalized = path.strip_prefix("notes_assets/").unwrap_or(path);
                 let destination = format!("notes_assets/{asset_namespace}/{normalized}");
                 asset_paths.insert(format!("notes_assets/{normalized}"), destination.clone());
@@ -2663,7 +3000,10 @@ impl NotesImporter {
             let subject_slug = parts[0];
             let relative_in_subject = parts[1..].join("/");
 
-            let relative_path = format!("notes_assets/{}/{}/{}", asset_namespace, subject_slug, relative_in_subject);
+            let relative_path = format!(
+                "notes_assets/{}/{}/{}",
+                asset_namespace, subject_slug, relative_in_subject
+            );
             let Some(disk_path) =
                 resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
             else {
@@ -3352,7 +3692,11 @@ mod zip_slip_tests {
     use zip::ZipWriter;
 
     fn write_zip_entry(zip: &mut ZipWriter<fs::File>, name: &str, data: &[u8]) {
-        zip.start_file(name, FileOptions::default().compression_method(zip::CompressionMethod::Stored)).unwrap();
+        zip.start_file(
+            name,
+            FileOptions::default().compression_method(zip::CompressionMethod::Stored),
+        )
+        .unwrap();
         zip.write_all(data).unwrap();
     }
 
@@ -3372,11 +3716,13 @@ mod zip_slip_tests {
     fn plain_markdown_flattens_columns_but_preserves_literal_directives() {
         let body = "<!-- ds:block-id=layout -->\n\n:::ds-columns{version=1 layout=cornell}\n\n:::column\n\nLeft\n\n```text\n:::column\n```\n\n:::end-column\n\n:::column\n\nRight\n\n> :::end-column\n\n:::end-column\n\n:::end-ds-columns\n";
         let plain = plain_markdown(body).unwrap();
-        assert!(plain.contains("Left")); assert!(plain.contains("Right"));
+        assert!(plain.contains("Left"));
+        assert!(plain.contains("Right"));
         assert!(plain.find("Left").unwrap() < plain.find("Right").unwrap());
         assert!(plain.contains("```text\n:::column\n```"));
         assert!(plain.contains("> :::end-column"));
-        assert!(!plain.contains(":::ds-columns{")); assert!(!plain.contains("ds:block-id"));
+        assert!(!plain.contains(":::ds-columns{"));
+        assert!(!plain.contains("ds:block-id"));
         assert!(plain_markdown(&body.replace("version=1", "version=999")).is_err());
     }
 
@@ -3384,115 +3730,281 @@ mod zip_slip_tests {
     fn columns_and_relations_zip_preserves_structure_and_remaps_only_real_vfs_targets() {
         let (temp, vfs, main, files) = history_fixture();
         let body = ":::ds-columns{version=1 layout=equal}\n\n:::column\n\nLeft\n\n:::end-column\n\n:::column\n\nRight\n\n:::end-column\n\n:::end-ds-columns\n";
-        let note = VfsNoteRepo::create_note(&vfs, VfsCreateNoteParams { title: "Columns".into(), content: body.into(), tags: vec![] }).unwrap();
+        let note = VfsNoteRepo::create_note(
+            &vfs,
+            VfsCreateNoteParams {
+                title: "Columns".into(),
+                content: body.into(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
         let conn = vfs.get_conn_safe().unwrap();
         // Include a self-reference and a cross-database card with deliberately
         // identical resource spelling; only the VFS reference may be remapped.
-        for (id,kind,locator) in [("self", "source", json!({"type":"whole"})), ("card", "card", json!({"type":"card","value":"card-fixture"}))] {
+        for (id, kind, locator) in [
+            ("self", "source", json!({"type":"whole"})),
+            (
+                "card",
+                "card",
+                json!({"type":"card","value":"card-fixture"}),
+            ),
+        ] {
             conn.execute("INSERT INTO note_learning_relations(id,note_id,relation_type,resource_id,locator_json,revision,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,9,?6,?6)",
                 rusqlite::params![id,note.id,kind,note.resource_id,locator.to_string(),note.updated_at]).unwrap();
         }
         drop(conn);
         let path = temp.path().join("columns.zip");
-        NotesExporter::new_with_vfs(main, files, Some(vfs)).export_single(SingleNoteExportOptions {
-            note_id: note.id.clone(), include_versions: true, output_path: Some(path.clone()),
-        }).unwrap();
+        NotesExporter::new_with_vfs(main, files, Some(vfs))
+            .export_single(SingleNoteExportOptions {
+                note_id: note.id.clone(),
+                include_versions: true,
+                output_path: Some(path.clone()),
+            })
+            .unwrap();
         let mut zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
-        let md_name = zip.file_names().find(|name| name.starts_with("notes/") && name.ends_with(".md")).unwrap().to_string();
-        let mut md = String::new(); zip.by_name(&md_name).unwrap().read_to_string(&mut md).unwrap();
-        assert!(!md.contains(":::ds-columns{")); assert!(md.contains("Left")); assert!(md.contains("Right"));
+        let md_name = zip
+            .file_names()
+            .find(|name| name.starts_with("notes/") && name.ends_with(".md"))
+            .unwrap()
+            .to_string();
+        let mut md = String::new();
+        zip.by_name(&md_name)
+            .unwrap()
+            .read_to_string(&mut md)
+            .unwrap();
+        assert!(!md.contains(":::ds-columns{"));
+        assert!(md.contains("Left"));
+        assert!(md.contains("Right"));
         drop(zip);
         let (_dest, target, target_main, target_files) = history_fixture();
-        NotesImporter::new_with_vfs(target_main, target_files, Some(target.clone())).import(path).unwrap();
+        NotesImporter::new_with_vfs(target_main, target_files, Some(target.clone()))
+            .import(path)
+            .unwrap();
         let conn = target.get_conn_safe().unwrap();
-        let imported = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0).unwrap().remove(0);
-        assert_eq!(VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id).unwrap().unwrap(), body);
-        assert_eq!(NoteFormatRepo::get(&conn, &imported.id).unwrap().serializer_version, "markdown-v1+ds-columns-v1");
+        let imported = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0)
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id)
+                .unwrap()
+                .unwrap(),
+            body
+        );
+        assert_eq!(
+            NoteFormatRepo::get(&conn, &imported.id)
+                .unwrap()
+                .serializer_version,
+            "markdown-v1+ds-columns-v1"
+        );
         let rows: Vec<(String,String,i64,Option<String>)> = conn.prepare("SELECT relation_type,resource_id,revision,invalidated_at FROM note_learning_relations ORDER BY relation_type").unwrap()
             .query_map([], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].1, note.resource_id); assert!(rows[0].3.is_some());
-        assert_eq!(rows[1].1, imported.resource_id); assert!(rows[1].3.is_none());
+        assert_eq!(rows[0].1, note.resource_id);
+        assert!(rows[0].3.is_some());
+        assert_eq!(rows[1].1, imported.resource_id);
+        assert!(rows[1].3.is_none());
         assert!(rows.iter().all(|r| r.2 == 1));
-        let revision = NoteRevisionRepo::list(&conn, &imported.id, None, 100).unwrap().items.remove(0);
-        let copy = NoteRevisionRepo::restore_copy(&conn, &imported.id, &revision.version_id).unwrap();
-        assert_eq!(VfsNoteRepo::get_note_content_with_conn(&conn, &copy.id).unwrap().unwrap(), body);
+        let revision = NoteRevisionRepo::list(&conn, &imported.id, None, 100)
+            .unwrap()
+            .items
+            .remove(0);
+        let copy =
+            NoteRevisionRepo::restore_copy(&conn, &imported.id, &revision.version_id).unwrap();
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &copy.id)
+                .unwrap()
+                .unwrap(),
+            body
+        );
     }
 
     #[test]
     fn history_zip_roundtrip_remaps_lineage_props_and_history_only_assets() {
         let (temp, vfs, main, files) = history_fixture();
-        let note = VfsNoteRepo::create_note(&vfs, VfsCreateNoteParams { title: "Fixture".into(), content: "old\n\n".into(), tags: vec!["old".into()] }).unwrap();
+        let note = VfsNoteRepo::create_note(
+            &vfs,
+            VfsCreateNoteParams {
+                title: "Fixture".into(),
+                content: "old\n\n".into(),
+                tags: vec!["old".into()],
+            },
+        )
+        .unwrap();
         let path = format!("notes_assets/_global/{}/old.png", note.id);
         fs::create_dir_all(temp.path().join(&path).parent().unwrap()).unwrap();
         fs::write(temp.path().join(&path), b"historical image").unwrap();
         let conn = vfs.get_conn_safe().unwrap();
-        VfsNoteRepo::update_note_metadata_with_conn(&conn, &note.id, crate::vfs::repos::note_repo::VfsNoteMetadataUpdate {
-            props: Some(json!({"image": path})), ..Default::default()
-        }).unwrap();
-        VfsNoteRepo::update_note_with_conn(&conn, &note.id, VfsUpdateNoteParams { content: Some("  current\n\n".into()), ..Default::default() }).unwrap();
-        VfsNoteRepo::update_note_metadata_with_conn(&conn, &note.id, crate::vfs::repos::note_repo::VfsNoteMetadataUpdate {
-            props: Some(json!({})), ..Default::default()
-        }).unwrap();
-        let original_ids: Vec<String> = conn.prepare("SELECT version_id FROM note_document_revisions WHERE note_id=?1 ORDER BY seq").unwrap()
-            .query_map([&note.id], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        VfsNoteRepo::update_note_metadata_with_conn(
+            &conn,
+            &note.id,
+            crate::vfs::repos::note_repo::VfsNoteMetadataUpdate {
+                props: Some(json!({"image": path})),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        VfsNoteRepo::update_note_with_conn(
+            &conn,
+            &note.id,
+            VfsUpdateNoteParams {
+                content: Some("  current\n\n".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        VfsNoteRepo::update_note_metadata_with_conn(
+            &conn,
+            &note.id,
+            crate::vfs::repos::note_repo::VfsNoteMetadataUpdate {
+                props: Some(json!({})),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let original_ids: Vec<String> = conn
+            .prepare("SELECT version_id FROM note_document_revisions WHERE note_id=?1 ORDER BY seq")
+            .unwrap()
+            .query_map([&note.id], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
         drop(conn);
         let output = temp.path().join("history.zip");
-        let current_only = NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone())).export_single(SingleNoteExportOptions {
-            note_id: note.id.clone(), include_versions: false, output_path: Some(temp.path().join("current-only.zip"))
-        }).unwrap();
+        let current_only =
+            NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone()))
+                .export_single(SingleNoteExportOptions {
+                    note_id: note.id.clone(),
+                    include_versions: false,
+                    output_path: Some(temp.path().join("current-only.zip")),
+                })
+                .unwrap();
         assert_eq!(current_only.attachment_count, 0);
-        NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone())).export_single(SingleNoteExportOptions {
-            note_id: note.id.clone(), include_versions: true, output_path: Some(output.clone())
-        }).unwrap();
+        NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone()))
+            .export_single(SingleNoteExportOptions {
+                note_id: note.id.clone(),
+                include_versions: true,
+                output_path: Some(output.clone()),
+            })
+            .unwrap();
         let (dest, target, target_main, target_files) = history_fixture();
-        let summary = NotesImporter::new_with_vfs(target_main, target_files, Some(target.clone())).import(output).unwrap();
+        let summary = NotesImporter::new_with_vfs(target_main, target_files, Some(target.clone()))
+            .import(output)
+            .unwrap();
         assert_eq!(summary.note_count, 1);
         assert_eq!(summary.attachment_count, 1);
         let conn = target.get_conn_safe().unwrap();
-        let imported = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0).unwrap().remove(0);
-        assert_eq!(VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id).unwrap().unwrap(), "  current\n\n");
+        let imported = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0)
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id)
+                .unwrap()
+                .unwrap(),
+            "  current\n\n"
+        );
         let page = NoteRevisionRepo::list(&conn, &imported.id, None, 100).unwrap();
         assert_eq!(page.items.len(), original_ids.len());
         for item in &page.items {
             assert!(!original_ids.contains(&item.version_id));
-            if let Some(parent) = &item.parent_version_id { assert!(!original_ids.contains(parent)); }
+            if let Some(parent) = &item.parent_version_id {
+                assert!(!original_ids.contains(parent));
+            }
             let revision = NoteRevisionRepo::get(&conn, &imported.id, &item.version_id).unwrap();
-            if let Some(image) = revision.props.as_ref().and_then(|p| p.get("image")).and_then(Value::as_str) {
+            if let Some(image) = revision
+                .props
+                .as_ref()
+                .and_then(|p| p.get("image"))
+                .and_then(Value::as_str)
+            {
                 assert_ne!(image, path);
-                assert_eq!(fs::read(dest.path().join(image)).unwrap(), b"historical image");
+                assert_eq!(
+                    fs::read(dest.path().join(image)).unwrap(),
+                    b"historical image"
+                );
                 assert!(revision.asset_refs.iter().any(|r| r.value == image));
             }
         }
-        let restored = NoteRevisionRepo::restore_copy(&conn, &imported.id, &page.items.last().unwrap().version_id).unwrap();
-        assert_eq!(VfsNoteRepo::get_note_content_with_conn(&conn, &restored.id).unwrap().unwrap(), "old\n\n");
-        assert_eq!(VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id).unwrap().unwrap(), "  current\n\n");
+        let restored = NoteRevisionRepo::restore_copy(
+            &conn,
+            &imported.id,
+            &page.items.last().unwrap().version_id,
+        )
+        .unwrap();
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &restored.id)
+                .unwrap()
+                .unwrap(),
+            "old\n\n"
+        );
+        assert_eq!(
+            VfsNoteRepo::get_note_content_with_conn(&conn, &imported.id)
+                .unwrap()
+                .unwrap(),
+            "  current\n\n"
+        );
     }
 
     #[test]
     fn history_zip_exclusion_and_unknown_manifest_fail_before_writes() {
         let (temp, vfs, main, files) = history_fixture();
-        let note = VfsNoteRepo::create_note(&vfs, VfsCreateNoteParams { title: "Fixture".into(), content: "body".into(), tags: vec![] }).unwrap();
+        let note = VfsNoteRepo::create_note(
+            &vfs,
+            VfsCreateNoteParams {
+                title: "Fixture".into(),
+                content: "body".into(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
         let output = temp.path().join("no-history.zip");
-        NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone())).export_single(SingleNoteExportOptions {
-            note_id: note.id, include_versions: false, output_path: Some(output.clone())
-        }).unwrap();
+        NotesExporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone()))
+            .export_single(SingleNoteExportOptions {
+                note_id: note.id,
+                include_versions: false,
+                output_path: Some(output.clone()),
+            })
+            .unwrap();
         let mut zip = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
-        let docs: DocumentArchive = read_archive_json(&mut zip.by_name("_versions/documents.json").unwrap()).unwrap();
+        let docs: DocumentArchive =
+            read_archive_json(&mut zip.by_name("_versions/documents.json").unwrap()).unwrap();
         assert!(docs.revisions.is_empty());
         assert!(docs.revision_files.is_empty());
         assert_eq!(docs.note_files.len(), 1);
-        for manifest in ["{broken".to_string(), serde_json::to_string(&Manifest {
-            schema_version: 99, exported_at: String::new(), app_version: String::new(), note_count: 1,
-            attachment_count: 0, version_count: 0, preferences: vec![], subjects: vec![],
-        }).unwrap()] {
+        for manifest in [
+            "{broken".to_string(),
+            serde_json::to_string(&Manifest {
+                schema_version: 99,
+                exported_at: String::new(),
+                app_version: String::new(),
+                note_count: 1,
+                attachment_count: 0,
+                version_count: 0,
+                preferences: vec![],
+                subjects: vec![],
+            })
+            .unwrap(),
+        ] {
             let path = temp.path().join("bad.zip");
             let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
             write_zip_entry(&mut zip, "manifest.json", manifest.as_bytes());
-            write_zip_entry(&mut zip, "notes/new.md", b"---\ntitle: must not import\n---\n\nbody");
+            write_zip_entry(
+                &mut zip,
+                "notes/new.md",
+                b"---\ntitle: must not import\n---\n\nbody",
+            );
             zip.finish().unwrap();
-            assert!(NotesImporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone())).import(path).is_err());
-            assert_eq!(VfsNoteRepo::list_notes_with_conn(&vfs.get_conn_safe().unwrap(), None, 100, 0).unwrap().len(), 1);
+            assert!(
+                NotesImporter::new_with_vfs(main.clone(), files.clone(), Some(vfs.clone()))
+                    .import(path)
+                    .is_err()
+            );
+            assert_eq!(
+                VfsNoteRepo::list_notes_with_conn(&vfs.get_conn_safe().unwrap(), None, 100, 0)
+                    .unwrap()
+                    .len(),
+                1
+            );
         }
     }
 
@@ -3502,37 +4014,110 @@ mod zip_slip_tests {
         let make_zip = |format_version: i64, serializer: &str, corrupt: bool| {
             let path = temp.path().join("failure.zip");
             let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
-            let docs = DocumentArchive { notes: vec![ExportNote { id: "fixture".into(), title: "Fixture".into(),
-                content_md: "![a](notes_assets/x/a.png) ![b](notes_assets/x/b.png)".into(), tags: vec![], created_at: Utc::now().to_rfc3339(),
-                updated_at: Utc::now().to_rfc3339(), is_favorite: false, attachments: vec![], props: None,
-                format: Some(NoteFormat { note_id: "fixture".into(), content_format: "markdown-legacy".into(), format_version, serializer_version: serializer.into(), baseline_version_id: None }), resource_id: None, relations: vec![] }], revisions: vec![], note_files: vec![], revision_files: vec![] };
-            let manifest = Manifest { schema_version: 3, exported_at: String::new(), app_version: String::new(), note_count: 1, attachment_count: 2, version_count: 0, preferences: vec![], subjects: vec![] };
-            write_zip_entry(&mut zip, "manifest.json", &serde_json::to_vec(&manifest).unwrap());
-            write_zip_entry(&mut zip, "_versions/documents.json", &serde_json::to_vec(&docs).unwrap());
+            let docs = DocumentArchive {
+                notes: vec![ExportNote {
+                    id: "fixture".into(),
+                    title: "Fixture".into(),
+                    content_md: "![a](notes_assets/x/a.png) ![b](notes_assets/x/b.png)".into(),
+                    tags: vec![],
+                    created_at: Utc::now().to_rfc3339(),
+                    updated_at: Utc::now().to_rfc3339(),
+                    is_favorite: false,
+                    attachments: vec![],
+                    props: None,
+                    format: Some(NoteFormat {
+                        note_id: "fixture".into(),
+                        content_format: "markdown-legacy".into(),
+                        format_version,
+                        serializer_version: serializer.into(),
+                        baseline_version_id: None,
+                    }),
+                    resource_id: None,
+                    relations: vec![],
+                }],
+                revisions: vec![],
+                note_files: vec![],
+                revision_files: vec![],
+            };
+            let manifest = Manifest {
+                schema_version: 3,
+                exported_at: String::new(),
+                app_version: String::new(),
+                note_count: 1,
+                attachment_count: 2,
+                version_count: 0,
+                preferences: vec![],
+                subjects: vec![],
+            };
+            write_zip_entry(
+                &mut zip,
+                "manifest.json",
+                &serde_json::to_vec(&manifest).unwrap(),
+            );
+            write_zip_entry(
+                &mut zip,
+                "_versions/documents.json",
+                &serde_json::to_vec(&docs).unwrap(),
+            );
             write_zip_entry(&mut zip, "assets/x/a.png", b"good_asset_payload");
             write_zip_entry(&mut zip, "assets/x/b.png", b"broken_asset_payload");
             zip.finish().unwrap();
             if corrupt {
                 let mut bytes = fs::read(&path).unwrap();
-                let index = bytes.windows(b"broken_asset_payload".len()).position(|w| w == b"broken_asset_payload").unwrap();
+                let index = bytes
+                    .windows(b"broken_asset_payload".len())
+                    .position(|w| w == b"broken_asset_payload")
+                    .unwrap();
                 bytes[index] ^= 1;
                 fs::write(&path, bytes).unwrap();
             }
             path
         };
         let importer = NotesImporter::new_with_vfs(main, files, Some(vfs.clone()));
-        assert!(importer.import(make_zip(999, "markdown-v1", false)).is_err());
-        assert!(importer.import(make_zip(1, "markdown-v1+ds-columns-v999", false)).is_err());
+        assert!(importer
+            .import(make_zip(999, "markdown-v1", false))
+            .is_err());
+        assert!(importer
+            .import(make_zip(1, "markdown-v1+ds-columns-v999", false))
+            .is_err());
         assert!(importer.import(make_zip(1, "markdown-v1", true)).is_err());
         let conn = vfs.get_conn_safe().unwrap();
-        assert_eq!(conn.query_row("SELECT count(*) FROM notes", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
-        assert_eq!(conn.query_row("SELECT count(*) FROM note_document_revisions", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM notes", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM note_document_revisions", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
         fn file_count(path: &Path) -> usize {
-            fs::read_dir(path).map(|entries| entries.map(|e| { let p = e.unwrap().path(); if p.is_dir() { file_count(&p) } else { 1 } }).sum()).unwrap_or(0)
+            fs::read_dir(path)
+                .map(|entries| {
+                    entries
+                        .map(|e| {
+                            let p = e.unwrap().path();
+                            if p.is_dir() {
+                                file_count(&p)
+                            } else {
+                                1
+                            }
+                        })
+                        .sum()
+                })
+                .unwrap_or(0)
         }
         assert_eq!(file_count(&temp.path().join("notes_assets")), 0);
         drop(conn);
-        assert_eq!(importer.import(make_zip(1, "markdown-v1", false)).unwrap().attachment_count, 2);
+        assert_eq!(
+            importer
+                .import(make_zip(1, "markdown-v1", false))
+                .unwrap()
+                .attachment_count,
+            2
+        );
     }
 
     #[test]
@@ -3541,28 +4126,59 @@ mod zip_slip_tests {
         let importer = NotesImporter::new_with_vfs(main, files, Some(vfs.clone()));
         let path = temp.path().join("legacy.zip");
         let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
-        write_zip_entry(&mut zip, "manifest.json", &serde_json::to_vec(&Manifest {
-            schema_version: 2, exported_at: String::new(), app_version: String::new(), note_count: 1,
-            attachment_count: 1, version_count: 0, preferences: vec![], subjects: vec![],
-        }).unwrap());
+        write_zip_entry(
+            &mut zip,
+            "manifest.json",
+            &serde_json::to_vec(&Manifest {
+                schema_version: 2,
+                exported_at: String::new(),
+                app_version: String::new(),
+                note_count: 1,
+                attachment_count: 1,
+                version_count: 0,
+                preferences: vec![],
+                subjects: vec![],
+            })
+            .unwrap(),
+        );
         write_zip_entry(&mut zip, "notes/old.md", b"---\nid: legacy\ntitle: Legacy\n---\n\n![a](assets/math/n1/a.png) ![b](notes_assets/math/n1/a.png)");
         write_zip_entry(&mut zip, "assets/notes_assets/math/n1/a.png", b"old image");
         zip.finish().unwrap();
         assert_eq!(importer.import(path).unwrap().note_count, 1);
         let conn = vfs.get_conn_safe().unwrap();
-        let note = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0).unwrap().remove(0);
-        let content = VfsNoteRepo::get_note_content_with_conn(&conn, &note.id).unwrap().unwrap();
+        let note = VfsNoteRepo::list_notes_with_conn(&conn, None, 10, 0)
+            .unwrap()
+            .remove(0);
+        let content = VfsNoteRepo::get_note_content_with_conn(&conn, &note.id)
+            .unwrap()
+            .unwrap();
         let paths = extract_note_asset_paths(&content);
         assert_eq!(paths.len(), 1);
-        assert_eq!(fs::read(temp.path().join(paths.iter().next().unwrap())).unwrap(), b"old image");
+        assert_eq!(
+            fs::read(temp.path().join(paths.iter().next().unwrap())).unwrap(),
+            b"old image"
+        );
         drop(conn);
         let bad = temp.path().join("future-legacy.zip");
         let mut zip = ZipWriter::new(fs::File::create(&bad).unwrap());
-        write_zip_entry(&mut zip, "notes/first.md", b"---\ntitle: valid first\n---\n\nbody");
-        write_zip_entry(&mut zip, "notes/future.md", b"<!-- ds:format-v999 -->\n\nfuture body");
+        write_zip_entry(
+            &mut zip,
+            "notes/first.md",
+            b"---\ntitle: valid first\n---\n\nbody",
+        );
+        write_zip_entry(
+            &mut zip,
+            "notes/future.md",
+            b"<!-- ds:format-v999 -->\n\nfuture body",
+        );
         zip.finish().unwrap();
         assert!(importer.import(bad).is_err());
-        assert_eq!(VfsNoteRepo::list_notes_with_conn(&vfs.get_conn_safe().unwrap(), None, 10, 0).unwrap().len(), 1);
+        assert_eq!(
+            VfsNoteRepo::list_notes_with_conn(&vfs.get_conn_safe().unwrap(), None, 10, 0)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     /// 模拟三条导入路径共用的落盘逻辑：校验后写文件。
