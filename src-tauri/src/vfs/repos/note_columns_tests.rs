@@ -173,7 +173,9 @@ fn stable_columns_transfer_requires_both_page_optins_and_moves_entire_container_
     let target = NoteFormatRepo::enable_columns(&conn, &target.id, &target.updated_at).unwrap();
     request.expected_target_updated_at = target.updated_at;
     let mut tampered = request.clone();
-    tampered.target_content = tampered.target_content.replace("Answer", "Edited during move");
+    tampered.target_content = tampered
+        .target_content
+        .replace("Answer", "Edited during move");
     assert!(NoteTransferRepo::transfer(&conn, tampered).is_err());
     let moved = NoteTransferRepo::transfer(&conn, request).unwrap();
     assert_eq!(

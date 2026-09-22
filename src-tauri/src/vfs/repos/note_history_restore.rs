@@ -177,7 +177,11 @@ impl NoteRevisionRepo {
             let content = Self::selected_content(&revision, selection)?;
             let before = Self::snapshot(conn, note_id, "before_restore")?;
             Self::set_pinned(conn, note_id, &before, true)?;
-            let before_seq:i64 = conn.query_row("SELECT MAX(seq) FROM note_document_revisions WHERE note_id=?1",[note_id],|r|r.get(0))?;
+            let before_seq: i64 = conn.query_row(
+                "SELECT MAX(seq) FROM note_document_revisions WHERE note_id=?1",
+                [note_id],
+                |r| r.get(0),
+            )?;
             let mut format = Self::revision_format(&revision, note_id);
             format.baseline_version_id = current_format.baseline_version_id;
             let note = VfsNoteRepo::update_note_with_format(
@@ -202,7 +206,10 @@ impl NoteRevisionRepo {
             )?;
             // Force a new provenance envelope; never mutate an already synced ID.
             // Intermediate body/metadata snapshots have never left this transaction.
-            conn.execute("DELETE FROM note_document_revisions WHERE note_id=?1 AND seq>?2",params![note_id,before_seq])?;
+            conn.execute(
+                "DELETE FROM note_document_revisions WHERE note_id=?1 AND seq>?2",
+                params![note_id, before_seq],
+            )?;
             Self::discard_unpublished_history_logs(conn)?;
             Self::snapshot_restored(conn, note_id, "restore_current", Some(version_id))?;
             Ok(note)
