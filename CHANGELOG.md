@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.65](https://github.com/helixnow/deep-student/compare/v0.9.64...v0.9.65) (2026-09-22)
+
+
+### Features
+
+* **notes:** improve editing reliability and add local history ([502a0ce](https://github.com/helixnow/deep-student/commit/502a0ce390bea3236251a4fb41a77586cc43f861))
+* **notes:** integrate structured editing and simplify note controls ([fcfdca9](https://github.com/helixnow/deep-student/commit/fcfdca9e75666d497ae3b8d57a05d2eec889149a))
+
+
+### Bug Fixes
+
+* **notes:** keep drafts, info-panel tabs and narrow-pane search usable ([3852cdb](https://github.com/helixnow/deep-student/commit/3852cdb80105977a2409f2011565ff53b04fe5c0))
+* **notes:** restore the AI review accept path and cover it with real controls ([3701ea9](https://github.com/helixnow/deep-student/commit/3701ea9cf5a2899be35ee36149e120432b5d01f1))
+* **sync:** classify the new note tables and stop replay echoes ([977f2c9](https://github.com/helixnow/deep-student/commit/977f2c979ac849648dc5f25add07e8d1519a3058))
+* **ui:** harden shared dialogs, focus traps and reader targeting ([94b1629](https://github.com/helixnow/deep-student/commit/94b1629f6093cf7e0723b3ccae9c80be0ab750ef))
+* **ui:** make focus traps layout-agnostic and stop losing trailing placeholders ([596b86a](https://github.com/helixnow/deep-student/commit/596b86abc725edef5420e92a4ce704ea99435965))
+
 ## [0.9.64](https://github.com/helixnow/deep-student/compare/v0.9.63...v0.9.64) (2026-09-21)
 
 
