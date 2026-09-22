@@ -68,6 +68,7 @@ const LoadingSpinner: React.FC = () => {
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
   isActive,
+  focusScopeId,
 }) => {
   const { t } = useTranslation(['textbook', 'common', 'learningHub', 'pdf']);
   const {
@@ -222,6 +223,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
+    focusScopeId,
     enabled: isPdf,
     nodeId: node.id,
     nodeSourceId: node.sourceId,

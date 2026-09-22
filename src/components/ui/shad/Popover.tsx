@@ -6,12 +6,14 @@ import { Z_INDEX } from '@/config/zIndex';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface PopoverContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
   containerRef: React.RefObject<HTMLDivElement>;
   contentRef: React.RefObject<HTMLDivElement>;
+  triggerRef: React.MutableRefObject<HTMLElement | null>;
 }
 
 const PopoverContext = React.createContext<PopoverContextValue | null>(null);
@@ -40,6 +42,19 @@ export function Popover({ open, onOpenChange, children }: PopoverProps) {
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const triggerRef = React.useRef<HTMLElement | null>(null);
+  const closeWithEscape = React.useCallback((event: KeyboardEvent | React.KeyboardEvent) => {
+    if (!actualOpen || event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+    if (event.target instanceof Element && !contentRef.current?.contains(event.target)) {
+      const dialogSelector = '[role="dialog"], [role="alertdialog"]';
+      if (event.target.closest(dialogSelector) !== containerRef.current?.closest(dialogSelector)) return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setOpen(false);
+    // Preserve focus in an editor when the trigger deliberately kept its selection.
+    if (contentRef.current?.contains(document.activeElement)) triggerRef.current?.focus({ preventScroll: true });
+  }, [actualOpen, setOpen]);
 
   React.useEffect(() => {
     if (!actualOpen) return;
@@ -66,20 +81,23 @@ export function Popover({ open, onOpenChange, children }: PopoverProps) {
       if (contentRef.current && contentRef.current.contains(target)) return;
       setOpen(false);
     };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
     document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', closeWithEscape);
     return () => {
       document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', closeWithEscape);
     };
-  }, [actualOpen, setOpen]);
+  }, [actualOpen, setOpen, closeWithEscape]);
 
   return (
-    <PopoverContext.Provider value={{ open: actualOpen, setOpen, containerRef, contentRef }}>
-      <div ref={containerRef} className="relative inline-flex">
+    <PopoverContext.Provider value={{ open: actualOpen, setOpen, containerRef, contentRef, triggerRef }}>
+      <div ref={containerRef} className="relative inline-flex" onKeyDown={(event) => {
+        // Portals bubble through this root too. Consume Escape before a parent
+        // dialog's document listener, while letting nested menus handle it first.
+        if (event.target instanceof Node && (containerRef.current?.contains(event.target) || contentRef.current?.contains(event.target))) {
+          closeWithEscape(event);
+        }
+      }}>
         {children}
       </div>
     </PopoverContext.Provider>
@@ -94,11 +112,17 @@ interface PopoverTriggerProps extends React.HTMLAttributes<HTMLElement> {
 export const PopoverTrigger = React.forwardRef<HTMLElement, PopoverTriggerProps>(
   ({ asChild, children, onClick, ...rest }, ref) => {
   const ctx = React.useContext(PopoverContext);
+  const triggerRef = ctx?.triggerRef;
+  const assignTriggerRef = React.useCallback((node: HTMLElement | null) => {
+    if (triggerRef) triggerRef.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  }, [triggerRef, ref]);
   if (!ctx) return <>{children}</>;
   const Comp = (asChild ? Slot : 'button') as React.ElementType;
   return (
     <Comp
-      ref={ref}
+      ref={assignTriggerRef}
       type={asChild ? undefined : 'button'}
       aria-expanded={ctx.open}
       onClick={(event: React.MouseEvent<HTMLElement>) => {
@@ -301,6 +325,11 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
 
   // 当通过 portal/fixed 定位渲染时
   if (portal && typeof window !== 'undefined' && ctx.containerRef.current) {
+    // Keep dialog-owned popovers inside its focus scope and above its content.
+    // The overlay root is viewport-fixed; the animated dialog itself is not.
+    const overlayRoot = ctx.containerRef.current.closest<HTMLElement>('[data-overlay-container="true"]');
+    const parentDialog = ctx.containerRef.current.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+    const parentZIndex = parentDialog ? Number.parseInt(getComputedStyle(parentDialog).zIndex, 10) || 0 : 0;
     // 使用计算后的位置，或默认初始位置
     const rect = ctx.containerRef.current.getBoundingClientRect();
     const defaultLeft = align === 'center' ? rect.left + rect.width / 2 : align === 'end' ? rect.right : rect.left;
@@ -322,16 +351,18 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
           )}
         data-state={presence.exiting ? 'closed' : 'open'}
         style={{
-          zIndex: Z_INDEX.popover,
+          zIndex: Math.max(Z_INDEX.popover, parentZIndex + 1),
           left: finalLeft,
           top: finalTop,
           transform: `translateX(${finalTranslateX}%)`,
           ...style,
         }}
         {...rest}
+        aria-hidden={!ctx.open || rest['aria-hidden']}
+        {...(!ctx.open ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       />
     );
-    return createPortal(node, document.body);
+    return createPortal(node, overlayRoot ?? document.body);
   }
 
   // 回退：不使用 portal 时仍采用绝对定位（可能会被裁剪）
@@ -349,6 +380,8 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
       data-state={presence.exiting ? 'closed' : 'open'}
       style={{ zIndex: Z_INDEX.inputBarInner, ...style }}
       {...rest}
+      aria-hidden={!ctx.open || rest['aria-hidden']}
+      {...(!ctx.open ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
     />
   );
 });

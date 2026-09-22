@@ -172,6 +172,8 @@ export interface DsDialogProps {
   /** 内容区最大宽度 class，默认 max-w-lg */
   maxWidth?: string;
   className?: string;
+  'aria-label'?: string;
+  'aria-labelledby'?: string;
 }
 
 export function DsDialog({
@@ -182,6 +184,8 @@ export function DsDialog({
   showClose = true,
   maxWidth = 'max-w-lg',
   className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: DsDialogProps) {
   const { t } = useTranslation('common');
 
@@ -240,6 +244,8 @@ export function DsDialog({
         <motion.div
           role="dialog"
           aria-modal="true"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
           tabIndex={-1}
           variants={isMobileSheet ? sheetContentVariants : contentVariants}
           drag={isMobileSheet ? 'y' : false}
