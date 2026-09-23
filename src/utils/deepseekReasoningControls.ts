@@ -10,7 +10,8 @@ export type DeepSeekReasoningControlKind =
   | 'mistral-effort'
   | 'ernie-effort'
   // 2A Qwen 思考强度（新增）：DashScope / SiliconFlow 上 Qwen 混合思考模型
-  // - qwen-budget-effort: 三档预设（低/中/高），映射到 thinking_budget 数值
+  // - qwen-budget-effort: 五档预设（低/中/高/超高/最高），映射到 thinking_budget 数值
+  //   (1024/4096/16384/32768/65536)；xhigh/max 仅在部分模型文档上限内有效
   // - qwen-effort: 预留位，未来若 DashScope 开放 reasoning_effort 字符串时使用
   | 'qwen-budget-effort'
   | 'qwen-effort'
@@ -131,11 +132,16 @@ const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 
 // 2A Qwen 思考强度三档预设（映射到 thinking_budget 数值，单位 tokens）。
 // DashScope 混合思考模型（qwen3.7-max/plus、qwen-plus/turbo/flash、qwen3.5/3.6/3.7 非 thinking 变体）
-// 通过 thinking_budget 表达"思考强度"。低/中/高对应 1024 / 4096 / 16384。
+// 通过 thinking_budget 表达"思考强度"。低/中/高/超高/最高对应 1024 / 4096 / 16384 / 65536 / 262144。
+//
+// 注意：xhigh 和 max 仅在部分模型（qwen3.7-max / qwen3-max / qwen-plus / qwen3.8）文档上限内有效；
+// qwen-turbo / qwen-flash 等较小模型可能返回 400 错误，由 chat 错误处理提醒用户降档。
 const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.qwen.depth.low', defaultLabel: '低 (1024)' },
   { value: 'medium', labelKey: 'settings:api.modal.qwen.depth.medium', defaultLabel: '中 (4096)' },
   { value: 'high', labelKey: 'settings:api.modal.qwen.depth.high', defaultLabel: '高 (16384)' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.qwen.depth.xhigh', defaultLabel: '超高 (65536)' },
+  { value: 'max', labelKey: 'settings:api.modal.qwen.depth.max', defaultLabel: '最高 (262144)' },
 ];
 
 const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
@@ -463,26 +469,41 @@ export function deepSeekV32BudgetToEffort(budget: number | undefined | null): 'l
   return 'xhigh';
 }
 
-// 2A Qwen 思考强度三档预设（单位 tokens）。
+// 2A Qwen 思考强度预设（单位 tokens）。
 // DashScope 混合思考模型通过 thinking_budget 表达"思考强度"。
+//
+// 档位依据：
+// - low/medium/high 是 2A 引入的保守档，兼容所有 Qwen 混合思考模型
+// - xhigh (65536) 匹配 qwen-plus / qwen3-max 等中高端模型的实际上限
+// - max (262144 = 256K) 匹配 qwen3.7-max / qwen3.8 等旗舰模型的最新上限（覆盖 20 多万）
+//
+// 注意：部分模型（如 qwen-turbo / qwen-flash）文档上限低于 max 甚至 xhigh，
+// API 会返回 400 错误。前端允许选择这两档，但需要在错误发生后提醒
+// 用户降到 high 或更低（见 chat 错误处理 detectThinkingBudgetError）。
 const QWEN_EFFORT_BUDGETS = {
   low: 1024,
   medium: 4096,
   high: 16384,
+  xhigh: 65536,
+  max: 262144,
 } as const;
 
 export function qwenEffortToBudget(effort: string | undefined | null): number {
   const normalized = normalize(effort);
   if (normalized === 'low') return QWEN_EFFORT_BUDGETS.low;
   if (normalized === 'high') return QWEN_EFFORT_BUDGETS.high;
+  if (normalized === 'xhigh') return QWEN_EFFORT_BUDGETS.xhigh;
+  if (normalized === 'max') return QWEN_EFFORT_BUDGETS.max;
   return QWEN_EFFORT_BUDGETS.medium;
 }
 
-export function qwenBudgetToEffort(budget: number | undefined | null): 'low' | 'medium' | 'high' {
+export function qwenBudgetToEffort(budget: number | undefined | null): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
   if (typeof budget !== 'number' || !Number.isFinite(budget)) return 'medium';
   if (budget <= QWEN_EFFORT_BUDGETS.low) return 'low';
   if (budget <= QWEN_EFFORT_BUDGETS.medium) return 'medium';
-  return 'high';
+  if (budget <= QWEN_EFFORT_BUDGETS.high) return 'high';
+  if (budget <= QWEN_EFFORT_BUDGETS.xhigh) return 'xhigh';
+  return 'max';
 }
 
 export function normalizeDeepSeekV4Effort(
@@ -646,12 +667,18 @@ export function resolveDeepSeekRuntimeReasoningSelection(
     };
   }
 
-  // 2A Qwen 思考强度：low/medium/high → thinking_budget (1024/4096/16384)
+  // 2A Qwen 思考强度：low/medium/high/xhigh/max → thinking_budget (1024/4096/16384/32768/65536)
   // 与 v32-budget-effort 类似，但 budget 档位不同；reasoningEffort 字段保留供 UI 显示。
+  // 注意：xhigh 和 max 仅在部分 Qwen 模型（qwen3.7-max / qwen3-max / qwen-plus）文档上限内有效；
+  // qwen-turbo / qwen-flash 等较小模型可能返回 400 错误，由 chat 错误处理提醒用户降档。
   if (input.control.kind === 'qwen-budget-effort') {
     const normalizedEffort = normalize(input.reasoningEffort);
     const effort: DeepSeekReasoningOptionValue =
-      normalizedEffort === 'low' || normalizedEffort === 'medium' || normalizedEffort === 'high'
+      normalizedEffort === 'low' ||
+      normalizedEffort === 'medium' ||
+      normalizedEffort === 'high' ||
+      normalizedEffort === 'xhigh' ||
+      normalizedEffort === 'max'
         ? (normalizedEffort as DeepSeekReasoningOptionValue)
         : (input.control.defaultValue ?? 'medium');
     return {

@@ -33,7 +33,8 @@
     "streamInterrupted": "Stream interrupted",
     "abortFailed": "Abort failed",
     "abortFailedMessage": "Could not reliably abort generation; local state was force-reset",
-    "killSwitchBlocked": "Agents are powered off. Resume them from the desktop control center, then try again."
+    "killSwitchBlocked": "Agents are powered off. Resume them from the desktop control center, then try again.",
+    "qwen_budget_too_high": "The selected \"XHigh\" or \"Max\" thinking depth is not supported by the current Qwen model. Lower the depth to \"High (16384)\" or below in Settings and retry."
   },
   "killSwitch": {
     "tripped": "Agents powered off",

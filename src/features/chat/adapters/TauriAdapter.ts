@@ -14,7 +14,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import i18n from 'i18next';
-import { formatUserFacingError, getErrorMessage } from '@/utils/errorUtils';
+import { formatUserFacingErrorWithThinkingBudgetHint, getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   clearAdapterErrorFlag,
@@ -3122,7 +3122,7 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       if (isActiveStreamConflict(errorMsg)) {
         console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
-        showGlobalNotification('error', formatUserFacingError(
+        showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
           error,
           'chatV2:error.sendFailed',
           'Send failed',
@@ -3137,7 +3137,7 @@ export class ChatV2TauriAdapter {
         // 忽略恢复失败
       }
       // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingError(
+      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
         error,
         'chatV2:error.sendFailed',
         'Send failed',
@@ -3191,7 +3191,7 @@ export class ChatV2TauriAdapter {
       console.error(LOG_PREFIX, 'Execute wake session failed:', errorMsg);
       this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
       this.store.completeStream('error', normalizeStreamTerminalError(error));
-      showGlobalNotification('error', formatUserFacingError(
+      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
         error,
         'chatV2:error.sendFailed',
         'Wake failed',
@@ -3438,7 +3438,7 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       if (isActiveStreamConflict(errorMsg)) {
         console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
-        showGlobalNotification('error', formatUserFacingError(
+        showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
           error,
           'chatV2:error.sendFailed',
           'Send failed',
@@ -3452,7 +3452,7 @@ export class ChatV2TauriAdapter {
       } catch {
         // 忽略恢复失败
       }
-      showGlobalNotification('error', formatUserFacingError(
+      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
         error,
         'chatV2:error.sendFailed',
         'Send failed',
@@ -3621,7 +3621,7 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Retry failed:', errorMsg);
       // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingError(
+      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
         error,
         'chatV2:messageItem.actions.retryFailed',
         'Retry failed',
@@ -3862,7 +3862,7 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Edit and resend failed:', errorMsg);
       // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingError(
+      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
         error,
         'chatV2:messageItem.actions.editFailed',
         'Edit and resend failed',

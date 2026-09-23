@@ -192,6 +192,70 @@ export const logError = (context: string, error: unknown): void => {
 };
 
 /**
+ * 包装 `formatUserFacingError`，在错误是 thinking_budget 超限时追加降档提示。
+ * 用于 chat 发送失败路径（TauriAdapter.ts）等需要用户级错误提示的地方。
+ */
+export const formatUserFacingErrorWithThinkingBudgetHint = (
+  error: unknown,
+  prefixKey: string,
+  fallbackPrefix: string,
+  options: UserFacingErrorOptions = {},
+): string => {
+  const base = formatUserFacingError(error, prefixKey, fallbackPrefix, options);
+  const budgetErr = detectThinkingBudgetError(error);
+  if (!budgetErr) return base;
+  // 已包含同样提示时不重复追加（防御重复包装）
+  if (base.includes(budgetErr.hint)) return base;
+  return `${base}\n\n💡 ${budgetErr.hint}`;
+};
+
+/**
+ * Qwen 思考强度（thinking_budget）错误识别。
+ *
+ * 当 DashScope / SiliconFlow 拒绝过大的 thinking_budget 时，
+ * 错误消息中通常包含 "thinking_budget" 关键字（不同网关措辞不同）：
+ * - "thinking_budget must be no more than 16384"
+ * - "InvalidParameter: thinking_budget out of range"
+ * - "thinking budget exceeds maximum"
+ *
+ * 本函数识别此类错误并返回一个 i18n 化的降档提示，供 chat 错误处理层
+ * 追加到用户可见的错误消息中。
+ *
+ * 返回 null 表示这不是 thinking_budget 相关错误，调用方无需追加提示。
+ */
+export function detectThinkingBudgetError(error: unknown): {
+  /** 完整的用户可见降档提示（已 i18n） */
+  hint: string;
+} | null {
+  const rawMessage = getErrorMessage(error);
+  if (!rawMessage) return null;
+  const lower = rawMessage.toLowerCase();
+  // 必须同时提到 budget 和某种"超限"信号；避免误匹配普通 thinking 错误
+  const mentionsBudget =
+    lower.includes('thinking_budget') ||
+    lower.includes('thinking budget') ||
+    lower.includes('budget_tokens');
+  if (!mentionsBudget) return null;
+  const mentionsLimit =
+    lower.includes('exceed') ||
+    lower.includes('invalid') ||
+    lower.includes('range') ||
+    lower.includes('must be') ||
+    lower.includes('maximum') ||
+    lower.includes('max') ||
+    lower.includes('no more than') ||
+    lower.includes('greater than') ||
+    lower.includes('400');
+  if (!mentionsLimit) return null;
+  return {
+    hint: i18n.t('chatV2:error.qwen_budget_too_high', {
+      defaultValue:
+        '当前 Qwen 模型不支持所选的"超高"或"最高"思考强度，请在设置中将思考强度降到"高 (16384)"或更低后重试。',
+    }),
+  };
+}
+
+/**
  * 将错误信息进行路径脱敏，移除编译机/源码绝对路径等敏感信息
  */
 function sanitizeErrorMessage(message: string): string {
