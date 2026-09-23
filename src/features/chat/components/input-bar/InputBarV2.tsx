@@ -51,6 +51,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
+  qwenEffortToBudget,
   resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
   type DeepSeekReasoningControlKind,
@@ -123,6 +124,8 @@ const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Re
   'grok-effort': { low: 'low', medium: 'medium', high: 'high' },
   'mistral-effort': { low: 'low', medium: 'medium', high: 'high' },
   'ernie-effort': { high: 'high', max: 'max' },
+  'qwen-budget-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'qwen-effort': { low: 'low', medium: 'medium', high: 'high' },
   'toggle-only': {},
 };
 
@@ -681,6 +684,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             enableThinking: true,
             reasoningEffort: effort,
             thinkingBudget: deepSeekV32EffortToBudget(effort),
+          });
+          return;
+        }
+
+        // 2A Qwen 思考强度：low/medium/high → thinkingBudget (1024/4096/16384)
+        if (thinkingControl.kind === 'qwen-budget-effort') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: value,
+            thinkingBudget: qwenEffortToBudget(value),
           });
           return;
         }

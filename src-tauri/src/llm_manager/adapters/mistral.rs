@@ -143,6 +143,8 @@ impl RequestAdapter for MistralAdapter {
             body.insert("repetition_penalty".to_string(), json!(rep_penalty));
         }
         // Mistral 不使用 reasoning_split, verbosity
+        // 2C 自定义请求体扩展
+        super::merge_extra_body(body, config);
     }
 }
 
