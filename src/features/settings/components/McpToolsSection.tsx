@@ -103,6 +103,7 @@ import {
   type ManagedPermissionTool,
 } from './toolPermissionModel';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
+import { McpDangerZoneSection } from './McpDangerZoneSection';
 
 // Types
 interface McpServer {
@@ -3977,6 +3978,10 @@ export function McpToolsSection({
         </div>
 
         {/* 服务器列表 */}
+
+        {/* 选项 ①：MCP 危险模式全局开关（红色危险区） */}
+        <McpDangerZoneSection />
+
         <div className="space-y-2">
           {totalServers === 0 && !isAddingNew ? (
             <div className="rounded-2xl bg-muted">

@@ -68,6 +68,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             reasoning_split: None,
             effort: None,
             verbosity: Some("medium".to_string()),
+            extra_body: None,
         },
         // Claude Sonnet 5 配置（2026-07 现役 ID；claude-3-5-sonnet 早已退役）
         ApiConfig {
@@ -130,6 +131,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             reasoning_split: None,
             effort: None,
             verbosity: None,
+            extra_body: None,
         },
     ]
 }

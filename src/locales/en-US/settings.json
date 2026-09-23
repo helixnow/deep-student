@@ -290,7 +290,12 @@
         "enable_thinking_hint": "Qwen3 dual-mode switch, outputs reasoning_content when enabled",
         "thinking_budget": "Thinking Budget",
         "thinking_budget_placeholder": "Leave empty for default",
-        "reasoning_effort": "Reasoning Effort"
+        "reasoning_effort": "Reasoning Effort",
+        "depth": {
+          "low": "Low (1024)",
+          "medium": "Medium (4096)",
+          "high": "High (16384)"
+        }
       },
       "grok": {
         "title": "xAI Grok Configuration",
@@ -1761,6 +1766,20 @@
       "clear_api_key_first": "Clear the API Key first — API Key takes priority over OAuth",
       "api_key_priority_hint": "If an API Key is set, it takes priority over OAuth Bearer tokens."
     }
+  },
+  "mcp_danger": {
+    "title": "Danger Zone: MCP Unrestricted Mode",
+    "description": "By default, MCP stdio launches must pass an approved-config gate (command / args / env / cwd / framing must exactly match a saved server entry). When unrestricted mode is enabled, any JavaScript in a webview or plugin can invoke mcp_stdio_start to spawn any process on your machine — equivalent to PowerShell's Bypass policy. Enable only temporarily while debugging, and disable immediately afterwards.",
+    "unapproved_toggle": "Allow unapproved MCP stdio launches",
+    "unapproved_active_warning": "Currently enabled: any JS can spawn any process",
+    "unapproved_enabled_toast": "MCP unrestricted mode enabled — restart the app for it to take effect",
+    "unapproved_disabled_toast": "MCP unrestricted mode disabled",
+    "unapproved_failed_toast": "Failed to update setting: {{msg}}",
+    "confirm_enable_title": "Enable MCP unrestricted mode?",
+    "confirm_enable_desc": "Once enabled, any JavaScript in a webview or plugin can invoke mcp_stdio_start to spawn arbitrary processes on your machine (powershell, cmd, bash, etc.). Malicious code could use this to steal data or damage your system.\n\nEnable only temporarily while debugging; disable immediately afterwards.",
+    "confirm_enable_ok": "I understand the risk, enable",
+    "confirm_disable_title": "Disable MCP unrestricted mode?",
+    "confirm_disable_desc": "Disabling restores the default approved-config gate."
   },
   "notifications": {
     "config_save_success": "Configuration saved successfully",

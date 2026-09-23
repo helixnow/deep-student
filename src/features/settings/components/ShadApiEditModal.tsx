@@ -39,6 +39,8 @@ import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
   isOfficialDeepSeekEndpoint,
+  qwenBudgetToEffort,
+  qwenEffortToBudget,
   resolveDeepSeekReasoningControl,
   resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
@@ -246,7 +248,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const deepSeekReasoningSelectValue =
     deepSeekReasoningControl.kind === 'v32-budget-effort'
       ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
-      : normalizeDeepSeekV4Effort(formData.reasoningEffort, isOfficialDeepSeekEndpoint(formData));
+      : deepSeekReasoningControl.kind === 'qwen-budget-effort'
+        ? formData.reasoningEffort ?? qwenBudgetToEffort(formData.thinkingBudget)
+        : normalizeDeepSeekV4Effort(formData.reasoningEffort, isOfficialDeepSeekEndpoint(formData));
   const profileReasoningControl = useMemo(
     () =>
       resolveDeepSeekRuntimeReasoningControl({
@@ -321,7 +325,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         thinkingBudget:
           profileReasoningControl.kind === 'v32-budget-effort'
             ? deepSeekV32EffortToBudget(value)
-            : undefined,
+            : profileReasoningControl.kind === 'qwen-budget-effort'
+              ? qwenEffortToBudget(value)
+              : undefined,
       };
     });
   };
@@ -485,13 +491,15 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           const control = resolveDeepSeekReasoningControl(currentModel, caps.supportsReasoningEffort);
           const deepSeekEnableThinkingDefault = true;
           const defaultEffort =
-            control.kind === 'v32-budget-effort'
+            control.kind === 'v32-budget-effort' || control.kind === 'qwen-budget-effort'
               ? modelDefaults.reasoningEffort ?? 'medium'
               : normalizeDeepSeekV4Effort(modelDefaults.reasoningEffort, isOfficialDeepSeekEndpoint(next));
           const defaultBudget =
             control.kind === 'v32-budget-effort'
               ? deepSeekV32EffortToBudget(defaultEffort) ?? modelDefaults.thinkingBudget
-              : undefined;
+              : control.kind === 'qwen-budget-effort'
+                ? qwenEffortToBudget(defaultEffort)
+                : undefined;
           next = {
             ...next,
             enableThinking: deepSeekEnableThinkingDefault,
@@ -811,6 +819,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           sanitized.reasoningEffort = effort;
           sanitized.thinkingBudget = budget;
         }
+      } else if (control.kind === 'qwen-budget-effort') {
+        // 2A：Qwen 混合思考模型 —— low/medium/high → thinkingBudget (1024/4096/16384)
+        const effort = sanitized.reasoningEffort ?? qwenBudgetToEffort(sanitized.thinkingBudget);
+        const budget = qwenEffortToBudget(effort);
+        sanitized.reasoningEffort = effort;
+        sanitized.thinkingBudget = budget;
       } else if (!inferredCaps.supportsReasoningEffort) {
         sanitized.reasoningEffort = undefined;
       }
@@ -1793,6 +1807,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                         thinkingBudget: deepSeekV32EffortToBudget(v) ?? prev.thinkingBudget,
                                       };
                                     }
+                                    if (deepSeekReasoningControl.kind === 'qwen-budget-effort') {
+                                      return {
+                                        ...prev,
+                                        reasoningEffort: v,
+                                        thinkingBudget: qwenEffortToBudget(v),
+                                      };
+                                    }
                                     return {
                                       ...prev,
                                       reasoningEffort: normalizeDeepSeekV4Effort(v, isOfficialDeepSeekEndpoint(prev)),
@@ -1811,7 +1832,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               <p className="text-2xs text-muted-foreground/60 ml-1">
                                 {deepSeekReasoningControl.kind === 'v32-budget-effort'
                                   ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
-                                  : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports low, high, or max reasoning effort.')}
+                                  : deepSeekReasoningControl.kind === 'qwen-budget-effort'
+                                    ? t('settings:api.modal.qwen.depth_hint', 'Qwen 混合思考模型：低/中/高映射到 thinking_budget = 1024 / 4096 / 16384。')
+                                    : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports low, high, or max reasoning effort.')}
                               </p>
                             </div>
                           )}
@@ -1855,7 +1878,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
-                          {profileReasoningControl.kind === 'v32-budget-effort' && (
+                          {(profileReasoningControl.kind === 'v32-budget-effort' || profileReasoningControl.kind === 'qwen-budget-effort') && (
                             <div className="space-y-2">
                               <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                                 {t('settings:api.modal.reasoning.openai_label')}
@@ -1869,7 +1892,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               />
                             </div>
                           )}
-                          {profileReasoningControl.kind !== 'v32-budget-effort' && <div className="space-y-2">
+                          {profileReasoningControl.kind !== 'v32-budget-effort' && profileReasoningControl.kind !== 'qwen-budget-effort' && <div className="space-y-2">
                             <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                               {t('settings:api.modal.qwen.thinking_budget', 'Thinking Budget')}
                             </Label>
