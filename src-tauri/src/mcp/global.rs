@@ -532,7 +532,11 @@ pub async fn create_stdio_transport(
 
     // 1C：spawn 成功后记录 PID 便于和日志里后续的 stdout/stderr EOF 对齐
     let child_pid = child.id();
-    log::info!("MCP process spawned: command={:?} pid={:?}", command, child_pid);
+    log::info!(
+        "MCP process spawned: command={:?} pid={:?}",
+        command,
+        child_pid
+    );
 
     let stdin = child
         .stdin
@@ -1175,11 +1179,22 @@ mod tests {
             assert!(set.contains(required), "missing required key: {}", required);
         }
         // 代理（大小写两套）
-        for proxy in ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy"] {
+        for proxy in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+        ] {
             assert!(set.contains(proxy), "missing proxy key: {}", proxy);
         }
         // 敏感变量必须仍然被排除
-        for sensitive in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY"] {
+        for sensitive in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GITHUB_TOKEN",
+            "AWS_SECRET_ACCESS_KEY",
+        ] {
             assert!(
                 !set.contains(sensitive),
                 "sensitive key should NOT be whitelisted: {}",
@@ -1204,10 +1219,21 @@ mod tests {
         ] {
             assert!(set.contains(required), "missing required key: {}", required);
         }
-        for proxy in ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy"] {
+        for proxy in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+        ] {
             assert!(set.contains(proxy), "missing proxy key: {}", proxy);
         }
-        for sensitive in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY"] {
+        for sensitive in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GITHUB_TOKEN",
+            "AWS_SECRET_ACCESS_KEY",
+        ] {
             assert!(
                 !set.contains(sensitive),
                 "sensitive key should NOT be whitelisted: {}",

@@ -591,7 +591,9 @@ pub async fn mcp_stdio_start(
             let cwd_pathbuf = cwd
                 .as_deref()
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                .unwrap_or_else(|| {
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                });
             return mcp_start_stdio_session(
                 window,
                 normalized_command,
