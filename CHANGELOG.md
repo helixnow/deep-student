@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.66](https://github.com/helixnow/deep-student/compare/v0.9.65...v0.9.66) (2026-09-23)
+
+
+### Features
+
+* **mcp,qwen:** MCP unrestricted mode and Qwen reasoning controls ([af7f368](https://github.com/helixnow/deep-student/commit/af7f36879cb70fa7571f0a15509333f081522438))
+
+
+### Bug Fixes
+
+* **ui:** align flashcards with mobile visual system ([6076859](https://github.com/helixnow/deep-student/commit/60768595753063815fdcf0e19d43682d8a1e604e))
+* **ui:** use shared mobile scrollbar styling ([db661be](https://github.com/helixnow/deep-student/commit/db661beb0a2a980de8e848a23215ed7527f6f069))
+
 ## [0.9.65](https://github.com/helixnow/deep-student/compare/v0.9.64...v0.9.65) (2026-09-22)
 
 
