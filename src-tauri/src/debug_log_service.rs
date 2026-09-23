@@ -337,24 +337,10 @@ pub async fn flush_pending_debug_log_writes() -> bool {
 /// 单次清理检查的文件数阈值（超过此数自动淘汰最旧的 10%）
 const AUTO_CLEANUP_THRESHOLD: usize = 500;
 
-/// 写入一条凭据脱敏、大小受限的详细调试日志，返回预期文件路径。
-///
-/// 序列化在调用线程完成（获取路径需要同步返回），实际磁盘写入通过
-/// Tauri blocking 线程池异步执行，并以临时文件 + rename 原子提交。
-/// 自动维护文件数上限（超过 500 个时淘汰最旧文件）。
-pub fn write_debug_log_entry(
-    log_dir: &Path,
-    tag: &str,
-    model: &str,
-    url: &str,
-    stream_event: &str,
-    request_body: &Value,
-) -> Option<PathBuf> {
-    let timestamp = Local::now();
-    let time_str = timestamp.format("%Y-%m-%dT%H-%M-%S%.3f").to_string();
-    let seq = SEQ_COUNTER.fetch_add(1, Ordering::Relaxed) % 10000;
+/// 模型名 → 文件名安全片段（保留字母数字与 -_.，其余替换为 _）
+fn safe_model_component(model: &str) -> String {
     let model_short = model.split('/').next_back().unwrap_or(model);
-    let model_safe: String = model_short
+    model_short
         .chars()
         .take(80)
         .map(|c| {
@@ -364,9 +350,12 @@ pub fn write_debug_log_entry(
                 '_'
             }
         })
-        .collect();
-    let tag_safe: String = tag
-        .chars()
+        .collect()
+}
+
+/// 标签 → 文件名安全片段（ASCII 字母数字与 -_，其余替换为 _）
+fn safe_tag_component(tag: &str) -> String {
+    tag.chars()
         .take(80)
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
@@ -375,8 +364,18 @@ pub fn write_debug_log_entry(
                 '_'
             }
         })
-        .collect();
+        .collect()
+}
 
+fn build_entry_filename(
+    timestamp: &chrono::DateTime<Local>,
+    model: &str,
+    tag: &str,
+) -> (String, u32) {
+    let time_str = timestamp.format("%Y-%m-%dT%H-%M-%S%.3f").to_string();
+    let seq = SEQ_COUNTER.fetch_add(1, Ordering::Relaxed) % 10000;
+    let model_safe = safe_model_component(model);
+    let tag_safe = safe_tag_component(tag);
     let filename = format!(
         "{}_{:04}_{}_{}.json",
         time_str,
@@ -392,7 +391,70 @@ pub fn write_debug_log_entry(
             tag_safe.as_str()
         },
     );
-    let filepath = log_dir.join(&filename);
+    (filename, seq)
+}
+
+/// 将序列化好的调试日志条目异步原子写入磁盘（tmp + rename），并按需触发自动清理。
+/// 请求体与原始响应两类调试日志共用；返回预期文件路径。
+fn spawn_json_entry_write(log_dir: &Path, filename: &str, json_str: String, seq: u32) -> PathBuf {
+    let filepath = log_dir.join(filename);
+    let result_path = filepath.clone();
+    let log_dir_owned = log_dir.to_path_buf();
+    let filename_clone = filename.to_string();
+    let json_len = json_str.len();
+
+    PENDING_WRITES.fetch_add(1, Ordering::Release);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _pending_guard = PendingWriteGuard;
+        let temporary = filepath.with_extension(format!("json.tmp-{}", seq));
+        let write_result = (|| -> std::io::Result<()> {
+            fs::create_dir_all(&log_dir_owned)?;
+            let mut options = OpenOptions::new();
+            options.create(true).write(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&temporary)?;
+            file.write_all(json_str.as_bytes())?;
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&temporary, &filepath)?;
+            #[cfg(unix)]
+            fs::File::open(&log_dir_owned)?.sync_all()?;
+            Ok(())
+        })();
+        match write_result {
+            Ok(_) => info!("[DebugLog] Wrote: {} ({} bytes)", filename_clone, json_len),
+            Err(e) => {
+                let _ = fs::remove_file(&temporary);
+                warn!("[DebugLog] Write failed {}: {}", filename_clone, e);
+            }
+        }
+        if seq % 50 == 0 {
+            auto_cleanup_if_needed(&log_dir_owned);
+        }
+    });
+
+    result_path
+}
+
+/// 写入一条凭据脱敏、大小受限的详细调试日志，返回预期文件路径。
+///
+/// 序列化在调用线程完成（获取路径需要同步返回），实际磁盘写入通过
+/// Tauri blocking 线程池异步执行，并以临时文件 + rename 原子提交。
+/// 自动维护文件数上限（超过 500 个时淘汰最旧文件）。
+pub fn write_debug_log_entry(
+    log_dir: &Path,
+    tag: &str,
+    model: &str,
+    url: &str,
+    stream_event: &str,
+    request_body: &Value,
+) -> Option<PathBuf> {
+    let timestamp = Local::now();
+    let (filename, seq) = build_entry_filename(&timestamp, model, tag);
 
     let entry = json!({
         "version": 1,
@@ -430,46 +492,64 @@ pub fn write_debug_log_entry(
         });
     }
 
-    let result_path = filepath.clone();
-    let log_dir_owned = log_dir.to_path_buf();
-    let filename_clone = filename.clone();
-    let json_len = json_str.len();
+    Some(spawn_json_entry_write(log_dir, &filename, json_str, seq))
+}
 
-    PENDING_WRITES.fetch_add(1, Ordering::Release);
-    tauri::async_runtime::spawn_blocking(move || {
-        let _pending_guard = PendingWriteGuard;
-        let temporary = filepath.with_extension(format!("json.tmp-{}", seq));
-        let write_result = (|| -> std::io::Result<()> {
-            fs::create_dir_all(&log_dir_owned)?;
-            let mut options = OpenOptions::new();
-            options.create(true).write(true).truncate(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            let mut file = options.open(&temporary)?;
-            file.write_all(json_str.as_bytes())?;
-            file.sync_all()?;
-            drop(file);
-            fs::rename(&temporary, &filepath)?;
-            #[cfg(unix)]
-            fs::File::open(&log_dir_owned)?.sync_all()?;
-            Ok(())
-        })();
-        match write_result {
-            Ok(_) => info!("[DebugLog] Wrote: {} ({} bytes)", filename_clone, json_len),
-            Err(e) => {
-                let _ = fs::remove_file(&temporary);
-                warn!("[DebugLog] Write failed {}: {}", filename_clone, e);
-            }
-        }
-        if seq % 50 == 0 {
-            auto_cleanup_if_needed(&log_dir_owned);
-        }
+/// 写入一条 AI 原始响应调试日志（与请求体日志同目录、同清理策略），返回预期文件路径。
+///
+/// 用于出题等管线保留模型完整输出做失败取证：响应是模型生成的纯文本，
+/// 不含请求凭据，但统一过 `redact_sensitive_text` 兜底（模型可能复读
+/// 提示词样例中的密钥样式文本）。
+///
+/// 响应完整保留原文：出题管线 max_tokens 封顶 8192，正常远低于
+/// MAX_DEBUG_LOG_BYTES 截断阈值；超限属异常情况，保留截断标记防磁盘失控。
+pub fn write_debug_response_entry(
+    log_dir: &Path,
+    tag: &str,
+    model: &str,
+    stream_event: &str,
+    raw_response: &str,
+) -> Option<PathBuf> {
+    let timestamp = Local::now();
+    let (filename, seq) = build_entry_filename(&timestamp, model, tag);
+
+    let entry = json!({
+        "version": 1,
+        "timestamp": timestamp.to_rfc3339(),
+        "tag": redact_sensitive_text(tag),
+        "model": redact_sensitive_text(model),
+        "stream_event": redact_sensitive_text(stream_event),
+        "raw_response_chars": raw_response.chars().count(),
+        "raw_response": redact_sensitive_text(raw_response),
     });
 
-    Some(result_path)
+    let mut json_str = match serde_json::to_string_pretty(&entry) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[DebugLog] Serialize failed: {}", e);
+            return None;
+        }
+    };
+    if json_str.len() > MAX_DEBUG_LOG_BYTES {
+        let truncated_entry = json!({
+            "version": 1,
+            "timestamp": timestamp.to_rfc3339(),
+            "tag": redact_sensitive_text(tag),
+            "model": redact_sensitive_text(model),
+            "stream_event": redact_sensitive_text(stream_event),
+            "raw_response_chars": raw_response.chars().count(),
+            "raw_response": {
+                "_truncated": true,
+                "_reason": "response log exceeded 5 MiB",
+                "_serialized_bytes": json_str.len(),
+            },
+        });
+        json_str = serde_json::to_string_pretty(&truncated_entry).unwrap_or_else(|_| {
+            "{\"version\":1,\"raw_response\":{\"_truncated\":true}}".to_string()
+        });
+    }
+
+    Some(spawn_json_entry_write(log_dir, &filename, json_str, seq))
 }
 
 // ============================================================================
@@ -627,4 +707,136 @@ pub fn read_debug_log_file(path: &Path, log_roots: &[PathBuf]) -> Result<String,
         return Err("非法文件类型：仅允许读取 .json 文件".to_string());
     }
     fs::read_to_string(&canonical).map_err(|e| format!("读取调试日志失败: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 测试专用临时目录（进程内唯一，测试结束自行清理）
+    struct TempLogDir(PathBuf);
+
+    impl TempLogDir {
+        fn new(label: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!(
+                "dls_test_{}_{}_{}",
+                std::process::id(),
+                label,
+                nanos
+            ));
+            fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+
+        fn json_files(&self) -> Vec<PathBuf> {
+            list_log_files_in(&self.0)
+        }
+    }
+
+    impl Drop for TempLogDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn flush() {
+        tauri::async_runtime::block_on(async { flush_pending_debug_log_writes().await });
+    }
+
+    #[test]
+    fn write_debug_response_entry_preserves_raw_response_completely() {
+        let temp = TempLogDir::new("resp_full");
+        // 覆盖模型输出真实形态：围栏、换行、中文、LaTeX 反斜杠，且体量超过一个 IO 缓冲
+        let mut raw = String::from("```json\n");
+        for i in 0..500 {
+            raw.push_str(&format!(
+                "第{}题 第一行\\n第二行 $\\ce{{H2O}}$ 中文内容——保持完整。\n",
+                i
+            ));
+        }
+        raw.push_str("\n```");
+        let raw_chars = raw.chars().count();
+
+        let path = write_debug_response_entry(
+            &temp.0,
+            "qbank_generation_response",
+            "deepseek-chat/v3.1",
+            "qbank_generation_stream_test",
+            &raw,
+        )
+        .expect("entry path");
+        flush();
+
+        assert!(path.exists(), "response log file should exist: {:?}", path);
+        assert_eq!(path.parent(), Some(temp.0.as_path()));
+        let content = fs::read_to_string(&path).expect("read log file");
+        let entry: Value = serde_json::from_str(&content).expect("valid json entry");
+        assert_eq!(entry["tag"], "qbank_generation_response");
+        assert_eq!(entry["model"], "deepseek-chat/v3.1");
+        assert_eq!(entry["raw_response_chars"], raw_chars);
+        // 完整保留：逐字符等于输入原文
+        assert_eq!(entry["raw_response"].as_str().unwrap(), raw);
+    }
+
+    #[test]
+    fn write_debug_response_entry_redacts_credential_like_text() {
+        let temp = TempLogDir::new("resp_redact");
+        let raw = "好的，密钥是 sk-abcdef1234567890abcdef 请保管好。正常内容不受影响。";
+
+        let path = write_debug_response_entry(&temp.0, "resp", "m", "ev", raw).expect("entry path");
+        flush();
+
+        let content = fs::read_to_string(&path).expect("read log file");
+        let entry: Value = serde_json::from_str(&content).expect("valid json entry");
+        let stored = entry["raw_response"].as_str().unwrap();
+        assert!(
+            stored.contains("[REDACTED]"),
+            "credential should be redacted"
+        );
+        assert!(!stored.contains("sk-abcdef1234567890abcdef"));
+        assert!(stored.contains("正常内容不受影响"));
+    }
+
+    #[test]
+    fn write_debug_log_entry_still_writes_and_redacts_request_body() {
+        // 重构守卫：请求体日志路径行为不变（文件生成 + api_key 字段级脱敏）
+        let temp = TempLogDir::new("req_entry");
+        let body = json!({
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "api_key": "sk-abcdef1234567890abcdef"
+        });
+
+        let path = write_debug_log_entry(
+            &temp.0,
+            "req_tag",
+            "org/test-model",
+            "https://x",
+            "ev",
+            &body,
+        )
+        .expect("entry path");
+        flush();
+
+        assert!(path.exists(), "request log file should exist: {:?}", path);
+        let content = fs::read_to_string(&path).expect("read log file");
+        let entry: Value = serde_json::from_str(&content).expect("valid json entry");
+        assert_eq!(entry["request_body"]["model"], "test-model");
+        assert_eq!(entry["request_body"]["api_key"], "[REDACTED]");
+    }
+
+    #[test]
+    fn safe_components_keep_filename_safe() {
+        assert_eq!(safe_model_component("deepseek/v3.1-turbo"), "v3.1-turbo");
+        assert_eq!(safe_model_component("deepseek/模型:名"), "模型_名");
+        assert_eq!(
+            safe_tag_component("qbank_generation_response"),
+            "qbank_generation_response"
+        );
+        assert_eq!(safe_tag_component("tag with spaces!"), "tag_with_spaces_");
+    }
 }

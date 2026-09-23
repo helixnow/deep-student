@@ -15,6 +15,7 @@ import {
   Play,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PullToRefresh } from '@/components/mobile';
 import type { FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
@@ -22,6 +23,7 @@ import { subscribeFlashcardsDueRefresh } from '../events';
 import { useReviewActivity, computeCurrentStreak } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
 import { ProgressRing } from '../components/ProgressRing';
+import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 function readCount(row: Record<string, unknown>, camelKey: string, snakeKey: string): number | null {
   const raw = row[camelKey] !== undefined ? row[camelKey] : row[snakeKey];
@@ -69,6 +71,7 @@ const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
 
 export const TodayScreen: React.FC = () => {
   const { t, i18n } = useTranslation('flashcards');
+  const { isSmallScreen } = useBreakpoint();
   const dueCards = useFsrsReviewStore((s) => s.dueCards);
   const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
   const loading = useFsrsReviewStore((s) => s.loading);
@@ -162,9 +165,21 @@ export const TodayScreen: React.FC = () => {
   const libraryEmpty = stats != null && stats.total === 0;
   const showDoneState = doneToday > 0 && !libraryEmpty;
 
+  const mobileChrome = useFlashcardsMobileChrome({
+    title: t('today.title'),
+    rightActions: <>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={startDueSession}>
+        <Play size={20} />
+      </DsButton>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.refresh')} disabled={loading} onClick={() => void handleRefresh()}>
+        <ArrowClockwise size={20} />
+      </DsButton>
+    </>,
+  }, [t, loading, dueCards.length, startDueSession, handleRefresh]);
+
   return (
-    <div className="wb-fc-screen">
-      <header className="wb-fc-header">
+    <div className="wb-fc-screen wb-fc-today">
+      {!mobileChrome && <header className="wb-fc-header">
         <div className="min-w-0">
           <h2 className="wb-fc-title">
             {t('today.title')}
@@ -192,7 +207,7 @@ export const TodayScreen: React.FC = () => {
             <ArrowClockwise size={15} />
           </DsButton>
         </div>
-      </header>
+      </header>}
 
       {error ? (
         <div className="wb-fc-list">
@@ -226,8 +241,8 @@ export const TodayScreen: React.FC = () => {
             <div className="wb-fcx-hero-ring">
               <ProgressRing
                 value={progress}
-                size={104}
-                strokeWidth={9}
+                size={isSmallScreen ? 64 : 104}
+                strokeWidth={isSmallScreen ? 5 : 9}
                 aria-label={t('today.ringDone', {
                   done: doneToday,
                   remaining: displayDueCount,
@@ -259,6 +274,7 @@ export const TodayScreen: React.FC = () => {
                 </div>
               </div>
               <div className="wb-fcx-hero-actions">
+                {!mobileChrome && (
                 <DsButton
                   type="button"
                   variant="primary"
@@ -269,6 +285,7 @@ export const TodayScreen: React.FC = () => {
                   <Play size={16} weight="fill" />
                   {t('today.startReview')}
                 </DsButton>
+                )}
                 {streak > 0 ? (
                   <span className="wb-fcx-chip" title={t('today.streakHint')}>
                     <Fire size={13} weight="fill" />
@@ -306,7 +323,7 @@ export const TodayScreen: React.FC = () => {
               </div>
             </div>
           ) : dueCards.length === 0 ? (
-            <div className="wb-fc-list">
+            <div className="wb-fc-list wb-fcx-empty-section">
               <div className="wb-fc-empty gap-3" data-state={libraryEmpty ? 'library-empty' : showDoneState ? 'done' : 'idle'}>
                 <div className="wb-fcx-empty-icon" data-tone={showDoneState ? 'done' : 'idle'}>
                   {showDoneState
