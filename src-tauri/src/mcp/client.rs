@@ -77,6 +77,10 @@ pub type McpResult<T> = Result<T, McpError>;
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
     pub method: String,
+    /// JSON-RPC 2.0 规范：params 字段可省略，但不应为 null。
+    /// 部分严格 MCP server（如 @playwright/mcp）对 "params": null 不返回响应。
+    /// None 时序列化必须省略整个字段，而不是写 "params": null。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub params: Option<Value>,
     pub id: Option<Value>,
 }
@@ -100,6 +104,8 @@ pub struct JsonRpcError {
 pub struct JsonRpcNotification {
     pub jsonrpc: String,
     pub method: String,
+    /// 与 JsonRpcRequest.params 同样的理由：None 时省略字段而不是发 "params": null。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub params: Option<Value>,
 }
 
@@ -2301,6 +2307,76 @@ mod tests {
         let result = client.initialize().await;
 
         assert!(result.is_ok());
+    }
+
+    /// 修复：JSON-RPC 2.0 规范要求 params 字段可省略但不应为 null。
+    /// 部分严格 MCP server（如 @playwright/mcp）对 "params": null 不返回响应，
+    /// 导致 tools/list 握手超时。None 必须序列化为省略字段，不是 "params": null。
+    /// 实证：用户 shim 抓包显示 params:null 时 playwright/mcp 无响应，params:{} 或省略时正常。
+    #[test]
+    fn jsonrpc_request_omits_params_when_none() {
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "tools/list".to_string(),
+            params: None,
+            id: Some(Value::String("test-id-1".to_string())),
+        };
+        let serialized = serde_json::to_string(&request).expect("serialize");
+        // 必须省略 params 字段，不能发 "params":null
+        assert!(
+            !serialized.contains("\"params\""),
+            "params must be omitted when None, got: {}",
+            serialized
+        );
+        assert!(
+            !serialized.contains("null"),
+            "must not emit null anywhere for params=None, got: {}",
+            serialized
+        );
+        // 其他字段照常
+        assert!(serialized.contains("\"jsonrpc\":\"2.0\""));
+        assert!(serialized.contains("\"method\":\"tools/list\""));
+        assert!(serialized.contains("\"id\":\"test-id-1\""));
+    }
+
+    /// 回归：params 为 Some 时必须照常序列化，不受 skip_serializing_if 影响。
+    #[test]
+    fn jsonrpc_request_includes_params_when_some() {
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "tools/call".to_string(),
+            params: Some(json!({"name": "browser_navigate", "arguments": {"url": "https://example.com"}})),
+            id: Some(Value::String("test-id-2".to_string())),
+        };
+        let serialized = serde_json::to_string(&request).expect("serialize");
+        assert!(serialized.contains("\"params\""));
+        assert!(serialized.contains("\"name\":\"browser_navigate\""));
+        assert!(serialized.contains("\"url\":\"https://example.com\""));
+    }
+
+    /// 回归：反序列化时缺失 params 字段要能正确解析为 None（default）。
+    #[test]
+    fn jsonrpc_request_deserializes_missing_params_as_none() {
+        let raw = r#"{"jsonrpc":"2.0","method":"tools/list","id":"abc"}"#;
+        let parsed: JsonRpcRequest = serde_json::from_str(raw).expect("deserialize");
+        assert!(parsed.params.is_none());
+        assert_eq!(parsed.method, "tools/list");
+    }
+
+    /// 回归：JsonRpcNotification 同样省略 params。
+    #[test]
+    fn jsonrpc_notification_omits_params_when_none() {
+        let notif = JsonRpcNotification {
+            jsonrpc: "2.0".to_string(),
+            method: "notifications/initialized".to_string(),
+            params: None,
+        };
+        let serialized = serde_json::to_string(&notif).expect("serialize");
+        assert!(
+            !serialized.contains("\"params\""),
+            "notification params must be omitted when None, got: {}",
+            serialized
+        );
     }
 }
 
