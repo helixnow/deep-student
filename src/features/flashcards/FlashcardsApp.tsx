@@ -176,7 +176,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
             showContentOverlay
             className="flex-1"
           >
-            {content}
+            <div className="flex h-full min-h-0 flex-col">{content}</div>
           </MobileSlidingLayout>
         ) : content}
       </FlashcardsMobileChromeContext.Provider>
