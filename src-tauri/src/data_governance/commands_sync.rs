@@ -252,15 +252,19 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
 
             let upper_sql = sql.to_ascii_uppercase();
             let lower_name = name.to_ascii_lowercase();
+            // 匹配 " AFTER UPDATE " 与 " AFTER UPDATE OF <col> "（列限定触发器，
+            // 如 trg__change_log_note_document_revisions_pin），BEFORE 同理。
+            let is_update = upper_sql.contains(" AFTER UPDATE ")
+                || upper_sql.contains(" BEFORE UPDATE ")
+                || upper_sql.contains(" AFTER UPDATE OF ")
+                || upper_sql.contains(" BEFORE UPDATE OF ")
+                || lower_name.ends_with("_update");
             let op = if upper_sql.contains(" AFTER INSERT ")
                 || upper_sql.contains(" BEFORE INSERT ")
                 || lower_name.ends_with("_insert")
             {
                 Some("insert")
-            } else if upper_sql.contains(" AFTER UPDATE ")
-                || upper_sql.contains(" BEFORE UPDATE ")
-                || lower_name.ends_with("_update")
-            {
+            } else if is_update {
                 Some("update")
             } else if upper_sql.contains(" AFTER DELETE ")
                 || upper_sql.contains(" BEFORE DELETE ")
@@ -279,6 +283,13 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
         for table in &expected {
             let ops = trigger_ops.get(table);
             for required in ["insert", "update", "delete"] {
+                // 设计上豁免的 op（如 note_document_revisions 的 delete，剪枝不回放
+                // 他设备）跳过，见 TableClassification::change_log_trigger_exempt。
+                if classification::TableClassification::change_log_trigger_exempt(
+                    db_name, table, required,
+                ) {
+                    continue;
+                }
                 if !ops.is_some_and(|set| set.contains(required)) {
                     issues.push(format!(
                         "{}.{} 缺少 __change_log {} 触发器",
@@ -6208,6 +6219,105 @@ mod tests {
 
         let err = validate_sync_registry_drift(temp.path()).unwrap_err();
         assert!(err.contains("vfs.review_history 存在 __change_log 触发器"));
+    }
+
+    /// 豁免表（note_document_revisions）设计上没有 delete 触发器（剪枝不回放
+    /// 他设备），预检应放行；pin 触发器是 AFTER UPDATE OF pinned，应识别为 update。
+    #[test]
+    fn registry_drift_preflight_allows_exempt_delete_and_update_of_trigger() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL
+            );
+            CREATE TABLE note_document_revisions (
+                id TEXT PRIMARY KEY,
+                note_id TEXT,
+                pinned INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            CREATE TRIGGER trg__change_log_note_document_revisions_insert
+            AFTER INSERT ON note_document_revisions
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('note_document_revisions', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg__change_log_note_document_revisions_pin
+            AFTER UPDATE OF pinned ON note_document_revisions
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('note_document_revisions', NEW.id, 'UPDATE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        // delete 豁免 + pin 触发器算 update → 不应因这两样报错。
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "豁免 delete + UPDATE OF pin 触发器应通过预检，实际: {:?}",
+            result.err()
+        );
+    }
+
+    /// 未豁免表若只有 AFTER UPDATE OF 触发器而缺标准 update，仍应识别出 update
+    /// 已覆盖（列限定触发器同样是 update 证据）。
+    #[test]
+    fn registry_drift_preflight_update_of_counts_as_update_op() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL
+            );
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                pinned INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            CREATE TRIGGER trg__change_log_notes_insert
+            AFTER INSERT ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg__change_log_notes_pin
+            AFTER UPDATE OF pinned ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', NEW.id, 'UPDATE');
+            END;
+            CREATE TRIGGER trg__change_log_notes_delete
+            AFTER DELETE ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', OLD.id, 'DELETE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "UPDATE OF 触发器应被识别为 update，不应误报缺 update，实际: {:?}",
+            result.err()
+        );
     }
 }
 

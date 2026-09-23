@@ -103,14 +103,17 @@ export function createSessionActions(
         },
 
         resetChatParams: (): void => {
-          // 🔧 R1-2: 重置时保留当前 modelId/modelDisplayName，避免 API 调用失败
+          // 仅当用户显式固定过模型时，重置才保留 modelId；未固定会话重置后
+          // modelId 清空，下次发送回退到当前全局默认模型（跟随"模型分配"）。
           const current = getState().chatParams;
           const defaults = createDefaultChatParams();
+          const keepPinned = current.modelIdPinnedByUser === true;
           set({
             chatParams: {
               ...defaults,
-              modelId: current.modelId,
-              modelDisplayName: current.modelDisplayName,
+              modelId: keepPinned ? current.modelId : defaults.modelId,
+              modelDisplayName: keepPinned ? current.modelDisplayName : defaults.modelDisplayName,
+              modelIdPinnedByUser: keepPinned,
             },
           });
           scheduleAutoSaveIfReady();

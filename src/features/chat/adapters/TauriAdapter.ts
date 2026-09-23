@@ -4769,8 +4769,9 @@ export class ChatV2TauriAdapter {
         return;
       }
 
+      // 只回写 model2OverrideId 与显示名，不写 modelId——避免把全局默认烘焙成
+      // 会话固定值。modelId 留空，发送时由 resolveEffectiveChatModelId 现取全局默认。
       this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
         model2OverrideId: normalizedSelection.model2OverrideId ?? null,
         modelDisplayName: normalizedSelection.modelDisplayName || latestParams.modelDisplayName || '',
       });
@@ -4902,7 +4903,8 @@ export class ChatV2TauriAdapter {
 
   private async normalizeChatModelSelection(
     modelId: string | undefined,
-    model2OverrideId: string | undefined
+    model2OverrideId: string | undefined,
+    pinnedByUser?: boolean
   ): Promise<NormalizedChatModelSelection> {
     const validIds = await this.getValidChatModelIdSet();
     let normalizedOverrideId = model2OverrideId?.trim() || undefined;
@@ -4910,7 +4912,11 @@ export class ChatV2TauriAdapter {
       normalizedOverrideId = undefined;
     }
 
-    const normalizedModelId = await this.resolveEffectiveChatModelId(modelId, validIds);
+    // 仅"用户显式固定"的会话才尊重其持久化 modelId；未固定会话一律忽略
+    // （可能是旧版本烘焙的 fallback 残留），直接取当前全局默认，保证
+    // "模型分配"切换后会话跟随新默认。
+    const candidateModelId = pinnedByUser ? modelId : undefined;
+    const normalizedModelId = await this.resolveEffectiveChatModelId(candidateModelId, validIds);
     const effectiveModelId = normalizedOverrideId || normalizedModelId;
     const modelInfo = getModelInfoByConfigId(effectiveModelId);
     const modelDisplayName = modelInfo?.model || modelInfo?.name || effectiveModelId;
@@ -4924,17 +4930,20 @@ export class ChatV2TauriAdapter {
   }
 
   private async applyRuntimeModelSelection(options: SendOptions): Promise<NormalizedChatModelSelection> {
+    const pinnedByUser = this.store.chatParams?.modelIdPinnedByUser === true;
     const normalizedSelection = await this.normalizeChatModelSelection(
       options.modelId,
-      options.model2OverrideId
+      options.model2OverrideId,
+      pinnedByUser
     );
 
     options.modelId = normalizedSelection.effectiveModelId;
     options.model2OverrideId = normalizedSelection.model2OverrideId;
     this.applyRuntimeThinkingCapability(options);
+
+    // 已固定与未固定都不再回写 modelId（未固定避免烘焙全局默认；已固定的
+    // modelId 由用户选择路径负责写入）。这里只刷新实际生效模型的显示名。
     this.store.setChatParams({
-      modelId: normalizedSelection.modelId,
-      model2OverrideId: normalizedSelection.model2OverrideId ?? null,
       modelDisplayName: normalizedSelection.modelDisplayName || '',
     });
 
