@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.67](https://github.com/helixnow/deep-student/compare/v0.9.66...v0.9.67) (2026-09-23)
+
+
+### Features
+
+* **qbank:** AI 出题原始返回完整落盘与失败日志取证 ([#407](https://github.com/helixnow/deep-student/issues/407)) ([66f2748](https://github.com/helixnow/deep-student/commit/66f2748208cd2c40d11316c30d9d1618d70e512c))
+* **qwen:** add xhigh/max thinking-depth presets with error-hint fallback ([#412](https://github.com/helixnow/deep-student/issues/412)) ([1a8297d](https://github.com/helixnow/deep-student/commit/1a8297d5ae0373ee37f25ab4b3095fcc6082b1b0))
+
+
+### Bug Fixes
+
+* **flashcards:** unify mobile page titles actions and navigation ([#413](https://github.com/helixnow/deep-student/issues/413)) ([7321dfb](https://github.com/helixnow/deep-student/commit/7321dfb207c00fd85e2375cd8b814e6338a01ff9))
+* **mcp:** omit JSON-RPC params field when None instead of sending null ([#411](https://github.com/helixnow/deep-student/issues/411)) ([71d22c6](https://github.com/helixnow/deep-student/commit/71d22c6f9a927458112e3e119e02c492bc176338))
+
 ## [0.9.66](https://github.com/helixnow/deep-student/compare/v0.9.65...v0.9.66) (2026-09-23)
 
 
