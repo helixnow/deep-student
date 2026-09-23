@@ -2345,7 +2345,9 @@ mod tests {
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             method: "tools/call".to_string(),
-            params: Some(json!({"name": "browser_navigate", "arguments": {"url": "https://example.com"}})),
+            params: Some(
+                json!({"name": "browser_navigate", "arguments": {"url": "https://example.com"}}),
+            ),
             id: Some(Value::String("test-id-2".to_string())),
         };
         let serialized = serde_json::to_string(&request).expect("serialize");
