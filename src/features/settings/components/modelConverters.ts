@@ -309,6 +309,7 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     reasoningSplit: profile.reasoningSplit,
     effort: profile.effort,
     verbosity: profile.verbosity,
+    extraBody: profile.extraBody,
   };
 };
 
@@ -363,6 +364,7 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     reasoningSplit: api.reasoningSplit,
     effort: api.effort,
     verbosity: api.verbosity,
+    extraBody: api.extraBody,
   };
 };
 

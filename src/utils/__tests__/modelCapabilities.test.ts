@@ -206,3 +206,57 @@ describe('modelCapabilities Xiaomi MiMo provider defaults', () => {
     });
   });
 });
+
+// 2B 内置 Qwen 模型补默认参数
+describe('modelCapabilities Qwen builtin defaults (2B)', () => {
+  it.each([
+    'qwen3.7-max',
+    'qwen3.7-plus',
+    'qwen3.6-flash',
+    'qwen3-max',
+    'qwen3.5-plus',
+    'qwen3.5-flash',
+    'qwen-plus',
+    'qwen-turbo',
+    'qwen-flash',
+    'qwen3.5-397b-a17b',
+    'qwen3.5-122b-a10b',
+  ])('gives %s enableThinking=true + medium effort + 4096 budget', (model) => {
+    const defaults = getModelDefaultParameters(model, { providerScope: 'qwen' });
+    expect(defaults).toMatchObject({
+      enableThinking: true,
+      reasoningEffort: 'medium',
+      thinkingBudget: 4096,
+      includeThoughts: true,
+      temperature: 0.7,
+    });
+  });
+
+  it('qwq-plus keeps thinking (forced) default', () => {
+    const defaults = getModelDefaultParameters('qwq-plus', { providerScope: 'qwen' });
+    expect(defaults.enableThinking).toBe(true);
+    expect(defaults.thinkingBudget).toBe(4096);
+  });
+
+  it('qwen3-coder-plus does NOT get thinking defaults (coder excluded)', () => {
+    const defaults = getModelDefaultParameters('qwen3-coder-plus', { providerScope: 'qwen' });
+    expect(defaults.enableThinking).not.toBe(true);
+  });
+
+  it('qwen3-vl-thinking does NOT get hybrid defaults (forced thinking path)', () => {
+    const defaults = getModelDefaultParameters('qwen3-vl-thinking', { providerScope: 'qwen' });
+    // forced-thinking 模型走 qwq fallback（4096 budget），不走 medium effort 默认
+    expect(defaults.reasoningEffort).not.toBe('medium');
+  });
+
+  it('unknown qwen3 variant falls through to heuristic default', () => {
+    const defaults = getModelDefaultParameters('qwen3.8-plus', { providerScope: 'qwen' });
+    expect(defaults).toMatchObject({
+      enableThinking: true,
+      reasoningEffort: 'medium',
+      thinkingBudget: 4096,
+      includeThoughts: true,
+      temperature: 0.7,
+    });
+  });
+});
