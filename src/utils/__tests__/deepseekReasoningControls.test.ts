@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   deepSeekV32EffortToBudget,
+  qwenBudgetToEffort,
+  qwenEffortToBudget,
   resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
 } from '../deepseekReasoningControls';
@@ -204,7 +206,7 @@ describe('DeepSeek runtime reasoning controls', () => {
   });
 
   it.each([
-    'qwen3.7-plus',
+    // 2A：qwen3.7-plus 等 Qwen 混合思考模型已改为 qwen-budget-effort，见下方 2A 测试组
     'doubao-seed-1-6-thinking',
     'MiniMax-M3',
     'mimo-v2.5-pro',
@@ -361,5 +363,138 @@ describe('DeepSeek runtime reasoning controls', () => {
         reasoningEffort: 'max',
       })
     ).toEqual({ enableThinking: true, reasoningEffort: 'xhigh', thinkingBudget: deepSeekV32EffortToBudget('xhigh') });
+  });
+});
+
+// 2A Qwen 思考强度（qwen-budget-effort）
+describe('Qwen budget-effort reasoning controls (2A)', () => {
+  it('qwenEffortToBudget maps low/medium/high to 1024/4096/16384', () => {
+    expect(qwenEffortToBudget('low')).toBe(1024);
+    expect(qwenEffortToBudget('medium')).toBe(4096);
+    expect(qwenEffortToBudget('high')).toBe(16384);
+    expect(qwenEffortToBudget(undefined)).toBe(4096); // 默认 medium
+    expect(qwenEffortToBudget('bogus')).toBe(4096);   // 未知值也回 medium
+  });
+
+  it('qwenBudgetToEffort reverse-maps budget to effort bucket', () => {
+    expect(qwenBudgetToEffort(1024)).toBe('low');
+    expect(qwenBudgetToEffort(512)).toBe('low');
+    expect(qwenBudgetToEffort(4096)).toBe('medium');
+    expect(qwenBudgetToEffort(2048)).toBe('medium');
+    expect(qwenBudgetToEffort(16384)).toBe('high');
+    expect(qwenBudgetToEffort(8192)).toBe('high');
+    expect(qwenBudgetToEffort(undefined)).toBe('medium');
+  });
+
+  it('qwen3.7-max resolves to qwen-budget-effort with medium default', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-max',
+      providerType: 'qwen',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    });
+    expect(control.kind).toBe('qwen-budget-effort');
+    expect(control.canDisable).toBe(true);
+    expect(control.defaultValue).toBe('medium');
+    expect(control.options.map(o => o.value)).toEqual(['low', 'medium', 'high']);
+  });
+
+  it('qwen3.7-plus resolves to qwen-budget-effort', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-plus',
+      providerType: 'qwen',
+    });
+    expect(control.kind).toBe('qwen-budget-effort');
+  });
+
+  it('qwen-plus / qwen-turbo resolve to qwen-budget-effort', () => {
+    expect(
+      resolveDeepSeekRuntimeReasoningControl({ model: 'qwen-plus', providerType: 'qwen' }).kind
+    ).toBe('qwen-budget-effort');
+    expect(
+      resolveDeepSeekRuntimeReasoningControl({ model: 'qwen-turbo', providerType: 'qwen' }).kind
+    ).toBe('qwen-budget-effort');
+    expect(
+      resolveDeepSeekRuntimeReasoningControl({ model: 'qwen-flash', providerType: 'qwen' }).kind
+    ).toBe('qwen-budget-effort');
+  });
+
+  it('vendor-prefixed Qwen3 hybrid (Qwen/Qwen3-8B) resolves to qwen-budget-effort', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'Qwen/Qwen3-8B',
+      providerType: 'siliconflow',
+    });
+    expect(control.kind).toBe('qwen-budget-effort');
+  });
+
+  it('forced-thinking qwq does NOT resolve to qwen-budget-effort (stays forced)', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwq-plus',
+      providerType: 'qwen',
+    });
+    expect(control.kind).not.toBe('qwen-budget-effort');
+  });
+
+  it('qwen3-*-thinking does NOT resolve to qwen-budget-effort (forced thinking)', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-vl-thinking',
+      providerType: 'qwen',
+    });
+    expect(control.kind).not.toBe('qwen-budget-effort');
+  });
+
+  it('selection maps low effort to thinkingBudget=1024', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-max',
+      providerType: 'qwen',
+    });
+    const selection = resolveDeepSeekRuntimeReasoningSelection({
+      control,
+      enableThinking: true,
+      reasoningEffort: 'low',
+    });
+    expect(selection).toEqual({
+      enableThinking: true,
+      reasoningEffort: 'low',
+      thinkingBudget: 1024,
+    });
+  });
+
+  it('selection maps high effort to thinkingBudget=16384', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-plus',
+      providerType: 'qwen',
+    });
+    const selection = resolveDeepSeekRuntimeReasoningSelection({
+      control,
+      enableThinking: true,
+      reasoningEffort: 'high',
+    });
+    expect(selection).toEqual({
+      enableThinking: true,
+      reasoningEffort: 'high',
+      thinkingBudget: 16384,
+    });
+  });
+
+  it('selection with no effort defaults to medium (4096)', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3.7-max',
+      providerType: 'qwen',
+    });
+    const selection = resolveDeepSeekRuntimeReasoningSelection({
+      control,
+      enableThinking: true,
+      reasoningEffort: undefined,
+    });
+    expect(selection.thinkingBudget).toBe(4096);
+    expect(selection.reasoningEffort).toBe('medium');
+  });
+
+  it('coder variants do not get qwen-budget-effort', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'qwen3-coder-plus',
+      providerType: 'qwen',
+    });
+    expect(control.kind).not.toBe('qwen-budget-effort');
   });
 });

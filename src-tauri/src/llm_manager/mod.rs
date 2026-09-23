@@ -2980,6 +2980,17 @@ pub struct ApiConfig {
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
     #[serde(default, alias = "context_window")]
     pub context_window: Option<u32>,
+    /// 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+    ///
+    /// 用户在设置 UI 上以 key-value 形式声明的额外字段，会被原样合并进
+    /// 最终发送到 API 的请求体。用于塞进任何 LLM 方言 / 未来新出的参数，
+    /// 而不需要硬编码到 `RequestAdapter`。
+    ///
+    /// 安全约束：合并发生在 `apply_common_params` 末尾，已存在的标准字段
+    /// （model/messages/stream/temperature 等）**不会**被这里覆盖 ——
+    /// 只有当 key 在 body 中尚不存在时才会插入。
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Map<String, Value>>,
 }
 
 impl Default for ApiConfig {
@@ -3030,6 +3041,7 @@ impl Default for ApiConfig {
             is_favorite: false,
             max_tokens_limit: None,
             context_window: None,
+            extra_body: None,
         }
     }
 }
@@ -3184,6 +3196,12 @@ pub struct ModelProfile {
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
     #[serde(default, alias = "context_window")]
     pub context_window: Option<u32>,
+    /// 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+    ///
+    /// 用户在设置 UI 上以 key-value 形式声明的额外字段，会被原样合并进
+    /// 最终发送到 API 的请求体。详见 `ApiConfig::extra_body`。
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Map<String, Value>>,
 }
 
 impl Default for ModelProfile {
@@ -3224,6 +3242,7 @@ impl Default for ModelProfile {
             is_favorite: false,
             max_tokens_limit: None,
             context_window: None,
+            extra_body: None,
         }
     }
 }
@@ -5942,6 +5961,7 @@ impl LLMManager {
                 .context_window
                 .or(capability_overrides.context_window),
             supports_openai_responses: vendor.supports_openai_responses,
+            extra_body: profile.extra_body.clone(),
         };
 
         Ok(ResolvedModelConfig {
@@ -6048,6 +6068,7 @@ impl LLMManager {
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
                 verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
             });
         }
 
@@ -6147,6 +6168,7 @@ impl LLMManager {
                     is_favorite: false,
                     max_tokens_limit: None,
                     context_window: None,
+                    extra_body: None,
                 })
                 .collect());
         }
@@ -6211,6 +6233,7 @@ impl LLMManager {
                 reasoning_split: None,
                 effort: None,
                 verbosity: None,
+                extra_body: None,
             })
             .collect())
     }
@@ -6314,6 +6337,7 @@ impl LLMManager {
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
                 verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
             });
         }
 

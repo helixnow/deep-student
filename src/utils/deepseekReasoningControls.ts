@@ -9,6 +9,11 @@ export type DeepSeekReasoningControlKind =
   | 'grok-effort'
   | 'mistral-effort'
   | 'ernie-effort'
+  // 2A Qwen 思考强度（新增）：DashScope / SiliconFlow 上 Qwen 混合思考模型
+  // - qwen-budget-effort: 三档预设（低/中/高），映射到 thinking_budget 数值
+  // - qwen-effort: 预留位，未来若 DashScope 开放 reasoning_effort 字符串时使用
+  | 'qwen-budget-effort'
+  | 'qwen-effort'
   | 'toggle-only';
 
 export type DeepSeekReasoningOptionValue = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -122,6 +127,15 @@ const GLM_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
+];
+
+// 2A Qwen 思考强度三档预设（映射到 thinking_budget 数值，单位 tokens）。
+// DashScope 混合思考模型（qwen3.7-max/plus、qwen-plus/turbo/flash、qwen3.5/3.6/3.7 非 thinking 变体）
+// 通过 thinking_budget 表达"思考强度"。低/中/高对应 1024 / 4096 / 16384。
+const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+  { value: 'low', labelKey: 'settings:api.modal.qwen.depth.low', defaultLabel: '低 (1024)' },
+  { value: 'medium', labelKey: 'settings:api.modal.qwen.depth.medium', defaultLabel: '中 (4096)' },
+  { value: 'high', labelKey: 'settings:api.modal.qwen.depth.high', defaultLabel: '高 (16384)' },
 ];
 
 const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
@@ -293,6 +307,34 @@ function isQwenForcedThinkingModelId(modelId: string): boolean {
   return modelId.includes('qwen3') && /(?:^|[-_/])thinking(?:[-_/]|$)/.test(modelId);
 }
 
+// 2A：识别"Qwen 混合思考"模型 —— 用户可以通过 enable_thinking 开关切换思考模式，
+// 并可通过 thinking_budget 数值表达"思考强度"。
+// 与 isQwenForcedThinkingModelId 互补：这里返回 true 的模型可以被关闭思考。
+// 覆盖：qwen3.5/3.6/3.7 非 thinking 变体、qwen-plus/turbo/flash（qwen3 商业家族）、
+// qwen3-max 非 preview 变体。vendor 前缀（Qwen/Qwen3-…）也算。
+function isQwenHybridThinkingModelId(modelId: string): boolean {
+  if (!modelId) return false;
+  const id = modelId.toLowerCase();
+  // 强制思考模型不算 hybrid（它们没有关闭开关）
+  if (isQwenForcedThinkingModelId(id)) return false;
+  // coder 变体不支持思考
+  if (id.includes('coder')) return false;
+  // qwen3-max 非 preview（preview 走 forced）
+  if (/^qwen3?-max/.test(id) && !id.includes('preview')) return true;
+  // qwen3.5/3.6/3.7 非 thinking 变体（含 vendor 前缀 Qwen/Qwen3-…）
+  const isVendorQwen3 = /^qwen\/qwen3[-.]/.test(id);
+  if (id.startsWith('qwen3') || isVendorQwen3) {
+    if (id.includes('thinking')) return false; // forced
+    if (id.includes('instruct')) return false; // instruct 通常无思考
+    if (/qwen3[.-][5-7]/.test(id)) return true;
+    if (id.includes('preview')) return false; // preview 走 forced
+    return true;
+  }
+  // qwen-plus / qwen-turbo / qwen-flash（qwen3 商业家族）
+  if (/^qwen-plus/.test(id) || /^qwen-turbo/.test(id) || /^qwen-flash/.test(id)) return true;
+  return false;
+}
+
 function isLegacyKimiForcedThinkingModelId(modelId: string): boolean {
   return (
     modelId.includes('kimi-k2-thinking') ||
@@ -421,6 +463,28 @@ export function deepSeekV32BudgetToEffort(budget: number | undefined | null): 'l
   return 'xhigh';
 }
 
+// 2A Qwen 思考强度三档预设（单位 tokens）。
+// DashScope 混合思考模型通过 thinking_budget 表达"思考强度"。
+const QWEN_EFFORT_BUDGETS = {
+  low: 1024,
+  medium: 4096,
+  high: 16384,
+} as const;
+
+export function qwenEffortToBudget(effort: string | undefined | null): number {
+  const normalized = normalize(effort);
+  if (normalized === 'low') return QWEN_EFFORT_BUDGETS.low;
+  if (normalized === 'high') return QWEN_EFFORT_BUDGETS.high;
+  return QWEN_EFFORT_BUDGETS.medium;
+}
+
+export function qwenBudgetToEffort(budget: number | undefined | null): 'low' | 'medium' | 'high' {
+  if (typeof budget !== 'number' || !Number.isFinite(budget)) return 'medium';
+  if (budget <= QWEN_EFFORT_BUDGETS.low) return 'low';
+  if (budget <= QWEN_EFFORT_BUDGETS.medium) return 'medium';
+  return 'high';
+}
+
 export function normalizeDeepSeekV4Effort(
   effort: string | undefined | null,
   isOfficial = false,
@@ -466,6 +530,17 @@ export function resolveDeepSeekRuntimeReasoningControl(
     return {
       kind: 'v4-effort', options: V4_EFFORT_OPTIONS, canDisable: true,
       isOfficialDeepSeek: isOfficialDeepSeekEndpoint(input),
+    };
+  }
+  // 2A：Qwen 混合思考模型优先于 SiliconFlow 分支判定 ——
+  // 即使用户把 Qwen 挂在 SiliconFlow 上，思考强度档位也用 Qwen 自己的（1024/4096/16384）
+  // 而不是 DeepSeek V3.2 的（2048/8192/32768）。
+  if (isQwenHybridThinkingModelId(model)) {
+    return {
+      kind: 'qwen-budget-effort',
+      options: QWEN_BUDGET_EFFORT_OPTIONS,
+      canDisable: true,
+      defaultValue: 'medium',
     };
   }
   if (isSiliconFlow) {
@@ -568,6 +643,21 @@ export function resolveDeepSeekRuntimeReasoningSelection(
       enableThinking,
       reasoningEffort: v32Effort,
       thinkingBudget: deepSeekV32EffortToBudget(v32Effort),
+    };
+  }
+
+  // 2A Qwen 思考强度：low/medium/high → thinking_budget (1024/4096/16384)
+  // 与 v32-budget-effort 类似，但 budget 档位不同；reasoningEffort 字段保留供 UI 显示。
+  if (input.control.kind === 'qwen-budget-effort') {
+    const normalizedEffort = normalize(input.reasoningEffort);
+    const effort: DeepSeekReasoningOptionValue =
+      normalizedEffort === 'low' || normalizedEffort === 'medium' || normalizedEffort === 'high'
+        ? (normalizedEffort as DeepSeekReasoningOptionValue)
+        : (input.control.defaultValue ?? 'medium');
+    return {
+      enableThinking,
+      reasoningEffort: effort,
+      thinkingBudget: qwenEffortToBudget(effort),
     };
   }
 

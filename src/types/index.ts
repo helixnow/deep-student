@@ -326,6 +326,12 @@ export interface ApiConfig {
   verbosity?: string;
   /** 前端基于模型能力推断的 ASR / Speech-to-Text 能力 */
   isAudioTranscription?: boolean;
+  /**
+   * 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+   * 以 key-value 形式声明的额外字段，会被原样合并进最终发送到 API 的请求体。
+   * 安全约束：已存在的标准字段（model/messages/stream/temperature 等）不会被覆盖。
+   */
+  extraBody?: Record<string, unknown>;
 }
 
 export interface VendorConfig {
@@ -394,6 +400,10 @@ export interface ModelProfile {
   reasoningSplit?: boolean;
   effort?: string;
   verbosity?: string;
+  /**
+   * 2C 自定义请求体扩展。见 ApiConfig.extraBody。
+   */
+  extraBody?: Record<string, unknown>;
 }
 
 export interface ModelAssignments {

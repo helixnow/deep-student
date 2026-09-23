@@ -290,7 +290,12 @@
         "enable_thinking_hint": "Qwen3 双模式切换，启用后输出 reasoning_content",
         "thinking_budget": "Thinking Budget",
         "thinking_budget_placeholder": "留空使用默认值",
-        "reasoning_effort": "Reasoning Effort"
+        "reasoning_effort": "Reasoning Effort",
+        "depth": {
+          "low": "低 (1024)",
+          "medium": "中 (4096)",
+          "high": "高 (16384)"
+        }
       },
       "grok": {
         "title": "xAI Grok 配置",
@@ -1761,6 +1766,20 @@
       "clear_api_key_first": "请先清空 API Key —— API Key 优先于 OAuth",
       "api_key_priority_hint": "若已填写 API Key，将优先于 OAuth Bearer 令牌使用。"
     }
+  },
+  "mcp_danger": {
+    "title": "危险区：MCP 危险模式",
+    "description": "默认情况下，MCP stdio 启动必须经过批准配置门（command / args / env / cwd / framing 必须与已保存的服务器条目完全一致）。开启\"危险模式\"后，任何网页或插件里的 JavaScript 都能调用 mcp_stdio_start 在你电脑上启动任意进程，等价于 PowerShell 的 Bypass 策略。仅在排障时短期开启，用毕请立即关闭。",
+    "unapproved_toggle": "允许未批准的 MCP stdio 启动",
+    "unapproved_active_warning": "当前已开启：任何 JS 都能启动任意进程",
+    "unapproved_enabled_toast": "MCP 危险模式已开启，重启应用后生效",
+    "unapproved_disabled_toast": "MCP 危险模式已关闭",
+    "unapproved_failed_toast": "设置失败：{{msg}}",
+    "confirm_enable_title": "确认开启 MCP 危险模式？",
+    "confirm_enable_desc": "开启后，任何网页或插件中的 JavaScript 都能通过 mcp_stdio_start 在你电脑上启动任意进程，包括 powershell、cmd、bash 等。这可能被恶意代码利用来窃取数据或破坏系统。\n\n仅在排障时短期开启，用毕请立即关闭。",
+    "confirm_enable_ok": "我已知晓风险，开启",
+    "confirm_disable_title": "关闭 MCP 危险模式？",
+    "confirm_disable_desc": "关闭后恢复默认的批准配置门。"
   },
   "notifications": {
     "config_save_success": "配置保存成功",

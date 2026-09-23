@@ -1178,6 +1178,7 @@ impl BuiltinModel {
             reasoning_split: None,
             effort: None,
             verbosity,
+            extra_body: None,
         }
     }
 }
@@ -1270,6 +1271,7 @@ impl GeminiBuiltinModel {
             reasoning_split: None,
             effort: None,
             verbosity: None,
+            extra_body: None,
         }
     }
 }

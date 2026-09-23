@@ -234,6 +234,22 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     'pro/qwen/qwen2.5-vl-7b-instruct': { maxOutputTokens: 4096 },
     'qwen/qwq-32b': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen/qwq-32b-preview': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    // 2B 内置 Qwen 商业模型默认：开思考 + medium 档 4096 budget
+    // 对应 builtin_vendors.rs 里的 qwen3.7-max / qwen3.7-plus / qwen3.6-flash /
+    // qwen3-max / qwen3.5-plus / qwen3.5-flash / qwen-plus / qwq-plus /
+    // qwen3.5-397b-a17b / qwen3.5-122b-a10b
+    'qwen3.7-max': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.7-plus': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.6-flash': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3-max': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.5-plus': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.5-flash': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen-plus': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen-turbo': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen-flash': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwq-plus': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.5-397b-a17b': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    'qwen3.5-122b-a10b': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'deepseek-ai/deepseek-v3.1': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
@@ -297,6 +313,20 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   }
   if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
+  // 2B Qwen 混合思考模型 fallback（不在显式表里的 qwen3.x 商业家族成员）
+  // 与 2A 的 isQwenHybridThinkingModelId 保持一致：排除 coder / thinking / instruct / preview
+  if (
+    (lower.startsWith('qwen3') ||
+      lower.startsWith('qwen-plus') ||
+      lower.startsWith('qwen-turbo') ||
+      lower.startsWith('qwen-flash')) &&
+    !lower.includes('coder') &&
+    !lower.includes('thinking') &&
+    !lower.includes('instruct') &&
+    !lower.includes('preview')
+  ) {
+    return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
+  }
   if (lower.includes('deepseek')) return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
   if (lower.includes('doubao-seed-1')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
