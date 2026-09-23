@@ -681,11 +681,6 @@
     gap: 10px;
   }
 
-  .wb-fcx-heatmap {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-  }
-
   .wb-fcx-donut-layout {
     justify-content: center;
     gap: 16px;

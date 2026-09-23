@@ -2639,7 +2639,9 @@ function App() {
 
   const flashcardsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyFlashcardsPage isActive={currentView === 'flashcards'} />
+      <MobilePageScaffold>
+        <LazyFlashcardsPage isActive={currentView === 'flashcards'} />
+      </MobilePageScaffold>
     </Suspense>
   ), [currentView]);
 

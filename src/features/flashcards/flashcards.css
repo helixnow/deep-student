@@ -781,7 +781,8 @@
 @media (max-width: 767.98px) {
   .wb-fc-nav {
     gap: 0;
-    padding: 0 max(8px, var(--mobile-safe-area-left, 0px)) 0 8px;
+    padding: 0 calc(8px + var(--mobile-safe-area-right, 0px))
+      0 calc(8px + var(--mobile-safe-area-left, 0px));
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
@@ -792,7 +793,8 @@
   }
 
   .wb-fc-tab {
-    flex: 0 0 auto;
+    flex: 1 0 auto;
+    justify-content: center;
     min-height: 48px;
     padding: 10px 14px;
     font-size: 14px;
@@ -804,9 +806,9 @@
 
   .wb-fc-screen {
     gap: 10px;
-    padding: 12px max(12px, var(--mobile-safe-area-left, 0px))
+    padding: 12px calc(16px + var(--mobile-safe-area-right, 0px))
       calc(16px + var(--mobile-safe-area-bottom, 0px))
-      max(12px, var(--mobile-safe-area-right, 0px));
+      calc(16px + var(--mobile-safe-area-left, 0px));
   }
 
   .wb-fc-header {
@@ -821,12 +823,6 @@
     font-size: 12px;
   }
 
-  .wb-fc-list,
-  .wb-fc-panel,
-  .wb-fc-banner {
-    border-radius: 10px;
-  }
-
   .wb-fc-row {
     padding: 12px;
   }
@@ -836,7 +832,20 @@
   }
 
   .wb-fc-card {
-    border-radius: 14px;
+    min-height: 0;
+  }
+
+  .wb-fc-session {
+    overflow-y: auto;
+  }
+
+  .wb-fc-session > .wb-fc-card-stage {
+    min-height: 8rem;
+  }
+
+  .wb-fc-keycap,
+  .wb-fc-shortcut-hint {
+    display: none;
   }
 
   .wb-fc-session-progress {

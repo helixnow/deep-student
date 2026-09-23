@@ -21,6 +21,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { UiPresence } from '@/components/ui/UiPresence';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -74,6 +75,7 @@ function toReviewContent(card: AnkiLibraryCard) {
 
 export const LibraryScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
+  const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
   const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
 
@@ -448,8 +450,11 @@ export const LibraryScreen: React.FC = () => {
     />
   );
 
-  return (
-    <div className="wb-fc-screen">
+  // On phones the composer and filters scroll with the cards, including when
+  // the software keyboard reduces the available height.
+  const ListContainer = isSmallScreen ? 'div' : CustomScrollArea;
+  const content = (
+    <div className="wb-fc-screen fc-lib-screen">
       <header className="wb-fc-header" data-align="end">
         <div className="min-w-0">
           <h2 className="wb-fc-title">
@@ -734,7 +739,7 @@ export const LibraryScreen: React.FC = () => {
         </div>
       ) : null}
 
-      <CustomScrollArea className="wb-fc-list min-h-0 flex-1">
+      <ListContainer className="wb-fc-list min-h-0 flex-1">
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
@@ -898,7 +903,7 @@ export const LibraryScreen: React.FC = () => {
             ) : null}
           </div>
         )}
-      </CustomScrollArea>
+      </ListContainer>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>{translate('library.page', { page, pages: pageCount })}</span>
@@ -931,4 +936,5 @@ export const LibraryScreen: React.FC = () => {
       </footer>
     </div>
   );
+  return isSmallScreen ? <CustomScrollArea>{content}</CustomScrollArea> : content;
 };

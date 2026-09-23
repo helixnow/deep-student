@@ -204,7 +204,7 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
+/* 队列标题区：用标题与分隔线区分入队状态。 */
 .fc-lib-queue-head[data-queue='inbox'] {
   background: transparent;
 }
@@ -244,7 +244,7 @@
   margin-left: auto;
 }
 
-/* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
+/* 行自身背景透明，hover/选中态沿用列表样式。 */
 .fc-lib-queue-section[data-queue='inbox'] {
   background: transparent;
 }
@@ -571,27 +571,29 @@
 
 /* ===== 移动端库页 ======================================================== */
 @media (max-width: 767.98px) {
+  .fc-lib-screen {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .fc-lib-screen > .wb-fc-list {
+    flex: none;
+  }
+
   .fc-lib-create {
-    flex-direction: column;
+    flex-direction: row;
     align-items: stretch;
   }
 
-  .fc-lib-create-cta {
-    width: 100%;
+  .fc-lib-create > .fc-lib-create-cta {
+    flex: 1;
+    width: auto;
+    min-width: 0;
     justify-content: center;
   }
 
-  .wb-fc-toolbar {
-    flex-wrap: wrap;
-  }
-
-  .wb-fc-toolbar .wb-fc-search {
-    flex-basis: 100%;
-  }
-
-  .wb-fc-toolbar > .wb-fc-search + button {
-    width: 100%;
-    justify-content: center;
+  .fc-lib-screen .wb-fc-toolbar {
+    flex-wrap: nowrap;
   }
 
   .fc-lib-filters {
@@ -615,6 +617,11 @@
 
   .fc-lib-chip {
     flex: 0 0 auto;
+    min-height: 44px;
+  }
+
+  .fc-lib-kbd-hint {
+    display: none;
   }
 
   .fc-lib-result-count {
@@ -666,6 +673,7 @@
   }
 
   .fc-lib-row-actions {
+    opacity: 1;
     width: 100%;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -689,6 +697,11 @@
   .fc-lib-expand-actions button {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  .fc-lib-meta > div {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
