@@ -39,6 +39,9 @@ enum StreamStatus {
 pub struct QbankGenerationDeps {
     pub llm: Arc<LLMManager>,
     pub vfs_db: Arc<VfsDatabase>,
+    /// Some(dir)：AI 原始返回完整落盘到该目录（debug-logs，debug.persist_logs 开启时由
+    /// LLMManager::build_debug_persist_config 提供）；None：不落盘
+    pub debug_log_dir: Option<std::path::PathBuf>,
 }
 
 /// 运行 AI 出题管线（纯任务执行器，不发任何前端事件）
@@ -112,10 +115,34 @@ pub async fn run_qbank_generation(
         return Ok(None);
     }
 
+    // AI 原始返回完整落盘（无论后续解析成败都保留）：解析失败取证、
+    // 被剔除题目的原文对照都需要它。debug.persist_logs 关闭时跳过。
+    if let Some(log_dir) = deps.debug_log_dir.as_deref() {
+        crate::debug_log_service::write_debug_response_entry(
+            log_dir,
+            "qbank_generation_response",
+            &config.model,
+            &stream_event,
+            &accumulated,
+        );
+    }
+
     // 5. 解析 JSON 数组 + 逐题校验（单题失败剔除并记录，不整体失败）
-    let mut response = parse_generation_output(&accumulated, request.max_questions)
-        .map_err(|e| AppError::llm(format!("AI 出题结果解析失败：{}", e)))?;
+    let mut response = match parse_generation_output(&accumulated, request.max_questions) {
+        Ok(response) => response,
+        Err(e) => {
+            // 整体失败时把原始返回完整写进运行日志（桌面 deep-student.log /
+            // 安卓经 Stdout→logcat 可见），不截断
+            log_raw_response_on_failure(&accumulated, "出题结果解析失败", &e);
+            return Err(AppError::llm(format!("AI 出题结果解析失败：{}", e)));
+        }
+    };
     if response.drafts.is_empty() {
+        log_raw_response_on_failure(
+            &accumulated,
+            "生成的题目全部未通过校验",
+            &response.rejection_reasons.join("；"),
+        );
         return Err(AppError::llm(
             "AI 生成的题目全部未通过校验，请调整要求后重试。".to_string(),
         ));
@@ -138,6 +165,22 @@ pub async fn run_qbank_generation(
 }
 
 type VfsResult<T> = Result<T, crate::vfs::VfsError>;
+
+/// 出题整体失败时，把 AI 原始返回**完整**写入运行日志（不截断），供失败取证。
+///
+/// 记录会同时到达：桌面 deep-student.log（LogDir 轮转目标）与安卓
+/// Stdout→logcat（lib.rs 对安卓强制开启 Stdout target）。注意 logcat
+/// 对超长单条可能截断/分片，完整文本以 debug-logs 落盘文件为准
+/// （debug.persist_logs 开启时由上方 write_debug_response_entry 写出）。
+fn log_raw_response_on_failure(raw: &str, stage: &str, detail: &str) {
+    log::warn!(
+        "[QbankGeneration] {}（{}），AI 原始返回完整内容如下（{} chars）:\n{}",
+        stage,
+        detail,
+        raw.chars().count(),
+        raw
+    );
+}
 
 /// 题目集名称 + 现有题目样本（based_on_existing 时给 prompt 出变式参考）
 fn collect_exam_context(vfs_db: &VfsDatabase, exam_id: &str) -> VfsResult<(String, Vec<String>)> {
