@@ -242,9 +242,11 @@ export function useInputBarV2(
         // 设置单个模型为当前使用的模型
         // modelId: API 配置 ID，用于后端调用
         // modelDisplayName: 模型标识符（如 "Qwen/Qwen3-8B"），用于前端显示
-        state.setChatParams({ 
+        // modelIdPinnedByUser: 标记为用户显式固定，不随全局默认变化
+        state.setChatParams({
           modelId: selectedModelId,
           modelDisplayName: selectedModel.model || selectedModel.name,
+          modelIdPinnedByUser: true,
         });
         state.setPendingParallelModelIds(null);
       } else {
