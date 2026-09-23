@@ -48,6 +48,10 @@ function createMockStore(): ChatStore {
     streamingVariantIds: new Set(),
     chatParams: {
       modelId: 'test-model',
+      // Fixture models a session whose model the user explicitly pinned, so the
+      // persisted modelId is authoritative. Unpinned behavior (ignoring a stale
+      // modelId and following the global default) is covered by dedicated tests.
+      modelIdPinnedByUser: true,
       temperature: 0.7,
       contextLimit: 8192,
       maxTokens: 4096,
@@ -350,13 +354,78 @@ describe('ChatV2TauriAdapter', () => {
       expect(request.options.modelId).toBe('override-model');
       expect(request.options.model2OverrideId).toBe('override-model');
 
+      // Runtime selection only refreshes the effective display name; it must not
+      // write the resolved modelId back into chatParams (that would bake the
+      // global default into the session and break default-model switching).
       expect(mockStore.setChatParams).toHaveBeenCalledWith({
-        modelId: 'base-model',
-        model2OverrideId: 'override-model',
         modelDisplayName: 'provider/override-model',
       });
       expect(vi.mocked(mockStore.setChatParams).mock.invocationCallOrder[0])
         .toBeLessThan(vi.mocked(mockStore.sendMessageWithIds).mock.invocationCallOrder[0]);
+    });
+
+    it('ignores a stale unpinned modelId and sends the current global default', async () => {
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_api_configurations') {
+          return [
+            { id: 'stale-model', name: 'Stale Model', model: 'provider/stale-model', enabled: true },
+            { id: 'new-default', name: 'New Default', model: 'provider/new-default', enabled: true },
+          ];
+        }
+        if (command === 'get_model_assignments') {
+          return { model2_config_id: 'new-default' };
+        }
+        if (command === 'chat_v2_send_message') {
+          return 'assistant-msg-id';
+        }
+        return undefined;
+      });
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'stale-model',
+        modelDisplayName: 'provider/stale-model',
+        model2OverrideId: null,
+        modelIdPinnedByUser: false,
+      };
+
+      await adapter.sendMessage('Hello with unpinned model');
+
+      const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
+      const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
+      expect(request.options.modelId).toBe('new-default');
+    });
+
+    it('honors a user-pinned modelId over the global default', async () => {
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_api_configurations') {
+          return [
+            { id: 'pinned-model', name: 'Pinned Model', model: 'provider/pinned-model', enabled: true },
+            { id: 'global-default', name: 'Global Default', model: 'provider/global-default', enabled: true },
+          ];
+        }
+        if (command === 'get_model_assignments') {
+          return { model2_config_id: 'global-default' };
+        }
+        if (command === 'chat_v2_send_message') {
+          return 'assistant-msg-id';
+        }
+        return undefined;
+      });
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'pinned-model',
+        modelDisplayName: 'provider/pinned-model',
+        model2OverrideId: null,
+        modelIdPinnedByUser: true,
+      };
+
+      await adapter.sendMessage('Hello with pinned model');
+
+      const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
+      const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
+      expect(request.options.modelId).toBe('pinned-model');
     });
 
     it('should disable thinking parameters when the effective model does not support reasoning', async () => {
@@ -1177,7 +1246,7 @@ describe('ChatV2TauriAdapter', () => {
       vi.useRealTimers();
     });
 
-    it('should hydrate empty loaded sessions with the default chat model before the first send', async () => {
+    it('should not bake the default chat model into empty loaded sessions before the first send', async () => {
       vi.clearAllMocks();
 
       const mockResponse = {
@@ -1218,10 +1287,12 @@ describe('ChatV2TauriAdapter', () => {
 
       await adapter.loadSession();
 
-      expect(mockStore.setChatParams).toHaveBeenCalledWith(expect.objectContaining({
-        modelId: 'deepseek-default-id',
+      // 未固定会话不再把全局默认写进 chatParams.modelId，只刷新覆盖 id 与显示名；
+      // 真正生效的模型在发送时由 resolveEffectiveChatModelId 现取全局默认。
+      expect(mockStore.setChatParams).toHaveBeenCalledWith({
         model2OverrideId: null,
-      }));
+        modelDisplayName: 'deepseek-v4-pro',
+      });
     });
 
     it('should save session with session state', async () => {
