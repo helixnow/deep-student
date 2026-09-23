@@ -209,7 +209,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             disabled && 'cursor-default opacity-70',
           )}
         >
-          <div className="flex min-h-full flex-col px-5 py-6">
+          <div className="wb-fc-card-content flex min-h-full flex-col px-5 py-6">
             <span className="wb-fc-card-side-label">
               {flipped ? backLabel : frontLabel}
             </span>

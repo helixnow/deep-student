@@ -238,6 +238,13 @@
   transition: width 320ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
+.wb-fc-session-toolbar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
 /* --- 计数徽标 / 连击 --- */
 .wb-fc-chip {
   display: inline-flex;
@@ -776,55 +783,17 @@
 }
 
 /* ===== 移动端页面布局（与 mobile shell 的 768px 断点对齐） =====
- * 闪卡是一个有自己三级内容导航的工作区：导航保持在内容顶部，内容本身
- * 负责滚动，避免把桌面 tab、筛选器和复习按钮压缩成不可用的小控件。 */
+ * 页面标题与主要动作由统一顶栏承载，同级页面从共享抽屉切换。 */
 @media (max-width: 767.98px) {
-  .wb-fc-nav {
-    gap: 0;
-    padding: 0 max(8px, var(--mobile-safe-area-left, 0px)) 0 8px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-
-  .wb-fc-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  .wb-fc-tab {
-    flex: 0 0 auto;
-    min-height: 48px;
-    padding: 10px 14px;
-    font-size: 14px;
-  }
-
   .wb-fc-body {
     min-height: 0;
   }
 
   .wb-fc-screen {
-    gap: 10px;
-    padding: 12px max(12px, var(--mobile-safe-area-left, 0px))
-      calc(16px + var(--mobile-safe-area-bottom, 0px))
-      max(12px, var(--mobile-safe-area-right, 0px));
-  }
-
-  .wb-fc-header {
     gap: 8px;
-  }
-
-  .wb-fc-title {
-    font-size: 16px;
-  }
-
-  .wb-fc-subtitle {
-    font-size: 12px;
-  }
-
-  .wb-fc-list,
-  .wb-fc-panel,
-  .wb-fc-banner {
-    border-radius: 10px;
+    padding: 8px calc(16px + var(--mobile-safe-area-right, 0px))
+      calc(16px + var(--mobile-safe-area-bottom, 0px))
+      calc(16px + var(--mobile-safe-area-left, 0px));
   }
 
   .wb-fc-row {
@@ -836,7 +805,54 @@
   }
 
   .wb-fc-card {
-    border-radius: 14px;
+    min-height: 0;
+    border-radius: 8px;
+  }
+
+  .wb-fc-card,
+  .wb-fc-card:hover:not([aria-disabled='true']),
+  .wb-fc-edit-panel {
+    box-shadow: none;
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  .wb-fc-card-content {
+    padding: 16px;
+  }
+
+  .wb-fc-card [data-render-mode='plain'] > div > .text-sm {
+    font-size: var(--font-size-lg, 1.125rem);
+    font-weight: 400;
+    line-height: 1.65;
+  }
+
+  .wb-fc-session {
+    overflow-y: auto;
+    gap: 8px;
+    padding-top: 4px;
+  }
+
+  .wb-fc-session-notice {
+    align-items: center;
+    flex-shrink: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--font-size-caption, 11px);
+  }
+
+  .wb-fc-session-notice > span > svg {
+    display: none;
+  }
+
+  .wb-fc-session > .wb-fc-card-stage {
+    min-height: 8rem;
+  }
+
+  .wb-fc-keycap,
+  .wb-fc-shortcut-hint {
+    display: none;
   }
 
   .wb-fc-session-progress {

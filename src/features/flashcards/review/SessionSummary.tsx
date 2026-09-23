@@ -41,6 +41,8 @@ export interface SessionSummaryProps {
   /** 剩余到期 > 0 时的「继续复习」入口（重新 loadDue 并开新一轮） */
   onContinue?: () => void;
   errorBanner?: React.ReactNode;
+  /** Mobile host already provides back, undo and resume. */
+  hideChromeActions?: boolean;
 }
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({
@@ -59,6 +61,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   onBack,
   onContinue,
   errorBanner,
+  hideChromeActions = false,
 }) => {
   const { t } = useTranslation('flashcards');
   // ratedCount>0 means a real session finished even if reconcile emptied the queue.
@@ -134,7 +137,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
       ) : null}
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        {canUndo ? (
+        {canUndo && !hideChromeActions ? (
           <DsButton
             type="button"
             variant="default"
@@ -146,7 +149,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             {t('session.undo')}
           </DsButton>
         ) : null}
-        {canResume ? (
+        {canResume && !hideChromeActions ? (
           <DsButton
             type="button"
             variant="default"
@@ -170,14 +173,14 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             {t('session.continueReview', { count: remainingDue })}
           </DsButton>
         ) : null}
-        <DsButton
+        {!hideChromeActions && <DsButton
           type="button"
           variant={showContinue ? 'default' : 'primary'}
           className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onBack}
         >
           {t('session.backToday')}
-        </DsButton>
+        </DsButton>}
       </div>
       {errorBanner}
       </div>

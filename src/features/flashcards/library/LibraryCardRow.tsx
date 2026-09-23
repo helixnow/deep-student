@@ -352,10 +352,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               size="sm"
               disabled={busy || card.suspended}
               onClick={() => onStartReview(card)}
-              className="text-xs"
+              aria-label={t('library.startReview')}
+              className="fc-lib-primary-action text-xs"
             >
               <Play size={14} weight="fill" />
-              {t('library.startReview')}
+              <span>{t('library.startReview')}</span>
             </DsButton>
           ) : (
             <DsButton
@@ -364,10 +365,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               size="sm"
               disabled={busy}
               onClick={() => onEnqueue(card.id)}
-              className="text-xs"
+              aria-label={t('library.enqueue')}
+              className="fc-lib-primary-action text-xs"
             >
               <PlusCircle size={14} />
-              {t('library.enqueue')}
+              <span>{t('library.enqueue')}</span>
             </DsButton>
           )}
 
@@ -379,6 +381,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               iconOnly
               disabled={busy}
               onClick={() => onToggleSuspended(card)}
+              className="fc-lib-secondary-action"
               aria-label={card.suspended ? t('library.resume') : t('library.suspend')}
               title={card.suspended ? t('library.resume') : t('library.suspend')}
             >
@@ -393,6 +396,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             iconOnly
             disabled={busy}
             onClick={() => onRequestDelete(card.id)}
+            className="fc-lib-secondary-action"
             aria-label={t('library.delete')}
             title={t('library.delete')}
           >
