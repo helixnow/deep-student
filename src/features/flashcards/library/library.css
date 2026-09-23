@@ -206,8 +206,7 @@
 
 /* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
 .fc-lib-queue-head[data-queue='inbox'] {
-  background: color-mix(in hsl, hsl(var(--warning)) 9%, transparent 91%);
-  border-bottom-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--border)) 70%);
+  background: transparent;
 }
 
 .fc-lib-queue-head[data-queue='scheduled'] {
@@ -247,19 +246,7 @@
 
 /* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
 .fc-lib-queue-section[data-queue='inbox'] {
-  background: color-mix(in hsl, hsl(var(--warning)) 4%, transparent 96%);
-}
-
-/* 收件箱行左缘 2px 暖色标带（伪元素承载，不与行焦点环 box-shadow 冲突） */
-.fc-lib-queue-section[data-queue='inbox'] .fc-lib-row::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 2px;
-  background: color-mix(in hsl, hsl(var(--warning)) 55%, transparent 45%);
-  pointer-events: none;
+  background: transparent;
 }
 
 /* 分区之间留出呼吸缝 */
@@ -579,6 +566,129 @@
 @media (hover: none) and (pointer: coarse) {
   .fc-lib-kbd-hint {
     display: none;
+  }
+}
+
+/* ===== 移动端库页 ======================================================== */
+@media (max-width: 767.98px) {
+  .fc-lib-create {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fc-lib-create-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .wb-fc-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .wb-fc-toolbar .wb-fc-search {
+    flex-basis: 100%;
+  }
+
+  .wb-fc-toolbar > .wb-fc-search + button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .fc-lib-filters {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .fc-lib-filters-group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 1px 1px 3px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .fc-lib-filters-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fc-lib-chip {
+    flex: 0 0 auto;
+  }
+
+  .fc-lib-result-count {
+    margin-left: 0;
+  }
+
+  .fc-lib-bulkbar {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .fc-lib-bulkbar-count {
+    width: 100%;
+  }
+
+  .fc-lib-bulkbar > button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .fc-lib-bulkbar-spacer {
+    display: none;
+  }
+
+  .fc-lib-list-head {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+
+  .fc-lib-queue-head {
+    align-items: flex-start;
+    padding: 9px 12px;
+  }
+
+  .fc-lib-queue-cta {
+    width: 100%;
+    margin: 2px 0 0;
+    justify-content: center;
+  }
+
+  .fc-lib-row-main {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .fc-lib-row-main > .min-w-0 {
+    min-width: 0;
+    flex: 1 1 calc(100% - 40px);
+  }
+
+  .fc-lib-row-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
+  }
+
+  .fc-lib-row-actions button:not([aria-label]) {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .fc-lib-expand-body {
+    padding: 10px 0 4px;
+  }
+
+  .fc-lib-expand-actions {
+    align-items: stretch;
+  }
+
+  .fc-lib-expand-actions button {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 }
 

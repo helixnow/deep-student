@@ -775,6 +775,89 @@
   }
 }
 
+/* ===== 移动端页面布局（与 mobile shell 的 768px 断点对齐） =====
+ * 闪卡是一个有自己三级内容导航的工作区：导航保持在内容顶部，内容本身
+ * 负责滚动，避免把桌面 tab、筛选器和复习按钮压缩成不可用的小控件。 */
+@media (max-width: 767.98px) {
+  .wb-fc-nav {
+    gap: 0;
+    padding: 0 max(8px, var(--mobile-safe-area-left, 0px)) 0 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .wb-fc-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wb-fc-tab {
+    flex: 0 0 auto;
+    min-height: 48px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .wb-fc-body {
+    min-height: 0;
+  }
+
+  .wb-fc-screen {
+    gap: 10px;
+    padding: 12px max(12px, var(--mobile-safe-area-left, 0px))
+      calc(16px + var(--mobile-safe-area-bottom, 0px))
+      max(12px, var(--mobile-safe-area-right, 0px));
+  }
+
+  .wb-fc-header {
+    gap: 8px;
+  }
+
+  .wb-fc-title {
+    font-size: 16px;
+  }
+
+  .wb-fc-subtitle {
+    font-size: 12px;
+  }
+
+  .wb-fc-list,
+  .wb-fc-panel,
+  .wb-fc-banner {
+    border-radius: 10px;
+  }
+
+  .wb-fc-row {
+    padding: 12px;
+  }
+
+  .wb-fc-card-stage {
+    min-height: 0;
+  }
+
+  .wb-fc-card {
+    border-radius: 14px;
+  }
+
+  .wb-fc-session-progress {
+    height: 4px;
+  }
+
+  .wb-fc-ratebar[data-mode='rate'] {
+    gap: 6px;
+  }
+
+  .wb-fc-rate-btn {
+    min-height: 56px;
+    padding-inline: 2px;
+  }
+
+  .wb-fc-summary-panel {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 /* ===== 复习会话：滑动评分手势层 ===== */
 
 /* 滑动评分：跟手期由内联样式接管（transition:none），回弹/飞出走这里的过渡 */

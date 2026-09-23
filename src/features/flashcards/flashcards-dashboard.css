@@ -82,9 +82,8 @@
 /* ==== 通用面板 / 文案 ================================================== */
 
 .wb-fcx-panel {
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 10px;
-  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  border-top: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: transparent;
 }
 
 .wb-fcx-panel-head {
@@ -93,7 +92,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 4px 10px;
-  padding: 12px 14px 0;
+  padding: 12px 0 0;
 }
 
 .wb-fcx-panel-title {
@@ -114,7 +113,7 @@
 }
 
 .wb-fcx-panel-body {
-  padding: 12px 14px 14px;
+  padding: 12px 0 14px;
 }
 
 .wb-fcx-panel-list {
@@ -187,26 +186,13 @@
 }
 
 .wb-fcx-count {
-  position: relative;
-  overflow: hidden;
-  padding: 9px 11px;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 8px;
-  background: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
+  min-width: 0;
+  padding: 4px 11px;
 }
 
-.wb-fcx-count::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
-  opacity: 0.85;
+.wb-fcx-count + .wb-fcx-count {
+  border-left: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 }
-
-.wb-fcx-count[data-tone='due'] { --wb-fcx-tone: var(--wb-fcx-blue); }
-.wb-fcx-count[data-tone='new'] { --wb-fcx-tone: var(--wb-fcx-teal); }
-.wb-fcx-count[data-tone='learning'] { --wb-fcx-tone: var(--wb-fcx-amber); }
 
 .wb-fcx-count-label {
   font-size: 11px;
@@ -257,9 +243,9 @@
   gap: 5px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid hsl(var(--wb-fcx-amber) / 0.35);
-  background: hsl(var(--wb-fcx-amber) / 0.12);
-  color: hsl(var(--wb-fcx-amber));
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: color-mix(in hsl, hsl(var(--muted)) 40%, transparent 60%);
+  color: hsl(var(--muted-foreground));
   font-size: 11.5px;
   font-weight: 600;
   line-height: 1.3;
@@ -267,9 +253,6 @@
 }
 
 .wb-fcx-chip[data-tone='muted'] {
-  border-color: var(--wb-glass-border, hsl(var(--border) / 0.5));
-  background: color-mix(in hsl, hsl(var(--muted)) 40%, transparent 60%);
-  color: hsl(var(--muted-foreground));
   font-weight: 500;
 }
 
@@ -391,7 +374,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  border-radius: 0 0 10px 10px;
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
   background: color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
 }
 
@@ -404,7 +387,7 @@
 .wb-fcx-metric {
   min-width: 0;
   padding: 10px 12px;
-  background: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
+  background: var(--wb-window-bg, hsl(var(--card)));
 }
 
 .wb-fcx-metric dt {
@@ -636,6 +619,88 @@
 [data-flashcards-app] [data-tone='state-review'] { --wb-fcx-tone: var(--wb-fcx-green); }
 [data-flashcards-app] [data-tone='state-relearning'] { --wb-fcx-tone: var(--wb-fcx-purple); }
 [data-flashcards-app] [data-tone='state-suspended'] { --wb-fcx-tone: 215 12% 62%; }
+
+/* ==== 移动端仪表盘 ====================================================== */
+@media (max-width: 767.98px) {
+  .wb-fcx-scroll {
+    gap: 10px;
+  }
+
+  .wb-fcx-panel-head {
+    align-items: flex-start;
+    padding: 12px 0 0;
+  }
+
+  .wb-fcx-panel-body {
+    padding: 10px 0 12px;
+  }
+
+  .wb-fcx-hero {
+    gap: 12px;
+    padding: 14px 0;
+  }
+
+  .wb-fcx-hero-main {
+    min-width: 0;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .wb-fcx-counts {
+    gap: 6px;
+  }
+
+  .wb-fcx-count {
+    padding: 4px 8px;
+  }
+
+  .wb-fcx-count-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wb-fcx-count-value {
+    font-size: 19px;
+  }
+
+  .wb-fcx-hero-actions {
+    align-items: stretch;
+  }
+
+  .wb-fcx-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .wb-fcx-chip {
+    min-height: 32px;
+  }
+
+  .wb-fcx-stats-grid {
+    gap: 10px;
+  }
+
+  .wb-fcx-heatmap {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .wb-fcx-donut-layout {
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .wb-fcx-donut-legend {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .wb-fcx-bars {
+    gap: 3px;
+  }
+}
 
 /* ==== reduced motion：路径动画全部关掉 ================================= */
 
