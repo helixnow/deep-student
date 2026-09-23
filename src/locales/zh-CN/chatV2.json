@@ -33,7 +33,8 @@
     "streamInterrupted": "流式响应中断",
     "abortFailed": "中断失败",
     "abortFailedMessage": "无法可靠中断生成，已强制重置本地状态",
-    "killSwitchBlocked": "Agent 已断电，无法发送。请在桌面操控中心恢复后再试。"
+    "killSwitchBlocked": "Agent 已断电，无法发送。请在桌面操控中心恢复后再试。",
+    "qwen_budget_too_high": "当前 Qwen 模型不支持所选的\"超高\"或\"最高\"思考强度，请在设置中将思考强度降到\"高 (16384)\"或更低后重试。"
   },
   "killSwitch": {
     "tripped": "Agent 已断电",

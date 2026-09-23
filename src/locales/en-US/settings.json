@@ -294,7 +294,9 @@
         "depth": {
           "low": "Low (1024)",
           "medium": "Medium (4096)",
-          "high": "High (16384)"
+          "high": "High (16384)",
+          "xhigh": "XHigh (32768)",
+          "max": "Max (65536)"
         }
       },
       "grok": {
