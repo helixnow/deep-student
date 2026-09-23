@@ -72,6 +72,26 @@
   font-size: 12px;
 }
 
+.fc-lib-filters[hidden] {
+  display: none;
+}
+
+.fc-lib-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.fc-lib-filter-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .fc-lib-filters-group {
   display: flex;
   flex-wrap: wrap;
@@ -204,7 +224,7 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
+/* 队列标题区：用标题与分隔线区分入队状态。 */
 .fc-lib-queue-head[data-queue='inbox'] {
   background: transparent;
 }
@@ -244,7 +264,7 @@
   margin-left: auto;
 }
 
-/* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
+/* 行自身背景透明，hover/选中态沿用列表样式。 */
 .fc-lib-queue-section[data-queue='inbox'] {
   background: transparent;
 }
@@ -571,34 +591,65 @@
 
 /* ===== 移动端库页 ======================================================== */
 @media (max-width: 767.98px) {
+  .fc-lib-screen {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .fc-lib-screen > .wb-fc-list {
+    flex: none;
+    border: 0;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .fc-lib-screen .wb-fc-search input {
+    border-radius: 8px;
+    background: hsl(var(--muted) / 0.35);
+  }
+
+  .fc-lib-screen .wb-fc-empty {
+    min-height: 0;
+    padding: 24px 0 16px;
+    gap: 10px;
+  }
+
+  .fc-lib-empty-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+  }
+
+  .fc-lib-empty-actions .fc-lib-create-cta {
+    width: auto;
+    font-size: var(--font-size-xs, 12px);
+    padding-inline: 10px;
+  }
+
   .fc-lib-create {
-    flex-direction: column;
+    flex-direction: row;
     align-items: stretch;
   }
 
-  .fc-lib-create-cta {
-    width: 100%;
+  .fc-lib-create > .fc-lib-create-cta {
+    flex: 1;
+    width: auto;
+    min-width: 0;
     justify-content: center;
   }
 
-  .wb-fc-toolbar {
-    flex-wrap: wrap;
-  }
-
-  .wb-fc-toolbar .wb-fc-search {
-    flex-basis: 100%;
-  }
-
-  .wb-fc-toolbar > .wb-fc-search + button {
-    width: 100%;
-    justify-content: center;
+  .fc-lib-screen .wb-fc-toolbar {
+    flex-wrap: nowrap;
   }
 
   .fc-lib-filters {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 4px;
+    padding-block: 4px;
+    border-top: 1px solid hsl(var(--border) / 0.5);
   }
 
   .fc-lib-filters-group {
@@ -615,6 +666,15 @@
 
   .fc-lib-chip {
     flex: 0 0 auto;
+    min-height: 44px;
+    border: 0;
+    border-radius: 6px;
+    padding-inline: 10px;
+    font-size: var(--font-size-xs, 12px);
+  }
+
+  .fc-lib-kbd-hint {
+    display: none;
   }
 
   .fc-lib-result-count {
@@ -641,7 +701,8 @@
 
   .fc-lib-list-head {
     min-height: 44px;
-    padding-inline: 12px;
+    padding-inline: 0;
+    background: transparent;
   }
 
   .fc-lib-queue-head {
@@ -656,26 +717,44 @@
   }
 
   .fc-lib-row-main {
-    flex-wrap: wrap;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 44px;
+    align-items: start;
+    gap: 6px;
+  }
+
+  .fc-lib-row {
+    padding-inline: 0;
   }
 
   .fc-lib-row-main > .min-w-0 {
     min-width: 0;
-    flex: 1 1 calc(100% - 40px);
   }
 
   .fc-lib-row-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    padding-top: 8px;
-    border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
+    opacity: 1;
+    width: auto;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
-  .fc-lib-row-actions button:not([aria-label]) {
-    flex: 1 1 auto;
+  .fc-lib-primary-action {
+    width: var(--touch-target-size, 44px);
+    padding: 0;
     justify-content: center;
+  }
+
+  .fc-lib-primary-action > span,
+  .fc-lib-row:not([data-expanded='true']) .fc-lib-secondary-action {
+    display: none;
+  }
+
+  .fc-lib-row[data-expanded='true'] .fc-lib-row-actions {
+    grid-column: 2 / -1;
+    flex-direction: row;
+    justify-content: flex-end;
   }
 
   .fc-lib-expand-body {
@@ -689,6 +768,11 @@
   .fc-lib-expand-actions button {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  .fc-lib-meta > div {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -708,4 +792,9 @@
   .fc-lib-skeleton {
     animation: none;
   }
+}
+
+.fc-lib-mobile-composer {
+  height: auto;
+  gap: 20px;
 }

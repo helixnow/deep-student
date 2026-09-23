@@ -10,6 +10,7 @@ import {
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowClockwise,
+  DotsThree,
   FloppyDisk,
   Hourglass,
   Info,
@@ -23,6 +24,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -46,6 +48,7 @@ import { ReviewCardSurface } from '../review/ReviewCardSurface';
 import { SessionSummary } from '../review/SessionSummary';
 import { UndoNudge } from '../review/UndoNudge';
 import { formatDuration, useCardAnswerClock, useNow } from '../review/useSessionClock';
+import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 /** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
 const POINTER_RATE_GUARD_MS = 280;
@@ -98,10 +101,12 @@ function errorTitle(
 export interface ReviewSessionScreenProps {
   /** 工作台窗口/标签页是否处于前台；后台实例不得接管全局评分快捷键。 */
   isActive?: boolean;
+  onExit?: () => void;
 }
 
 export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   isActive = true,
+  onExit,
 }) => {
   const { t } = useTranslation('flashcards');
   const queue = useFsrsReviewStore((state) => state.queue);
@@ -136,6 +141,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const endSession = useFsrsReviewStore((state) => state.endSession);
   const loadDue = useFsrsReviewStore((state) => state.loadDue);
   const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
+  const exitSession = onExit ?? endSession;
 
   const [editing, setEditing] = React.useState(false);
   const [draftFront, setDraftFront] = React.useState('');
@@ -390,6 +396,39 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     }
   }, [draftIsValid, ratingBusy, saveEdit]);
 
+  const handleMobileBack = React.useCallback(() => {
+    if (ratingBusy) return;
+    if (editing) setEditing(false);
+    else exitSession();
+  }, [editing, ratingBusy, exitSession]);
+  const mobileChrome = useFlashcardsMobileChrome({
+    title: t(editing ? 'session.edit' : 'session.title'),
+    subtitle: !editing && current && !sessionDone ? t('session.progress', { current: progress, total: queue.length }) : undefined,
+    onBack: handleMobileBack,
+    rightActions: editing ? (
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.saveEdit')} disabled={ratingBusy || !draftIsValid} onClick={() => void saveEdit()}>
+        <FloppyDisk size={20} />
+      </DsButton>
+    ) : <>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!lastReview || ratingBusy} onClick={() => void undoLastReview()}>
+        <ArrowCounterClockwise size={20} />
+      </DsButton>
+      {(current || lastSuspended) && <AppMenu>
+        <AppMenuTrigger asChild>
+          <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('common:more')}><DotsThree size={22} /></DsButton>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={200}>
+          {current && <>
+            <AppMenuItem icon={<PencilSimple size={18} />} disabled={ratingBusy || templateLoading || !current.ankiCardId} onClick={beginEdit}>{t('session.edit')}</AppMenuItem>
+            <AppMenuItem icon={<SkipForward size={18} />} disabled={ratingBusy} onClick={skipCurrent}>{t('review.skip')}</AppMenuItem>
+            <AppMenuItem icon={<Pause size={18} />} disabled={ratingBusy} onClick={() => void suspendCurrent()}>{t('session.suspend')}</AppMenuItem>
+          </>}
+          {lastSuspended && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{t('session.resume')}</AppMenuItem>}
+        </AppMenuContent>
+      </AppMenu>}
+    </>,
+  }, [t, editing, current, sessionDone, progress, queue.length, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended]);
+
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
       <div className="min-w-0 flex items-start gap-2">
@@ -448,14 +487,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               {t('session.retry')}
             </DsButton>
           ) : null}
-          <DsButton
+          {!mobileChrome && <DsButton
             type="button"
             variant="default"
-            onClick={endSession}
+            onClick={exitSession}
             className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('session.backToday')}
-          </DsButton>
+          </DsButton>}
         </div>
       </div>
     );
@@ -487,7 +526,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         canResume={Boolean(lastSuspended)}
         onUndo={() => void undoLastReview()}
         onResume={() => void resumeLastSuspended()}
-        onBack={endSession}
+        onBack={exitSession}
+        hideChromeActions={mobileChrome}
         onContinue={continueWithDue}
         errorBanner={errorBanner}
       />
@@ -515,7 +555,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       {sessionMode === 'batch' && !batchNoticeDismissed ? (
         <div
           role="status"
-          className="flex items-start justify-between gap-2 rounded-md border border-info/40 bg-info/10 px-3 py-2 text-xs text-foreground"
+          className="wb-fc-session-notice flex items-start justify-between gap-2 rounded-md border border-info/40 bg-info/10 px-3 py-2 text-xs text-foreground"
         >
           <span className="flex min-w-0 items-start gap-1.5">
             <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-info" />
@@ -558,10 +598,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2">
-        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:!min-h-11">
+      {mobileChrome && learningWaitMs != null && !editing && (
+        <p className="text-xs text-muted-foreground">{t('review.learningStepHint', { time: formatDuration(learningWaitMs) })}</p>
+      )}
+      {!mobileChrome && <div className="wb-fc-session-toolbar">
+      <div className="wb-fc-session-overview flex items-center justify-between gap-2">
+        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} aria-label={t('session.exit')} className="wb-fc-session-exit gap-1 [@media(pointer:coarse)]:!min-h-11">
           <ArrowLeft size={14} />
-          {t('session.exit')}
+          <span>{t('session.exit')}</span>
         </DsButton>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
           {sessionStreak >= STREAK_BADGE_THRESHOLD ? (
@@ -611,7 +655,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       </div>
 
       {/* DsButton 在 lg 断点后压缩到 30px，宽屏触屏平板会跌破触控基线，coarse 兜底 ≥44px（与 library.css .fc-lib-row-actions 同基线） */}
-      <div className="flex items-center justify-end gap-1">
+      <div className="wb-fc-session-actions flex items-center justify-end gap-1">
         <DsButton
           type="button"
           variant="ghost"
@@ -683,6 +727,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           <Pause size={16} />
         </DsButton>
       </div>
+      </div>}
 
       {editing ? (
         <CustomScrollArea
@@ -713,7 +758,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
             />
           </label>
-          <div className="flex items-center justify-between gap-2">
+          {!mobileChrome && <div className="flex items-center justify-between gap-2">
             <span className="wb-fc-shortcut-hint" aria-hidden="true">
               <kbd className="wb-fc-keycap">Esc</kbd> {t('session.cancelEdit')}
               <span className="wb-fc-shortcut-sep">·</span>
@@ -741,7 +786,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                 {t('session.saveEdit')}
               </DsButton>
             </div>
-          </div>
+          </div>}
           </div>
         </CustomScrollArea>
       ) : (

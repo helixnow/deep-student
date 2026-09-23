@@ -171,6 +171,7 @@
     "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。"
   },
   "session": {
+    "title": "复习",
     "loading": "准备复习队列…",
     "prepareFailed": "复习队列准备失败",
     "rateFailed": "评分失败",

@@ -171,6 +171,7 @@
     "emptyHint": "Create a card by hand, or import a local Anki deck (.apkg)."
   },
   "session": {
+    "title": "Review",
     "loading": "Preparing review queue…",
     "prepareFailed": "Failed to prepare review queue",
     "rateFailed": "Rating failed",
