@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.68](https://github.com/helixnow/deep-student/compare/v0.9.67...v0.9.68) (2026-09-23)
+
+
+### Bug Fixes
+
+* **chat,sync:** pin chat model per session and fix drift precheck ([#415](https://github.com/helixnow/deep-student/issues/415)) ([15b9043](https://github.com/helixnow/deep-student/commit/15b9043097b99774513383fff51213450f0263d2))
+
 ## [0.9.67](https://github.com/helixnow/deep-student/compare/v0.9.66...v0.9.67) (2026-09-23)
 
 
